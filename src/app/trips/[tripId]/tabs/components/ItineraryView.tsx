@@ -1217,11 +1217,11 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
             {event.subtitle}
           </p>
         )}
-        {event.kind === "schedule" && event.competitionEvents?.map((ce) => (
-          <div key={ce.id} className="mt-1.5 flex items-center gap-1.5">
+        {event.kind === "schedule" && event.competitionGames?.map((cg) => (
+          <div key={cg.id} className="mt-1.5 flex items-center gap-1.5">
             <Trophy size={13} style={{ color: "var(--color-bt-accent)" }} />
             <span className="text-[12.5px] font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {ce.title}
+              {cg.name ?? "Game"}
             </span>
           </div>
         ))}

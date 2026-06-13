@@ -12,9 +12,8 @@ import { TestContext } from "../../../../__tests__/helpers/test-setup";
  *   - GroupsPanel removed                  → no groups assertions
  *   - Status badge                         → "status badge"
  *   - Delete gated on upcoming             → "delete gating"
- *   - Event form: no day, no course        → "event form simplified"
- *   - Venues replaced by agenda-item link  → "agenda item linkage"
- *   - Event status line reflects agenda    → "event agenda status line"
+ *   - Contests are `games` now             → "(Teams, Games) all resolve"
+ *     (the retired events-table form/agenda cases moved to games coverage)
  */
 
 let ctx: TestContext;
@@ -52,18 +51,22 @@ describe("CompTab data layer (revisions)", () => {
     expect(fetched?.status).toBe("upcoming"); // status badge → "Setup"
   });
 
-  it("competition exists — sibling panels (Teams, Events) all resolve", async () => {
+  it("competition exists — sibling panels (Teams, Games) all resolve", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     expect(competition).not.toBeNull();
 
-    const [teams, events, assignments] = await Promise.all([
+    const [teams, allGames, assignments] = await Promise.all([
       caller.teams.list({ tripId, competitionId: competition!.id }),
-      caller.events.list({ tripId, competitionId: competition!.id }),
+      caller.games.listByTrip({ tripId }),
       caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
     ]);
     expect(teams).toEqual([]);
-    expect(events).toEqual([]);
+    expect(
+      (allGames as Array<{ competition_id: string | null }>).filter(
+        (g) => g.competition_id === competition!.id
+      )
+    ).toEqual([]);
     expect(assignments).toEqual([]);
   });
 
@@ -91,41 +94,10 @@ describe("CompTab data layer (revisions)", () => {
     expect(assignments.length).toBe(0);
   });
 
-  it("event form simplified — practice event ignores points and course", async () => {
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-    const created = await caller.events.create({
-      tripId,
-      competitionId: competition!.id,
-      type: "GOLF",
-      title: "Warmup Round",
-      scoringFormat: "scramble",
-      isPractice: true,
-    });
-    expect(created.is_practice).toBe(true);
-    // EventCard's status line reads "Practice · Not scored" off this flag.
-  });
-
-  it("event agenda status line — non-practice GOLF event has no agenda_item initially", async () => {
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-    const created = await caller.events.create({
-      tripId,
-      competitionId: competition!.id,
-      type: "GOLF",
-      title: "Day 1 Scramble",
-      scoringFormat: "scramble",
-    });
-    expect(created.is_practice).toBe(false);
-
-    const events = await caller.events.list({
-      tripId,
-      competitionId: competition!.id,
-    });
-    const found = events.find((e) => e.id === created.id) as { agenda_item?: unknown };
-    // No agenda item linked yet — EventCard surfaces the unlinked GOLF warning
-    expect(found?.agenda_item).toBeFalsy();
-  });
+  // (Removed: the event-form + event-agenda-status-line cases tested the retired
+  // events-table EventsPanel/EventCard surface. Competition contests are now
+  // `games` (CompetitionGamesPanel) — see games.d1.test.ts for that coverage,
+  // and ScheduleTab for the game↔agenda link.)
 
   it("delete gating — owner can delete while status is upcoming", async () => {
     // Fresh competition for this test so we don't break the others above.

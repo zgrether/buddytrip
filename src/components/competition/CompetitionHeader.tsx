@@ -71,13 +71,15 @@ export function CompetitionHeader({
     { tripId, competitionId: competition.id },
     { enabled: !!competition.id }
   );
-  const { data: events = [] } = trpc.events.list.useQuery(
-    { tripId, competitionId: competition.id },
+  const { data: allGames = [] } = trpc.games.listByTrip.useQuery(
+    { tripId },
     { enabled: !!competition.id }
   );
 
   const teamsCount = (assignments as Array<unknown>).length;
-  const eventsCount = (events as Array<unknown>).length;
+  const gamesCount = (allGames as Array<{ competition_id: string | null }>).filter(
+    (g) => g.competition_id === competition.id
+  ).length;
 
   const deleteComp = trpc.competitions.delete.useMutation({
     onSettled: () => {
@@ -209,7 +211,7 @@ export function CompetitionHeader({
         <DeleteCompetitionConfirmModal
           competitionName={competition.name}
           teamsCount={teamsCount}
-          eventsCount={eventsCount}
+          gamesCount={gamesCount}
           isPending={deleteComp.isPending}
           onCancel={() => setConfirming(false)}
           onConfirm={() =>
@@ -226,14 +228,14 @@ export function CompetitionHeader({
 function DeleteCompetitionConfirmModal({
   competitionName,
   teamsCount,
-  eventsCount,
+  gamesCount,
   isPending,
   onCancel,
   onConfirm,
 }: {
   competitionName: string;
   teamsCount: number;
-  eventsCount: number;
+  gamesCount: number;
   isPending: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -241,7 +243,7 @@ function DeleteCompetitionConfirmModal({
   // Tally the cascading damage so the user knows what they're about to lose.
   // teamsCount uses the assignments-derived count (not raw teams.length) so
   // the copy stays accurate even when teams have no members yet.
-  const summary = describeCascade(teamsCount, eventsCount);
+  const summary = describeCascade(teamsCount, gamesCount);
 
   return (
     <ScrollLock>
@@ -312,15 +314,15 @@ function DeleteCompetitionConfirmModal({
   );
 }
 
-function describeCascade(teamAssignments: number, events: number): string {
-  // " (3 assignments and 2 events)" / " (2 events)" / "" — keeps the
+function describeCascade(teamAssignments: number, games: number): string {
+  // " (3 assignments and 2 games)" / " (2 games)" / "" — keeps the
   // headline copy clean when nothing's been built yet.
   const parts: string[] = [];
   if (teamAssignments > 0) {
     parts.push(`${teamAssignments} assignment${teamAssignments === 1 ? "" : "s"}`);
   }
-  if (events > 0) {
-    parts.push(`${events} event${events === 1 ? "" : "s"}`);
+  if (games > 0) {
+    parts.push(`${games} game${games === 1 ? "" : "s"}`);
   }
   if (parts.length === 0) return "";
   return ` (${parts.join(" and ")})`;

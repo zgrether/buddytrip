@@ -20,7 +20,6 @@ import { TopNav } from "@/components/TopNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
-import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
@@ -123,11 +122,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // instead of flashing its loading skeleton for 1–2s on first open. Same
   // queryKey as ExpensesSection's own useQuery, so it hydrates instantly.
   trpc.expenses.list.useQuery({ tripId });
-  // Background prefetch for competition events — drives the comp tab warning badge.
-  const { data: prefetchedCompEvents = [] } = trpc.events.list.useQuery(
-    { tripId, competitionId: competition?.id ?? "" },
-    { enabled: !!competition?.id }
-  );
   // Background prefetch for teams + assignments so the comp tab renders
   // instantly instead of flashing while the panels fire their own queries.
   trpc.teams.list.useQuery(
@@ -147,9 +141,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // tagline) live to every crew member — without this they'd see
   // stale data for up to staleTime (60s).
   useRealtimeCompetition(tripId);
-  // Same for events (placements, edits, reorders) so the scoreboard
-  // reflects scoring updates the moment the owner makes them.
-  useRealtimeEvents(tripId, competition?.id);
   // Push membership changes (role promote/demote, add, remove) live so a
   // member's tab visibility + edit permissions re-resolve immediately —
   // without this a just-demoted organizer keeps seeing organizer-only tabs
@@ -348,12 +339,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       (item) =>
         item.item_type === "golf" && !item.is_confirmed && !!item.scheduled_date
     );
-  // compDot: warning when any scored GOLF event has no agenda item linked.
-  const compDot =
-    !!competition &&
-    (prefetchedCompEvents as Array<{ type: string; is_practice: boolean; agenda_item?: unknown }>)
-      .some((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item);
-
   const tabBadges: Partial<Record<TabId, "info" | "warning">> = {};
   // Crew uses the "warning" tier so the tab dot picks up amber — matches
   // the Pending status hue elsewhere on the tab (legend dot, nudge icon,
@@ -364,7 +349,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   else if (scheduleNeedsDates || scheduleUnconfirmedGolf) tabBadges.schedule = "info";
   if (lodgingOutOfRange) tabBadges.lodging = "warning";
   else if (lodgingUnconfirmed) tabBadges.lodging = "info";
-  if (compDot) tabBadges.comp = "warning";
 
   // Settings gear is now rendered INSIDE TripHeader (top-right). The header
   // calls `onSettingsClick` when tapped — pass it through only when the owner

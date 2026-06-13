@@ -39,8 +39,8 @@ export interface ScoreboardCell {
 }
 
 export interface ScoreboardData {
-  /** Carried through so event-listing styles can link cells to the
-   *  event detail page at `/trips/{tripId}/events/{eventId}`. */
+  /** Carried through for styles that need trip-scoped routing (a per-game
+   *  detail/placement page is a follow-on; cells are non-navigating for now). */
   tripId: string;
   teams: ScoreboardTeam[];
   events: ScoreboardEvent[];

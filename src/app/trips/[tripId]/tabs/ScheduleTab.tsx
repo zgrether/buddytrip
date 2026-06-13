@@ -11,7 +11,6 @@ import {
   Inbox,
   MapPin,
   Plus,
-  Star,
   Trophy,
   X,
   GripVertical,
@@ -24,8 +23,8 @@ import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
-import { DND_EVENT_KEY } from "@/components/competition/EventsPanel";
-import type { EventRow } from "@/components/competition/EventsPanel";
+import { DND_GAME_KEY } from "@/components/competition/CompetitionGamesPanel";
+import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -53,8 +52,8 @@ interface ScheduleItem {
     lat?: number | null;
     lng?: number | null;
   } | null;
-  // Competition events linked to this item (many-to-one via events.agenda_item_id)
-  competition_events?: Array<{ id: string; title: string; type: string; scoring_format?: string | null }> | null;
+  // Competition games linked to this item (many-to-one via games.schedule_item_id)
+  competition_games?: Array<{ id: string; name: string | null; game_type_id: string | null; status: string }> | null;
 }
 
 interface DayGroup {
@@ -116,9 +115,9 @@ function ScheduleItemRow({
   onDragEnd,
   onDragOver,
   onDrop,
-  onCompEventDrop,
-  onUnlinkCompEvent,
-  compDragType,
+  onCompGameDrop,
+  onUnlinkCompGame,
+  compDragActive,
   onAddToDay,
   onUnschedule,
 }: {
@@ -137,11 +136,11 @@ function ScheduleItemRow({
   onDragEnd?: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
-  onCompEventDrop?: (eventId: string, itemType: string) => void;
-  onUnlinkCompEvent?: (eventId: string) => void;
-  /** When non-null, a competition event is being dragged. The row computes
-   *  whether it's a valid target and highlights itself accordingly. */
-  compDragType?: "GOLF" | "GENERIC" | null;
+  onCompGameDrop?: (gameId: string) => void;
+  onUnlinkCompGame?: (gameId: string) => void;
+  /** True while a competition game is being dragged. Any agenda item is a
+   *  valid drop target now (the legacy golf-only rule is retired). */
+  compDragActive?: boolean;
   /** Opens the day-picker sheet to (re)schedule this item — pick a day to
    *  move it to. Replaces drag on touch. */
   onAddToDay?: () => void;
@@ -150,12 +149,12 @@ function ScheduleItemRow({
   onUnschedule?: () => void;
 }) {
   const movable = canEdit;
-  // GOLF events can only land on golf items; non-GOLF events land on anything.
-  const isValidCompTarget =
-    !!compDragType && (compDragType === "GENERIC" || item.item_type === "golf");
-  // Suppress the agenda-reorder drop indicator while a comp event is being
+  // Any agenda item is a valid target — a game links to any slot (the legacy
+  // golf-only rule is retired by the Slice D1 agenda-link flip).
+  const isValidCompTarget = !!compDragActive;
+  // Suppress the agenda-reorder drop indicator while a comp game is being
   // dragged — its visual cue would be confusing alongside the comp highlight.
-  const showReorderIndicator = !compDragType && showDropIndicator;
+  const showReorderIndicator = !compDragActive && showDropIndicator;
   // ON DECK rows render compact — just grip + kind icon + title +
   // actions. The user explicitly called out hiding DRAFT/CONFIRMED,
   // tee times, walk-on, and the detail/description for unscheduled
@@ -179,11 +178,11 @@ function ScheduleItemRow({
         onDragEnd={movable ? onDragEnd : undefined}
         onDragOver={canEdit ? onDragOver : undefined}
         onDrop={canEdit ? (e) => {
-          const compEventId = e.dataTransfer.getData(DND_EVENT_KEY);
-          if (compEventId) {
+          const compGameId = e.dataTransfer.getData(DND_GAME_KEY);
+          if (compGameId) {
             e.preventDefault();
             e.stopPropagation();
-            onCompEventDrop?.(compEventId, item.item_type);
+            onCompGameDrop?.(compGameId);
             return;
           }
           onDrop();
@@ -294,29 +293,24 @@ function ScheduleItemRow({
             )}
           </>
         )}
-        {/* Competition event chips — one per linked event (many-to-one allowed) */}
-        {!isOnDeck && item.competition_events?.map((ce) => (
+        {/* Competition game chips — one per linked game (many-to-one allowed) */}
+        {!isOnDeck && item.competition_games?.map((cg) => (
           <div
-            key={ce.id}
+            key={cg.id}
             className="mt-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2"
             style={{
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
             }}
           >
-            {/* Competition-event icons are gray; golf events use a flag,
-                everything else uses a star (matching the events panel). */}
-            {ce.type === "GOLF" ? (
-              <Flag size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-            ) : (
-              <Star size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-            )}
+            {/* Linked-game icon is gray (vs teal agenda-item icons). */}
+            <Trophy size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
             <p className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {ce.title}
+              {cg.name ?? "Game"}
             </p>
-            {canEdit && onUnlinkCompEvent && (
+            {canEdit && onUnlinkCompGame && (
               <button
-                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(ce.id); }}
+                onClick={(e) => { e.stopPropagation(); onUnlinkCompGame(cg.id); }}
                 className="ml-auto flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
                 style={{ color: "var(--color-bt-text-dim)" }}
                 title="Remove competition link"
@@ -426,23 +420,22 @@ function ScheduleItemRow({
   );
 }
 
-// ── CompEventChip ────────────────────────────────────────────────────────
+// ── CompGameChip ─────────────────────────────────────────────────────────
 
-function CompEventChip({
-  event,
+function CompGameChip({
+  game,
   canEdit,
   onDragStarted,
   onDragEnded,
   onLinkToItem,
 }: {
-  event: EventRow;
+  game: GameRow;
   canEdit: boolean;
-  onDragStarted?: (type: "GOLF" | "GENERIC") => void;
+  onDragStarted?: () => void;
   onDragEnded?: () => void;
-  /** Mobile-only: open agenda-item picker to link this event. */
+  /** Mobile-only: open agenda-item picker to link this game. */
   onLinkToItem?: () => void;
 }) {
-  const isGolf = event.type === "GOLF";
   // Local drag feedback so the chip dims while in flight and restores when the
   // gesture ends — including when released outside any drop target.
   const [isDragging, setIsDragging] = useState(false);
@@ -450,10 +443,10 @@ function CompEventChip({
     <div
       draggable={canEdit}
       onDragStart={canEdit ? (e) => {
-        e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+        e.dataTransfer.setData(DND_GAME_KEY, game.id);
         e.dataTransfer.effectAllowed = "move";
         setIsDragging(true);
-        onDragStarted?.(event.type);
+        onDragStarted?.();
       } : undefined}
       onDragEnd={canEdit ? () => { setIsDragging(false); onDragEnded?.(); } : undefined}
       className={`flex items-center gap-2 rounded-xl px-4 py-3 transition-all ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
@@ -470,29 +463,23 @@ function CompEventChip({
           style={{ color: "var(--color-bt-text-dim)" }}
         />
       )}
-      {/* Competition-event icons are gray (vs teal agenda-item icons). */}
+      {/* Competition-game icon is gray (vs teal agenda-item icons). */}
       <span style={{ color: "var(--color-bt-text-dim)" }}>
-        {isGolf ? <Flag size={12} /> : <Star size={12} />}
+        <Trophy size={12} />
       </span>
       <p className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-        {event.title}
+        {game.name ?? "Game"}
       </p>
-      {event.scoring_format && (
-        <span className="text-[10px] font-semibold uppercase" style={{ color: "var(--color-bt-text-dim)" }}>
-          {event.scoring_format}
-        </span>
-      )}
       {canEdit && onLinkToItem && (
         <button
           onClick={(e) => { e.stopPropagation(); onLinkToItem(); }}
           className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
           style={{ color: "var(--color-bt-accent)" }}
-          aria-label={isGolf ? "Add to a golf round" : "Add to an agenda item"}
-          title={isGolf ? "Add to a golf round" : "Add to an agenda item"}
+          aria-label="Add to an agenda item"
+          title="Add to an agenda item"
         >
-          {/* Golf events only attach to a golf round → flag icon; everything
-              else attaches to any agenda item → agenda (calendar) icon. */}
-          {isGolf ? <Flag size={14} /> : <CalendarDays size={14} />}
+          {/* A game attaches to any agenda item → agenda (calendar) icon. */}
+          <CalendarDays size={14} />
         </button>
       )}
     </div>
@@ -523,7 +510,7 @@ export function ScheduleTab({
   const [addMode, setAddMode] = useState<AddMode>(null);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
-  const [linkCompEvent, setLinkCompEvent] = useState<EventRow | null>(null);
+  const [linkCompGame, setLinkCompGame] = useState<GameRow | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   // Mirrors "a row is being dragged" as real state. dragState is a ref (so the
   // drop handlers can read it synchronously), but isDragging must re-render
@@ -532,95 +519,86 @@ export function ScheduleTab({
   const [draggingActive, setDraggingActive] = useState(false);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
-  // Type of competition event currently being dragged (null when no comp drag).
-  // Drives per-item highlighting on Day-by-Day rows.
-  const [compDragType, setCompDragType] = useState<"GOLF" | "GENERIC" | null>(null);
+  // True while a competition game is being dragged. Drives per-item
+  // highlighting on Day-by-Day rows (any item is a valid target now).
+  const [compDragActive, setCompDragActive] = useState(false);
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const allItems = scheduleItems as ScheduleItem[];
 
-  // Competition data — drives the On Deck competition events panel and
+  // Competition data — drives the On Deck competition games panel and
   // the drag-to-link interaction onto Day-by-Day agenda items.
   const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
-  const { data: competitionEvents = [] } = trpc.events.list.useQuery(
-    { tripId, competitionId: competition?.id ?? "" },
+  const { data: allGames = [] } = trpc.games.listByTrip.useQuery(
+    { tripId },
     { enabled: !!competition?.id }
   );
-  const compEventsTyped = competitionEvents as EventRow[];
-  const unlinkedCompEvents = compEventsTyped.filter((e) => !e.agenda_item);
+  const compGames = (allGames as GameRow[]).filter(
+    (g) => g.competition_id === competition?.id && g.status !== "dropped"
+  );
+  // On Deck shows only games not yet linked to an agenda item.
+  const unlinkedCompGames = compGames.filter((g) => !g.schedule_item_id);
 
-  const linkToAgendaItem = trpc.events.linkToAgendaItem.useMutation({
+  // Link / unlink a game to an agenda item via games.update({ scheduleItemId }).
+  // Dual-cache optimistic: the agenda chips (schedule.list → competition_games)
+  // AND the On Deck list (games.listByTrip → schedule_item_id) both reflect the
+  // change immediately; both invalidate on settle to reconcile with the server.
+  const linkGameToItem = trpc.games.update.useMutation({
     async onMutate(vars) {
-      const competitionId = competition?.id ?? "";
-      await utils.events.list.cancel({ tripId, competitionId });
       await utils.schedule.list.cancel({ tripId });
-      const prevEvents = utils.events.list.getData({ tripId, competitionId });
+      await utils.games.listByTrip.cancel({ tripId });
       const prevSchedule = utils.schedule.list.getData({ tripId });
+      const prevGames = utils.games.listByTrip.getData({ tripId });
 
-      // Look up the real event so the optimistic badge has the actual title
-      // (otherwise the trophy chip shows blank text until the server returns).
-      const sourceEvent = (prevEvents as EventRow[] | undefined)?.find((e) => e.id === vars.eventId);
-      // And look up the target item so the optimistic event badge has the
-      // agenda item's real title/details for symmetry.
-      const targetItem = (prevSchedule as ScheduleItem[] | undefined)?.find((s) => s.id === vars.agendaItemId);
+      // Look up the real game so the optimistic chip has its actual name
+      // (otherwise the chip shows the fallback until the server returns).
+      const sourceGame = (prevGames as GameRow[] | undefined)?.find((g) => g.id === vars.gameId);
 
-      // Optimistically update events: set / clear agenda_item
-      utils.events.list.setData({ tripId, competitionId }, (old) =>
-        (old as EventRow[] | undefined)?.map((e) => {
-          if (e.id === vars.eventId) {
-            return {
-              ...e,
-              agenda_item: vars.agendaItemId && targetItem
-                ? {
-                    id: targetItem.id,
-                    title: targetItem.title,
-                    item_type: targetItem.item_type,
-                    course_name: targetItem.course_name ?? null,
-                    scheduled_date: targetItem.scheduled_date ?? null,
-                  }
-                : null,
-            };
-          }
-          return e;
-        }) as never
-      );
-
-      // Optimistically update schedule items: add/remove from competition_events array
+      // Optimistically update schedule items: add to the target item's array,
+      // remove from any item that previously held this game (re-link / unlink).
       utils.schedule.list.setData({ tripId }, (old) =>
         (old as ScheduleItem[] | undefined)?.map((s) => {
-          // Add event to the target item's array
-          if (vars.agendaItemId && s.id === vars.agendaItemId) {
-            const existing = s.competition_events ?? [];
+          if (vars.scheduleItemId && s.id === vars.scheduleItemId) {
+            const existing = s.competition_games ?? [];
             return {
               ...s,
-              competition_events: [
-                ...existing.filter((e) => e.id !== vars.eventId),
-                ...(sourceEvent
-                  ? [{ id: sourceEvent.id, title: sourceEvent.title, type: sourceEvent.type }]
-                  : [{ id: vars.eventId, title: "", type: "" }]),
+              competition_games: [
+                ...existing.filter((g) => g.id !== vars.gameId),
+                {
+                  id: vars.gameId,
+                  name: sourceGame?.name ?? null,
+                  game_type_id: sourceGame?.game_type_id ?? null,
+                  status: sourceGame?.status ?? "pending",
+                },
               ],
             };
           }
-          // Remove event from any item that previously had it (re-link or unlink)
-          if (s.competition_events?.some((e) => e.id === vars.eventId)) {
+          if (s.competition_games?.some((g) => g.id === vars.gameId)) {
             return {
               ...s,
-              competition_events: s.competition_events!.filter((e) => e.id !== vars.eventId),
+              competition_games: s.competition_games.filter((g) => g.id !== vars.gameId),
             };
           }
           return s;
         }) as never
       );
 
-      return { prevEvents, prevSchedule, competitionId };
+      // Optimistically update games: set / clear schedule_item_id.
+      utils.games.listByTrip.setData({ tripId }, (old) =>
+        (old as GameRow[] | undefined)?.map((g) =>
+          g.id === vars.gameId ? { ...g, schedule_item_id: vars.scheduleItemId ?? null } : g
+        ) as never
+      );
+
+      return { prevSchedule, prevGames };
     },
     onError(_e, _v, ctx) {
-      if (ctx?.prevEvents) utils.events.list.setData({ tripId, competitionId: ctx.competitionId }, ctx.prevEvents);
       if (ctx?.prevSchedule) utils.schedule.list.setData({ tripId }, ctx.prevSchedule);
+      if (ctx?.prevGames) utils.games.listByTrip.setData({ tripId }, ctx.prevGames);
     },
-    onSettled: (_d, _e, _v, ctx) => {
-      utils.events.list.invalidate({ tripId, competitionId: ctx?.competitionId ?? competition?.id ?? "" });
+    onSettled() {
       utils.schedule.list.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
     },
   });
 
@@ -1039,7 +1017,7 @@ export function ScheduleTab({
                   split only kicks in when there's a competition cell to show. */}
               <div
                 className={`grid grid-cols-1 gap-6 lg:grid-cols-1 ${
-                  !competition || unlinkedCompEvents.length > 0 ? "sm:grid-cols-2" : ""
+                  !competition || unlinkedCompGames.length > 0 ? "sm:grid-cols-2" : ""
                 }`}
               >
               {/* ── On Deck cell ── */}
@@ -1150,8 +1128,8 @@ export function ScheduleTab({
                             setDragOverIdx(null);
                             handleDragDrop(null, unscheduledItems, idx);
                           }}
-                          onUnlinkCompEvent={item.competition_events?.length ? (eventId) => {
-                            linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
+                          onUnlinkCompGame={item.competition_games?.length ? (gameId) => {
+                            linkGameToItem.mutate({ tripId, gameId, scheduleItemId: null });
                           } : undefined}
                         onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
                         />
@@ -1228,29 +1206,29 @@ export function ScheduleTab({
                 </div>
               )}
 
-              {/* Competition Events — shown below On Deck when competition is active.
-                  Drag a competition event onto a Day-by-Day agenda item to link it.
-                  Linked events disappear from here (they belong to the agenda item). */}
-              {competition && unlinkedCompEvents.length > 0 && (
+              {/* Competition Games — shown below On Deck when competition is active.
+                  Drag a competition game onto a Day-by-Day agenda item to link it.
+                  Linked games disappear from here (they belong to the agenda item). */}
+              {competition && unlinkedCompGames.length > 0 && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
                     <h4 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Competition Events
+                      Competition Games
                     </h4>
                   </div>
                   <p className="mb-2 text-[11px] italic leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {canEdit ? "Drag these onto an item" : "Competition events for this trip"}
+                    {canEdit ? "Drag these onto an item" : "Competition games for this trip"}
                   </p>
                   <div className="space-y-1.5">
-                    {unlinkedCompEvents.map((event) => (
-                      <CompEventChip
-                        key={event.id}
-                        event={event}
+                    {unlinkedCompGames.map((game) => (
+                      <CompGameChip
+                        key={game.id}
+                        game={game}
                         canEdit={canEdit}
-                        onDragStarted={(t) => setCompDragType(t)}
-                        onDragEnded={() => setCompDragType(null)}
-                        onLinkToItem={() => setLinkCompEvent(event)}
+                        onDragStarted={() => setCompDragActive(true)}
+                        onDragEnded={() => setCompDragActive(false)}
+                        onLinkToItem={() => setLinkCompGame(game)}
                       />
                     ))}
                   </div>
@@ -1401,18 +1379,16 @@ export function ScheduleTab({
                                 setDragOverIdx(null);
                                 handleDragDrop(group.date, group.items, idx);
                               }}
-                              onCompEventDrop={(eventId, itemType) => {
-                                // GOLF events can only link to golf agenda items
-                                const draggedEvent = compEventsTyped.find((e) => e.id === eventId);
-                                if (draggedEvent?.type === "GOLF" && itemType !== "golf") return;
+                              onCompGameDrop={(gameId) => {
+                                // Any game links to any agenda item (no golf-only rule).
                                 if (competition?.id) {
-                                  linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: item.id });
+                                  linkGameToItem.mutate({ tripId, gameId, scheduleItemId: item.id });
                                 }
                               }}
-                              onUnlinkCompEvent={item.competition_events?.length ? (eventId) => {
-                                linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
+                              onUnlinkCompGame={item.competition_games?.length ? (gameId) => {
+                                linkGameToItem.mutate({ tripId, gameId, scheduleItemId: null });
                               } : undefined}
-                              compDragType={compDragType}
+                              compDragActive={compDragActive}
                               onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
                               onUnschedule={() => {
                                 updateItem.mutate({
@@ -1623,13 +1599,13 @@ export function ScheduleTab({
         </ScrollLock>
       )}
 
-      {/* Competition event linker — mobile picker to link a comp event to an agenda item */}
-      {linkCompEvent && (
+      {/* Competition game linker — mobile picker to link a comp game to an agenda item */}
+      {linkCompGame && (
         <ScrollLock>
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
           style={{ background: "var(--color-bt-overlay)" }}
-          onClick={() => setLinkCompEvent(null)}
+          onClick={() => setLinkCompGame(null)}
         >
           <div
             className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
@@ -1641,18 +1617,17 @@ export function ScheduleTab({
                 Add to an agenda item
               </p>
               <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                {linkCompEvent.title}
+                {linkCompGame.name ?? "Game"}
               </p>
             </div>
             <div className="max-h-72 overflow-y-auto px-3 pb-3">
               {allItems
-                .filter((i) => linkCompEvent.type !== "GOLF" || i.item_type === "golf")
                 .map((i) => (
                   <button
                     key={i.id}
                     onClick={() => {
-                      linkToAgendaItem.mutate({ tripId, eventId: linkCompEvent.id, agendaItemId: i.id });
-                      setLinkCompEvent(null);
+                      linkGameToItem.mutate({ tripId, gameId: linkCompGame.id, scheduleItemId: i.id });
+                      setLinkCompGame(null);
                     }}
                     className="mb-1.5 flex w-full items-start gap-2 rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-80"
                     style={{
@@ -1678,7 +1653,7 @@ export function ScheduleTab({
             </div>
             <div className="px-5 pb-5">
               <button
-                onClick={() => setLinkCompEvent(null)}
+                onClick={() => setLinkCompGame(null)}
                 className="w-full rounded-xl py-2.5 text-sm font-medium"
                 style={{
                   background: "var(--color-bt-card-raised)",

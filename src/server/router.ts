@@ -9,7 +9,6 @@ import { expensesRouter } from "./routers/expenses";
 import { messagesRouter } from "./routers/messages";
 import { quickInfoTilesRouter } from "./routers/quickInfoTiles";
 import { competitionsRouter } from "./routers/competitions";
-import { eventsRouter } from "./routers/events";
 import { teamsRouter } from "./routers/teams";
 import { teamAssignmentsRouter } from "./routers/teamAssignments";
 import { logisticsRouter } from "./routers/logistics";
@@ -36,7 +35,6 @@ export const appRouter = router({
   messages: messagesRouter,
   quickInfoTiles: quickInfoTilesRouter,
   competitions: competitionsRouter,
-  events: eventsRouter,
   teams: teamsRouter,
   teamAssignments: teamAssignmentsRouter,
   logistics: logisticsRouter,

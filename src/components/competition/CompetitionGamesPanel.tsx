@@ -22,6 +22,11 @@ interface Props {
   canEdit: boolean;
 }
 
+/** Drag payload key for a game id — read by the agenda (ScheduleTab) drop
+ *  targets to link a game onto a schedule item. Mirrors the retired
+ *  EventsPanel DND_EVENT_KEY, now keyed on games (Slice D1 agenda-link flip). */
+export const DND_GAME_KEY = "application/x-buddytrip-game-id";
+
 export interface GameRow {
   id: string;
   competition_id: string | null;
