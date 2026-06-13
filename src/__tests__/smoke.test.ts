@@ -67,7 +67,7 @@ describe("Phase 0 Smoke Test", () => {
     // but are stubs with no app reads yet, so they aren't asserted here).
     const tables = [
       "users", "trips",
-      "competitions", "events", "event_point_distributions",
+      "competitions",
       "teams", "team_assignments",
       "golf_courses",
       "trip_members", "ideas", "idea_votes", "idea_lodging_options",

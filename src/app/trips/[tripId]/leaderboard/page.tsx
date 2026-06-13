@@ -6,7 +6,6 @@ import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
-import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
 import { TopNav } from "@/components/TopNav";
 import { TripBottomNav } from "@/components/BottomNav";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
@@ -17,8 +16,9 @@ import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
  * Drops the old 4-tab placeholder (Overview / Groups / Trip Info /
  * History). Now this page is just the styled scoreboard. The owner
  * picks the style from the comp tab; everyone else sees whatever was
- * picked. Mock data lives in localStorage via the event detail page
- * until the real scoring API ships.
+ * picked. The scoreboard is driven by the games-based competition
+ * leaderboard (game_results); manual placement entry on a game is a
+ * follow-on UI (games.setManualResults).
  *
  * Shows a placeholder when the competition isn't live yet (status !==
  * "active"). The bottom-nav Live entry only renders when status ===
@@ -36,9 +36,6 @@ export default function LiveLeaderboardPage() {
   const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({
     tripId,
   });
-
-  // Push event placement / score changes live to the leaderboard.
-  useRealtimeEvents(tripId, competition?.id);
 
   return (
     <div
