@@ -116,14 +116,17 @@ export async function computeCompetitionLeaderboard(
   return {
     teams: teams ?? [],
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
-    games: allGames.map((g) => ({
-      id: g.id as string,
-      name: (g.name as string | null) ?? "Game",
-      distribution: (g.points_distribution as PointsDistribution | null) ?? null,
-      status: g.status as string,
-      dropped: g.status === "dropped",
-      gameTypeId: (g.game_type_id as string | null) ?? null,
-    })),
+    games: allGames.map((g) => {
+      const rawDist = g.points_distribution as PointsDistribution | null;
+      return {
+        id: g.id as string,
+        name: (g.name as string | null) ?? "Game",
+        distribution: isPlacement(rawDist) ? rawDist.values : null,
+        status: g.status as string,
+        dropped: g.status === "dropped",
+        gameTypeId: (g.game_type_id as string | null) ?? null,
+      };
+    }),
     cells,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,

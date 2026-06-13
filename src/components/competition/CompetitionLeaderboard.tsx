@@ -17,7 +17,7 @@ interface LBTeam {
 interface LBGame {
   id: string;
   name: string;
-  distribution: unknown; // tagged PointsDistribution | null — not consumed by this component
+  distribution: number[] | null;
   status: string;
   dropped: boolean;
   gameTypeId: string | null;
