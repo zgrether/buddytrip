@@ -33,6 +33,17 @@ export interface LiveGame {
   /** Per-team standings once results exist; empty before any are entered/computed. */
   standings: Standing[];
   direction: Direction;
+  /**
+   * Authoritative points in play for this game (Slice D): the owner-set total
+   * for placement, or value × matchCount for per_match. Drives points-available
+   * and the win number INDEPENDENTLY of whether the distribution/pairings are
+   * set — so the clinch number stays stable as games get configured across the
+   * week (§8). When omitted/null, falls back to awardedForGame(distribution,
+   * numTeams) — the pre-Slice-D behavior. A value of 0 means "in play but
+   * nothing yet" (e.g. match game whose teams aren't sized) and does NOT fall
+   * back.
+   */
+  pointsTotal?: number | null;
 }
 
 /** distribution[i] with out-of-range → 0 (teams beyond the distribution earn 0). */
@@ -165,7 +176,10 @@ export function rollUp(
   let pointsAvailable = 0;
 
   for (const g of liveGames) {
-    pointsAvailable += awardedForGame(g.distribution, g.numTeams);
+    // Available = the explicit per-game total when provided (Slice D stable
+    // clinch), else the pre-Slice-D awardable sum. `?? ` keeps an explicit 0
+    // (match game, teams not sized) from falling back.
+    pointsAvailable += g.pointsTotal ?? awardedForGame(g.distribution, g.numTeams);
     if (!g.distribution || g.standings.length === 0) continue;
     const pts = placementPoints(g.distribution, g.standings, g.direction);
     for (const [entityId, p] of pts) {
