@@ -471,6 +471,8 @@ function GameSheet({
                 delegateId={desiredDelegate}
                 setDelegateId={setDelegateId}
                 isMatchPlay={isMatchPlay}
+                isGolf={isGolf}
+                courseId={game?.course_id ?? null}
                 total={total}
                 placeInputs={placeInputs}
                 setPlaceInputs={setPlaceInputs}
@@ -693,11 +695,11 @@ function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout
 // ── Configuration tab ─────────────────────────────────────────────────────────
 
 function ConfigTab({
-  canEdit, members, delegateId, setDelegateId, isMatchPlay, total, placeInputs, setPlaceInputs,
+  canEdit, members, delegateId, setDelegateId, isMatchPlay, isGolf, courseId, total, placeInputs, setPlaceInputs,
   placement, pFit, mFit, readout, perMatchValue, rules, setRules, compFormat, openFormatSheet,
 }: {
   canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
-  isMatchPlay: boolean; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
+  isMatchPlay: boolean; isGolf: boolean; courseId: string | null; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
   placement: ReturnType<typeof validatePlacement>; pFit: ReturnType<typeof placementFit>;
   mFit: ReturnType<typeof matchFit>; readout: ReturnType<typeof matchReadout>;
   perMatchValue: number; rules: string; setRules: (s: string) => void;
@@ -750,7 +752,53 @@ function ConfigTab({
           Sets the label on the leaderboard. Running it up in-app comes later — until then you enter results by hand.
         </p>
       </Field>
+
+      <MakeItReady canEdit={canEdit} isGolf={isGolf} isMatchPlay={isMatchPlay} courseId={courseId} />
     </>
+  );
+}
+
+/**
+ * MAKE IT READY — the day-of setup checklist (owner only). Stubbed: the rows show
+ * the correct ready/not-set state but the deep setup (course picker, pairings,
+ * handicaps) is wired in a follow-up — for now results are entered by hand. Rows
+ * are model-aware: every game can group/pair; only golf/match carry a course and
+ * handicaps.
+ */
+function MakeItReady({
+  canEdit, isGolf, isMatchPlay, courseId,
+}: {
+  canEdit: boolean; isGolf: boolean; isMatchPlay: boolean; courseId: string | null;
+}) {
+  if (!canEdit) return null;
+  const rows: { Icon: typeof Flag; label: string; state: string; ready: boolean }[] = [];
+  if (isGolf) rows.push({ Icon: Flag, label: "Course", state: courseId ? "Applied" : "Not set", ready: !!courseId });
+  rows.push({ Icon: Users, label: "Groups & pairings", state: "Not set", ready: false });
+  if (isGolf || isMatchPlay) rows.push({ Icon: Target, label: "Handicaps", state: "Not set", ready: false });
+
+  return (
+    <Field label="Make it ready">
+      <div className="space-y-1.5">
+        {rows.map((r) => (
+          <div
+            key={r.label}
+            className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm"
+            style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <span className="flex items-center gap-2" style={{ color: "var(--color-bt-text)" }}>
+              <r.Icon size={14} style={{ color: "var(--color-bt-accent)" }} />
+              {r.label}
+            </span>
+            <span className="text-[11px] font-semibold" style={{ color: r.ready ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+              {r.state}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Course, pairings and handicap setup lands in a follow-up — for now, enter results by hand.
+      </p>
+    </Field>
   );
 }
 
