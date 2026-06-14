@@ -25,7 +25,6 @@ import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { LodgingTab } from "./tabs/LodgingTab";
-import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
@@ -58,7 +57,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       : "home";
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [compUnlocked, setCompUnlocked] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   // News + Chat both dock to the right rail, so they're mutually exclusive:
@@ -194,6 +192,16 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // The competition is no longer a tab rendered inside the trip chrome — it's
+  // the escaped Live face at /leaderboard (Stage 3). Any stale `?tab=comp`
+  // deep link (e.g. browser-back to an old owner URL, or a sub-page that
+  // routes back with tab=comp) redirects onto the face.
+  useEffect(() => {
+    if (activeTabRaw === "comp") {
+      router.replace(`/trips/${tripId}/leaderboard`);
+    }
+  }, [activeTabRaw, tripId, router]);
+
   // ── Loading ───────────────────────────────────────────────────────────────
   // Wait for ALL queries (trip + home-tab data) before rendering so every
   // panel appears at once instead of popping in across two render batches.
@@ -230,8 +238,19 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // doesn't clear it, so the old destination would bleed through to the header.
   const destLocation = trip.locked_destination_location
     ?? (trip.comparison_mode ? null : trip.location);
-  const showComp = !!competition || compUnlocked;
+  const showComp = !!competition;
   const isLocked = !!trip.locked_destination_title;
+
+  // The Competition entry is now a jump to the escaped Live face, not an
+  // in-page tab (Stage 3). Intercept "comp" everywhere a child asks to switch
+  // tabs and push the face route instead.
+  const goToTab = (tab: TabId) => {
+    if (tab === "comp") {
+      router.push(`/trips/${tripId}/leaderboard`);
+      return;
+    }
+    setActiveTab(tab);
+  };
 
   // Effective canEdit: forced false when read-only
   const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
@@ -413,8 +432,8 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 role={role}
                 canEdit={effectiveCanEdit}
                 isOwner={isOwner}
-                onTabChange={(tab) => setActiveTab(tab as TabId)}
-                onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                onTabChange={(tab) => goToTab(tab as TabId)}
+                onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
                 compActivated={showComp}
                 onOpenChat={() => setChatOpen(true)}
                 onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
@@ -466,7 +485,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
 
               <TripTabBar
                 activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab)}
+                onTabChange={goToTab}
                 canEdit={canEdit}
                 isIdea={isIdea}
                 badges={tabBadges}
@@ -489,7 +508,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     role={role}
                     canEdit={effectiveCanEdit}
                     isOwner={isOwner}
-                    onTabChange={(tab) => setActiveTab(tab as TabId)}
+                    onTabChange={(tab) => goToTab(tab as TabId)}
                     onOpenChat={() => setChatOpen(true)}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
@@ -512,24 +531,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 )}
                 {activeTab === "expenses" && (
                   <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-                )}
-                {activeTab === "comp" && (
-                  <CompTab
-                    trip={trip}
-                    role={role}
-                    canEdit={effectiveCanEdit}
-                    isOwner={tripIsReadOnly ? false : isOwner}
-                    compUnlocked={compUnlocked}
-                    onEnable={effectiveCanEdit ? () => setCompUnlocked(true) : undefined}
-                    onCompetitionDeleted={() => {
-                      // Owner just wiped the competition. Drop the
-                      // session-local "I unlocked the tab" flag and
-                      // bounce back to home so the comp tab disappears
-                      // for the owner too — not just the rest of crew.
-                      setCompUnlocked(false);
-                      setActiveTab("home");
-                    }}
-                  />
                 )}
               </div>
             </div>
