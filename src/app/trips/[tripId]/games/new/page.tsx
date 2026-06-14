@@ -168,7 +168,7 @@ export default function NewGamePage() {
             onHoleChange={setCurrentHole}
             onChange={handleChange}
             onClear={handleClear}
-            onBack={() => router.push(`/trips/${param}`)}
+            onBack={() => router.back()}
             onOpenGrid={() => setView("grid")}
             onFinish={handleFinish}
           />

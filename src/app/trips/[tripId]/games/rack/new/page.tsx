@@ -268,7 +268,7 @@ export default function RackNStackPage() {
 
   if (!hasCompetition) {
     return (
-      <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack">
+      <Shell onBack={() => router.back()} title="Rack-n-Stack">
         <div className="flex flex-col items-center text-center" style={{ paddingTop: 72 }}>
           <div className="flex items-center justify-center" style={{ width: 56, height: 56, borderRadius: 16, background: "var(--color-bt-card-raised)", marginBottom: 16 }}>
             <Users size={24} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -330,7 +330,7 @@ export default function RackNStackPage() {
   // No game yet → setup.
   if (!gid) {
     return (
-      <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
+      <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
         <div className="w-full px-4 py-5">
           <div className="flex flex-col gap-3.5">
             <div>
@@ -361,7 +361,7 @@ export default function RackNStackPage() {
   const final = gameQ.data?.status === "complete";
   const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
   return (
-    <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle={final ? "Net stroke play · final" : "Net stroke play · standings"}>
+    <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle={final ? "Net stroke play · final" : "Net stroke play · standings"}>
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
       {canEdit && !final && (

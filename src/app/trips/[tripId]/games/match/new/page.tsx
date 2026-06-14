@@ -205,11 +205,13 @@ export default function NewMatchGamePage() {
     setNavStack((s) => [...s, screen]);
     setManualScreen(next);
   };
-  // Back step: pop to the previous workflow screen, or leave to the trip home
-  // when there's nothing to pop (we arrived directly at a derived screen).
+  // Back step: pop to the previous workflow screen, or leave the page when
+  // there's nothing to pop — router.back() returns to wherever we came from
+  // (the leaderboard, when launched from it), so breadcrumb and browser-back
+  // agree instead of disagreeing (one to trip home, one to the leaderboard).
   const goBack = () => {
     if (navStack.length === 0) {
-      router.push(`/trips/${param}`);
+      router.back();
       return;
     }
     setManualScreen(navStack[navStack.length - 1]);
