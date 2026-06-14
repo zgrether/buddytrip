@@ -21,6 +21,16 @@ interface LBGame {
   status: string;
   dropped: boolean;
   gameTypeId: string | null;
+  /** Points configured (scoring-ready). Drives the state-aware rows (§7). */
+  ready?: boolean;
+}
+
+/** The four leaderboard-row states (§7). */
+type RowState = "final" | "live" | "upcoming" | "unready";
+function rowStateOf(game: LBGame): RowState {
+  if (game.status === "complete") return "final";
+  if (game.status === "active") return "live";
+  return game.ready === false ? "unready" : "upcoming";
 }
 
 interface LBCell {
@@ -469,6 +479,10 @@ function SessionRow({
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
+  const state = rowStateOf(game);
+  // Show the per-team result line only when there's a committed/in-progress
+  // result; otherwise a single status line — NEVER an empty "– / –" (0–0) row.
+  const showTeamLine = state === "final" || (state === "live" && hasScores);
 
   const inner = (
     <div className="flex flex-col gap-0.5 px-4 py-3">
@@ -480,39 +494,42 @@ function SessionRow({
           {game.name}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
-          <StatusBadge status={game.status} />
+          <RowBadge state={state} />
           {href && (
             <ChevronRight size={14} style={{ color: "var(--color-bt-text-dim)" }} />
           )}
         </div>
       </div>
 
-      {/* Per-team score line */}
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-        {teams.map((team) => {
-          const cell = cells?.get(team.id);
-          return (
-            <span
-              key={team.id}
-              className="flex items-center gap-1 text-[12px]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
+      {showTeamLine ? (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          {teams.map((team) => {
+            const cell = cells?.get(team.id);
+            return (
               <span
-                className="inline-block h-1.5 w-1.5 rounded-full"
-                style={{ background: team.color }}
-              />
-              <span style={{ color: hasScores ? team.color : "var(--color-bt-text-dim)" }}>
-                {team.short_name}
+                key={team.id}
+                className="flex items-center gap-1 text-[12px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
+                <span style={{ color: team.color }}>{team.short_name}</span>
+                <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "–"}</span>
               </span>
-              {cell ? (
-                <span style={{ color: "var(--color-bt-text)" }}>{fmtPts(cell.points)}</span>
-              ) : (
-                <span style={{ color: "var(--color-bt-text-dim)" }}>–</span>
-              )}
-            </span>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <span
+          className="text-[12px]"
+          style={{ color: state === "unready" ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
+        >
+          {state === "live"
+            ? "Underway · scoring"
+            : state === "unready"
+              ? "Not scoring yet — still being set up"
+              : "Not started yet"}
+        </span>
+      )}
     </div>
   );
 
@@ -526,45 +543,33 @@ function SessionRow({
   return <div>{inner}</div>;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "complete") {
+function RowBadge({ state }: { state: RowState }) {
+  if (state === "final") {
     return (
-      <span
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text-dim)",
-        }}
-      >
+      <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}>
         <Check size={9} />
         Final
       </span>
     );
   }
-  if (status === "in_progress") {
+  if (state === "live") {
     return (
-      <span
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-        style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
-          border: "1px solid var(--color-bt-accent-border)",
-        }}
-      >
+      <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}>
         <Radio size={9} />
         Live
       </span>
     );
   }
-  // pending / unknown
+  if (state === "unready") {
+    return (
+      <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}>
+        Needs setup
+      </span>
+    );
+  }
+  // upcoming
   return (
-    <span
-      className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        color: "var(--color-bt-text-dim)",
-      }}
-    >
+    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}>
       Upcoming
     </span>
   );
@@ -661,7 +666,7 @@ function EarlyState({
                     {game.name}
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <StatusBadge status={game.status} />
+                    <RowBadge state={rowStateOf(game)} />
                     {href && (
                       <ChevronRight
                         size={14}
