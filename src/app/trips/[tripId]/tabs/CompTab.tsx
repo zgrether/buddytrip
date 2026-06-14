@@ -1,13 +1,15 @@
 "use client";
 
-import { Trophy } from "lucide-react";
+import { useState } from "react";
+import { Trophy, ChevronLeft } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { CompetitionIntroPanel } from "@/components/competition/CompetitionIntroPanel";
+import { CompetitionSetupGuide } from "@/components/competition/CompetitionSetupGuide";
+import { CompetitionLeaderboard } from "@/components/competition/CompetitionLeaderboard";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { CompetitionGamesPanel } from "@/components/competition/CompetitionGamesPanel";
-import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
 import type { TabProps } from "./types";
 
 interface CompTabProps extends TabProps {
@@ -131,40 +133,62 @@ function ExistingCompetitionView({
   isOwner: boolean;
   onCompetitionDeleted?: () => void;
 }) {
-  // D1 §0/§3: a game's scorecard is gated on scorecard_schema, NEVER on agenda
-  // linkage — so the old "unlinked golf event" nudge (a Phase-2 fact used as a
-  // Phase-1 gate) is gone. The agenda link is orthogonal and optional (§9).
+  // The Competition Face (Stage 1): the setup GUIDE is the owner's main view
+  // (mirrors trip Home's "Add what you've got"), routing to the existing surfaces
+  // as sub-views. A non-editor sees the board directly (the preview/live view).
+  // The guide ADDS/manages; the board is where you tap into a game.
+  const [view, setView] = useState<"guide" | "games" | "teams" | "board">(canEdit ? "guide" : "board");
+
+  const header = (
+    <CompetitionHeader
+      competition={competition}
+      tripId={tripId}
+      canEdit={canEdit}
+      isOwner={isOwner}
+      onDeleted={onCompetitionDeleted}
+    />
+  );
+
+  if (view !== "guide") {
+    const title = view === "games" ? "Games" : view === "teams" ? "Teams" : "Leaderboard";
+    return (
+      <div className="space-y-4 px-4">
+        {header}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setView("guide")}
+            className="inline-flex items-center gap-1 text-[13px] font-semibold"
+            style={{ color: "var(--color-bt-accent)" }}
+            data-testid="comp-back-to-guide"
+          >
+            <ChevronLeft size={16} /> Setup guide
+          </button>
+        )}
+        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{title}</p>
+        {view === "games" && (
+          <CompetitionGamesPanel competitionId={competition.id} tripId={tripId} canEdit={canEdit} isOwner={isOwner} />
+        )}
+        {view === "teams" && (
+          <TeamsPanel competitionId={competition.id} tripId={tripId} canEdit={canEdit} isOwner={isOwner} />
+        )}
+        {view === "board" && (
+          <CompetitionLeaderboard competitionId={competition.id} tripId={tripId} />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 px-4">
-      <CompetitionHeader
+      {header}
+      <CompetitionSetupGuide
+        tripId={tripId}
         competition={competition}
-        tripId={tripId}
-        canEdit={canEdit}
-        isOwner={isOwner}
-        onDeleted={onCompetitionDeleted}
-      />
-      {/* Scoreboard is always visible to the owner so they can pick a
-          style + preview standings while still in setup mode. Non-owners
-          only see it once the competition is live — no point surfacing
-          an empty leaderboard before the owner flips Go Live. */}
-      {(competition.status === "active" || isOwner) && (
-        <ScoreboardPanel
-          competitionId={competition.id}
-          tripId={tripId}
-          isOwner={isOwner}
-        />
-      )}
-      <TeamsPanel
-        competitionId={competition.id}
-        tripId={tripId}
-        canEdit={canEdit}
-        isOwner={isOwner}
-      />
-      <CompetitionGamesPanel
-        competitionId={competition.id}
-        tripId={tripId}
-        canEdit={canEdit}
-        isOwner={isOwner}
+        onManageGames={() => setView("games")}
+        onBuildTeams={() => setView("teams")}
+        onViewBoard={() => setView("board")}
+        onGoLive={() => { /* Stage 3: the explicit go-live visibility switch */ }}
       />
     </div>
   );
