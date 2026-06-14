@@ -93,6 +93,50 @@ The heart of the event.
 - Moving tee boxes — available to any stroke-input scorecard; pop-up +
   per-cell visual cue; `tee_box_change` `game_live_events` (no September format requires it)
 
+### Competition-style chooser — style → format → points enforcement
+
+*Before launch (footgun prevention), NOT BBMI-blocking. Captured 2026-06-14,
+sharpened by the L2 triage audit.*
+
+**The gap:** a competition has no declared *style*, so nothing constrains which
+game formats are valid within it. This is what let rack-n-stack land on the wrong
+points path (placement/total) inside a match-play cup — nothing enforced
+compatibility.
+
+**The insight:** points shape is **downstream** of competition style, not a
+per-game free choice. The correct model is a dependency chain:
+
+> **competition style → constrains valid game formats → format determines points shape**
+
+- **2-team match-play cup (Ryder Cup):** every game must be match-play-friendly and
+  produce **per-match points** (singles/doubles match play, rack-n-stack-as-matches,
+  alternate-shot-as-match…). "First to 14½."
+- **Normal-scoring competition (2 or N teams):** other formats valid; points may be
+  placement/total or other shapes.
+
+Today points-distribution is set per-game and independently — the bug's root: you
+can put a placement game in a match-play cup.
+
+**What to build:** (1) a competition-style choice at competition creation
+(trip-planner / create-flow side — its own design conversation, "can get confusing
+depending on presentation"; likely 2-team match-play cup · 2-team normal · N-team
+normal); (2) add-game flow filters formats to those compatible with the style;
+(3) the model enforces it — points shape derives from format-within-style, no
+incompatible combos possible.
+
+**Why deferred (not BBMI-blocking):** BBMI 2026 is a 2-team match-play cup and all
+its games are match-play-friendly, so wiring everything to per-match (the
+game-running build) makes the real event work without the enforcement layer. The
+enforcement matters for *other users* and to prevent the footgun.
+
+**Design conversation needed:** how to present the style choice without confusion
+(2-team-match vs 2-team-normal vs N-team is subtle), where it lives in the create
+flow, how it interacts with the trip-planner side.
+
+**Effort:** medium-large. Touches competition creation, the add-game flow (format
+filtering), and the points model (derive shape from format-within-style). No new
+scoring engines — it constrains and routes existing ones.
+
 ### Post-BBMI engine work
 
 - `multi_team` competitions (3+ teams, placement points roll-up)
