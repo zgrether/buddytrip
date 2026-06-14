@@ -207,12 +207,22 @@ export default function RackNStackPage() {
   );
 
   // ── Handlers ─────────────────────────────────────────────────────────
+  // Seed the rack's structure from the competition roster. Two entry points,
+  // ONE path: a brand-new game (no gid → create it first), or an existing
+  // competition game tapped from the leaderboard that has no foursomes yet
+  // (gid set, groups empty → seed onto it, don't mint a new game).
   async function startRack() {
     if (!tripId || !competitionId) return;
-    const g = await createGame.mutateAsync({ tripId, gameTypeId: RACK, name: "Rack-n-Stack", competitionId });
+    let gameId: string;
+    if (gid) {
+      gameId = gid;
+    } else {
+      const g = await createGame.mutateAsync({ tripId, gameTypeId: RACK, name: "Rack-n-Stack", competitionId });
+      gameId = g.id as string;
+    }
     if (pendingCourse) {
       try {
-        await applyCourse.mutateAsync({ tripId, gameId: g.id, courseId: pendingCourse.id });
+        await applyCourse.mutateAsync({ tripId, gameId, courseId: pendingCourse.id });
       } catch {
         /* template default par/index still applies */
       }
@@ -224,8 +234,9 @@ export default function RackNStackPage() {
       userIds,
       teeTime: firstTee ? addMinutes(firstTee, i * 10) : null,
     }));
-    await setFoursomes.mutateAsync({ tripId, gameId: g.id, groups });
-    setGameId(g.id);
+    await setFoursomes.mutateAsync({ tripId, gameId, groups });
+    await utils.playGroups.listByGame.invalidate({ tripId, gameId });
+    setGameId(gameId);
     setShowHandicaps(true); // Pairings ✓ → Handicaps step
   }
 
@@ -261,8 +272,17 @@ export default function RackNStackPage() {
     await utils.games.getById.invalidate({ tripId, gameId: gid });
   }
 
+  // A resumed competition game (gid set from ?game=) may have NO foursomes yet
+  // (created as a bare games row by add-game). Route it to the setup step instead
+  // of the empty play screen — startRack seeds onto the existing game.
+  const needsSetup = !!gid && groupsQ.isSuccess && (groupsQ.data?.groups?.length ?? 0) === 0;
+
   // ── Render ───────────────────────────────────────────────────────────
   if (!tripId || roleLoading || crew.isLoading || competition.isLoading) {
+    return <Center>Loading…</Center>;
+  }
+  // gid set but groups still loading → wait, don't flash an empty play screen.
+  if (gid && groupsQ.isLoading) {
     return <Center>Loading…</Center>;
   }
 
@@ -327,8 +347,8 @@ export default function RackNStackPage() {
     );
   }
 
-  // No game yet → setup.
-  if (!gid) {
+  // No game yet, or a resumed game with no foursomes → setup.
+  if (!gid || needsSetup) {
     return (
       <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
         <div className="w-full px-4 py-5">
