@@ -139,6 +139,58 @@ export function requireGameEdit() {
 }
 
 // ---------------------------------------------------------------------------
+// requireGameRunAction (Slice D Run/Post §5)
+//
+// Competition RUN-actions (post results / open score correction) are NARROWER
+// than game edit: trip OWNER or THIS game's delegate only — NOT a plain
+// Organizer (the "trip planner"). Run-actions are owner/delegate-scoped, distinct
+// from trip-planner scope (PERMISSIONS.md). Enforced server-side so the controls
+// can't be reached by hiding the UI.
+// ---------------------------------------------------------------------------
+
+export function requireGameRunAction() {
+  return middleware(async ({ ctx, getRawInput, next }) => {
+    const raw = await getRawInput();
+    const parsed = z.object({ tripId: z.string(), gameId: z.string() }).safeParse(raw);
+    if (!parsed.success) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "tripId and gameId are required" });
+    }
+    const { tripId, gameId } = parsed.data;
+
+    const role = await resolveTripRole(ctx, tripId); // throws if not a trip member
+    let allowed = role === "Owner"; // Owner only — Organizers/planners excluded
+
+    if (!allowed) {
+      const { data } = await (
+        ctx.supabase.from("game_organizers") as unknown as {
+          select: (s: string) => {
+            eq: (c: string, v: string) => {
+              eq: (c: string, v: string) => {
+                maybeSingle: () => Promise<{ data: { game_id: string } | null }>;
+              };
+            };
+          };
+        }
+      )
+        .select("game_id")
+        .eq("game_id", gameId)
+        .eq("user_id", ctx.user!.id)
+        .maybeSingle();
+      allowed = !!data;
+    }
+
+    if (!allowed) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Posting and score corrections are limited to the trip owner or this game's delegate.",
+      });
+    }
+
+    return next({ ctx: { ...ctx, tripId, tripRole: role } });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // resolveTripRole — internal shared lookup with request-scoped cache.
 //
 // Every batched procedure that uses requireTripMember / requireTripRole

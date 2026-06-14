@@ -26,15 +26,25 @@ export const scoresRouter = router({
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      // Confirm the game belongs to this trip (the middleware gated the trip).
+      // Confirm the game belongs to this trip (the middleware gated the trip),
+      // and that scores aren't locked. A POSTED game (status='complete' &&
+      // !corrections_open) has frozen scores — editing requires the owner/
+      // delegate to open score correction first (Run-Post §3). Results stay
+      // visible; only entry is closed.
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id")
+        .select("id, status, corrections_open")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      if (game.status === "complete" && !game.corrections_open) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This round is posted — open score correction to edit it.",
+        });
       }
 
       // Deterministic id from the unique key so an upsert-on-conflict updates
