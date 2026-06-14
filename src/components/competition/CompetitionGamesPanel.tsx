@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Flag, Plus, Minus, Pencil, Star, Trash2, X, Trophy, RotateCcw,
-  Spade, Target, Beer, Dices, Swords, Radio, ChevronRight, Check, Users, Info, SlidersHorizontal,
+  Spade, Target, Beer, Dices, Swords, Radio, ChevronRight, ChevronUp, ChevronDown, Check, Users, Info, SlidersHorizontal,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -31,7 +31,21 @@ interface Props {
   competitionId: string;
   tripId: string;
   canEdit: boolean;
+  /** Trip Owner — gates the RUN actions (post / correct) in this view. The
+   *  server also admits a game-delegate, but their entry point is the per-game
+   *  tap-through, not this owner/organizer panel. */
+  isOwner?: boolean;
 }
+
+type RunState = "upcoming" | "open" | "posted" | "correcting";
+
+function runState(g: GameRow): RunState {
+  if (g.status === "complete") return g.corrections_open ? "correcting" : "posted";
+  if (g.status === "active") return "open";
+  return "upcoming";
+}
+
+interface LBTeamLite { id: string; name: string; short_name: string; color: string }
 
 /** Drag payload key for a game id — read by the agenda drop targets. */
 export const DND_GAME_KEY = "application/x-buddytrip-game-id";
@@ -50,6 +64,7 @@ export interface GameRow {
   scorecard_schema: unknown | null;
   course_id: string | null;
   schedule_item_id: string | null;
+  corrections_open: boolean;
 }
 
 interface GameType {
@@ -104,12 +119,14 @@ function matchFormatFor(gameTypeId: string | null): MatchFormat {
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
-export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props) {
+export function CompetitionGamesPanel({ competitionId, tripId, canEdit, isOwner = false }: Props) {
   const [editing, setEditing] = useState<GameRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [running, setRunning] = useState<GameRow | null>(null); // game being posted/corrected
 
   const { data: allGames = [] } = trpc.games.listByTrip.useQuery({ tripId }, { enabled: !!tripId });
   const { data: types = [] } = trpc.games.listTypes.useQuery(undefined, { enabled: !!tripId });
+  const { data: lb } = trpc.competitions.leaderboard.useQuery({ tripId, competitionId }, { enabled: !!competitionId });
 
   const games = useMemo(
     () => (allGames as GameRow[]).filter((g) => g.competition_id === competitionId),
@@ -119,9 +136,20 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props)
   const typeName = (id: string | null) => typesTyped.find((t) => t.id === id)?.name ?? "Game";
 
   const live = games.filter((g) => g.status !== "dropped");
-  const statusText = `${live.length} game${live.length === 1 ? "" : "s"}${
-    games.length - live.length > 0 ? ` · ${games.length - live.length} abandoned` : ""
-  }`;
+  const postedCount = live.filter((g) => g.status === "complete").length;
+  const teams = (lb?.teams ?? []) as LBTeamLite[];
+  const pointsAvailable = lb?.pointsAvailable ?? 0;
+  const onBoard = Object.values((lb?.teamTotals ?? {}) as Record<string, number>).reduce((a, b) => a + b, 0);
+
+  // Seed the placement order for the run sheet: the posted finishing order (from
+  // the leaderboard cells) when correcting, else the roster order.
+  const runningOrder = useMemo(() => {
+    if (!running) return [];
+    const cells = ((lb?.cells ?? []) as { gameId: string; teamId: string; place: number }[])
+      .filter((c) => c.gameId === running.id)
+      .sort((a, b) => a.place - b.place);
+    return cells.length ? cells.map((c) => c.teamId) : teams.map((t) => t.id);
+  }, [running, lb, teams]);
 
   return (
     <div
@@ -136,7 +164,9 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props)
           </span>
           <div>
             <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>Games</p>
-            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{statusText}</p>
+            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              {postedCount} of {live.length} posted · {fmtValue(onBoard)} of {fmtValue(pointsAvailable)} pts on the board
+            </p>
           </div>
         </div>
         {canEdit && (
@@ -172,10 +202,18 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props)
               game={g}
               typeName={typeName(g.game_type_id)}
               canEdit={canEdit}
+              isOwner={isOwner}
               onEdit={() => setEditing(g)}
+              onRun={() => setRunning(g)}
             />
           ))}
         </div>
+
+        {live.length > 0 && postedCount < live.length && (
+          <p className="mt-3 text-center text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            When every game is posted, the cup has its winner.
+          </p>
+        )}
 
         {(creating || editing) && (
           <GameSheet
@@ -190,6 +228,18 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props)
             }}
           />
         )}
+
+        {running && (
+          <RunSheet
+            tripId={tripId}
+            competitionId={competitionId}
+            game={running}
+            teams={teams}
+            initialOrder={runningOrder}
+            isEngine={!!typesTyped.find((t) => t.id === running.game_type_id)?.isEngine}
+            onClose={() => setRunning(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -198,11 +248,12 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props)
 // ── Game card (model-aware metadata) ──────────────────────────────────────────
 
 function GameCard({
-  game, typeName, canEdit, onEdit,
+  game, typeName, canEdit, isOwner, onEdit, onRun,
 }: {
-  game: GameRow; typeName: string; canEdit: boolean; onEdit: () => void;
+  game: GameRow; typeName: string; canEdit: boolean; isOwner: boolean; onEdit: () => void; onRun: () => void;
 }) {
   const dropped = game.status === "dropped";
+  const state = runState(game);
   const dist = game.points_distribution;
 
   let pointsLine: string | null = null;
@@ -217,53 +268,98 @@ function GameCard({
   const fmtLabel = formatLabel(game.competition_format);
 
   return (
-    <button
-      type="button"
-      onClick={canEdit ? onEdit : undefined}
-      disabled={!canEdit}
-      className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left disabled:cursor-default"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-        opacity: dropped ? 0.55 : 1,
-      }}
+    <div
+      className="overflow-hidden rounded-xl"
+      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", opacity: dropped ? 0.55 : 1 }}
       data-testid={`game-card-${game.id}`}
     >
-      <div
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
-        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+      <button
+        type="button"
+        onClick={canEdit ? onEdit : undefined}
+        disabled={!canEdit}
+        className="flex w-full items-start gap-3 px-3 py-3 text-left disabled:cursor-default"
       >
-        {game.scorecard_schema ? <Flag size={15} /> : <Star size={15} />}
-      </div>
+        <div
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+          style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+        >
+          {game.scorecard_schema ? <Flag size={15} /> : <Star size={15} />}
+        </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            {game.name || "Untitled game"}
-          </p>
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
-            style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-          >
-            {typeName}
-          </span>
-          {dropped && (
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {game.name || "Untitled game"}
+            </p>
             <span
               className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
-              style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+              style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
             >
-              Abandoned
+              {typeName}
             </span>
-          )}
+            {dropped ? (
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase" style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}>
+                Abandoned
+              </span>
+            ) : (
+              <RunStateBadge state={state} />
+            )}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {fmtLabel && <span>{fmtLabel}</span>}
+            {fmtLabel && pointsLine && <span aria-hidden>·</span>}
+            {pointsLine && <span className="tabular-nums">{pointsLine}</span>}
+          </div>
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {fmtLabel && <span>{fmtLabel}</span>}
-          {fmtLabel && pointsLine && <span aria-hidden>·</span>}
-          {pointsLine && <span className="tabular-nums">{pointsLine}</span>}
-        </div>
-      </div>
 
-      {canEdit && <Pencil size={13} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />}
+        {canEdit && <Pencil size={13} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />}
+      </button>
+
+      {isOwner && !dropped && (
+        <div className="flex items-center justify-between px-3 py-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {state === "posted" ? "Points are on the board" : state === "correcting" ? "Correcting — re-post to update" : "Not posted yet"}
+          </span>
+          <RunButton state={state} onClick={onRun} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunStateBadge({ state }: { state: RunState }) {
+  const map: Record<RunState, { label: string; bg: string; fg: string }> = {
+    upcoming: { label: "Upcoming", bg: "var(--color-bt-card)", fg: "var(--color-bt-text-dim)" },
+    open: { label: "Open", bg: "var(--color-bt-accent-faint)", fg: "var(--color-bt-accent)" },
+    posted: { label: "Posted", bg: "var(--color-bt-accent-faint)", fg: "var(--color-bt-accent)" },
+    correcting: { label: "Correcting", bg: "var(--color-bt-warning-faint)", fg: "var(--color-bt-warning)" },
+  };
+  const m = map[state];
+  return (
+    <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase" style={{ background: m.bg, color: m.fg }}>
+      {m.label}
+    </span>
+  );
+}
+
+function RunButton({ state, onClick }: { state: RunState; onClick: () => void }) {
+  if (state === "posted") {
+    return (
+      <button type="button" onClick={onClick} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}>
+        Correct
+      </button>
+    );
+  }
+  if (state === "correcting") {
+    return (
+      <button type="button" onClick={onClick} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: "var(--color-bt-warning)", color: "var(--color-bt-base)" }}>
+        Re-post
+      </button>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} data-testid={`post-${state}`} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}>
+      Post
     </button>
   );
 }
@@ -1099,6 +1195,229 @@ function FormatSheet({
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Run sheet: post / score-correction (manual placement + engine post) ───────
+
+interface SchemaUnits { units?: { count?: number } }
+
+function RunSheet({
+  tripId, competitionId, game, teams, initialOrder, isEngine, onClose,
+}: {
+  tripId: string; competitionId: string; game: GameRow; teams: LBTeamLite[];
+  initialOrder: string[]; isEngine: boolean; onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const state = runState(game);
+  const correcting = state === "posted" || state === "correcting";
+  const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
+
+  const [order, setOrder] = useState<string[]>(initialOrder.length ? initialOrder : teams.map((t) => t.id));
+  const [confirmIncomplete, setConfirmIncomplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Engine incomplete-post guard (§4): name the gap, never block.
+  const { data: detail } = trpc.games.getById.useQuery({ tripId, gameId: game.id }, { enabled: isEngine });
+  const { data: scoreRows } = trpc.scores.listByGame.useQuery({ tripId, gameId: game.id }, { enabled: isEngine });
+  const participants = ((detail as { participants?: unknown[] } | undefined)?.participants ?? []) as unknown[];
+  const unitCount = ((game.scorecard_schema as SchemaUnits | null)?.units?.count) ?? 18;
+  const expected = participants.length * unitCount;
+  const entered = (scoreRows ?? []).filter((r) => (r as { value: number | null }).value != null).length;
+  const missing = Math.max(0, expected - entered);
+  const incomplete = isEngine && expected > 0 && missing > 0;
+
+  const post = trpc.games.post.useMutation();
+  const openCorrection = trpc.games.openCorrection.useMutation();
+  const busy = post.isPending || openCorrection.isPending;
+
+  function teamById(id: string) { return teams.find((t) => t.id === id); }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrder(next);
+  }
+
+  async function commit() {
+    setError(null);
+    if (isEngine && incomplete && !confirmIncomplete) { setConfirmIncomplete(true); return; }
+    try {
+      if (isEngine) {
+        await post.mutateAsync({ tripId, gameId: game.id });
+      } else {
+        await post.mutateAsync({ tripId, gameId: game.id, placements: order.map((id, i) => ({ entityId: id, position: i + 1 })) });
+      }
+      utils.games.listByTrip.invalidate({ tripId });
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to post");
+    }
+  }
+
+  async function unlockForCorrection() {
+    setError(null);
+    try {
+      await openCorrection.mutateAsync({ tripId, gameId: game.id });
+      utils.games.listByTrip.invalidate({ tripId });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to open correction");
+    }
+  }
+
+  const postLabel = correcting ? "Re-post" : "Post";
+  const postBg = correcting ? "var(--color-bt-warning)" : "var(--color-bt-accent)";
+
+  return (
+    <ScrollLock>
+      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: "var(--color-bt-overlay)" }} onClick={onClose}>
+        <div
+          className="flex max-h-[90vh] w-full max-w-md flex-col rounded-t-2xl sm:rounded-2xl"
+          style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+            <div>
+              <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>{correcting ? "Score correction" : "Post results"}</h3>
+              <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{game.name || "Game"}</p>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {correcting && (
+              <div className="flex items-start gap-2 rounded-lg px-3 py-2.5" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning)" }}>
+                <Info size={14} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
+                <span className="text-[11px] leading-relaxed" style={{ color: "var(--color-bt-warning)" }}>
+                  Correcting a posted round — re-posting recomputes the whole leaderboard.
+                </span>
+              </div>
+            )}
+
+            {isEngine ? (
+              <EngineReview
+                incomplete={incomplete}
+                missing={missing}
+                correcting={correcting}
+                onUnlock={unlockForCorrection}
+                unlocking={openCorrection.isPending}
+                scoresOpen={game.corrections_open}
+              />
+            ) : (
+              <ManualPlacementEditor order={order} teams={teams} dist={dist} teamById={teamById} move={move} />
+            )}
+
+            {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
+          </div>
+
+          <div className="border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
+            {confirmIncomplete ? (
+              <div className="space-y-2.5">
+                <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+                  {missing} score{missing === 1 ? "" : "s"} are still blank. Rained out? Post the current standing now and correct it later — totally fine. Otherwise keep entering.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setConfirmIncomplete(false)} className="flex-1 rounded-xl py-2.5 text-sm font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}>
+                    Keep entering
+                  </button>
+                  <button type="button" onClick={commit} disabled={busy} className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50" style={{ background: postBg, color: "var(--color-bt-base)" }}>
+                    Post anyway
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={commit}
+                disabled={busy}
+                data-testid="run-post"
+                className="w-full rounded-xl py-3 text-sm font-bold disabled:opacity-50"
+                style={{ background: postBg, color: "var(--color-bt-base)" }}
+              >
+                {postLabel}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </ScrollLock>
+  );
+}
+
+/** Manual placement entry — order the teams 1st→last; PAYS shows the configured
+ *  distribution (the poster sets ORDER, never points). */
+function ManualPlacementEditor({
+  order, teams, dist, teamById, move,
+}: {
+  order: string[]; teams: LBTeamLite[]; dist: number[];
+  teamById: (id: string) => LBTeamLite | undefined; move: (i: number, dir: -1 | 1) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Finishing order</span>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Pays</span>
+      </div>
+      <div className="space-y-1.5">
+        {order.map((teamId, i) => {
+          const team = teamById(teamId);
+          const pays = dist[i] ?? 0;
+          return (
+            <div key={teamId} className="flex items-center gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
+              <span className="w-5 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>{i + 1}</span>
+              <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{team?.name ?? "Team"}</span>
+              <span className="text-sm font-bold tabular-nums" style={{ color: pays > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>{fmtValue(pays)}</span>
+              <div className="ml-1 flex flex-col">
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" className="flex h-4 w-6 items-center justify-center rounded disabled:opacity-30" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <ChevronUp size={13} />
+                </button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === order.length - 1} aria-label="Move down" className="flex h-4 w-6 items-center justify-center rounded disabled:opacity-30" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <ChevronDown size={13} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Order the teams by finish — points come from the game&rsquo;s configured distribution, so you set the order, not the points.
+      </p>
+    </div>
+  );
+}
+
+function EngineReview({
+  incomplete, missing, correcting, onUnlock, unlocking, scoresOpen,
+}: {
+  incomplete: boolean; missing: number; correcting: boolean; onUnlock: () => void; unlocking: boolean; scoresOpen: boolean;
+}) {
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+        {correcting
+          ? "This round is posted. Open score correction to edit the scorecard, then re-post to recompute the leaderboard."
+          : "Posting commits the computed result and publishes the current standing to the leaderboard."}
+      </p>
+      {correcting && !scoresOpen && (
+        <button type="button" onClick={onUnlock} disabled={unlocking} className="w-full rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}>
+          {unlocking ? "Opening…" : "Open score correction"}
+        </button>
+      )}
+      {correcting && scoresOpen && (
+        <p className="text-[11px]" style={{ color: "var(--color-bt-accent)" }}>Scores are open — edit on the scorecard, then re-post here.</p>
+      )}
+      {incomplete && (
+        <div className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
+          <Info size={13} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }} />
+          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{missing} score{missing === 1 ? "" : "s"} still blank — you can post anyway.</span>
+        </div>
+      )}
     </div>
   );
 }

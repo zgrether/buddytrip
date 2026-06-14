@@ -164,6 +164,7 @@ function ExistingCompetitionView({
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
+        isOwner={isOwner}
       />
     </div>
   );

@@ -149,6 +149,8 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
 | **Edit / configure a game** (status incl. drop, points distribution, course, participants) | ✓ | ✓ | **game organizer of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
 | **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **game organizer of *that* game** | `games.setManualResults` / `finish` |
+| **RUN: post results / open score correction** | ✓ | **—** | **game organizer of *that* game** | `games.post` / `openCorrection` *(Owner or game-delegate only — **not** a plain Organizer)* |
+| Enter a per-hole score (until posted) | ✓ | ✓ | ✓ | `scores.upsertEntry` / `deleteEntry` *(any member; **blocked** once the game is posted & not in correction)* |
 | Delegate / revoke a game organizer | ✓ | ✓ | — | `games.addOrganizer` / `removeOrganizer` *(trip staff only — a delegate can't sub-delegate)* |
 | View who runs a game | ✓ | ✓ | ✓ | `games.listOrganizers` |
 
@@ -159,6 +161,18 @@ who's in, what they're called, what role they hold — is the Owner's.
 > layers — the `requireGameEdit` tRPC middleware and the `is_game_organizer(game)`
 > RLS path on `games` (UPDATE) + `game_results` (migration 045). Granting is a
 > trip-staff act (`requireTripRole('Organizer')`).
+
+> **Competition RUN-actions are owner/game-delegate scoped — narrower than game
+> edit (Slice D Run/Post §5).** Posting results and opening score correction
+> (`games.post` / `games.openCorrection`) gate on **`isOwner || isGameOrganizer(gameId)`**
+> — the trip **Owner** or *that game's* delegate. A plain **Organizer (the trip
+> planner) is NOT a run-action** unless they're also the game's delegate: running
+> the competition is owner/delegate-scoped, distinct from trip-planner scope.
+> Enforced server-side by `requireGameRunAction`. "Post" publishes the current
+> standing and is **re-runnable** (Open → Posted ⇄ Correcting) — never a permanent
+> finalize. A posted game's scores are frozen (`scores.upsertEntry`/`deleteEntry`
+> return FORBIDDEN) until the owner/delegate opens correction; results stay
+> visible to everyone throughout.
 
 > **Scoring is Organizer+ today** (`setPlacements`). There is no member-facing
 > "enter your own score" path yet — the intent (see Resolved notes) is for any

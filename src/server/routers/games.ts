@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole, requireGameEdit } from "../middleware";
+import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction } from "../middleware";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
@@ -17,6 +18,34 @@ import { validatePlacement } from "@/lib/gameConfig";
  * standard trip middleware can gate them — we then verify the game belongs to
  * that trip (defends against a gameId from another trip).
  */
+/**
+ * Shared manual-result write (Slice D §5a / Run-Post §2): replace a game's
+ * per-team finishing order in `game_results`. The ONE write path for entered
+ * placements — both `setManualResults` and the run `post` action use it, so
+ * there's no parallel commit. Placement POINTS stay derived (placementPoints);
+ * we store only the standing (position; raw_score mirrors it for low_wins).
+ */
+async function writeManualResults(
+  supabase: SupabaseClient,
+  gameId: string,
+  placements: { entityId: string; position: number }[]
+): Promise<number> {
+  const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
+  if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
+  if (placements.length === 0) return 0;
+  const rows = placements.map((p) => ({
+    id: crypto.randomUUID(),
+    game_id: gameId,
+    entity_id: p.entityId,
+    entity_type: "team",
+    position: p.position,
+    raw_score: p.position,
+  }));
+  const { error: insErr } = await supabase.from("game_results").insert(rows);
+  if (insErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to save results: ${insErr.message}` });
+  return rows.length;
+}
+
 export const gamesRouter = router({
   // create — Owner/Organizer. The Phase-1 shell (D1 §3): competition_id +
   // game_type + name + points_distribution + status is a FULLY VALID game; every
@@ -486,22 +515,99 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const { error: delErr } = await ctx.supabase.from("game_results").delete().eq("game_id", input.gameId);
-      if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
+      const count = await writeManualResults(ctx.supabase, input.gameId, input.placements);
+      return { success: true, count };
+    }),
 
-      if (input.placements.length === 0) return { success: true, count: 0 };
+  // post — RUN action (owner / game-delegate only). Publishes the game's current
+  // standing to the leaderboard. NOT "finalize": re-runnable. One action, two
+  // sources (Run-Post §2):
+  //   - manual game: the poster passes the entered finishing ORDER (placements);
+  //     POINTS come from the already-configured points_distribution at read time
+  //     (the poster never sets points). Committed via the shared writeManualResults.
+  //   - engine game: the result is COMPUTED from entered scores (same branch as
+  //     `finish`), writing game_results.
+  // Then locks: status='complete', corrections_open=false. The leaderboard
+  // recomputes on the next read (competitionPlacement.ts — the single reader);
+  // we do NOT recompute locally. Idempotent — re-post just re-commits. Never
+  // blocks an incomplete post (the rainout confirm is a UI guard, §4).
+  post: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        placements: z
+          .array(z.object({ entityId: z.string().min(1), position: z.number().int().min(1).max(99) }))
+          .max(64)
+          .optional(),
+      })
+    )
+    .use(requireGameRunAction())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, game_type_id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const rows = input.placements.map((p) => ({
-        id: crypto.randomUUID(),
-        game_id: input.gameId,
-        entity_id: p.entityId,
-        entity_type: "team",
-        position: p.position,
-        raw_score: p.position, // standing = finishing place (low_wins); points derived
-      }));
-      const { error: insErr } = await ctx.supabase.from("game_results").insert(rows);
-      if (insErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to save results: ${insErr.message}` });
-      return { success: true, count: rows.length };
+      const { data: template } = await ctx.supabase
+        .from("game_type_templates")
+        .select("result_strategy")
+        .eq("id", game.game_type_id as string)
+        .maybeSingle();
+      const strategy = (template?.result_strategy as string | null) ?? null;
+
+      if (strategy === null) {
+        // Manual: commit the entered finishing order (shared write path).
+        if (!input.placements) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "A manual game posts a finishing order." });
+        }
+        await writeManualResults(ctx.supabase, input.gameId, input.placements);
+      } else if (strategy === "match_play") {
+        await computeMatchPlayResults(ctx.supabase, input.gameId);
+      } else if (strategy === "rack_n_stack") {
+        await computeRackNStackResults(ctx.supabase, input.gameId);
+      } else {
+        await computeStrokePlayResults(ctx.supabase, input.gameId);
+      }
+
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ status: "complete", corrections_open: false })
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to post game: ${error.message}` });
+      return { success: true };
+    }),
+
+  // openCorrection — RUN action (owner / game-delegate only). Enters score-
+  // correction on a POSTED game: re-opens score entry (the scores router gates on
+  // status='complete' && !corrections_open) WITHOUT un-posting — the result stays
+  // visible on the board until Re-post (`post` again). A deliberate enter→re-post
+  // cycle, never a silent edit (§3).
+  openCorrection: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireGameRunAction())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("status")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      if (game.status !== "complete") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Only a posted game can enter score correction." });
+      }
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ corrections_open: true })
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to open correction: ${error.message}` });
+      return { success: true };
     }),
 
   // addOrganizer — trip Owner/Organizer only (delegating is a trip-staff act; a
