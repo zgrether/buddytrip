@@ -52,12 +52,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const id of gameIds) {
-    await ctx.admin.from("game_results").delete().eq("game_id", id);
-    await ctx.admin.from("games").delete().eq("id", id);
+  // Batch the deletes (one query each) — a per-game loop blows the 10s hook
+  // timeout as the game set grows.
+  if (gameIds.length) {
+    await ctx.admin.from("game_results").delete().in("game_id", gameIds);
+    await ctx.admin.from("games").delete().in("id", gameIds);
   }
   await ctx.cleanup();
-});
+}, 30000);
 
 describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   let teamA: string;
@@ -301,11 +303,24 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
-    const game = lb.games.find((g2: { id: string }) => g2.id === g.id);
+    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { gameTypeId: string; ready: boolean };
     expect(game).toBeDefined();
     expect("gameTypeId" in game!).toBe(true);
     expect(game!.gameTypeId).toBe(MANUAL);
     expect("defendingTeamId" in lb).toBe(true);
+    // State-aware rows (§7): a configured game is scoring-ready.
+    expect(game!.ready).toBe(true);
+  });
+
+  it("a game with no points configured is NOT ready (drives the 'needs setup' row)", async () => {
+    const comp = await ctx.createCompetition(tripId, "D2 Unready Comp");
+    await ctx.createTeam(comp, "A", { shortName: "A" });
+    // Bare game — no distribution, no owner total.
+    const g = await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "Unready", competitionId: comp }) as { id: string };
+    gameIds.push(g.id);
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { ready: boolean };
+    expect(game!.ready).toBe(false);
   });
 
   it("reads competitionPlacement.ts — rollUp matches the endpoint's teamTotals", async () => {

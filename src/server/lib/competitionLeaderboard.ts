@@ -164,6 +164,10 @@ export async function computeCompetitionLeaderboard(
         status: g.status as string,
         dropped: g.status === "dropped",
         gameTypeId: (g.game_type_id as string | null) ?? null,
+        // "ready to score" = points are configured (a distribution shape or an
+        // owner-set total). Drives the state-aware leaderboard rows: an unready
+        // game reads "not scoring yet" instead of an empty/0–0 line (§7).
+        ready: !!rawDist || g.points_total != null,
       };
     }),
     cells,
