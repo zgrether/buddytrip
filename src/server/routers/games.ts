@@ -441,6 +441,24 @@ export const gamesRouter = router({
       return { success: true };
     }),
 
+  // delete — Owner/Organizer. HARD-delete a game; all dependent rows
+  // (participants, matches, play_groups, results, score_entries, organizers)
+  // cascade via ON DELETE CASCADE. Distinct from setStatus('dropped')
+  // ("Abandoned"), which is a reversible archive — this is a true removal (L3-b).
+  // requireTripRole("Organizer") gates it to trip staff (not a game-delegate).
+  delete: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games").select("id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      const { error } = await ctx.supabase
+        .from("games").delete().eq("id", input.gameId).eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to delete game: ${error.message}` });
+      return { success: true };
+    }),
+
   // setPointsDistribution — game-edit gate (owner OR game-delegate). The
   // competition-layer split. Editing it re-derives the leaderboard on next read
   // (§5b/§6). Stage 3 sum-to-total: a PLACEMENT split must equal the owner-set

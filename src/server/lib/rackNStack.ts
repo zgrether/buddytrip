@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { effectiveStrokes } from "@/lib/handicap";
+import { isPerMatch } from "@/lib/pointsDistribution";
 
 /**
  * DB-persist side of rack-n-stack. Builds the SAME read-model the live client
@@ -10,9 +11,16 @@ import { effectiveStrokes } from "@/lib/handicap";
  * outcome is TEAM points (slot wins; halves = ½) distilled to `game_results`
  * (`entity_type='team'`). Slots are NOT persisted (derived read-model only).
  *
- * `competition_points_earned` stays null — Slice D maps team points to
- * competition points. Computed in 'current' mode (the canonical result; both
- * display modes converge at 18 holes).
+ * Rack is a set of rank-paired mini-matches, so it scores PER-MATCH (each slot
+ * won = the game's per-match value; a halve = ½). When the game is configured
+ * per_match (`{type:'per_match', value}`), we write the realized team points ×
+ * value as `raw_score` with `position=null` — the shape the competition
+ * leaderboard's per_match branch reads (value × matchCount available, awarded
+ * from raw_score). A legacy/unconfigured rack (no per_match distribution) keeps
+ * the placement shape (`position` = rank), so nothing already on a board breaks.
+ *
+ * `competition_points_earned` stays null. Computed in 'current' mode (the
+ * canonical result; both display modes converge at 18 holes).
  */
 
 export interface RackTeamOutcome {
@@ -31,10 +39,15 @@ export async function computeRackNStackResults(
 ): Promise<RackTeamOutcome[]> {
   const { data: game } = await supabase
     .from("games")
-    .select("scorecard_schema, game_type_id, competition_id")
+    .select("scorecard_schema, game_type_id, competition_id, points_distribution")
     .eq("id", gameId)
     .maybeSingle();
   if (!game?.competition_id) return []; // rack needs a competition (2 teams)
+
+  // Per-match scoring (each slot = `value` pts) when configured so; else the
+  // legacy placement shape (rank). value defaults to 1 (one point per slot won).
+  const perMatch = isPerMatch(game.points_distribution);
+  const value = perMatch ? (game.points_distribution as { value: number }).value : 1;
 
   // Effective par/index: the game's course snapshot, else its template default.
   let schema = game.scorecard_schema as SchemaShape | null;
@@ -108,9 +121,11 @@ export async function computeRackNStackResults(
     game_id: gameId,
     entity_id: teamId,
     entity_type: "team" as const,
-    raw_score: null,
+    // per_match: realized slot points × value as raw_score (no position) — the
+    // shape the leaderboard's per_match branch reads. placement: rank position.
+    raw_score: perMatch ? teamPoints[teamId] * value : null,
     points: teamPoints[teamId],
-    position: position(teamId),
+    position: perMatch ? null : position(teamId),
     competition_points_earned: null,
   }));
   if (rows.length > 0) await supabase.from("game_results").insert(rows);

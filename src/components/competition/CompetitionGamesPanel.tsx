@@ -416,7 +416,10 @@ function GameSheet({
   const categoryTypes = types.filter((t) => t.category === category);
   const effectiveTypeId = categoryTypes.some((t) => t.id === gameTypeId) ? gameTypeId : categoryTypes[0]?.id ?? "";
   const selectedType = types.find((t) => t.id === effectiveTypeId);
-  const isMatchPlay = selectedType?.resultStrategy === "match_play";
+  // Per-match formats: 1v1 match play AND rack-n-stack (a set of rank-paired
+  // mini-matches) — both accumulate per-match points, not a placement total.
+  const isMatchPlay =
+    selectedType?.resultStrategy === "match_play" || selectedType?.resultStrategy === "rack_n_stack";
   const isGolf = category === "golf";
 
   // Members (for the delegate picker + name resolution) and the existing grant.
@@ -440,6 +443,7 @@ function GameSheet({
   const setDist = trpc.games.setPointsDistribution.useMutation();
   const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setStatus = trpc.games.setStatus.useMutation();
+  const deleteGame = trpc.games.delete.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();
   const removeOrg = trpc.games.removeOrganizer.useMutation();
 
@@ -514,6 +518,15 @@ function GameSheet({
   async function handleDrop() {
     if (!game) return;
     await setStatus.mutateAsync({ tripId, gameId: game.id, status: game.status === "dropped" ? "pending" : "dropped" });
+    utils.games.listByTrip.invalidate({ tripId });
+    utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    onClose();
+  }
+
+  async function handleDelete() {
+    if (!game) return;
+    if (!window.confirm("Delete this game permanently? It and all its scores are removed — this can't be undone. (To keep it but hide it from the board, use Abandon instead.)")) return;
+    await deleteGame.mutateAsync({ tripId, gameId: game.id });
     utils.games.listByTrip.invalidate({ tripId });
     utils.competitions.leaderboard.invalidate({ tripId, competitionId });
     onClose();
@@ -600,6 +613,20 @@ function GameSheet({
             )}
 
             {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
+
+            {isEdit && game && canEdit && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleteGame.isPending}
+                data-testid="delete-game"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold disabled:opacity-50"
+                style={{ background: "transparent", color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Trash2 size={12} />
+                Delete game permanently
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
