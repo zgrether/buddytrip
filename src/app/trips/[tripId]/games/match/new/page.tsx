@@ -59,6 +59,16 @@ export default function NewMatchGamePage() {
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
 
+  // Competition roster (Slice D): a competition game pairs from the players
+  // assigned to its teams, not the whole trip crew. Names still resolve from
+  // crew (the roster is a subset of trip members).
+  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const competitionId = competition.data?.id as string | undefined;
+  const assignQ = trpc.teamAssignments.list.useQuery(
+    { tripId: tripId!, competitionId: competitionId! },
+    { enabled: !!tripId && !!competitionId }
+  );
+
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
 
@@ -123,6 +133,20 @@ export default function NewMatchGamePage() {
   // line — generally min team size across teams — which is Slice D's concern.
   const crewCount = crew.data?.length ?? 0;
   const maxMatches = Math.max(1, Math.floor(crewCount / 2));
+
+  // Competition roster + the singles match cap = min(teamA, teamB). Used to seed
+  // a resumed competition game's pairings and to scope the player picker.
+  const gameCompId = (gameQ.data?.competition_id as string | null) ?? null;
+  const rosterIds = useMemo(
+    () => [...new Set((assignQ.data ?? []).map((a) => a.user_id as string))],
+    [assignQ.data]
+  );
+  const compMatchCount = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const a of assignQ.data ?? []) sizes.set(a.team_id as string, (sizes.get(a.team_id as string) ?? 0) + 1);
+    const counts = [...sizes.values()];
+    return counts.length >= 2 ? Math.max(1, Math.min(...counts)) : 0;
+  }, [assignQ.data]);
 
   const status = gameQ.data?.status as string | undefined;
   const published = matchesQ.data?.published ?? false;
@@ -205,11 +229,13 @@ export default function NewMatchGamePage() {
     setNavStack((s) => [...s, screen]);
     setManualScreen(next);
   };
-  // Back step: pop to the previous workflow screen, or leave to the trip home
-  // when there's nothing to pop (we arrived directly at a derived screen).
+  // Back step: pop to the previous workflow screen, or leave the page when
+  // there's nothing to pop — router.back() returns to wherever we came from
+  // (the leaderboard, when launched from it), so breadcrumb and browser-back
+  // agree instead of disagreeing (one to trip home, one to the leaderboard).
   const goBack = () => {
     if (navStack.length === 0) {
-      router.push(`/trips/${param}`);
+      router.back();
       return;
     }
     setManualScreen(navStack[navStack.length - 1]);
@@ -221,10 +247,18 @@ export default function NewMatchGamePage() {
   // draft is empty. Create + Edit also seed via their handlers; this covers a
   // direct/derived landing.
   useEffect(() => {
-    if (screen === "setup" && draft.length === 0 && serverMatches.length > 0) {
+    if (screen !== "setup" || draft.length > 0) return;
+    if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf));
+      return;
     }
-  }, [screen, draft.length, serverMatches, handicapOf]);
+    // Resume-into-empty: a competition game tapped from the leaderboard arrives
+    // with no game_matches, so the derived "setup" landing had an empty draft and
+    // a disabled CTA. Seed blank pairing cards from the roster's match cap (or the
+    // crew cap for a standalone game) so setup is fillable.
+    const n = compMatchCount || maxMatches;
+    if (n > 0) setDraft(Array.from({ length: n }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
+  }, [screen, draft.length, serverMatches, handicapOf, compMatchCount, maxMatches]);
 
   // ── Actions ──────────────────────────────────────────────────────────
   async function handleCreate() {
@@ -501,7 +535,7 @@ export default function NewMatchGamePage() {
           matchIdx={selector.matchIdx}
           slot={selector.slot}
           draft={draft}
-          crew={(crew.data ?? []).map((c) => c.user_id)}
+          crew={gameCompId && rosterIds.length > 0 ? rosterIds : (crew.data ?? []).map((c) => c.user_id)}
           nameOf={nameOf}
           avatarIconOf={avatarIconOf}
           onPick={(userId) => {
