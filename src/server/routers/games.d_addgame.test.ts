@@ -157,3 +157,14 @@ describe("Stage 3 — the delegation boundary", () => {
     ).rejects.toThrow(/must total 8/i);
   });
 });
+
+describe("delete — hard removal, Organizer-gated (L3-b)", () => {
+  it("owner deletes a game and it's gone; a plain Member cannot", async () => {
+    const g = await newGame(8, "To delete");
+    // Organizer-gated: a plain Member (even a would-be delegate) cannot delete.
+    await expect(ctx.callerAs("member").games.delete({ tripId, gameId: g.id })).rejects.toThrow();
+    // Owner hard-deletes → the game is gone.
+    await expect(ctx.caller().games.delete({ tripId, gameId: g.id })).resolves.toBeTruthy();
+    await expect(ctx.caller().games.getById({ tripId, gameId: g.id })).rejects.toThrow(/not found/i);
+  });
+});
