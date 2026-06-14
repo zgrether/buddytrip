@@ -416,7 +416,10 @@ function GameSheet({
   const categoryTypes = types.filter((t) => t.category === category);
   const effectiveTypeId = categoryTypes.some((t) => t.id === gameTypeId) ? gameTypeId : categoryTypes[0]?.id ?? "";
   const selectedType = types.find((t) => t.id === effectiveTypeId);
-  const isMatchPlay = selectedType?.resultStrategy === "match_play";
+  // Per-match formats: 1v1 match play AND rack-n-stack (a set of rank-paired
+  // mini-matches) — both accumulate per-match points, not a placement total.
+  const isMatchPlay =
+    selectedType?.resultStrategy === "match_play" || selectedType?.resultStrategy === "rack_n_stack";
   const isGolf = category === "golf";
 
   // Members (for the delegate picker + name resolution) and the existing grant.

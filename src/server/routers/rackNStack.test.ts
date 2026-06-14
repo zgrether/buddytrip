@@ -132,3 +132,51 @@ describe("rack-n-stack — finish distills team points to game_results", () => {
     expect(teams.find((t) => t.teamId === teamB)!.points).toBe(0.5);
   });
 });
+
+describe("rack-n-stack — per-match points (Stage 3)", () => {
+  it("a per_match rack writes raw_score = slot points × value (position null) and rolls up", async () => {
+    // Isolated competition so the leaderboard reflects only this game.
+    const comp = await ctx.createCompetition(tripId, "Rack PM Cup");
+    const ta = await ctx.createTeam(comp, "Blue", { shortName: "B" });
+    const tb = await ctx.createTeam(comp, "Red", { shortName: "R" });
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: comp, user_id: owner, team_id: ta },
+      { competition_id: comp, user_id: planner, team_id: ta },
+      { competition_id: comp, user_id: member, team_id: tb },
+      { competition_id: comp, user_id: outsider, team_id: tb },
+    ]);
+
+    const game = await ctx.caller().games.create({
+      tripId, gameTypeId: RACK, name: "PM Day", competitionId: comp,
+      pointsDistribution: { type: "per_match", value: 2 },
+    });
+    const gameId = game.id as string;
+    await ctx.callerAs("planner").playGroups.setFoursomes({
+      tripId, gameId,
+      groups: [{ name: "G1", userIds: [owner, member] }, { name: "G2", userIds: [planner, outsider] }],
+    });
+    // Blue (both par) wins both rank slots over Red (both bogey) → 2 slots.
+    await enter(gameId, owner, PAR);
+    await enter(gameId, planner, PAR);
+    await enter(gameId, member, PAR.map((p) => p + 1));
+    await enter(gameId, outsider, PAR.map((p) => p + 1));
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    // game_results: per_match shape — raw_score = slotPoints × value, no position.
+    const { data: rows } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, raw_score, position")
+      .eq("game_id", gameId);
+    const blue = rows!.find((r) => r.entity_id === ta)!;
+    const red = rows!.find((r) => r.entity_id === tb)!;
+    expect(blue.raw_score).toBe(4); // 2 slots won × value 2
+    expect(red.raw_score).toBe(0);
+    expect(blue.position).toBeNull();
+
+    // Leaderboard: available = value(2) × matchCount(min team size 2) = 4; Blue takes all.
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    expect(lb.pointsAvailable).toBe(4);
+    expect(lb.teamTotals[ta]).toBe(4);
+    expect(lb.teamTotals[tb]).toBe(0);
+  });
+});
