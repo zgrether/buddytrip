@@ -137,6 +137,26 @@ flow, how it interacts with the trip-planner side.
 filtering), and the points model (derive shape from format-within-style). No new
 scoring engines — it constrains and routes existing ones.
 
+**Update (2026-06-14) — the add-game format filter is PART of this chooser, not
+pulled forward.** The L2 work surfaced that the add-game modal offers all three
+built engines (Stroke Play, Alternate Shot, Rack-n-Stack) **unfiltered** — so you
+can add a raw Stroke Play game to a match-play cup, where it **won't compute**
+(placement/total, not per-match). Filtering the modal to style-compatible formats
+is the "add-game flow filters formats" item above — deliberately NOT built as a
+separate near-term patch.
+- A raw Stroke Play game is **addable but non-computing in a competition** — a
+  **known, accepted gap, not a bug** — until the chooser ships.
+- Near-term cost is only test confusion, handled by a standing testing instruction
+  (test competitions with match-play-friendly formats only; don't add raw stroke to
+  a cup). No interim filter built.
+- A stray non-computing stroke game already on a board gets removed once
+  **delete-game (L3-b)** ships (queued).
+- Reaffirmed framing: in a cup the valid formats are the match-play-friendly ones
+  (Alternate Shot, Rack-n-Stack — the latter being stroke-play-wrapped-as-matches).
+  Raw individual stroke play is a *normal-competition* format. "Stroke play in a
+  cup" isn't a separate event to design — in a cup, stroke-the-activity is played
+  as Rack-n-Stack.
+
 ### Post-BBMI engine work
 
 - `multi_team` competitions (3+ teams, placement points roll-up)
