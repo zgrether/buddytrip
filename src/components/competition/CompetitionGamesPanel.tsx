@@ -503,6 +503,10 @@ function GameSheet({
       }
       if (canEdit) await reconcileDelegate(gameId);
       utils.games.listByTrip.invalidate({ tripId });
+      // Refresh the per-game organizer grant too — without this the
+      // listOrganizers cache stays stale, so reopening the modal shows the old
+      // delegate until a hard refresh.
+      utils.games.listOrganizers.invalidate({ tripId, gameId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       return true;
     } catch (e) {
