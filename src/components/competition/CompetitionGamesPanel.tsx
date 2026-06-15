@@ -315,7 +315,9 @@ function GameCard({
         {canEdit && <Pencil size={13} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />}
       </button>
 
-      {isOwner && !dropped && (
+      {canEdit && !dropped && (
+        // Posting/correcting is operational (owner-minus-destructive) — owner &
+        // co-admins both run it. canEdit = owner OR co-admin.
         <div className="flex items-center justify-between px-3 py-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
           <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             {state === "posted" ? "Points are on the board" : state === "correcting" ? "Correcting — re-post to update" : "Not posted yet"}

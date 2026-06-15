@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember, requireCompetitionRole } from "../middleware";
 
 /**
  * teams — competition-scoped teams.
@@ -52,7 +52,7 @@ export const teamsRouter = router({
         colorDim: z.string().min(1).max(20),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireCompetitionRole("co_admin"))
     .mutation(async ({ ctx, input }) => {
       const { data: inserted, error: insertErr } = await ctx.supabase
         .from("teams")
@@ -103,7 +103,7 @@ export const teamsRouter = router({
         colorDim: z.string().min(1).max(20).optional(),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireCompetitionRole("co_admin"))
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) patch.name = input.name;
@@ -129,11 +129,12 @@ export const teamsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // delete — remove a team (Owner only). Cascades clear assignments.
+  // delete — remove a team (owner/co-admin). Editing teams is co-admin work
+  // (not competition-destructive). Cascades clear assignments.
   // -----------------------------------------------------------------------
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), teamId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireCompetitionRole("co_admin"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("teams")
