@@ -501,8 +501,24 @@ function GameSheet({
           await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
         }
       }
-      if (canEdit) await reconcileDelegate(gameId);
+      if (canEdit) {
+        await reconcileDelegate(gameId);
+        // Write the new grant straight into the listOrganizers cache. The
+        // mutations above already succeeded, so this is server truth — and
+        // unlike invalidate() (which only schedules a refetch) it's synchronous,
+        // so an IMMEDIATE reopen of the modal seeds from the correct value
+        // instead of racing the refetch against the dialog close.
+        utils.games.listOrganizers.setData(
+          { tripId, gameId },
+          desiredDelegate
+            ? ([{ user_id: desiredDelegate, granted_by: null, created_at: null }] as never)
+            : []
+        );
+      }
       utils.games.listByTrip.invalidate({ tripId });
+      // Background reconcile (eventual consistency) — the setData above is what
+      // makes the immediate reopen correct.
+      utils.games.listOrganizers.invalidate({ tripId, gameId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       return true;
     } catch (e) {
