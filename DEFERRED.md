@@ -213,6 +213,21 @@ defined vs. weighted). No schema change expected — point value already lives o
 game (`games.points_total`); this is where/when it's *edited* and how readiness is
 *computed*.
 
+### Competition header status strip (§2) — owed into Stage 4
+
+*Captured 2026-06-14 during comp-face Stage 3. NOT a general defer — it's
+explicitly folded into **Stage 4's scope** so it doesn't evaporate.*
+
+Spec §2 calls for a **content-driven status strip** in the competition header's
+lower region: priority ladder of today's lineup ("On tap: Cornhole, Singles") →
+standing glance ("Blue 8½ – Red 7½") → **collapses entirely when empty** (no
+fixed empty box, quiet not a live ticker). Stage 3 shipped the chrome-shrink
+(compact header post-live) but deliberately left the strip out to keep Stage 3
+focused on the escape/toggle/go-live. It's small chrome work that belongs with
+the header, so it rides along with Stage 4 (roles on the board). The game-page
+**live pulse** remains separately deferred (it's the ticker §2 explicitly
+excludes).
+
 ---
 
 ## v2 / Circle Era

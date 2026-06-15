@@ -1,25 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext } from "../../../../__tests__/helpers/test-setup";
+import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
- * CompTab — data-layer integration tests, post-revisions.
+ * CompetitionFace — data-layer integration tests.
  *
- * The new CompTab + sibling panels are pure presentational React; React
- * Testing Library + jsdom aren't yet in this repo, so we cover the spec
- * matrix through the data layer that drives each render branch.
+ * The face + sibling panels are pure presentational React; React Testing
+ * Library + jsdom aren't yet in this repo, so we cover the spec matrix through
+ * the data layer that drives each render branch (competition metadata, the
+ * teams/games/assignments the setup guide + leaderboard read).
  *
- * Revisions matrix:
- *   - GroupsPanel removed                  → no groups assertions
+ * Matrix:
  *   - Status badge                         → "status badge"
  *   - Delete gated on upcoming             → "delete gating"
  *   - Contests are `games` now             → "(Teams, Games) all resolve"
- *     (the retired events-table form/agenda cases moved to games coverage)
  */
 
 let ctx: TestContext;
 let tripId: string;
 
-describe("CompTab data layer (revisions)", () => {
+describe("CompetitionFace data layer", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("CompTab revision tests");

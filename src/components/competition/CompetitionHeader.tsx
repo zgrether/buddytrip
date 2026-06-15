@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Pause, Pencil, Radio, Trash2, Trophy, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
+import type { CSSProperties } from "react";
 
 interface Competition {
   id: string;
@@ -42,11 +43,25 @@ interface Props {
   canEdit: boolean;
   isOwner: boolean;
   /**
-   * Fired after the owner deletes the competition. Lets the trip page
-   * reset compUnlocked + bounce the user off the comp tab so the comp
-   * tab fully disappears (not just for the rest of the crew).
+   * Fired after the owner deletes the competition. Lets the host
+   * reset its unlocked flag so the create flow reappears.
    */
   onDeleted?: () => void;
+  /**
+   * Chrome-shrink (§3): post-live the header collapses to a compact bar
+   * (smaller glyph, no tagline) so the leaderboard is the hero and doesn't
+   * start halfway down the page.
+   */
+  compact?: boolean;
+  /**
+   * Go-live toggle handler. The mutation is owned by the host
+   * (CompetitionFace) so going live can also flip the default view to the
+   * board. When omitted, a read-only status badge is shown instead of the
+   * toggle (non-owners / completed competitions).
+   */
+  onToggleLive?: () => void;
+  /** True while the go-live mutation is in flight (disables the toggle). */
+  togglePending?: boolean;
 }
 
 /**
@@ -62,6 +77,9 @@ export function CompetitionHeader({
   canEdit,
   isOwner,
   onDeleted,
+  compact = false,
+  onToggleLive,
+  togglePending = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -91,73 +109,44 @@ export function CompetitionHeader({
     },
   });
 
-  // ── GO LIVE / Back to Setup toggle ─────────────────────────────────────
-  // Flips competition.status between "upcoming" (setup mode) and "active"
-  // (live for the crew). When active: bottom nav appears, scoreboard panel
-  // appears on the comp tab, and the leaderboard page becomes the styled
-  // scoreboard the owner picked.
-  const setStatus = trpc.competitions.update.useMutation({
-    onMutate: async (vars) => {
-      await utils.competitions.getByTrip.cancel({ tripId });
-      const previous = utils.competitions.getByTrip.getData({ tripId });
-      if (previous && vars.status) {
-        utils.competitions.getByTrip.setData({ tripId }, {
-          ...previous,
-          status: vars.status,
-        });
-      }
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.previous) {
-        utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
-      }
-    },
-    onSettled: () => utils.competitions.getByTrip.invalidate({ tripId }),
-  });
-
-  const handleToggleLive = () => {
-    const next: "upcoming" | "active" =
-      competition.status === "active" ? "upcoming" : "active";
-    setStatus.mutate({
-      tripId,
-      competitionId: competition.id,
-      status: next,
-    });
+  // Chrome-shrink (§3): compact glyph + tighter spacing post-live so the
+  // board is the hero. The tagline is dropped in compact mode.
+  const glyphBox: CSSProperties = {
+    background: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
   };
 
   return (
     <div data-testid="competition-header">
       {/* Title row — no outer card, sits directly on the page background */}
-      <div className="flex items-start gap-3 pb-3">
+      <div className={`flex items-start gap-3 ${compact ? "pb-2" : "pb-3"}`}>
         <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-          }}
+          className={`flex flex-shrink-0 items-center justify-center rounded-xl ${
+            compact ? "h-8 w-8" : "h-10 w-10"
+          }`}
+          style={glyphBox}
         >
-          <Trophy size={18} />
+          <Trophy size={compact ? 16 : 18} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p
-              className="text-base font-bold"
+              className={`font-bold ${compact ? "text-sm" : "text-base"}`}
               style={{ color: "var(--color-bt-text)" }}
             >
               {competition.name}
             </p>
-            {isOwner && competition.status !== "completed" ? (
+            {onToggleLive && competition.status !== "completed" ? (
               <LiveToggleButton
                 status={competition.status}
-                pending={setStatus.isPending}
-                onClick={handleToggleLive}
+                pending={togglePending}
+                onClick={onToggleLive}
               />
             ) : (
               <StatusBadge status={competition.status} />
             )}
           </div>
-          {competition.tagline && competition.tagline.trim() && (
+          {!compact && competition.tagline && competition.tagline.trim() && (
             <p
               className="mt-0.5 text-xs"
               style={{ color: "var(--color-bt-text-dim)" }}
