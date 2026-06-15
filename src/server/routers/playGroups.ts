@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember, requireGameEdit } from "../middleware";
 import { clampStrokes } from "@/lib/handicap";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
@@ -17,7 +17,8 @@ import { computeRackNStackResults } from "../lib/rackNStack";
  * over score_entries; only the foursomes (entry units) persist.
  */
 export const playGroupsRouter = router({
-  // setFoursomes — Owner/Organizer. Replaces the game's foursomes + roster.
+  // setFoursomes — trip Owner/Organizer OR this game's delegate (requireGameEdit,
+  // §10). Replaces the game's foursomes + roster.
   setFoursomes: authedProcedure
     .input(
       z.object({
@@ -34,7 +35,7 @@ export const playGroupsRouter = router({
           .max(12),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
@@ -81,15 +82,15 @@ export const playGroupsRouter = router({
       return await readGroups(ctx.supabase, input.gameId);
     }),
 
-  // setHandicap — Owner/Organizer. Net strokes for one participant (null = 0).
-  // setParticipantStrokes — Owner/Organizer. The per-player ABSOLUTE handicap
+  // setParticipantStrokes — trip Owner/Organizer OR this game's delegate
+  // (requireGameEdit, §10). The per-player ABSOLUTE handicap
   // (Mode A), distinct from match play's relative one-side setHandicap. Server-
   // clamped to 0–18. Handicap is a scoring input, so the change re-derives the
   // game's in-progress results (CLAUDE.md "derived values recompute" pattern) —
   // a frozen/complete game is never rewritten.
   setParticipantStrokes: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1), strokes: z.number().int() }))
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")

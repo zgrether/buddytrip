@@ -1,16 +1,20 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember, requireGameEdit } from "../middleware";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 
 /**
  * matches — singles match-play setup + read (Slice B).
  *
- * Setup writes (pairings, handicap, reorder, activate) are Owner+Organizer
- * (`requireTripRole("Organizer")`), matching the competition-setup gate. Score
- * entry reuses Slice A's `scores.upsertEntry` (any member) — there is no score
- * procedure here. Result writes are server-side (`computeMatchPlayResults`).
+ * Setup writes (pairings, handicap, reorder, activate) are gated by
+ * `requireGameEdit()` — trip Owner/Organizer OR a delegated organizer of THIS
+ * game (game_organizers / migration 045). This extends the per-game delegate
+ * path (originally landed for games / game_results) to the match-setup router so
+ * a game's delegate can actually run it (§10), game-isolated: a delegate of one
+ * game can't touch another. Score entry reuses Slice A's `scores.upsertEntry`
+ * (any member) — there is no score procedure here. Result writes are
+ * server-side (`computeMatchPlayResults`).
  *
  * game-id-keyed procedures also take `tripId` so the standard trip middleware
  * gates them; we then verify the game belongs to that trip.
@@ -65,7 +69,7 @@ export const matchesRouter = router({
           .max(4),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
@@ -132,7 +136,7 @@ export const matchesRouter = router({
         userId: z.string().min(1),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
@@ -222,7 +226,7 @@ export const matchesRouter = router({
         strokes: z.number().int().min(0).max(36),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
@@ -274,7 +278,7 @@ export const matchesRouter = router({
         orderedMatchIds: z.array(z.string().min(1)).min(1).max(4),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
       for (let i = 0; i < input.orderedMatchIds.length; i++) {
@@ -291,7 +295,7 @@ export const matchesRouter = router({
   // Does NOT post to Notes (Slice F).
   activate: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
       const { error } = await ctx.supabase
