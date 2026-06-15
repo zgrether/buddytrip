@@ -27,6 +27,13 @@ interface Props {
    *  fallback so this panel still works standalone. */
   creating?: boolean;
   onCreatingChange?: (v: boolean) => void;
+  /**
+   * Structure-lock (§9): once the competition is live the team *structure*
+   * freezes — no add-team / remove-team / draft. Rename a team and swap a
+   * player stay available (rename = day-one ritual, swap = admin tweak). It's a
+   * structure lock, not a data lock — same builder, fewer affordances.
+   */
+  structureLocked?: boolean;
 }
 
 interface Team {
@@ -193,6 +200,7 @@ export function TeamsPanel({
   isOwner,
   creating: creatingProp,
   onCreatingChange,
+  structureLocked = false,
 }: Props) {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [creatingLocal, setCreatingLocal] = useState(false);
@@ -246,7 +254,7 @@ export function TeamsPanel({
             </p>
           </div>
         </div>
-        {canEdit && (
+        {canEdit && !structureLocked && (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -260,6 +268,13 @@ export function TeamsPanel({
             Team
           </button>
         )}
+        {canEdit && structureLocked && (
+          // Live: the team structure is locked. Say so quietly — rename + swap
+          // still work, so this explains the missing +Team rather than nagging.
+          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Teams locked — live
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -269,7 +284,7 @@ export function TeamsPanel({
       >
         {!teamsExist && (
           <NoTeamsEmptyState
-            canEdit={canEdit}
+            canEdit={canEdit && !structureLocked}
             onAddTeam={() => setCreating(true)}
           />
         )}
@@ -340,6 +355,7 @@ export function TeamsPanel({
           competitionId={competitionId}
           team={editingTeam}
           isOwner={!!isOwner}
+          structureLocked={structureLocked}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
           onClose={() => {
             setCreating(false);
@@ -932,6 +948,7 @@ function TeamSheet({
   competitionId,
   team,
   isOwner,
+  structureLocked = false,
   existingTeamNames,
   onClose,
 }: {
@@ -941,6 +958,8 @@ function TeamSheet({
   /** Only owners can delete the team — controls visibility of the
    *  delete affordance in edit mode. */
   isOwner: boolean;
+  /** Live structure-lock (§9): hide the delete-team affordance (rename stays). */
+  structureLocked?: boolean;
   /** Lowercased names of teams already in this competition — used to skip
    *  collisions when rolling a name from a theme. The current team's own
    *  name is excluded by the caller in edit mode. */
@@ -1201,9 +1220,10 @@ function TeamSheet({
           )}
 
           <div className="flex items-center gap-2">
-            {isEdit && isOwner && team && (
+            {isEdit && isOwner && !structureLocked && team && (
               // Secondary destructive action — sits next to Save so it's
-              // reachable but doesn't compete with the primary CTA.
+              // reachable but doesn't compete with the primary CTA. Hidden once
+              // live: removing a team is a structure change (§9).
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(true)}

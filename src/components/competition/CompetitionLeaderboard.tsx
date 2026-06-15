@@ -99,6 +99,17 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
 
   const data = lb as LeaderboardData | undefined;
 
+  // Games THIS user delegates (§10) — marked on the same normal board everyone
+  // sees (no filtered view). Empty for non-delegates, so the badge never shows.
+  const { data: myDelegateIds = [] } = trpc.games.myDelegateGameIds.useQuery(
+    { tripId },
+    { enabled: !!tripId }
+  );
+  const mineSet = useMemo(
+    () => new Set(myDelegateIds as string[]),
+    [myDelegateIds]
+  );
+
   const liveGames = useMemo(
     () => (data?.games ?? []).filter((g) => !g.dropped),
     [data]
@@ -134,6 +145,7 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
         liveGames={liveGames}
         winNumber={winNumber}
         tripId={tripId}
+        mineSet={mineSet}
       />
     );
   }
@@ -201,6 +213,7 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
           cellsByGame={cellsByGame}
           sessionsDone={sessionsDone}
           tripId={tripId}
+          mineSet={mineSet}
         />
       )}
     </div>
@@ -421,12 +434,14 @@ function SessionBreakdown({
   cellsByGame,
   sessionsDone,
   tripId,
+  mineSet,
 }: {
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
   sessionsDone: number;
   tripId: string;
+  mineSet: Set<string>;
 }) {
   return (
     <div
@@ -459,6 +474,7 @@ function SessionBreakdown({
             teams={teams}
             cells={cellsByGame.get(game.id)}
             tripId={tripId}
+            mine={mineSet.has(game.id)}
           />
         ))}
       </div>
@@ -471,11 +487,13 @@ function SessionRow({
   teams,
   cells,
   tripId,
+  mine,
 }: {
   game: LBGame;
   teams: LBTeam[];
   cells: Map<string, LBCell> | undefined;
   tripId: string;
+  mine: boolean;
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
@@ -487,12 +505,15 @@ function SessionRow({
   const inner = (
     <div className="flex flex-col gap-0.5 px-4 py-3">
       <div className="flex items-center justify-between gap-2">
-        <span
-          className="truncate text-sm font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {game.name}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="truncate text-sm font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {game.name}
+          </span>
+          {mine && <YoursBadge />}
+        </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <RowBadge state={state} />
           {href && (
@@ -575,6 +596,24 @@ function RowBadge({ state }: { state: RowState }) {
   );
 }
 
+/** "Yours" — marks a game the viewer is the delegate of (§10). Display-only;
+ *  the controls live on the game page, not the board row (§5). */
+function YoursBadge() {
+  return (
+    <span
+      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{
+        background: "var(--color-bt-accent-faint)",
+        color: "var(--color-bt-accent)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }}
+      data-testid="game-yours-badge"
+    >
+      Yours
+    </span>
+  );
+}
+
 // ── EarlyState ────────────────────────────────────────────────────────────────
 
 function EarlyState({
@@ -582,11 +621,13 @@ function EarlyState({
   liveGames,
   winNumber,
   tripId,
+  mineSet,
 }: {
   teams: LBTeam[];
   liveGames: LBGame[];
   winNumber: number;
   tripId: string;
+  mineSet: Set<string>;
 }) {
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
@@ -659,12 +700,15 @@ function EarlyState({
               const href = gameHref(tripId, game.gameTypeId, game.id);
               const row = (
                 <div className="flex items-center justify-between gap-2 px-4 py-3">
-                  <span
-                    className="truncate text-sm"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {game.name}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="truncate text-sm"
+                      style={{ color: "var(--color-bt-text)" }}
+                    >
+                      {game.name}
+                    </span>
+                    {mineSet.has(game.id) && <YoursBadge />}
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <RowBadge state={rowStateOf(game)} />
                     {href && (

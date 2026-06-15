@@ -1,10 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pause, Pencil, Radio, Trash2, Trophy, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import type { CSSProperties } from "react";
+
+// ── Status strip (§2) ───────────────────────────────────────────────────────
+// Content-driven, collapses entirely when empty. Priority ladder: games
+// underway now ("On tap: …") → standing glance ("BLU 8½ · RED 7½") → nothing.
+// Quiet, not a live ticker (the live pulse belongs on game pages — deferred).
+interface StripLB {
+  teams: { id: string; short_name: string }[];
+  games: { name: string; status: string; dropped: boolean }[];
+  teamTotals: Record<string, number>;
+}
+function fmtHalf(n: number): string {
+  const whole = Math.floor(n);
+  const isHalf = Math.abs(n - whole - 0.5) < 0.001;
+  if (!isHalf) return String(whole);
+  return whole === 0 ? "½" : `${whole}½`;
+}
+function buildStatusStrip(lb: StripLB | undefined): string | null {
+  if (!lb) return null;
+  const live = (lb.games ?? []).filter((g) => !g.dropped);
+  const active = live.filter((g) => g.status === "active");
+  if (active.length > 0) return `On tap: ${active.map((g) => g.name).join(", ")}`;
+  const teams = lb.teams ?? [];
+  const totals = lb.teamTotals ?? {};
+  if (teams.length >= 2 && teams.some((t) => (totals[t.id] ?? 0) > 0)) {
+    return [...teams]
+      .sort((a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0))
+      .map((t) => `${t.short_name} ${fmtHalf(totals[t.id] ?? 0)}`)
+      .join("  ·  ");
+  }
+  return null;
+}
 
 interface Competition {
   id: string;
@@ -99,6 +130,17 @@ export function CompetitionHeader({
     (g) => g.competition_id === competition.id
   ).length;
 
+  // Status strip content (§2). Shares the leaderboard query with the board view
+  // (same key → deduped), so it adds no fetch when the board is showing.
+  const { data: lb } = trpc.competitions.leaderboard.useQuery(
+    { tripId, competitionId: competition.id },
+    { enabled: !!competition.id }
+  );
+  const statusStrip = useMemo(
+    () => buildStatusStrip(lb as unknown as StripLB | undefined),
+    [lb]
+  );
+
   const deleteComp = trpc.competitions.delete.useMutation({
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
@@ -187,6 +229,17 @@ export function CompetitionHeader({
           </button>
         )}
       </div>
+
+      {/* Status strip (§2) — lower region, collapses entirely when empty. */}
+      {statusStrip && (
+        <p
+          className={compact ? "pb-2" : "pb-3"}
+          style={{ color: "var(--color-bt-text-dim)", fontSize: 12 }}
+          data-testid="competition-status-strip"
+        >
+          {statusStrip}
+        </p>
+      )}
 
       {editing && (
         <CompetitionEditModal

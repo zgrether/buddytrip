@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, Lock, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
+import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
@@ -55,7 +56,7 @@ export default function NewMatchGamePage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit, loading: roleLoading } = useTripRole(tripId);
+  const { canEdit: tripCanEdit, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
 
@@ -95,6 +96,16 @@ export default function NewMatchGamePage() {
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  // Per-game delegate (§10): a member granted as this game's organizer runs it
+  // like an editor — config, pairings, score, finish. The server gate
+  // (requireGameEdit) admits them; the UI must light up the same way. Trip
+  // Owner/Organizer keep edit on every game; a delegate only on theirs.
+  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  const amDelegate = useMemo(
+    () => !!me && (orgQ.data as { user_id: string }[] | undefined ?? []).some((o) => o.user_id === me.id),
+    [orgQ.data, me]
+  );
+  const canEdit = tripCanEdit || amDelegate;
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
@@ -491,7 +502,7 @@ export default function NewMatchGamePage() {
         />
       )}
 
-      {screen === "member-wait" && <MemberWait />}
+      {screen === "member-wait" && <MemberNotReady gameName={gameQ.data?.name as string | undefined} />}
 
       {screen === "setup" && (
         <MatchSetup
@@ -514,6 +525,7 @@ export default function NewMatchGamePage() {
           published={published}
           complete={status === "complete"}
           teeLabel={formatTee(gameQ.data?.tee_time as string | null | undefined)}
+          gameName={gameQ.data?.name as string | undefined}
           canEdit={canEdit}
           decidedFor={decidedFor}
           onFinish={handleFinish}
@@ -643,7 +655,7 @@ function NewGame({
   pending: boolean;
   canEdit: boolean;
 }) {
-  if (!canEdit) return <MemberWait />;
+  if (!canEdit) return <MemberNotReady />;
   // Clamp the displayed value to the crew-derived cap (state may still hold an
   // old value while the crew query resolves).
   const value = Math.min(Math.max(1, matchCount), maxMatches);
@@ -687,20 +699,6 @@ function NewGame({
       </div>
 
       <PrimaryButton label="Create game" onClick={onCreate} disabled={pending} />
-    </div>
-  );
-}
-
-function MemberWait() {
-  return (
-    <div className="flex flex-col items-center text-center" style={{ paddingTop: 80 }}>
-      <div className="flex items-center justify-center" style={{ width: 56, height: 56, borderRadius: 16, background: "var(--color-bt-card-raised)", marginBottom: 16 }}>
-        <Lock size={24} style={{ color: "var(--color-bt-text-dim)" }} />
-      </div>
-      <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Pairings haven&apos;t been announced yet</div>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 6, maxWidth: 260 }}>
-        Your organizer is still setting the matchups. You&apos;ll see them here once they&apos;re announced.
-      </p>
     </div>
   );
 }
@@ -879,6 +877,7 @@ function Overview({
   published,
   complete,
   teeLabel,
+  gameName,
   canEdit,
   decidedFor,
   onFinish,
@@ -890,13 +889,14 @@ function Overview({
   published: boolean;
   complete: boolean;
   teeLabel: string;
+  gameName?: string;
   canEdit: boolean;
   decidedFor: (g: MatchGroupData) => HoleResult[];
   onFinish: () => void;
   finishing: boolean;
   onOpenMatch: (matchId: string) => void;
 }) {
-  if (!published) return <MemberWait />;
+  if (!published) return <MemberNotReady gameName={gameName} />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d).over);
   const underway = decideds.some((d) => d.length > 0);

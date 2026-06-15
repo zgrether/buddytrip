@@ -676,4 +676,20 @@ export const gamesRouter = router({
         .eq("game_id", input.gameId);
       return data ?? [];
     }),
+
+  // myDelegateGameIds — the games the CURRENT user is a delegated organizer of
+  // (§10). Powers the leaderboard's "you're running this" marking: the board
+  // intersects this set with the games it shows, so a delegate sees their games
+  // flagged on the same normal board everyone sees (no filtered view). Returns
+  // ids only; RLS already limits rows to games in trips the user can read.
+  myDelegateGameIds: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      const { data } = await ctx.supabase
+        .from("game_organizers")
+        .select("game_id")
+        .eq("user_id", ctx.user!.id);
+      return (data ?? []).map((r) => r.game_id as string);
+    }),
 });
