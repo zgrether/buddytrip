@@ -10,6 +10,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { TimePicker } from "@/components/TimePicker";
 import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
+import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -55,7 +56,7 @@ export default function RackNStackPage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit, loading: roleLoading } = useTripRole(tripId);
+  const { canEdit: tripCanEdit, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const utils = trpc.useUtils();
 
@@ -87,6 +88,14 @@ export default function RackNStackPage() {
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  // Per-game delegate (§10): this game's delegate runs it like an editor (the
+  // server's requireGameEdit admits them); trip staff keep edit everywhere.
+  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  const amDelegate = useMemo(
+    () => !!me && (orgQ.data as { user_id: string }[] | undefined ?? []).some((o) => o.user_id === me.id),
+    [orgQ.data, me]
+  );
+  const canEdit = tripCanEdit || amDelegate;
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
@@ -347,8 +356,16 @@ export default function RackNStackPage() {
     );
   }
 
-  // No game yet, or a resumed game with no foursomes → setup.
+  // No game yet, or a resumed game with no foursomes → setup. A member who taps
+  // a not-ready game gets the warm game-led message (§8), never the setup form.
   if (!gid || needsSetup) {
+    if (!canEdit) {
+      return (
+        <Shell onBack={() => router.back()} title="Rack-n-Stack">
+          <MemberNotReady gameName={gameQ.data?.name as string | undefined} />
+        </Shell>
+      );
+    }
     return (
       <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
         <div className="w-full px-4 py-5">

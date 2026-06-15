@@ -156,4 +156,18 @@ describe("per-game organizer delegation (§8)", () => {
     const g = await newGame(DIST_96, "NoGrant");
     await expect(ctx.callerAs("member").games.setStatus({ tripId, gameId: g, status: "active" })).rejects.toThrow(/Organizer|game-organizer/i);
   });
+
+  it("myDelegateGameIds returns only the games the caller delegates (board marking, §10)", async () => {
+    const mine = await newGame(DIST_96, "Mine-BJ");
+    const notMine = await newGame(DIST_96, "NotMine");
+    await ctx.caller().games.addOrganizer({ tripId, gameId: mine, userId: memberId });
+
+    const memberIds = await ctx.callerAs("member").games.myDelegateGameIds({ tripId });
+    expect(memberIds).toContain(mine);
+    expect(memberIds).not.toContain(notMine);
+
+    // The owner (no game-level grant) doesn't see these flagged as "theirs".
+    const ownerIds = await ctx.caller().games.myDelegateGameIds({ tripId });
+    expect(ownerIds).not.toContain(mine);
+  });
 });

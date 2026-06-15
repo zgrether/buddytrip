@@ -191,6 +191,7 @@ export function CompetitionFace({
           tripId={tripId}
           canEdit={canEdit}
           isOwner={isOwner}
+          structureLocked={isLive}
         />
       )}
       {view === "board" && (
