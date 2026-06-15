@@ -110,7 +110,7 @@ describe("score lock — posted scores frozen until correction", () => {
   });
 });
 
-describe("permissions — run-actions are owner / game-delegate only", () => {
+describe("permissions — run-actions: owner / co-admin / game-delegate", () => {
   it("owner can post", async () => {
     const g = await newManualGame("Owner posts");
     await expect(
@@ -118,16 +118,17 @@ describe("permissions — run-actions are owner / game-delegate only", () => {
     ).resolves.toBeTruthy();
   });
 
-  it("a game-delegate can post; a plain Organizer (planner) and a Member cannot", async () => {
-    const g = await newManualGame("Delegate posts");
+  it("a co-admin (trip Organizer) and a game-delegate can post; a plain Member cannot", async () => {
+    const g = await newManualGame("Co-admin + delegate post");
     const place = [{ entityId: teamA, position: 1 }, { entityId: teamB, position: 2 }];
 
-    // Planner (trip Organizer, not this game's delegate) — blocked.
+    // Co-admin (trip Organizer) — posting is operational (owner-minus-destructive),
+    // so co-admins post now (the game-day redundancy this role exists for).
     await expect(ctx.callerAs("planner").games.post({ tripId, gameId: g, placements: place }))
-      .rejects.toThrow(/owner or this game's delegate/i);
-    // Plain Member — blocked.
+      .resolves.toBeTruthy();
+    // Plain Member — blocked (not co-admin, not this game's delegate).
     await expect(ctx.callerAs("member").games.post({ tripId, gameId: g, placements: place }))
-      .rejects.toThrow(/owner or this game's delegate/i);
+      .rejects.toThrow(/co-admin|delegate/i);
 
     // Grant the Member the game-delegate role → now allowed.
     await ctx.caller().games.addOrganizer({ tripId, gameId: g, userId: memberId });
@@ -142,10 +143,10 @@ describe("permissions — run-actions are owner / game-delegate only", () => {
     await expect(ctx.callerAs("outsider").games.openCorrection({ tripId, gameId: g })).rejects.toThrow();
   });
 
-  it("a planner cannot open correction either", async () => {
-    const g = await newManualGame("Planner correct blocked");
+  it("a co-admin (trip Organizer) can open correction", async () => {
+    const g = await newManualGame("Co-admin corrects");
     await ctx.caller().games.post({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] });
     await expect(ctx.callerAs("planner").games.openCorrection({ tripId, gameId: g }))
-      .rejects.toThrow(/owner or this game's delegate/i);
+      .resolves.toBeTruthy();
   });
 });

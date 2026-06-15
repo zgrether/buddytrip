@@ -64,17 +64,19 @@ describe("teams router", () => {
     expect(updated.name).toBe("Team Hammer 2.0");
   });
 
-  it("delete — only owner can delete a team", async () => {
-    const plannerCaller = ctx.callerAs("planner");
-    const teams = await plannerCaller.teams.list({ tripId, competitionId });
-    const target = teams[0];
-
+  it("delete — a co-admin (trip Organizer) can delete a team; a member cannot", async () => {
+    // Member is gated out at the co_admin boundary.
+    const memberCaller = ctx.callerAs("member");
+    const memberTeams = await memberCaller.teams.list({ tripId, competitionId });
     await expect(
-      plannerCaller.teams.delete({ tripId, teamId: target.id })
+      memberCaller.teams.delete({ tripId, teamId: memberTeams[0].id })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
-    const ownerCaller = ctx.caller();
-    const result = await ownerCaller.teams.delete({ tripId, teamId: target.id });
+    // Co-admin (planner) can — editing teams is owner-minus-destructive
+    // (deleting a TEAM isn't a competition-destructive action).
+    const plannerCaller = ctx.callerAs("planner");
+    const teams = await plannerCaller.teams.list({ tripId, competitionId });
+    const result = await plannerCaller.teams.delete({ tripId, teamId: teams[0].id });
     expect(result).toEqual({ success: true });
   });
 });

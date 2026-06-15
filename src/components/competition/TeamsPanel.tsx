@@ -21,7 +21,6 @@ interface Props {
   competitionId: string;
   tripId: string;
   canEdit: boolean;
-  isOwner?: boolean;
   /** When provided, the parent (CompTab) drives create state via the
    *  CompetitionHeader's +Team button. Local state is used as a
    *  fallback so this panel still works standalone. */
@@ -197,7 +196,6 @@ export function TeamsPanel({
   competitionId,
   tripId,
   canEdit,
-  isOwner,
   creating: creatingProp,
   onCreatingChange,
   structureLocked = false,
@@ -337,7 +335,6 @@ export function TeamsPanel({
                   members={members as Member[]}
                   assignments={assignments as Assignment[]}
                   canEdit={canEdit}
-                  isOwner={!!isOwner}
                   onEdit={() => setEditingTeam(team)}
                   tripId={tripId}
                   competitionId={competitionId}
@@ -354,7 +351,6 @@ export function TeamsPanel({
           tripId={tripId}
           competitionId={competitionId}
           team={editingTeam}
-          isOwner={!!isOwner}
           structureLocked={structureLocked}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
           onClose={() => {
@@ -431,7 +427,6 @@ function TeamCard({
   members,
   assignments,
   canEdit,
-  isOwner,
   onEdit,
   tripId,
   competitionId,
@@ -440,7 +435,6 @@ function TeamCard({
   members: Member[];
   assignments: Assignment[];
   canEdit: boolean;
-  isOwner: boolean;
   onEdit: () => void;
   tripId: string;
   competitionId: string;
@@ -578,7 +572,9 @@ function TeamCard({
                   : undefined
               }
               onRemove={
-                isOwner
+                // Swapping/unassigning a player is co-admin team-editing, not
+                // competition-destructive — owner & co-admins both do it.
+                canEdit
                   ? () => remove.mutate({ tripId, competitionId, userId: id })
                   : undefined
               }
@@ -947,7 +943,6 @@ function TeamSheet({
   tripId,
   competitionId,
   team,
-  isOwner,
   structureLocked = false,
   existingTeamNames,
   onClose,
@@ -955,9 +950,6 @@ function TeamSheet({
   tripId: string;
   competitionId: string;
   team: Team | null;
-  /** Only owners can delete the team — controls visibility of the
-   *  delete affordance in edit mode. */
-  isOwner: boolean;
   /** Live structure-lock (§9): hide the delete-team affordance (rename stays). */
   structureLocked?: boolean;
   /** Lowercased names of teams already in this competition — used to skip
@@ -984,7 +976,7 @@ function TeamSheet({
   // Snapshot member count for the confirm dialog before delete fires.
   const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
     { tripId, competitionId },
-    { enabled: isEdit && isOwner }
+    { enabled: isEdit && !structureLocked }
   );
   const memberCount = team
     ? (assignments as Assignment[]).filter((a) => a.team_id === team.id).length
@@ -1220,9 +1212,9 @@ function TeamSheet({
           )}
 
           <div className="flex items-center gap-2">
-            {isEdit && isOwner && !structureLocked && team && (
-              // Secondary destructive action — sits next to Save so it's
-              // reachable but doesn't compete with the primary CTA. Hidden once
+            {isEdit && !structureLocked && team && (
+              // Delete-team is co-admin team-editing (reaching this sheet already
+              // requires edit access) — not competition-destructive. Hidden once
               // live: removing a team is a structure change (§9).
               <button
                 type="button"

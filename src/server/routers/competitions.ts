@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember, requireTripRole, requireCompetitionRole } from "../middleware";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 
 const SCOREBOARD_STYLES = [
@@ -143,7 +143,8 @@ export const competitionsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit metadata (canEdit)
+  // update — edit metadata + go-live (owner/co-admin). Go-live is operational,
+  // not destructive, so co-admins can flip it.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -156,7 +157,7 @@ export const competitionsRouter = router({
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireCompetitionRole("co_admin"))
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
@@ -183,11 +184,12 @@ export const competitionsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // delete — remove a competition (Owner only)
+  // delete — remove a competition. DESTRUCTIVE → competition owner only
+  // (co-admins are owner-minus-destructive).
   // -----------------------------------------------------------------------
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireCompetitionRole("owner"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("competitions")

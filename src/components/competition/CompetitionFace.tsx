@@ -108,7 +108,9 @@ export function CompetitionFace({
       isOwner={isOwner}
       compact={isLive}
       onToggleLive={
-        isOwner && competition.status !== "completed" ? toggleLive : undefined
+        // Go-live is operational (owner-minus-destructive) — co-admins flip it
+        // too. canEdit = owner OR co-admin (trip organizer).
+        canEdit && competition.status !== "completed" ? toggleLive : undefined
       }
       togglePending={setStatus.isPending}
       onDeleted={onCompetitionDeleted}
@@ -190,7 +192,6 @@ export function CompetitionFace({
           competitionId={competition.id}
           tripId={tripId}
           canEdit={canEdit}
-          isOwner={isOwner}
           structureLocked={isLive}
         />
       )}
