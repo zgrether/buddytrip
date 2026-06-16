@@ -302,6 +302,32 @@ TripNew's "put it to a vote" path was designed to call Claude for 3 suggested
 destinations. **Note:** the stub route + `lib/ai/suggestDestinations.ts` were
 deleted in cleanup. Rebuild from spec. Low effort, nice-to-have.
 
+### Game-page server-render (Stage B pattern, applied to game pages)
+
+*Logged 2026-06-16 as the consistent-architecture follow-on to the
+leaderboard→game prefetch fix — the answer if prefetch proves a desktop-only
+win.* The game pages (`games/match/new`, `games/new`, `games/rack/new`) are
+fully client-rendered: their data (`games.getById` / `matches.listByGame` /
+`scores.listByGame` / `games.listOrganizers` / `tripMembers.list`) is **not** in
+the faceBootstrap snapshot, so entering a game from the leaderboard fetches cold
+only after the route mounts — the 2–3s wait reported on bbmi.app. The build
+confirms the JS is largely warm from the leaderboard (shared chunks parsed, the
+~11 kB match route chunk prefetched by `<Link>`), so the bottleneck is the cold
+tRPC batch + a possible Vercel function cold-start, not parse.
+
+Prefetch-on-intent (shipped) warms that batch on hover / pointerdown — a solid
+desktop win, but on touch the pre-navigation window is ~100 ms, so the gain is
+partial: it overlaps the fetch with mount, it does **not** remove server time.
+
+The real (mobile) fix is the **Stage B pattern** the competition face already
+earned: a server-component shell that resolves the game's data in one bootstrap
+round-trip (like `faceBootstrap`) and ships it as `initialData` in the
+dehydrated cache, so the board/scorecard render populated in the server HTML —
+no client round-trip for first paint. The game page is part of the same
+engagement surface (on the course, on a phone); it deserves the same treatment.
+Mirror `leaderboard/page.tsx` + `LiveFaceClient` (SSR helpers + `initialData` +
+child-cache seeding).
+
 ### Human-friendly trip URL slugs
 
 `/trips/<uuid>` → `/trips/bbmi-2027`. Add `slug text UNIQUE` to `trips`, generate
@@ -313,6 +339,12 @@ from title, backfill, accept slug or ID in route. *(In flight.)*
 
 - **Field Mode (outdoor scoring)** — larger tap targets + bumped fonts for
   bright sunlight. Relevant once scorecards exist; pairs naturally with Slice C.
+- **Trip slug hex suffix** — the slug is `slugify(title)-<6hex>` (e.g.
+  `bbmi-2027-a3f9c1`); the random hex tail reads as noise. Aesthetic only, **not
+  a perf lever** — the slug resolves once on trip entry, and deep/game URLs use
+  the UUID, so `resolveSlug` is skipped on game entry (confirmed 2026-06-16
+  while diagnosing slow game entry). If revisited: drop the suffix with a
+  collision check, or use a shorter/cleaner code.
 
 ---
 
