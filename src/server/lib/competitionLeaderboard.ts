@@ -31,35 +31,40 @@ export async function computeCompetitionLeaderboard(
   supabase: SupabaseClient,
   competitionId: string
 ) {
-  const { data: teams } = await supabase
-    .from("teams")
-    .select("id, name, short_name, color")
-    .eq("competition_id", competitionId);
+  // These four reads are independent — run them in parallel (one round-trip's
+  // worth of latency instead of four stacked). `game_results` alone depends on
+  // the game ids, so it waits below. (Was 5 serial queries — the profiling's
+  // server-side mini-waterfall; this is fix #3.)
+  const [teamsRes, compRes, gameRowsRes, assignmentsRes] = await Promise.all([
+    supabase
+      .from("teams")
+      .select("id, name, short_name, color")
+      .eq("competition_id", competitionId),
+    supabase
+      .from("competitions")
+      .select("defending_team_id")
+      .eq("id", competitionId)
+      .maybeSingle(),
+    // Games of this competition. We fetch ALL (incl. dropped) so the grid can
+    // show an "Abandoned" column, but only LIVE ones feed the roll-up.
+    supabase
+      .from("games")
+      .select("id, name, points_distribution, points_total, status, game_type_id")
+      .eq("competition_id", competitionId)
+      .order("created_at", { ascending: true }),
+    // Team sizes (member headcount) drive the match-game total = value ×
+    // matchCount — derived from sizes, NOT pairings (§8).
+    supabase
+      .from("team_assignments")
+      .select("team_id")
+      .eq("competition_id", competitionId),
+  ]);
+  const teams = teamsRes.data;
   const teamIds = (teams ?? []).map((t) => t.id as string);
-
-  const { data: comp } = await supabase
-    .from("competitions")
-    .select("defending_team_id")
-    .eq("id", competitionId)
-    .maybeSingle();
-
-  // Games of this competition. We fetch ALL (incl. dropped) so the grid can show
-  // an "Abandoned" column, but only LIVE ones feed the roll-up / points-available.
-  const { data: gameRows } = await supabase
-    .from("games")
-    .select("id, name, points_distribution, points_total, status, game_type_id")
-    .eq("competition_id", competitionId)
-    .order("created_at", { ascending: true });
-  const allGames = gameRows ?? [];
+  const comp = compRes.data;
+  const allGames = gameRowsRes.data ?? [];
   const live = allGames.filter((g) => g.status !== "dropped");
-
-  // Team sizes (member headcount) drive the match-game total = value ×
-  // matchCount — derived from sizes, NOT pairings, so the per_match total is
-  // known once teams are populated and stays stable through the week (§8).
-  const { data: assignments } = await supabase
-    .from("team_assignments")
-    .select("team_id")
-    .eq("competition_id", competitionId);
+  const assignments = assignmentsRes.data;
   const sizeByTeam = new Map<string, number>();
   for (const a of assignments ?? []) {
     const tid = a.team_id as string;
