@@ -28,6 +28,7 @@ import { LodgingTab } from "./tabs/LodgingTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
+import { canAccessCompetition } from "@/lib/competitionAccess";
 import { DatesSheet } from "./components/DatesSheet";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
@@ -105,6 +106,16 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // leaderboard is rebuilt against the new model.
   const { data: competition, isLoading: competitionLoading } =
     trpc.competitions.getByTrip.useQuery({ tripId });
+
+  // Drives the "Live" bottom-nav entry's visibility — a game delegate (even a
+  // member-role one) is a builder who can reach the competition pre-live, so the
+  // entry must show for them too. Same predicate as the leaderboard's pre-live
+  // wall (canAccessCompetition) so nav-visibility and wall-visibility can't
+  // disagree.
+  const { data: myDelegateGameIds = [] } = trpc.games.myDelegateGameIds.useQuery(
+    { tripId },
+    { enabled: !!competition }
+  );
 
   // schedule + logistics ARE gated: they feed the home itinerary (ItineraryView
   // / FreshTripGuide query them by tripId) which is the default surface on a
@@ -541,9 +552,12 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       {/* Bottom nav appears once the owner flips the competition to
           "active" (Go Live button in CompetitionHeader). Stays hidden
           during setup so we don't surface an empty leaderboard. */}
-      {competition?.status === "active" && (
-        <TripBottomNav tripId={tripId} showComp={true} />
-      )}
+      {competition &&
+        canAccessCompetition({
+          canEdit,
+          amDelegate: (myDelegateGameIds as string[]).length > 0,
+          status: competition.status,
+        }) && <TripBottomNav tripId={tripId} showComp={true} />}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (

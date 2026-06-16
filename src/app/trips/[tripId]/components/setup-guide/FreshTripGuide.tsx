@@ -5,6 +5,7 @@ import { Building2, Check, Flag, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
+import { CompetitionEnableCard } from "./CompetitionEnableCard";
 import { DatePollCard } from "../../tabs/components/DatePollCard";
 import {
   LodgingThumbnail,
@@ -253,6 +254,11 @@ export function FreshTripGuide({
           />
         </div>
       )}
+
+      {/* Optional last card — enable a competition (the create entry point now
+          that the Competition tab is gone). Self-hides once one exists or is
+          dismissed. */}
+      {!pollMode && <CompetitionEnableCard tripId={tripId} />}
 
       {/* Commit bar — appears once there's enough to go; switches Home to the
           itinerary (the guide stays reopenable via the left pill). */}
