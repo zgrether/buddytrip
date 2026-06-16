@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { useTripRole } from "@/hooks/useTripRole";
 import { canAccessCompetition } from "@/lib/competitionAccess";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
@@ -56,21 +55,57 @@ export default function LiveFacePage() {
     setNewsOpen((p) => !p);
   };
 
-  const { data: competition, isLoading: compLoading } =
-    trpc.competitions.getByTrip.useQuery({ tripId });
-  const { role, isOwner, canEdit, loading: roleLoading } = useTripRole(tripId);
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const utils = trpc.useUtils();
 
-  // A game delegate is a BUILDER, not audience — they reach the competition in
-  // BOTH phases to configure their assigned game (setup happens pre-live, and
-  // delegates aren't always organizers). One competition per trip (MVP), so any
-  // delegated game ⇒ a delegate of this competition. Edit stays scoped to their
-  // game(s) by the edit gate; this is visibility only.
-  const { data: myDelegateGameIds = [], isLoading: delegateLoading } =
-    trpc.games.myDelegateGameIds.useQuery({ tripId }, { enabled: !!competition });
-  const amDelegate = (myDelegateGameIds as string[]).length > 0;
+  // ── The single boundary resolve (Stage A) ────────────────────────────────
+  // One round-trip for everything both face states need — no more 3-wave
+  // waterfall, no separate role / delegate fetches. Trip-coupling lives only in
+  // the bootstrap's server resolver; the client just reads what it returns.
+  const { data: boot, isLoading: loading } =
+    trpc.competitions.faceBootstrap.useQuery({ tripId });
 
-  const loading = compLoading || roleLoading || delegateLoading;
+  const competition = boot?.competition ?? null;
+  // Competition role (owner / co_admin / member), live-derived server-side.
+  const role = boot?.myCompetitionRole ?? null;
+  const canEdit = role === "owner" || role === "co_admin";
+  const isOwner = role === "owner";
+  // A delegate is a BUILDER — reaches the competition in both phases to set up
+  // their assigned game (canAccessCompetition admits them). Edit stays scoped to
+  // their game by the edit gate; this is visibility only.
+  const amDelegate = (boot?.myDelegateGameIds.length ?? 0) > 0;
+
+  // Seed the child caches from the one bootstrap so the board/guide — and the
+  // setup↔leaderboard toggle, and the sub-views — render from cache with NO
+  // extra round-trips. The global 60s staleTime keeps the seed fresh, so the
+  // children's own useQuery calls don't re-fetch. Seeded once per bootstrap, in
+  // render before the face mounts (ref-guarded) so children read a warm cache.
+  const seededFor = useRef<unknown>(null);
+  if (boot && seededFor.current !== boot) {
+    seededFor.current = boot;
+    utils.competitions.getByTrip.setData({ tripId }, boot.competition as never);
+    utils.games.myDelegateGameIds.setData({ tripId }, boot.myDelegateGameIds);
+    if (boot.competition) {
+      const cid = boot.competition.id as string;
+      utils.competitions.leaderboard.setData(
+        { tripId, competitionId: cid },
+        boot.leaderboard as never,
+      );
+      utils.games.listByTrip.setData({ tripId }, boot.games as never);
+      utils.teams.list.setData({ tripId, competitionId: cid }, boot.teams as never);
+      utils.teamAssignments.list.setData(
+        { tripId, competitionId: cid },
+        boot.assignments as never,
+      );
+    }
+  }
+
+  // Crew names (for chat/news authors) are container-provided and NOT needed to
+  // render the face — fetch lazily, only when a panel opens (A4: chat/news off
+  // the load critical path).
+  const { data: members = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: chatOpen || newsOpen },
+  );
 
   let body: React.ReactNode;
   if (loading) {
@@ -159,7 +194,7 @@ export default function LiveFacePage() {
         tripId={tripId}
         isOpen={newsOpen}
         onClose={() => setNewsOpen(false)}
-        canPost={role === "Owner" || role === "Organizer"}
+        canPost={canEdit}
         authors={Object.fromEntries(
           members.map(
             (m: {
