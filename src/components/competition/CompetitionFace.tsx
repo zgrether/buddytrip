@@ -88,7 +88,14 @@ export function CompetitionFace({
         utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
       }
     },
-    onSettled: () => utils.competitions.getByTrip.invalidate({ tripId }),
+    onSettled: () => {
+      utils.competitions.getByTrip.invalidate({ tripId });
+      // The header reads status from the faceBootstrap snapshot (boot.competition),
+      // not getByTrip — re-resolve it so the chrome-shrink (and the crew's board
+      // reveal at go-live) lands without a hard refresh. Optimism above keeps the
+      // toggle/view switch instant.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+    },
   });
 
   const toggleLive = () => {

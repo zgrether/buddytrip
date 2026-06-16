@@ -144,6 +144,10 @@ export function CompetitionHeader({
   const deleteComp = trpc.competitions.delete.useMutation({
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
+      // The Live face renders from the faceBootstrap snapshot (boot.competition),
+      // not getByTrip — re-resolve it so the face returns to the empty/intro
+      // state without a hard refresh.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
     onSuccess: () => {
       setConfirming(false);
@@ -409,6 +413,9 @@ function CompetitionEditModal({
     },
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
+      // The face header reads name/tagline from the faceBootstrap snapshot —
+      // re-resolve it so the rename shows without a hard refresh.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
     onSuccess: () => onClose(),
   });

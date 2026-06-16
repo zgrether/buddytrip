@@ -1308,6 +1308,10 @@ function RunSheet({
     try {
       await openCorrection.mutateAsync({ tripId, gameId: game.id });
       utils.games.listByTrip.invalidate({ tripId });
+      // Reopening flips the game complete → active, which changes its leaderboard
+      // row state (Final → Live) — invalidate the board's cache too, matching the
+      // post/commit path above, so the leaderboard isn't stale until a refresh.
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to open correction");
     }
