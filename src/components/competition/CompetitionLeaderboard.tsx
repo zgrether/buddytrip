@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { ChevronRight, Check, Radio, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -124,6 +124,30 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
     return m;
   }, [data?.cells]);
 
+  // ── Warm the game-entry path (perf) ───────────────────────────────────────
+  // Tapping a game row lands on a fully client-rendered game page whose data
+  // (game / matches / scores / organizers / crew) is NOT in the faceBootstrap
+  // snapshot — so today it fetches COLD only after the route mounts (the 2–3s
+  // wait). tripMembers is trip-wide (same for every game) so warm it once on
+  // mount; each game's own data we warm on pointer intent. On desktop that's a
+  // generous hover lead; on touch it's the short pointerdown→navigation window,
+  // which still lets the batch start and overlap the route's JS mount instead
+  // of starting strictly after it. (Server-rendering the game page — Stage B
+  // pattern — is the real mobile fix; logged in DEFERRED.md.)
+  const utils = trpc.useUtils();
+  useEffect(() => {
+    void utils.tripMembers.list.prefetch({ tripId });
+  }, [utils, tripId]);
+  const prefetchGame = useCallback(
+    (gameId: string) => {
+      void utils.games.getById.prefetch({ tripId, gameId });
+      void utils.scores.listByGame.prefetch({ tripId, gameId });
+      void utils.matches.listByGame.prefetch({ tripId, gameId });
+      void utils.games.listOrganizers.prefetch({ tripId, gameId });
+    },
+    [utils, tripId],
+  );
+
   if (isLoading || !data) return null;
 
   const { teams, teamTotals, pointsAvailable, winNumber, pointsToClinch, defendingTeamId } = data;
@@ -146,6 +170,7 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
         winNumber={winNumber}
         tripId={tripId}
         mineSet={mineSet}
+        onPrefetch={prefetchGame}
       />
     );
   }
@@ -214,6 +239,7 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
           sessionsDone={sessionsDone}
           tripId={tripId}
           mineSet={mineSet}
+          onPrefetch={prefetchGame}
         />
       )}
     </div>
@@ -435,6 +461,7 @@ function SessionBreakdown({
   sessionsDone,
   tripId,
   mineSet,
+  onPrefetch,
 }: {
   games: LBGame[];
   teams: LBTeam[];
@@ -442,6 +469,7 @@ function SessionBreakdown({
   sessionsDone: number;
   tripId: string;
   mineSet: Set<string>;
+  onPrefetch: (gameId: string) => void;
 }) {
   return (
     <div
@@ -475,6 +503,7 @@ function SessionBreakdown({
             cells={cellsByGame.get(game.id)}
             tripId={tripId}
             mine={mineSet.has(game.id)}
+            onPrefetch={onPrefetch}
           />
         ))}
       </div>
@@ -488,12 +517,14 @@ function SessionRow({
   cells,
   tripId,
   mine,
+  onPrefetch,
 }: {
   game: LBGame;
   teams: LBTeam[];
   cells: Map<string, LBCell> | undefined;
   tripId: string;
   mine: boolean;
+  onPrefetch: (gameId: string) => void;
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
@@ -556,7 +587,12 @@ function SessionRow({
 
   if (href) {
     return (
-      <Link href={href} className="block hover:opacity-80 transition-opacity">
+      <Link
+        href={href}
+        className="block hover:opacity-80 transition-opacity"
+        onPointerEnter={() => onPrefetch(game.id)}
+        onPointerDown={() => onPrefetch(game.id)}
+      >
         {inner}
       </Link>
     );
@@ -622,12 +658,14 @@ function EarlyState({
   winNumber,
   tripId,
   mineSet,
+  onPrefetch,
 }: {
   teams: LBTeam[];
   liveGames: LBGame[];
   winNumber: number;
   tripId: string;
   mineSet: Set<string>;
+  onPrefetch: (gameId: string) => void;
 }) {
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
@@ -725,6 +763,8 @@ function EarlyState({
                   key={game.id}
                   href={href}
                   className="block hover:opacity-80 transition-opacity"
+                  onPointerEnter={() => onPrefetch(game.id)}
+                  onPointerDown={() => onPrefetch(game.id)}
                 >
                   {row}
                 </Link>
