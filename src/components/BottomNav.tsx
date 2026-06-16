@@ -160,20 +160,16 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
             data-testid={`nav-${id}`}
             onClick={() => {
               if (pathname === href) return; // already here
-              const onTripHome = pathname === `/trips/${tripId}`;
+              // Live is a CHILD of trip home (hierarchical, not flat tabs):
+              //  - Trip Home: replace → return to THIS trip's home in place.
+              //    Deterministic — never router.back(), which could pop to a
+              //    previously-visited trip; never push, which would stack a
+              //    duplicate home.
+              //  - Live: push → browser-back from Live returns to the trip
+              //    home you came from (not the previous trip).
               const goingToTripHome = href === `/trips/${tripId}`;
-              if (goingToTripHome) {
-                // Trip home is already in history (we pushed when we left it).
-                // Use back() to return to that entry instead of creating a
-                // duplicate trip-home entry via replace.
-                router.back();
-              } else if (onTripHome) {
-                // Leaving trip home — push so it stays in history for back nav.
-                router.push(href);
-              } else {
-                // Sub-page → sub-page — replace to avoid stacking.
-                router.replace(href);
-              }
+              if (goingToTripHome) router.replace(href);
+              else router.push(href);
             }}
             className="relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
