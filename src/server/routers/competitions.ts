@@ -59,6 +59,99 @@ export const competitionsRouter = router({
     .query(({ ctx, input }) => computeCompetitionLeaderboard(ctx.supabase, input.competitionId)),
 
   // -----------------------------------------------------------------------
+  // faceBootstrap — the competition face's single boundary resolve (Stage A).
+  //
+  // ONE round-trip that returns everything BOTH face states need: the shared
+  // base (competition + teams + games + assignments) plus the leaderboard
+  // roll-up (board) and the raw games rows the setup guide reads for per-game
+  // config status. Collapses the old 3-wave client waterfall into one parallel
+  // fetch, and serves both states so flipping setup↔leaderboard never re-fetches.
+  //
+  // It is the ONE place trip-coupling lives: the viewer's competition role is
+  // live-derived from THIS request's trip role (resolved fresh by
+  // requireTripMember — no cross-request cache, so demoting an organizer revokes
+  // co-admin on the next load). Standalone later swaps only this resolve.
+  //
+  // Shapes match the individual procedures (getByTrip / teams.list /
+  // teamAssignments.list / games.listByTrip / myDelegateGameIds / leaderboard)
+  // so the client can seed those caches from one call.
+  // -----------------------------------------------------------------------
+  faceBootstrap: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      const tripId = ctx.tripId;
+      const myCompetitionRole =
+        ctx.tripRole === "Owner"
+          ? "owner"
+          : ctx.tripRole === "Organizer"
+            ? "co_admin"
+            : "member";
+
+      const { data: competition } = await ctx.supabase
+        .from("competitions")
+        .select("*")
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!competition) {
+        // Clean no-competition state — the face renders the enable/empty state.
+        return {
+          competition: null,
+          myCompetitionRole,
+          myDelegateGameIds: [] as string[],
+          teams: [] as unknown[],
+          assignments: [] as unknown[],
+          games: [] as unknown[],
+          leaderboard: null,
+        };
+      }
+      const competitionId = competition.id as string;
+
+      // All independent — one round-trip, parallel DB work. `leaderboard` is the
+      // SAME compute competitions.leaderboard runs (parallelized internally), so
+      // its shape matches for cache-seeding.
+      const [teams, assignments, games, myDelegateGameIds, leaderboard] =
+        await Promise.all([
+          ctx.supabase
+            .from("teams")
+            .select("*")
+            .eq("competition_id", competitionId)
+            .order("created_at", { ascending: true })
+            .then((r) => r.data ?? []),
+          ctx.supabase
+            .from("team_assignments")
+            .select("*")
+            .eq("competition_id", competitionId)
+            .then((r) => r.data ?? []),
+          ctx.supabase
+            .from("games")
+            .select("*")
+            .eq("trip_id", tripId)
+            .order("created_at", { ascending: false })
+            .then((r) => r.data ?? []),
+          ctx.supabase
+            .from("game_organizers")
+            .select("game_id")
+            .eq("user_id", ctx.user!.id)
+            .then((r) => (r.data ?? []).map((x) => x.game_id as string)),
+          computeCompetitionLeaderboard(ctx.supabase, competitionId),
+        ]);
+
+      return {
+        competition,
+        myCompetitionRole,
+        myDelegateGameIds,
+        teams,
+        assignments,
+        games,
+        leaderboard,
+      };
+    }),
+
+  // -----------------------------------------------------------------------
   // teamAssignmentCounts — per-team member headcount for this competition.
   // Used by GameSheet to project per_match total before pairings exist:
   // projected cap = min(...counts), projected total = value × cap.
