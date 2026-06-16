@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
@@ -77,11 +77,12 @@ export default function LiveFacePage() {
   // Seed the child caches from the one bootstrap so the board/guide — and the
   // setup↔leaderboard toggle, and the sub-views — render from cache with NO
   // extra round-trips. The global 60s staleTime keeps the seed fresh, so the
-  // children's own useQuery calls don't re-fetch. Seeded once per bootstrap, in
-  // render before the face mounts (ref-guarded) so children read a warm cache.
-  const seededFor = useRef<unknown>(null);
-  if (boot && seededFor.current !== boot) {
-    seededFor.current = boot;
+  // children's own useQuery calls don't re-fetch. Keyed on `boot` so it runs
+  // exactly once per resolve, synchronously DURING render — before the face's
+  // children mount and fire their queries (an effect runs too late: child
+  // mount-effects fire before the parent's, so they'd re-fetch first).
+  useMemo(() => {
+    if (!boot) return;
     utils.competitions.getByTrip.setData({ tripId }, boot.competition as never);
     utils.games.myDelegateGameIds.setData({ tripId }, boot.myDelegateGameIds);
     if (boot.competition) {
@@ -97,7 +98,7 @@ export default function LiveFacePage() {
         boot.assignments as never,
       );
     }
-  }
+  }, [boot, tripId, utils]);
 
   // Crew names (for chat/news authors) are container-provided and NOT needed to
   // render the face — fetch lazily, only when a panel opens (A4: chat/news off
