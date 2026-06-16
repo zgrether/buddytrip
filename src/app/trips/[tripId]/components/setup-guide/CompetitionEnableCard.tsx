@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trophy, X } from "lucide-react";
+import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 // ── CompetitionEnableCard ───────────────────────────────────────────────────
@@ -49,7 +49,7 @@ export function CompetitionEnableCard({ tripId }: { tripId: string }) {
 
   return (
     <div
-      className="relative mt-3 flex items-start gap-4 rounded-xl p-4"
+      className="mt-3 flex items-start gap-4 rounded-xl p-4"
       style={{
         background: "var(--color-bt-card)",
         border: "1px dashed var(--color-bt-border)",
@@ -105,15 +105,6 @@ export function CompetitionEnableCard({ tripId }: { tripId: string }) {
           </button>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={dismiss}
-        aria-label="Dismiss"
-        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        <X size={15} />
-      </button>
     </div>
   );
 }

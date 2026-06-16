@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Trash2,
   AlertTriangle,
+  Trophy,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -93,6 +94,11 @@ export function TripSettingsModal({
 
   const isOwner = viewerRole === "Owner";
   const canEditPlan = viewerRole === "Owner" || viewerRole === "Organizer";
+
+  // Competition existence drives the owner's "Enable competition" entry — the
+  // permanent creation/recovery path now that the enable card (the proactive
+  // prompt) can be dismissed. Deduped with the trip page's own query.
+  const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
 
   // ── Navigation ────────────────────────────────────────────────────────
   const [view, setView] = useState<View>("menu");
@@ -348,6 +354,31 @@ export function TripSettingsModal({
                           .filter(Boolean)
                           .join(" · ")}
                         onClick={openDetails}
+                      />
+                    </Section>
+                  )}
+
+                  {isOwner && (
+                    <Section label="Competition">
+                      <Row
+                        testId="settings-competition-row"
+                        icon={<Trophy size={17} />}
+                        title={competition ? "Competition" : "Enable competition"}
+                        subtitle={
+                          competition
+                            ? "Open the Live face to manage it"
+                            : "Teams, games, and a live leaderboard"
+                        }
+                        onClick={() => {
+                          // Same entry the enable card uses — the face hosts the
+                          // create flow (and the management surface once it
+                          // exists). One creation path, two entry points.
+                          // Navigate WITHOUT onClose() — the navigation unmounts
+                          // the modal, and (like the delete-trip row) skipping
+                          // onClose avoids useModalBackButton's cleanup
+                          // history.back() racing/cancelling the push.
+                          router.push(`/trips/${tripId}/leaderboard`);
+                        }}
                       />
                     </Section>
                   )}
