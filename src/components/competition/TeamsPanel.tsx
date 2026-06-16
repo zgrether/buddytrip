@@ -166,7 +166,14 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
       }
     },
-    onSettled: () => utils.teamAssignments.list.invalidate(queryKey),
+    onSettled: () => {
+      utils.teamAssignments.list.invalidate(queryKey);
+      // The leaderboard roll-up derives per_match points from TEAM SIZES, so a
+      // (re)assignment moves pointsAvailable / winNumber. The board reads the
+      // bootstrap-seeded competitions.leaderboard cache — invalidate it too so
+      // the leaderboard reflects the change without a hard refresh.
+      utils.competitions.leaderboard.invalidate(queryKey);
+    },
   });
 
   const remove = trpc.teamAssignments.remove.useMutation({
@@ -184,7 +191,12 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
       }
     },
-    onSettled: () => utils.teamAssignments.list.invalidate(queryKey),
+    onSettled: () => {
+      utils.teamAssignments.list.invalidate(queryKey);
+      // Removing a player changes team sizes → the leaderboard roll-up's
+      // per_match points. Refresh the board's seeded cache (see `assign`).
+      utils.competitions.leaderboard.invalidate(queryKey);
+    },
   });
 
   return { assign, remove };
@@ -982,16 +994,28 @@ function TeamSheet({
     ? (assignments as Assignment[]).filter((a) => a.team_id === team.id).length
     : 0;
 
+  // The leaderboard roll-up (competitions.leaderboard) bakes in each team's
+  // color / name / short_name, and the board renders from that bootstrap-seeded
+  // cache — NOT teams.list. So every team mutation must invalidate the
+  // leaderboard too, or the board shows stale colors/names until a hard refresh
+  // (the reported bug). teams.list stays invalidated for the teams panel + guide.
   const create = trpc.teams.create.useMutation({
-    onSettled: () => utils.teams.list.invalidate({ tripId, competitionId }),
+    onSettled: () => {
+      utils.teams.list.invalidate({ tripId, competitionId });
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    },
   });
   const update = trpc.teams.update.useMutation({
-    onSettled: () => utils.teams.list.invalidate({ tripId, competitionId }),
+    onSettled: () => {
+      utils.teams.list.invalidate({ tripId, competitionId });
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    },
   });
   const deleteTeam = trpc.teams.delete.useMutation({
     onSettled: () => {
       utils.teams.list.invalidate({ tripId, competitionId });
       utils.teamAssignments.list.invalidate({ tripId, competitionId });
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
     },
     onSuccess: () => {
       setConfirmingDelete(false);

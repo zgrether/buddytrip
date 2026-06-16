@@ -45,6 +45,11 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
     onError: (e) => setError(e.message ?? "Failed to create competition"),
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
+      // The Live face renders from the faceBootstrap snapshot (boot.competition),
+      // not getByTrip — re-resolve it so the face swaps the create form for the
+      // setup guide (and seeds the new competition's child caches) without a
+      // hard refresh.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
 
@@ -69,6 +74,9 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
     },
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
+      // The face header reads name/tagline from the faceBootstrap snapshot —
+      // re-resolve it so the rename shows without a hard refresh.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
 
