@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, type FC } from "react";
-import { House, Users, Hotel, Calendar, DollarSign, Trophy, type LucideIcon } from "lucide-react";
+import { House, Users, Hotel, Calendar, DollarSign, type LucideIcon } from "lucide-react";
 import type { TabId } from "./BottomNav";
 import { DOMAIN_COLORS, TAB_DOMAIN } from "@/lib/domainColors";
 
@@ -11,13 +11,16 @@ interface TabDef {
   Icon: LucideIcon;
 }
 
+// The Competition tab is gone (Stage 5 cord-cut) — the competition is a face,
+// not a tab. It's created from trip Home's enable card, managed from the
+// competition header gear, and entered via the "Live" bottom-nav entry. The
+// trip tab bar is pure trip content.
 const ALL_TABS: TabDef[] = [
   { id: "home",     label: "Home",        Icon: House       },
   { id: "crew",     label: "Crew",        Icon: Users       },
   { id: "lodging",  label: "Lodging",     Icon: Hotel       },
   { id: "schedule", label: "Agenda",      Icon: Calendar    },
   { id: "expenses", label: "Receipts",    Icon: DollarSign  },
-  { id: "comp",     label: "Competition", Icon: Trophy      },
 ];
 
 interface TripTabBarProps {
@@ -49,12 +52,6 @@ export const TripTabBar: FC<TripTabBarProps> = ({
   const [iconMode, setIconMode] = useState(false);
 
   const tabs = ALL_TABS.filter((t) => {
-    if (t.id === "comp") {
-      // Competition is an owner/organizer-only authoring surface. Members
-      // never see the tab — they follow a *live* competition through the
-      // bottom nav's "Live" entry (the leaderboard route) instead.
-      return canEdit;
-    }
     // Lodging and Expenses are only meaningful once a destination is locked
     // in — keep them out of the idea phase. Every later phase shows all five
     // primary tabs (Home, Crew, Lodging, Agenda, Receipts).

@@ -8,26 +8,17 @@ import { describe, it, expect } from "vitest";
  */
 
 describe("TripTabBar — tab configuration", () => {
-  // Per SPEC 2: always show 4 tabs (Home, Schedule, Crew, Competition)
-  const TABS = [
-    { id: "home", label: "Home" },
-    { id: "schedule", label: "Schedule" },
-    { id: "crew", label: "Crew" },
-    { id: "comp", label: "Competition" },
-  ];
+  // Post Stage-5 cord-cut: the tab bar is PURE TRIP CONTENT — no Competition
+  // tab. The competition is a face (created from trip Home's enable card,
+  // entered via the "Live" bottom-nav entry), not a tab.
+  const TAB_IDS = ["home", "crew", "lodging", "schedule", "expenses"];
 
-  it("has exactly 4 tabs", () => {
-    expect(TABS).toHaveLength(4);
+  it("is pure trip content — no Competition tab", () => {
+    expect(TAB_IDS).not.toContain("comp");
   });
 
-  it("includes Home, Schedule, Crew, Competition", () => {
-    const ids = TABS.map((t) => t.id);
-    expect(ids).toEqual(["home", "schedule", "crew", "comp"]);
-  });
-
-  it("does NOT include More tab", () => {
-    const ids = TABS.map((t) => t.id);
-    expect(ids).not.toContain("more");
+  it("includes the five trip tabs", () => {
+    expect(TAB_IDS).toEqual(["home", "crew", "lodging", "schedule", "expenses"]);
   });
 });
 
@@ -82,33 +73,17 @@ describe("TripBottomNav — back navigation contract", () => {
 // ── Tab-filtering tests ────────────────────────────────────────────────
 
 describe("Tab bar — tab filtering", () => {
-  const ALL_TAB_IDS = ["home", "crew", "schedule", "expenses", "comp"];
+  // No Competition tab anymore (Stage 5 cord-cut). The tab bar is pure trip
+  // content for everyone; the competition is reached via the "Live" bottom-nav
+  // entry, not a tab.
+  const ALL_TAB_IDS = ["home", "crew", "lodging", "schedule", "expenses"];
 
-  // Competition is an owner/organizer-only authoring surface: the tab shows
-  // iff the viewer can edit (Owner or Organizer), independent of stage or
-  // whether a competition row exists. Members reach a live competition via
-  // the bottom-nav "Live" entry instead.
-  function getVisibleTabs(canEdit: boolean) {
-    return ALL_TAB_IDS.filter((id) => {
-      if (id === "comp") return canEdit;
-      return true;
-    });
-  }
-
-  it("hides Competition tab from members (non-editors)", () => {
-    const tabs = getVisibleTabs(false);
-    expect(tabs).not.toContain("comp");
-    expect(tabs).toEqual(["home", "crew", "schedule", "expenses"]);
+  it("never includes a Competition tab (it's a face, not a tab)", () => {
+    expect(ALL_TAB_IDS).not.toContain("comp");
   });
 
-  it("shows Competition tab for owners/organizers (editors)", () => {
-    const tabs = getVisibleTabs(true);
-    expect(tabs).toContain("comp");
-  });
-
-  it("Expenses tab is always present in tab list (disabled state handled at click level)", () => {
-    const tabs = getVisibleTabs(true);
-    expect(tabs).toContain("expenses");
+  it("Expenses tab is present in the tab list", () => {
+    expect(ALL_TAB_IDS).toContain("expenses");
   });
 });
 

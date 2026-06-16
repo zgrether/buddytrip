@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
+import { canAccessCompetition } from "@/lib/competitionAccess";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { TopNav } from "@/components/TopNav";
@@ -96,11 +97,12 @@ export default function LiveFacePage() {
     } else {
       body = <NotSetUpEmptyState />;
     }
-  } else if (!canEdit && !amDelegate && competition.status !== "active") {
-    // Plain members (no delegation) don't see the competition until Go Live
-    // (the visibility switch). Owners/organizers/co-admins AND game delegates
-    // (builders) always get the full face — a delegate needs pre-live access to
-    // set up their assigned game.
+  } else if (
+    !canAccessCompetition({ canEdit, amDelegate, status: competition.status })
+  ) {
+    // Plain members (no delegation) don't see the competition until Go Live.
+    // Builders (owner / organizer / co-admin / delegate) always get the full
+    // face. Same predicate as the "Live" nav entry — they can't disagree.
     body = <NotLiveEmptyState />;
   } else {
     body = (
