@@ -60,7 +60,16 @@ export default function LiveFacePage() {
   const { role, isOwner, canEdit, loading: roleLoading } = useTripRole(tripId);
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const loading = compLoading || roleLoading;
+  // A game delegate is a BUILDER, not audience — they reach the competition in
+  // BOTH phases to configure their assigned game (setup happens pre-live, and
+  // delegates aren't always organizers). One competition per trip (MVP), so any
+  // delegated game ⇒ a delegate of this competition. Edit stays scoped to their
+  // game(s) by the edit gate; this is visibility only.
+  const { data: myDelegateGameIds = [], isLoading: delegateLoading } =
+    trpc.games.myDelegateGameIds.useQuery({ tripId }, { enabled: !!competition });
+  const amDelegate = (myDelegateGameIds as string[]).length > 0;
+
+  const loading = compLoading || roleLoading || delegateLoading;
 
   let body: React.ReactNode;
   if (loading) {
@@ -87,9 +96,11 @@ export default function LiveFacePage() {
     } else {
       body = <NotSetUpEmptyState />;
     }
-  } else if (!canEdit && competition.status !== "active") {
-    // Members don't see the board until the owner flips Go Live (the
-    // visibility switch). Owners/organizers always get the full face.
+  } else if (!canEdit && !amDelegate && competition.status !== "active") {
+    // Plain members (no delegation) don't see the competition until Go Live
+    // (the visibility switch). Owners/organizers/co-admins AND game delegates
+    // (builders) always get the full face — a delegate needs pre-live access to
+    // set up their assigned game.
     body = <NotLiveEmptyState />;
   } else {
     body = (
