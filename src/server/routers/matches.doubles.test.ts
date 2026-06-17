@@ -190,3 +190,87 @@ describe("doubles results — one score per side, match engine reused", () => {
     expect(rows.find((r) => r.entity_id === pgB)?.position).toBe(1);
   });
 });
+
+describe("doubles team integrity — same-team pairs + correct attribution", () => {
+  let competitionId: string;
+  let blue: string, red: string;
+
+  beforeAll(async () => {
+    competitionId = await ctx.createCompetition(tripId, "Ryder Cup");
+    blue = await ctx.createTeam(competitionId, "Blue", { color: "#2563eb" });
+    red = await ctx.createTeam(competitionId, "Red", { color: "#dc2626" });
+    // owner+planner = Blue, member+outsider = Red.
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: competitionId, user_id: owner, team_id: blue },
+      { competition_id: competitionId, user_id: planner, team_id: blue },
+      { competition_id: competitionId, user_id: member, team_id: red },
+      { competition_id: competitionId, user_id: outsider, team_id: red },
+    ]);
+  });
+
+  // A doubles game wired into the per_match competition (points value 2/match).
+  async function compGame(name: string) {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: DOUBLES, name });
+    await ctx.admin
+      .from("games")
+      .update({ competition_id: competitionId, points_distribution: { type: "per_match", value: 2 } })
+      .eq("id", game.id);
+    return game.id;
+  }
+
+  it("hard-blocks a cross-team pair (setup-integrity backstop)", async () => {
+    const gameId = await compGame("Cross-team");
+    await expect(
+      ctx.caller().matches.setDoublesPairings({
+        tripId,
+        gameId,
+        matches: [
+          // owner=Blue + member=Red → a structurally invalid pair.
+          { sideA: { members: [owner, member] }, sideB: { members: [planner, outsider] }, matchNumber: 1 },
+        ],
+      })
+    ).rejects.toThrow(/same team/i);
+  });
+
+  it("accepts same-team pairs and rolls match points to the winning team", async () => {
+    const gameId = await compGame("Blue vs Red");
+    const matches = (await ctx.caller().matches.setDoublesPairings({
+      tripId,
+      gameId,
+      matches: [
+        { sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 },
+      ],
+    })) as MatchRow[];
+    const pgA = matches[0].side_a!.id; // Blue
+    const pgB = matches[0].side_b!.id; // Red
+
+    // Blue closes the match out 3&2.
+    const aHalf: Record<number, number> = {};
+    const bHalf: Record<number, number> = {};
+    for (let h = 4; h <= 16; h++) {
+      aHalf[h] = 4;
+      bHalf[h] = 4;
+    }
+    const caller = ctx.caller();
+    for (const [h, v] of Object.entries({ 1: 4, 2: 4, 3: 4, ...aHalf })) {
+      await caller.scores.upsertEntry({ tripId, gameId, participantId: pgA, unitLabel: h, value: v, participantType: "play_group" });
+    }
+    for (const [h, v] of Object.entries({ 1: 5, 2: 5, 3: 5, ...bHalf })) {
+      await caller.scores.upsertEntry({ tripId, gameId, participantId: pgB, unitLabel: h, value: v, participantType: "play_group" });
+    }
+
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    // The per_match value (2) lands on Blue's team total, not Red's.
+    const { data: teamRows } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, entity_type, raw_score")
+      .eq("game_id", gameId)
+      .eq("entity_type", "team");
+    const byTeam = Object.fromEntries(
+      (teamRows as { entity_id: string; raw_score: number | null }[]).map((r) => [r.entity_id, r.raw_score])
+    );
+    expect(byTeam[blue]).toBe(2);
+    expect(byTeam[red] ?? 0).toBe(0);
+  });
+});

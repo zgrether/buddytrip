@@ -75,6 +75,13 @@ export default function NewMatchGamePage() {
     { tripId: tripId!, competitionId: competitionId! },
     { enabled: !!tripId && !!competitionId }
   );
+  // Teams (Slice D, ordered by created_at). A Ryder-cup match binds a side to a
+  // team: side A → team[0], side B → team[1]. That makes the pair picker
+  // constrainable to one team (no cross-team pair) and the strip team-colored.
+  const teamsQ = trpc.teams.list.useQuery(
+    { tripId: tripId!, competitionId: competitionId! },
+    { enabled: !!tripId && !!competitionId }
+  );
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
@@ -230,6 +237,44 @@ export default function NewMatchGamePage() {
     return map;
   }, [serverMatches]);
 
+  // ── Team identity (Slice D) ────────────────────────────────────────────────
+  // A Ryder-cup match crosses the team line: side A is team[0]'s, side B is
+  // team[1]'s. We never store team on a side — it's DERIVED from the players'
+  // roster (team_assignments), so moving a player's team re-attributes their
+  // match automatically. The two teams are ordered (created_at); the binding is
+  // by index so it's consistent across every match.
+  const teams = useMemo(
+    () => (teamsQ.data ?? []) as { id: string; name: string; short_name: string | null; color: string }[],
+    [teamsQ.data]
+  );
+  // Team binding applies only to a game that's actually IN the competition (a
+  // 2-team Ryder cup) — a standalone match stays the neutral per-player flow.
+  const twoTeams = !!gameCompId && teams.length === 2;
+  // user → team_id (the roster, from team_assignments).
+  const teamOfUser = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of assignQ.data ?? []) m.set(a.user_id as string, a.team_id as string);
+    return m;
+  }, [assignQ.data]);
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
+  // The team a setup slot is bound to (side A → team[0], side B → team[1]).
+  const teamForSlot = (slot: "a" | "b") => (twoTeams ? teams[slot === "a" ? 0 : 1] : undefined);
+  // A side's team, DERIVED from its player(s): a user side → that user's team; a
+  // pair side → its members' team (both members share one, enforced at setup).
+  const teamOfSide = (sideId: string): { id: string; name: string; short_name: string | null; color: string } | undefined => {
+    const memberId = sided ? (membersOfSide.get(sideId) ?? [])[0] : sideId;
+    if (!memberId) return undefined;
+    const teamId = teamOfUser.get(memberId);
+    return teamId ? teamById.get(teamId) : undefined;
+  };
+  // A side's display color: its TEAM color in a 2-team competition, else the
+  // per-player palette (standalone / non-team game) — unchanged for those.
+  const sideColor = (sideId: string) => (twoTeams ? teamOfSide(sideId)?.color : undefined) ?? colorOf.get(sideId);
+  // The roster of one team — the constrained pool for that side's picker, so a
+  // cross-team pair is impossible to assemble (Step 3: invalid unrepresentable).
+  const rosterOfTeam = (teamId: string) =>
+    [...new Set((assignQ.data ?? []).filter((a) => a.team_id === teamId).map((a) => a.user_id as string))];
+
   // Handicap keyed by SIDE id: a user (1v1, from game_participants) or a
   // play_group (2v2, from play_groups). Same map shape, the entry/board read it
   // identically.
@@ -249,7 +294,7 @@ export default function NewMatchGamePage() {
       id,
       name,
       initials: initialsOf(name),
-      color: colorOf.get(id) ?? fallbackColor ?? PLAYER_COLORS[0],
+      color: sideColor(id) ?? fallbackColor ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(id) ?? null,
     };
   }
@@ -266,7 +311,7 @@ export default function NewMatchGamePage() {
       id: sideId,
       name,
       initials: initialsOf(name),
-      color: colorOf.get(sideId) ?? PLAYER_COLORS[0],
+      color: sideColor(sideId) ?? PLAYER_COLORS[0],
       avatarIcon: members[0] ? (avatarIconOf.get(members[0]) ?? null) : null,
     };
   }
@@ -484,6 +529,9 @@ export default function NewMatchGamePage() {
             b: sideParticipant(b.id),
             strokesA: handicapOf.get(a.id) ?? 0,
             strokesB: handicapOf.get(b.id) ?? 0,
+            // Team colors (Slice D) for the strip/entry, when in a 2-team comp.
+            leftColor: twoTeams ? teamOfSide(a.id)?.color : undefined,
+            rightColor: twoTeams ? teamOfSide(b.id)?.color : undefined,
           };
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -620,6 +668,8 @@ export default function NewMatchGamePage() {
           draft={draft}
           setDraft={setDraft}
           playersPerSide={playersPerSide}
+          teamA={teamForSlot("a")}
+          teamB={teamForSlot("b")}
           nameOf={nameOf}
           colorOf={colorOf}
           avatarIconOf={avatarIconOf}
@@ -658,24 +708,35 @@ export default function NewMatchGamePage() {
       )}
       </div>
 
-      {/* Player selector sheet */}
-      {selector && (
-        <PlayerSelector
-          matchIdx={selector.matchIdx}
-          slot={selector.slot}
-          memberIdx={selector.memberIdx}
-          sided={sided}
-          draft={draft}
-          crew={gameCompId && rosterIds.length > 0 ? rosterIds : (crew.data ?? []).map((c) => c.user_id)}
-          nameOf={nameOf}
-          avatarIconOf={avatarIconOf}
-          onPick={(userId) => {
-            setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId, playersPerSide));
-            setSelector(null);
-          }}
-          onClose={() => setSelector(null)}
-        />
-      )}
+      {/* Player selector sheet — constrained to the side's team in a 2-team
+          competition (no cross-team pair), else the whole roster/crew. */}
+      {selector && (() => {
+        const slotTeam = teamForSlot(selector.slot);
+        const selectorCrew = slotTeam
+          ? rosterOfTeam(slotTeam.id)
+          : gameCompId && rosterIds.length > 0
+            ? rosterIds
+            : (crew.data ?? []).map((c) => c.user_id);
+        return (
+          <PlayerSelector
+            matchIdx={selector.matchIdx}
+            slot={selector.slot}
+            memberIdx={selector.memberIdx}
+            sided={sided}
+            teamLabel={slotTeam?.name}
+            teamColor={slotTeam?.color}
+            draft={draft}
+            crew={selectorCrew}
+            nameOf={nameOf}
+            avatarIconOf={avatarIconOf}
+            onPick={(userId) => {
+              setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId, playersPerSide));
+              setSelector(null);
+            }}
+            onClose={() => setSelector(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -860,6 +921,8 @@ function MatchSetup({
   draft,
   setDraft,
   playersPerSide,
+  teamA,
+  teamB,
   nameOf,
   colorOf,
   avatarIconOf,
@@ -871,6 +934,10 @@ function MatchSetup({
   draft: DraftMatch[];
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
   playersPerSide: number;
+  /** The teams bound to side A / side B (2-team competition). Undefined → no
+   *  team binding (standalone), and the per-side team header is hidden. */
+  teamA?: { name: string; color: string };
+  teamB?: { name: string; color: string };
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
   avatarIconOf: Map<string, string | null>;
@@ -931,14 +998,24 @@ function MatchSetup({
     };
   }
   // The member slots for one side — 1 for singles, 2 stacked for doubles. Each
-  // sub-slot picks a single player into that member position.
-  const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b") => (
-    <div className="flex flex-col gap-1.5">
-      {Array.from({ length: playersPerSide }).map((_, k) => (
-        <Slot key={k} player={memberPart(members[k])} onTap={() => openSelector(matchIdx, slot, k)} />
-      ))}
-    </div>
-  );
+  // sub-slot picks a single player into that member position. A team header
+  // (Blue / Red) names the side's team so the constraint is legible.
+  const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b") => {
+    const team = slot === "a" ? teamA : teamB;
+    return (
+      <div className="flex flex-col gap-1.5">
+        {team && (
+          <div className="flex items-center gap-1.5" style={{ paddingLeft: 2, marginBottom: 1 }}>
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: team.color }} />
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: team.color }}>{team.name}</span>
+          </div>
+        )}
+        {Array.from({ length: playersPerSide }).map((_, k) => (
+          <Slot key={k} player={memberPart(members[k])} onTap={() => openSelector(matchIdx, slot, k)} />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -1114,6 +1191,8 @@ function Overview({
             results={decideds[i]}
             label={`Match ${i + 1}`}
             youId={myId}
+            leftColor={g.leftColor}
+            rightColor={g.rightColor}
             hideFormat
             onClick={() => onOpenMatch(g.matchId)}
           />
@@ -1156,6 +1235,8 @@ function PlayerSelector({
   slot,
   memberIdx,
   sided,
+  teamLabel,
+  teamColor,
   draft,
   crew,
   nameOf,
@@ -1167,6 +1248,10 @@ function PlayerSelector({
   slot: "a" | "b";
   memberIdx: number;
   sided: boolean;
+  /** The team this side is bound to (2-team competition) — the pool is just this
+   *  team, so a cross-team pair can't be built. Undefined for standalone. */
+  teamLabel?: string;
+  teamColor?: string;
   draft: DraftMatch[];
   crew: string[];
   nameOf: Map<string, string>;
@@ -1183,16 +1268,23 @@ function PlayerSelector({
   });
   const available = crew.filter((id) => !inMatch.has(id));
   const taken = crew.filter((id) => inMatch.has(id));
-  // Title: singles names the two sides Player 1/2; doubles names Side A/B + the
-  // member position within the pair.
-  const title = sided
-    ? `Match ${matchIdx + 1} · Side ${slot === "a" ? "A" : "B"} · Player ${memberIdx + 1}`
-    : `Match ${matchIdx + 1} · Player ${slot === "a" ? 1 : 2}`;
+  // Title: when the side is team-bound, name the team (the constraint is visible
+  // — you're picking a Blue player into Blue's side). Else fall back to A/B.
+  const title = teamLabel
+    ? sided
+      ? `${teamLabel} · Player ${memberIdx + 1}`
+      : `Match ${matchIdx + 1} · ${teamLabel}`
+    : sided
+      ? `Match ${matchIdx + 1} · Side ${slot === "a" ? "A" : "B"} · Player ${memberIdx + 1}`
+      : `Match ${matchIdx + 1} · Player ${slot === "a" ? 1 : 2}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ background: "var(--color-bt-card-float)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 16px 28px", maxHeight: "75vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)" }}>{title}</div>
+        <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)" }}>
+          {teamColor && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />}
+          {title}
+        </div>
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 14 }}>Available</div>
         <div className="mt-2 flex flex-col gap-1.5">
           {available.length === 0 && <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Everyone&apos;s assigned.</span>}
