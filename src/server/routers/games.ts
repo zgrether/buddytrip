@@ -351,9 +351,12 @@ export const gamesRouter = router({
           ? []
           : await computeStrokePlayResults(ctx.supabase, input.gameId);
 
+      // status='complete' + corrections_open=false IS the locked state. Clearing
+      // corrections_open here is what makes finalize the proper LOCK and lets a
+      // re-lock exit score-correction mode (openCorrection → edit → finish).
       const { error } = await ctx.supabase
         .from("games")
-        .update({ status: "complete" })
+        .update({ status: "complete", corrections_open: false })
         .eq("id", input.gameId);
       if (error) {
         throw new TRPCError({
