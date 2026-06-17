@@ -105,6 +105,23 @@ These patterns have been established through prior work. Follow them exactly —
    result is never rewritten by a late edit (`finish` omits the flag → processes
    all). The tell to watch for: "X is derived from {A, B, C}" but the code only
    re-derives on a change to A.
+10. **Bootstrap-seeded caches: invalidate `faceBootstrap`, not just the child
+    query.** The competition Live face renders its leaderboard + setup guide from
+    child caches (`competitions.leaderboard`, `teams.list`,
+    `teamAssignments.list`, `games.listByTrip`, …) that `LiveFaceClient` **seeds
+    from `competitions.faceBootstrap`** via `setData` on every mount. So any
+    mutation that changes faceBootstrap-snapshotted data — team colors/names,
+    assignments, game config, **finalize/lock/score-correction results**, go-live
+    — MUST invalidate `competitions.faceBootstrap`, **not only** the specific
+    child query. Invalidating just the child is silently undone: the face's
+    `setData` re-seed writes the bootstrap's (possibly stale, router-cached)
+    value back AND marks the query fresh, so no refetch fires and the surface
+    reads stale until the 30s poll. Keep the child invalidate too (other
+    surfaces read it directly), but `faceBootstrap` is the one that actually
+    refreshes the face. The tell: "I invalidated `competitions.leaderboard` but
+    the board is still stale until a hard refresh / the poll." (History: the
+    team-color audit established this for setup-data mutations; the rack/1v1
+    finalize + correction lag was the same class on the result path.)
 
 ## Guest → real-user conversion (auth)
 
