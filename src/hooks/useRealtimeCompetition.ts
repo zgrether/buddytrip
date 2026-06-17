@@ -23,6 +23,9 @@ export function useRealtimeCompetition(tripId: string | null) {
     if (!tripId) return;
 
     const supabase = getRealtimeClient();
+    const refresh = () => {
+      utils.competitions.getByTrip.invalidate({ tripId });
+    };
     const channel = supabase
       .channel(`competition:${tripId}`)
       .on(
@@ -33,11 +36,14 @@ export function useRealtimeCompetition(tripId: string | null) {
           table: "competitions",
           filter: `trip_id=eq.${tripId}`,
         },
-        () => {
-          utils.competitions.getByTrip.invalidate({ tripId });
-        }
+        refresh
       )
-      .subscribe();
+      // Backfill on (re)connect: a dead zone drops the socket, so any change
+      // during it would otherwise sit stale up to the 60s staleTime. Refetching
+      // on the SUBSCRIBED tick self-heals on reconnect (mirrors useRealtimeChat).
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") refresh();
+      });
 
     return () => {
       supabase.removeChannel(channel);

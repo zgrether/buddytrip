@@ -30,6 +30,9 @@ export function useRealtimeMembers(tripId: string | null) {
     if (!tripId) return;
 
     const supabase = getRealtimeClient();
+    const refresh = () => {
+      utils.tripMembers.list.invalidate({ tripId });
+    };
     const channel = supabase
       .channel(`members:${tripId}`)
       .on(
@@ -40,11 +43,14 @@ export function useRealtimeMembers(tripId: string | null) {
           table: "trip_members",
           filter: `trip_id=eq.${tripId}`,
         },
-        () => {
-          utils.tripMembers.list.invalidate({ tripId });
-        }
+        refresh
       )
-      .subscribe();
+      // Backfill on (re)connect: a role change during a dead zone would
+      // otherwise stay stale up to the 60s staleTime. Refetching on the
+      // SUBSCRIBED tick self-heals on reconnect (mirrors useRealtimeChat).
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") refresh();
+      });
 
     return () => {
       supabase.removeChannel(channel);
