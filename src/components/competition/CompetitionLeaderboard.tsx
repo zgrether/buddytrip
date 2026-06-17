@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { ChevronRight, Check, Radio, Trophy } from "lucide-react";
+import { ChevronRight, Check, Radio, Trophy, CloudOff, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ interface Props {
 }
 
 export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
-  const { data: lb, isLoading } = trpc.competitions.leaderboard.useQuery(
+  const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     {
       enabled: !!competitionId,
@@ -148,7 +148,15 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
     [utils, tripId],
   );
 
-  if (isLoading || !data) return null;
+  // Never blank-on-error (Connectivity Layer 1). TanStack keeps the last `data`
+  // through a failed refetch, so a flaky poll keeps showing the board. Only when
+  // there's NO data yet do we branch: a spinner while the first load is in
+  // flight, or a clear retryable card if it failed — never a confusing blank.
+  if (!data) {
+    if (isError) return <LeaderboardLoadError onRetry={() => void refetch()} />;
+    if (isLoading) return <LeaderboardLoading />;
+    return null;
+  }
 
   const { teams, teamTotals, pointsAvailable, winNumber, pointsToClinch, defendingTeamId } = data;
 
@@ -840,6 +848,69 @@ function NoTeamsState() {
       >
         Add teams and games in the Competition tab to see standings here.
       </p>
+    </div>
+  );
+}
+
+/** First-load spinner — only shown when there's NO cached board yet (a warm
+ *  board keeps rendering through refetches). Never a blank. */
+function LeaderboardLoading() {
+  return (
+    <div
+      className="flex min-h-[30vh] items-center justify-center"
+      data-testid="competition-leaderboard"
+    >
+      <div
+        className="h-7 w-7 animate-spin rounded-full border-2"
+        style={{
+          borderColor: "var(--color-bt-accent)",
+          borderTopColor: "transparent",
+        }}
+      />
+    </div>
+  );
+}
+
+/** Couldn't load the board AND nothing cached to fall back to — a clear,
+ *  retryable card instead of a confusing blank (Connectivity Layer 1). */
+function LeaderboardLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      className="flex flex-col items-center gap-3 rounded-xl px-4 py-10 text-center"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+      data-testid="competition-leaderboard"
+    >
+      <CloudOff size={24} style={{ color: "var(--color-bt-text-dim)" }} />
+      <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        Couldn&apos;t load the leaderboard
+      </p>
+      <p
+        className="max-w-xs text-[12px] leading-relaxed"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Check your connection — the board will be here when you&apos;re back.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="flex items-center gap-1.5"
+        style={{
+          marginTop: 4,
+          padding: "6px 14px",
+          borderRadius: 9999,
+          background: "var(--color-bt-card-raised)",
+          border: "1px solid var(--color-bt-border)",
+          color: "var(--color-bt-text)",
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        <RefreshCw size={13} strokeWidth={2.5} />
+        Try again
+      </button>
     </div>
   );
 }
