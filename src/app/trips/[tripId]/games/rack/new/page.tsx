@@ -289,6 +289,11 @@ export default function RackNStackPage() {
     if (competitionId) {
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       utils.games.listByTrip.invalidate({ tripId });
+      // The Live face re-seeds competitions.leaderboard FROM faceBootstrap on
+      // mount (setData), which marks it fresh and clobbers the invalidate above
+      // with the bootstrap's cached value — so invalidate the bootstrap too, or
+      // a re-locked correction reads stale until the 30s poll.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     }
   }
 
