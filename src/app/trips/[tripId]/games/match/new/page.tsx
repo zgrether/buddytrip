@@ -66,6 +66,7 @@ export default function NewMatchGamePage() {
   // crew (the roster is a subset of trip members).
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
   const competitionId = competition.data?.id as string | undefined;
+  const utils = trpc.useUtils();
   const assignQ = trpc.teamAssignments.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { enabled: !!tripId && !!competitionId }
@@ -123,6 +124,9 @@ export default function NewMatchGamePage() {
     retry: 4,
     retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
   });
+  // #7 correction path: reopen score entry on a posted game (owner/co-admin/
+  // delegate — server-gated by requireGameRunAction). "Re-lock" is handleFinish.
+  const openCorrection = trpc.games.openCorrection.useMutation();
 
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -168,6 +172,11 @@ export default function NewMatchGamePage() {
   }, [assignQ.data]);
 
   const status = gameQ.data?.status as string | undefined;
+  // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
+  // `correcting` (owner re-opened) → editable again until re-locked.
+  const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
+  const locked = status === "complete" && !correctionsOpen;
+  const correcting = status === "complete" && correctionsOpen;
   const published = matchesQ.data?.published ?? false;
   const serverMatches = useMemo(() => matchesQ.data?.matches ?? [], [matchesQ.data]);
   const serverParticipants = useMemo(() => matchesQ.data?.participants ?? [], [matchesQ.data]);
@@ -355,10 +364,30 @@ export default function NewMatchGamePage() {
     try {
       await finishGame.mutateAsync({ tripId, gameId });
       await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+      // #6: finalize changes the leaderboard — invalidate it so the board
+      // reflects the result IMMEDIATELY. The board has no realtime sub (only a
+      // 30s poll), so without this it updates only on leave-and-return.
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.games.listByTrip.invalidate({ tripId });
+      }
       go("overview");
     } catch {
       // Stay put (no silent advance). The global error toast surfaces the
       // failure; Finish stays tappable to retry (the recompute is idempotent).
+    }
+  }
+
+  // #7: reopen a posted game for correction, then land on the overview so the
+  // editor can tap the match to fix (entry is editable again while correcting).
+  async function handleCorrect() {
+    if (!tripId || !gameId) return;
+    try {
+      await openCorrection.mutateAsync({ tripId, gameId });
+      await gameQ.refetch();
+      go("overview");
+    } catch {
+      // surfaced via the global error toast
     }
   }
 
@@ -414,8 +443,10 @@ export default function NewMatchGamePage() {
         {view === "grid" ? (
           <div className="flex h-full flex-col">
             <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              <button onClick={() => setView("entry")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
-              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
+              {/* When locked, the grid is the read-only result — back returns to
+                  the hub and cells don't open editable entry (#7). */}
+              <button onClick={() => (locked ? go("overview") : setView("entry"))} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{locked ? "Scorecard · Final" : "Scorecard"}</span>
             </div>
             <div className="min-h-0 flex-1">
               <StandardGrid
@@ -425,7 +456,7 @@ export default function NewMatchGamePage() {
                 direction="low_wins"
                 pips={entryPips}
                 saveStatus={saveStatus}
-                onCellTap={(label) => {
+                onCellTap={locked ? undefined : (label) => {
                   setCurrentHole(Number(label) || 1);
                   setView("entry");
                 }}
@@ -530,11 +561,17 @@ export default function NewMatchGamePage() {
           decidedFor={decidedFor}
           onFinish={handleFinish}
           finishing={finishGame.isPending}
+          correcting={correcting}
+          canCorrect={canEdit && locked}
+          onCorrect={handleCorrect}
+          correctingPending={openCorrection.isPending}
           onOpenMatch={(matchId) => {
             const g = groups.find((x) => x.matchId === matchId);
             if (g) setCurrentHole(currentHoleFor(g));
             setSelectedMatchId(matchId);
             setValues((v) => (Object.keys(v).length ? v : loadedValues));
+            // Locked → open the read-only scorecard grid; otherwise editable entry.
+            setView(locked ? "grid" : "entry");
             go("score");
           }}
         />
@@ -882,6 +919,10 @@ function Overview({
   decidedFor,
   onFinish,
   finishing,
+  correcting,
+  canCorrect,
+  onCorrect,
+  correctingPending,
   onOpenMatch,
 }: {
   groups: MatchGroupData[];
@@ -894,6 +935,12 @@ function Overview({
   decidedFor: (g: MatchGroupData) => HoleResult[];
   onFinish: () => void;
   finishing: boolean;
+  /** #7: posted game re-opened for a correction (editable until re-locked). */
+  correcting: boolean;
+  /** #7: locked + editor → may open a correction. */
+  canCorrect: boolean;
+  onCorrect: () => void;
+  correctingPending: boolean;
   onOpenMatch: (matchId: string) => void;
 }) {
   if (!published) return <MemberNotReady gameName={gameName} />;
@@ -908,7 +955,11 @@ function Overview({
         <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 10 }}>
           <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-            {complete ? "Round complete" : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
+            {complete
+              ? correcting
+                ? "Correcting — edit a score, then re-lock"
+                : "Final · locked"
+              : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
           </span>
         </div>
       )}
@@ -929,12 +980,30 @@ function Overview({
       </div>
 
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
-        {underway ? "Tap a match to keep scoring." : "Tap a match to enter scores — the round starts on your first score."}
+        {complete
+          ? correcting
+            ? "Tap a match to fix a score."
+            : "Tap a match to view the scorecard."
+          : underway
+            ? "Tap a match to keep scoring."
+            : "Tap a match to enter scores — the round starts on your first score."}
       </p>
 
       {canEdit && !complete && allOver && (
         <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
           Finish round
+        </button>
+      )}
+
+      {/* #7: the deliberate, auditable correction path (owner/co-admin/delegate). */}
+      {canCorrect && (
+        <button onClick={onCorrect} disabled={correctingPending} className="mt-5 w-full disabled:opacity-40" style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}>
+          {correctingPending ? "Opening…" : "Correct a score"}
+        </button>
+      )}
+      {canEdit && correcting && (
+        <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
+          {finishing ? "Re-locking…" : "Re-lock result"}
         </button>
       )}
     </div>

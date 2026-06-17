@@ -10,6 +10,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { TimePicker } from "@/components/TimePicker";
 import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
+import { StandardGrid } from "@/components/games/StandardGrid";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
@@ -104,6 +105,9 @@ export default function RackNStackPage() {
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
   const deleteEntry = trpc.scores.deleteEntry.useMutation();
   const finishGame = trpc.games.finish.useMutation();
+  // #7 correction path (owner/co-admin/delegate — server-gated by
+  // requireGameRunAction). "Re-lock" reuses finish().
+  const openCorrection = trpc.games.openCorrection.useMutation();
 
   // ── Names / teams ────────────────────────────────────────────────────
   const nameOf = useMemo(() => {
@@ -279,7 +283,32 @@ export default function RackNStackPage() {
     if (!tripId || !gid) return;
     await finishGame.mutateAsync({ tripId, gameId: gid });
     await utils.games.getById.invalidate({ tripId, gameId: gid });
+    // #6: finalize changes the leaderboard — invalidate it so the board reflects
+    // the result IMMEDIATELY (no realtime sub, only a 30s poll), instead of only
+    // after leave-and-return ("showed 4 to 2 only after I left and came back").
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
   }
+
+  // #7: reopen a posted rack for correction (foursome cards become editable again
+  // until re-locked via finish()).
+  async function handleCorrect() {
+    if (!tripId || !gid) return;
+    try {
+      await openCorrection.mutateAsync({ tripId, gameId: gid });
+      await utils.games.getById.invalidate({ tripId, gameId: gid });
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+
+  // Lifecycle #7: Final = locked. `locked` (posted) → read-only; `correcting`
+  // (owner re-opened) → editable until re-locked.
+  const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
+  const locked = gameQ.data?.status === "complete" && !correctionsOpen;
+  const correcting = gameQ.data?.status === "complete" && correctionsOpen;
 
   // A resumed competition game (gid set from ?game=) may have NO foursomes yet
   // (created as a bare games row by add-game). Route it to the setup step instead
@@ -320,6 +349,26 @@ export default function RackNStackPage() {
       const name = nameOf.get(id) ?? "Player";
       return { id, name, initials: initialsOf(name), color: colorForUser(id), avatarIcon: avatarOf.get(id) ?? null };
     });
+    // Locked (posted) → the read-only scorecard grid (#7); otherwise the
+    // editable entry. Correcting re-opens editing (locked=false).
+    if (locked) {
+      return (
+        <div className="flex flex-col" style={{ height: "100vh" }}>
+          <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+            <button onClick={() => setEntryGroupId(null)} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{(groupName ?? "Group")} · Final</span>
+          </div>
+          <div className="min-h-0 flex-1">
+            <StandardGrid
+              units={scUnits}
+              participants={ps}
+              values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
+              direction="low_wins"
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col" style={{ height: "100vh" }}>
         <ScoreEntryView
@@ -398,7 +447,7 @@ export default function RackNStackPage() {
   const final = gameQ.data?.status === "complete";
   const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
   return (
-    <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle={final ? "Net stroke play · final" : "Net stroke play · standings"}>
+    <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}>
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
       {canEdit && !final && (
@@ -421,7 +470,22 @@ export default function RackNStackPage() {
       {canEdit && !final && allThru18 && (
         <div className="px-4 pb-6">
           <button onClick={finish} disabled={finishGame.isPending} className="w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}>
-            Lock the result
+            {finishGame.isPending ? "Locking…" : "Lock the result"}
+          </button>
+        </div>
+      )}
+      {/* #7: the deliberate, auditable correction path (owner/co-admin/delegate). */}
+      {canEdit && locked && (
+        <div className="px-4 pb-6">
+          <button onClick={handleCorrect} disabled={openCorrection.isPending} className="w-full disabled:opacity-40" style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 14, fontWeight: 600 }}>
+            {openCorrection.isPending ? "Opening…" : "Correct a score"}
+          </button>
+        </div>
+      )}
+      {canEdit && correcting && (
+        <div className="px-4 pb-6">
+          <button onClick={finish} disabled={finishGame.isPending} className="w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}>
+            {finishGame.isPending ? "Re-locking…" : "Re-lock result"}
           </button>
         </div>
       )}
