@@ -2,7 +2,14 @@
 
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import { GolfChip } from "./GolfChip";
-import type { ScoreUnit, Participant, ScoreValues, ScoreDirection } from "./types";
+import {
+  scoreCellKey,
+  type ScoreUnit,
+  type Participant,
+  type ScoreValues,
+  type ScoreDirection,
+  type SaveStatusMap,
+} from "./types";
 
 /**
  * StandardGrid — the review / spot-correction scorecard (Slice A, Task 7).
@@ -32,6 +39,13 @@ interface StandardGridProps {
    * pip on each cell they receive a handicap stroke on. Omit for Slice A.
    */
   pips?: Record<string, Set<string>>;
+  /**
+   * Per-cell save state (Connectivity Layer 1). Errored cells get a danger ring
+   * so the whole card can be scanned for unsaved scores; tapping the cell jumps
+   * to that hole's entry view where the per-cell Retry lives. Keyed by
+   * `${participantId}:${unitLabel}`.
+   */
+  saveStatus?: SaveStatusMap;
 }
 
 const NAME_W = 124;
@@ -39,7 +53,7 @@ const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;
 
-export function StandardGrid({ units, participants, values, onCellTap, pips }: StandardGridProps) {
+export function StandardGrid({ units, participants, values, onCellTap, pips, saveStatus }: StandardGridProps) {
   const front = units.filter((u) => u.section === "front");
   const back = units.filter((u) => u.section === "back");
   const hasSections = front.length > 0 && back.length > 0;
@@ -194,15 +208,28 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
                   const v = valOf(p.id, u.label);
                   const hasPip = pips?.[p.id]?.has(u.label);
                   const colored = v != null && hasPar && u.par != null;
+                  const errored = saveStatus?.[scoreCellKey(p.id, u.label)] === "error";
                   return (
                     <button
                       key={u.label}
                       onClick={() => onCellTap?.(u.label)}
                       className="relative flex items-center justify-center"
-                      style={{ ...cellBase, height: 44, ...divider(u.label), fontSize: 13, fontWeight: 500, color: v != null ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
+                      style={{
+                        ...cellBase,
+                        height: 44,
+                        ...divider(u.label),
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: v != null ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                        // Unsaved → danger ring so it's scannable across the card.
+                        ...(errored
+                          ? { boxShadow: "inset 0 0 0 2px var(--color-bt-danger)" }
+                          : {}),
+                      }}
                     >
                       {colored ? <GolfChip value={v!} par={u.par!} size={26} fontSize={13} /> : (v ?? "—")}
                       {hasPip && <StrokePip />}
+                      {errored && <UnsavedDot />}
                     </button>
                   );
                 })}
@@ -248,6 +275,25 @@ function Legend() {
         </span>
       ))}
     </div>
+  );
+}
+
+/** Unsaved marker — a danger dot in the cell's lower-left corner, paired with
+ *  the danger ring, so an unsaved score reads at a glance on the review grid. */
+function UnsavedDot() {
+  return (
+    <span
+      aria-label="Not saved"
+      style={{
+        position: "absolute",
+        bottom: 5,
+        left: 5,
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: "var(--color-bt-danger)",
+      }}
+    />
   );
 }
 

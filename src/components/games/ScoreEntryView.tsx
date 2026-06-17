@@ -6,8 +6,18 @@ import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { GolfChip } from "./GolfChip";
+import { ScoreSaveBadge } from "./ScoreSaveBadge";
+import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
 import { golfWord, golfResult, GOLF_STYLE } from "./golfScore";
-import type { ScoreUnit, Participant, ScoreValues, ScoreDirection } from "./types";
+import {
+  parseScoreCellKey,
+  scoreCellKey,
+  type ScoreUnit,
+  type Participant,
+  type ScoreValues,
+  type ScoreDirection,
+  type SaveStatusMap,
+} from "./types";
 
 /**
  * ScoreEntryView — the per-unit (hole-by-hole) score-entry surface (Slice A,
@@ -34,6 +44,11 @@ interface ScoreEntryViewProps {
   onFinish?: () => void;
   onBack?: () => void;
   onOpenGrid?: () => void;
+  /** Per-cell save state (Connectivity Layer 1) — drives the cell badges + the
+   *  unsaved-scores banner. Keyed by `${participantId}:${unitLabel}`. */
+  saveStatus?: SaveStatusMap;
+  /** Re-fire the save for a flagged cell. */
+  onRetryCell?: (participantId: string, unitLabel: string) => void;
 }
 
 export function ScoreEntryView({
@@ -48,6 +63,8 @@ export function ScoreEntryView({
   onFinish,
   onBack,
   onOpenGrid,
+  saveStatus = {},
+  onRetryCell,
 }: ScoreEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -132,6 +149,16 @@ export function ScoreEntryView({
   const activeParticipant = participants.find((p) => p.id === activePid) ?? null;
   const isCorrection = activePid != null && valueFor(activePid, label) != null;
 
+  // ── Save status (Connectivity Layer 1) ────────────────────────────────
+  const errorCount = Object.values(saveStatus).filter((s) => s === "error").length;
+  const retryAll = () => {
+    for (const [k, s] of Object.entries(saveStatus)) {
+      if (s !== "error") continue;
+      const { participantId, unitLabel } = parseScoreCellKey(k);
+      onRetryCell?.(participantId, unitLabel);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--color-bt-base)" }}>
       {/* ── App bar ── */}
@@ -158,6 +185,9 @@ export function ScoreEntryView({
           <Grid3x3 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
         </button>
       </header>
+
+      {/* ── Unsaved-scores safety net (Connectivity Layer 1) ── */}
+      <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
 
       {/* ── Standings strip ── */}
       <div
@@ -247,9 +277,13 @@ export function ScoreEntryView({
           const done = doneCount(p.id) === units.length;
           return (
             <div key={p.id}>
-              <button
+              {/* role=button (not <button>) so the per-cell Retry button can
+                  nest without invalid button-in-button markup. */}
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setOverride({ hole, pid: p.id })}
-                className="flex w-full items-center gap-3 text-left"
+                className="flex w-full cursor-pointer items-center gap-3 text-left"
                 style={{
                   height: 62,
                   padding: "0 16px 0 0",
@@ -316,8 +350,12 @@ export function ScoreEntryView({
                           : `${total} total`}
                   </div>
                 </div>
+                <ScoreSaveBadge
+                  state={saveStatus[scoreCellKey(p.id, label)]}
+                  onRetry={() => onRetryCell?.(p.id, label)}
+                />
                 <ScoreCell value={v} active={active} par={par} celebrate={lastCommit?.pid === p.id && lastCommit?.hole === hole} />
-              </button>
+              </div>
               {active && isCorrection && (
                 <div
                   className="flex items-center gap-1.5"

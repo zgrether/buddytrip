@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
+import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
-import type { Participant, ScoreValues } from "@/components/games/types";
+import type { Participant } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STROKE_PLAY = "gtt_stroke_play";
@@ -33,16 +34,24 @@ export default function NewGamePage() {
 
   const [selected, setSelected] = useState<string[]>([]);
   const [game, setGame] = useState<{ id: string; participants: Participant[] } | null>(null);
-  const [values, setValues] = useState<ScoreValues>({});
   const [view, setView] = useState<"entry" | "grid" | "final">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
-  const upsertEntry = trpc.scores.upsertEntry.useMutation();
-  const deleteEntry = trpc.scores.deleteEntry.useMutation();
-  const finishGame = trpc.games.finish.useMutation();
+  // Score writes go through the connectivity-resilient saver: optimistic value,
+  // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
+  // back) on failure. Owns `values` + `saveStatus` for this game.
+  const { values, setValues, saveStatus, onChange, onClear, retryCell } =
+    useScoreSaver(tripId, game?.id);
+  // Finishing also retries (idempotent — recomputes from the same scores); a
+  // failure stays on the entry view and surfaces via the global error toast,
+  // so it's loud + retryable instead of a silent stall.
+  const finishGame = trpc.games.finish.useMutation({
+    retry: 4,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
+  });
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -72,35 +81,6 @@ export default function NewGamePage() {
     setGame({ id: g.id, participants });
   }
 
-  function handleChange(participantId: string, unitLabel: string, value: number) {
-    if (!tripId || !game) return;
-    const prev = values;
-    setValues((v) => ({
-      ...v,
-      [participantId]: { ...(v[participantId] ?? {}), [unitLabel]: value },
-    }));
-    upsertEntry.mutate(
-      { tripId, gameId: game.id, participantId, unitLabel, value },
-      {
-        onError: () => setValues(prev), // rollback
-      }
-    );
-  }
-
-  function handleClear(participantId: string, unitLabel: string) {
-    if (!tripId || !game) return;
-    const prev = values;
-    setValues((v) => {
-      const row = { ...(v[participantId] ?? {}) };
-      delete row[unitLabel];
-      return { ...v, [participantId]: row };
-    });
-    deleteEntry.mutate(
-      { tripId, gameId: game.id, participantId, unitLabel },
-      { onError: () => setValues(prev) }
-    );
-  }
-
   if (!tripId) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-bt-base)" }}>
@@ -111,9 +91,15 @@ export default function NewGamePage() {
 
   async function handleFinish() {
     if (!tripId || !game) return;
-    const res = await finishGame.mutateAsync({ tripId, gameId: game.id });
-    setStandings(res.standings);
-    setView("final");
+    try {
+      const res = await finishGame.mutateAsync({ tripId, gameId: game.id });
+      setStandings(res.standings);
+      setView("final");
+    } catch {
+      // Stay on the entry view (no silent advance). The global error toast
+      // surfaces the failure; the Finish CTA stays tappable to retry (the
+      // recompute is idempotent).
+    }
   }
 
   function playAgain() {
@@ -150,6 +136,7 @@ export default function NewGamePage() {
                 participants={game.participants}
                 values={values}
                 direction="low_wins"
+                saveStatus={saveStatus}
                 onCellTap={(label) => {
                   setCurrentHole(Number(label) || 1);
                   setView("entry");
@@ -166,8 +153,10 @@ export default function NewGamePage() {
             direction="low_wins"
             currentHole={currentHole}
             onHoleChange={setCurrentHole}
-            onChange={handleChange}
-            onClear={handleClear}
+            onChange={onChange}
+            onClear={onClear}
+            saveStatus={saveStatus}
+            onRetryCell={retryCell}
             onBack={() => router.back()}
             onOpenGrid={() => setView("grid")}
             onFinish={handleFinish}
