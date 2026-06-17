@@ -40,7 +40,7 @@ interface GameResultRow {
   id: string;
   game_id: string;
   entity_id: string;
-  entity_type: "user";
+  entity_type: "user" | "play_group";
   raw_score: null;
   position: number;
   competition_points_earned: null;
@@ -64,22 +64,34 @@ export async function computeMatchPlayResults(
   // → `buildDecided` uses the sequential fallback (the no-course path).
   const { strokeIndex, holeCount } = await loadStrokeIndex(supabase, gameId);
 
-  // user_id → handicap strokes (null = 0).
+  // Side handicaps, keyed by SIDE id. A 1v1 side is a user (handicap on
+  // game_participants); a 2v2 side is a pair = a play_group (handicap on
+  // play_groups). Read both so one compute serves both formats — the id spaces
+  // don't collide and a game only ever looks up its own side type's ids.
+  const hcap = new Map<string, number>();
   const { data: parts } = await supabase
     .from("game_participants")
     .select("user_id, handicap_strokes")
     .eq("game_id", gameId);
-  const hcap = new Map<string, number>();
   for (const p of parts ?? []) {
     hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
   }
+  const { data: pgroups } = await supabase
+    .from("play_groups")
+    .select("id, handicap_strokes")
+    .eq("game_id", gameId);
+  for (const pg of pgroups ?? []) {
+    hcap.set(pg.id as string, effectiveStrokes(pg as { handicap_strokes: number | null }));
+  }
 
-  // user_id → { unit_label → gross }.
+  // Side gross, keyed by SIDE id → { unit_label → gross }. 1v1 records one entry
+  // per user (participant_type='user'); 2v2 records one entry per side
+  // (participant_type='play_group'). Read both and merge by id.
   const { data: entries } = await supabase
     .from("score_entries")
     .select("participant_id, unit_label, value")
     .eq("game_id", gameId)
-    .eq("participant_type", "user");
+    .in("participant_type", ["user", "play_group"]);
   // Nothing scored yet → nothing to derive. Skips the wasted recompute that the
   // setup-time setHandicap calls would otherwise trigger (no results to write).
   if ((entries ?? []).length === 0) return [];
@@ -134,9 +146,10 @@ export async function computeMatchPlayResults(
     // play has no aggregate. Reflects current standing live and final on finish.
     const aTrailing = st.up > 0 && st.leader === "B";
     const bTrailing = st.up > 0 && st.leader === "A";
+    // entity_type follows the side type: 'user' (1v1) or 'play_group' (2v2).
     resultRows.push(
-      mkResult(gameId, a.id, aTrailing ? 2 : 1),
-      mkResult(gameId, b.id, bTrailing ? 2 : 1)
+      mkResult(gameId, a.id, aTrailing ? 2 : 1, a.type),
+      mkResult(gameId, b.id, bTrailing ? 2 : 1, b.type)
     );
   }
 
@@ -194,12 +207,19 @@ async function loadStrokeIndex(
   return { strokeIndex: schema?.units?.metadata?.handicap_index, holeCount: schema?.units?.count };
 }
 
-function mkResult(gameId: string, entityId: string, position: number): GameResultRow {
+function mkResult(
+  gameId: string,
+  entityId: string,
+  position: number,
+  sideType: string
+): GameResultRow {
   return {
     id: crypto.randomUUID(),
     game_id: gameId,
     entity_id: entityId,
-    entity_type: "user",
+    // Normalize the side ref's type to the entity_type column's domain; a 1v1
+    // side ('user') and a 2v2 side ('play_group') are the only cases.
+    entity_type: sideType === "play_group" ? "play_group" : "user",
     raw_score: null,
     position,
     competition_points_earned: null,
@@ -240,6 +260,23 @@ async function writeTeamMatchPoints(
     userTeam.set(a.user_id as string, a.team_id as string);
   }
 
+  // play_group → team (2v2): a side is a pair, so resolve its team via a member.
+  // Both partners are on the same team in a two-team competition. Empty for 1v1.
+  const { data: pgMembers } = await supabase
+    .from("game_participants")
+    .select("user_id, play_group_id")
+    .eq("game_id", gameId);
+  const pgTeam = new Map<string, string>();
+  for (const gp of pgMembers ?? []) {
+    const pg = gp.play_group_id as string | null;
+    if (!pg || pgTeam.has(pg)) continue;
+    const team = userTeam.get(gp.user_id as string);
+    if (team) pgTeam.set(pg, team);
+  }
+  // A side resolves to its team via the user map (1v1) or the play_group map (2v2).
+  const sideTeam = (s: SideRef): string | undefined =>
+    s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id);
+
   const teamPoints = new Map<string, number>();
   for (const m of allMatches) {
     const result = resultByMatch.get(m.id as string);
@@ -247,8 +284,8 @@ async function writeTeamMatchPoints(
     const a = m.side_a as SideRef | null;
     const b = m.side_b as SideRef | null;
     if (!a?.id || !b?.id) continue;
-    const aTeam = userTeam.get(a.id);
-    const bTeam = userTeam.get(b.id);
+    const aTeam = sideTeam(a);
+    const bTeam = sideTeam(b);
     if (!aTeam || !bTeam) continue;
 
     if (result === "a_win") {
