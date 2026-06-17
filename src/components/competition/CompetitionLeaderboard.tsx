@@ -65,6 +65,7 @@ function fmtPts(n: number): string {
 const GAME_ROUTES: Record<string, string> = {
   gtt_stroke_play: "new",
   gtt_match_play_singles: "match/new",
+  gtt_match_play_doubles: "match/new",
   gtt_rack_n_stack: "rack/new",
 };
 

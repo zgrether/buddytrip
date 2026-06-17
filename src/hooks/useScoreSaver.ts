@@ -46,6 +46,9 @@ const retryDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 8000);
 export function useScoreSaver(
   tripId: string | undefined,
   gameId: string | null | undefined,
+  // The scoring unit's type. Omitted → 'user' (singles/stroke — server default,
+  // unchanged). 2v2 passes 'play_group' so each side records one entry.
+  participantType?: "user" | "play_group",
 ) {
   const [values, setValues] = useState<ScoreValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
@@ -96,12 +99,12 @@ export function useScoreSaver(
       // them reach the server (idempotent upserts); this restores per-cell
       // STATUS only.
       upsertEntry
-        .mutateAsync({ tripId, gameId, participantId, unitLabel, value })
+        .mutateAsync({ tripId, gameId, participantId, unitLabel, value, participantType })
         .then(() => mark(key, "saved"))
         // KEEP the optimistic value on failure — flag it, never roll back.
         .catch(() => mark(key, "error"));
     },
-    [tripId, gameId, upsertEntry, mark],
+    [tripId, gameId, upsertEntry, mark, participantType],
   );
 
   const onClear = useCallback(
