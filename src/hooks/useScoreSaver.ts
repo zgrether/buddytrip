@@ -86,14 +86,20 @@ export function useScoreSaver(
         [participantId]: { ...(v[participantId] ?? {}), [unitLabel]: value },
       }));
       mark(key, "saving");
-      upsertEntry.mutate(
-        { tripId, gameId, participantId, unitLabel, value },
-        {
-          onSuccess: () => mark(key, "saved"),
-          // KEEP the optimistic value — flag it, never roll back to blank.
-          onError: () => mark(key, "error"),
-        },
-      );
+      // mutateAsync — NOT mutate. Concurrent saves share ONE mutation observer,
+      // and the inline mutate() callbacks fire only for the observer's CURRENT
+      // (latest) mutation: a rapid foursome left every cell but the last
+      // spinning forever, because the earlier saves' onSuccess never ran (their
+      // mutation was no longer the one the observer tracked). Each mutateAsync
+      // call resolves its OWN promise, so every cell flags its own status
+      // independently. The writes themselves were never the problem — all of
+      // them reach the server (idempotent upserts); this restores per-cell
+      // STATUS only.
+      upsertEntry
+        .mutateAsync({ tripId, gameId, participantId, unitLabel, value })
+        .then(() => mark(key, "saved"))
+        // KEEP the optimistic value on failure — flag it, never roll back.
+        .catch(() => mark(key, "error"));
     },
     [tripId, gameId, upsertEntry, mark],
   );
@@ -110,25 +116,24 @@ export function useScoreSaver(
         return { ...v, [participantId]: row };
       });
       mark(key, null);
-      deleteEntry.mutate(
-        { tripId, gameId, participantId, unitLabel },
-        {
-          // A failed delete means the value is still on the server — restore it
-          // (accurate) and flag it so the user knows the clear didn't take.
-          onError: () => {
-            if (prevValue != null) {
-              setValues((v) => ({
-                ...v,
-                [participantId]: {
-                  ...(v[participantId] ?? {}),
-                  [unitLabel]: prevValue,
-                },
-              }));
-              mark(key, "error");
-            }
-          },
-        },
-      );
+      // mutateAsync per call (see onChange): concurrent clears must each resolve
+      // their own outcome, never be orphaned by a later one on the shared observer.
+      deleteEntry
+        .mutateAsync({ tripId, gameId, participantId, unitLabel })
+        // A failed delete means the value is still on the server — restore it
+        // (accurate) and flag it so the user knows the clear didn't take.
+        .catch(() => {
+          if (prevValue != null) {
+            setValues((v) => ({
+              ...v,
+              [participantId]: {
+                ...(v[participantId] ?? {}),
+                [unitLabel]: prevValue,
+              },
+            }));
+            mark(key, "error");
+          }
+        });
     },
     [tripId, gameId, values, deleteEntry, mark],
   );
