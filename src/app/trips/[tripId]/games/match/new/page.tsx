@@ -66,6 +66,7 @@ export default function NewMatchGamePage() {
   // crew (the roster is a subset of trip members).
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
   const competitionId = competition.data?.id as string | undefined;
+  const utils = trpc.useUtils();
   const assignQ = trpc.teamAssignments.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { enabled: !!tripId && !!competitionId }
@@ -355,6 +356,13 @@ export default function NewMatchGamePage() {
     try {
       await finishGame.mutateAsync({ tripId, gameId });
       await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+      // #6: finalize changes the leaderboard — invalidate it so the board
+      // reflects the result IMMEDIATELY. The board has no realtime sub (only a
+      // 30s poll), so without this it updates only on leave-and-return.
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.games.listByTrip.invalidate({ tripId });
+      }
       go("overview");
     } catch {
       // Stay put (no silent advance). The global error toast surfaces the

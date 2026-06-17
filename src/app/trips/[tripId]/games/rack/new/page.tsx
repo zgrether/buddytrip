@@ -279,6 +279,13 @@ export default function RackNStackPage() {
     if (!tripId || !gid) return;
     await finishGame.mutateAsync({ tripId, gameId: gid });
     await utils.games.getById.invalidate({ tripId, gameId: gid });
+    // #6: finalize changes the leaderboard — invalidate it so the board reflects
+    // the result IMMEDIATELY (no realtime sub, only a 30s poll), instead of only
+    // after leave-and-return ("showed 4 to 2 only after I left and came back").
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
   }
 
   // A resumed competition game (gid set from ?game=) may have NO foursomes yet
