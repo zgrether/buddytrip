@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
@@ -82,8 +83,11 @@ export default function NewMatchGamePage() {
   // Back-stack: forward transitions push the screen they left; Back pops to it.
   // Empty stack means we arrived directly (derived screen) → leave to trip home.
   const [navStack, setNavStack] = useState<Screen[]>([]);
-  // Scoring
-  const [values, setValues] = useState<ScoreValues>({});
+  // Scoring — the connectivity-resilient saver owns `values` + `saveStatus`:
+  // optimistic value, retry-with-backoff, per-cell status, kept-and-flagged
+  // (never rolled back) on failure.
+  const { values, setValues, saveStatus, onChange, onClear, retryCell } =
+    useScoreSaver(tripId, gameId);
   const [view, setView] = useState<"entry" | "grid">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
@@ -112,9 +116,13 @@ export default function NewMatchGamePage() {
   const setPairings = trpc.matches.setPairings.useMutation();
   const setHandicap = trpc.matches.setHandicap.useMutation();
   const activate = trpc.matches.activate.useMutation();
-  const upsertEntry = trpc.scores.upsertEntry.useMutation();
-  const deleteEntry = trpc.scores.deleteEntry.useMutation();
-  const finishGame = trpc.games.finish.useMutation();
+  // Finishing retries (idempotent recompute); a failure stays on the overview
+  // and surfaces via the global error toast — loud + retryable, not a silent
+  // stall. Score writes go through useScoreSaver (above).
+  const finishGame = trpc.games.finish.useMutation({
+    retry: 4,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
+  });
 
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -342,27 +350,16 @@ export default function NewMatchGamePage() {
     go("overview");
   }
 
-  function handleChange(participantId: string, unitLabel: string, value: number) {
-    if (!tripId || !gameId) return;
-    const prev = values;
-    setValues((v) => ({ ...v, [participantId]: { ...(v[participantId] ?? {}), [unitLabel]: value } }));
-    upsertEntry.mutate({ tripId, gameId, participantId, unitLabel, value }, { onError: () => setValues(prev) });
-  }
-  function handleClear(participantId: string, unitLabel: string) {
-    if (!tripId || !gameId) return;
-    const prev = values;
-    setValues((v) => {
-      const row = { ...(v[participantId] ?? {}) };
-      delete row[unitLabel];
-      return { ...v, [participantId]: row };
-    });
-    deleteEntry.mutate({ tripId, gameId, participantId, unitLabel }, { onError: () => setValues(prev) });
-  }
   async function handleFinish() {
     if (!tripId || !gameId) return;
-    await finishGame.mutateAsync({ tripId, gameId });
-    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
-    go("overview");
+    try {
+      await finishGame.mutateAsync({ tripId, gameId });
+      await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+      go("overview");
+    } catch {
+      // Stay put (no silent advance). The global error toast surfaces the
+      // failure; Finish stays tappable to retry (the recompute is idempotent).
+    }
   }
 
   // Scoreable groups (fully-paired matches) for the entry view + grid.
@@ -427,6 +424,7 @@ export default function NewMatchGamePage() {
                 values={values}
                 direction="low_wins"
                 pips={entryPips}
+                saveStatus={saveStatus}
                 onCellTap={(label) => {
                   setCurrentHole(Number(label) || 1);
                   setView("entry");
@@ -443,8 +441,10 @@ export default function NewMatchGamePage() {
             values={values}
             currentHole={currentHole}
             onHoleChange={setCurrentHole}
-            onChange={handleChange}
-            onClear={handleClear}
+            onChange={onChange}
+            onClear={onClear}
+            saveStatus={saveStatus}
+            onRetryCell={retryCell}
             onBack={goBack}
             onOpenGrid={() => setView("grid")}
             onFinish={goBack}

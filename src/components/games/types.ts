@@ -35,3 +35,31 @@ export type ScoreValues = Record<string, Record<string, number>>;
 
 /** Slice A is always low_wins; typed so later strategies can extend. */
 export type ScoreDirection = "low_wins";
+
+/**
+ * Per-cell save lifecycle (Connectivity Layer 1). A score lives optimistically
+ * in local state the instant it's tapped; this tracks whether the WRITE behind
+ * it landed, so a failed save is VISIBLE on the cell instead of silently
+ * vanishing. `error` cells keep their entered value — flagged, retryable, never
+ * rolled back to blank.
+ */
+export type CellSaveState = "saving" | "saved" | "error";
+
+/** { [scoreCellKey]: state } — keyed by `${participantId}:${unitLabel}`. */
+export type SaveStatusMap = Record<string, CellSaveState>;
+
+/** Cell key for SaveStatusMap. participantIds are uuids and unit labels never
+ *  contain a colon, so a colon join is unambiguous and round-trips. */
+export function scoreCellKey(participantId: string, unitLabel: string): string {
+  return `${participantId}:${unitLabel}`;
+}
+
+/** Inverse of {@link scoreCellKey} — split on the FIRST colon (the uuid side
+ *  has none, so this is safe). */
+export function parseScoreCellKey(key: string): {
+  participantId: string;
+  unitLabel: string;
+} {
+  const i = key.indexOf(":");
+  return { participantId: key.slice(0, i), unitLabel: key.slice(i + 1) };
+}

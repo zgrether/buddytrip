@@ -8,8 +8,18 @@ import { MatchCard } from "./MatchCard";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
+import { ScoreSaveBadge } from "./ScoreSaveBadge";
+import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
 import { golfWord } from "./golfScore";
-import type { ScoreUnit, Participant, ScoreValues } from "./types";
+import {
+  parseScoreCellKey,
+  scoreCellKey,
+  type ScoreUnit,
+  type Participant,
+  type ScoreValues,
+  type CellSaveState,
+  type SaveStatusMap,
+} from "./types";
 
 /**
  * MatchEntryView — the per-hole entry surface for singles match play (Slice B).
@@ -52,6 +62,11 @@ interface MatchEntryViewProps {
   finishSubtext?: string;
   /** Current user's id — appends "(you)" to their name on the board + rows. */
   meId?: string;
+  /** Per-cell save state (Connectivity Layer 1) — drives the cell badges + the
+   *  unsaved-scores banner. Keyed by `${participantId}:${unitLabel}`. */
+  saveStatus?: SaveStatusMap;
+  /** Re-fire the save for a flagged cell. */
+  onRetryCell?: (participantId: string, unitLabel: string) => void;
 }
 
 export function MatchEntryView({
@@ -70,6 +85,8 @@ export function MatchEntryView({
   finishLabel = "Finish",
   finishSubtext = "Saves results · shows final standings",
   meId,
+  saveStatus = {},
+  onRetryCell,
 }: MatchEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -129,6 +146,16 @@ export function MatchEntryView({
       : (interactiveHere.find((p) => valueFor(p.id, label) == null)?.id ?? null);
   const activeParticipant = allParticipants.find((p) => p.id === activePid) ?? null;
   const isCorrection = activePid != null && valueFor(activePid, label) != null;
+
+  // ── Save status (Connectivity Layer 1) ────────────────────────────────
+  const errorCount = Object.values(saveStatus).filter((s) => s === "error").length;
+  const retryAll = () => {
+    for (const [k, s] of Object.entries(saveStatus)) {
+      if (s !== "error") continue;
+      const { participantId, unitLabel } = parseScoreCellKey(k);
+      onRetryCell?.(participantId, unitLabel);
+    }
+  };
 
   // The board reflects a hole only once it's confirmed: while the keypad is open
   // on the current hole (activePid set), exclude that hole from the match-state
@@ -192,6 +219,9 @@ export function MatchEntryView({
           <Grid3x3 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
         </button>
       </header>
+
+      {/* Unsaved-scores safety net (Connectivity Layer 1) */}
+      <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
 
       {/* Match board(s) — pinned at the top, above the hole selector */}
       <div className="shrink-0" style={{ padding: "12px 12px 0" }}>
@@ -293,6 +323,8 @@ export function MatchEntryView({
                 isMe={!!meId && m.a.id === meId}
                 par={par}
                 celebrate={lastCommit?.pid === m.a.id && lastCommit?.hole === hole}
+                saveState={saveStatus[scoreCellKey(m.a.id, label)]}
+                onRetry={() => onRetryCell?.(m.a.id, label)}
               />
               <PlayerRow
                 group={g}
@@ -307,6 +339,8 @@ export function MatchEntryView({
                 isMe={!!meId && m.b.id === meId}
                 par={par}
                 celebrate={lastCommit?.pid === m.b.id && lastCommit?.hole === hole}
+                saveState={saveStatus[scoreCellKey(m.b.id, label)]}
+                onRetry={() => onRetryCell?.(m.b.id, label)}
                 last
               />
             </div>
@@ -362,6 +396,8 @@ function PlayerRow({
   par,
   celebrate,
   last,
+  saveState,
+  onRetry,
 }: {
   group: { st: ReturnType<typeof matchState>; strokeHolesA: Set<number>; strokeHolesB: Set<number> };
   player: Participant;
@@ -376,6 +412,8 @@ function PlayerRow({
   par?: number;
   celebrate?: boolean;
   last?: boolean;
+  saveState?: CellSaveState;
+  onRetry?: () => void;
 }) {
   const v = valueFor(player.id, label);
   const stroked = (isA ? group.strokeHolesA : group.strokeHolesB).has(hole);
@@ -398,13 +436,18 @@ function PlayerRow({
   }
 
   return (
-    <button
+    // role=button (not <button>) so the per-cell Retry button can nest without
+    // invalid button-in-button markup.
+    <div
+      role="button"
+      tabIndex={dead ? -1 : 0}
+      aria-disabled={dead}
       onClick={dead ? undefined : onTap}
-      disabled={dead}
       className="flex w-full items-center gap-3 text-left"
       style={{
         height: 62,
         padding: "0 14px 0 0",
+        cursor: dead ? "default" : "pointer",
         opacity: dead ? 0.55 : 1,
         background: active ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
         borderTop: last ? "1px solid var(--color-bt-subtle-border)" : undefined,
@@ -420,8 +463,9 @@ function PlayerRow({
         </span>
         <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
       </div>
+      <ScoreSaveBadge state={saveState} onRetry={onRetry} />
       <MatchScoreCell value={v} active={active} stroked={stroked} par={par} celebrate={celebrate} />
-    </button>
+    </div>
   );
 }
 
