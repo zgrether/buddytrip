@@ -19,9 +19,12 @@ export const scoresRouter = router({
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        participantId: z.string().min(1), // user_id in Slice A
+        participantId: z.string().min(1), // user_id (1v1/stroke) | play_group_id (2v2)
         unitLabel: z.string().min(1).max(16), // "1".."18"
         value: z.number().int().min(1).max(99).nullable(),
+        // The scoring unit. Defaults to 'user' (singles/stroke — unchanged); a
+        // 2v2 side records one entry per play_group.
+        participantType: z.enum(["user", "play_group"]).optional(),
       })
     )
     .use(requireTripMember)
@@ -55,7 +58,7 @@ export const scoresRouter = router({
           id,
           game_id: input.gameId,
           participant_id: input.participantId,
-          participant_type: "user",
+          participant_type: input.participantType ?? "user",
           unit_label: input.unitLabel,
           value: input.value,
           submitted_by: ctx.user!.id,
@@ -131,11 +134,13 @@ export const scoresRouter = router({
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
+      // Both scoring units: 'user' (1v1/stroke) and 'play_group' (2v2 sides).
+      // Singles games have only 'user' rows, so this is unchanged for them.
       const { data, error } = await ctx.supabase
         .from("score_entries")
         .select("participant_id, unit_label, value")
         .eq("game_id", input.gameId)
-        .eq("participant_type", "user");
+        .in("participant_type", ["user", "play_group"]);
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
