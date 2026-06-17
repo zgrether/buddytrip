@@ -50,13 +50,17 @@ export function useScoreSaver(
   const [values, setValues] = useState<ScoreValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
 
+  // suppressErrorToast: these own per-cell save UI (badge + banner), so the
+  // global connectivity toast would double-signal — opt out of it.
   const upsertEntry = trpc.scores.upsertEntry.useMutation({
     retry: MAX_RETRIES,
     retryDelay,
+    meta: { suppressErrorToast: true },
   });
   const deleteEntry = trpc.scores.deleteEntry.useMutation({
     retry: MAX_RETRIES,
     retryDelay,
+    meta: { suppressErrorToast: true },
   });
 
   const mark = useCallback((key: string, state: CellSaveState | null) => {
