@@ -41,6 +41,10 @@ export interface MatchGroupData {
   b: Participant;
   strokesA: number; // handicap strokes A receives (usually 0)
   strokesB: number;
+  /** Team colors (Slice D) — the strip tints the leader in the side's team
+   *  color. Omit for the neutral standalone (non-team) default. */
+  leftColor?: string;
+  rightColor?: string;
 }
 
 interface MatchEntryViewProps {
@@ -241,6 +245,8 @@ export function MatchEntryView({
                 label={m.label}
                 holeCount={units.length}
                 youId={meId}
+                leftColor={m.leftColor}
+                rightColor={m.rightColor}
                 hideFormat
               />
 

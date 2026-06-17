@@ -304,6 +304,35 @@ export const matchesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
+      // Setup-integrity backstop: in a competition, both members of a pair MUST
+      // be on the same team — a side is one team's pair. The client constrains
+      // the picker so this can't happen from the UI; this hard-blocks the raw API
+      // (defense in depth — never silently accept a cross-team pair).
+      const { data: gameRow } = await ctx.supabase
+        .from("games")
+        .select("competition_id")
+        .eq("id", input.gameId)
+        .maybeSingle();
+      const competitionId = (gameRow?.competition_id as string | null) ?? null;
+      if (competitionId) {
+        const { data: assigns } = await ctx.supabase
+          .from("team_assignments")
+          .select("user_id, team_id")
+          .eq("competition_id", competitionId);
+        const teamOf = new Map<string, string>();
+        for (const a of assigns ?? []) teamOf.set(a.user_id as string, a.team_id as string);
+        for (const m of input.matches) {
+          for (const side of [m.sideA, m.sideB]) {
+            if (!side) continue;
+            const t0 = teamOf.get(side.members[0]);
+            const t1 = teamOf.get(side.members[1]);
+            if (t0 && t1 && t0 !== t1) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "A 2v2 pair must be from the same team" });
+            }
+          }
+        }
+      }
+
       // Clean replace (setup-time, before scoring — mirrors setPairings). Order
       // matters: matches reference play_groups (SET NULL), participants reference
       // play_groups (SET NULL); clear children then the play_groups.
