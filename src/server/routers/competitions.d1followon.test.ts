@@ -124,6 +124,13 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     })) as { id: string };
     gameIds.push(g.id);
 
+    // Configured to have 2 matches (rows) → available = value × 2. (Dynamic
+    // match count derives available from the match rows, not team sizes.)
+    await ctx.admin.from("game_matches").insert([
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: null, side_b: null, status: "active" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: null, side_b: null, status: "active" },
+    ]);
+
     // Realized awarded points (adapter output): Blue won both of the 2 matches.
     await ctx.admin.from("game_results").insert([
       { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", raw_score: 2, position: null, competition_points_earned: null },
@@ -134,7 +141,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
     expect(lb.teamTotals[ta]).toBe(2);
     expect(lb.teamTotals[tb]).toBe(0);
-    // available = value × matchCount = 1 × 2 (NOT the realized sum) — stable.
+    // available = value × match-row count = 1 × 2 (NOT the realized sum).
     expect(lb.pointsAvailable).toBe(2);
     expect(lb.winNumber).toBe(1.5); // smallest > half of 2
     expect(lb.pointsToClinch[ta]).toBeLessThanOrEqual(0); // 2 ≥ 1.5 → clinched
@@ -162,6 +169,13 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     })) as { id: string };
     gameIds.push(g.id);
 
+    // Configured to have 2 matches (rows) → available = value × 2 = 2. (Dynamic
+    // match count: available derives from the match ROWS, not team sizes.)
+    await ctx.admin.from("game_matches").insert([
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: null, side_b: null, status: "active" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: null, side_b: null, status: "active" },
+    ]);
+
     // 2 matches played: 1 halve (each gets 0.5) + A wins 1 (A gets 1).
     // A total = 1.5, B total = 0.5.
     await ctx.admin.from("game_results").insert([
@@ -173,7 +187,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
     expect(lb.teamTotals[ta]).toBe(1.5); // realized (the 0.5 halve survives numeric)
     expect(lb.teamTotals[tb]).toBe(0.5);
-    expect(lb.pointsAvailable).toBe(2); // value × matchCount = 1×2
+    expect(lb.pointsAvailable).toBe(2); // value × match-row count = 1×2
   });
 
   it("per_match shell with no team results contributes 0 to pointsAvailable (no pairings)", async () => {
@@ -271,25 +285,27 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
     expect(after.pointsAvailable).toBe(8); // unchanged — only awarded points move
   });
 
-  it("per_match available is stable BEFORE any matches are scored", async () => {
+  it("per_match available = value × configured match count (the rows), before any scoring", async () => {
     const comp = await ctx.createCompetition(tripId, "Stable Match Comp");
     const ta = await ctx.createTeam(comp, "A");
-    const tb = await ctx.createTeam(comp, "B");
-    await ctx.admin.from("team_assignments").insert([
-      { competition_id: comp, user_id: ctx.getUser("owner").id, team_id: ta },
-      { competition_id: comp, user_id: ctx.getUser("planner").id, team_id: ta },
-      { competition_id: comp, user_id: ctx.getUser("member").id, team_id: tb },
-      { competition_id: comp, user_id: ctx.getUser("outsider").id, team_id: tb },
-    ]);
+    await ctx.createTeam(comp, "B");
     const g = (await ctx.caller().games.create({
       tripId, gameTypeId: MATCH_PLAY, name: "Future Cup", competitionId: comp,
       pointsDistribution: { type: "per_match", value: 1 },
     })) as { id: string };
     gameIds.push(g.id);
 
-    // No game_results yet — but matchCount from team sizes = 2 → available = 2.
+    // Dynamic match count: available derives from the matches the game is
+    // CONFIGURED to have (its rows, ≥1 from creation), NOT a team-size estimate.
+    // 3 configured matches → available = value × 3 = 3, even unpaired/unscored.
+    await ctx.admin.from("game_matches").insert([
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: null, side_b: null, status: "pending" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: null, side_b: null, status: "pending" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 3, display_order: 2, side_a: null, side_b: null, status: "pending" },
+    ]);
+
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.pointsAvailable).toBe(2);
+    expect(lb.pointsAvailable).toBe(3);
     expect(lb.teamTotals[ta]).toBe(0); // nothing awarded yet
   });
 });
