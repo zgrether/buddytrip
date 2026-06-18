@@ -33,6 +33,8 @@ function formatTee(t: string | null | undefined): string {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MATCH_PLAY = "gtt_match_play_singles";
 const MATCH_PLAY_DOUBLES = "gtt_match_play_doubles";
+// Mirrors the server cap (matches router). Dynamic match count grows up to here.
+const MAX_MATCHES = 24;
 
 // A server match side: a user (1v1) or a play_group (2v2). The editable draft
 // holds each side as a list of member user ids — length ≤1 for singles, ≤2 for
@@ -86,8 +88,9 @@ export default function NewMatchGamePage() {
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
 
-  // New-game form
-  const [matchCount, setMatchCount] = useState(2);
+  // New-game form. Dynamic match count: start at 1 (a single default match) and
+  // grow one at a time — never force the full suggested count up front.
+  const [matchCount, setMatchCount] = useState(1);
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // Setup editing state
   const [draft, setDraft] = useState<DraftMatch[]>([]);
@@ -140,6 +143,11 @@ export default function NewMatchGamePage() {
   const setDoublesPairings = trpc.matches.setDoublesPairings.useMutation();
   const setDoublesHandicap = trpc.matches.setDoublesHandicap.useMutation();
   const activate = trpc.matches.activate.useMutation();
+  // Dynamic match count (+1 / −1). Each changes the game's configured match
+  // count → the clinch goalpost (value × count) on the competition board, so
+  // both refresh the board after (see refreshAfterMatchCountChange).
+  const addMatch = trpc.matches.addMatch.useMutation();
+  const removeMatch = trpc.matches.removeMatch.useMutation();
   // Finishing retries (idempotent recompute); a failure stays on the overview
   // and surfaces via the global error toast — loud + retryable, not a silent
   // stall. Score writes go through useScoreSaver (above).
@@ -392,6 +400,20 @@ export default function NewMatchGamePage() {
     if (n > 0) setDraft(Array.from({ length: n }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
   }, [screen, draft.length, serverMatches, handicapOf, membersOfSide, sided, compMatchCount, maxMatches]);
 
+  // After a +1/−1 (or initial create): re-pull the game's matches AND refresh
+  // the competition board so "first to XX" / "X of Y" recompute ON SCREEN. The
+  // board has no realtime sub (only a 30s poll) and re-seeds competitions.
+  // leaderboard FROM faceBootstrap on mount, so invalidate BOTH (CLAUDE.md #10),
+  // else the goalpost reads stale until the poll.
+  async function refreshAfterMatchCountChange() {
+    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
+      utils.games.listByTrip.invalidate({ tripId: tripId! });
+      utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
+    }
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────
   async function handleCreate() {
     if (!tripId) return;
@@ -411,6 +433,13 @@ export default function NewMatchGamePage() {
       }
     }
     const count = Math.min(Math.max(1, matchCount), maxMatches);
+    // Persist the configured matches as rows NOW (empty) so the game has ≥1
+    // configured match from creation — the board's clinch goalpost (value ×
+    // count) is live immediately, not 0 until tee-off.
+    const emptyMatches = Array.from({ length: count }, (_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
+    if (sided) await setDoublesPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
+    else await setPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
+    await refreshAfterMatchCountChange();
     setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
     go("setup");
   }
@@ -473,8 +502,32 @@ export default function NewMatchGamePage() {
       });
       await Promise.all([...handicapWrites, activate.mutateAsync({ tripId, gameId })]);
     }
-    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+    // Saving setup changes the configured match count → refresh the board so
+    // "first to XX" reflects it on screen.
+    await refreshAfterMatchCountChange();
     go("overview");
+  }
+
+  // Dynamic match count — mid-life +1 / −1 (the explicit "arm with 1, add a 2nd
+  // mid-life" path). Each persists incrementally (NOT a bulk re-save, so
+  // in-progress matches are untouched) and refreshes the board reactively.
+  async function handleAddMatch() {
+    if (!tripId || !gameId) return;
+    try {
+      await addMatch.mutateAsync({ tripId, gameId });
+      await refreshAfterMatchCountChange();
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+  async function handleRemoveMatch(matchId: string) {
+    if (!tripId || !gameId) return;
+    try {
+      await removeMatch.mutateAsync({ tripId, gameId, matchId });
+      await refreshAfterMatchCountChange();
+    } catch {
+      // surfaced via the global error toast
+    }
   }
 
   async function handleFinish() {
@@ -704,6 +757,14 @@ export default function NewMatchGamePage() {
             setView(locked ? "grid" : "entry");
             go("score");
           }}
+          // +1 mid-life: persist an empty match (board recomputes immediately),
+          // then land on setup to pick its players (assignment is the same flow).
+          onAddMatch={async () => {
+            await handleAddMatch();
+            go("setup");
+          }}
+          onRemoveMatch={handleRemoveMatch}
+          mutatingCount={addMatch.isPending || removeMatch.isPending}
         />
       )}
       </div>
@@ -1078,16 +1139,32 @@ function MatchSetup({
               )}
               <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Match {i + 1}</span>
-                <span
-                  onMouseDown={() => setArmedIdx(i)}
-                  onMouseUp={() => setArmedIdx(null)}
-                  title="Drag to reorder"
-                  aria-label="Drag to reorder"
-                  className="flex cursor-grab items-center justify-center active:cursor-grabbing"
-                  style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)", touchAction: "none" }}
-                >
-                  <GripVertical size={16} />
-                </span>
+                <div className="flex items-center gap-1">
+                  {/* Remove this match (down to the minimum of 1). Pre-tee-off
+                      draft has no persisted scores, so removal is free here. */}
+                  {draft.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setDraft((prev) => prev.filter((_, j) => j !== i))}
+                      title="Remove match"
+                      aria-label={`Remove match ${i + 1}`}
+                      className="flex items-center justify-center"
+                      style={{ width: 24, height: 24, color: "var(--color-bt-danger)" }}
+                    >
+                      <Minus size={16} />
+                    </button>
+                  )}
+                  <span
+                    onMouseDown={() => setArmedIdx(i)}
+                    onMouseUp={() => setArmedIdx(null)}
+                    title="Drag to reorder"
+                    aria-label="Drag to reorder"
+                    className="flex cursor-grab items-center justify-center active:cursor-grabbing"
+                    style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)", touchAction: "none" }}
+                  >
+                    <GripVertical size={16} />
+                  </span>
+                </div>
               </div>
               {/* Grid with minmax(0,1fr) columns → the two slots are always
                   equal width regardless of name length, vs stays centered. */}
@@ -1110,6 +1187,19 @@ function MatchSetup({
           );
         })}
       </div>
+
+      {/* Add another match — dynamic count grows one at a time (up to the cap). */}
+      {draft.length < MAX_MATCHES && (
+        <button
+          type="button"
+          onClick={() => setDraft((prev) => [...prev, { matchNumber: prev.length + 1, a: [], b: [], handicap: 0 }])}
+          className="mt-3 flex w-full items-center justify-center gap-1.5"
+          style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+        >
+          <Plus size={16} />
+          Add match
+        </button>
+      )}
 
       <PrimaryButton
         label={saving ? "Setting up…" : "Ready to tee off"}
@@ -1142,6 +1232,9 @@ function Overview({
   onCorrect,
   correctingPending,
   onOpenMatch,
+  onAddMatch,
+  onRemoveMatch,
+  mutatingCount,
 }: {
   groups: MatchGroupData[];
   myId: string | undefined;
@@ -1160,6 +1253,10 @@ function Overview({
   onCorrect: () => void;
   correctingPending: boolean;
   onOpenMatch: (matchId: string) => void;
+  /** Dynamic match count — mid-life +1 / −1. */
+  onAddMatch: () => void;
+  onRemoveMatch: (matchId: string) => void;
+  mutatingCount: boolean;
 }) {
   if (!published) return <MemberNotReady gameName={gameName} />;
   const decideds = groups.map(decidedFor);
@@ -1184,20 +1281,57 @@ function Overview({
 
       <div className="flex flex-col gap-2.5">
         {groups.map((g, i) => (
-          <MatchCard
-            key={g.matchId}
-            a={g.a}
-            b={g.b}
-            results={decideds[i]}
-            label={`Match ${i + 1}`}
-            youId={myId}
-            leftColor={g.leftColor}
-            rightColor={g.rightColor}
-            hideFormat
-            onClick={() => onOpenMatch(g.matchId)}
-          />
+          <div key={g.matchId} className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <MatchCard
+                a={g.a}
+                b={g.b}
+                results={decideds[i]}
+                label={`Match ${i + 1}`}
+                youId={myId}
+                leftColor={g.leftColor}
+                rightColor={g.rightColor}
+                hideFormat
+                onClick={() => onOpenMatch(g.matchId)}
+              />
+            </div>
+            {/* −1: remove this match (live count). Warn first if it has scores —
+                never silently drop entry. Down to the minimum of 1. */}
+            {canEdit && !complete && groups.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const scored = decideds[i].length > 0;
+                  if (scored && !window.confirm(`Match ${i + 1} has scores entered. Remove it and discard them?`)) return;
+                  onRemoveMatch(g.matchId);
+                }}
+                disabled={mutatingCount}
+                title="Remove match"
+                aria-label={`Remove match ${i + 1}`}
+                className="flex shrink-0 items-center justify-center disabled:opacity-40"
+                style={{ width: 34, height: 34, borderRadius: 9999, color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger-border)" }}
+              >
+                <Minus size={16} />
+              </button>
+            )}
+          </div>
         ))}
       </div>
+
+      {/* +1: add another match mid-life (lands on setup to pick its players).
+          The board's "first to XX" jumps by one × value immediately. */}
+      {canEdit && !complete && groups.length < MAX_MATCHES && (
+        <button
+          type="button"
+          onClick={onAddMatch}
+          disabled={mutatingCount}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 disabled:opacity-40"
+          style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+        >
+          <Plus size={16} />
+          Add match
+        </button>
+      )}
 
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
         {complete
@@ -1205,8 +1339,8 @@ function Overview({
             ? "Tap a match to fix a score."
             : "Tap a match to view the scorecard."
           : underway
-            ? "Tap a match to keep scoring."
-            : "Tap a match to enter scores — the round starts on your first score."}
+            ? `${groups.length} ${groups.length === 1 ? "match" : "matches"} · tap one to keep scoring.`
+            : `${groups.length} ${groups.length === 1 ? "match" : "matches"} · tap one to enter scores — the round starts on your first score.`}
       </p>
 
       {canEdit && !complete && allOver && (
