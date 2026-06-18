@@ -23,6 +23,10 @@ import { computeMatchPlayResults } from "../lib/matchPlay";
  * other `0`) — never split, never in `games.modifiers.buddy_rules` (Slice F).
  */
 
+// Match count is dynamic (start at 1, add as foursomes are set). The cap is a
+// generous ceiling — far above any realistic field — not the old fixed 4.
+const MAX_MATCHES = 24;
+
 const sideSchema = z.object({ type: z.literal("user"), id: z.string().min(1) });
 // 2v2 (doubles): a side is a PAIR of users. setDoublesPairings creates a
 // play_group per side and stores side_a/side_b as {"type":"play_group","id":pgId}
@@ -70,7 +74,7 @@ export const matchesRouter = router({
             })
           )
           .min(1)
-          .max(4),
+          .max(MAX_MATCHES),
       })
     )
     .use(requireGameEdit())
@@ -297,7 +301,7 @@ export const matchesRouter = router({
             })
           )
           .min(1)
-          .max(4),
+          .max(MAX_MATCHES),
       })
     )
     .use(requireGameEdit())
@@ -456,13 +460,130 @@ export const matchesRouter = router({
       return { ok: true };
     }),
 
+  // addMatch — Owner/Organizer/delegate. Append ONE empty match (the dynamic
+  // "+1"). The configured match count = game_matches rows, so a new row raises
+  // the clinch goalpost (value × count) immediately, paired or not. Sides get
+  // filled after via assignPlayer (1v1) / the doubles assignment flow. A match
+  // added to an already-active game is itself active (scoreable now); on a
+  // pending game it stays pending until activate. Refuses past the cap.
+  addMatch: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      await assertGameInTrip(ctx, input.gameId, ctx.tripId);
+
+      const { data: existing } = await ctx.supabase
+        .from("game_matches")
+        .select("match_number, display_order")
+        .eq("game_id", input.gameId);
+      const rows = (existing ?? []) as { match_number: number; display_order: number }[];
+      if (rows.length >= MAX_MATCHES) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `A game can have at most ${MAX_MATCHES} matches` });
+      }
+      const nextNumber = rows.reduce((mx, r) => Math.max(mx, r.match_number ?? 0), 0) + 1;
+      const nextOrder = rows.reduce((mx, r) => Math.max(mx, r.display_order ?? -1), -1) + 1;
+
+      // Active game → the new match is immediately scoreable; pending → pending.
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("status")
+        .eq("id", input.gameId)
+        .maybeSingle();
+      const status = (game?.status as string | undefined) === "active" ? "active" : "pending";
+
+      const { error } = await ctx.supabase.from("game_matches").insert({
+        id: crypto.randomUUID(),
+        game_id: input.gameId,
+        play_group_id: null,
+        match_number: nextNumber,
+        display_order: nextOrder,
+        side_a: null,
+        side_b: null,
+        status,
+      });
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to add match: ${error.message}` });
+      }
+
+      const { data } = await ctx.supabase
+        .from("game_matches")
+        .select("*")
+        .eq("game_id", input.gameId)
+        .order("display_order", { ascending: true });
+      return data ?? [];
+    }),
+
+  // removeMatch — Owner/Organizer/delegate. Delete ONE match (the dynamic "-1"),
+  // lowering the clinch goalpost by one × value. Hard-deletes the match, its
+  // sides' participants/play_groups, and ANY entered scores + side results for
+  // those sides (a player/pair is in exactly one match) — then recomputes the
+  // rest. The CLIENT confirms first when the match has scores (don't silently
+  // drop entry); the server still cleans up fully. Refuses to drop below 1 (a
+  // match game always keeps ≥1 configured match).
+  removeMatch: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), matchId: z.string().min(1) }))
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      await assertGameInTrip(ctx, input.gameId, ctx.tripId);
+
+      const { data: all } = await ctx.supabase
+        .from("game_matches")
+        .select("id, side_a, side_b")
+        .eq("game_id", input.gameId);
+      type Side = { type: string; id: string } | null;
+      const rows = (all ?? []) as { id: string; side_a: Side; side_b: Side }[];
+      if (rows.length <= 1) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A match game must keep at least one match" });
+      }
+      const target = rows.find((r) => r.id === input.matchId);
+      if (!target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
+      }
+
+      const sides = [target.side_a, target.side_b].filter(
+        (s): s is { type: string; id: string } => !!s?.id
+      );
+      const userSideIds = sides.filter((s) => s.type === "user").map((s) => s.id);
+      const pgSideIds = sides.filter((s) => s.type === "play_group").map((s) => s.id);
+      // The side id IS the score key (score_entries.participant_id) and the
+      // side-level result key (game_results.entity_id) — a user for 1v1, a
+      // play_group for 2v2.
+      const sideKeyIds = [...userSideIds, ...pgSideIds];
+
+      // Drop the match first so the recompute below sees the reduced set.
+      await ctx.supabase.from("game_matches").delete().eq("id", input.matchId);
+
+      if (sideKeyIds.length > 0) {
+        await ctx.supabase.from("score_entries").delete().eq("game_id", input.gameId).in("participant_id", sideKeyIds);
+        await ctx.supabase.from("game_results").delete().eq("game_id", input.gameId).in("entity_id", sideKeyIds);
+      }
+      if (userSideIds.length > 0) {
+        await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId).in("user_id", userSideIds);
+      }
+      if (pgSideIds.length > 0) {
+        await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId).in("play_group_id", pgSideIds);
+        await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId).in("id", pgSideIds);
+      }
+
+      // Recompute remaining in-progress matches — rebuilds the per-team totals so
+      // the board reflects the drop (a frozen/complete match is left alone).
+      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+
+      const { data } = await ctx.supabase
+        .from("game_matches")
+        .select("*")
+        .eq("game_id", input.gameId)
+        .order("display_order", { ascending: true });
+      return data ?? [];
+    }),
+
   // reorder — Owner/Organizer. Persist display_order from the given order.
   reorder: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        orderedMatchIds: z.array(z.string().min(1)).min(1).max(4),
+        orderedMatchIds: z.array(z.string().min(1)).min(1).max(MAX_MATCHES),
       })
     )
     .use(requireGameEdit())

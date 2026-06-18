@@ -3,8 +3,10 @@ import { rollUp, placementDetail, type LiveGame } from "@/lib/competitionPlaceme
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 
-/** Singles vs doubles for matchCount. Only singles match play exists today; a
- *  future doubles type slots in here without touching the caller. */
+const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
+
+/** Singles vs doubles head-to-head sizing for the team-size-derived formats
+ *  (rack-n-stack). Match play itself counts its configured rows instead. */
 function matchFormat(gameTypeId: string | null): MatchFormat {
   return gameTypeId === "gtt_match_play_doubles" ? "doubles" : "singles";
 }
@@ -31,10 +33,9 @@ export async function computeCompetitionLeaderboard(
   supabase: SupabaseClient,
   competitionId: string
 ) {
-  // These four reads are independent — run them in parallel (one round-trip's
-  // worth of latency instead of four stacked). `game_results` alone depends on
-  // the game ids, so it waits below. (Was 5 serial queries — the profiling's
-  // server-side mini-waterfall; this is fix #3.)
+  // These reads are independent — run them in parallel (one round-trip's worth
+  // of latency instead of stacked). `game_results` + the match counts alone
+  // depend on the game ids, so they wait below.
   const [teamsRes, compRes, gameRowsRes, assignmentsRes] = await Promise.all([
     supabase
       .from("teams")
@@ -52,8 +53,8 @@ export async function computeCompetitionLeaderboard(
       .select("id, name, points_distribution, points_total, status, game_type_id")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true }),
-    // Team sizes (member headcount) drive the match-game total = value ×
-    // matchCount — derived from sizes, NOT pairings (§8).
+    // Team sizes drive the team-size-derived per_match formats (rack-n-stack):
+    // value × min team size. Match play instead counts its configured rows.
     supabase
       .from("team_assignments")
       .select("team_id")
@@ -64,22 +65,39 @@ export async function computeCompetitionLeaderboard(
   const comp = compRes.data;
   const allGames = gameRowsRes.data ?? [];
   const live = allGames.filter((g) => g.status !== "dropped");
-  const assignments = assignmentsRes.data;
   const sizeByTeam = new Map<string, number>();
-  for (const a of assignments ?? []) {
+  for (const a of assignmentsRes.data ?? []) {
     const tid = a.team_id as string;
     sizeByTeam.set(tid, (sizeByTeam.get(tid) ?? 0) + 1);
   }
   const teamSizes = teamIds.map((id) => sizeByTeam.get(id) ?? 0);
 
   const gameIds = live.map((g) => g.id as string);
-  const { data: results } = gameIds.length
-    ? await supabase
-        .from("game_results")
-        .select("game_id, entity_id, position, raw_score")
-        .in("game_id", gameIds)
-        .eq("entity_type", "team")
-    : { data: [] as { game_id: string; entity_id: string; position: number | null; raw_score: number | null }[] };
+  // game_results (awarded) + the per-game match COUNT (available). Both depend on
+  // the live game ids; run them together.
+  const [resultsRes, matchRowsRes] = await Promise.all([
+    gameIds.length
+      ? supabase
+          .from("game_results")
+          .select("game_id, entity_id, position, raw_score")
+          .in("game_id", gameIds)
+          .eq("entity_type", "team")
+      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; position: number | null; raw_score: number | null }[] }),
+    gameIds.length
+      ? supabase.from("game_matches").select("game_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string }[] }),
+  ]);
+  const results = resultsRes.data;
+  // A match game's available points = value × the number of matches it is
+  // CONFIGURED to have (its game_matches rows), counted regardless of whether
+  // they're paired yet — the configured count, ≥1 from creation. Adding/removing
+  // a match moves this (the live clinch target); pairing or playing does not.
+  // (Was value × deriveMatchCount(teamSizes) — the stable §8 estimate; the
+  // dynamic-match-count build moves the goalpost to the live configured count.)
+  const matchCountByGame = new Map<string, number>();
+  for (const r of (matchRowsRes.data ?? []) as { game_id: string }[]) {
+    matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
+  }
 
   // For placement games: value = position (lower wins).
   // For per_match games: value = raw_score (match points, higher wins).
@@ -95,13 +113,18 @@ export async function computeCompetitionLeaderboard(
     const standings = standingsByGame.get(g.id as string) ?? [];
 
     if (isPerMatch(rawDist)) {
-      // Available (stable): value × matchCount from TEAM SIZES — known before
-      // pairings, so the clinch number doesn't move as matches are played (§8).
-      // 0 when teams aren't sized yet ("matches not set"). AWARDED teamTotals
-      // still come from the realized per-team match points (synthetic
-      // distribution below), so configuring/playing moves only awarded points.
-      const mc = deriveMatchCount(teamSizes, matchFormat(g.game_type_id as string | null));
-      const pointsTotal = mc != null ? rawDist.value * mc : 0;
+      const typeId = g.game_type_id as string | null;
+      // Match play (singles/doubles): available = value × the game's CONFIGURED
+      // match count (its game_matches rows), regardless of pairing — the live
+      // clinch goalpost that add/remove moves (dynamic match count). Other
+      // per_match formats (rack-n-stack) DON'T use game_matches; their count is
+      // the team-size-derived head-to-head sizing (unchanged stable model) — so
+      // counting rows there would zero them out.
+      const mc =
+        typeId && MATCH_PLAY_TYPES.has(typeId)
+          ? matchCountByGame.get(g.id as string) ?? 0
+          : deriveMatchCount(teamSizes, matchFormat(typeId)) ?? 0;
+      const pointsTotal = rawDist.value * mc;
       if (standings.length === 0) {
         // No decided matches yet — contributes its available pool, no awards.
         return { id: g.id as string, distribution: null, numTeams: teamIds.length, standings: [], direction: "high_wins" as const, pointsTotal };
