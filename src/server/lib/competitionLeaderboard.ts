@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rollUp, placementDetail, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 
@@ -169,14 +169,15 @@ export async function computeCompetitionLeaderboard(
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
 
-  // Per-game points in play, keyed by id — the SAME authoritative value the
-  // roll-up uses (owner-set total for placement; value × match count for
-  // per_match). The board row's outer column (§A5 `N PTS`) reads this so a
-  // match-play game — whose `distribution` is null until decided — still shows
-  // its potential. Built from the computed liveGames so the row can't diverge
-  // from the standings.
-  const ptsInPlayByGame = new Map<string, number | null>(
-    liveGames.map((g) => [g.id, g.pointsTotal ?? null])
+  // Per-game points in play, keyed by id — the SAME per-game expression rollUp
+  // sums into points-available (owner-set total, else the distribution sum). The
+  // board row's outer column (§A5 `N PTS`) reads this so a match-play game —
+  // whose `distribution` is null until decided — still shows its potential, AND
+  // a distribution-only placement game (no owner total) shows its sum instead of
+  // a bare `—`. Built from the computed liveGames so the row can't diverge from
+  // the standings.
+  const ptsInPlayByGame = new Map<string, number>(
+    liveGames.map((g) => [g.id, g.pointsTotal ?? awardedForGame(g.distribution, g.numTeams)])
   );
 
   // Per-game grid cells (place + points per team) — same averaging as the totals,

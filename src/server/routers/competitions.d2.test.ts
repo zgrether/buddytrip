@@ -319,8 +319,28 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "Unready", competitionId: comp }) as { id: string };
     gameIds.push(g.id);
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { ready: boolean };
+    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { ready: boolean; pointsTotal: number | null };
     expect(game!.ready).toBe(false);
+    // An unready game has no points in play → the row's outer column reads `—`.
+    expect(game!.pointsTotal ?? 0).toBe(0);
+  });
+
+  it("pointsTotal (§A5 outer column) reads the distribution sum when no owner total is set", async () => {
+    // The board row's `N PTS` must match what rollUp counts as available, even
+    // for a distribution-only placement game (no explicit points_total). 9+6=15.
+    const comp = await ctx.createCompetition(tripId, "D2 Pts Comp");
+    const t1 = await ctx.createTeam(comp, "A", { shortName: "A" });
+    const t2 = await ctx.createTeam(comp, "B", { shortName: "B" });
+    expect([t1, t2].length).toBe(2);
+    const g = await ctx.caller().games.create({
+      tripId, gameTypeId: MANUAL, name: "Pts", competitionId: comp,
+      pointsDistribution: { type: "placement", values: [9, 6] },
+    }) as { id: string };
+    gameIds.push(g.id);
+
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { pointsTotal: number };
+    expect(game!.pointsTotal).toBe(15);
   });
 
   it("reads competitionPlacement.ts — rollUp matches the endpoint's teamTotals", async () => {
