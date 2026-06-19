@@ -458,6 +458,15 @@ function GameSheet({
   const addOrg = trpc.games.addOrganizer.useMutation();
   const removeOrg = trpc.games.removeOrganizer.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
+  const clearCourse = trpc.games.clearCourse.useMutation();
+
+  // Resolve the applied course's NAME for the field label (a pre-set course
+  // has an id but no just-picked name). Skipped when nothing's applied.
+  const courseQ = trpc.courses.getById.useQuery(
+    { courseId: courseId ?? "" },
+    { enabled: !!courseId },
+  );
+  const resolvedCourseName = courseName ?? ((courseQ.data?.name as string | undefined) ?? null);
 
   // Pick a course: snapshot it onto an existing game now; for a new game stash
   // the id and apply it right after create (persist()).
@@ -472,6 +481,23 @@ function GameSheet({
         utils.competitions.faceBootstrap.invalidate({ tripId });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to apply course");
+      }
+    }
+  }
+
+  // Clear the applied course (× on the field). On an existing game, persist the
+  // clear (reverts the snapshot to the template default); on a new game just
+  // drop the stashed pick.
+  async function handleClearCourse() {
+    setCourseId(null);
+    setCourseName(null);
+    if (isEdit && game) {
+      try {
+        await clearCourse.mutateAsync({ tripId, gameId: game.id });
+        utils.games.listByTrip.invalidate({ tripId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to clear course");
       }
     }
   }
@@ -631,8 +657,9 @@ function GameSheet({
                 setTitle={setTitle}
                 isGolf={isGolf}
                 courseId={courseId}
-                courseName={courseName}
+                courseName={resolvedCourseName}
                 onPickCourse={() => setCoursePickerOpen(true)}
+                onClearCourse={handleClearCourse}
                 isMatchPlay={isMatchPlay}
                 total={total}
                 setTotal={setTotal}
@@ -744,14 +771,14 @@ function GameSheet({
 
 function GameTab({
   isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
-  setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, isMatchPlay,
+  setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, onClearCourse, isMatchPlay,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
   setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; courseName: string | null;
-  onPickCourse: () => void; isMatchPlay: boolean;
+  onPickCourse: () => void; onClearCourse: () => void; isMatchPlay: boolean;
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
 }) {
@@ -798,16 +825,45 @@ function GameTab({
 
       {isGolf && (
         <Field label="Course">
-          <button
-            type="button"
-            onClick={readOnly ? undefined : onPickCourse}
-            disabled={readOnly}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm disabled:opacity-70"
-            style={{ background: "var(--color-bt-card-raised)", color: courseId ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <span>{courseName ?? (courseId ? "Course applied" : "Select a course")}</span>
-            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
+          {courseId ? (
+            // Applied: show the course name (tap to change) + an × to clear.
+            <div
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <button
+                type="button"
+                onClick={readOnly ? undefined : onPickCourse}
+                disabled={readOnly}
+                className="min-w-0 flex-1 truncate text-left disabled:opacity-70"
+              >
+                {courseName ?? "Course applied"}
+              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={onClearCourse}
+                  aria-label="Clear course"
+                  title="Clear course"
+                  className="ml-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={readOnly ? undefined : onPickCourse}
+              disabled={readOnly}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm disabled:opacity-70"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <span>Select a course</span>
+              <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          )}
           <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             The golf course is optional, but required if you want to keep score.
           </p>
