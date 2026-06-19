@@ -1,7 +1,9 @@
 "use client";
 
+import { createElement } from "react";
 import Link from "next/link";
-import { ChevronRight, Check, Radio } from "lucide-react";
+import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
@@ -32,22 +34,81 @@ export function gameHref(
   return seg ? `/trips/${tripId}/games/${seg}?game=${gameId}` : null;
 }
 
-/** The four leaderboard-row states (§7). */
-export type RowState = "final" | "live" | "upcoming" | "unready";
-export function rowStateOf(game: LBGame): RowState {
+/** §A1 format icon — the leading glyph that names the game's format, glanceable
+ *  down the board. Its COLOR carries the arming tell (§A4, applied in Commit 3);
+ *  the glyph itself just identifies the format. Unknown types fall back to a
+ *  generic game glyph rather than going blank. */
+const FORMAT_ICONS: Record<string, LucideIcon> = {
+  gtt_stroke_play: Flag,
+  gtt_match_play_singles: Swords,
+  gtt_match_play_doubles: Swords,
+  gtt_rack_n_stack: Layers,
+};
+export function formatIcon(gameTypeId: string | null): LucideIcon {
+  return (gameTypeId && FORMAT_ICONS[gameTypeId]) || Gamepad2;
+}
+
+/** Golf games carry a scorecard (§A3 scorecard column is golf-only). Today every
+ *  built format is golf — proxy "golf" by "has a known game-board route"; a
+ *  manual win/lose/halve side event (no route) is correctly excluded. */
+export function isGolfFormat(gameTypeId: string | null): boolean {
+  return !!gameTypeId && gameTypeId in GAME_ROUTES;
+}
+
+/**
+ * The §A lifecycle state the row reads — replaces the old 4-value RowState.
+ * DERIVED from the game's actual status + readiness; it is the row's single
+ * source of truth, not a layout flag (§A2). The two gravy sub-states are carried
+ * as data ON TOP of these four, not as extra enum values: "configuring" is a
+ * partial "setting-up", and "armed vs not-armed" lives inside "ready" (carried
+ * by the format-icon color, §A4 — wired to this derived value, never a literal
+ * board/layout string).
+ *
+ * Ready must be EARNED, not assumed: a game is Setting up until the format's
+ * required roster is assigned (`configured`, derived server-side from pairing /
+ * participant counts). "Exists and not live/final" is NOT Ready — that was the
+ * bug where an unconfigured match game rendered Ready while its points read `—`.
+ * Course/handicaps never gate this (locked, readiness model). Same `configured`
+ * signal feeds the outer `N PTS`/`—` column, so the two can't disagree.
+ */
+export type LifecycleState = "setting-up" | "ready" | "live" | "final";
+export function lifecycleOf(game: LBGame): LifecycleState {
   if (game.status === "complete") return "final";
   if (game.status === "active") return "live";
-  return game.ready === false ? "unready" : "upcoming";
+  return game.configured ? "ready" : "setting-up";
+}
+
+/**
+ * §A4 arm signal: the format-icon shows full color when scoring is enabled,
+ * muted while the game is still being set up. There is no `scoring_enabled`
+ * field yet (Phase 2's Enable/Disable adds it), so for now arm == "structure is
+ * done": muted iff setting-up/configuring, full-color otherwise. Wired to the
+ * DERIVED lifecycle, so swapping in the real field later is a one-line change.
+ */
+export function iconArmed(lifecycle: LifecycleState): boolean {
+  return lifecycle !== "setting-up";
 }
 
 // ── GameRow ────────────────────────────────────────────────────────────────────
 
 /**
- * The canonical per-game board row. Today it renders the active-board layout
- * (two lines: name + a per-team score line or status text). The pre-game
- * "Schedule" variant still lives inline in EarlyState; it folds into this same
- * component behind a lifecycle-state prop next, and Phase 3 layers the §A state
- * machine on top. Extracted byte-identical from the former `SessionRow`.
+ * The canonical per-game board row (§A1). One column skeleton for every
+ * lifecycle state:
+ *
+ *   [format icon] [ name + delegate / subtitle ] [scorecard btn] [ pts-or-result ]
+ *
+ * - `pts-or-result` is the outermost column, pinned to the right edge and
+ *   right-aligned (§A4): `N PTS` (potential) while unresolved, the stacked team
+ *   result at Final. It is ALWAYS present, so the right edge never reflows.
+ * - `scorecard btn` sits just inboard of it — golf-only, and dropped at Final —
+ *   so the column that vanishes is the inner one and the outer edge holds steady.
+ * - the format icon's color is the arming tell (§A4); the name never gets
+ *   crowded out (§A6). The full §A3 layer table (outline / name strength / the
+ *   one Live background / LIVE badge) lands in Commit 3.
+ *
+ * Subtitle and name+delegate stack vertically inside the name column (mobile —
+ * keeps the name uncrowded); the delegate chip travels with the name (§A1) and
+ * drops at Final alongside the scorecard (round-3.1 §A2).
  */
 export function GameRow({
   game,
@@ -56,7 +117,6 @@ export function GameRow({
   tripId,
   mine,
   onPrefetch,
-  phase = "live",
 }: {
   game: LBGame;
   teams: LBTeam[];
@@ -64,88 +124,123 @@ export function GameRow({
   tripId: string;
   mine: boolean;
   onPrefetch: (gameId: string) => void;
-  /** Competition lifecycle: "live" = full active-board row (name + per-team /
-   *  status line); "early" = compact pre-game schedule row (name + badge only).
-   *  Phase 3 replaces this two-way branch with the full §A state machine. */
-  phase?: "live" | "early";
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
-  const state = rowStateOf(game);
-  // Show the per-team result line only when there's a committed/in-progress
-  // result; otherwise a single status line — NEVER an empty "– / –" (0–0) row.
-  const showTeamLine = state === "final" || (state === "live" && hasScores);
+  // The row's single source of truth — the game's actual lifecycle, not a board
+  // context flag. Layout + every §A3 layer key off this one value.
+  const lifecycle = lifecycleOf(game);
+  const isFinal = lifecycle === "final";
 
-  const inner = phase === "early" ? (
-    <div className="flex items-center justify-between gap-2 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <span
-          className="truncate text-sm"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {game.name}
-        </span>
-        {mine && <YoursBadge />}
-      </div>
-      <div className="flex items-center gap-1.5">
-        <RowBadge state={state} />
-        {href && (
-          <ChevronRight
-            size={14}
-            style={{ color: "var(--color-bt-text-dim)" }}
-          />
-        )}
-      </div>
-    </div>
-  ) : (
-    <div className="flex flex-col gap-0.5 px-4 py-3">
-      <div className="flex items-center justify-between gap-2">
+  // Final sheds the operational layer (scorecard + delegate), keeps the result
+  // (round-3.1 §A2). The scorecard column is golf-only and present everywhere
+  // EXCEPT Final; a course set makes it a real button (opens the scorecard via
+  // the row link), no course makes it a muted, inert status icon.
+  const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal;
+  const scorecardOpens = showScorecard && game.hasCourse === true && !!href;
+  const showDelegate = mine && !isFinal;
+
+  // Subtitle / running state (§A3). Setting-up + Final carry none — the dashed
+  // outline and the outer result speak for them. Live's real running state
+  // ("Blue 2 up · thru 13") is deferred to a state-driven slot.
+  const subtitle =
+    lifecycle === "live"
+      ? "Underway · scoring"
+      : lifecycle === "ready"
+      ? "Ready to play"
+      : null;
+
+  // §A3 layer table — each visual layer wired to the one derived lifecycle.
+  // The format icon shows FULL color only while scoring is enabled AND the game
+  // isn't yet a finished record; Final quiets it back down (sheds the arm tell).
+  const armedIcon = iconArmed(lifecycle) && !isFinal;
+  const rowStyle: React.CSSProperties = {
+    // The one reserved background is Live (§A2) — the only "act now" fill.
+    background: lifecycle === "live" ? "var(--color-bt-accent-faint)" : undefined,
+    // Setting-up gets the only special outline: a dashed left edge that reads
+    // "not built yet." Every other state reserves the same 2px transparent so
+    // the name never shifts as the outline appears/disappears.
+    borderLeft:
+      lifecycle === "setting-up"
+        ? "2px dashed var(--color-bt-border)"
+        : "2px solid transparent",
+    // Final is a quiet record — recess the whole tile (§A3 "recessed").
+    opacity: isFinal ? 0.72 : 1,
+  };
+  // Name-text strength = "is the structure done?" — dim while setting up, full
+  // the moment it's Ready (§A3). Final keeps the name full but the tile recedes.
+  const nameColor =
+    lifecycle === "setting-up" ? "var(--color-bt-text-dim)" : "var(--color-bt-text)";
+
+  const inner = (
+    <div className="flex items-center gap-3 px-4 py-3" style={rowStyle}>
+      {/* Format icon — color carries the arming tell (§A4). Rendered via
+          createElement so the icon component isn't re-created during render. */}
+      {createElement(formatIcon(game.gameTypeId), {
+        size: 18,
+        className: "shrink-0",
+        style: {
+          color: armedIcon ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+        },
+      })}
+
+      {/* Name + delegate, subtitle stacked beneath */}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
           <span
             className="truncate text-sm font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
+            style={{ color: nameColor }}
           >
             {game.name}
           </span>
-          {mine && <YoursBadge />}
+          {showDelegate && <YoursBadge />}
+          {lifecycle === "live" && <LiveBadge />}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <RowBadge state={state} />
-          {href && (
-            <ChevronRight size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-          )}
-        </div>
+        {subtitle && (
+          <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {subtitle}
+          </span>
+        )}
       </div>
 
-      {showTeamLine ? (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-          {teams.map((team) => {
-            const cell = cells?.get(team.id);
-            return (
-              <span
-                key={team.id}
-                className="flex items-center gap-1 text-[12px]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
-                <span style={{ color: team.color }}>{team.short_name}</span>
-                <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "–"}</span>
-              </span>
-            );
-          })}
-        </div>
-      ) : (
-        <span
-          className="text-[12px]"
-          style={{ color: state === "unready" ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
-        >
-          {state === "live"
-            ? "Underway · scoring"
-            : state === "unready"
-              ? "Not scoring yet — still being set up"
-              : "Not started yet"}
-        </span>
-      )}
+      {/* Scorecard column (golf-only, dropped at Final) — inboard of the outer
+          column so the right edge holds when it vanishes. Course set → a real
+          button that opens the scorecard (via the row link to the score-entry
+          route); no course → a muted, inert status icon (no nav, not an error). */}
+      {showScorecard &&
+        (scorecardOpens ? (
+          <span
+            className="flex shrink-0 items-center justify-center rounded-lg"
+            style={{
+              width: 30,
+              height: 30,
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          >
+            <ClipboardList size={15} />
+          </span>
+        ) : (
+          <span
+            className="flex shrink-0 items-center justify-center"
+            style={{ width: 30, height: 30, color: "var(--color-bt-text-dim)", opacity: 0.5 }}
+            // No course yet — status only, never a tap target (the row stays
+            // navigable around it for games that are otherwise reachable).
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            title="No course set"
+          >
+            <ClipboardList size={15} />
+          </span>
+        ))}
+
+      {/* Outer column — pts-or-result, pinned right, right-aligned (§A5). */}
+      <div className="flex shrink-0 flex-col items-end" style={{ minWidth: 44 }}>
+        <OuterColumn game={game} teams={teams} cells={cells} isFinal={isFinal} hasScores={!!hasScores} />
+      </div>
     </div>
   );
 
@@ -164,40 +259,78 @@ export function GameRow({
   return <div>{inner}</div>;
 }
 
-export function RowBadge({ state }: { state: RowState }) {
-  if (state === "final") {
+/** §A5 outer column: `—` when nothing's in play, `N PTS` while unresolved, the
+ *  stacked team result at Final (team-color dots — the existing result widget,
+ *  not redesigned). Data-driven: Final → result; else points in play → `N PTS`;
+ *  else `—`. */
+function OuterColumn({
+  game,
+  teams,
+  cells,
+  isFinal,
+  hasScores,
+}: {
+  game: LBGame;
+  teams: LBTeam[];
+  cells: Map<string, LBCell> | undefined;
+  isFinal: boolean;
+  hasScores: boolean;
+}) {
+  if (isFinal && hasScores) {
     return (
-      <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}>
-        <Check size={9} />
-        Final
+      <div className="flex flex-col items-end gap-0.5">
+        {teams.map((team) => {
+          const cell = cells?.get(team.id);
+          return (
+            <span key={team.id} className="flex items-center gap-1 text-[13px] font-semibold tabular-nums">
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
+              <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "–"}</span>
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // `N PTS` only once the game is configured (the SAME gate as Ready) — a
+  // setting-up game reads `—` even if it carries a stray points value, so the
+  // column and the state always agree.
+  const pts = game.pointsTotal;
+  if (game.configured && pts != null && pts > 0) {
+    return (
+      <span className="text-[13px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text)" }}>
+        {fmtPts(pts)} <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>PTS</span>
       </span>
     );
   }
-  if (state === "live") {
-    return (
-      <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}>
-        <Radio size={9} />
-        Live
-      </span>
-    );
-  }
-  if (state === "unready") {
-    return (
-      <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}>
-        Needs setup
-      </span>
-    );
-  }
-  // upcoming
   return (
-    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}>
-      Upcoming
+    <span className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+      —
     </span>
   );
 }
 
-/** "Yours" — marks a game the viewer is the delegate of (§10). Display-only;
- *  the controls live on the game page, not the board row (§5). */
+/** §A2 — LIVE is the one surviving word-badge (the OPEN badge is removed; arming
+ *  is carried by the format-icon color, §A4). */
+export function LiveBadge() {
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{
+        background: "var(--color-bt-accent-faint)",
+        color: "var(--color-bt-accent)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }}
+    >
+      <Radio size={9} />
+      Live
+    </span>
+  );
+}
+
+/** "Yours"— marks a game the viewer is the delegate of (§10). Display-only;
+ *  the controls live on the game page, not the board row (§5). Dropped at Final
+ *  alongside the scorecard (round-3.1 §A2 — Final sheds operational chrome). */
 export function YoursBadge() {
   return (
     <span

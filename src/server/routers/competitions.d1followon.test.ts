@@ -124,11 +124,11 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     })) as { id: string };
     gameIds.push(g.id);
 
-    // Configured to have 2 matches (rows) → available = value × 2. (Dynamic
-    // match count derives available from the match rows, not team sizes.)
+    // 2 ASSIGNED matches (both sides paired) → available = value × 2. Empty
+    // slots wouldn't count (a match = assigned), so the fixture pairs them.
     await ctx.admin.from("game_matches").insert([
-      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: null, side_b: null, status: "active" },
-      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: null, side_b: null, status: "active" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: { type: "user", id: ctx.getUser("owner").id }, side_b: { type: "user", id: ctx.getUser("member").id }, status: "active" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: { type: "user", id: ctx.getUser("planner").id }, side_b: { type: "user", id: ctx.getUser("outsider").id }, status: "active" },
     ]);
 
     // Realized awarded points (adapter output): Blue won both of the 2 matches.
@@ -169,11 +169,10 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     })) as { id: string };
     gameIds.push(g.id);
 
-    // Configured to have 2 matches (rows) → available = value × 2 = 2. (Dynamic
-    // match count: available derives from the match ROWS, not team sizes.)
+    // 2 ASSIGNED matches → available = value × 2 = 2 (a match = assigned).
     await ctx.admin.from("game_matches").insert([
-      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: null, side_b: null, status: "active" },
-      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: null, side_b: null, status: "active" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: { type: "user", id: ctx.getUser("owner").id }, side_b: { type: "user", id: ctx.getUser("member").id }, status: "active" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: { type: "user", id: ctx.getUser("planner").id }, side_b: { type: "user", id: ctx.getUser("outsider").id }, status: "active" },
     ]);
 
     // 2 matches played: 1 halve (each gets 0.5) + A wins 1 (A gets 1).
@@ -285,7 +284,7 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
     expect(after.pointsAvailable).toBe(8); // unchanged — only awarded points move
   });
 
-  it("per_match available = value × configured match count (the rows), before any scoring", async () => {
+  it("per_match available = value × ASSIGNED match count; unpaired rows contribute 0", async () => {
     const comp = await ctx.createCompetition(tripId, "Stable Match Comp");
     const ta = await ctx.createTeam(comp, "A");
     await ctx.createTeam(comp, "B");
@@ -295,17 +294,18 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
     })) as { id: string };
     gameIds.push(g.id);
 
-    // Dynamic match count: available derives from the matches the game is
-    // CONFIGURED to have (its rows, ≥1 from creation), NOT a team-size estimate.
-    // 3 configured matches → available = value × 3 = 3, even unpaired/unscored.
+    // "A match = assigned, everywhere" (round-3.1): available derives from the
+    // matches that are actually PAIRED, not the configured slot count. 3 rows but
+    // only 2 paired → available = value × 2 = 2; the empty slot adds nothing
+    // (it's builder scaffolding the tee-off collapse discards).
     await ctx.admin.from("game_matches").insert([
-      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: null, side_b: null, status: "pending" },
-      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: null, side_b: null, status: "pending" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0, side_a: { type: "user", id: ctx.getUser("owner").id }, side_b: { type: "user", id: ctx.getUser("member").id }, status: "pending" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1, side_a: { type: "user", id: ctx.getUser("planner").id }, side_b: { type: "user", id: ctx.getUser("outsider").id }, status: "pending" },
       { id: crypto.randomUUID(), game_id: g.id, match_number: 3, display_order: 2, side_a: null, side_b: null, status: "pending" },
     ]);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.pointsAvailable).toBe(3);
+    expect(lb.pointsAvailable).toBe(2); // 2 paired × value 1 — the empty slot is ignored
     expect(lb.teamTotals[ta]).toBe(0); // nothing awarded yet
   });
 });

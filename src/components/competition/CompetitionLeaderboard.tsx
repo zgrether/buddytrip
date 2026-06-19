@@ -21,8 +21,18 @@ export interface LBGame {
   status: string;
   dropped: boolean;
   gameTypeId: string | null;
-  /** Points configured (scoring-ready). Drives the state-aware rows (§7). */
+  /** Points configured (scoring-ready). Kept for the games-panel/test consumers. */
   ready?: boolean;
+  /** The §A readiness gate: the format's required roster is assigned (match-play
+   *  pairings / stroke-rack participants / manual points). Drives BOTH the
+   *  Setting-up↔Ready lifecycle and the `N PTS`/`—` column — one signal. */
+  configured?: boolean;
+  /** A course is applied to this game — drives the scorecard chip's button vs
+   *  muted-status three-way (course is optional, never an error). */
+  hasCourse?: boolean;
+  /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
+   *  the match-play total too (whose `distribution` is null pre-decision). */
+  pointsTotal?: number | null;
 }
 
 export interface LBCell {
@@ -577,7 +587,6 @@ function EarlyState({
                 tripId={tripId}
                 mine={mineSet.has(game.id)}
                 onPrefetch={onPrefetch}
-                phase="early"
               />
             ))}
           </div>
