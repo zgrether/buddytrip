@@ -23,6 +23,9 @@ export interface LBGame {
   gameTypeId: string | null;
   /** Points configured (scoring-ready). Drives the state-aware rows (§7). */
   ready?: boolean;
+  /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
+   *  the match-play total too (whose `distribution` is null pre-decision). */
+  pointsTotal?: number | null;
 }
 
 export interface LBCell {

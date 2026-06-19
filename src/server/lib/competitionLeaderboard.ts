@@ -169,6 +169,16 @@ export async function computeCompetitionLeaderboard(
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
 
+  // Per-game points in play, keyed by id — the SAME authoritative value the
+  // roll-up uses (owner-set total for placement; value × match count for
+  // per_match). The board row's outer column (§A5 `N PTS`) reads this so a
+  // match-play game — whose `distribution` is null until decided — still shows
+  // its potential. Built from the computed liveGames so the row can't diverge
+  // from the standings.
+  const ptsInPlayByGame = new Map<string, number | null>(
+    liveGames.map((g) => [g.id, g.pointsTotal ?? null])
+  );
+
   // Per-game grid cells (place + points per team) — same averaging as the totals,
   // so the grid and the totals can't disagree. Only live games carry cells.
   const cells: { gameId: string; teamId: string; place: number; points: number }[] = [];
@@ -196,6 +206,10 @@ export async function computeCompetitionLeaderboard(
         // owner-set total). Drives the state-aware leaderboard rows: an unready
         // game reads "not scoring yet" instead of an empty/0–0 line (§7).
         ready: !!rawDist || g.points_total != null,
+        // Points in play (§A5 outer column). Match-play games carry it here even
+        // though `distribution` is null pre-decision; dropped games (not in the
+        // roll-up) get null and the row never renders them anyway.
+        pointsTotal: ptsInPlayByGame.get(g.id as string) ?? null,
       };
     }),
     cells,
