@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo } from "react";
-import Link from "next/link";
-import { ChevronRight, Trophy, CloudOff, RefreshCw } from "lucide-react";
+import { Trophy, CloudOff, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { GameRow, RowBadge, YoursBadge, fmtPts, gameHref, rowStateOf } from "./GameRow";
+import { GameRow, fmtPts } from "./GameRow";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -569,44 +568,18 @@ function EarlyState({
             </p>
           </div>
           <div className="divide-y" style={{ "--tw-divide-color": "var(--color-bt-border)" } as React.CSSProperties}>
-            {liveGames.map((game) => {
-              const href = gameHref(tripId, game.gameTypeId, game.id);
-              const row = (
-                <div className="flex items-center justify-between gap-2 px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="truncate text-sm"
-                      style={{ color: "var(--color-bt-text)" }}
-                    >
-                      {game.name}
-                    </span>
-                    {mineSet.has(game.id) && <YoursBadge />}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <RowBadge state={rowStateOf(game)} />
-                    {href && (
-                      <ChevronRight
-                        size={14}
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-              return href ? (
-                <Link
-                  key={game.id}
-                  href={href}
-                  className="block hover:opacity-80 transition-opacity"
-                  onPointerEnter={() => onPrefetch(game.id)}
-                  onPointerDown={() => onPrefetch(game.id)}
-                >
-                  {row}
-                </Link>
-              ) : (
-                <div key={game.id}>{row}</div>
-              );
-            })}
+            {liveGames.map((game) => (
+              <GameRow
+                key={game.id}
+                game={game}
+                teams={teams}
+                cells={undefined}
+                tripId={tripId}
+                mine={mineSet.has(game.id)}
+                onPrefetch={onPrefetch}
+                phase="early"
+              />
+            ))}
           </div>
         </div>
       )}

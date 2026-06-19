@@ -56,6 +56,7 @@ export function GameRow({
   tripId,
   mine,
   onPrefetch,
+  phase = "live",
 }: {
   game: LBGame;
   teams: LBTeam[];
@@ -63,6 +64,10 @@ export function GameRow({
   tripId: string;
   mine: boolean;
   onPrefetch: (gameId: string) => void;
+  /** Competition lifecycle: "live" = full active-board row (name + per-team /
+   *  status line); "early" = compact pre-game schedule row (name + badge only).
+   *  Phase 3 replaces this two-way branch with the full §A state machine. */
+  phase?: "live" | "early";
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
@@ -71,7 +76,28 @@ export function GameRow({
   // result; otherwise a single status line — NEVER an empty "– / –" (0–0) row.
   const showTeamLine = state === "final" || (state === "live" && hasScores);
 
-  const inner = (
+  const inner = phase === "early" ? (
+    <div className="flex items-center justify-between gap-2 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className="truncate text-sm"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {game.name}
+        </span>
+        {mine && <YoursBadge />}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <RowBadge state={state} />
+        {href && (
+          <ChevronRight
+            size={14}
+            style={{ color: "var(--color-bt-text-dim)" }}
+          />
+        )}
+      </div>
+    </div>
+  ) : (
     <div className="flex flex-col gap-0.5 px-4 py-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
