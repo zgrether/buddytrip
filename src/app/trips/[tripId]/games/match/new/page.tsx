@@ -101,6 +101,9 @@ export default function NewMatchGamePage() {
   const [view, setView] = useState<"entry" | "grid">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  // Collapse-on-advance: when teeing off with some slots still unfilled, confirm
+  // the consequence (the game drops to the filled count; cup clinch shifts).
+  const [confirmCollapse, setConfirmCollapse] = useState(false);
   // Course (Slice C): picked on the new-game screen, applied to the game once
   // it's created. id null until chosen.
   const [courseId, setCourseId] = useState<string | null>(null);
@@ -123,6 +126,15 @@ export default function NewMatchGamePage() {
   const resumedTypeId = gameQ.data?.game_type_id as string | undefined;
   const sided = resumedTypeId ? resumedTypeId === MATCH_PLAY_DOUBLES : search.get("format") === "doubles";
   const playersPerSide = sided ? 2 : 1;
+
+  // The matches that are actually playable — both sides fully assigned. An
+  // unfilled slot is not a match (it never scores), so teeing off COLLAPSES the
+  // game to these: the unfilled slots are discarded and points-in-play / the cup
+  // clinch recompute from this count. "Defined" was builder-time intent only.
+  const filledDraft = useMemo(
+    () => draft.filter((d) => d.a.length === playersPerSide && d.b.length === playersPerSide),
+    [draft, playersPerSide]
+  );
 
   // Scoring — the connectivity-resilient saver owns `values` + `saveStatus`:
   // optimistic value, retry-with-backoff, per-cell status, kept-and-flagged
@@ -454,29 +466,41 @@ export default function NewMatchGamePage() {
     go("setup");
   }
 
-  // Ready to tee off — one action: persist the pairings + handicaps, publish
-  // (activate) so members can see them, and land on the overview. No separate
-  // Save-then-Activate, no confirmation screen.
-  async function readyToTeeOff() {
+  // Tee off — the advance affordance. It's a SIGNAL, not a gate: clickable while
+  // slots are unfilled. With every slot filled it commits straight through; with
+  // some unfilled it confirms the collapse first (the game drops to the filled
+  // count and the cup clinch shifts — a surfaced consequence, not a scold). With
+  // nothing filled there's no match to play, so it's a no-op.
+  function attemptReady() {
+    if (filledDraft.length === 0) return;
+    if (filledDraft.length < draft.length) {
+      setConfirmCollapse(true);
+      return;
+    }
+    void commitReady();
+  }
+
+  // Persist the pairings + handicaps, publish (activate), land on the overview.
+  // Operates on `filledDraft` ONLY — unfilled slots are discarded here (the
+  // collapse: setPairings clean-replaces, so the dropped rows are gone and the
+  // board recomputes points-in-play / clinch from the filled count). No separate
+  // Save-then-Activate; the two formats differ only in side shape + procedure.
+  async function commitReady() {
     if (!tripId || !gameId) return;
-    // Persist pairings + per-match handicaps (one side n, other 0), then publish
-    // — in parallel: each only depends on the just-saved pairings, touches
-    // different rows, and there are no scores yet (no recompute contention).
-    // The two formats differ only in how a side is shaped + which procedure
-    // persists it; the handicap recipient resolves from the saved match's side.
+    setConfirmCollapse(false);
+    const matches = filledDraft;
+    if (matches.length === 0) return;
     if (sided) {
       const saved = await setDoublesPairings.mutateAsync({
         tripId,
         gameId,
-        // Only fully-formed pairs persist (a half-filled side stays null until
-        // both partners are picked — enforced by the CTA gate below).
-        matches: draft.map((d, i) => ({
-          sideA: d.a.length === playersPerSide ? { members: d.a } : null,
-          sideB: d.b.length === playersPerSide ? { members: d.b } : null,
+        matches: matches.map((d, i) => ({
+          sideA: { members: d.a },
+          sideB: { members: d.b },
           matchNumber: i + 1,
         })),
       });
-      const handicapWrites = draft.flatMap((d, i) => {
+      const handicapWrites = matches.flatMap((d, i) => {
         const row = saved[i] as { id: string; side_a: SideRef; side_b: SideRef } | undefined;
         if (!row || d.handicap === 0) return [];
         const recipient = d.handicap < 0 ? row.side_a : row.side_b;
@@ -488,15 +512,15 @@ export default function NewMatchGamePage() {
       const saved = await setPairings.mutateAsync({
         tripId,
         gameId,
-        matches: draft.map((d, i) => ({
-          sideA: d.a[0] ? { type: "user" as const, id: d.a[0] } : null,
-          sideB: d.b[0] ? { type: "user" as const, id: d.b[0] } : null,
+        matches: matches.map((d, i) => ({
+          sideA: { type: "user" as const, id: d.a[0] },
+          sideB: { type: "user" as const, id: d.b[0] },
           matchNumber: i + 1,
         })),
       });
-      const handicapWrites = draft.flatMap((d, i) => {
+      const handicapWrites = matches.flatMap((d, i) => {
         const row = saved[i] as { id: string } | undefined;
-        if (!row || !d.a[0] || !d.b[0] || d.handicap === 0) return [];
+        if (!row || d.handicap === 0) return [];
         const recipientUserId = d.handicap < 0 ? d.a[0] : d.b[0];
         return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) })];
       });
@@ -734,7 +758,7 @@ export default function NewMatchGamePage() {
           colorOf={colorOf}
           avatarIconOf={avatarIconOf}
           openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
-          onReady={readyToTeeOff}
+          onReady={attemptReady}
           saving={setPairings.isPending || setHandicap.isPending || setDoublesPairings.isPending || setDoublesHandicap.isPending || activate.isPending}
         />
       )}
@@ -805,6 +829,85 @@ export default function NewMatchGamePage() {
           />
         );
       })()}
+
+      {/* Collapse-on-incomplete confirm — fires only when teeing off with some
+          slots unfilled. States the real drop (filled count · points) and that
+          the cup clinch recalculates; confirming discards the unfilled slots. */}
+      {confirmCollapse && (
+        <CollapseConfirm
+          filled={filledDraft.length}
+          total={draft.length}
+          perMatchValue={(gameQ.data?.points_distribution as { value?: number } | null)?.value ?? null}
+          inCompetition={!!gameCompId}
+          pending={setPairings.isPending || setDoublesPairings.isPending || activate.isPending}
+          onConfirm={() => void commitReady()}
+          onCancel={() => setConfirmCollapse(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Collapse confirm (advance with unfilled slots). A consequence notice, not a
+ * scold: the unfilled matches aren't being created, so the game drops to the
+ * filled count, its points-in-play drop with it, and — in a competition — the
+ * cup's first-to-win total recalculates (the surprising part, so say it).
+ * Recovery is adding matches later, not an undo.
+ */
+function CollapseConfirm({
+  filled,
+  total,
+  perMatchValue,
+  inCompetition,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  filled: number;
+  total: number;
+  perMatchValue: number | null;
+  inCompetition: boolean;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const unfilled = total - filled;
+  const pts = perMatchValue != null ? filled * perMatchValue : null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ maxWidth: 360, background: "var(--color-bt-card-float)", borderRadius: 18, padding: 20, border: "1px solid var(--color-bt-border)" }}>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)" }}>
+          {unfilled} {unfilled === 1 ? "match isn’t" : "matches aren’t"} set
+        </div>
+        <p style={{ fontSize: 14, lineHeight: 1.5, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
+          Tee off now and this game collapses to{" "}
+          <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
+            {filled} {filled === 1 ? "match" : "matches"}
+            {pts != null ? ` · ${pts} pts` : ""}
+          </span>
+          . The unfilled {unfilled === 1 ? "slot is" : "slots are"} discarded.
+          {inCompetition && " The cup’s first-to-win total recalculates from the lower total."}
+        </p>
+        <div className="mt-5 flex flex-col gap-2">
+          <button
+            onClick={onConfirm}
+            disabled={pending}
+            className="w-full disabled:opacity-40"
+            style={{ height: 48, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+          >
+            {pending ? "Setting up…" : `Tee off with ${filled}`}
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={pending}
+            className="w-full disabled:opacity-40"
+            style={{ height: 46, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
+          >
+            Keep setting up
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1085,6 +1188,11 @@ function MatchSetup({
     );
   };
 
+  // Filled = both sides fully assigned (a real match). Drives the advance
+  // affordance: outlined until every slot is filled, disabled with none filled.
+  const filledCount = draft.filter((d) => d.a.length === playersPerSide && d.b.length === playersPerSide).length;
+  const allFilled = draft.length > 0 && filledCount === draft.length;
+
   return (
     <div>
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
@@ -1208,10 +1316,14 @@ function MatchSetup({
         </button>
       )}
 
+      {/* Advance is a SIGNAL, not a gate (collapse-on-incomplete): clickable
+          while slots are unfilled, outlined until every slot is assigned, filled
+          once complete. Disabled only with nothing to tee off (no full match). */}
       <PrimaryButton
         label={saving ? "Setting up…" : "Ready to tee off"}
         onClick={onReady}
-        disabled={saving || draft.length === 0 || !draft.every((d) => d.a.length === playersPerSide && d.b.length === playersPerSide)}
+        disabled={saving || filledCount === 0}
+        outlined={!allFilled}
       />
     </div>
   );
@@ -1520,9 +1632,14 @@ function SelectorRow({ name, avatarIcon, sub, dim, onClick }: { name: string; av
   );
 }
 
-function PrimaryButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+function PrimaryButton({ label, onClick, disabled, outlined }: { label: string; onClick: () => void; disabled?: boolean; outlined?: boolean }) {
+  // Outlined = the "more to fill" signal (neutral, not an error): same accent,
+  // hollow. Filled accent once every slot is assigned.
+  const style: React.CSSProperties = outlined
+    ? { height: 52, borderRadius: 12, background: "transparent", color: "var(--color-bt-accent)", border: "1.5px solid var(--color-bt-accent-border)", fontSize: 16, fontWeight: 600 }
+    : { height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 };
   return (
-    <button onClick={onClick} disabled={disabled} className="mt-6 w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
+    <button onClick={onClick} disabled={disabled} className="mt-6 w-full disabled:opacity-40" style={style}>
       {label}
     </button>
   );
