@@ -10,8 +10,13 @@ import { ScrollLock } from "@/hooks/useScrollLock";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
-  validatePlacement, matchReadout, placementFit, matchFit, type MatchFormat,
+  validatePlacement, matchReadout, placementFit, matchFit, deriveMatchCount, type MatchFormat,
 } from "@/lib/gameConfig";
+
+// Mirrors the builder cap (matches router / match-new page). The page-one match
+// count seeds the builder's initial slot count up to here.
+const MAX_MATCHES = 24;
+const MATCH_PLAY_DOUBLES = "gtt_match_play_doubles";
 
 /**
  * CompetitionGamesPanel — the Slice D contest list + the two-tab add/edit page
@@ -399,6 +404,10 @@ function GameSheet({
     const d = game?.points_distribution;
     return d?.type === "per_match" ? d.value : 1;
   });
+  // Page-one match count (1v1/2v2 only): SEEDS the builder's initial slot count
+  // on create — it is NOT a stored target. null = "follow the team-size default"
+  // (updates as teams get sized); a number = the owner set it explicitly.
+  const [matchCountOverride, setMatchCountOverride] = useState<number | null>(null);
   // Placement split. 1st place initializes EMPTY (never 0) so "untouched" stays
   // distinct from "entered 0".
   const [placeInputs, setPlaceInputs] = useState<string[]>(() => {
@@ -431,6 +440,10 @@ function GameSheet({
   // mini-matches) — both accumulate per-match points, not a placement total.
   const isMatchPlay =
     selectedType?.resultStrategy === "match_play" || selectedType?.resultStrategy === "rack_n_stack";
+  // Paired match play (1v1 / 2v2) — the ONLY formats that get a page-one match
+  // count. Rack (rack_n_stack) auto-groups by team size, stroke has no matches.
+  const isPairedMatch = selectedType?.resultStrategy === "match_play";
+  const isDoubles = effectiveTypeId === MATCH_PLAY_DOUBLES;
   const isGolf = category === "golf";
 
   // Members (for the delegate picker + name resolution) and the existing grant.
@@ -449,6 +462,21 @@ function GameSheet({
   const teamSizes = useMemo(() => Object.values((teamCounts as Record<string, number>) ?? {}), [teamCounts]);
   const numTeams = teamSizes.length;
 
+  // The team-size estimate the builder would otherwise seed with — the default
+  // the page-one field pre-fills (clamped ≥1, ≤ cap). The owner can override it.
+  const derivedMatchCount = Math.max(
+    1,
+    Math.min(MAX_MATCHES, deriveMatchCount(teamSizes, matchFormatFor(effectiveTypeId)) ?? 1)
+  );
+  const matchCount = matchCountOverride ?? derivedMatchCount;
+  // On edit, "how many matches" is DERIVED from the live rows (display only —
+  // the count is changed in the builder, not re-typed here).
+  const existingMatchesQ = trpc.matches.listByGame.useQuery(
+    { tripId, gameId: game?.id ?? "" },
+    { enabled: isEdit && isPairedMatch && !!game?.id }
+  );
+  const existingMatchCount = (existingMatchesQ.data?.matches?.length as number | undefined) ?? null;
+
   const create = trpc.games.create.useMutation();
   const update = trpc.games.update.useMutation();
   const setDist = trpc.games.setPointsDistribution.useMutation();
@@ -459,6 +487,10 @@ function GameSheet({
   const removeOrg = trpc.games.removeOrganizer.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const clearCourse = trpc.games.clearCourse.useMutation();
+  // Seed the builder's slots on create — empty (unpaired) rows, which count 0
+  // until paired (#394), so the game stays Setting-up · — until the builder.
+  const setPairings = trpc.matches.setPairings.useMutation();
+  const setDoublesPairings = trpc.matches.setDoublesPairings.useMutation();
 
   // Resolve the applied course's NAME for the field label (a pre-set course
   // has an id but no just-picked name). Skipped when nothing's applied.
@@ -563,6 +595,19 @@ function GameSheet({
             // Non-fatal: the game still saves on the template default par/index.
           }
         }
+        // Seed the builder's slots (1v1/2v2 only): persist `matchCount` EMPTY
+        // match rows. They're the slots the builder opens with — not a stored
+        // target; under #394 they count 0 until paired, so the game still reads
+        // Setting-up · — on the board. Non-fatal (the builder can seed itself).
+        if (isPairedMatch) {
+          const empty = Array.from({ length: matchCount }, (_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
+          try {
+            if (isDoubles) await setDoublesPairings.mutateAsync({ tripId, gameId, matches: empty });
+            else await setPairings.mutateAsync({ tripId, gameId, matches: empty });
+          } catch {
+            // Non-fatal: the builder seeds from the team-size estimate if absent.
+          }
+        }
       }
       if (canEdit) {
         await reconcileDelegate(gameId);
@@ -661,6 +706,10 @@ function GameSheet({
                 onPickCourse={() => setCoursePickerOpen(true)}
                 onClearCourse={handleClearCourse}
                 isMatchPlay={isMatchPlay}
+                isPairedMatch={isPairedMatch}
+                matchCount={matchCount}
+                setMatchCount={setMatchCountOverride}
+                existingMatchCount={existingMatchCount}
                 total={total}
                 setTotal={setTotal}
                 perMatchValue={perMatchValue}
@@ -772,6 +821,7 @@ function GameSheet({
 function GameTab({
   isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
   setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, onClearCourse, isMatchPlay,
+  isPairedMatch, matchCount, setMatchCount, existingMatchCount,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
@@ -779,6 +829,7 @@ function GameTab({
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
   setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; courseName: string | null;
   onPickCourse: () => void; onClearCourse: () => void; isMatchPlay: boolean;
+  isPairedMatch: boolean; matchCount: number; setMatchCount: (n: number) => void; existingMatchCount: number | null;
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
 }) {
@@ -894,15 +945,44 @@ function GameTab({
           }
         />
       )}
+
+      {/* Number of matches (1v1/2v2 only) — SEEDS the builder's slot count on
+          create; you still assign players in the builder. On edit it's derived
+          from the live rows (display only — change it in the builder). */}
+      {isPairedMatch && (
+        isEdit ? (
+          <Field label="Matches">
+            <div className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}>
+              <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
+                {existingMatchCount ?? "—"} {existingMatchCount === 1 ? "match" : "matches"}
+              </span>{" "}
+              · add or remove in Set Pairings
+            </div>
+          </Field>
+        ) : (
+          <PointStepper
+            label="Number of matches"
+            caption="MATCHES"
+            value={matchCount}
+            onChange={readOnly ? () => {} : setMatchCount}
+            max={MAX_MATCHES}
+            footer={
+              <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Opens the builder with {matchCount} {matchCount === 1 ? "slot" : "slots"} · assign players there
+              </span>
+            }
+          />
+        )
+      )}
     </>
   );
 }
 
 /** The integrated −/value/+ point control (matches the mock). */
 function PointStepper({
-  label, caption, value, onChange, footer,
+  label, caption, value, onChange, footer, max,
 }: {
-  label: string; caption: string; value: number; onChange: (n: number) => void; footer?: React.ReactNode;
+  label: string; caption: string; value: number; onChange: (n: number) => void; footer?: React.ReactNode; max?: number;
 }) {
   return (
     <Field label={label} required>
@@ -913,7 +993,7 @@ function PointStepper({
             <div className="text-3xl font-black leading-none tabular-nums" style={{ color: "var(--color-bt-text)" }}>{fmtValue(value)}</div>
             <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{caption}</div>
           </div>
-          <StepBtn dir="inc" onClick={() => onChange(value + 1)} />
+          <StepBtn dir="inc" disabled={max != null && value >= max} onClick={() => onChange(max != null ? Math.min(max, value + 1) : value + 1)} />
         </div>
         {footer && (
           <div className="px-3 py-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
