@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember } from "../middleware";
+import { createAdminClient } from "@/lib/supabase-admin";
 
 /**
  * scores — per-unit score entry for a game (Slice A: per-hole strokes).
@@ -71,6 +72,27 @@ export const scoresRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to save score: ${error.message}`,
         });
+      }
+
+      // Scoring has begun → the game is Live (§A2: "scores are being entered
+      // right now"). Stroke and rack have no explicit activate step — only
+      // match play publishes pairings → active — so they would otherwise sit at
+      // `pending` (rendered "Ready") through the whole round and jump straight to
+      // Final on finish, never showing Live. This is the SINGLE score-write path
+      // for every golf format, so flipping `pending` → `active` here lights up
+      // all of them on the first score; an already-active (match-play) or
+      // complete/correcting game is left untouched.
+      //
+      // ANY member may score (requireTripMember), but the games UPDATE RLS only
+      // admits owner/organizer — so a member's own client can't flip the status.
+      // Use the service-role client (same pattern as server-authored system
+      // messages) for this automatic, non-privileged side effect.
+      if (game.status === "pending") {
+        await createAdminClient()
+          .from("games")
+          .update({ status: "active" })
+          .eq("id", input.gameId)
+          .eq("status", "pending");
       }
 
       const { data } = await ctx.supabase
