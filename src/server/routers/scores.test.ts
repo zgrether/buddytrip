@@ -86,4 +86,25 @@ describe("scores router (Slice A — per-hole entry)", () => {
     const entries = await ctx.callerAs("member").scores.listByGame({ tripId, gameId });
     expect(entries.some((e) => e.participant_id === memberId && e.unit_label === "3" && e.value === 5)).toBe(true);
   });
+
+  it("entering a score flips a pending game to active (Live) — stroke/rack have no explicit activate step", async () => {
+    const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Goes Live" });
+    await ctx.caller().games.addParticipants({ tripId, gameId: g.id, userIds: [ownerId, memberId] });
+    const before = await ctx.admin.from("games").select("status").eq("id", g.id).single();
+    expect(before.data?.status).toBe("pending"); // a configured-but-unscored round is Ready, not Live
+
+    await ctx.callerAs("member").scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 4 });
+    const after = await ctx.admin.from("games").select("status").eq("id", g.id).single();
+    expect(after.data?.status).toBe("active"); // first score → Live
+  });
+
+  it("a posted game opened for correction is NOT reverted to active when a score is edited", async () => {
+    const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Corrected" });
+    await ctx.caller().games.addParticipants({ tripId, gameId: g.id, userIds: [ownerId, memberId] });
+    // A posted round re-opened for correction (complete + corrections_open).
+    await ctx.admin.from("games").update({ status: "complete", corrections_open: true }).eq("id", g.id);
+    await ctx.caller().scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 5 });
+    const after = await ctx.admin.from("games").select("status").eq("id", g.id).single();
+    expect(after.data?.status).toBe("complete"); // the flip only touches pending — a correction stays Final/correcting
+  });
 });
