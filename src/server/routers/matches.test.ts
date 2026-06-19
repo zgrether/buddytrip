@@ -100,8 +100,11 @@ describe("matches router (Slice B — setup + visibility)", () => {
     const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId });
     expect(res.published).toBe(true);
     expect(res.matches).toHaveLength(2);
-    const { data: game } = await ctx.admin.from("games").select("status").eq("id", gameId).single();
-    expect((game as { status: string }).status).toBe("active");
+    // Phase 2B.1: activate is match play's Enable — it publishes + enables, but
+    // no longer goes Live (status stays pending until the first score, #396).
+    const { data: game } = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", gameId).single();
+    expect((game as { status: string; scoring_enabled: boolean }).scoring_enabled).toBe(true);
+    expect((game as { status: string }).status).toBe("pending");
   });
 
   it("assignPlayer — moving a player clears the vacated match's handicap", async () => {
@@ -160,6 +163,8 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     scoreB: Record<number, number>
   ) {
     const caller = ctx.caller();
+    // Phase 2B.1 universal gate: scoring must be enabled before entries land.
+    await caller.games.enableScoring({ tripId, gameId });
     for (const [h, v] of Object.entries(scoreA)) {
       await caller.scores.upsertEntry({ tripId, gameId, participantId: a, unitLabel: h, value: v });
     }

@@ -155,6 +155,8 @@ export default function NewMatchGamePage() {
   const setDoublesPairings = trpc.matches.setDoublesPairings.useMutation();
   const setDoublesHandicap = trpc.matches.setDoublesHandicap.useMutation();
   const activate = trpc.matches.activate.useMutation();
+  // Phase 2B.1: Disable scoring — close to the crew, back to setup, scores kept.
+  const disableScoring = trpc.games.disableScoring.useMutation();
   // Dynamic match count (+1 / −1). Each changes the game's configured match
   // count → the clinch goalpost (value × count) on the competition board, so
   // both refresh the board after (see refreshAfterMatchCountChange).
@@ -218,6 +220,10 @@ export default function NewMatchGamePage() {
   }, [assignQ.data, playersPerSide]);
 
   const status = gameQ.data?.status as string | undefined;
+  // Phase 2B.1: scoring enabled is the real "open for scoring" flag (publish no
+  // longer goes Live — first score does, #396). The owner lands on the overview
+  // once enabled (or active/complete); members see it once enabled (= published).
+  const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
@@ -369,7 +375,7 @@ export default function NewMatchGamePage() {
   // Active/complete → the flat overview; pending → setup (owner) or wait (member).
   const derived: Screen = !gameId
     ? "new"
-    : status === "complete" || status === "active"
+    : status === "complete" || status === "active" || scoringEnabled
       ? "overview"
       : !canEdit
         ? "member-wait"
@@ -578,6 +584,25 @@ export default function NewMatchGamePage() {
     }
   }
 
+  // Phase 2B.1: Disable scoring — close to the crew, revert to setup (scores
+  // kept). Invalidate the board (incl. faceBootstrap, CLAUDE.md #10) so the row
+  // drops back to muted-icon Ready, then continue configuring on setup.
+  async function handleDisable() {
+    if (!tripId || !gameId) return;
+    try {
+      await disableScoring.mutateAsync({ tripId, gameId });
+      await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.games.listByTrip.invalidate({ tripId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      }
+      go("setup");
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+
   // #7: reopen a posted game for correction, then land on the overview so the
   // editor can tap the match to fix (entry is editable again while correcting).
   async function handleCorrect() {
@@ -708,9 +733,16 @@ export default function NewMatchGamePage() {
         onBack={goBack}
         right={
           screen === "overview" && canEdit && status !== "complete" ? (
-            <button onClick={startSetup} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
-              Edit
-            </button>
+            <div className="flex items-center gap-3">
+              {scoringEnabled && (
+                <button onClick={handleDisable} disabled={disableScoring.isPending} style={{ color: "var(--color-bt-text-dim)", fontSize: 13, fontWeight: 600 }}>
+                  {disableScoring.isPending ? "Disabling…" : "Disable"}
+                </button>
+              )}
+              <button onClick={startSetup} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
+                Edit
+              </button>
+            </div>
           ) : null
         }
       />
@@ -882,7 +914,7 @@ function CollapseConfirm({
           {unfilled} {unfilled === 1 ? "match isn’t" : "matches aren’t"} set
         </div>
         <p style={{ fontSize: 14, lineHeight: 1.5, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
-          Tee off now and this game collapses to{" "}
+          Enable scoring now and this game collapses to{" "}
           <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
             {filled} {filled === 1 ? "match" : "matches"}
             {pts != null ? ` · ${pts} pts` : ""}
@@ -897,7 +929,7 @@ function CollapseConfirm({
             className="w-full disabled:opacity-40"
             style={{ height: 48, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
           >
-            {pending ? "Setting up…" : `Tee off with ${filled}`}
+            {pending ? "Enabling…" : `Enable with ${filled}`}
           </button>
           <button
             onClick={onCancel}
@@ -1321,7 +1353,7 @@ function MatchSetup({
           while slots are unfilled, outlined until every slot is assigned, filled
           once complete. Disabled only with nothing to tee off (no full match). */}
       <PrimaryButton
-        label={saving ? "Setting up…" : "Ready to tee off"}
+        label={saving ? "Enabling…" : "Enable scoring"}
         onClick={onReady}
         disabled={saving || filledCount === 0}
         outlined={!allFilled}

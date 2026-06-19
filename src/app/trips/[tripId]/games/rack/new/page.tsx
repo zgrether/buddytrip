@@ -12,6 +12,7 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
+import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -102,6 +103,8 @@ export default function RackNStackPage() {
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const setFoursomes = trpc.playGroups.setFoursomes.useMutation();
+  // Phase 2B.1: scoring must be enabled before entries land (universal gate).
+  const enableScoring = trpc.games.enableScoring.useMutation();
   const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
   const deleteEntry = trpc.scores.deleteEntry.useMutation();
@@ -320,6 +323,23 @@ export default function RackNStackPage() {
   // (created as a bare games row by add-game). Route it to the setup step instead
   // of the empty play screen — startRack seeds onto the existing game.
   const needsSetup = !!gid && groupsQ.isSuccess && (groupsQ.data?.groups?.length ?? 0) === 0;
+  // Phase 2B.1: a rack with its groups set must be Enabled before the play screen
+  // opens (the score saver server-rejects entries until then).
+  const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  async function handleEnable() {
+    if (!tripId || !gid) return;
+    try {
+      await enableScoring.mutateAsync({ tripId, gameId: gid });
+      await utils.games.getById.invalidate({ tripId, gameId: gid });
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+        utils.games.listByTrip.invalidate({ tripId });
+      }
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
 
   // ── Render ───────────────────────────────────────────────────────────
   if (!tripId || roleLoading || crew.isLoading || competition.isLoading) {
@@ -455,6 +475,29 @@ export default function RackNStackPage() {
           <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={(c) => { setPendingCourse(c); setCoursePickerOpen(false); }} />
         )}
       </Shell>
+    );
+  }
+
+  // Phase 2B.1 Enable gate: the groups are set but scoring isn't enabled yet.
+  // The owner enables here (the score saver server-rejects entries until then);
+  // a member sees the warm not-ready message. Complete/correcting games are
+  // already enabled (backfill), so they fall through to the play screen.
+  if (!scoringEnabled) {
+    if (!canEdit) {
+      return (
+        <Shell onBack={() => router.back()} title="Rack-n-Stack">
+          <MemberNotReady gameName={gameQ.data?.name as string | undefined} />
+        </Shell>
+      );
+    }
+    return (
+      <EnableScoringGate
+        title="Rack-n-Stack"
+        subtitle={`${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · net stroke play`}
+        onEnable={handleEnable}
+        onBack={() => router.back()}
+        pending={enableScoring.isPending}
+      />
     );
   }
 

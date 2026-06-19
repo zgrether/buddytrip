@@ -38,6 +38,7 @@ afterAll(async () => {
 });
 
 async function enter(gameId: string, userId: string, gross: number[]) {
+  await ctx.callerAs("planner").games.enableScoring({ tripId, gameId }); // Phase 2B.1 universal gate
   for (let i = 0; i < gross.length; i++) {
     await ctx.callerAs("planner").scores.upsertEntry({
       tripId,

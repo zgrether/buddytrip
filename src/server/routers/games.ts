@@ -403,9 +403,11 @@ export const gamesRouter = router({
       // status='complete' + corrections_open=false IS the locked state. Clearing
       // corrections_open here is what makes finalize the proper LOCK and lets a
       // re-lock exit score-correction mode (openCorrection → edit → finish).
+      // scoring_enabled=true keeps the "a run/posted game is enabled" invariant
+      // (Phase 2B.1) so a correction edit passes the score-entry gate.
       const { error } = await ctx.supabase
         .from("games")
-        .update({ status: "complete", corrections_open: false })
+        .update({ status: "complete", corrections_open: false, scoring_enabled: true })
         .eq("id", input.gameId);
       if (error) {
         throw new TRPCError({
@@ -472,6 +474,47 @@ export const gamesRouter = router({
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set status: ${error.message}` });
+      return { success: true };
+    }),
+
+  // enableScoring — Phase 2B.1. Open this game for scoring (the single
+  // authoritative flag, every format) AND publish it to the crew. It does NOT
+  // set status='active' — the FIRST score owns the flip to Live (#396), so a
+  // game can sit "enabled but not yet Live" (the §A full-name + full-color-icon
+  // state). Distinct from competition reveal (competitions.status). Config-class
+  // → requireGameEdit (owner / organizer / that game's delegate), same as
+  // setStatus.
+  enableScoring: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ scoring_enabled: true, pairings_published_at: new Date().toISOString() })
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to enable scoring: ${error.message}` });
+      return { success: true };
+    }),
+
+  // disableScoring — Phase 2B.1. Close the game to the crew and return it to
+  // setup, KEEPING all scores (never deletes entries). If it was Live (active),
+  // revert to pending so it reads not-Live; you continue configuring from here.
+  // Re-enabling re-opens it; the next score flips it Live again.
+  disableScoring: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games").select("status").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      const next = game.status === "active" ? "pending" : (game.status as string);
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ scoring_enabled: false, pairings_published_at: null, status: next })
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to disable scoring: ${error.message}` });
       return { success: true };
     }),
 
@@ -645,7 +688,9 @@ export const gamesRouter = router({
 
       const { error } = await ctx.supabase
         .from("games")
-        .update({ status: "complete", corrections_open: false })
+        // scoring_enabled=true keeps the "a run/posted game is enabled" invariant
+        // (Phase 2B.1) so a correction edit passes the score-entry gate.
+        .update({ status: "complete", corrections_open: false, scoring_enabled: true })
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to post game: ${error.message}` });

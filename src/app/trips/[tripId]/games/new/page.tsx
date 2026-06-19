@@ -7,6 +7,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
+import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -60,6 +61,8 @@ export default function NewGamePage() {
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
+  // Phase 2B.1: scoring must be enabled before entries land (universal gate).
+  const enableScoring = trpc.games.enableScoring.useMutation();
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -95,6 +98,23 @@ export default function NewGamePage() {
 
   // The id the saver writes to: the resumed game, else the one created here.
   const activeGameId = urlGameId ?? createdGame?.id;
+  // Phase 2B.1: a configured game must be Enabled before its score screen opens.
+  const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
+  async function handleEnable() {
+    if (!tripId || !activeGameId) return;
+    try {
+      await enableScoring.mutateAsync({ tripId, gameId: activeGameId });
+      await gameQ.refetch();
+      if (gameCompetitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+        utils.games.listByTrip.invalidate({ tripId });
+      }
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
@@ -189,6 +209,20 @@ export default function NewGamePage() {
     seededRef.current = false;
     // Drop ?game so "Play again" starts a fresh game instead of resuming this one.
     if (urlGameId) router.replace(`/trips/${param}/games/new`);
+  }
+
+  // ── Enable gate (Phase 2B.1) — a configured game must be enabled before its
+  // score screen opens. The score saver server-rejects entries until then. ──
+  if (game && !scoringEnabled) {
+    return (
+      <EnableScoringGate
+        title="Stroke Play"
+        subtitle={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}
+        onEnable={handleEnable}
+        onBack={() => router.back()}
+        pending={enableScoring.isPending}
+      />
+    );
   }
 
   // ── Play ──
