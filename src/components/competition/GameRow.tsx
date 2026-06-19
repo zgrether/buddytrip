@@ -32,12 +32,31 @@ export function gameHref(
   return seg ? `/trips/${tripId}/games/${seg}?game=${gameId}` : null;
 }
 
-/** The four leaderboard-row states (§7). */
-export type RowState = "final" | "live" | "upcoming" | "unready";
-export function rowStateOf(game: LBGame): RowState {
+/**
+ * The §A lifecycle state the row reads — replaces the old 4-value RowState.
+ * DERIVED from the game's actual status + points-config; it is the row's single
+ * source of truth, not a layout flag (§A2). The two gravy sub-states are carried
+ * as data ON TOP of these four, not as extra enum values: "configuring" is a
+ * partial "setting-up", and "armed vs not-armed" lives inside "ready" (carried
+ * by the format-icon color, §A4 — wired to this derived value, never a literal
+ * board/layout string).
+ */
+export type LifecycleState = "setting-up" | "ready" | "live" | "final";
+export function lifecycleOf(game: LBGame): LifecycleState {
   if (game.status === "complete") return "final";
   if (game.status === "active") return "live";
-  return game.ready === false ? "unready" : "upcoming";
+  return game.ready === false ? "setting-up" : "ready";
+}
+
+/**
+ * §A4 arm signal: the format-icon shows full color when scoring is enabled,
+ * muted while the game is still being set up. There is no `scoring_enabled`
+ * field yet (Phase 2's Enable/Disable adds it), so for now arm == "structure is
+ * done": muted iff setting-up/configuring, full-color otherwise. Wired to the
+ * DERIVED lifecycle, so swapping in the real field later is a one-line change.
+ */
+export function iconArmed(lifecycle: LifecycleState): boolean {
+  return lifecycle !== "setting-up";
 }
 
 // ── GameRow ────────────────────────────────────────────────────────────────────
@@ -56,7 +75,6 @@ export function GameRow({
   tripId,
   mine,
   onPrefetch,
-  phase = "live",
 }: {
   game: LBGame;
   teams: LBTeam[];
@@ -64,19 +82,19 @@ export function GameRow({
   tripId: string;
   mine: boolean;
   onPrefetch: (gameId: string) => void;
-  /** Competition lifecycle: "live" = full active-board row (name + per-team /
-   *  status line); "early" = compact pre-game schedule row (name + badge only).
-   *  Phase 3 replaces this two-way branch with the full §A state machine. */
-  phase?: "live" | "early";
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
-  const state = rowStateOf(game);
+  // The row's single source of truth — the game's actual lifecycle, not a board
+  // context flag. Layout + (Commit 3) every layer key off this one value.
+  const lifecycle = lifecycleOf(game);
   // Show the per-team result line only when there's a committed/in-progress
   // result; otherwise a single status line — NEVER an empty "– / –" (0–0) row.
-  const showTeamLine = state === "final" || (state === "live" && hasScores);
+  const showTeamLine = lifecycle === "final" || (lifecycle === "live" && hasScores);
 
-  const inner = phase === "early" ? (
+  // Compact pre-config layout for setting-up; the fuller row otherwise. These
+  // two branches converge into one §A column skeleton in Commit 2.
+  const inner = lifecycle === "setting-up" ? (
     <div className="flex items-center justify-between gap-2 px-4 py-3">
       <div className="flex min-w-0 items-center gap-2">
         <span
@@ -88,7 +106,7 @@ export function GameRow({
         {mine && <YoursBadge />}
       </div>
       <div className="flex items-center gap-1.5">
-        <RowBadge state={state} />
+        <RowBadge state={lifecycle} />
         {href && (
           <ChevronRight
             size={14}
@@ -110,7 +128,7 @@ export function GameRow({
           {mine && <YoursBadge />}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <RowBadge state={state} />
+          <RowBadge state={lifecycle} />
           {href && (
             <ChevronRight size={14} style={{ color: "var(--color-bt-text-dim)" }} />
           )}
@@ -137,13 +155,9 @@ export function GameRow({
       ) : (
         <span
           className="text-[12px]"
-          style={{ color: state === "unready" ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
-          {state === "live"
-            ? "Underway · scoring"
-            : state === "unready"
-              ? "Not scoring yet — still being set up"
-              : "Not started yet"}
+          {lifecycle === "live" ? "Underway · scoring" : "Not started yet"}
         </span>
       )}
     </div>
@@ -164,7 +178,7 @@ export function GameRow({
   return <div>{inner}</div>;
 }
 
-export function RowBadge({ state }: { state: RowState }) {
+export function RowBadge({ state }: { state: LifecycleState }) {
   if (state === "final") {
     return (
       <span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}>
@@ -181,14 +195,14 @@ export function RowBadge({ state }: { state: RowState }) {
       </span>
     );
   }
-  if (state === "unready") {
+  if (state === "setting-up") {
     return (
       <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}>
         Needs setup
       </span>
     );
   }
-  // upcoming
+  // ready
   return (
     <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}>
       Upcoming

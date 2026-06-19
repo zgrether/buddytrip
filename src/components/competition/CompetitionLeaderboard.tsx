@@ -577,7 +577,6 @@ function EarlyState({
                 tripId={tripId}
                 mine={mineSet.has(game.id)}
                 onPrefetch={onPrefetch}
-                phase="early"
               />
             ))}
           </div>
