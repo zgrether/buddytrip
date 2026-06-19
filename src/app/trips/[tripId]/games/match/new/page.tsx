@@ -788,8 +788,9 @@ export default function NewMatchGamePage() {
             setView(locked ? "grid" : "entry");
             go("score");
           }}
-          // +1 mid-life: persist an empty match (board recomputes immediately),
-          // then land on setup to pick its players (assignment is the same flow).
+          // +1 mid-life: persist an empty match, then land on setup to pick its
+          // players. The board's clinch goalpost moves once the match is PAIRED
+          // (a match = assigned), not the instant the empty slot is added.
           onAddMatch={async () => {
             await handleAddMatch();
             go("setup");
@@ -1438,7 +1439,7 @@ function Overview({
       </div>
 
       {/* +1: add another match mid-life (lands on setup to pick its players).
-          The board's "first to XX" jumps by one × value immediately. */}
+          The board's "first to XX" moves once the new match is PAIRED. */}
       {canEdit && !complete && groups.length < MAX_MATCHES && (
         <button
           type="button"

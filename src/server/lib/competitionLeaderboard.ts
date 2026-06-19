@@ -109,8 +109,8 @@ export async function computeCompetitionLeaderboard(
           .eq("entity_type", "team")
       : Promise.resolve({ data: [] as { game_id: string; entity_id: string; position: number | null; raw_score: number | null }[] }),
     gameIds.length
-      ? supabase.from("game_matches").select("game_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string }[] }),
+      ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[] }),
     gameIds.length
       ? supabase.from("game_participants").select("game_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[] }),
@@ -121,14 +121,17 @@ export async function computeCompetitionLeaderboard(
   for (const r of (participantRowsRes.data ?? []) as { game_id: string }[]) {
     participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
   }
-  // A match game's available points = value × the number of matches it is
-  // CONFIGURED to have (its game_matches rows), counted regardless of whether
-  // they're paired yet — the configured count, ≥1 from creation. Adding/removing
-  // a match moves this (the live clinch target); pairing or playing does not.
-  // (Was value × deriveMatchCount(teamSizes) — the stable §8 estimate; the
-  // dynamic-match-count build moves the goalpost to the live configured count.)
+  // A match game's available points = value × the number of ASSIGNED matches
+  // (both sides paired). "A match = assigned, everywhere" (round-3.1 addendum):
+  // an unfilled slot is not a match — it never scores, so it contributes nothing
+  // to points-in-play and doesn't make the game Ready. Empty slots are builder
+  // scaffolding that the tee-off COLLAPSE discards; counting them here would show
+  // a created-but-unpaired game phantom points. (Supersedes the earlier Slice-D
+  // "configured rows incl. empty, ≥1 from creation" goalpost — pairing now moves
+  // the live clinch target, by design.)
   const matchCountByGame = new Map<string, number>();
-  for (const r of (matchRowsRes.data ?? []) as { game_id: string }[]) {
+  for (const r of (matchRowsRes.data ?? []) as { game_id: string; side_a: unknown; side_b: unknown }[]) {
+    if (r.side_a == null || r.side_b == null) continue;
     matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
   }
 
@@ -147,9 +150,10 @@ export async function computeCompetitionLeaderboard(
 
     if (isPerMatch(rawDist)) {
       const typeId = g.game_type_id as string | null;
-      // Match play (singles/doubles): available = value × the game's CONFIGURED
-      // match count (its game_matches rows), regardless of pairing — the live
-      // clinch goalpost that add/remove moves (dynamic match count). Other
+      // Match play (singles/doubles): available = value × the game's ASSIGNED
+      // match count (game_matches rows with both sides paired) — an unfilled slot
+      // isn't a match, so it adds no points (round-3.1 "a match = assigned"). The
+      // live clinch goalpost moves as matches get paired / added / removed. Other
       // per_match formats (rack-n-stack) DON'T use game_matches; their count is
       // the team-size-derived head-to-head sizing (unchanged stable model) — so
       // counting rows there would zero them out.

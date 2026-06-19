@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { rollUp, placementPoints, winThreshold, type LiveGame } from "../../lib/competitionPlacement";
+import { rollUp, type LiveGame } from "../../lib/competitionPlacement";
 import type { PointsDistribution } from "../../lib/pointsDistribution";
 
 /**
@@ -348,15 +348,29 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     expect(game.configured).toBe(false);
     expect(game.pointsTotal ?? 0).toBe(0); // outer column agrees → `—`
 
-    // Assign a pairing → it EARNS Ready in place, and points in play appear.
+    // A HALF-paired slot (one side still empty) is NOT a match — "a match =
+    // assigned, everywhere." It must STILL read Setting up and add no points.
     await ctx.caller().matches.setPairings({
       tripId, gameId: g.id,
       matches: [{ sideA: { type: "user", id: ctx.user.id }, sideB: null, matchNumber: 1 }],
     });
     lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     game = lb.games.find((x: { id: string }) => x.id === g.id) as { ready: boolean; configured: boolean; pointsTotal: number | null };
+    expect(game.configured).toBe(false);
+    expect(game.pointsTotal ?? 0).toBe(0);
+
+    // Fully pair it → it EARNS Ready in place, and points in play appear.
+    await ctx.admin.from("game_matches").delete().eq("game_id", g.id);
+    await ctx.admin.from("game_matches").insert({
+      id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0,
+      side_a: { type: "user", id: ctx.getUser("owner").id },
+      side_b: { type: "user", id: ctx.getUser("member").id },
+      status: "pending",
+    });
+    lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    game = lb.games.find((x: { id: string }) => x.id === g.id) as { ready: boolean; configured: boolean; pointsTotal: number | null };
     expect(game.configured).toBe(true);
-    expect(game.pointsTotal).toBe(2); // value 2 × 1 match
+    expect(game.pointsTotal).toBe(2); // value 2 × 1 assigned match
   });
 
   it("pointsTotal (§A5 outer column) reads the distribution sum when no owner total is set", async () => {
