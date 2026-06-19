@@ -49,6 +49,11 @@ interface ScoreEntryViewProps {
   saveStatus?: SaveStatusMap;
   /** Re-fire the save for a flagged cell. */
   onRetryCell?: (participantId: string, unitLabel: string) => void;
+  /** Handicap stroke holes per participant (`{ [pid]: Set<unitLabel> }`) — a pip
+   *  on each stroked cell + a net hint in the row subtitle. Omit for formats
+   *  with no handicap (stroke play / Quick Game). Net = gross − 1 on a stroked
+   *  hole. */
+  pips?: Record<string, Set<string>>;
 }
 
 export function ScoreEntryView({
@@ -65,6 +70,7 @@ export function ScoreEntryView({
   onOpenGrid,
   saveStatus = {},
   onRetryCell,
+  pips,
 }: ScoreEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -275,6 +281,8 @@ export function ScoreEntryView({
           const total = totalOf(p.id);
           const lead = isLeading(p.id);
           const done = doneCount(p.id) === units.length;
+          // Handicap: does this player get a stroke on THIS hole? (course index)
+          const stroked = pips?.[p.id]?.has(label) ?? false;
           return (
             <div key={p.id}>
               {/* role=button (not <button>) so the per-cell Retry button can
@@ -342,7 +350,9 @@ export function ScoreEntryView({
                     }}
                   >
                     {par != null && v != null
-                      ? golfWord(v, par)
+                      ? stroked
+                        ? `${golfWord(v, par)} · net ${golfWord(v - 1, par)}`
+                        : golfWord(v, par)
                       : total === 0
                         ? "No scores yet"
                         : lead
@@ -354,7 +364,7 @@ export function ScoreEntryView({
                   state={saveStatus[scoreCellKey(p.id, label)]}
                   onRetry={() => onRetryCell?.(p.id, label)}
                 />
-                <ScoreCell value={v} active={active} par={par} celebrate={lastCommit?.pid === p.id && lastCommit?.hole === hole} />
+                <ScoreCell value={v} active={active} par={par} stroked={stroked} celebrate={lastCommit?.pid === p.id && lastCommit?.hole === hole} />
               </div>
               {active && isCorrection && (
                 <div
@@ -399,25 +409,30 @@ function ScoreCell({
   value,
   active,
   par,
+  stroked,
   celebrate,
 }: {
   value: number | undefined;
   active: boolean;
   par?: number;
+  /** Player gets a handicap stroke on this hole (course index) → corner pip. */
+  stroked?: boolean;
   celebrate?: boolean;
 }) {
+  const pip = stroked ? <StrokePip /> : null;
   // Committed (not being edited) + par known → the golf shape IS the cell.
   if (!active && value != null && par != null) {
     return (
-      <span className="flex items-center justify-center" style={{ width: 52, height: 46, flexShrink: 0 }}>
+      <span className="relative flex items-center justify-center" style={{ width: 52, height: 46, flexShrink: 0 }}>
         <GolfChip value={value} par={par} size={42} fontSize={22} celebrate={celebrate} />
+        {pip}
       </span>
     );
   }
   if (active && value == null) {
     return (
       <span
-        className="flex items-center justify-center"
+        className="relative flex items-center justify-center"
         style={{
           width: 52,
           height: 46,
@@ -429,14 +444,14 @@ function ScoreCell({
           flexShrink: 0,
         }}
       >
-      +
+      +{pip}
       </span>
     );
   }
   if (value != null) {
     return (
       <span
-        className="flex items-center justify-center"
+        className="relative flex items-center justify-center"
         style={{
           width: 52,
           height: 46,
@@ -450,12 +465,13 @@ function ScoreCell({
         }}
       >
         {value}
+        {pip}
       </span>
     );
   }
   return (
     <span
-      className="flex items-center justify-center"
+      className="relative flex items-center justify-center"
       style={{
         width: 52,
         height: 46,
@@ -466,8 +482,26 @@ function ScoreCell({
         flexShrink: 0,
       }}
     >
-      +
+      +{pip}
     </span>
+  );
+}
+
+/** Handicap stroke pip — a player receives a stroke on this hole (course index). */
+function StrokePip() {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: -3,
+        right: -3,
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: "var(--color-bt-warning)",
+        boxShadow: "0 0 0 1.5px var(--color-bt-base)",
+      }}
+    />
   );
 }
 
