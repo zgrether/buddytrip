@@ -57,18 +57,25 @@ export function isGolfFormat(gameTypeId: string | null): boolean {
 
 /**
  * The §A lifecycle state the row reads — replaces the old 4-value RowState.
- * DERIVED from the game's actual status + points-config; it is the row's single
+ * DERIVED from the game's actual status + readiness; it is the row's single
  * source of truth, not a layout flag (§A2). The two gravy sub-states are carried
  * as data ON TOP of these four, not as extra enum values: "configuring" is a
  * partial "setting-up", and "armed vs not-armed" lives inside "ready" (carried
  * by the format-icon color, §A4 — wired to this derived value, never a literal
  * board/layout string).
+ *
+ * Ready must be EARNED, not assumed: a game is Setting up until the format's
+ * required roster is assigned (`configured`, derived server-side from pairing /
+ * participant counts). "Exists and not live/final" is NOT Ready — that was the
+ * bug where an unconfigured match game rendered Ready while its points read `—`.
+ * Course/handicaps never gate this (locked, readiness model). Same `configured`
+ * signal feeds the outer `N PTS`/`—` column, so the two can't disagree.
  */
 export type LifecycleState = "setting-up" | "ready" | "live" | "final";
 export function lifecycleOf(game: LBGame): LifecycleState {
   if (game.status === "complete") return "final";
   if (game.status === "active") return "live";
-  return game.ready === false ? "setting-up" : "ready";
+  return game.configured ? "ready" : "setting-up";
 }
 
 /**
@@ -127,8 +134,10 @@ export function GameRow({
 
   // Final sheds the operational layer (scorecard + delegate), keeps the result
   // (round-3.1 §A2). The scorecard column is golf-only and present everywhere
-  // EXCEPT Final.
+  // EXCEPT Final; a course set makes it a real button (opens the scorecard via
+  // the row link), no course makes it a muted, inert status icon.
   const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal;
+  const scorecardOpens = showScorecard && game.hasCourse === true && !!href;
   const showDelegate = mine && !isFinal;
 
   // Subtitle / running state (§A3). Setting-up + Final carry none — the dashed
@@ -194,22 +203,39 @@ export function GameRow({
         )}
       </div>
 
-      {/* Scorecard button (golf-only, dropped at Final) — inboard of the outer
-          column so the right edge holds when it vanishes. */}
-      {showScorecard && (
-        <span
-          className="flex shrink-0 items-center justify-center rounded-lg"
-          style={{
-            width: 30,
-            height: 30,
-            background: "var(--color-bt-card-raised)",
-            color: "var(--color-bt-text-dim)",
-          }}
-          aria-hidden
-        >
-          <ClipboardList size={15} />
-        </span>
-      )}
+      {/* Scorecard column (golf-only, dropped at Final) — inboard of the outer
+          column so the right edge holds when it vanishes. Course set → a real
+          button that opens the scorecard (via the row link to the score-entry
+          route); no course → a muted, inert status icon (no nav, not an error). */}
+      {showScorecard &&
+        (scorecardOpens ? (
+          <span
+            className="flex shrink-0 items-center justify-center rounded-lg"
+            style={{
+              width: 30,
+              height: 30,
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          >
+            <ClipboardList size={15} />
+          </span>
+        ) : (
+          <span
+            className="flex shrink-0 items-center justify-center"
+            style={{ width: 30, height: 30, color: "var(--color-bt-text-dim)", opacity: 0.5 }}
+            // No course yet — status only, never a tap target (the row stays
+            // navigable around it for games that are otherwise reachable).
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            title="No course set"
+          >
+            <ClipboardList size={15} />
+          </span>
+        ))}
 
       {/* Outer column — pts-or-result, pinned right, right-aligned (§A5). */}
       <div className="flex shrink-0 flex-col items-end" style={{ minWidth: 44 }}>
@@ -266,8 +292,11 @@ function OuterColumn({
     );
   }
 
+  // `N PTS` only once the game is configured (the SAME gate as Ready) — a
+  // setting-up game reads `—` even if it carries a stray points value, so the
+  // column and the state always agree.
   const pts = game.pointsTotal;
-  if (pts != null && pts > 0) {
+  if (game.configured && pts != null && pts > 0) {
     return (
       <span className="text-[13px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text)" }}>
         {fmtPts(pts)} <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>PTS</span>

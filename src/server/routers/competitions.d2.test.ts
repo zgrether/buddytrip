@@ -303,13 +303,17 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
-    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { gameTypeId: string; ready: boolean };
+    const game = lb.games.find((g2: { id: string }) => g2.id === g.id) as { gameTypeId: string; ready: boolean; configured: boolean; hasCourse: boolean };
     expect(game).toBeDefined();
     expect("gameTypeId" in game!).toBe(true);
     expect(game!.gameTypeId).toBe(MANUAL);
     expect("defendingTeamId" in lb).toBe(true);
     // State-aware rows (§7): a configured game is scoring-ready.
     expect(game!.ready).toBe(true);
+    // §A fields present: a manual game has no roster gate, so points = configured.
+    expect(game!.configured).toBe(true);
+    expect("hasCourse" in game!).toBe(true);
+    expect(game!.hasCourse).toBe(false);
   });
 
   it("a game with no points configured is NOT ready (drives the 'needs setup' row)", async () => {
@@ -323,6 +327,36 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     expect(game!.ready).toBe(false);
     // An unready game has no points in play → the row's outer column reads `—`.
     expect(game!.pointsTotal ?? 0).toBe(0);
+  });
+
+  it("a match-play game is Setting up until pairings are assigned, then earns Ready (§A readiness gate)", async () => {
+    const comp = await ctx.createCompetition(tripId, "D2 Roster Gate Comp");
+    await ctx.createTeam(comp, "A", { shortName: "A" });
+    await ctx.createTeam(comp, "B", { shortName: "B" });
+    const g = await ctx.caller().games.create({
+      tripId, gameTypeId: "gtt_match_play_singles", name: "Roster Gate", competitionId: comp,
+      pointsDistribution: { type: "per_match", value: 2 },
+    }) as { id: string };
+    gameIds.push(g.id);
+
+    // Points ARE configured (per_match value) so the legacy `ready` is true — but
+    // with NO pairings the §A gate must still read NOT configured (→ Setting up).
+    // This is the exact divergence bug: Ready while the points column shows `—`.
+    let lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    let game = lb.games.find((x: { id: string }) => x.id === g.id) as { ready: boolean; configured: boolean; pointsTotal: number | null };
+    expect(game.ready).toBe(true);
+    expect(game.configured).toBe(false);
+    expect(game.pointsTotal ?? 0).toBe(0); // outer column agrees → `—`
+
+    // Assign a pairing → it EARNS Ready in place, and points in play appear.
+    await ctx.caller().matches.setPairings({
+      tripId, gameId: g.id,
+      matches: [{ sideA: { type: "user", id: ctx.user.id }, sideB: null, matchNumber: 1 }],
+    });
+    lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    game = lb.games.find((x: { id: string }) => x.id === g.id) as { ready: boolean; configured: boolean; pointsTotal: number | null };
+    expect(game.configured).toBe(true);
+    expect(game.pointsTotal).toBe(2); // value 2 × 1 match
   });
 
   it("pointsTotal (§A5 outer column) reads the distribution sum when no owner total is set", async () => {

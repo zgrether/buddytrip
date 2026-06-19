@@ -4,6 +4,30 @@ import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDi
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 
 const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
+// Roster-gated golf formats: a stroke field / rack auto-grouping is "configured"
+// once it has participants (match play instead needs pairing rows — see below).
+const ROSTER_TYPES = new Set(["gtt_stroke_play", "gtt_rack_n_stack"]);
+
+/**
+ * Is the game configured enough to be Ready (vs still Setting up)? "Ready must
+ * be earned, not assumed" — exists-and-not-live ≠ Ready. The format's REQUIRED
+ * roster is the gate; course + handicaps are optional and NEVER gate readiness:
+ *  - match play → pairings assigned (game_matches rows)
+ *  - stroke / rack → participants assigned (game_participants rows)
+ *  - manual / side events → points configured (no roster to assign)
+ * One signal: lifecycle AND the row's `N PTS`/`—` both read it, so they can't
+ * disagree (the Ready-but-`—` divergence class).
+ */
+function isConfigured(
+  typeId: string | null,
+  matchCount: number,
+  participantCount: number,
+  hasPoints: boolean
+): boolean {
+  if (typeId && MATCH_PLAY_TYPES.has(typeId)) return matchCount > 0;
+  if (typeId && ROSTER_TYPES.has(typeId)) return participantCount > 0;
+  return hasPoints;
+}
 
 /** Singles vs doubles head-to-head sizing for the team-size-derived formats
  *  (rack-n-stack). Match play itself counts its configured rows instead. */
@@ -50,7 +74,7 @@ export async function computeCompetitionLeaderboard(
     // show an "Abandoned" column, but only LIVE ones feed the roll-up.
     supabase
       .from("games")
-      .select("id, name, points_distribution, points_total, status, game_type_id")
+      .select("id, name, points_distribution, points_total, status, game_type_id, course_id")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true }),
     // Team sizes drive the team-size-derived per_match formats (rack-n-stack):
@@ -73,9 +97,10 @@ export async function computeCompetitionLeaderboard(
   const teamSizes = teamIds.map((id) => sizeByTeam.get(id) ?? 0);
 
   const gameIds = live.map((g) => g.id as string);
-  // game_results (awarded) + the per-game match COUNT (available). Both depend on
-  // the live game ids; run them together.
-  const [resultsRes, matchRowsRes] = await Promise.all([
+  // game_results (awarded) + the per-game match COUNT (available) + the per-game
+  // participant COUNT (the stroke/rack readiness gate). All depend on the live
+  // game ids; run them together.
+  const [resultsRes, matchRowsRes, participantRowsRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
@@ -86,8 +111,16 @@ export async function computeCompetitionLeaderboard(
     gameIds.length
       ? supabase.from("game_matches").select("game_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[] }),
+    gameIds.length
+      ? supabase.from("game_participants").select("game_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string }[] }),
   ]);
   const results = resultsRes.data;
+  // Participant rows per game — "field picked" (stroke) / "auto-grouped" (rack).
+  const participantCountByGame = new Map<string, number>();
+  for (const r of (participantRowsRes.data ?? []) as { game_id: string }[]) {
+    participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
+  }
   // A match game's available points = value × the number of matches it is
   // CONFIGURED to have (its game_matches rows), counted regardless of whether
   // they're paired yet — the configured count, ≥1 from creation. Adding/removing
@@ -196,21 +229,36 @@ export async function computeCompetitionLeaderboard(
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
     games: allGames.map((g) => {
       const rawDist = g.points_distribution as PointsDistribution | null;
+      const typeId = (g.game_type_id as string | null) ?? null;
+      const hasPoints = !!rawDist || g.points_total != null;
+      const gid = g.id as string;
       return {
-        id: g.id as string,
+        id: gid,
         name: (g.name as string | null) ?? "Game",
         distribution: isPlacement(rawDist) ? rawDist.values : null,
         status: g.status as string,
         dropped: g.status === "dropped",
-        gameTypeId: (g.game_type_id as string | null) ?? null,
+        gameTypeId: typeId,
         // "ready to score" = points are configured (a distribution shape or an
-        // owner-set total). Drives the state-aware leaderboard rows: an unready
-        // game reads "not scoring yet" instead of an empty/0–0 line (§7).
-        ready: !!rawDist || g.points_total != null,
+        // owner-set total). Kept for the games-panel/test consumers.
+        ready: hasPoints,
+        // The §A readiness gate: is the format's REQUIRED roster assigned? Drives
+        // the Setting-up↔Ready transition AND the `N PTS`/`—` outer column from
+        // ONE signal so they can't disagree (course/handicaps never gate this).
+        configured: isConfigured(
+          typeId,
+          matchCountByGame.get(gid) ?? 0,
+          participantCountByGame.get(gid) ?? 0,
+          hasPoints
+        ),
+        // Course presence (§ scorecard three-way) — surfaced so the row's
+        // scorecard chip can be a real button (course set) vs a muted status
+        // icon (no course). Course is optional and never an error.
+        hasCourse: g.course_id != null,
         // Points in play (§A5 outer column). Match-play games carry it here even
         // though `distribution` is null pre-decision; dropped games (not in the
         // roll-up) get null and the row never renders them anyway.
-        pointsTotal: ptsInPlayByGame.get(g.id as string) ?? null,
+        pointsTotal: ptsInPlayByGame.get(gid) ?? null,
       };
     }),
     cells,
