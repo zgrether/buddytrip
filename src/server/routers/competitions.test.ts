@@ -90,4 +90,31 @@ describe("competitions router", () => {
     });
     expect(ok).toEqual({ success: true });
   });
+
+  it("delete — DETACHES its games (competition_id → null), never orphans them", async () => {
+    const caller = ctx.caller();
+    const comp = await caller.competitions.create({ tripId, name: "Detach Cup" });
+    ctx.trackCompetition(comp.id);
+    const game = (await caller.games.create({
+      tripId,
+      gameTypeId: "gtt_manual",
+      name: "Detach Game",
+      competitionId: comp.id,
+      pointsDistribution: { type: "placement", values: [3, 1] },
+    })) as { id: string };
+
+    await caller.competitions.delete({ tripId, competitionId: comp.id });
+
+    // The game SURVIVES (non-destructive) but no longer claims a dead
+    // competition — the FK's ON DELETE SET NULL detaches it to standalone.
+    const { data: row } = await ctx.admin
+      .from("games")
+      .select("id, competition_id")
+      .eq("id", game.id)
+      .maybeSingle();
+    expect(row).not.toBeNull();
+    expect(row!.competition_id).toBeNull();
+
+    await ctx.admin.from("games").delete().eq("id", game.id);
+  });
 });
