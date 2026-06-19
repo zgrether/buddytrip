@@ -120,7 +120,7 @@ export function GameRow({
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
   // The row's single source of truth — the game's actual lifecycle, not a board
-  // context flag. Layout + (Commit 3) every layer key off this one value.
+  // context flag. Layout + every §A3 layer key off this one value.
   const lifecycle = lifecycleOf(game);
   const isFinal = lifecycle === "final";
 
@@ -132,8 +132,8 @@ export function GameRow({
   const showDelegate = mine && !isFinal;
 
   // Subtitle / running state (§A3). Setting-up + Final carry none — the dashed
-  // outline (Commit 3) and the outer result speak for them. Live's real running
-  // state ("Blue 2 up · thru 13") is deferred to a state-driven slot.
+  // outline and the outer result speak for them. Live's real running state
+  // ("Blue 2 up · thru 13") is deferred to a state-driven slot.
   const subtitle =
     lifecycle === "live"
       ? "Underway · scoring"
@@ -141,16 +141,36 @@ export function GameRow({
       ? "Ready to play"
       : null;
 
+  // §A3 layer table — each visual layer wired to the one derived lifecycle.
+  // The format icon shows FULL color only while scoring is enabled AND the game
+  // isn't yet a finished record; Final quiets it back down (sheds the arm tell).
+  const armedIcon = iconArmed(lifecycle) && !isFinal;
+  const rowStyle: React.CSSProperties = {
+    // The one reserved background is Live (§A2) — the only "act now" fill.
+    background: lifecycle === "live" ? "var(--color-bt-accent-faint)" : undefined,
+    // Setting-up gets the only special outline: a dashed left edge that reads
+    // "not built yet." Every other state reserves the same 2px transparent so
+    // the name never shifts as the outline appears/disappears.
+    borderLeft:
+      lifecycle === "setting-up"
+        ? "2px dashed var(--color-bt-border)"
+        : "2px solid transparent",
+    // Final is a quiet record — recess the whole tile (§A3 "recessed").
+    opacity: isFinal ? 0.72 : 1,
+  };
+  // Name-text strength = "is the structure done?" — dim while setting up, full
+  // the moment it's Ready (§A3). Final keeps the name full but the tile recedes.
+  const nameColor =
+    lifecycle === "setting-up" ? "var(--color-bt-text-dim)" : "var(--color-bt-text)";
+
   const inner = (
-    <div className="flex items-center gap-3 px-4 py-3">
-      {/* Format icon */}
+    <div className="flex items-center gap-3 px-4 py-3" style={rowStyle}>
+      {/* Format icon — color carries the arming tell (§A4). */}
       <Icon
         size={18}
         className="shrink-0"
         style={{
-          color: iconArmed(lifecycle)
-            ? "var(--color-bt-text)"
-            : "var(--color-bt-text-dim)",
+          color: armedIcon ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
         }}
       />
 
@@ -159,7 +179,7 @@ export function GameRow({
         <div className="flex min-w-0 items-center gap-2">
           <span
             className="truncate text-sm font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
+            style={{ color: nameColor }}
           >
             {game.name}
           </span>
