@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
+import { CoursePicker } from "@/components/games/course/CoursePicker";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
   validatePlacement, matchReadout, placementFit, matchFit, type MatchFormat,
@@ -413,6 +414,14 @@ function GameSheet({
   const [delegateId, setDelegateId] = useState<string | null | undefined>(game ? undefined : null);
   const [formatSheetOpen, setFormatSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Course (Phase 1.0): the panel previously SHOWED course state but had no way
+  // to set it — competition games had no course-selection entry point, so the
+  // stroke index never reached the (conformant) handicap path. Wire the existing
+  // CoursePicker here. Local state tracks the pick; on an existing game we
+  // persist immediately via applyCourse, on a new game we apply after create.
+  const [courseId, setCourseId] = useState<string | null>(game?.course_id ?? null);
+  const [courseName, setCourseName] = useState<string | null>(null);
+  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
 
   const categoriesPresent = CATEGORY_ORDER.filter((c) => types.some((t) => t.category === c));
   const categoryTypes = types.filter((t) => t.category === category);
@@ -448,6 +457,24 @@ function GameSheet({
   const deleteGame = trpc.games.delete.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();
   const removeOrg = trpc.games.removeOrganizer.useMutation();
+  const applyCourse = trpc.games.applyCourse.useMutation();
+
+  // Pick a course: snapshot it onto an existing game now; for a new game stash
+  // the id and apply it right after create (persist()).
+  async function handlePickCourse(id: string, name: string) {
+    setCourseId(id);
+    setCourseName(name);
+    setCoursePickerOpen(false);
+    if (isEdit && game) {
+      try {
+        await applyCourse.mutateAsync({ tripId, gameId: game.id, courseId: id });
+        utils.games.listByTrip.invalidate({ tripId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to apply course");
+      }
+    }
+  }
 
   // Derived validation (the same pure fn the server uses).
   const started = !isMatchPlay && (placeInputs[0]?.trim() ?? "") !== "";
@@ -501,6 +528,14 @@ function GameSheet({
         gameId = created.id;
         if (compFormat || rules.trim() || Object.keys(modifiers).length > 0) {
           await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
+        }
+        // Apply a course chosen during create (snapshots par + stroke index).
+        if (courseId) {
+          try {
+            await applyCourse.mutateAsync({ tripId, gameId, courseId });
+          } catch {
+            // Non-fatal: the game still saves on the template default par/index.
+          }
         }
       }
       if (canEdit) {
@@ -595,7 +630,9 @@ function GameSheet({
                 title={title}
                 setTitle={setTitle}
                 isGolf={isGolf}
-                courseId={game?.course_id ?? null}
+                courseId={courseId}
+                courseName={courseName}
+                onPickCourse={() => setCoursePickerOpen(true)}
                 isMatchPlay={isMatchPlay}
                 total={total}
                 setTotal={setTotal}
@@ -611,7 +648,7 @@ function GameSheet({
                 setDelegateId={setDelegateId}
                 isMatchPlay={isMatchPlay}
                 isGolf={isGolf}
-                courseId={game?.course_id ?? null}
+                courseId={courseId}
                 total={total}
                 placeInputs={placeInputs}
                 setPlaceInputs={setPlaceInputs}
@@ -692,6 +729,13 @@ function GameSheet({
           onClose={() => setFormatSheetOpen(false)}
         />
       )}
+
+      {coursePickerOpen && (
+        <CoursePicker
+          onApply={({ id, name }) => void handlePickCourse(id, name)}
+          onClose={() => setCoursePickerOpen(false)}
+        />
+      )}
     </ScrollLock>
   );
 }
@@ -700,13 +744,14 @@ function GameSheet({
 
 function GameTab({
   isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
-  setGameTypeId, selectedType, title, setTitle, isGolf, courseId, isMatchPlay,
+  setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, isMatchPlay,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
-  setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; isMatchPlay: boolean;
+  setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; courseName: string | null;
+  onPickCourse: () => void; isMatchPlay: boolean;
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
 }) {
@@ -753,12 +798,16 @@ function GameTab({
 
       {isGolf && (
         <Field label="Course">
-          <div
-            className="flex items-center justify-between rounded-lg px-3 py-2 text-sm"
+          <button
+            type="button"
+            onClick={readOnly ? undefined : onPickCourse}
+            disabled={readOnly}
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm disabled:opacity-70"
             style={{ background: "var(--color-bt-card-raised)", color: courseId ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
           >
-            <span>{courseId ? "Course applied" : "No course yet"}</span>
-          </div>
+            <span>{courseName ?? (courseId ? "Course applied" : "Select a course")}</span>
+            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
           <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             The golf course is optional, but required if you want to keep score.
           </p>
