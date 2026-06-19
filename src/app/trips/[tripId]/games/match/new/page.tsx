@@ -587,8 +587,15 @@ export default function NewMatchGamePage() {
             rightColor: twoTeams ? teamOfSide(b.id)?.color : undefined,
           };
         }),
+    // Team colors come from teamOfSide / sideParticipant, which are plain
+    // per-render closures — so we depend on the DATA they read, including the
+    // team inputs (twoTeams, teamOfUser, teamById, membersOfSide). Without these,
+    // a `groups` computed BEFORE the teams/assignments queries resolved kept
+    // stale neutral colors and never recovered when team data landed — the 2v2
+    // "teams disappeared on re-entry" bug. Listing them recolors the moment team
+    // data arrives. (eslint-disable: we list the data, not the closures.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [serverMatches, handicapOf, colorOf, nameOf]
+    [serverMatches, handicapOf, colorOf, nameOf, twoTeams, teamOfUser, teamById, membersOfSide, avatarIconOf, sided]
   );
   // One match at a time: the strip tapped on the overview (falls back to the
   // first). Single-match entry — no shared keypad across matches.
