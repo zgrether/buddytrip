@@ -1,5 +1,6 @@
 "use client";
 
+import { createElement } from "react";
 import Link from "next/link";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -124,7 +125,6 @@ export function GameRow({
   const lifecycle = lifecycleOf(game);
   const isFinal = lifecycle === "final";
 
-  const Icon = formatIcon(game.gameTypeId);
   // Final sheds the operational layer (scorecard + delegate), keeps the result
   // (round-3.1 §A2). The scorecard column is golf-only and present everywhere
   // EXCEPT Final.
@@ -165,14 +165,15 @@ export function GameRow({
 
   const inner = (
     <div className="flex items-center gap-3 px-4 py-3" style={rowStyle}>
-      {/* Format icon — color carries the arming tell (§A4). */}
-      <Icon
-        size={18}
-        className="shrink-0"
-        style={{
+      {/* Format icon — color carries the arming tell (§A4). Rendered via
+          createElement so the icon component isn't re-created during render. */}
+      {createElement(formatIcon(game.gameTypeId), {
+        size: 18,
+        className: "shrink-0",
+        style: {
           color: armedIcon ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-        }}
-      />
+        },
+      })}
 
       {/* Name + delegate, subtitle stacked beneath */}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
