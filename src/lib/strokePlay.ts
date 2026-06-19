@@ -19,6 +19,41 @@ export interface StrokeEntry {
   value: number | null;
 }
 
+/** A raw per-hole gross entry — carries the hole label so net can be derived. */
+export interface RawStrokeEntry {
+  participant_id: string;
+  unit_label: string;
+  value: number | null;
+}
+
+/**
+ * Derive NET stroke entries from raw per-hole gross + each player's stroked
+ * holes. This is the ONE place gross→net happens, so the live standings strip
+ * (client) and the persisted final (server `computeStrokePlayResults`) can't
+ * diverge — both feed the result into `computeStrokePlayStandings`.
+ *
+ * `strokedByPlayer[participant_id]` is the set of hole LABELS where that player
+ * gets a stroke (computed once via `strokeHoles(handicap, courseStrokeIndex)`,
+ * keyed by the SAME `unit_label` the entries carry). A hole in that set deducts
+ * one stroke. Players absent from the map — no handicap, or no course index —
+ * net to gross unchanged, so a handicap-less game stays byte-identical to
+ * summing gross directly. `score_entries.value` always stays raw gross in the
+ * DB; net is derived here.
+ */
+export function netStrokeEntries(
+  entries: RawStrokeEntry[],
+  strokedByPlayer: Record<string, Set<string>>
+): StrokeEntry[] {
+  return entries
+    .filter((e) => e.value != null)
+    .map((e) => ({
+      participant_id: e.participant_id,
+      value:
+        (e.value as number) -
+        (strokedByPlayer[e.participant_id]?.has(e.unit_label) ? 1 : 0),
+    }));
+}
+
 export interface StrokeStanding {
   entityId: string;
   rawScore: number;

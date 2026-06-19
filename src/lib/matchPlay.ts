@@ -24,21 +24,27 @@ export interface MatchState {
 const HOLES = 18;
 
 /**
- * Holes (1..18) where a player receiving `n` strokes gets one. With a course
- * stroke index, the `n` hardest; otherwise the sequential fallback (holes 1..n)
- * — the course is stubbed in Slice B, so the fallback is the normal path until
- * the Slice C picker lands.
+ * Holes where a player receiving `n` strokes gets one. With a course stroke
+ * index, the `n` hardest; otherwise the sequential fallback (holes 1..n).
+ *
+ * The hole count is whatever the round actually is — NOT a hardcoded 18. It's
+ * defined by the stroke index when present (a 9-hole course has a 9-length
+ * index), else the caller's `holeCount`, else the 18-hole default. The old
+ * `=== 18` gate silently rejected a valid 9-hole index and fell back to
+ * board-order holes 1..n (the "pips on 1..n" bug); deriving the count from the
+ * index makes a 9-hole (or any-length) course allocate against its real index.
  */
-export function strokeHoles(n: number, strokeIndex?: number[]): Set<number> {
+export function strokeHoles(n: number, strokeIndex?: number[], holeCount?: number): Set<number> {
   if (n <= 0) return new Set();
-  if (strokeIndex && strokeIndex.length === HOLES) {
+  const H = strokeIndex?.length || holeCount || HOLES;
+  if (strokeIndex && strokeIndex.length === H) {
     return new Set(
-      [...Array(HOLES)]
+      [...Array(H)]
         .map((_, i) => i + 1)
-        .filter((h) => ((strokeIndex[h - 1] - 1) % HOLES) < n)
+        .filter((h) => ((strokeIndex[h - 1] - 1) % H) < n)
     );
   }
-  return new Set([...Array(Math.min(n, HOLES))].map((_, i) => i + 1));
+  return new Set([...Array(Math.min(n, H))].map((_, i) => i + 1));
 }
 
 /** gross − strokes received on that hole. */
@@ -60,8 +66,8 @@ export function buildDecided(
   strokeIndex?: number[],
   holeCount = HOLES
 ): HoleResult[] {
-  const setA = strokeHoles(strokesA, strokeIndex);
-  const setB = strokeHoles(strokesB, strokeIndex);
+  const setA = strokeHoles(strokesA, strokeIndex, holeCount);
+  const setB = strokeHoles(strokesB, strokeIndex, holeCount);
   const out: HoleResult[] = [];
   for (let h = 1; h <= holeCount; h++) {
     const ga = grossA[String(h)];

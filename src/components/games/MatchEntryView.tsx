@@ -11,6 +11,7 @@ import { GolfChip } from "./GolfChip";
 import { ScoreSaveBadge } from "./ScoreSaveBadge";
 import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
 import { golfWord } from "./golfScore";
+import { strokeIndexOf } from "@/lib/strokePlayConfig";
 import {
   parseScoreCellKey,
   scoreCellKey,
@@ -106,15 +107,22 @@ export function MatchEntryView({
   const label = unit?.label ?? String(hole);
   const valueFor = (pid: string, l: string) => values[pid]?.[l];
 
+  // The course's per-hole stroke index (from the snapshot units). Threading it
+  // into the live display makes pips + the live net land on the COURSE's
+  // handicap holes — matching the server's scoring — instead of falling back to
+  // sequential "first N holes" (the bug: strokeHoles/buildDecided were called
+  // with no index here, while the board + server pass it).
+  const scIndex = strokeIndexOf(units);
+
   // Opt-in "play it out" for decided matches (dead holes become editable again).
   const [playOut, setPlayOut] = useState<Set<string>>(new Set());
 
   // Per-match derived state (from the SHARED frozen matchState).
   const groups = matches.map((m) => {
-    const decided = buildDecided(values[m.a.id] ?? {}, values[m.b.id] ?? {}, m.strokesA, m.strokesB);
+    const decided = buildDecided(values[m.a.id] ?? {}, values[m.b.id] ?? {}, m.strokesA, m.strokesB, scIndex, units.length);
     const st = matchState(decided);
-    const strokeHolesA = strokeHoles(m.strokesA);
-    const strokeHolesB = strokeHoles(m.strokesB);
+    const strokeHolesA = strokeHoles(m.strokesA, scIndex);
+    const strokeHolesB = strokeHoles(m.strokesB, scIndex);
     // A hole is "dead" for a decided match once it's past the close-out hole.
     const isDeadHole = (h: number) => st.closed && h > st.thru;
     return { m, decided, st, strokeHolesA, strokeHolesB, isDeadHole };
@@ -232,7 +240,7 @@ export function MatchEntryView({
         {groups.map((g) => {
           const { m } = g;
           // Board state excludes the in-progress hole (computes on ✓, not on tap).
-          const boardDecided = buildDecided(committedGross(m.a.id), committedGross(m.b.id), m.strokesA, m.strokesB);
+          const boardDecided = buildDecided(committedGross(m.a.id), committedGross(m.b.id), m.strokesA, m.strokesB, scIndex, units.length);
           const st = matchState(boardDecided);
           const winner = st.leader === "A" ? m.a : st.leader === "B" ? m.b : null;
           const loser = st.leader === "A" ? m.b : st.leader === "B" ? m.a : null;

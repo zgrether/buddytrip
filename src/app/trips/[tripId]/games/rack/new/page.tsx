@@ -16,6 +16,7 @@ import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/Ra
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
+import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, initialsOf } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -354,6 +355,13 @@ export default function RackNStackPage() {
       const name = nameOf.get(id) ?? "Player";
       return { id, name, initials: initialsOf(name), color: colorForUser(id), avatarIcon: avatarOf.get(id) ?? null };
     });
+    // Stroke pips per player on the COURSE's stroke-index holes. Rack already
+    // SCORES net via this index (playerStats) — surfacing the pips so the card
+    // shows which holes are stroked (was invisible: no pips, no net shown).
+    const groupPips: Record<string, Set<string>> = {};
+    for (const p of ps) {
+      groupPips[p.id] = new Set([...strokeHoles(handicapOf.get(p.id) ?? 0, scIndex)].map(String));
+    }
     // Locked (posted) → the read-only scorecard grid (#7); otherwise the
     // editable entry. Correcting re-opens editing (locked=false).
     if (locked) {
@@ -369,6 +377,7 @@ export default function RackNStackPage() {
               participants={ps}
               values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
               direction="low_wins"
+              pips={groupPips}
             />
           </div>
         </div>
@@ -388,6 +397,7 @@ export default function RackNStackPage() {
           onClear={handleClear}
           onBack={() => setEntryGroupId(null)}
           onFinish={() => setEntryGroupId(null)}
+          pips={groupPips}
         />
       </div>
     );

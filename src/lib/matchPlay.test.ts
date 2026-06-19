@@ -21,6 +21,19 @@ describe("strokeHoles", () => {
     // n=3 → holes whose rank is 1,2,3 → hole 10 (1), hole 2 (2), hole 12 (3)
     expect([...strokeHoles(3, index)].sort((a, b) => a - b)).toEqual([2, 10, 12]);
   });
+
+  it("a 9-hole index is honored — not rejected as 'not 18' and fed board-order", () => {
+    // The real 9-hole course index [2,3,1,9,5,4,6,7,8]. n=6 → the 6 hardest by
+    // index (rank ≤ 6) = holes 1(2), 2(3), 3(1), 5(5), 6(4), 7(6) → {1,2,3,5,6,7}.
+    // The pre-fix `length === 18` gate fell back to board-order {1,2,3,4,5,6}.
+    const index = [2, 3, 1, 9, 5, 4, 6, 7, 8];
+    expect([...strokeHoles(6, index)].sort((a, b) => a - b)).toEqual([1, 2, 3, 5, 6, 7]);
+  });
+
+  it("no-index fallback respects a passed holeCount (won't strike beyond the round)", () => {
+    // 12 strokes on a 9-hole round with no index → every hole, capped at 9.
+    expect([...strokeHoles(12, undefined, 9)].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
 });
 
 describe("netForHole", () => {

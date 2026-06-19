@@ -317,6 +317,55 @@ export const gamesRouter = router({
       return data;
     }),
 
+  // clearCourse — Owner/Organizer. The inverse of applyCourse: drop the course
+  // (course_id → null) and revert the scorecard_schema snapshot to the game
+  // type's template default (no course par/index). FROZEN once scores exist —
+  // same boundary as applyCourse (changing par/index after scoring would
+  // silently rescore).
+  clearCourse: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, game_type_id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+
+      const { count } = await ctx.supabase
+        .from("score_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("game_id", input.gameId);
+      if ((count ?? 0) > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Scores are already entered — the course can't be changed now.",
+        });
+      }
+
+      const { data: template } = await ctx.supabase
+        .from("game_type_templates")
+        .select("scorecard_schema")
+        .eq("id", game.game_type_id as string)
+        .maybeSingle();
+
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ scorecard_schema: template?.scorecard_schema ?? null, course_id: null })
+        .eq("id", input.gameId);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to clear course: ${error.message}`,
+        });
+      }
+
+      const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
+      return data;
+    }),
+
   // finish — Owner/Organizer. Compute + persist results, mark complete.
   // Branches on the game type's result_strategy (data-driven, NOT a hardcoded
   // format name) so new formats slot in without touching this. Idempotent: each
