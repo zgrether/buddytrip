@@ -17,6 +17,29 @@
 - Create a PR after each phase is complete
 - Never merge a PR with failing tests
 
+## Issue Tracking (GitHub issues + `TRACKER.md`)
+
+Two layers, kept separate so the issue list stays short enough to actually read.
+**GitHub issues = the small, hot, actively-worked set; `TRACKER.md` = slow-moving
+strategy + the "someday" nominations** (e.g. the R1 format-architecture refactor,
+the full dead-code list, glossary rename sites). Don't promote a tracker
+nomination to an issue until it's about to be worked. Labels are two dimensions
+only — **type** (`bug`/`dead-code`/`feature`/`refactor`/`chore`) + **priority**
+(`bbmi-blocking`/`pre-launch`/`polish`/`post-launch`); the `BBMI 2026` milestone
+holds **only** `bbmi-blocking` issues (its 100% bar is the event-critical forcing
+function). The standing discipline, followed every session with no reminder:
+**(1) Entry rule — actionable, not merely true:** an issue earns its place only
+if there's a real version you'd pick up and do; "could be better someday" → a
+`// TODO` next to the code, not an issue. **(2) Capture-at-the-source:** when you
+scope something out of the current task, file it as a labelled issue *in the same
+session* — a report is ephemeral and the finding is lost when the session ends.
+**(3) Close-on-merge:** every PR that resolves an issue says `Closes #NN`.
+**(4) Prune at the merge seam (the shrink valve):** when a feature/phase merges
+and you return to `TRACKER.md` to pick the next item, *in that same moment* scan
+open issues and close — as `wontfix` with a one-line reason — anything the merge
+made obsolete; the backlog going DOWN during this pass is a success. Prune at the
+seam, never on a calendar.
+
 ## Testing Rules
 
 - Every new tRPC router gets a Vitest unit test before the task is considered done
