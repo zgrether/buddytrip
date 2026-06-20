@@ -38,9 +38,10 @@ export function GameConfigurationView({
   canEdit: boolean;
   onChanged: () => void;
   /** Summary + drill-down into the format's existing who's-playing/handicaps
-   *  editor (the setup body — pairings / picker / groups). */
-  whosPlayingLabel: string;
-  onEditWhosPlaying: () => void;
+   *  editor (the setup body — pairings / groups). Omit when the format has no
+   *  post-create roster editor (stroke today — its handicaps step lands in §3). */
+  whosPlayingLabel?: string;
+  onEditWhosPlaying?: () => void;
   scoringEnabled: boolean;
   onEnable: () => void;
   onDisable: () => void;
@@ -70,21 +71,23 @@ export function GameConfigurationView({
           canEdit={canEdit}
           onChanged={onChanged}
         />
-        <button
-          type="button"
-          onClick={onEditWhosPlaying}
-          disabled={!canEdit}
-          className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-              Who&rsquo;s playing · Handicaps
-            </span>
-            <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
-          </div>
-          <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-        </button>
+        {onEditWhosPlaying && (
+          <button
+            type="button"
+            onClick={onEditWhosPlaying}
+            disabled={!canEdit}
+            className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                Who&rsquo;s playing · Handicaps
+              </span>
+              <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
+            </div>
+            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+          </button>
+        )}
 
         {/* Enabled / Disabled — the pressed-state control. */}
         <div className="mt-6">

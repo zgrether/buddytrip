@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, Grid3x3 } from "lucide-react";
+import { ChevronLeft, Grid3x3, Settings } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
@@ -44,6 +44,9 @@ interface ScoreEntryViewProps {
   onFinish?: () => void;
   onBack?: () => void;
   onOpenGrid?: () => void;
+  /** §B 2B.3: open the Configuration page from the score-entry hub (top-right).
+   *  Omit where there's nothing to configure (Quick Game). */
+  onConfig?: () => void;
   /** Per-cell save state (Connectivity Layer 1) — drives the cell badges + the
    *  unsaved-scores banner. Keyed by `${participantId}:${unitLabel}`. */
   saveStatus?: SaveStatusMap;
@@ -68,6 +71,7 @@ export function ScoreEntryView({
   onFinish,
   onBack,
   onOpenGrid,
+  onConfig,
   saveStatus = {},
   onRetryCell,
   pips,
@@ -187,9 +191,16 @@ export function ScoreEntryView({
             Hole {hole} of {units.length}
           </div>
         </div>
-        <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-          <Grid3x3 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
+        <div className="flex items-center">
+          {onConfig && (
+            <button onClick={onConfig} aria-label="Configuration" className="flex h-9 w-9 items-center justify-center">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          )}
+          <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
+            <Grid3x3 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        </div>
       </header>
 
       {/* ── Unsaved-scores safety net (Connectivity Layer 1) ── */}
