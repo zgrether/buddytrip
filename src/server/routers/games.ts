@@ -9,7 +9,7 @@ import { computeRackNStackResults } from "../lib/rackNStack";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema } from "@/lib/courseIndex";
+import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema, type SnapshotTee } from "@/lib/courseIndex";
 import { validatePlacement } from "@/lib/gameConfig";
 
 /**
@@ -246,7 +246,16 @@ export const gamesRouter = router({
   // this game. course_id is kept as provenance. Re-snapshot is allowed before
   // any score exists; FROZEN once scores are entered (freeze boundary).
   applyCourse: authedProcedure
-    .input(z.object({ tripId: z.string(), gameId: z.string(), courseId: z.string().min(1) }))
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        courseId: z.string().min(1),
+        // The configured tee set (by name). Optional — defaults to the course's
+        // first tee. Snapshotted into the schema so display reads the SAME tee.
+        teeSetName: z.string().optional(),
+      })
+    )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
@@ -272,7 +281,7 @@ export const gamesRouter = router({
 
       const { data: course } = await ctx.supabase
         .from("courses")
-        .select("hole_count, par, handicap_index, has_stroke_index")
+        .select("hole_count, par, handicap_index, has_stroke_index, tee_sets")
         .eq("id", input.courseId)
         .maybeSingle();
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
@@ -280,6 +289,15 @@ export const gamesRouter = router({
       const holeCount = course.hole_count as number;
       const par = course.par as number[];
       const hasIndex = (course.has_stroke_index as boolean | null) ?? true;
+
+      // Resolve the configured tee: the requested name, else the first tee.
+      // Snapshotting the SELECTED tee (not a hardcoded default) is what keeps the
+      // displayed yardage honest to what the round was set up with.
+      const teeSets = (course.tee_sets as SnapshotTee[] | null) ?? [];
+      const selectedTee =
+        (input.teeSetName ? teeSets.find((t) => t.name === input.teeSetName) : undefined) ??
+        teeSets[0] ??
+        null;
       // Index-off course → snapshot par only (buildScorecardSchema fills a
       // sequential index; net falls back to hole order). Index-on → validate it
       // as defense in depth before snapshotting.
@@ -304,7 +322,7 @@ export const gamesRouter = router({
         });
       }
 
-      const snapshot = buildScorecardSchema(baseSchema, par, handicapIndex, holeCount);
+      const snapshot = buildScorecardSchema(baseSchema, par, handicapIndex, holeCount, selectedTee);
       const { error } = await ctx.supabase
         .from("games")
         .update({ scorecard_schema: snapshot, course_id: input.courseId })

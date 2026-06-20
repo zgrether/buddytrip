@@ -21,7 +21,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
-import { unitsFromSchema, strokeIndexOf, initialsOf } from "@/lib/strokePlayConfig";
+import { unitsFromSchema, strokeIndexOf, initialsOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
@@ -414,6 +414,7 @@ export default function RackNStackPage() {
           <div className="min-h-0 flex-1">
             <StandardGrid
               units={scUnits}
+              tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
               participants={ps}
               values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
               direction="low_wins"
