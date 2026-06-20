@@ -16,6 +16,7 @@ import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
@@ -48,7 +49,7 @@ interface DraftMatch {
   b: string[]; // member user ids on side B
   handicap: number; // signed: <0 → a gets |n|, >0 → b gets n, 0 → even
 }
-type Screen = "new" | "member-wait" | "setup" | "overview" | "score";
+type Screen = "new" | "member-wait" | "setup" | "overview" | "score" | "config";
 
 /**
  * Singles match-play game flow (Slice B). TEMPORARY route — the real Games tab
@@ -586,9 +587,10 @@ export default function NewMatchGamePage() {
     }
   }
 
-  // Phase 2B.1: Disable scoring — close to the crew, revert to setup (scores
-  // kept). Invalidate the board (incl. faceBootstrap, CLAUDE.md #10) so the row
-  // drops back to muted-icon Ready, then continue configuring on setup.
+  // Phase 2B.3: Disable scoring — close to the crew, KEEP scores, and STAY in
+  // Configuration (continue configuring right here; NOT a hub reverse-transform).
+  // Invalidate the board (incl. faceBootstrap, CLAUDE.md #10) so the row drops
+  // back to the muted-icon Ready state.
   async function handleDisable() {
     if (!tripId || !gameId) return;
     try {
@@ -599,7 +601,25 @@ export default function NewMatchGamePage() {
         utils.games.listByTrip.invalidate({ tripId });
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
-      go("setup");
+      // Stay on the Configuration screen (manualScreen === "config" holds).
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+
+  // Phase 2B.3: re-Enable from Configuration → back to the score-entry hub. The
+  // pairings are already persisted, so this just flips the flag + publishes.
+  async function handleEnableFromConfig() {
+    if (!tripId || !gameId) return;
+    try {
+      await activate.mutateAsync({ tripId, gameId });
+      await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.games.listByTrip.invalidate({ tripId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      }
+      go("overview");
     } catch {
       // surfaced via the global error toast
     }
@@ -725,6 +745,35 @@ export default function NewMatchGamePage() {
     );
   }
 
+  // ── Configuration page (§B 2B.3) — the post-Enable editing home. Full-screen
+  // (own header), reached from the hub's top-right. ──
+  if (screen === "config" && gameQ.data) {
+    return (
+      <GameConfigurationView
+        subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
+        onBack={goBack}
+        tripId={tripId}
+        competitionId={gameCompId}
+        game={gameQ.data as unknown as GameRow}
+        canEdit={canEdit}
+        onChanged={() => {
+          void gameQ.refetch();
+          if (competitionId) {
+            utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+            utils.competitions.faceBootstrap.invalidate({ tripId });
+            utils.games.listByTrip.invalidate({ tripId });
+          }
+        }}
+        whosPlayingLabel={`${groups.length} ${groups.length === 1 ? "matchup" : "matchups"} · pairings & strokes`}
+        onEditWhosPlaying={startSetup}
+        scoringEnabled={scoringEnabled}
+        onEnable={handleEnableFromConfig}
+        onDisable={handleDisable}
+        busy={disableScoring.isPending || activate.isPending}
+      />
+    );
+  }
+
   // ── Shell for the setup screens ──
   const headerTitle = screen === "new" ? "New game" : screen === "setup" ? "Set Pairings" : "Matches";
   return (
@@ -735,16 +784,12 @@ export default function NewMatchGamePage() {
         onBack={goBack}
         right={
           screen === "overview" && canEdit && status !== "complete" ? (
-            <div className="flex items-center gap-3">
-              {scoringEnabled && (
-                <button onClick={handleDisable} disabled={disableScoring.isPending} style={{ color: "var(--color-bt-text-dim)", fontSize: 13, fontWeight: 600 }}>
-                  {disableScoring.isPending ? "Disabling…" : "Disable"}
-                </button>
-              )}
-              <button onClick={startSetup} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
-                Edit
-              </button>
-            </div>
+            // §B (2B.3): the score-entry hub's top-right opens Configuration (the
+            // post-Enable editing home — Enable/Disable + the field editors live
+            // there now, not inline on the hub).
+            <button onClick={() => go("config")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
+              Configuration
+            </button>
           ) : null
         }
       />
