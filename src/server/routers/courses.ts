@@ -23,11 +23,17 @@ import { validateStrokeIndex } from "@/lib/courseIndex";
 const GOLF_API_PROVIDER = "golfcourseapi";
 const GOLF_API_DAILY_LIMIT = 50;
 
+// Rating bounds reflect REAL golf ranges (caught in verify-by-eye: Pebble's
+// Blue bogey rating is 101.7, which a max(99) wrongly rejected). Course rating
+// tops out ~80; slope is the USGA 55–155 range; BOGEY rating runs ~CR+25, so it
+// routinely exceeds 99 (≈120 from championship tees). Generous ceilings — these
+// are informational/display, not security-sensitive; the bound only catches
+// obvious garbage.
 const teeSetSchema = z.object({
   name: z.string().trim().min(1).max(60),
   courseRating: z.number().positive().max(99).nullable().optional(),
   slopeRating: z.number().int().min(55).max(155).nullable().optional(),
-  bogeyRating: z.number().positive().max(99).nullable().optional(),
+  bogeyRating: z.number().positive().max(150).nullable().optional(),
   yards: z.array(z.number().int().positive().nullable()).optional(),
 });
 

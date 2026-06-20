@@ -80,7 +80,10 @@ describe("courses router — global library", () => {
       source: "golfcourseapi",
       providerId: "gca-7788",
       teeSets: [
-        { name: "Blue", courseRating: 72.3, slopeRating: 131, bogeyRating: 95.1, yards: Array(18).fill(410) },
+        // Bogey rating 101.7 is a REAL value (Pebble Beach Blue) that exceeds a
+        // bogey golfer's "100" intuition — guards the max(99) bound bug that
+        // verify-by-eye caught (the import silently failed on real data).
+        { name: "Blue", courseRating: 72.3, slopeRating: 131, bogeyRating: 101.7, yards: Array(18).fill(410) },
         { name: "White", courseRating: 70.1, slopeRating: 124, bogeyRating: 92, yards: Array(18).fill(380) },
       ],
     });
@@ -95,7 +98,7 @@ describe("courses router — global library", () => {
       yards: (number | null)[];
     }>;
     expect(tees).toHaveLength(2);
-    expect(tees[0]).toMatchObject({ name: "Blue", courseRating: 72.3, slopeRating: 131, bogeyRating: 95.1 });
+    expect(tees[0]).toMatchObject({ name: "Blue", courseRating: 72.3, slopeRating: 131, bogeyRating: 101.7 });
     expect(tees[1]).toMatchObject({ name: "White", slopeRating: 124 });
   });
 
