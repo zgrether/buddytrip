@@ -2,18 +2,34 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Sender identity. Set RESEND_FROM in prod once bbmi.app is verified in Resend
-// (e.g. "BuddyTrip <noreply@bbmi.app>"). Until then it falls back to Resend's
-// shared sandbox sender, which ONLY delivers to the Resend account owner —
-// so unset in prod = invites silently reach no one but you.
-const FROM = process.env.RESEND_FROM ?? "BuddyTrip <onboarding@resend.dev>";
-
 const DEV_TO_EMAIL = process.env.RESEND_DEV_TO_EMAIL;
 
 // Canonical site origin (https://bbmi.app in prod). Drives invite/trip links in
 // emails — must be the real public domain, not the ephemeral per-deployment
 // VERCEL_URL (which previously left these links pointing at localhost in prod).
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+/**
+ * Resolves the FROM address at send time — not at import time — so a missing
+ * var fails the send, not the module load (any feature that doesn't touch email
+ * keeps working in dev even without RESEND_FROM set).
+ *
+ * - prod / preview (NODE_ENV !== "development"): throws. There is no safe
+ *   fallback — the Resend sandbox sender (onboarding@resend.dev) only delivers
+ *   to the account owner, so silently using it is worse than failing loudly.
+ * - dev: warns and returns null → caller skips the send gracefully.
+ */
+function requireFrom(): string | null {
+  const from = process.env.RESEND_FROM;
+  if (from) return from;
+  if (process.env.NODE_ENV !== "development") {
+    throw new Error(
+      "RESEND_FROM is not set — refusing to send mail to avoid silent misroute"
+    );
+  }
+  console.warn("[email] RESEND_FROM is not set; email send skipped in development");
+  return null;
+}
 
 function resolveRecipient(toEmail: string): string {
   if (process.env.NODE_ENV === "development" && DEV_TO_EMAIL) {
@@ -37,10 +53,12 @@ export async function sendInviteExistingUser({
   tripName: string;
   tripId: string;
 }) {
+  const from = requireFrom();
+  if (from === null) return;
   const tripUrl = `${BASE_URL}/trips/${tripId}`;
 
   return resend.emails.send({
-    from: FROM,
+    from,
     to: resolveRecipient(toEmail),
     subject: `${inviterName} added you to ${tripName}`,
     html: `
@@ -81,10 +99,12 @@ export async function sendInvitationBlast({
   invitationMessage: string;
   tripId: string;
 }) {
+  const from = requireFrom();
+  if (from === null) return;
   const tripUrl = `${BASE_URL}/trips/${tripId}`;
 
   return resend.emails.send({
-    from: FROM,
+    from,
     to: resolveRecipient(toEmail),
     subject: `${ownerName} invited you to ${tripTitle}`,
     html: `
@@ -161,6 +181,9 @@ export async function sendFeedback({
     throw new Error("FEEDBACK_TO_EMAIL not configured");
   }
 
+  const from = requireFrom();
+  if (from === null) return;
+
   const label = FEEDBACK_CATEGORY_LABEL[category] ?? category;
   const subject = `[BuddyTrip beta] ${label}: ${message.slice(0, 60).replace(/\s+/g, " ")}`;
 
@@ -182,7 +205,7 @@ export async function sendFeedback({
     .join("");
 
   return resend.emails.send({
-    from: FROM,
+    from,
     to: FEEDBACK_TO_EMAIL,
     // Drop replyTo into the email headers so hitting Reply in the inbox
     // goes straight back to the user (instead of the noreply sender).
@@ -211,10 +234,12 @@ export async function sendInviteNewUser({
   tripName: string;
   token: string;
 }) {
+  const from = requireFrom();
+  if (from === null) return;
   const inviteUrl = `${BASE_URL}/invite?token=${token}`;
 
   return resend.emails.send({
-    from: FROM,
+    from,
     to: resolveRecipient(toEmail),
     subject: `${inviterName} invited you to join ${tripName} on BuddyTrip`,
     html: `
@@ -241,4 +266,3 @@ export async function sendInviteNewUser({
     `,
   });
 }
-

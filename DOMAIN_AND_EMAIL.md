@@ -51,7 +51,7 @@ Two **separate** email paths share one Resend account + one verified domain:
 | Var | Value | Notes |
 |-----|-------|-------|
 | `RESEND_API_KEY` | (secret) | Resend key `buddytrip-dev`. "Sending access" is sufficient. |
-| `RESEND_FROM` | `BuddyTrip <noreply@bbmi.app>` | Falls back to Resend's sandbox sender (`onboarding@resend.dev`) if unset. |
+| `RESEND_FROM` | `BuddyTrip <noreply@bbmi.app>` | **Required in prod/preview.** Missing → send throws loudly (no silent fallback to Resend's sandbox, which only delivers to the account owner). Missing in dev → warning + skip. |
 | `RESEND_DEV_TO_EMAIL` | your inbox | **Dev guardrail:** in `NODE_ENV=development`, ALL app email is rerouted here so local testing never reaches real users. Ignored in prod. |
 | `FEEDBACK_TO_EMAIL` | founder inbox | Destination for in-app beta feedback. |
 
