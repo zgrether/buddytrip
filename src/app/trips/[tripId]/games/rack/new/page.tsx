@@ -14,6 +14,7 @@ import { StandardGrid } from "@/components/games/StandardGrid";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
@@ -81,6 +82,7 @@ export default function RackNStackPage() {
   const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [showHandicaps, setShowHandicaps] = useState(false);
+  const [showConfig, setShowConfig] = useState(false); // §B 2B.3 Configuration page
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
 
@@ -107,6 +109,7 @@ export default function RackNStackPage() {
   const setFoursomes = trpc.playGroups.setFoursomes.useMutation();
   // Phase 2B.1: scoring must be enabled before entries land (universal gate).
   const enableScoring = trpc.games.enableScoring.useMutation();
+  const disableScoring = trpc.games.disableScoring.useMutation();
   const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
   const deleteEntry = trpc.scores.deleteEntry.useMutation();
@@ -328,16 +331,31 @@ export default function RackNStackPage() {
   // Phase 2B.1: a rack with its groups set must be Enabled before the play screen
   // opens (the score saver server-rejects entries until then).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  async function refreshGame() {
+    if (!tripId || !gid) return;
+    await utils.games.getById.invalidate({ tripId, gameId: gid });
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
+  }
   async function handleEnable() {
     if (!tripId || !gid) return;
     try {
       await enableScoring.mutateAsync({ tripId, gameId: gid });
-      await utils.games.getById.invalidate({ tripId, gameId: gid });
-      if (competitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-        utils.games.listByTrip.invalidate({ tripId });
-      }
+      await refreshGame();
+      setShowConfig(false); // re-Enable from Configuration → back to score entry
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+  // §B 2B.3: Disable from Configuration — keep scores, STAY in Configuration.
+  async function handleDisable() {
+    if (!tripId || !gid) return;
+    try {
+      await disableScoring.mutateAsync({ tripId, gameId: gid });
+      await refreshGame();
     } catch {
       // surfaced via the global error toast
     }
@@ -422,6 +440,29 @@ export default function RackNStackPage() {
           pips={groupPips}
         />
       </div>
+    );
+  }
+
+  // §B 2B.3 Configuration page — the post-Enable editing home, reached from the
+  // play hub's top-right. Reused editors + the Enabled/Disabled control; Disable
+  // keeps scores and stays here (not a hub reverse-transform).
+  if (showConfig && gid && gameQ.data && canEdit) {
+    return (
+      <GameConfigurationView
+        subtitle="Net stroke play · team rack"
+        onBack={() => setShowConfig(false)}
+        tripId={tripId!}
+        competitionId={competitionId ?? null}
+        game={gameQ.data as unknown as GameRow}
+        canEdit={canEdit}
+        onChanged={() => void refreshGame()}
+        whosPlayingLabel={`${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · auto-grouped · strokes`}
+        onEditWhosPlaying={() => { setShowConfig(false); setShowHandicaps(true); }}
+        scoringEnabled={scoringEnabled}
+        onEnable={handleEnable}
+        onDisable={handleDisable}
+        busy={enableScoring.isPending || disableScoring.isPending}
+      />
     );
   }
 
@@ -525,7 +566,18 @@ export default function RackNStackPage() {
   const final = gameQ.data?.status === "complete";
   const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
   return (
-    <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}>
+    <Shell
+      onBack={() => router.back()}
+      title="Rack-n-Stack"
+      subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}
+      right={
+        canEdit && !final ? (
+          <button onClick={() => setShowConfig(true)} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
+            Configuration
+          </button>
+        ) : undefined
+      }
+    >
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
       {canEdit && !final && (
@@ -571,7 +623,7 @@ export default function RackNStackPage() {
   );
 }
 
-function Shell({ title, subtitle, onBack, children }: { title: string; subtitle?: string; onBack: () => void; children: React.ReactNode }) {
+function Shell({ title, subtitle, onBack, right, children }: { title: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
       <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
@@ -582,7 +634,7 @@ function Shell({ title, subtitle, onBack, children }: { title: string; subtitle?
           <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
           {subtitle && <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>}
         </div>
-        <div className="h-9 w-9" />
+        <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
       </header>
       <div className="flex-1">{children}</div>
     </div>

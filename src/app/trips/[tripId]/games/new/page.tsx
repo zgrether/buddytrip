@@ -9,6 +9,7 @@ import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
@@ -62,11 +63,13 @@ export default function NewGamePage() {
   const [view, setView] = useState<"entry" | "grid" | "final">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
+  const [showConfig, setShowConfig] = useState(false); // §B 2B.3 Configuration page
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
   // Phase 2B.1: scoring must be enabled before entries land (universal gate).
   const enableScoring = trpc.games.enableScoring.useMutation();
+  const disableScoring = trpc.games.disableScoring.useMutation();
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -105,16 +108,30 @@ export default function NewGamePage() {
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
   const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
+  async function refreshGame() {
+    await gameQ.refetch();
+    if (gameCompetitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
+  }
   async function handleEnable() {
     if (!tripId || !activeGameId) return;
     try {
       await enableScoring.mutateAsync({ tripId, gameId: activeGameId });
-      await gameQ.refetch();
-      if (gameCompetitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-        utils.games.listByTrip.invalidate({ tripId });
-      }
+      await refreshGame();
+      setShowConfig(false); // re-Enable from Configuration → back to score entry
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+  // §B 2B.3: Disable from Configuration — keep scores, STAY in Configuration.
+  async function handleDisable() {
+    if (!tripId || !activeGameId) return;
+    try {
+      await disableScoring.mutateAsync({ tripId, gameId: activeGameId });
+      await refreshGame();
     } catch {
       // surfaced via the global error toast
     }
@@ -218,7 +235,7 @@ export default function NewGamePage() {
   // ── Enable gate (Phase 2B.1) → §B setup hull (2B.2). A configured game must be
   // enabled before its score screen opens; the gate also hosts the standardized
   // course + Name·Format·Points drill-down rows. ──
-  if (game && !scoringEnabled) {
+  if (game && !scoringEnabled && !showConfig) {
     return (
       <EnableScoringGate
         title="Stroke Play"
@@ -245,6 +262,28 @@ export default function NewGamePage() {
           ) : null
         }
       />
+    );
+  }
+
+  // ── Configuration page (§B 2B.3) — the post-Enable editing home, reached from
+  // the score-entry hub's top-right gear. ──
+  if (game && showConfig && gameQ.data && canEdit) {
+    return (
+      <div className="fixed inset-0 z-50">
+        <GameConfigurationView
+          subtitle="Stroke Play"
+          onBack={() => setShowConfig(false)}
+          tripId={tripId}
+          competitionId={gameCompetitionId}
+          game={gameQ.data as unknown as GameRow}
+          canEdit={canEdit}
+          onChanged={() => void refreshGame()}
+          scoringEnabled={scoringEnabled}
+          onEnable={handleEnable}
+          onDisable={handleDisable}
+          busy={enableScoring.isPending || disableScoring.isPending}
+        />
+      </div>
     );
   }
 
@@ -296,6 +335,7 @@ export default function NewGamePage() {
             onRetryCell={retryCell}
             onBack={() => router.back()}
             onOpenGrid={() => setView("grid")}
+            onConfig={canEdit ? () => setShowConfig(true) : undefined}
             onFinish={handleFinish}
           />
         )}
