@@ -80,12 +80,27 @@ export function applyStrokeIndexSwap(
 // units.metadata.{par,handicap_index} + labels/count/sections to the course's
 // hole layout; everything else on the template is preserved verbatim.
 
+/** The configured tee for a game — snapshotted alongside par/index so display
+ *  and any future per-tee math read the SAME tee the round was set up with. */
+export interface SnapshotTee {
+  name: string;
+  yards: (number | null)[];
+  courseRating?: number | null;
+  slopeRating?: number | null;
+  bogeyRating?: number | null;
+}
+
 export interface ScorecardUnits {
   type?: string;
   count?: number;
   ordered?: boolean;
   labels?: string[];
-  metadata?: { par?: number[]; handicap_index?: number[]; [k: string]: unknown };
+  metadata?: {
+    par?: number[];
+    handicap_index?: number[];
+    tee?: SnapshotTee;
+    [k: string]: unknown;
+  };
 }
 export interface ScorecardScoring {
   strategy?: string;
@@ -111,7 +126,8 @@ export function buildScorecardSchema(
   template: ScorecardSchema,
   par: number[],
   handicapIndex: number[] | null | undefined,
-  holeCount: number
+  holeCount: number,
+  tee?: SnapshotTee | null
 ): ScorecardSchema {
   const next = JSON.parse(JSON.stringify(template)) as ScorecardSchema;
   const labels = range(1, holeCount);
@@ -122,6 +138,10 @@ export function buildScorecardSchema(
   const metadata: ScorecardUnits["metadata"] = { ...(next.units.metadata ?? {}), par };
   if (handicapIndex?.length) metadata.handicap_index = handicapIndex;
   else delete metadata.handicap_index;
+  // The configured tee (its per-hole yardage clipped to the round) — informational
+  // display + provenance. Omitted when no course/tee is applied.
+  if (tee) metadata.tee = { ...tee, yards: tee.yards.slice(0, holeCount) };
+  else delete metadata.tee;
 
   next.units = { ...next.units, count: holeCount, labels, metadata };
 

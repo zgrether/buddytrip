@@ -16,6 +16,9 @@ export interface ScoreUnit {
   /** Stroke (handicap) index, 1 = hardest. From `metadata.handicap_index[]`;
    *  shown in the GolfCard INDEX row and (with a course) allocates strokes. */
   strokeIndex?: number;
+  /** Yardage for the configured tee on this hole — from `metadata.tee.yards[]`.
+   *  Informational only (display); does not affect scoring. */
+  yardage?: number | null;
 }
 
 export interface Participant {
