@@ -118,11 +118,14 @@ export function CoursePicker({
     return () => clearTimeout(t);
   }, [query]);
 
-  // A new query invalidates any prior API results (they're for the old term).
-  useEffect(() => {
+  // Editing the query invalidates any prior API results (they're for the old
+  // term). Done here in the event handler — NOT a setState-in-effect — so the
+  // stale "FROM THE COURSE DATABASE" list clears the instant the user types.
+  const onQueryChange = (v: string) => {
+    setQuery(v);
     setApiResults([]);
     setApiSearched(false);
-  }, [debouncedQuery]);
+  };
 
   // LOCAL typeahead against our own courses table — the common path, zero API
   // calls, unaffected by the daily cap.
@@ -362,7 +365,7 @@ export function CoursePicker({
       ) : screen === "search" ? (
         <SearchScreen
           query={query}
-          setQuery={setQuery}
+          setQuery={onQueryChange}
           localResults={(localSearch.data as RecentCourse[]) ?? []}
           localSearching={localSearch.isFetching && debouncedQuery.length >= 2}
           apiResults={apiResults}
