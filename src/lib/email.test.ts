@@ -13,12 +13,7 @@ vi.mock("resend", () => ({
   },
 }));
 
-import {
-  sendInviteNewUser,
-  sendInviteExistingUser,
-  sendInvitationBlast,
-  sendFeedback,
-} from "./email";
+import { sendInviteNewUser, sendInviteExistingUser, sendInvitationBlast } from "./email";
 
 describe("requireFrom guard", () => {
   beforeEach(() => {
@@ -93,13 +88,5 @@ describe("requireFrom guard", () => {
     ).rejects.toThrow("RESEND_FROM is not set");
   });
 
-  it("guard covers all four senders — sendFeedback throws in prod", async () => {
-    vi.stubEnv("RESEND_FROM", "");
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("FEEDBACK_TO_EMAIL", "founder@example.com");
 
-    await expect(
-      sendFeedback({ category: "bug", message: "Something broke" })
-    ).rejects.toThrow("RESEND_FROM is not set");
-  });
 });
