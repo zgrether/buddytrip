@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transformCourse, type RawGolfApiCourse } from "./route";
+import { transformCourse, type RawGolfApiCourse } from "@/lib/golfCourseApi";
 
 /**
  * The provider-swap mapping: golfcourseapi's male/female tee arrays + positional

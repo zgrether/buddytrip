@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { GET, normalizeSearch } from "./route";
+import { GET } from "./route";
+import { normalizeSearch } from "@/lib/golfCourseApi";
 
 /**
  * Confirms the graceful no-key fallback for the golf course search route, plus
