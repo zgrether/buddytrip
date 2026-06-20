@@ -31,7 +31,14 @@ export const STROKE_PLAY_UNITS: ScoreUnit[] = Array.from({ length: 18 }, (_, i) 
  * grid/entry/pips read the SAME par + index the server scores on.
  */
 interface SchemaLike {
-  units?: { labels?: string[]; metadata?: { par?: number[]; handicap_index?: number[] } };
+  units?: {
+    labels?: string[];
+    metadata?: {
+      par?: number[];
+      handicap_index?: number[];
+      tee?: { name: string; yards?: (number | null)[] };
+    };
+  };
 }
 export function unitsFromSchema(schema?: SchemaLike | null): ScoreUnit[] {
   const meta = schema?.units?.metadata;
@@ -41,12 +48,24 @@ export function unitsFromSchema(schema?: SchemaLike | null): ScoreUnit[] {
   // handicap_index, so strokeIndex stays undefined here → the GolfCard INDEX row
   // omits itself and strokeHoles falls back to sequential.
   const hasIndex = meta.handicap_index?.length === labels.length;
+  // Configured tee yardage (informational) — present only when a course/tee is
+  // applied; per-hole, may be null on a hole the tee never had a yardage for.
+  const teeYards = meta.tee?.yards;
   return labels.map((label, i) => ({
     label,
     section: i < 9 ? "front" : "back",
     par: meta.par![i],
     strokeIndex: hasIndex ? meta.handicap_index![i] : undefined,
+    yardage: teeYards?.[i] ?? undefined,
   }));
+}
+
+/** The configured tee's display meta (name + ratings) from a schema snapshot,
+ *  for the scorecard header. Null when no course/tee is applied. */
+export function teeFromSchema(schema?: {
+  units?: { metadata?: { tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } } };
+} | null): { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null {
+  return schema?.units?.metadata?.tee ?? null;
 }
 
 /**

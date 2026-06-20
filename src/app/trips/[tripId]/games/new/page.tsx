@@ -15,7 +15,7 @@ import { HandicapRoster, type HandicapPlayer } from "@/components/games/Handicap
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -382,6 +382,7 @@ export default function NewGamePage() {
             <div className="min-h-0 flex-1">
               <StandardGrid
                 units={scUnits}
+                tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
                 participants={game.participants}
                 values={values}
                 direction="low_wins"

@@ -20,7 +20,7 @@ import { GameConfigurationView } from "@/components/games/GameConfigurationView"
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
-import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
@@ -708,6 +708,7 @@ export default function NewMatchGamePage() {
             <div className="min-h-0 flex-1">
               <StandardGrid
                 units={scUnits}
+                tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
                 participants={entryParticipants}
                 values={values}
                 direction="low_wins"
