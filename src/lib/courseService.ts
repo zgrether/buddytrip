@@ -1,6 +1,6 @@
 /**
  * CourseService — the provider abstraction (Slice C part 2, §5). The picker UI
- * talks to THIS, never to golfapi.io directly; the provider lives behind the
+ * talks to THIS, never to golfcourseapi.com directly; the provider lives behind the
  * `/api/golf-courses/*` routes and is swappable without touching any caller.
  *
  * Every call fails soft: a search returns `[]` and a detail returns `null` on
@@ -21,9 +21,19 @@ export interface CourseSummary {
 export interface CourseTeeBox {
   name: string;
   color: string;
-  rating: number;
-  slope: number;
+  rating: number; // course rating
+  slope: number; // slope rating
+  bogeyRating: number;
   totalYardage: number;
+}
+
+/** A persisted tee set (courses.tee_sets element) — the full per-tee record. */
+export interface TeeSetRecord {
+  name: string;
+  courseRating: number | null;
+  slopeRating: number | null;
+  bogeyRating: number | null;
+  yards: (number | null)[];
 }
 
 export interface CourseHole {
@@ -101,8 +111,8 @@ export function parFromDetail(detail: CourseDetail): number[] {
 }
 
 /**
- * Course-level handicap_index[] from a pulled detail, ordered by hole. golfapi
- * frequently returns 0 / missing for a hole's hcp — those become `null` (unset)
+ * Course-level handicap_index[] from a pulled detail, ordered by hole. The
+ * provider frequently returns 0 / missing for a hole's index — those become `null` (unset)
  * so the confirm screen's validation flags them instead of silently accepting a
  * broken index (§3, dirty lookup data).
  */
@@ -112,16 +122,19 @@ export function indexFromDetail(detail: CourseDetail): (number | null)[] {
     .map((h) => (h.handicapIndex >= 1 ? h.handicapIndex : null));
 }
 
-/** Tee sets ({ name, yards[] }) from a pulled detail, ordered by hole. */
-export function teeSetsFromDetail(
-  detail: CourseDetail
-): { name: string; yards: (number | null)[] }[] {
+/**
+ * Full per-tee records from a pulled detail, ordered by hole. Carries the
+ * ratings (course/slope/bogey) the old path discarded — a 0 from the provider
+ * means "unknown" and is stored as null. yardage of 0/missing → null.
+ */
+export function teeSetsFromDetail(detail: CourseDetail): TeeSetRecord[] {
   const holes = [...detail.holes].sort((a, b) => a.number - b.number);
+  const orNull = (v: number | undefined) => (v && v > 0 ? v : null);
   return detail.teeBoxes.map((tee) => ({
     name: tee.name,
-    yards: holes.map((h) => {
-      const y = h.tees[tee.name]?.yardage;
-      return y && y > 0 ? y : null;
-    }),
+    courseRating: orNull(tee.rating),
+    slopeRating: orNull(tee.slope),
+    bogeyRating: orNull(tee.bogeyRating),
+    yards: holes.map((h) => orNull(h.tees[tee.name]?.yardage)),
   }));
 }

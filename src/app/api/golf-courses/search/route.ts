@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * GET /api/golf-courses/search?q=Augusta+National&country=US&state=GA
+ * GET /api/golf-courses/search?q=Pebble+Beach
  *
- * Proxies golfapi.io `/clubs` to keep the API key server-side. Returns a
- * normalized list of clubs (the `id` is the golfapi.io club identifier;
- * use it with /api/golf-courses/[courseId] to fetch full scorecard data).
+ * Proxies golfcourseapi.com `/v1/search` to keep the API key server-side.
+ * Returns a normalized list of courses (the `id` is the golfcourseapi course
+ * identifier; use it with /api/golf-courses/[courseId] to fetch full scorecard
+ * data). The normalized shape is unchanged from the prior golfapi.io provider
+ * so courseService.ts + CoursePicker.tsx need no changes.
  *
- * Cached for 24h via Next's `revalidate` — golf course metadata barely
- * moves, and the same query repeats often as users type.
+ * Cached for 24h via Next's `revalidate` — golf course metadata barely moves.
  *
- * If GOLF_API_KEY is not set we return [] (not an error) so the UI can
+ * If GOLFCOURSE_API_KEY is not set we return [] (not an error) so the UI can
  * gracefully fall back to manual entry without the user seeing a failure.
+ *
+ * NOTE: golfcourseapi.com's free tier is 50 requests/day. The daily counter +
+ * local-first search that protect that cap live one layer up (the picker only
+ * hits this route on an explicit "Search the full database" click) — this route
+ * is the dumb proxy.
  */
 
 interface CourseSearchResult {
@@ -26,9 +32,22 @@ interface CourseSearchResult {
 
 const SEARCH_LIMIT = 10;
 const REVALIDATE_SECONDS = 60 * 60 * 24; // 24h
+const API_BASE = "https://api.golfcourseapi.com";
+
+// golfcourseapi.com search payload — we type only the fields we read.
+interface RawSearchCourse {
+  id?: number | string;
+  club_name?: string;
+  course_name?: string;
+  location?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+}
 
 export async function GET(req: NextRequest) {
-  const apiKey = process.env.GOLF_API_KEY;
+  const apiKey = process.env.GOLFCOURSE_API_KEY;
   if (!apiKey) {
     return NextResponse.json([] satisfies CourseSearchResult[]);
   }
@@ -38,17 +57,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json([] satisfies CourseSearchResult[]);
   }
 
-  const country = req.nextUrl.searchParams.get("country")?.trim() ?? "";
-  const state = req.nextUrl.searchParams.get("state")?.trim() ?? "";
-
-  const params = new URLSearchParams({ name: q });
-  if (country) params.set("country", country);
-  if (state) params.set("state", state);
+  const params = new URLSearchParams({ search_query: q });
 
   try {
-    const res = await fetch(`https://www.golfapi.io/api/v2.3/clubs?${params}`, {
+    const res = await fetch(`${API_BASE}/v1/search?${params}`, {
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Key ${apiKey}`,
         Accept: "application/json",
       },
       next: { revalidate: REVALIDATE_SECONDS },
@@ -56,40 +70,40 @@ export async function GET(req: NextRequest) {
 
     if (!res.ok) {
       // Soft-fail: log but return empty so the UI can fall back to manual entry.
-      console.error("golfapi.io search error:", res.status, await res.text());
+      console.error("golfcourseapi search error:", res.status, await res.text());
       return NextResponse.json([] satisfies CourseSearchResult[]);
     }
 
-    const payload = (await res.json()) as {
-      clubs?: Array<{
-        clubID?: string | number;
-        clubName?: string;
-        city?: string;
-        state?: string;
-        country?: string;
-        numCourses?: number;
-      }>;
-    };
-
-    const clubs = payload.clubs ?? [];
-    const normalized: CourseSearchResult[] = clubs.slice(0, SEARCH_LIMIT).map((c) => {
-      const city = c.city ?? "";
-      const stateOrCountry = c.state || c.country || "";
-      const location = [city, stateOrCountry].filter(Boolean).join(", ");
-      return {
-        id: String(c.clubID ?? ""),
-        name: c.clubName ?? "Unknown course",
-        location,
-        city,
-        state: c.state ?? "",
-        country: c.country ?? "",
-        courseCount: c.numCourses ?? 0,
-      };
-    });
-
-    return NextResponse.json(normalized);
+    const payload = (await res.json()) as { courses?: RawSearchCourse[] };
+    return NextResponse.json(normalizeSearch(payload.courses ?? []));
   } catch (err) {
-    console.error("golfapi.io search fetch error:", err);
+    console.error("golfcourseapi search fetch error:", err);
     return NextResponse.json([] satisfies CourseSearchResult[]);
   }
+}
+
+/** Map golfcourseapi search items into the normalized list shape. Exported for tests. */
+export function normalizeSearch(courses: RawSearchCourse[]): CourseSearchResult[] {
+  return courses.slice(0, SEARCH_LIMIT).map((c) => {
+    const city = c.location?.city ?? "";
+    const stateOrCountry = c.location?.state || c.location?.country || "";
+    const location = [city, stateOrCountry].filter(Boolean).join(", ");
+    // golfcourseapi returns individual courses (not clubs); name leads with the
+    // club, with the course appended when it adds information.
+    const club = c.club_name?.trim() ?? "";
+    const course = c.course_name?.trim() ?? "";
+    const name =
+      club && course && club.toLowerCase() !== course.toLowerCase()
+        ? `${club} — ${course}`
+        : club || course || "Unknown course";
+    return {
+      id: String(c.id ?? ""),
+      name,
+      location,
+      city,
+      state: c.location?.state ?? "",
+      country: c.location?.country ?? "",
+      courseCount: 1,
+    };
+  });
 }
