@@ -73,7 +73,7 @@ export interface GameRow {
   corrections_open: boolean;
 }
 
-interface GameType {
+export interface GameType {
   id: string;
   key: string;
   name: string;
@@ -376,7 +376,7 @@ function RunButton({ state, onClick }: { state: RunState; onClick: () => void })
 
 type Tab = "game" | "config";
 
-function GameSheet({
+export function GameSheet({
   tripId, competitionId, game, types, canEdit, onClose,
 }: {
   tripId: string;

@@ -15,6 +15,8 @@ import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
+import { GameSetupRows } from "@/components/games/GameSetupRows";
+import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf } from "@/lib/strokePlayConfig";
@@ -779,20 +781,44 @@ export default function NewMatchGamePage() {
       {screen === "member-wait" && <MemberNotReady gameName={gameQ.data?.name as string | undefined} />}
 
       {screen === "setup" && (
-        <MatchSetup
-          tripId={tripId}
-          draft={draft}
-          setDraft={setDraft}
-          playersPerSide={playersPerSide}
-          teamA={teamForSlot("a")}
-          teamB={teamForSlot("b")}
-          nameOf={nameOf}
-          colorOf={colorOf}
-          avatarIconOf={avatarIconOf}
-          openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
-          onReady={attemptReady}
-          saving={setPairings.isPending || setHandicap.isPending || setDoublesPairings.isPending || setDoublesHandicap.isPending || activate.isPending}
-        />
+        <>
+          {/* §B setup shell (Phase 2B.2): the standardized course + Name·Format·
+              Points drill-down rows above the format's own who's-playing body
+              (the pairing cards). Handicaps stay inline per pairing; "Enable
+              scoring" is MatchSetup's bottom CTA. */}
+          {gameQ.data && (
+            <div style={{ marginBottom: 14 }}>
+              <GameSetupRows
+                tripId={tripId}
+                competitionId={gameCompId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                onChanged={() => {
+                  void gameQ.refetch();
+                  if (competitionId) {
+                    utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+                    utils.competitions.faceBootstrap.invalidate({ tripId });
+                    utils.games.listByTrip.invalidate({ tripId });
+                  }
+                }}
+              />
+            </div>
+          )}
+          <MatchSetup
+            tripId={tripId}
+            draft={draft}
+            setDraft={setDraft}
+            playersPerSide={playersPerSide}
+            teamA={teamForSlot("a")}
+            teamB={teamForSlot("b")}
+            nameOf={nameOf}
+            colorOf={colorOf}
+            avatarIconOf={avatarIconOf}
+            openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
+            onReady={attemptReady}
+            saving={setPairings.isPending || setHandicap.isPending || setDoublesPairings.isPending || setDoublesHandicap.isPending || activate.isPending}
+          />
+        </>
       )}
 
       {screen === "overview" && (
