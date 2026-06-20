@@ -210,6 +210,34 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     expect(rows.every((r) => r.raw_score === null)).toBe(true); // match play has no aggregate
   });
 
+  it("9-hole round closes out — hole count comes from the schema, not a hardcoded 18", async () => {
+    // The B1 regression: matchState used to hardcode 18, so a 9-hole match never
+    // closed out (3 up with 2 to play through hole 7 of 9 would read holesLeft 11
+    // and stay 'active' forever). The hole count must come from the game's
+    // scorecard_schema unit count — the same source buildDecided already uses.
+    const gameId = await freshGame("Nine-hole close");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    // Make it a 9-hole round (loadStrokeIndex reads units.count for the count).
+    await ctx.admin.from("games").update({ scorecard_schema: { units: { count: 9 } } }).eq("id", gameId);
+
+    // owner wins 1-3, halves 4-7 → +3 at hole 7 of 9 → holesLeft 2, closed 3&2.
+    const aHalf: Record<number, number> = {};
+    const bHalf: Record<number, number> = {};
+    for (let h = 4; h <= 7; h++) {
+      aHalf[h] = 4;
+      bHalf[h] = 4;
+    }
+    await enter(gameId, owner, member, { 1: 4, 2: 4, 3: 4, ...aHalf }, { 1: 5, 2: 5, 3: 5, ...bHalf });
+
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    // Under the old 18-hole hardcode this stayed { result: null, status: "active" }.
+    expect(matches[0]).toMatchObject({ result: "a_win", margin: "3&2", status: "complete" });
+  });
+
   it("FREEZE — play-it-out holes after close-out never change the result", async () => {
     const gameId = await freshGame("Freeze");
     await ctx.caller().matches.setPairings({

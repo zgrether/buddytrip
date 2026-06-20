@@ -15,7 +15,7 @@ export interface MatchState {
   up: number;
   holesLeft: number;
   over: boolean;
-  closed: boolean; // decided early (before 18)
+  closed: boolean; // decided early (before the last hole)
   dormie: boolean;
   leader: "A" | "B" | null;
   margin: string | null; // "3&2" | "2 UP" | "AS" | null (in progress)
@@ -85,19 +85,19 @@ export function buildDecided(
  * anything after (a "Play it out" hole) is ignored, so a closed 3&2 can't
  * recompute to nonsense when the trailing player wins 17 & 18.
  */
-export function matchState(decided: HoleResult[]): MatchState {
+export function matchState(decided: HoleResult[], holeCount = HOLES): MatchState {
   let diff = 0;
   let played = 0;
   for (const r of decided) {
     played++;
     if (r === "W") diff++;
     else if (r === "L") diff--;
-    const holesLeft = HOLES - played;
+    const holesLeft = holeCount - played;
     const up = Math.abs(diff);
     if (holesLeft > 0 && up > holesLeft) return finalize(played, diff, holesLeft, true, true);
     if (holesLeft === 0) break;
   }
-  const holesLeft = HOLES - played;
+  const holesLeft = holeCount - played;
   return finalize(played, diff, holesLeft, holesLeft === 0, false);
 }
 
