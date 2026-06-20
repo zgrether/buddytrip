@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -10,10 +11,13 @@ import { FinalStandings } from "@/components/games/FinalStandings";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf } from "@/lib/strokePlayConfig";
+import { effectiveStrokes } from "@/lib/handicap";
+import { strokeHoles } from "@/lib/matchPlay";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,9 +68,14 @@ export default function NewGamePage() {
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   const [showConfig, setShowConfig] = useState(false); // §B 2B.3 Configuration page
+  const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
+  // §3: per-player handicap strokes (the same general mutation rack uses — it
+  // sets game_participants.handicap_strokes by user_id; for stroke it no-ops the
+  // re-derive since stroke persists results only at Finish).
+  const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
   // Phase 2B.1: scoring must be enabled before entries land (universal gate).
   const enableScoring = trpc.games.enableScoring.useMutation();
   const disableScoring = trpc.games.disableScoring.useMutation();
@@ -103,6 +112,41 @@ export default function NewGamePage() {
     return null;
   }, [createdGame, urlGameId, resumeRoster, memberById]);
 
+  // §3: the COURSE-aware scorecard — par + stroke index from the applied course
+  // snapshot (falls back to the 18-hole template default when no course). The
+  // live strip MUST use this same index the server final (computeStrokePlayResults)
+  // nets against, so net can't diverge (CLAUDE.md #8).
+  const scUnits = useMemo(
+    () => unitsFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof unitsFromSchema>[0]),
+    [gameQ.data]
+  );
+  const scIndex = useMemo(() => strokeIndexOf(scUnits), [scUnits]);
+  // Per-player handicap strokes (read from game_participants), and the stroked
+  // holes each one allocates against the course index — drives the pips + net.
+  const strokesOf = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of (gameQ.data?.participants ?? []) as { user_id: string; handicap_strokes: number | null }[]) {
+      m.set(p.user_id, effectiveStrokes(p));
+    }
+    return m;
+  }, [gameQ.data]);
+  const entryPips = useMemo(() => {
+    const m: Record<string, Set<string>> = {};
+    for (const [uid, n] of strokesOf) m[uid] = new Set([...strokeHoles(n, scIndex)].map(String));
+    return m;
+  }, [strokesOf, scIndex]);
+  const handicapPlayers: HandicapPlayer[] = useMemo(
+    () =>
+      (game?.participants ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatarIcon: null,
+        teamColor: null,
+        strokes: strokesOf.get(p.id) ?? 0,
+      })),
+    [game, strokesOf]
+  );
+
   // The id the saver writes to: the resumed game, else the one created here.
   const activeGameId = urlGameId ?? createdGame?.id;
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
@@ -136,6 +180,12 @@ export default function NewGamePage() {
       // surfaced via the global error toast
     }
   }
+  // §3: persist one player's handicap strokes, then refetch so the pips + the
+  // handicap roster reflect it (the live strip nets off the same scIndex).
+  const onSetStrokes = (userId: string, strokes: number) =>
+    setStrokes
+      .mutateAsync({ tripId: tripId!, gameId: activeGameId!, userId, strokes })
+      .then((r) => { void gameQ.refetch(); return r; });
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
@@ -232,9 +282,27 @@ export default function NewGamePage() {
     if (urlGameId) router.replace(`/trips/${param}/games/new`);
   }
 
+  // ── §3 Handicaps step — per-player ABSOLUTE strokes (stroke is per-player, not
+  // per-matchup). Reached from the setup hull's Handicaps row AND Configuration.
+  // Drives `netStrokeEntries`/`strokeHoles`: the input Phase 1 deferred. ──
+  if (game && showHandicaps && canEdit) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh" }}>
+        <HandicapRoster
+          players={handicapPlayers}
+          holeCount={scUnits.length}
+          strokeIndex={scIndex}
+          onSetStrokes={onSetStrokes}
+          onDone={() => setShowHandicaps(false)}
+          onBack={() => setShowHandicaps(false)}
+        />
+      </div>
+    );
+  }
+
   // ── Enable gate (Phase 2B.1) → §B setup hull (2B.2). A configured game must be
   // enabled before its score screen opens; the gate also hosts the standardized
-  // course + Name·Format·Points drill-down rows. ──
+  // course + Name·Format·Points drill-down rows + (§3) the Handicaps step. ──
   if (game && !scoringEnabled && !showConfig) {
     return (
       <EnableScoringGate
@@ -245,20 +313,23 @@ export default function NewGamePage() {
         pending={enableScoring.isPending}
         setupRows={
           gameQ.data ? (
-            <GameSetupRows
-              tripId={tripId}
-              competitionId={gameCompetitionId}
-              game={gameQ.data as unknown as GameRow}
-              canEdit={canEdit}
-              onChanged={() => {
-                void gameQ.refetch();
-                if (gameCompetitionId) {
-                  utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-                  utils.competitions.faceBootstrap.invalidate({ tripId });
-                  utils.games.listByTrip.invalidate({ tripId });
-                }
-              }}
-            />
+            <>
+              <GameSetupRows
+                tripId={tripId}
+                competitionId={gameCompetitionId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                onChanged={() => {
+                  void gameQ.refetch();
+                  if (gameCompetitionId) {
+                    utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+                    utils.competitions.faceBootstrap.invalidate({ tripId });
+                    utils.games.listByTrip.invalidate({ tripId });
+                  }
+                }}
+              />
+              <HandicapsRow strokesOf={strokesOf} onClick={() => setShowHandicaps(true)} disabled={!canEdit} />
+            </>
           ) : null
         }
       />
@@ -278,6 +349,8 @@ export default function NewGamePage() {
           game={gameQ.data as unknown as GameRow}
           canEdit={canEdit}
           onChanged={() => void refreshGame()}
+          whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
+          onEditWhosPlaying={() => { setShowConfig(false); setShowHandicaps(true); }}
           scoringEnabled={scoringEnabled}
           onEnable={handleEnable}
           onDisable={handleDisable}
@@ -295,7 +368,7 @@ export default function NewGamePage() {
           <FinalStandings
             participants={game.participants}
             standings={standings}
-            unitCount={STROKE_PLAY_UNITS.length}
+            unitCount={scUnits.length}
             dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             onScorecard={() => setView("grid")}
             onPlayAgain={playAgain}
@@ -308,10 +381,11 @@ export default function NewGamePage() {
             </div>
             <div className="min-h-0 flex-1">
               <StandardGrid
-                units={STROKE_PLAY_UNITS}
+                units={scUnits}
                 participants={game.participants}
                 values={values}
                 direction="low_wins"
+                pips={entryPips}
                 saveStatus={saveStatus}
                 onCellTap={(label) => {
                   setCurrentHole(Number(label) || 1);
@@ -323,7 +397,7 @@ export default function NewGamePage() {
         ) : (
           <ScoreEntryView
             gameName="Stroke Play"
-            units={STROKE_PLAY_UNITS}
+            units={scUnits}
             participants={game.participants}
             values={values}
             direction="low_wins"
@@ -333,6 +407,7 @@ export default function NewGamePage() {
             onClear={onClear}
             saveStatus={saveStatus}
             onRetryCell={retryCell}
+            pips={entryPips}
             onBack={() => router.back()}
             onOpenGrid={() => setView("grid")}
             onConfig={canEdit ? () => setShowConfig(true) : undefined}
@@ -391,5 +466,31 @@ export default function NewGamePage() {
         Start game
       </button>
     </div>
+  );
+}
+
+/** §3 Handicaps drill-down row in the stroke setup hull — opens the per-player
+ *  HandicapRoster. Mirrors the GameSetupRows row style; the summary reads how
+ *  many players have strokes set (none yet = a neutral "Add strokes" cue). */
+function HandicapsRow({ strokesOf, onClick, disabled }: { strokesOf: Map<string, number>; onClick: () => void; disabled?: boolean }) {
+  const withStrokes = [...strokesOf.values()].filter((n) => n > 0).length;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <div className="flex min-w-0 flex-col">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Handicaps <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· optional</span>
+        </span>
+        <span className="truncate text-sm" style={{ color: withStrokes ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", marginTop: 2 }}>
+          {withStrokes > 0 ? `${withStrokes} player${withStrokes === 1 ? "" : "s"} get strokes` : "Add per-player strokes"}
+        </span>
+      </div>
+      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+    </button>
   );
 }
