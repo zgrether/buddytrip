@@ -8,6 +8,9 @@ import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
+import { GameSetupRows } from "@/components/games/GameSetupRows";
+import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -37,6 +40,7 @@ export default function NewGamePage() {
   );
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
+  const { canEdit } = useTripRole(tripId);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
 
@@ -211,8 +215,9 @@ export default function NewGamePage() {
     if (urlGameId) router.replace(`/trips/${param}/games/new`);
   }
 
-  // ── Enable gate (Phase 2B.1) — a configured game must be enabled before its
-  // score screen opens. The score saver server-rejects entries until then. ──
+  // ── Enable gate (Phase 2B.1) → §B setup hull (2B.2). A configured game must be
+  // enabled before its score screen opens; the gate also hosts the standardized
+  // course + Name·Format·Points drill-down rows. ──
   if (game && !scoringEnabled) {
     return (
       <EnableScoringGate
@@ -221,6 +226,24 @@ export default function NewGamePage() {
         onEnable={handleEnable}
         onBack={() => router.back()}
         pending={enableScoring.isPending}
+        setupRows={
+          gameQ.data ? (
+            <GameSetupRows
+              tripId={tripId}
+              competitionId={gameCompetitionId}
+              game={gameQ.data as unknown as GameRow}
+              canEdit={canEdit}
+              onChanged={() => {
+                void gameQ.refetch();
+                if (gameCompetitionId) {
+                  utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+                  utils.competitions.faceBootstrap.invalidate({ tripId });
+                  utils.games.listByTrip.invalidate({ tripId });
+                }
+              }}
+            />
+          ) : null
+        }
       />
     );
   }

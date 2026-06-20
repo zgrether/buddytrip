@@ -13,6 +13,8 @@ import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
+import { GameSetupRows } from "@/components/games/GameSetupRows";
+import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -497,6 +499,24 @@ export default function RackNStackPage() {
         onEnable={handleEnable}
         onBack={() => router.back()}
         pending={enableScoring.isPending}
+        setupRows={
+          gameQ.data ? (
+            <GameSetupRows
+              tripId={tripId!}
+              competitionId={competitionId ?? null}
+              game={gameQ.data as unknown as GameRow}
+              canEdit={canEdit}
+              onChanged={() => {
+                void utils.games.getById.invalidate({ tripId: tripId!, gameId: gid! });
+                if (competitionId) {
+                  utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
+                  utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
+                  utils.games.listByTrip.invalidate({ tripId: tripId! });
+                }
+              }}
+            />
+          ) : null
+        }
       />
     );
   }
