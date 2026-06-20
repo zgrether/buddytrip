@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo } from "react";
-import { Trophy, CloudOff, RefreshCw } from "lucide-react";
+import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GameRow, fmtPts } from "./GameRow";
 
@@ -61,9 +61,15 @@ interface LeaderboardData {
 interface Props {
   competitionId: string;
   tripId: string;
+  /** Editor affordances on the board (the setup guide was retired — the board is
+   *  the home now). Crew (non-editors) get none of these. */
+  canEdit?: boolean;
+  onAddGame?: () => void;
+  /** Tap a team name on the hero → its in-place editor (routed by the face). */
+  onEditTeam?: () => void;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false, onAddGame, onEditTeam }: Props) {
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     {
@@ -157,6 +163,8 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
         tripId={tripId}
         mineSet={mineSet}
         onPrefetch={prefetchGame}
+        canEdit={canEdit}
+        onAddGame={onAddGame}
       />
     );
   }
@@ -203,6 +211,7 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
             winNumber={winNumber}
             pointsToClinch={pointsToClinch}
             clincher={clincher}
+            onEditTeam={onEditTeam}
           />
         ) : (
           <NTeamRankedList
@@ -216,18 +225,92 @@ export function CompetitionLeaderboard({ competitionId, tripId }: Props) {
         )}
       </div>
 
-      {/* Session breakdown */}
-      {liveGames.length > 0 && (
-        <SessionBreakdown
-          games={liveGames}
-          teams={teams}
-          cellsByGame={cellsByGame}
-          sessionsDone={sessionsDone}
-          tripId={tripId}
-          mineSet={mineSet}
-          onPrefetch={prefetchGame}
-        />
+      {/* Bones copy — the calm setup voice, only while the board is empty and
+          editable (nothing's required to start). */}
+      {canEdit && liveGames.length === 0 && (
+        <p className="px-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          This is your scoreboard. Name the teams, add the games — it fills in as you go. Nothing&rsquo;s required to start.
+        </p>
       )}
+
+      {/* Games — the session list once games exist, the empty prompt before. */}
+      <GamesSection
+        games={liveGames}
+        teams={teams}
+        cellsByGame={cellsByGame}
+        sessionsDone={sessionsDone}
+        tripId={tripId}
+        mineSet={mineSet}
+        onPrefetch={prefetchGame}
+        canEdit={canEdit}
+        onAddGame={onAddGame}
+      />
+    </div>
+  );
+}
+
+// ── GamesSection ─────────────────────────────────────────────────────────────
+// The board's GAMES home (retired the setup guide's games panel as the sole
+// entry). Empty → the bones prompt + "Add a game"; populated → the session
+// breakdown + "Add a game". Editor-gated; the crew sees the list only.
+function GamesSection({
+  games, teams, cellsByGame, sessionsDone, tripId, mineSet, onPrefetch, canEdit, onAddGame,
+}: {
+  games: LBGame[];
+  teams: LBTeam[];
+  cellsByGame: Map<string, Map<string, LBCell>>;
+  sessionsDone: number;
+  tripId: string;
+  mineSet: Set<string>;
+  onPrefetch: (gameId: string) => void;
+  canEdit: boolean;
+  onAddGame?: () => void;
+}) {
+  const addBtn = canEdit && onAddGame && (
+    <button
+      type="button"
+      onClick={onAddGame}
+      className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-3"
+      style={{ background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+      data-testid="comp-add-game"
+    >
+      <Plus size={16} /> Add a game
+    </button>
+  );
+
+  if (games.length === 0) {
+    return (
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        data-testid="comp-games-empty"
+      >
+        <div className="px-4 py-2.5" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Games</p>
+        </div>
+        <div className="px-4 py-5">
+          <p className="text-sm" style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>No games yet.</p>
+          <p className="mt-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            Add the first one to start the board.
+          </p>
+          {addBtn && <div className="mt-3">{addBtn}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <SessionBreakdown
+        games={games}
+        teams={teams}
+        cellsByGame={cellsByGame}
+        sessionsDone={sessionsDone}
+        tripId={tripId}
+        mineSet={mineSet}
+        onPrefetch={onPrefetch}
+      />
+      {addBtn}
     </div>
   );
 }
@@ -241,6 +324,7 @@ function TwoTeamHero({
   winNumber,
   pointsToClinch,
   clincher,
+  onEditTeam,
 }: {
   teams: LBTeam[];
   teamTotals: Record<string, number>;
@@ -248,6 +332,8 @@ function TwoTeamHero({
   winNumber: number;
   pointsToClinch: Record<string, number>;
   clincher: LBTeam | null;
+  /** Tap a team name → its in-place editor (editors only). */
+  onEditTeam?: () => void;
 }) {
   const [a, b] = teams;
   const aTotal = teamTotals[a.id] ?? 0;
@@ -261,14 +347,28 @@ function TwoTeamHero({
 
   return (
     <div className="px-4 pb-4">
-      {/* Team name row */}
+      {/* Team name row — tap a name to manage that team (editors). */}
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: a.color }}>
+        <button
+          type="button"
+          onClick={onEditTeam}
+          disabled={!onEditTeam}
+          className="text-[11px] font-bold uppercase tracking-widest disabled:cursor-default"
+          style={{ color: a.color }}
+          data-testid="comp-team-name-a"
+        >
           {a.short_name}
-        </p>
-        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: b.color }}>
+        </button>
+        <button
+          type="button"
+          onClick={onEditTeam}
+          disabled={!onEditTeam}
+          className="text-[11px] font-bold uppercase tracking-widest disabled:cursor-default"
+          style={{ color: b.color }}
+          data-testid="comp-team-name-b"
+        >
           {b.short_name}
-        </p>
+        </button>
       </div>
 
       {/* Big totals */}
@@ -506,6 +606,8 @@ function EarlyState({
   tripId,
   mineSet,
   onPrefetch,
+  canEdit,
+  onAddGame,
 }: {
   teams: LBTeam[];
   liveGames: LBGame[];
@@ -513,6 +615,8 @@ function EarlyState({
   tripId: string;
   mineSet: Set<string>;
   onPrefetch: (gameId: string) => void;
+  canEdit: boolean;
+  onAddGame?: () => void;
 }) {
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
@@ -594,6 +698,21 @@ function EarlyState({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Keep "Add a game" reachable in the setup/early phase — this is the
+          prime time to build the schedule, and it's the board's sole entry to
+          the add-game modal now that the aggregate panel is retired. */}
+      {canEdit && onAddGame && (
+        <button
+          type="button"
+          onClick={onAddGame}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-3"
+          style={{ background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+          data-testid="comp-add-game"
+        >
+          <Plus size={16} /> Add a game
+        </button>
       )}
     </div>
   );

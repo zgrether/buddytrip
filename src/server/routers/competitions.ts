@@ -219,6 +219,16 @@ export const competitionsRouter = router({
         });
       }
 
+      // Seed two placeholder teams so the bones board's team hero renders
+      // immediately ("Team A / Team B · 0–0"). Teams up front, rosters not — the
+      // team_assignments are built later in the Team Rosters page. Best-effort:
+      // a seed failure doesn't block creation (the team builder can still add
+      // teams), so the competition is usable either way.
+      await ctx.supabase.from("teams").insert([
+        { competition_id: inserted.id, name: "Team A", short_name: "A", color: "#3b82f6", color_dim: "#0a1a2a" },
+        { competition_id: inserted.id, name: "Team B", short_name: "B", color: "#ef4444", color_dim: "#2a0a0a" },
+      ]);
+
       const { data, error } = await ctx.supabase
         .from("competitions")
         .select("*")
@@ -248,6 +258,11 @@ export const competitionsRouter = router({
         tagline: z.string().max(500).nullable().optional(),
         status: z.enum(["upcoming", "active", "completed"]).optional(),
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
+        // The roster-setup progression (building → saved → dismissed). "Save
+        // rosters" advances to saved; dismissing the moved-to-Settings signpost
+        // advances to dismissed. One-way, but the server stays permissive (the
+        // check constraint guards the value set).
+        rosterSetup: z.enum(["building", "saved", "dismissed"]).optional(),
       })
     )
     .use(requireCompetitionRole("co_admin"))
@@ -257,6 +272,7 @@ export const competitionsRouter = router({
       if (input.tagline !== undefined) patch.tagline = input.tagline;
       if (input.status !== undefined) patch.status = input.status;
       if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
+      if (input.rosterSetup !== undefined) patch.roster_setup = input.rosterSetup;
 
       const { data, error } = await ctx.supabase
         .from("competitions")

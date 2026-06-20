@@ -60,7 +60,9 @@ describe("CompetitionFace data layer", () => {
       caller.games.listByTrip({ tripId }),
       caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
     ]);
-    expect(teams).toEqual([]);
+    // create seeds two placeholder teams (Team A / Team B) so the bones board's
+    // team hero renders immediately — rosters (assignments) are still empty.
+    expect((teams as Array<{ short_name: string }>).map((t) => t.short_name).sort()).toEqual(["A", "B"]);
     expect(
       (allGames as Array<{ competition_id: string | null }>).filter(
         (g) => g.competition_id === competition!.id

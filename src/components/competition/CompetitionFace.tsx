@@ -1,29 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, Users, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionHeader } from "./CompetitionHeader";
-import { CompetitionSetupGuide } from "./CompetitionSetupGuide";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
-import { TeamsPanel } from "./TeamsPanel";
-import { CompetitionGamesPanel } from "./CompetitionGamesPanel";
+import { CompetitionSettings } from "./CompetitionSettings";
+import { GameSheet, type GameType } from "./CompetitionGamesPanel";
 
 interface Competition {
   id: string;
   name: string;
   tagline: string | null;
   status: "upcoming" | "active" | "completed";
+  /** Roster-setup progression (building → saved → dismissed) — drives the
+   *  Team Rosters button + the "moved to Settings" signpost on the board. */
+  roster_setup?: "building" | "saved" | "dismissed";
 }
 
 /**
- * The competition face's two states + their setup sub-surfaces:
- *   guide  — the setup guide (pre-live main view for editors)
- *   board  — the leaderboard (post-live main view for everyone)
- *   games  — the Games surface (reached from the guide)
- *   teams  — the team builder (reached from the guide)
+ * The competition face's surfaces (the setup guide AND the aggregate games panel
+ * were both retired — creation lands directly on the bones board):
+ *   board    — the leaderboard (the main view for everyone, setup + live)
+ *   settings — the consolidated Settings page (competition details + Team Rosters
+ *              + delete) — reached from the header gear and the pre-save Team
+ *              Rosters button
+ * "Add a game" no longer routes to a panel — it opens the GameSheet modal
+ * directly over the board; existing games are managed on their per-game pages.
  */
-type FaceView = "guide" | "games" | "teams" | "board";
+type FaceView = "settings" | "board";
 
 interface Props {
   tripId: string;
@@ -60,12 +65,15 @@ export function CompetitionFace({
   const utils = trpc.useUtils();
   const isLive = competition.status === "active";
 
-  // Default flips at go-live (§3): pre-live the setup guide is the editor's
-  // main view; post-live the leaderboard is. Non-editors only ever see the
-  // board (the page gates them out of the pre-live face entirely).
-  const [view, setView] = useState<FaceView>(
-    !canEdit ? "board" : isLive ? "board" : "guide"
-  );
+  // The board is the home in every stage now — creation lands here directly
+  // (the setup guide was retired); Settings is a sub-surface reached from the
+  // board and returns to it. "Add a game" opens a modal over the board.
+  const [view, setView] = useState<FaceView>("board");
+  const [addingGame, setAddingGame] = useState(false);
+
+  // GameSheet (add-game modal) needs the type catalog — fetched once here so the
+  // modal opens without its own waterfall. Only editors ever open it.
+  const { data: gameTypes = [] } = trpc.games.listTypes.useQuery(undefined, { enabled: canEdit });
 
   // ── Go live / back to setup (visibility switch, NOT a data lock) ───────────
   // Centralized here (not in the header) so going live can also flip the
@@ -100,19 +108,30 @@ export function CompetitionFace({
 
   const toggleLive = () => {
     const next: "upcoming" | "active" = isLive ? "upcoming" : "active";
-    // Flip the default view to match the new stage (board when live, guide
-    // when returning to setup) immediately — the optimistic status update keeps
+    // The board is the home in BOTH stages now (the setup guide was retired), so
+    // go-live / back-to-setup both land there; the optimistic status flip keeps
     // the chrome in sync.
-    setView(next === "active" ? "board" : "guide");
+    setView("board");
     setStatus.mutate({ tripId, competitionId: competition.id, status: next });
   };
+
+  // Roster-setup progression (building → saved → dismissed). Optimistic so the
+  // Team Rosters button → signpost → clean transition is instant; the face reads
+  // roster_setup from the faceBootstrap snapshot, so invalidate that too (#10).
+  const rosterSetup = competition.roster_setup ?? "building";
+  const advanceRoster = trpc.competitions.update.useMutation({
+    onSettled: () => {
+      utils.competitions.getByTrip.invalidate({ tripId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+    },
+  });
+  const setRosterSetup = (next: "saved" | "dismissed") =>
+    advanceRoster.mutate({ tripId, competitionId: competition.id, rosterSetup: next });
 
   const header = (
     <CompetitionHeader
       competition={competition}
       tripId={tripId}
-      canEdit={canEdit}
-      isOwner={isOwner}
       compact={isLive}
       onToggleLive={
         // Go-live is operational (owner-minus-destructive) — co-admins flip it
@@ -120,90 +139,111 @@ export function CompetitionFace({
         canEdit && competition.status !== "completed" ? toggleLive : undefined
       }
       togglePending={setStatus.isPending}
-      onDeleted={onCompetitionDeleted}
+      onSettings={canEdit ? () => setView("settings") : undefined}
     />
   );
 
-  // ── Setup guide (editors, pre-live default) ────────────────────────────────
-  if (view === "guide") {
+  // ── Sub-surface: the consolidated Settings page — reached from the board ─────
+  if (view === "settings") {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         {header}
-        <CompetitionSetupGuide
-          tripId={tripId}
+        <button
+          type="button"
+          onClick={() => setView("board")}
+          className="inline-flex items-center gap-1 text-[13px] font-semibold"
+          style={{ color: "var(--color-bt-accent)" }}
+          data-testid="comp-back-to-board"
+        >
+          <ChevronLeft size={16} /> Board
+        </button>
+
+        <CompetitionSettings
           competition={competition}
-          onManageGames={() => setView("games")}
-          onBuildTeams={() => setView("teams")}
-          onViewBoard={() => setView("board")}
-          onGoLive={() => {
-            if (!isLive) toggleLive();
-          }}
+          tripId={tripId}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          isLive={isLive}
+          rosterBuilding={rosterSetup === "building"}
+          // "Save rosters" (setup phase only) commits the roster build one-way:
+          // the board's Team Rosters button gives way to the moved-to-Settings
+          // signpost. Returns to the board so the transition is visible.
+          onSaveRosters={() => { setRosterSetup("saved"); setView("board"); }}
+          onDeleted={onCompetitionDeleted}
         />
       </div>
     );
   }
 
-  // ── Board + setup sub-surfaces ─────────────────────────────────────────────
-  const subTitle =
-    view === "games" ? "Games" : view === "teams" ? "Teams" : null;
-
+  // ── Board (the home, setup + live) ──────────────────────────────────────────
   return (
     <div className="space-y-4">
       {header}
 
-      {/* Symmetric toggle (§3): the board offers "Setup view"; the setup
-          sub-surfaces offer "Setup guide" back. Editors only — the crew sees
-          the board with no management affordance. */}
-      {canEdit && view === "board" && (
+      {/* Setup-phase roster affordance: the Team Rosters button (building) gives
+          way to a dismissable "moved to Settings" signpost (saved) → clean
+          (dismissed). Editors only — the crew never sees management chrome. */}
+      {canEdit && rosterSetup === "building" && (
         <button
           type="button"
-          onClick={() => setView("guide")}
-          className="inline-flex items-center gap-1 text-[13px] font-semibold"
-          style={{ color: "var(--color-bt-accent)" }}
-          data-testid="comp-setup-view"
+          onClick={() => setView("settings")}
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+          data-testid="comp-team-rosters-btn"
         >
-          <SlidersHorizontal size={15} /> Setup view
+          <Users size={15} style={{ color: "var(--color-bt-accent)" }} /> Team Rosters
         </button>
       )}
-      {canEdit && view !== "board" && (
-        <button
-          type="button"
-          onClick={() => setView("guide")}
-          className="inline-flex items-center gap-1 text-[13px] font-semibold"
-          style={{ color: "var(--color-bt-accent)" }}
-          data-testid="comp-back-to-guide"
+      {canEdit && rosterSetup === "saved" && (
+        <div
+          className="flex items-start gap-3 rounded-lg px-3 py-2.5"
+          style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}
+          data-testid="comp-rosters-moved-signpost"
         >
-          <ChevronLeft size={16} /> Setup guide
-        </button>
+          <p className="min-w-0 flex-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            Roster management has moved to Settings —{" "}
+            <button type="button" onClick={() => setView("settings")} className="font-semibold underline" style={{ color: "var(--color-bt-accent)" }}>
+              Open Settings
+            </button>
+            . Manage a team by tapping its name.
+          </p>
+          <button
+            type="button"
+            onClick={() => setRosterSetup("dismissed")}
+            aria-label="Dismiss"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="comp-rosters-signpost-dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
       )}
 
-      {subTitle && (
-        <p
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {subTitle}
-        </p>
-      )}
+      <CompetitionLeaderboard
+        competitionId={competition.id}
+        tripId={tripId}
+        canEdit={canEdit}
+        onAddGame={() => setAddingGame(true)}
+        onEditTeam={canEdit ? () => setView("settings") : undefined}
+      />
 
-      {view === "games" && (
-        <CompetitionGamesPanel
-          competitionId={competition.id}
+      {/* Add a game opens the GameSheet modal directly over the board (the
+          aggregate games panel was retired). It persists on its own Save and
+          invalidates the board's leaderboard; we also re-resolve faceBootstrap
+          so the board's GAMES list refreshes without a hard reload (#10). */}
+      {addingGame && canEdit && (
+        <GameSheet
           tripId={tripId}
-          canEdit={canEdit}
-          isOwner={isOwner}
-        />
-      )}
-      {view === "teams" && (
-        <TeamsPanel
           competitionId={competition.id}
-          tripId={tripId}
+          game={null}
+          types={gameTypes as GameType[]}
           canEdit={canEdit}
-          structureLocked={isLive}
+          onClose={() => {
+            setAddingGame(false);
+            utils.competitions.faceBootstrap.invalidate({ tripId });
+          }}
         />
-      )}
-      {view === "board" && (
-        <CompetitionLeaderboard competitionId={competition.id} tripId={tripId} />
       )}
     </div>
   );
