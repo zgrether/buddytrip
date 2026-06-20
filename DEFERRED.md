@@ -92,6 +92,22 @@ The heart of the event.
   within-format standards; template `config_schema` declares tunable keys
 - Moving tee boxes — available to any stroke-input scorecard; pop-up +
   per-cell visual cue; `tee_box_change` `game_live_events` (no September format requires it)
+  - **Tee-subset selection** (sub-note, captured 2026-06-20 during the
+    golfcourseapi build): when moving tees is on, the owner/delegate picks WHICH
+    of the course's stored tee sets rotate. Cannot be worked independently of
+    moving tees — it's a configuration knob on this feature. All tee sets are
+    already persisted (`courses.tee_sets`, mig 059), so the data is ready.
+
+### Desktop side-by-side tee display (someday nomination — not actionable now)
+
+*Captured 2026-06-20 (golfcourseapi build). NOTE: CLAUDE.md references a
+`TRACKER.md` "someday pile" that does not exist in the repo — parking this here
+in DEFERRED.md until that doc is created or this is promoted.*
+
+- A round uses one configured tee (snapshotted per game). On **desktop**, the
+  same captured per-tee data (`courses.tee_sets`) could render multiple tees
+  **side-by-side** rather than the single configured tee — same data, wider
+  viewport. Deferred; navigation/desktop-experience adjacent, not launch-blocking.
 
 ### Competition-style chooser — style → format → points enforcement
 

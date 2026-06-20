@@ -75,13 +75,17 @@ export function CoursePicker({
   onApply,
   onClose,
 }: {
-  onApply: (course: { id: string; name: string }) => void;
+  onApply: (course: { id: string; name: string; teeName?: string }) => void;
   onClose: () => void;
 }) {
   const [screen, setScreen] = useState<Screen>("search");
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<CourseSummary[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  // API (golfcourseapi) results — populated ONLY by the explicit "Search the
+  // full database" control, never by typing. Local typeahead is the default.
+  const [apiResults, setApiResults] = useState<CourseSummary[]>([]);
+  const [apiSearching, setApiSearching] = useState(false);
+  const [apiSearched, setApiSearched] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => blankDraft(18));
   const [activeTee, setActiveTee] = useState(0);
   const [hole, setHole] = useState(1);
@@ -101,24 +105,50 @@ export function CoursePicker({
 
   const recent = trpc.courses.list.useQuery({ limit: 8 });
   const createCourse = trpc.courses.create.useMutation();
+  // Daily golfcourseapi cap (50/day, UTC). atCap disables the wider-search +
+  // import and steers to the manual floor; local typeahead is never affected.
+  const utils = trpc.useUtils();
+  const apiUsage = trpc.courses.apiUsage.useQuery(undefined, { staleTime: 0 });
+  const recordApiCall = trpc.courses.recordApiCall.useMutation();
+  const atCap = apiUsage.data?.atCap ?? false;
 
+  // Debounce the typed query for the LOCAL search (free, never hits the API).
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      setSearching(true);
-      const r = await searchCourses(q);
-      if (!cancelled) {
-        setResults(r);
-        setSearching(false);
-      }
-    }, 350);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(t);
   }, [query]);
+
+  // A new query invalidates any prior API results (they're for the old term).
+  useEffect(() => {
+    setApiResults([]);
+    setApiSearched(false);
+  }, [debouncedQuery]);
+
+  // LOCAL typeahead against our own courses table — the common path, zero API
+  // calls, unaffected by the daily cap.
+  const localSearch = trpc.courses.search.useQuery(
+    { q: debouncedQuery, limit: 10 },
+    { enabled: debouncedQuery.length >= 2 }
+  );
+
+  // The ONLY path that hits golfcourseapi — one call per explicit click, never
+  // per keystroke. Gated by the daily counter: record-then-fire, and bail
+  // (without firing) if the atomic check says we're at the cap.
+  async function searchFullDatabase() {
+    const q = query.trim();
+    if (q.length < 2 || apiSearching || atCap) return;
+    setApiSearching(true);
+    const gate = await recordApiCall.mutateAsync();
+    await utils.courses.apiUsage.invalidate();
+    if (!gate.permitted) {
+      setApiSearching(false); // hit the cap between render and click — button now disables
+      return;
+    }
+    const r = await searchCourses(q);
+    setApiResults(r);
+    setApiSearched(true);
+    setApiSearching(false);
+  }
 
   const validation = useMemo(
     () => validateStrokeIndex(draft.index, draft.holeCount),
@@ -160,6 +190,18 @@ export function CoursePicker({
     setIndexOptedIn(false);
     setConfirmMode("use");
     setPulling(true);
+    // Importing is a second API call — gate it too. At cap, fall back to manual
+    // entry with the name/location prefilled (same path as a failed detail).
+    const gate = await recordApiCall.mutateAsync();
+    await utils.courses.apiUsage.invalidate();
+    if (!gate.permitted) {
+      setPulling(false);
+      setDraft({ ...blankDraft(18), name: summary.name, location: summary.location });
+      setActiveTee(0);
+      setHole(1);
+      setScreen("new");
+      return;
+    }
     const detail = await getCourseDetail(summary.id);
     setPulling(false);
     if (!detail || detail.holes.length === 0) {
@@ -233,16 +275,18 @@ export function CoursePicker({
     return course;
   }
 
-  // mode 'use' — pick a course to drop into the game.
+  // mode 'use' — pick a course to drop into the game. The active tee chip is the
+  // configured tee — pass it so applyCourse snapshots THAT tee's yardage.
   async function useCourse() {
     if (!indexUsable || !draft.name.trim()) return;
+    const teeName = draft.teeSets[activeTee]?.name?.trim() || undefined;
     // Reviewing an existing library course, unedited → apply it directly.
     if (draft.existingId && !edited) {
-      onApply({ id: draft.existingId, name: draft.name.trim() });
+      onApply({ id: draft.existingId, name: draft.name.trim(), teeName });
       return;
     }
     const course = await persistDraft();
-    onApply({ id: course.id as string, name: course.name as string });
+    onApply({ id: course.id as string, name: course.name as string, teeName });
   }
 
   // mode 'summary' — manual add lands on My courses (NOT auto-used in a game).
@@ -319,12 +363,17 @@ export function CoursePicker({
         <SearchScreen
           query={query}
           setQuery={setQuery}
-          searching={searching}
-          results={results}
+          localResults={(localSearch.data as RecentCourse[]) ?? []}
+          localSearching={localSearch.isFetching && debouncedQuery.length >= 2}
+          apiResults={apiResults}
+          apiSearching={apiSearching}
+          apiSearched={apiSearched}
+          onSearchFull={searchFullDatabase}
+          atCap={atCap}
           recent={(recent.data as RecentCourse[]) ?? []}
           pulling={pulling}
           onPick={pull}
-          onPickRecent={reviewRecent}
+          onPickCourse={reviewRecent}
           onManual={() => {
             setEdited(false);
             setIndexOptedIn(false);
@@ -394,29 +443,46 @@ interface RecentCourse {
   tee_sets: TeeSet[];
 }
 
-// ── Search ──────────────────────────────────────────────────────────────────
+// ── Search (two-stage: local typeahead → explicit full-database) ──────────────
+// Typing searches OUR library only (free, instant, cap-proof). The full
+// golfcourseapi database is reached ONLY via the explicit control below the
+// local results — one API call per click, never per keystroke.
 function SearchScreen({
   query,
   setQuery,
-  searching,
-  results,
+  localResults,
+  localSearching,
+  apiResults,
+  apiSearching,
+  apiSearched,
+  onSearchFull,
+  atCap,
   recent,
   pulling,
   onPick,
-  onPickRecent,
+  onPickCourse,
   onManual,
 }: {
   query: string;
   setQuery: (q: string) => void;
-  searching: boolean;
-  results: CourseSummary[];
+  localResults: RecentCourse[];
+  localSearching: boolean;
+  apiResults: CourseSummary[];
+  apiSearching: boolean;
+  apiSearched: boolean;
+  onSearchFull: () => void;
+  atCap: boolean;
   recent: RecentCourse[];
   pulling: boolean;
   onPick: (c: CourseSummary) => void;
-  onPickRecent: (c: RecentCourse) => void;
+  onPickCourse: (c: RecentCourse) => void;
   onManual: () => void;
 }) {
   const showResults = query.trim().length >= 2;
+  const courseSub = (c: RecentCourse) => {
+    const par = (c.par ?? []).reduce<number>((a, p) => a + p, 0);
+    return [c.location, par ? `Par ${par}` : "", `${c.hole_count} holes`].filter(Boolean).join(" · ");
+  };
   return (
     <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 rounded-xl border px-3" style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}>
@@ -425,7 +491,7 @@ function SearchScreen({
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search courses"
+          placeholder="Search your courses"
           className="w-full bg-transparent py-2.5 text-sm outline-none"
           style={{ color: "var(--color-bt-text)" }}
         />
@@ -434,29 +500,70 @@ function SearchScreen({
       {pulling && <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 14 }}>Pulling scorecard…</p>}
 
       {showResults ? (
-        <div className="mt-4 flex flex-col gap-2">
-          {searching && <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Searching…</p>}
-          {!searching && results.length === 0 && <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No matches.</p>}
-          {results.map((c) => (
-            <CourseRow key={c.id} name={c.name} sub={c.location} onClick={() => onPick(c)} />
-          ))}
-        </div>
+        <>
+          {/* Stage 1 — local library (free). */}
+          <div className="mt-4 flex flex-col gap-2">
+            {localSearching && localResults.length === 0 && (
+              <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Searching your courses…</p>
+            )}
+            {!localSearching && localResults.length === 0 && (
+              <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No saved courses match.</p>
+            )}
+            {localResults.map((c) => (
+              <CourseRow key={c.id} name={c.name} sub={courseSub(c)} onClick={() => onPickCourse(c)} />
+            ))}
+          </div>
+
+          {/* Stage 2 — explicit, deliberate API search (the only golfcourseapi call).
+              At the daily cap the control is disabled and points at the manual floor;
+              local typeahead above keeps working (it never hits the API). */}
+          {atCap ? (
+            <div
+              className="mt-4 flex items-start gap-2 rounded-xl border px-3 py-2.5"
+              style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}
+            >
+              <AlertTriangle size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)" }}>
+                Course search is temporarily unavailable — you can add the course manually below.
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={onSearchFull}
+              disabled={apiSearching}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3 disabled:opacity-50"
+              style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+            >
+              <Search size={15} style={{ color: "var(--color-bt-text-dim)" }} />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>
+                {apiSearching ? "Searching the full database…" : "Don't see it? Search the full course database →"}
+              </span>
+            </button>
+          )}
+
+          {apiSearched && (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                From the course database
+              </p>
+              <div className="flex flex-col gap-2">
+                {apiResults.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No matches in the database.</p>
+                ) : (
+                  apiResults.map((c) => <CourseRow key={c.id} name={c.name} sub={c.location} onClick={() => onPick(c)} />)
+                )}
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         recent.length > 0 && (
           <div className="mt-5">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Recent courses</p>
             <div className="flex flex-col gap-2">
-              {recent.map((c) => {
-                const par = (c.par ?? []).reduce<number>((a, p) => a + p, 0);
-                return (
-                  <CourseRow
-                    key={c.id}
-                    name={c.name}
-                    sub={[c.location, par ? `Par ${par}` : "", `${c.hole_count} holes`].filter(Boolean).join(" · ")}
-                    onClick={() => onPickRecent(c)}
-                  />
-                );
-              })}
+              {recent.map((c) => (
+                <CourseRow key={c.id} name={c.name} sub={courseSub(c)} onClick={() => onPickCourse(c)} />
+              ))}
             </div>
           </div>
         )

@@ -46,6 +46,12 @@ interface StandardGridProps {
    * `${participantId}:${unitLabel}`.
    */
   saveStatus?: SaveStatusMap;
+  /**
+   * The configured tee (name + ratings) for the header line. Present only when a
+   * course/tee is applied; informational (does not affect scoring). The per-hole
+   * yardage rides on `units[].yardage` instead.
+   */
+  tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null;
 }
 
 const NAME_W = 124;
@@ -53,7 +59,7 @@ const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;
 
-export function StandardGrid({ units, participants, values, onCellTap, pips, saveStatus }: StandardGridProps) {
+export function StandardGrid({ units, participants, values, onCellTap, pips, saveStatus, tee }: StandardGridProps) {
   const front = units.filter((u) => u.section === "front");
   const back = units.filter((u) => u.section === "back");
   const hasSections = front.length > 0 && back.length > 0;
@@ -69,7 +75,11 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
   // picker). ±-vs-par is over the holes a player has actually scored.
   const hasPar = units.length > 0 && units.every((u) => u.par != null);
   const hasIndex = units.length > 0 && units.every((u) => u.strokeIndex != null);
+  // Yardage (the configured tee) is informational; show the row when ANY hole
+  // carries a yardage (a tee may miss a hole or two).
+  const hasYards = units.length > 0 && units.some((u) => u.yardage != null);
   const parSum = (list: ScoreUnit[]) => list.reduce((a, u) => a + (u.par ?? 0), 0);
+  const yardSum = (list: ScoreUnit[]) => list.reduce((a, u) => a + (u.yardage ?? 0), 0);
   const vsParOf = (pid: string, list: ScoreUnit[]): number => {
     const scored = list.filter((u) => valOf(pid, u.label) != null);
     return scored.reduce((a, u) => a + (valOf(pid, u.label)! - (u.par ?? 0)), 0);
@@ -116,8 +126,25 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
     background: "var(--color-bt-card)",
   };
 
+  // Compact tee header: "Blue tees · CR 72.3 / Slope 131" (ratings shown only
+  // when present — a manual course carries a tee name but usually no ratings).
+  const teeRatings = tee
+    ? [
+        tee.courseRating != null ? `CR ${tee.courseRating}` : null,
+        tee.slopeRating != null ? `Slope ${tee.slopeRating}` : null,
+      ].filter(Boolean).join(" / ")
+    : "";
+
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
+      {tee && (
+        <div className="flex items-center gap-2" style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)" }}>{tee.name} tees</span>
+          {teeRatings && (
+            <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>· {teeRatings}</span>
+          )}
+        </div>
+      )}
       <div className="relative">
         <div className="no-scrollbar overflow-x-auto">
           <div style={{ minWidth: "max-content" }}>
@@ -148,6 +175,25 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
             {hasSections && <HeaderSub label="In" />}
             <HeaderSub label="Total" wide />
           </div>
+
+          {/* Yards row (configured tee) — informational; sits on base like Index. */}
+          {hasYards && (
+            <div className="flex" style={{ height: 26, background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-base)", padding: "0 10px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
+                  Yards
+                </span>
+              </div>
+              {units.map((u) => (
+                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                  <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.yardage ?? "—"}</span>
+                </div>
+              ))}
+              {hasSections && <ParSub value={yardSum(front)} />}
+              {hasSections && <ParSub value={yardSum(back)} />}
+              <ParSub value={yardSum(units)} wide />
+            </div>
+          )}
 
           {/* Par row — same surface as the Hole header. */}
           {hasPar && (

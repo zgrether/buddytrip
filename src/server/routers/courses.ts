@@ -18,6 +18,11 @@ import { validateStrokeIndex } from "@/lib/courseIndex";
 // The full per-tee record (mig 059). Ratings are optional + nullable —
 // golfcourseapi supplies them; manual entry leaves them out (par + stroke index
 // alone still score). Stored verbatim in courses.tee_sets (jsonb).
+// golfcourseapi.com free tier: 50 requests/day, keyed to 0000 UTC. The counter
+// is provider-scoped so a future second provider gets its own row + cap.
+const GOLF_API_PROVIDER = "golfcourseapi";
+const GOLF_API_DAILY_LIMIT = 50;
+
 const teeSetSchema = z.object({
   name: z.string().trim().min(1).max(60),
   courseRating: z.number().positive().max(99).nullable().optional(),
@@ -96,6 +101,74 @@ export const coursesRouter = router({
       }
       return data;
     }),
+
+  // search — LOCAL typeahead against the global library (name ILIKE). This is
+  // the free, always-on first stage of the two-stage picker: keystroke search
+  // hits THIS, never golfcourseapi, so it's unaffected by the daily API cap.
+  // The explicit "Search the full database" control is the only API path.
+  search: authedProcedure
+    .input(
+      z.object({
+        q: z.string().trim().min(2).max(100),
+        limit: z.number().int().min(1).max(20).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Escape LIKE wildcards in user input so a literal % / _ doesn't widen the
+      // match (defense — course names with these are rare but possible).
+      const term = input.q.replace(/[\\%_]/g, "\\$&");
+      const { data, error } = await ctx.supabase
+        .from("courses")
+        .select("*")
+        .ilike("name", `%${term}%`)
+        .order("created_at", { ascending: false })
+        .limit(input.limit ?? 10);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to search courses: ${error.message}`,
+        });
+      }
+      return data ?? [];
+    }),
+
+  // apiUsage — today's golfcourseapi call count (UTC), for the picker to gate the
+  // "Search the full database" control. Read-only; never increments.
+  apiUsage: authedProcedure.query(async ({ ctx }) => {
+    const today = new Date().toISOString().slice(0, 10); // UTC day (matches the DB key)
+    const { data } = await ctx.supabase
+      .from("api_usage_daily")
+      .select("count")
+      .eq("provider", GOLF_API_PROVIDER)
+      .eq("usage_date", today)
+      .maybeSingle();
+    const count = (data?.count as number | undefined) ?? 0;
+    return { count, limit: GOLF_API_DAILY_LIMIT, atCap: count >= GOLF_API_DAILY_LIMIT };
+  }),
+
+  // recordApiCall — atomic check-and-increment before an actual golfcourseapi
+  // call (search or import). Returns permitted=false (without incrementing) when
+  // already at the daily cap, so the caller must NOT fire the API. The atomicity
+  // (a single DB function) is what makes "check before calling" race-safe.
+  recordApiCall: authedProcedure.mutation(async ({ ctx }) => {
+    const { data, error } = await ctx.supabase.rpc("record_api_call", {
+      p_provider: GOLF_API_PROVIDER,
+      p_limit: GOLF_API_DAILY_LIMIT,
+    });
+    if (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Failed to record API usage: ${error.message}`,
+      });
+    }
+    const newCount = data as number; // new count, or -1 when already at cap
+    const permitted = newCount >= 0;
+    return {
+      permitted,
+      count: permitted ? newCount : GOLF_API_DAILY_LIMIT,
+      atCap: !permitted,
+    };
+  }),
 
   // list — recent courses for the empty-search "Recent courses" list (§2/§5).
   // Global most-recent, not per-circle.

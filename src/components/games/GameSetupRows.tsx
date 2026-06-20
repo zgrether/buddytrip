@@ -69,9 +69,9 @@ export function GameSetupRows({
       {coursePickerOpen && (
         <CoursePicker
           onClose={() => setCoursePickerOpen(false)}
-          onApply={({ id }) => {
+          onApply={({ id, teeName }) => {
             applyCourse.mutate(
-              { tripId, gameId: game.id, courseId: id },
+              { tripId, gameId: game.id, courseId: id, teeSetName: teeName },
               {
                 onSuccess: () => {
                   utils.courses.getById.invalidate({ courseId: id });
