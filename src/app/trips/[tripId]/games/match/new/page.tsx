@@ -876,6 +876,7 @@ export default function NewMatchGamePage() {
           gameName={gameQ.data?.name as string | undefined}
           canEdit={canEdit}
           decidedFor={decidedFor}
+          holeCount={scUnits.length}
           onFinish={handleFinish}
           finishing={finishGame.isPending}
           correcting={correcting}
@@ -1448,6 +1449,7 @@ function Overview({
   gameName,
   canEdit,
   decidedFor,
+  holeCount,
   onFinish,
   finishing,
   correcting,
@@ -1467,6 +1469,9 @@ function Overview({
   gameName?: string;
   canEdit: boolean;
   decidedFor: (g: MatchGroupData) => HoleResult[];
+  /** The round's hole count (from the scorecard schema) — feeds matchState so
+   *  close-out/over derive against 9 vs 18, not a hardcoded 18. */
+  holeCount: number;
   onFinish: () => void;
   finishing: boolean;
   /** #7: posted game re-opened for a correction (editable until re-locked). */
@@ -1483,7 +1488,7 @@ function Overview({
 }) {
   if (!published) return <MemberNotReady gameName={gameName} />;
   const decideds = groups.map(decidedFor);
-  const allOver = groups.length > 0 && decideds.every((d) => matchState(d).over);
+  const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
   const underway = decideds.some((d) => d.length > 0);
   return (
     <div>

@@ -120,7 +120,7 @@ export function MatchEntryView({
   // Per-match derived state (from the SHARED frozen matchState).
   const groups = matches.map((m) => {
     const decided = buildDecided(values[m.a.id] ?? {}, values[m.b.id] ?? {}, m.strokesA, m.strokesB, scIndex, units.length);
-    const st = matchState(decided);
+    const st = matchState(decided, units.length);
     const strokeHolesA = strokeHoles(m.strokesA, scIndex);
     const strokeHolesB = strokeHoles(m.strokesB, scIndex);
     // A hole is "dead" for a decided match once it's past the close-out hole.
@@ -241,7 +241,7 @@ export function MatchEntryView({
           const { m } = g;
           // Board state excludes the in-progress hole (computes on ✓, not on tap).
           const boardDecided = buildDecided(committedGross(m.a.id), committedGross(m.b.id), m.strokesA, m.strokesB, scIndex, units.length);
-          const st = matchState(boardDecided);
+          const st = matchState(boardDecided, units.length);
           const winner = st.leader === "A" ? m.a : st.leader === "B" ? m.b : null;
           const loser = st.leader === "A" ? m.b : st.leader === "B" ? m.a : null;
           return (

@@ -122,7 +122,7 @@ export async function computeMatchPlayResults(
       strokeIndex,
       holeCount
     );
-    const st = matchState(decided);
+    const st = matchState(decided, holeCount);
 
     const result: MatchOutcome["result"] = st.over
       ? st.up === 0

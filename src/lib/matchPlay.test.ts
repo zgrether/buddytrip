@@ -119,3 +119,36 @@ describe("matchState — decided", () => {
     expect(s).toMatchObject({ over: true, closed: false, margin: "AS", up: 0 });
   });
 });
+
+// 9-hole games: every case here computes WRONG under the old hardcoded-18
+// matchState (close-out never fires, a finished match never goes `over`). The
+// hole count comes from the round's scorecard schema, threaded by the caller.
+describe("matchState — 9-hole rounds", () => {
+  it("closed early 3&2 — A +3 at hole 7 of 9 → holesLeft 2 (would stay open under 18)", () => {
+    // 7 decided holes, A reaches +3 on the 7th → holesLeft 9-7=2, up 3 > 2 → closed
+    const decided: HoleResult[] = ["W", "W", "H", "H", "H", "H", "W"];
+    const s = matchState(decided, 9);
+    expect(s).toMatchObject({ closed: true, over: true, margin: "3&2", thru: 7, leader: "A" });
+    // Regression guard: the same holes under 18 are NOT closed (the bug).
+    expect(matchState(decided, 18)).toMatchObject({ closed: false, over: false });
+  });
+
+  it("halved through 9 → AS, and over=true (the bug: never finalized under 18)", () => {
+    const decided: HoleResult[] = ["W", "L", "H", "H", "H", "H", "H", "H", "H"];
+    const s = matchState(decided, 9);
+    expect(s).toMatchObject({ over: true, closed: false, margin: "AS", up: 0, holesLeft: 0, thru: 9 });
+    expect(matchState(decided, 18).over).toBe(false); // would never finalize under 18
+  });
+
+  it("won through 9 → 2 UP", () => {
+    const decided: HoleResult[] = ["W", "L", "W", "H", "H", "H", "H", "H", "W"];
+    const s = matchState(decided, 9);
+    expect(s).toMatchObject({ over: true, closed: false, margin: "2 UP", thru: 9 });
+  });
+
+  it("dormie on 9 — A +2 at hole 7 → holesLeft 2, up 2 → dormie, not over", () => {
+    const decided: HoleResult[] = ["W", "W", "H", "H", "H", "H", "H"];
+    const s = matchState(decided, 9);
+    expect(s).toMatchObject({ thru: 7, up: 2, holesLeft: 2, dormie: true, over: false, closed: false });
+  });
+});

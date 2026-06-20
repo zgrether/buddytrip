@@ -51,7 +51,7 @@ export function MatchCard({
   youId,
   hideFormat,
 }: MatchCardProps) {
-  const st = matchState(results);
+  const st = matchState(results, holeCount);
   const teams = !!(leftColor && rightColor);
   const lc = leftColor || WIN_GREEN; // left emphasis color
   const rc = rightColor || WIN_GREEN; // right emphasis color
