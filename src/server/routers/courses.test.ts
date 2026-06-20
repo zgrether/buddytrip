@@ -71,6 +71,34 @@ describe("courses router — global library", () => {
     expect(schema.units.metadata.handicap_index).toBeUndefined();
   });
 
+  it("persists the FULL per-tee record — ratings + yards (mig 059)", async () => {
+    const course = await ctx.caller().courses.create({
+      name: "Full Tee GC",
+      holeCount: 18,
+      par: PAR,
+      handicapIndex: IDX,
+      source: "golfcourseapi",
+      providerId: "gca-7788",
+      teeSets: [
+        { name: "Blue", courseRating: 72.3, slopeRating: 131, bogeyRating: 95.1, yards: Array(18).fill(410) },
+        { name: "White", courseRating: 70.1, slopeRating: 124, bogeyRating: 92, yards: Array(18).fill(380) },
+      ],
+    });
+    courseIds.push(course.id as string);
+    expect(course.source).toBe("golfcourseapi");
+    expect(course.provider_id).toBe("gca-7788");
+    const tees = course.tee_sets as Array<{
+      name: string;
+      courseRating: number | null;
+      slopeRating: number | null;
+      bogeyRating: number | null;
+      yards: (number | null)[];
+    }>;
+    expect(tees).toHaveLength(2);
+    expect(tees[0]).toMatchObject({ name: "Blue", courseRating: 72.3, slopeRating: 131, bogeyRating: 95.1 });
+    expect(tees[1]).toMatchObject({ name: "White", slopeRating: 124 });
+  });
+
   it("list + getById surface a saved course", async () => {
     const list = await ctx.caller().courses.list({ limit: 50 });
     expect(list.some((c: { id: string }) => c.id === courseIds[0])).toBe(true);

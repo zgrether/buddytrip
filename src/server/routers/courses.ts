@@ -15,8 +15,14 @@ import { validateStrokeIndex } from "@/lib/courseIndex";
  * be saved with a broken index regardless of the caller (§3).
  */
 
+// The full per-tee record (mig 059). Ratings are optional + nullable —
+// golfcourseapi supplies them; manual entry leaves them out (par + stroke index
+// alone still score). Stored verbatim in courses.tee_sets (jsonb).
 const teeSetSchema = z.object({
   name: z.string().trim().min(1).max(60),
+  courseRating: z.number().positive().max(99).nullable().optional(),
+  slopeRating: z.number().int().min(55).max(155).nullable().optional(),
+  bogeyRating: z.number().positive().max(99).nullable().optional(),
   yards: z.array(z.number().int().positive().nullable()).optional(),
 });
 
@@ -32,7 +38,7 @@ export const coursesRouter = router({
         handicapIndex: z.array(z.number().int().min(1)).optional(),
         hasStrokeIndex: z.boolean().optional(),
         teeSets: z.array(teeSetSchema).max(12).optional(),
-        source: z.enum(["manual", "golfapi"]).optional(),
+        source: z.enum(["manual", "golfcourseapi"]).optional(),
         providerId: z.string().max(120).optional(),
       })
     )

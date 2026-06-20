@@ -30,7 +30,16 @@ import { NavArrow, HoleProgress } from "../entryChrome";
  * Per-hole controls are tap-first: par segmented, yards keypad, index grid.
  */
 
-type TeeSet = { name: string; yards: (number | null)[] };
+// Full per-tee record (mig 059): ratings carried from golfcourseapi (null for
+// manual entry, which doesn't collect them). Displaying all tees' ratings on
+// the scorecard is a follow-up (PR 2) — this rev persists the data.
+type TeeSet = {
+  name: string;
+  courseRating?: number | null;
+  slopeRating?: number | null;
+  bogeyRating?: number | null;
+  yards: (number | null)[];
+};
 interface Draft {
   name: string;
   location: string;
@@ -39,7 +48,7 @@ interface Draft {
   index: IndexEntry[];
   hasStrokeIndex: boolean;
   teeSets: TeeSet[];
-  source: "manual" | "golfapi";
+  source: "manual" | "golfcourseapi";
   providerId?: string;
   /** Set when reviewing an existing library course; applied as-is unless edited. */
   existingId?: string;
@@ -177,7 +186,7 @@ export function CoursePicker({
       index: cleanIndex,
       hasStrokeIndex: true,
       teeSets: tees.length ? tees.map((t) => ({ ...t, yards: t.yards.slice(0, holeCount) })) : [blankTee(holeCount, "White")],
-      source: "golfapi",
+      source: "golfcourseapi",
       providerId: detail.externalId,
     });
     setActiveTee(0);
@@ -555,7 +564,7 @@ function ConfirmScreen({
           </div>
         ) : (
           <p className="mt-3" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}>
-            {draft.source === "golfapi"
+            {draft.source === "golfcourseapi"
               ? "No difficulty ranking — this listing's stroke index table was missing or incomplete, so an assigned handicap is used starting on the first hole and continuing on. Tap a hole to fill in the table yourself."
               : "No stroke index table — an assigned handicap is used starting on the first hole and continuing on. Tap a hole to fill one in."}
           </p>
