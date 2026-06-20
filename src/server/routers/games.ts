@@ -6,6 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
+import type { MatchOutcome } from "../lib/matchPlay";
+import type { RackTeamOutcome } from "../lib/rackNStack";
+import type { StrokeStanding } from "@/lib/strokePlay";
 import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema } from "@/lib/courseIndex";
 import { validatePlacement } from "@/lib/gameConfig";
 
@@ -389,16 +392,32 @@ export const gamesRouter = router({
         .select("result_strategy")
         .eq("id", game.game_type_id as string)
         .maybeSingle();
-      const strategy = (template?.result_strategy as string | null) ?? "stroke_total";
+      const strategy = template?.result_strategy as string | null;
 
       // Data-driven branch on the template's result_strategy (CLAUDE.md #8) —
       // new strategies slot in here without touching the rest of finish.
-      const matches = strategy === "match_play" ? await computeMatchPlayResults(ctx.supabase, input.gameId) : [];
-      const teams = strategy === "rack_n_stack" ? await computeRackNStackResults(ctx.supabase, input.gameId) : [];
-      const standings =
-        strategy === "match_play" || strategy === "rack_n_stack"
-          ? []
-          : await computeStrokePlayResults(ctx.supabase, input.gameId);
+      // null (manual): finish has no placements input — caller must use post.
+      // Unregistered string: loud throw; silent stroke-play fallback is gone.
+      let matches: MatchOutcome[] = [];
+      let teams: RackTeamOutcome[] = [];
+      let standings: StrokeStanding[] = [];
+      if (strategy === null) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Manual games cannot be finalized via finish — use post with a placements array.",
+        });
+      } else if (strategy === "match_play") {
+        matches = await computeMatchPlayResults(ctx.supabase, input.gameId);
+      } else if (strategy === "rack_n_stack") {
+        teams = await computeRackNStackResults(ctx.supabase, input.gameId);
+      } else if (strategy === "stroke_total") {
+        standings = await computeStrokePlayResults(ctx.supabase, input.gameId);
+      } else {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Unknown result_strategy '${strategy}' — refusing to compute to avoid silent stroke-play scoring`,
+        });
+      }
 
       // status='complete' + corrections_open=false IS the locked state. Clearing
       // corrections_open here is what makes finalize the proper LOCK and lets a
@@ -682,8 +701,13 @@ export const gamesRouter = router({
         await computeMatchPlayResults(ctx.supabase, input.gameId);
       } else if (strategy === "rack_n_stack") {
         await computeRackNStackResults(ctx.supabase, input.gameId);
-      } else {
+      } else if (strategy === "stroke_total") {
         await computeStrokePlayResults(ctx.supabase, input.gameId);
+      } else {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Unknown result_strategy '${strategy}' — refusing to compute to avoid silent stroke-play scoring`,
+        });
       }
 
       const { error } = await ctx.supabase

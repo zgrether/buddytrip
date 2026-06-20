@@ -104,3 +104,56 @@ describe("games router (Slice A — stroke play)", () => {
     await expect(ctx.callerAs("member").games.finish({ tripId, gameId })).rejects.toThrow();
   });
 });
+
+describe("games router — result_strategy dispatch guard", () => {
+  let ctx: TestContext;
+  let tripId: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Dispatch Guard Trip");
+  });
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
+
+  it("finish — manual game (strategy=null) throws BAD_REQUEST, no stroke-play results written", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_manual", name: "Cornhole" });
+    await expect(ctx.caller().games.finish({ tripId, gameId: game.id })).rejects.toMatchObject({
+      message: expect.stringContaining("Manual games cannot be finalized via finish"),
+    });
+    // Guard must fire before any compute — confirm no game_results rows exist.
+    const { data: results } = await ctx.admin.from("game_results").select("id").eq("game_id", game.id);
+    expect(results).toHaveLength(0);
+  });
+
+  it("finish — unknown result_strategy throws rather than silently scoring as stroke play", async () => {
+    // Temporarily insert a template with an unregistered strategy, use it to
+    // create a game, exercise the guard, then clean up.
+    const FAKE_ID = "gtt_b2_test_unknown";
+    await ctx.admin.from("game_type_templates").insert({
+      id: FAKE_ID,
+      key: "b2_test_unknown",
+      name: "B2 Test Unknown",
+      description: "Temporary template for B2 guard test",
+      result_strategy: "unknown_strategy",
+      entry_schema: "user_holes",
+      supports_free_for_all: true,
+      supports_sides: false,
+      requires_sides: false,
+      sort_order: 999,
+    });
+    try {
+      const game = await ctx.caller().games.create({ tripId, gameTypeId: FAKE_ID, name: "Unknown" });
+      await expect(ctx.caller().games.finish({ tripId, gameId: game.id })).rejects.toMatchObject({
+        message: expect.stringContaining("Unknown result_strategy 'unknown_strategy'"),
+      });
+      // Guard fires before any compute — no results written.
+      const { data: results } = await ctx.admin.from("game_results").select("id").eq("game_id", game.id);
+      expect(results).toHaveLength(0);
+    } finally {
+      await ctx.admin.from("game_type_templates").delete().eq("id", FAKE_ID);
+    }
+  });
+});
