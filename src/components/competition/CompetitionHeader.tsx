@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Pause, Pencil, Radio, Trash2, Trophy, X } from "lucide-react";
+import { useMemo } from "react";
+import { Pause, Radio, Settings, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { ScrollLock } from "@/hooks/useScrollLock";
 import type { CSSProperties } from "react";
 
 // ── Status strip (§2) ───────────────────────────────────────────────────────
@@ -71,13 +70,6 @@ const STATUS_CHIP: Record<
 interface Props {
   competition: Competition;
   tripId: string;
-  canEdit: boolean;
-  isOwner: boolean;
-  /**
-   * Fired after the owner deletes the competition. Lets the host
-   * reset its unlocked flag so the create flow reappears.
-   */
-  onDeleted?: () => void;
   /**
    * Chrome-shrink (§3): post-live the header collapses to a compact bar
    * (smaller glyph, no tagline) so the leaderboard is the hero and doesn't
@@ -93,43 +85,26 @@ interface Props {
   onToggleLive?: () => void;
   /** True while the go-live mutation is in flight (disables the toggle). */
   togglePending?: boolean;
+  /** Open competition Settings (the consolidated details + rosters + delete
+   *  home). Editors only — renders a gear in the header's right cluster. */
+  onSettings?: () => void;
 }
 
 /**
- * CompetitionHeader — title strip + at-a-glance setup progress.
+ * CompetitionHeader — title strip + go-live toggle + at-a-glance status.
  *
- * Tap the pencil (canEdit) to open the edit modal. Owners can also
- * wipe the whole competition via the trash button — clears all teams /
- * events / groups via the schema's CASCADE.
+ * Editing the name/tagline and deleting the competition both moved into the
+ * consolidated Settings page (the gear) — the header is now read-only chrome
+ * plus the go-live switch.
  */
 export function CompetitionHeader({
   competition,
   tripId,
-  canEdit,
-  isOwner,
-  onDeleted,
   compact = false,
   onToggleLive,
   togglePending = false,
+  onSettings,
 }: Props) {
-  const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const utils = trpc.useUtils();
-
-  const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const { data: allGames = [] } = trpc.games.listByTrip.useQuery(
-    { tripId },
-    { enabled: !!competition.id }
-  );
-
-  const teamsCount = (assignments as Array<unknown>).length;
-  const gamesCount = (allGames as Array<{ competition_id: string | null }>).filter(
-    (g) => g.competition_id === competition.id
-  ).length;
-
   // Status strip content (§2). Shares the leaderboard query with the board view
   // (same key → deduped), so it adds no fetch when the board is showing.
   const { data: lb } = trpc.competitions.leaderboard.useQuery(
@@ -140,20 +115,6 @@ export function CompetitionHeader({
     () => buildStatusStrip(lb as unknown as StripLB | undefined),
     [lb]
   );
-
-  const deleteComp = trpc.competitions.delete.useMutation({
-    onSettled: () => {
-      utils.competitions.getByTrip.invalidate({ tripId });
-      // The Live face renders from the faceBootstrap snapshot (boot.competition),
-      // not getByTrip — re-resolve it so the face returns to the empty/intro
-      // state without a hard refresh.
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
-    onSuccess: () => {
-      setConfirming(false);
-      onDeleted?.();
-    },
-  });
 
   // Chrome-shrink (§3): compact glyph + tighter spacing post-live so the
   // board is the hero. The tagline is dropped in compact mode.
@@ -201,35 +162,17 @@ export function CompetitionHeader({
             </p>
           )}
         </div>
-        {canEdit && !editing && (
+        {/* The gear is the single entry to Settings (details · rosters · delete). */}
+        {onSettings && (
           <button
             type="button"
-            onClick={() => setEditing(true)}
-            aria-label="Edit competition"
+            onClick={onSettings}
+            aria-label="Competition settings"
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-text-dim)",
-            }}
-            data-testid="competition-edit-btn"
+            style={{ background: "transparent", color: "var(--color-bt-text-dim)" }}
+            data-testid="competition-settings-btn"
           >
-            <Pencil size={14} />
-          </button>
-        )}
-        {/* Delete only before the competition goes live */}
-        {isOwner && !editing && competition.status === "upcoming" && (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            aria-label="Delete competition"
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-danger)",
-            }}
-            data-testid="competition-delete-btn"
-          >
-            <Trash2 size={14} />
+            <Settings size={15} />
           </button>
         )}
       </div>
@@ -244,308 +187,7 @@ export function CompetitionHeader({
           {statusStrip}
         </p>
       )}
-
-      {editing && (
-        <CompetitionEditModal
-          tripId={tripId}
-          competition={competition}
-          onClose={() => setEditing(false)}
-        />
-      )}
-
-      {confirming && (
-        <DeleteCompetitionConfirmModal
-          competitionName={competition.name}
-          teamsCount={teamsCount}
-          gamesCount={gamesCount}
-          isPending={deleteComp.isPending}
-          onCancel={() => setConfirming(false)}
-          onConfirm={() =>
-            deleteComp.mutate({ tripId, competitionId: competition.id })
-          }
-        />
-      )}
     </div>
-  );
-}
-
-// ── DeleteCompetitionConfirmModal ───────────────────────────────────────────
-
-function DeleteCompetitionConfirmModal({
-  competitionName,
-  teamsCount,
-  gamesCount,
-  isPending,
-  onCancel,
-  onConfirm,
-}: {
-  competitionName: string;
-  teamsCount: number;
-  gamesCount: number;
-  isPending: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  // Tally the cascading damage so the user knows what they're about to lose.
-  // teamsCount uses the assignments-derived count (not raw teams.length) so
-  // the copy stays accurate even when teams have no members yet.
-  const summary = describeCascade(teamsCount, gamesCount);
-
-  return (
-    <ScrollLock>
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onCancel}
-    >
-      <div
-        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
-        style={{
-          background: "var(--color-bt-card-float)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 pt-5 pb-3 text-center sm:text-left">
-          <div
-            className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl sm:mx-0"
-            style={{
-              background: "var(--color-bt-danger-faint)",
-              color: "var(--color-bt-danger)",
-            }}
-          >
-            <Trash2 size={18} />
-          </div>
-          <h3
-            className="mt-3 text-base font-bold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Delete &ldquo;{competitionName}&rdquo;?
-          </h3>
-          <p
-            className="mt-1.5 text-sm leading-relaxed"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            This will delete all teams, events, and groups{summary}. This
-            cannot be undone.
-          </p>
-        </div>
-        <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-text-dim)",
-              border: "0.5px solid var(--color-bt-border)",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isPending}
-            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: "var(--color-bt-danger)" }}
-          >
-            {isPending ? "Deleting…" : "Delete Competition"}
-          </button>
-        </div>
-      </div>
-    </div>
-    </ScrollLock>
-  );
-}
-
-function describeCascade(teamAssignments: number, games: number): string {
-  // " (3 assignments and 2 games)" / " (2 games)" / "" — keeps the
-  // headline copy clean when nothing's been built yet.
-  const parts: string[] = [];
-  if (teamAssignments > 0) {
-    parts.push(`${teamAssignments} assignment${teamAssignments === 1 ? "" : "s"}`);
-  }
-  if (games > 0) {
-    parts.push(`${games} game${games === 1 ? "" : "s"}`);
-  }
-  if (parts.length === 0) return "";
-  return ` (${parts.join(" and ")})`;
-}
-
-// ── Subcomponents ───────────────────────────────────────────────────────────
-
-// ── CompetitionEditModal ────────────────────────────────────────────────────
-
-function CompetitionEditModal({
-  tripId,
-  competition,
-  onClose,
-}: {
-  tripId: string;
-  competition: Competition;
-  onClose: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const [name, setName] = useState(competition.name);
-  const [tagline, setTagline] = useState(competition.tagline ?? "");
-  const [error, setError] = useState<string | null>(null);
-
-  const updateComp = trpc.competitions.update.useMutation({
-    onMutate: async (vars) => {
-      await utils.competitions.getByTrip.cancel({ tripId });
-      const previous = utils.competitions.getByTrip.getData({ tripId });
-      if (previous) {
-        utils.competitions.getByTrip.setData({ tripId }, {
-          ...previous,
-          name: vars.name ?? previous.name,
-          tagline: vars.tagline ?? previous.tagline,
-        });
-      }
-      return { previous };
-    },
-    onError: (e, _vars, ctx) => {
-      if (ctx?.previous) {
-        utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
-      }
-      setError(e.message ?? "Failed to update competition");
-    },
-    onSettled: () => {
-      utils.competitions.getByTrip.invalidate({ tripId });
-      // The face header reads name/tagline from the faceBootstrap snapshot —
-      // re-resolve it so the rename shows without a hard refresh.
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
-    onSuccess: () => onClose(),
-  });
-
-  const trimmedName = name.trim();
-  const disabled = updateComp.isPending || trimmedName.length < 2;
-
-  return (
-    <ScrollLock>
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
-        style={{
-          background: "var(--color-bt-card-float)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-        >
-          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-            Edit Competition
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Form */}
-        <div className="space-y-4 px-5 py-4">
-          <div>
-            <label
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Competition Name <span style={{ color: "var(--color-bt-text-dim)" }}>required</span>
-            </label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. BBMI 2026, The Yert Open"
-              maxLength={200}
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            />
-          </div>
-
-          <div>
-            <label
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Tagline <span className="normal-case font-normal">optional</span>
-            </label>
-            <input
-              value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
-              placeholder="e.g. May the best team win"
-              maxLength={500}
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
-              {error}
-            </p>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div
-          className="flex gap-2 px-5 pb-6 pt-2"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={updateComp.isPending}
-            className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-text-dim)",
-              border: "0.5px solid var(--color-bt-border)",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              updateComp.mutate({
-                tripId,
-                competitionId: competition.id,
-                name: trimmedName,
-                tagline: tagline.trim() || null,
-              })
-            }
-            disabled={disabled}
-            className="flex flex-1 items-center justify-center rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {updateComp.isPending ? "Saving…" : "Save Changes"}
-          </button>
-        </div>
-      </div>
-    </div>
-    </ScrollLock>
   );
 }
 
@@ -612,4 +254,3 @@ function LiveToggleButton({
     </button>
   );
 }
-
