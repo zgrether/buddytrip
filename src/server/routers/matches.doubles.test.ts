@@ -51,6 +51,7 @@ async function enterSides(
   scoreB: Record<number, number>
 ) {
   const caller = ctx.caller();
+  await caller.games.enableScoring({ tripId, gameId }); // Phase 2B.1 universal gate
   for (const [h, v] of Object.entries(scoreA)) {
     await caller.scores.upsertEntry({ tripId, gameId, participantId: pgA, unitLabel: h, value: v, participantType: "play_group" });
   }
@@ -252,6 +253,7 @@ describe("doubles team integrity — same-team pairs + correct attribution", () 
       bHalf[h] = 4;
     }
     const caller = ctx.caller();
+    await caller.games.enableScoring({ tripId, gameId }); // Phase 2B.1 universal gate
     for (const [h, v] of Object.entries({ 1: 4, 2: 4, 3: 4, ...aHalf })) {
       await caller.scores.upsertEntry({ tripId, gameId, participantId: pgA, unitLabel: h, value: v, participantType: "play_group" });
     }

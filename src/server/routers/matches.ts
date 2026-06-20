@@ -599,8 +599,12 @@ export const matchesRouter = router({
       return { ok: true };
     }),
 
-  // activate — Owner/Organizer. Publish pairings to members; round goes active.
-  // Does NOT post to Notes (Slice F).
+  // activate — Owner/Organizer. This is match play's "Enable scoring": publish
+  // pairings to the crew + open the game for scoring (scoring_enabled). Phase
+  // 2B.1 SPLIT it from going Live — it no longer sets status='active'; the FIRST
+  // score owns the flip to Live (#396, uniform across formats). So enabled-ness
+  // lives in scoring_enabled for every format (not pairings_published_at for
+  // match while the boolean covers stroke/rack). Does NOT post to Notes (Slice F).
   activate: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireGameEdit())
@@ -608,12 +612,12 @@ export const matchesRouter = router({
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
       const { error } = await ctx.supabase
         .from("games")
-        .update({ pairings_published_at: new Date().toISOString(), status: "active" })
+        .update({ pairings_published_at: new Date().toISOString(), scoring_enabled: true })
         .eq("id", input.gameId);
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to activate: ${error.message}`,
+          message: `Failed to enable scoring: ${error.message}`,
         });
       }
       await ctx.supabase

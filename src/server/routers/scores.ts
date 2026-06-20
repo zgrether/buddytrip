@@ -37,7 +37,7 @@ export const scoresRouter = router({
       // visible; only entry is closed.
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id, status, corrections_open")
+        .select("id, status, corrections_open, scoring_enabled")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
@@ -48,6 +48,16 @@ export const scoresRouter = router({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "This round is posted — open score correction to edit it.",
+        });
+      }
+      // Phase 2B.1 universal gate: scoring must be ENABLED before entries land,
+      // for every format (match play already gated via publish; stroke/rack gain
+      // the gate they lacked). A posted game re-opened for correction is already
+      // enabled, so corrections still pass. Enable the game first to score it.
+      if (!game.scoring_enabled) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Enable scoring before entering scores.",
         });
       }
 

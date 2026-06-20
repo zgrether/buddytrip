@@ -30,6 +30,9 @@ export interface LBGame {
   /** A course is applied to this game — drives the scorecard chip's button vs
    *  muted-status three-way (course is optional, never an error). */
   hasCourse?: boolean;
+  /** Scoring is enabled (Phase 2B.1) — the real arming signal the format-icon
+   *  color reads (§A4). False until the owner enables; first score → Live. */
+  scoringEnabled?: boolean;
   /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
    *  the match-play total too (whose `distribution` is null pre-decision). */
   pointsTotal?: number | null;

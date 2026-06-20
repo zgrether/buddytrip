@@ -79,14 +79,14 @@ export function lifecycleOf(game: LBGame): LifecycleState {
 }
 
 /**
- * §A4 arm signal: the format-icon shows full color when scoring is enabled,
- * muted while the game is still being set up. There is no `scoring_enabled`
- * field yet (Phase 2's Enable/Disable adds it), so for now arm == "structure is
- * done": muted iff setting-up/configuring, full-color otherwise. Wired to the
- * DERIVED lifecycle, so swapping in the real field later is a one-line change.
+ * §A4 arm signal: the format-icon shows full color once scoring is ENABLED,
+ * muted before. Phase 2B.1 wired this to the real `scoring_enabled` field
+ * (replacing the Phase-3 derived stub `lifecycle !== "setting-up"`), so the two
+ * §A signals finally diverge on a real state: a Ready-but-not-enabled game reads
+ * full name (structure done) + muted icon (not enabled) until the owner enables.
  */
-export function iconArmed(lifecycle: LifecycleState): boolean {
-  return lifecycle !== "setting-up";
+export function iconArmed(game: LBGame): boolean {
+  return game.scoringEnabled === true;
 }
 
 // ── GameRow ────────────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ export function GameRow({
   // §A3 layer table — each visual layer wired to the one derived lifecycle.
   // The format icon shows FULL color only while scoring is enabled AND the game
   // isn't yet a finished record; Final quiets it back down (sheds the arm tell).
-  const armedIcon = iconArmed(lifecycle) && !isFinal;
+  const armedIcon = iconArmed(game) && !isFinal;
   const rowStyle: React.CSSProperties = {
     // The one reserved background is Live (§A2) — the only "act now" fill.
     background: lifecycle === "live" ? "var(--color-bt-accent-faint)" : undefined,

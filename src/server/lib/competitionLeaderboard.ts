@@ -74,7 +74,7 @@ export async function computeCompetitionLeaderboard(
     // show an "Abandoned" column, but only LIVE ones feed the roll-up.
     supabase
       .from("games")
-      .select("id, name, points_distribution, points_total, status, game_type_id, course_id")
+      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true }),
     // Team sizes drive the team-size-derived per_match formats (rack-n-stack):
@@ -259,6 +259,9 @@ export async function computeCompetitionLeaderboard(
         // scorecard chip can be a real button (course set) vs a muted status
         // icon (no course). Course is optional and never an error.
         hasCourse: g.course_id != null,
+        // Scoring enabled (Phase 2B.1) — the real arming signal the format-icon
+        // color reads (§A4), replacing the Phase-3 derived stub.
+        scoringEnabled: g.scoring_enabled === true,
         // Points in play (§A5 outer column). Match-play games carry it here even
         // though `distribution` is null pre-decision; dropped games (not in the
         // roll-up) get null and the row never renders them anyway.
