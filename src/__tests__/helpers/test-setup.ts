@@ -193,13 +193,24 @@ export class TestContext {
   }
 
   /** Create a competition for a trip. */
-  async createCompetition(tripId: string, name = "Test Competition"): Promise<string> {
+  async createCompetition(
+    tripId: string,
+    name = "Test Competition",
+    opts: { scoringModel?: "match_play" | "points" } = {}
+  ): Promise<string> {
     const competitionId = `test-comp-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 6)}`;
     const { error } = await this.admin
       .from("competitions")
-      .insert({ id: competitionId, trip_id: tripId, name });
+      .insert({
+        id: competitionId,
+        trip_id: tripId,
+        name,
+        // Default (omitted) → the DB default 'match_play'. Suites that test the
+        // points/placement award model pass scoringModel:'points' (W-NONGOLF-02).
+        ...(opts.scoringModel ? { scoring_model: opts.scoringModel } : {}),
+      });
     if (error) throw new Error(`Failed to create competition: ${error.message}`);
     this._competitionIds.push(competitionId);
     return competitionId;

@@ -38,7 +38,9 @@ beforeAll(async () => {
   tripId = await ctx.createTrip("D1 Trip");
   await ctx.addTripMember(tripId, "member", "Member"); // a plain trip Member (delegate target)
   memberId = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "D1 Comp");
+  // Placement/manual-adapter roll-up suite — points model (DB default is now
+  // match_play, which would award these manual games winner-take-all).
+  competitionId = await ctx.createCompetition(tripId, "D1 Comp", { scoringModel: "points" });
   teamA = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
   teamB = await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
 });
@@ -92,7 +94,7 @@ describe("manual adapter → universal roll-up (§5)", () => {
 
   it("averaged ties flow through the stack (two teams tie 1st on [9,6] → 7.5 each)", async () => {
     // Fresh competition so totals are isolated.
-    const comp2 = await ctx.createCompetition(tripId, "Tie Comp");
+    const comp2 = await ctx.createCompetition(tripId, "Tie Comp", { scoringModel: "points" });
     const tA = await ctx.createTeam(comp2, "A");
     const tB = await ctx.createTeam(comp2, "B");
     const g = (await ctx.caller().games.create({
@@ -113,7 +115,7 @@ describe("manual adapter → universal roll-up (§5)", () => {
 
 describe("dropping recomputes the win number (§4/§6)", () => {
   it("dropping a game lowers points-available + win number; restoring raises them", async () => {
-    const comp3 = await ctx.createCompetition(tripId, "Drop Comp");
+    const comp3 = await ctx.createCompetition(tripId, "Drop Comp", { scoringModel: "points" });
     await ctx.createTeam(comp3, "A");
     await ctx.createTeam(comp3, "B");
     const g1 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G1", competitionId: comp3, pointsDistribution: DIST_96 })) as { id: string };
