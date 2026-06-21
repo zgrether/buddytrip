@@ -313,7 +313,7 @@ export function ScoreEntryView({
                   paddingLeft: 13,
                 }}
               >
-                <Avatar name={p.name} teamColor={p.color} variant="chip" sizePx={34} />
+                <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={34} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>

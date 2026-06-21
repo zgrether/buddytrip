@@ -90,7 +90,7 @@ export function FinalStandings({
               <div style={{ width: 30, fontSize: first ? 17 : 14, fontWeight: 700, color: `var(--color-bt-place-${place}-text)` }}>
                 {tied ? `T${r.position}` : ordinal(r.position)}
               </div>
-              <Avatar name={p?.name ?? ""} teamColor={p?.color ?? "#888"} variant="chip" sizePx={38} />
+              <Avatar name={p?.name ?? ""} teamColor={p?.color ?? "#888"} avatarIcon={p?.avatarIcon} sizePx={38} />
               <div className="min-w-0 flex-1">
                 <div style={{ fontSize: first ? 16 : 15, fontWeight: first ? 700 : 500, color: "var(--color-bt-text)" }}>
                   {p?.name ?? "Player"}

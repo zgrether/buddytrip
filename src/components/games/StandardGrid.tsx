@@ -241,7 +241,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
             return (
               <div key={p.id} className="flex" style={{ height: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
                 <div className="flex items-center gap-1.5" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
-                  <Avatar name={p.name} teamColor={p.color} variant="chip" sizePx={18} />
+                  <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={18} />
                   <span style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.name}
                   </span>
