@@ -182,9 +182,15 @@ export function transformCourse(courseId: string, raw: RawGolfApiCourse): Course
     .filter(Boolean)
     .join(", ");
 
+  const clubN = raw.club_name?.trim() ?? "";
+  const courseN = raw.course_name?.trim() ?? "";
+
   return {
     externalId: String(raw.id ?? courseId),
-    name: raw.course_name ?? raw.club_name ?? "Unknown course",
+    name:
+      clubN && courseN && clubN.toLowerCase() !== courseN.toLowerCase()
+        ? `${clubN} — ${courseN}`
+        : clubN || courseN || "Unknown course",
     clubName: raw.club_name ?? "",
     location,
     teeBoxes,
