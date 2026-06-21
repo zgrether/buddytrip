@@ -48,7 +48,9 @@ async function enterResults(
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("D2 Leaderboard Trip");
-  competitionId = await ctx.createCompetition(tripId, "D2 Cup");
+  // D2 verifies the points/placement award model — declare it explicitly now
+  // that the DB default is match_play (W-NONGOLF-02).
+  competitionId = await ctx.createCompetition(tripId, "D2 Cup", { scoringModel: "points" });
 });
 
 afterAll(async () => {
@@ -110,7 +112,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
 
   it("clinched: pointsToClinch <= 0 when a team reaches winNumber", async () => {
     // Create a fresh competition for a clean slate
-    const cleanComp = await ctx.createCompetition(tripId, "D2 Clinch Comp");
+    const cleanComp = await ctx.createCompetition(tripId, "D2 Clinch Comp", { scoringModel: "points" });
     const ta = await ctx.createTeam(cleanComp, "Blue2", { shortName: "B2" });
     const tb = await ctx.createTeam(cleanComp, "Red2", { shortName: "R2" });
 
@@ -143,7 +145,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   });
 
   it("retain case: defending team clinches at half (not > half)", async () => {
-    const cleanComp = await ctx.createCompetition(tripId, "D2 Retain Comp");
+    const cleanComp = await ctx.createCompetition(tripId, "D2 Retain Comp", { scoringModel: "points" });
     const defender = await ctx.createTeam(cleanComp, "Defender", { shortName: "DEF" });
     const challenger = await ctx.createTeam(cleanComp, "Challenger", { shortName: "CHL" });
 
@@ -184,7 +186,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
 
 describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
   it("3-team competition: winNumber and pointsToClinch work for all three teams", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 3-Team Comp");
+    const comp = await ctx.createCompetition(tripId, "D2 3-Team Comp", { scoringModel: "points" });
     const t1 = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const t2 = await ctx.createTeam(comp, "Beta", { shortName: "BET" });
     const t3 = await ctx.createTeam(comp, "Gamma", { shortName: "GAM" });
@@ -224,7 +226,7 @@ describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
 
 describe("D2 §6 — dropped game excluded from totals and winNumber", () => {
   it("dropping a game moves the winNumber and removes it from cells", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 Drop Comp");
+    const comp = await ctx.createCompetition(tripId, "D2 Drop Comp", { scoringModel: "points" });
     const ta = await ctx.createTeam(comp, "Blue", { shortName: "BLU" });
     const tb = await ctx.createTeam(comp, "Red", { shortName: "RED" });
 
@@ -264,7 +266,7 @@ describe("D2 §6 — dropped game excluded from totals and winNumber", () => {
 
 describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () => {
   it("manual game with no results contributes to pointsAvailable but has no cells", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 NoEntry Comp");
+    const comp = await ctx.createCompetition(tripId, "D2 NoEntry Comp", { scoringModel: "points" });
     await ctx.createTeam(comp, "X", { shortName: "X" });
     await ctx.createTeam(comp, "Y", { shortName: "Y" });
 
@@ -376,7 +378,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   it("pointsTotal (§A5 outer column) reads the distribution sum when no owner total is set", async () => {
     // The board row's `N PTS` must match what rollUp counts as available, even
     // for a distribution-only placement game (no explicit points_total). 9+6=15.
-    const comp = await ctx.createCompetition(tripId, "D2 Pts Comp");
+    const comp = await ctx.createCompetition(tripId, "D2 Pts Comp", { scoringModel: "points" });
     const t1 = await ctx.createTeam(comp, "A", { shortName: "A" });
     const t2 = await ctx.createTeam(comp, "B", { shortName: "B" });
     expect([t1, t2].length).toBe(2);
@@ -394,7 +396,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   it("reads competitionPlacement.ts — rollUp matches the endpoint's teamTotals", async () => {
     // This test proves the endpoint delegates to the lib (CLAUDE.md #8 — single
     // source of truth). We run the same inputs through rollUp directly and compare.
-    const comp = await ctx.createCompetition(tripId, "D2 Delegation Comp");
+    const comp = await ctx.createCompetition(tripId, "D2 Delegation Comp", { scoringModel: "points" });
     const t1 = await ctx.createTeam(comp, "P", { shortName: "P" });
     const t2 = await ctx.createTeam(comp, "Q", { shortName: "Q" });
 

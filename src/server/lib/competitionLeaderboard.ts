@@ -60,14 +60,14 @@ export async function computeCompetitionLeaderboard(
   // These reads are independent — run them in parallel (one round-trip's worth
   // of latency instead of stacked). `game_results` + the match counts alone
   // depend on the game ids, so they wait below.
-  const [teamsRes, compRes, gameRowsRes, assignmentsRes] = await Promise.all([
+  const [teamsRes, compRes, gameRowsRes, assignmentsRes, templatesRes] = await Promise.all([
     supabase
       .from("teams")
       .select("id, name, short_name, color")
       .eq("competition_id", competitionId),
     supabase
       .from("competitions")
-      .select("defending_team_id")
+      .select("defending_team_id, scoring_model")
       .eq("id", competitionId)
       .maybeSingle(),
     // Games of this competition. We fetch ALL (incl. dropped) so the grid can
@@ -83,10 +83,22 @@ export async function computeCompetitionLeaderboard(
       .from("team_assignments")
       .select("team_id")
       .eq("competition_id", competitionId),
+    // Template → result_strategy map, so we can tell a NON-GOLF MANUAL game
+    // (result_strategy NULL) from a golf game. Only manual games get the
+    // match-play winner-take-all award; golf scoring is never touched.
+    supabase.from("game_type_templates").select("id, result_strategy"),
   ]);
   const teams = teamsRes.data;
   const teamIds = (teams ?? []).map((t) => t.id as string);
   const comp = compRes.data;
+  // Scoring-model axis (independent of team count; default match_play). Branches
+  // ONLY the non-golf result award below — the hero stays on teams.length.
+  const scoringModel = (comp?.scoring_model as string | null) ?? "match_play";
+  const strategyByType = new Map<string, string | null>(
+    (templatesRes.data ?? []).map((t) => [t.id as string, (t.result_strategy as string | null) ?? null])
+  );
+  const isManualType = (typeId: string | null) =>
+    typeId != null && strategyByType.has(typeId) && strategyByType.get(typeId) == null;
   const allGames = gameRowsRes.data ?? [];
   const live = allGames.filter((g) => g.status !== "dropped");
   const sizeByTeam = new Map<string, number>();
@@ -147,6 +159,24 @@ export async function computeCompetitionLeaderboard(
   const liveGames: LiveGame[] = live.map((g) => {
     const rawDist = g.points_distribution as PointsDistribution | null;
     const standings = standingsByGame.get(g.id as string) ?? [];
+
+    // Match-play, non-golf MANUAL game → winner-take-all. The owner-set total all
+    // goes to the winner (position 1); a tie (both at position 1) splits it —
+    // placementPoints averages [P,0] → P/2 each, the same averaged convention a
+    // golf match-play halve uses. Derived from points_total, NOT a configured
+    // split, so the result is win/lose/tie regardless of any distribution values
+    // on the record. Manual games only (result_strategy NULL) — golf untouched.
+    if (scoringModel === "match_play" && isManualType(g.game_type_id as string | null)) {
+      const total = (g.points_total as number | null) ?? 0;
+      return {
+        id: g.id as string,
+        distribution: total > 0 ? [total, 0] : null,
+        numTeams: teamIds.length,
+        standings,
+        direction: "low_wins" as const,
+        pointsTotal: (g.points_total as number | null) ?? undefined,
+      };
+    }
 
     if (isPerMatch(rawDist)) {
       const typeId = g.game_type_id as string | null;

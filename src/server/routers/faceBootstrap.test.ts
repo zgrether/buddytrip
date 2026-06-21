@@ -26,7 +26,7 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "planner", "Organizer"); // → co_admin
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "Bootstrap Cup");
+  competitionId = await ctx.createCompetition(tripId, "Bootstrap Cup", { scoringModel: "points" });
   await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
   await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
   const g = (await ctx.caller().games.create({

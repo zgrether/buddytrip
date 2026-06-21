@@ -1434,10 +1434,14 @@ function FormatSheet({
 interface SchemaUnits { units?: { count?: number } }
 
 export function RunSheet({
-  tripId, competitionId, game, teams, initialOrder, isEngine, onClose, onEditConfig,
+  tripId, competitionId, game, teams, initialOrder, isEngine, matchPlay, onClose, onEditConfig,
 }: {
   tripId: string; competitionId: string; game: GameRow; teams: LBTeamLite[];
-  initialOrder: string[]; isEngine: boolean; onClose: () => void;
+  initialOrder: string[]; isEngine: boolean;
+  /** Match-play competition (W-NONGOLF-02): a non-golf game scores win/lose/tie
+   *  instead of a finishing order. Ignored for engine games + non-2-team comps. */
+  matchPlay?: boolean;
+  onClose: () => void;
   /** When present, a pencil in the header reopens the game's config (GameSheet).
    *  The non-golf board path uses it so config is reachable from the run sheet
    *  (the board row itself has no route — the config-vs-live split is WS4). */
@@ -1448,7 +1452,15 @@ export function RunSheet({
   const correcting = state === "posted" || state === "correcting";
   const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
 
+  // Win/lose/tie scoring: a manual (non-engine) game in a match-play competition
+  // with exactly two sides. The winner takes the game's points; a tie splits them
+  // (the leaderboard derives [total,0] and averages a tie → P/2). Anything else
+  // (engine games, points comps, >2 teams) keeps #430's finishing-order editor.
+  const winLoseTie = !isEngine && !!matchPlay && teams.length === 2;
   const [order, setOrder] = useState<string[]>(initialOrder.length ? initialOrder : teams.map((t) => t.id));
+  // Selected outcome for the win/lose/tie editor: a team id (that side won) or
+  // "tie". Defaults to the leading side from the seeded order — adjust or pick Tie.
+  const [result, setResult] = useState<string>(() => initialOrder[0] ?? teams[0]?.id ?? "");
   const [confirmIncomplete, setConfirmIncomplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1481,6 +1493,14 @@ export function RunSheet({
     try {
       if (isEngine) {
         await post.mutateAsync({ tripId, gameId: game.id });
+      } else if (winLoseTie) {
+        // Winner → position 1, loser → position 2; a tie puts BOTH at position 1
+        // (placementPoints averages → P/2 each). The leaderboard awards [total,0].
+        const placements =
+          result === "tie"
+            ? teams.map((t) => ({ entityId: t.id, position: 1 }))
+            : teams.map((t) => ({ entityId: t.id, position: t.id === result ? 1 : 2 }));
+        await post.mutateAsync({ tripId, gameId: game.id, placements });
       } else {
         await post.mutateAsync({ tripId, gameId: game.id, placements: order.map((id, i) => ({ entityId: id, position: i + 1 })) });
       }
@@ -1553,6 +1573,8 @@ export function RunSheet({
                 unlocking={openCorrection.isPending}
                 scoresOpen={game.corrections_open}
               />
+            ) : winLoseTie ? (
+              <WinLoseTieEditor teams={teams} result={result} onPick={setResult} />
             ) : (
               <ManualPlacementEditor order={order} teams={teams} dist={dist} teamById={teamById} move={move} />
             )}
@@ -1632,6 +1654,69 @@ function ManualPlacementEditor({
       </div>
       <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
         Order the teams by finish — points come from the game&rsquo;s configured distribution, so you set the order, not the points.
+      </p>
+    </div>
+  );
+}
+
+/** Win/lose/tie result for a match-play (head-to-head) non-golf game: ONE
+ *  question, three mutually-exclusive PEERS (each side + Tie). Selection-state
+ *  alone carries the meaning — no per-row "wins" label, no two rows both saying
+ *  win. Posts winner→pos 1, loser→pos 2, tie→both pos 1; the leaderboard awards
+ *  [total,0] (averaged for a tie). */
+function WinLoseTieEditor({
+  teams, result, onPick,
+}: {
+  teams: LBTeamLite[]; result: string; onPick: (r: string) => void;
+}) {
+  // Three peers in one uniform row shape so none reads as primary: each side
+  // (its color disc) and Tie (a split disc of BOTH colors — "shared").
+  const options: { id: string; mark: React.ReactNode; label: string; testid: string }[] = [
+    ...teams.map((t) => ({
+      id: t.id,
+      mark: <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: t.color }} />,
+      label: t.name,
+      testid: `wlt-win-${t.id}`,
+    })),
+    {
+      id: "tie",
+      mark: (
+        <span className="flex h-3 w-3 flex-shrink-0 overflow-hidden rounded-full">
+          <span className="h-full w-1/2" style={{ background: teams[0]?.color ?? "var(--color-bt-text-dim)" }} />
+          <span className="h-full w-1/2" style={{ background: teams[1]?.color ?? "var(--color-bt-text-dim)" }} />
+        </span>
+      ),
+      label: "Tie",
+      testid: "wlt-tie",
+    },
+  ];
+  return (
+    <div>
+      <div className="mb-2">
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Who won?</span>
+      </div>
+      <div role="radiogroup" aria-label="Who won?" className="space-y-1.5">
+        {options.map((o) => {
+          const sel = result === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={sel}
+              onClick={() => onPick(o.id)}
+              data-testid={o.testid}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-3 text-left"
+              style={{ background: sel ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)", border: `1px solid ${sel ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}` }}
+            >
+              {o.mark}
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: sel ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>{o.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Head-to-head: the winner takes the game&rsquo;s points; a tie splits them evenly.
       </p>
     </div>
   );

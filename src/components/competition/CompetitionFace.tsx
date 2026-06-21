@@ -16,6 +16,10 @@ interface Competition {
   /** Roster-setup progression (building → saved → dismissed) — drives the
    *  Team Rosters button + the "moved to Settings" signpost on the board. */
   roster_setup?: "building" | "saved" | "dismissed";
+  /** Scoring-model axis (W-NONGOLF-02), independent of team count. Branches the
+   *  non-golf result editor: match_play → win/lose/tie; points → #430 placement.
+   *  Defaults to match_play when absent (matches the DB default + backfill). */
+  scoring_model?: "match_play" | "points";
 }
 
 /**
@@ -294,6 +298,7 @@ export function CompetitionFace({
           teams={(lb?.teams ?? []) as LBTeamLite[]}
           initialOrder={runningOrder}
           isEngine={!!(gameTypes as GameType[]).find((t) => t.id === running.game_type_id)?.isEngine}
+          matchPlay={(competition.scoring_model ?? "match_play") === "match_play"}
           onClose={() => {
             setRunning(null);
             utils.competitions.faceBootstrap.invalidate({ tripId });

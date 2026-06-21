@@ -39,7 +39,7 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "planner", "Organizer"); // a trip planner (NOT a run-action)
   await ctx.addTripMember(tripId, "member", "Member"); // delegate candidate
   memberId = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "Run Cup");
+  competitionId = await ctx.createCompetition(tripId, "Run Cup", { scoringModel: "points" });
   teamA = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
   teamB = await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
 });
