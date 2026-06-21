@@ -47,11 +47,6 @@ export function strokeHoles(n: number, strokeIndex?: number[], holeCount?: numbe
   return new Set([...Array(Math.min(n, H))].map((_, i) => i + 1));
 }
 
-/** gross − strokes received on that hole. */
-export function netForHole(gross: number, hole: number, n: number, strokeIndex?: number[]): number {
-  return gross - (strokeHoles(n, strokeIndex).has(hole) ? 1 : 0);
-}
-
 /**
  * Build the decided `HoleResult[]` (A's perspective, hole order) from both
  * sides' gross-per-hole maps + each side's handicap strokes. A hole is decided
