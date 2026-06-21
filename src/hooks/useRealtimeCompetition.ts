@@ -14,7 +14,7 @@ import { trpc } from "@/lib/trpc-client";
  * Channel: `competition:{tripId}` — listens to INSERT/UPDATE/DELETE
  * on `competitions` filtered by `trip_id=eq.{tripId}`. On any change,
  * invalidates the `competitions.getByTrip` query so TanStack refetches
- * and re-renders consumers (ScoreboardPanel, CompTab, etc.).
+ * and re-renders consumers (the competition face / leaderboard, etc.).
  */
 export function useRealtimeCompetition(tripId: string | null) {
   const utils = trpc.useUtils();
