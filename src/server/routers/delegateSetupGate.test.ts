@@ -66,9 +66,9 @@ describe("matches setup gate admits the game delegate (§10)", () => {
     await expect(
       member.matches.setPairings({ tripId, gameId: mine, matches: pairings })
     ).resolves.toBeTruthy();
-    // …activate too.
+    // …enableScoring too.
     await expect(
-      member.matches.activate({ tripId, gameId: mine })
+      member.matches.enableScoring({ tripId, gameId: mine })
     ).resolves.toBeTruthy();
 
     // …but NOT another game (game-isolated).

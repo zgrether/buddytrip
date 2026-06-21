@@ -53,7 +53,7 @@ type Screen = "new" | "member-wait" | "setup" | "overview" | "score" | "config";
 
 /**
  * Singles match-play game flow (Slice B). TEMPORARY route — the real Games tab
- * is Slice E. Walks the full lifecycle (create → pairings → handicap → activate
+ * is Slice E. Walks the full lifecycle (create → pairings → handicap → enableScoring
  * → score → finish), role-gated, persisting each step via the `matches` router.
  * Resume an existing game with `?game=<id>`.
  */
@@ -157,7 +157,7 @@ export default function NewMatchGamePage() {
   const setHandicap = trpc.matches.setHandicap.useMutation();
   const setDoublesPairings = trpc.matches.setDoublesPairings.useMutation();
   const setDoublesHandicap = trpc.matches.setDoublesHandicap.useMutation();
-  const activate = trpc.matches.activate.useMutation();
+  const enableScoring = trpc.matches.enableScoring.useMutation();
   // Phase 2B.1: Disable scoring — close to the crew, back to setup, scores kept.
   const disableScoring = trpc.games.disableScoring.useMutation();
   // Dynamic match count (+1 / −1). Each changes the game's configured match
@@ -487,7 +487,7 @@ export default function NewMatchGamePage() {
     void commitReady();
   }
 
-  // Persist the pairings + handicaps, publish (activate), land on the overview.
+  // Persist the pairings + handicaps, publish (enableScoring), land on the overview.
   // Operates on `filledDraft` ONLY — unfilled slots are discarded here (the
   // collapse: setPairings clean-replaces, so the dropped rows are gone and the
   // board recomputes points-in-play / clinch from the filled count). No separate
@@ -514,7 +514,7 @@ export default function NewMatchGamePage() {
         if (!recipient?.id) return [];
         return [setDoublesHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientPlayGroupId: recipient.id, strokes: Math.abs(d.handicap) })];
       });
-      await Promise.all([...handicapWrites, activate.mutateAsync({ tripId, gameId })]);
+      await Promise.all([...handicapWrites, enableScoring.mutateAsync({ tripId, gameId })]);
     } else {
       const saved = await setPairings.mutateAsync({
         tripId,
@@ -531,7 +531,7 @@ export default function NewMatchGamePage() {
         const recipientUserId = d.handicap < 0 ? d.a[0] : d.b[0];
         return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) })];
       });
-      await Promise.all([...handicapWrites, activate.mutateAsync({ tripId, gameId })]);
+      await Promise.all([...handicapWrites, enableScoring.mutateAsync({ tripId, gameId })]);
     }
     // Saving setup changes the configured match count → refresh the board so
     // "first to XX" reflects it on screen.
@@ -610,7 +610,7 @@ export default function NewMatchGamePage() {
   async function handleEnableFromConfig() {
     if (!tripId || !gameId) return;
     try {
-      await activate.mutateAsync({ tripId, gameId });
+      await enableScoring.mutateAsync({ tripId, gameId });
       await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
       if (competitionId) {
         utils.competitions.leaderboard.invalidate({ tripId, competitionId });
@@ -768,7 +768,7 @@ export default function NewMatchGamePage() {
         scoringEnabled={scoringEnabled}
         onEnable={handleEnableFromConfig}
         onDisable={handleDisable}
-        busy={disableScoring.isPending || activate.isPending}
+        busy={disableScoring.isPending || enableScoring.isPending}
       />
     );
   }
@@ -860,7 +860,7 @@ export default function NewMatchGamePage() {
             avatarIconOf={avatarIconOf}
             openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
             onReady={attemptReady}
-            saving={setPairings.isPending || setHandicap.isPending || setDoublesPairings.isPending || setDoublesHandicap.isPending || activate.isPending}
+            saving={setPairings.isPending || setHandicap.isPending || setDoublesPairings.isPending || setDoublesHandicap.isPending || enableScoring.isPending}
           />
         </>
       )}
@@ -943,7 +943,7 @@ export default function NewMatchGamePage() {
           total={draft.length}
           perMatchValue={(gameQ.data?.points_distribution as { value?: number } | null)?.value ?? null}
           inCompetition={!!gameCompId}
-          pending={setPairings.isPending || setDoublesPairings.isPending || activate.isPending}
+          pending={setPairings.isPending || setDoublesPairings.isPending || enableScoring.isPending}
           onConfirm={() => void commitReady()}
           onCancel={() => setConfirmCollapse(false)}
         />

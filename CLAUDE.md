@@ -10,6 +10,30 @@
 
 - Next.js 15 (App Router) · React 18 · TypeScript · Tailwind v4 · tRPC v11 · TanStack Query v5 · Supabase (Postgres + Auth + Realtime) · Zod · Vitest · Playwright · Vercel
 
+## Glossary — ratified nomenclature (one word per concept, every layer)
+
+Consistency is load-bearing: the same concept under two names is how auth/spec
+seams drift. These are the canonical terms — use them in code identifiers, DB
+values, and UI copy alike. (Ratified in `TRACKER.md` §3; this is the home of
+record.) Any rename must declare which layer it touches —
+**display-string** (cosmetic), **code-identifier** (`tsc`+grep catch misses), or
+**DB-value** (an enum/string RLS branches on — `tsc` CANNOT catch a missed RLS
+string; highest risk, needs an atomic migration + auth verification).
+
+**Competition hierarchy (4 levels):** competition leaderboard (cup standings) →
+game scoreboard (one game's state) → game score entry (entering scores) → game
+scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term only
+(`CompetitionFace.tsx` — a competition is a face, not a tab).
+
+| Concept | Canonical | Note / landmine |
+|---------|-----------|-----------------|
+| Unit of play | **game** + **match** (a pairing inside match-play) | "round" means golf's 18 holes ONLY — never a game/match |
+| Scoring-on / visibility | **enableScoring** / **Live** (first score flips it) / reveal = Go-Live | one action, one name (`matches.activate` was the old alias — renamed) |
+| Combatants | **team** (roster) / **side** (slot, may be solo) | preserve the split — a side is a slot, a team is the roster |
+| Rights | **Owner / Organizer / Member** (trip) · **co_admin** (comp) · **delegate** (game) | trip role VALUE is `Organizer` (mig 029, not "Planner"); the one game-scope term is `delegate` |
+| A person | **member** (trip) / **participant** (game) / **guest** (placeholder) | ghost == guest — grep hazard |
+| Container | **competition** (code) / **cup** (UI) | not "Events" |
+
 ## Commit Rules
 
 - Commit after each individual task, not at the end of a phase

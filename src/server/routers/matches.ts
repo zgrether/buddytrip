@@ -599,13 +599,14 @@ export const matchesRouter = router({
       return { ok: true };
     }),
 
-  // activate — Owner/Organizer. This is match play's "Enable scoring": publish
+  // enableScoring — Owner/Organizer. Match play's "Enable scoring": publish
   // pairings to the crew + open the game for scoring (scoring_enabled). Phase
   // 2B.1 SPLIT it from going Live — it no longer sets status='active'; the FIRST
   // score owns the flip to Live (#396, uniform across formats). So enabled-ness
   // lives in scoring_enabled for every format (not pairings_published_at for
   // match while the boolean covers stroke/rack). Does NOT post to Notes (Slice F).
-  activate: authedProcedure
+  // (Was `activate` — renamed in R4 to the single ratified term; see CLAUDE.md glossary.)
+  enableScoring: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
