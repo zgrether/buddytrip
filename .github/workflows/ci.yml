@@ -24,7 +24,9 @@ jobs:
       - run: npm ci --ignore-scripts
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned (not `latest`): `latest` resolves the newest release from a
+          # gateway that intermittently times out and blocks the merge-gating job.
+          version: 2.78.1
       - name: Push migrations to Supabase
         run: supabase db push --db-url "$SUPABASE_DB_URL"
         env:
