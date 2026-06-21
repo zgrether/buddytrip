@@ -1659,46 +1659,61 @@ function ManualPlacementEditor({
   );
 }
 
-/** Win/lose/tie result for a match-play (head-to-head) non-golf game. The winner
- *  takes the game's points; a tie splits them. Posts winner→pos 1, loser→pos 2,
- *  tie→both pos 1 — the leaderboard awards [total,0] (averaged for a tie). */
+/** Win/lose/tie result for a match-play (head-to-head) non-golf game: ONE
+ *  question, three mutually-exclusive PEERS (each side + Tie). Selection-state
+ *  alone carries the meaning — no per-row "wins" label, no two rows both saying
+ *  win. Posts winner→pos 1, loser→pos 2, tie→both pos 1; the leaderboard awards
+ *  [total,0] (averaged for a tie). */
 function WinLoseTieEditor({
   teams, result, onPick,
 }: {
   teams: LBTeamLite[]; result: string; onPick: (r: string) => void;
 }) {
+  // Three peers in one uniform row shape so none reads as primary: each side
+  // (its color disc) and Tie (a split disc of BOTH colors — "shared").
+  const options: { id: string; mark: React.ReactNode; label: string; testid: string }[] = [
+    ...teams.map((t) => ({
+      id: t.id,
+      mark: <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: t.color }} />,
+      label: t.name,
+      testid: `wlt-win-${t.id}`,
+    })),
+    {
+      id: "tie",
+      mark: (
+        <span className="flex h-3 w-3 flex-shrink-0 overflow-hidden rounded-full">
+          <span className="h-full w-1/2" style={{ background: teams[0]?.color ?? "var(--color-bt-text-dim)" }} />
+          <span className="h-full w-1/2" style={{ background: teams[1]?.color ?? "var(--color-bt-text-dim)" }} />
+        </span>
+      ),
+      label: "Tie",
+      testid: "wlt-tie",
+    },
+  ];
   return (
     <div>
       <div className="mb-2">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Result</span>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Who won?</span>
       </div>
-      <div className="space-y-1.5">
-        {teams.map((t) => {
-          const sel = result === t.id;
+      <div role="radiogroup" aria-label="Who won?" className="space-y-1.5">
+        {options.map((o) => {
+          const sel = result === o.id;
           return (
             <button
-              key={t.id}
+              key={o.id}
               type="button"
-              onClick={() => onPick(t.id)}
-              data-testid={`wlt-win-${t.id}`}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-3 text-left"
+              role="radio"
+              aria-checked={sel}
+              onClick={() => onPick(o.id)}
+              data-testid={o.testid}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-3 text-left"
               style={{ background: sel ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)", border: `1px solid ${sel ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}` }}
             >
-              <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: t.color }} />
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{t.name}</span>
-              <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: sel ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>{sel ? "Winner" : "Wins"}</span>
+              {o.mark}
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: sel ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>{o.label}</span>
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={() => onPick("tie")}
-          data-testid="wlt-tie"
-          className="flex w-full items-center justify-center rounded-lg px-2.5 py-3"
-          style={{ background: result === "tie" ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)", border: `1px solid ${result === "tie" ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}` }}
-        >
-          <span className="text-sm font-semibold" style={{ color: result === "tie" ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>Tie — split the points</span>
-        </button>
       </div>
       <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
         Head-to-head: the winner takes the game&rsquo;s points; a tie splits them evenly.
