@@ -125,12 +125,11 @@ export function HandicapRoster({
             const hint = strokeHint(strokes, holeCount, strokeIndex);
             return (
               <div key={p.id} className="flex items-center gap-3 rounded-xl border px-3" style={{ minHeight: 60, padding: "8px 12px", background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
-                <Avatar name={p.name} avatarIcon={p.avatarIcon} sizePx={34} />
+                <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.teamColor} sizePx={34} />
                 <div className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    {p.teamColor && <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.teamColor, flexShrink: 0 }} />}
-                    <span className="truncate" style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
-                  </span>
+                  {/* The avatar carries the team color now (solid disc) — no
+                      separate team dot needed. */}
+                  <span className="truncate block" style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
                   {hint && <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1 }}>{hint}</span>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

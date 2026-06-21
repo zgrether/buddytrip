@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Mail, RotateCcw, Send, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
+import { InvitedAvatar } from "./CrewRoster";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
 import { parseLocalDate } from "@/lib/dates";
@@ -43,30 +44,6 @@ function recipientStatus(m: RecipientMember): "active" | "invited" {
   if (m.role === "Owner") return "active";
   if ((m.email_count ?? 0) === 0) return "invited";
   return m.isGuest ? "invited" : "active";
-}
-
-/**
- * InvitedAvatar — the avatar + amber ✉ corner badge used on the Crew tab,
- * replicated here so the email modal speaks the same visual language. Sized
- * for the modal's "sm" avatars; the badge ring matches the recipient card.
- */
-function InvitedAvatar({ name, avatarIcon }: { name: string; avatarIcon?: string | null }) {
-  return (
-    <div className="relative flex-shrink-0">
-      <Avatar name={name} avatarIcon={avatarIcon ?? null} size="sm" />
-      <span
-        className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
-        style={{
-          background: "var(--color-bt-warning)",
-          color: "var(--color-bt-on-accent)",
-          border: "1.5px solid var(--color-bt-card-raised)",
-        }}
-        aria-label="Invited"
-      >
-        <Mail size={7} strokeWidth={3} />
-      </span>
-    </div>
-  );
 }
 
 export interface CrewEmailPanelProps {
@@ -370,6 +347,8 @@ export function CrewEmailPanel({
                       <InvitedAvatar
                         name={m.displayName}
                         avatarIcon={m.user?.avatar_icon ?? null}
+                        size="sm"
+                        ringColor="var(--color-bt-card-raised)"
                       />
                     ) : (
                       <Avatar

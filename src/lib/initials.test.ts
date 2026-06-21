@@ -1,15 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { initialsFor } from "./Avatar";
+import { initialsFor } from "./initials";
 
 /**
- * Avatar — initials derivation
- *
- * The visual rendering (icon vs initials, default vs team-color) is
- * better covered by Playwright. This file pins the deterministic
- * initials algorithm so renames don't accidentally regress how user
- * names abbreviate in the picker preview row and competition contexts.
+ * The one initials algorithm. Pins the deterministic abbreviation so renames
+ * don't regress how names show in pickers, scorecards, and competition rows.
  */
-
 describe("initialsFor", () => {
   it("uppercases the first letter of a single-word name", () => {
     expect(initialsFor("Llama")).toBe("L");

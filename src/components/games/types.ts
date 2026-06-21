@@ -25,8 +25,6 @@ export interface Participant {
   /** participantId used as the key in ScoreValues (a user_id in Slice A). */
   id: string;
   name: string;
-  /** 1–2 chars for the avatar circle. */
-  initials: string;
   /** Player/team identity color (any CSS color). */
   color: string;
   /** Tabler icon id from the user's profile (optional; falls back to initials). */

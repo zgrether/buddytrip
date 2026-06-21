@@ -12,13 +12,8 @@ import {
   type NewsPost,
   type NewsTeam,
 } from "@/lib/news";
+import { initialsFor as initialsOf } from "@/lib/initials";
 
-/** "Zach Grether" → "ZG"; "Llama" → "L". Server-side twin of Avatar.initialsFor. */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts.map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 2);
-}
 
 // Load the trip's single competition (MVP one-per-trip) — null if none.
 async function getCompetitionId(

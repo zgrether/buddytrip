@@ -88,9 +88,3 @@ export function strokeIndexOf(units: ScoreUnit[]): number[] {
 // Player identity palette (identity colors, not theme tokens — sanctioned like
 // team colors per STYLE_GUIDE §7).
 export const PLAYER_COLORS = ["#2dd4bf", "#60a5fa", "#f59e0b", "#a855f7"];
-
-/** 1–2 char initials from a free-text name (falls back to "?"). */
-export function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-}

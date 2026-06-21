@@ -21,7 +21,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
-import { unitsFromSchema, strokeIndexOf, initialsOf, teeFromSchema } from "@/lib/strokePlayConfig";
+import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
@@ -393,7 +393,7 @@ export default function RackNStackPage() {
     const ps: Participant[] = members.map((p) => {
       const id = p.user_id as string;
       const name = nameOf.get(id) ?? "Player";
-      return { id, name, initials: initialsOf(name), color: colorForUser(id), avatarIcon: avatarOf.get(id) ?? null };
+      return { id, name, color: colorForUser(id), avatarIcon: avatarOf.get(id) ?? null };
     });
     // Stroke pips per player on the COURSE's stroke-index holes. Rack already
     // SCORES net via this index (playerStats) — surfacing the pips so the card
