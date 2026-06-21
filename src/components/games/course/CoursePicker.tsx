@@ -494,6 +494,12 @@ function SearchScreen({
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (!localSearching && localResults.length === 0) onSearchFull();
+            }
+          }}
           placeholder="Search your courses"
           className="w-full bg-transparent py-2.5 text-sm outline-none"
           style={{ color: "var(--color-bt-text)" }}
