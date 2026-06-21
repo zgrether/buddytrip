@@ -51,7 +51,7 @@ function runState(g: GameRow): RunState {
   return "upcoming";
 }
 
-interface LBTeamLite { id: string; name: string; short_name: string; color: string }
+export interface LBTeamLite { id: string; name: string; short_name: string; color: string }
 
 /** Drag payload key for a game id — read by the agenda drop targets. */
 export const DND_GAME_KEY = "application/x-buddytrip-game-id";
@@ -1433,11 +1433,15 @@ function FormatSheet({
 
 interface SchemaUnits { units?: { count?: number } }
 
-function RunSheet({
-  tripId, competitionId, game, teams, initialOrder, isEngine, onClose,
+export function RunSheet({
+  tripId, competitionId, game, teams, initialOrder, isEngine, onClose, onEditConfig,
 }: {
   tripId: string; competitionId: string; game: GameRow; teams: LBTeamLite[];
   initialOrder: string[]; isEngine: boolean; onClose: () => void;
+  /** When present, a pencil in the header reopens the game's config (GameSheet).
+   *  The non-golf board path uses it so config is reachable from the run sheet
+   *  (the board row itself has no route — the config-vs-live split is WS4). */
+  onEditConfig?: () => void;
 }) {
   const utils = trpc.useUtils();
   const state = runState(game);
@@ -1518,9 +1522,16 @@ function RunSheet({
               <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>{correcting ? "Score correction" : "Post results"}</h3>
               <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{game.name || "Game"}</p>
             </div>
-            <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-1">
+              {onEditConfig && (
+                <button type="button" onClick={onEditConfig} aria-label="Edit game settings" data-testid="run-edit-config" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <Pencil size={15} />
+                </button>
+              )}
+              <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
