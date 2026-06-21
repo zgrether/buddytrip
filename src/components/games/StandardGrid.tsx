@@ -258,6 +258,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                   return (
                     <button
                       key={u.label}
+                      data-testid={`score-cell-${p.id}-${u.label}`}
                       onClick={() => onCellTap?.(u.label)}
                       className="relative flex items-center justify-center"
                       style={{

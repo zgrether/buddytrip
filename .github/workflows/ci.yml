@@ -31,4 +31,41 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       - run: npx tsc --noEmit
       - run: npx vitest run
-      # Playwright E2E tests deferred — requires auth redirect fix + global-setup (Issue #29)
+
+  # Critical-path E2E gate (Issue #29 resolved). Runs the ONE merge-blocking
+  # smoke test (auth-setup → stroke game → scores → scorecard) against the same
+  # remote project the vitest job uses. Needs `test` first so migrations are
+  # pushed and unit tests gate before we spend time on the browser run.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [test]
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Cache Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright chromium (+ OS deps)
+        run: npx playwright install --with-deps chromium
+      - name: Build app (served by Playwright's webServer)
+        run: npm run build
+      - name: Run critical-path E2E
+        run: npx playwright test
+      - name: Upload report on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

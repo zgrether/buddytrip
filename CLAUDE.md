@@ -43,11 +43,21 @@ seam, never on a calendar.
 ## Testing Rules
 
 - Every new tRPC router gets a Vitest unit test before the task is considered done
-- Every new database query gets tested against local Supabase (`supabase start`)
-- Every new UI screen gets at least one Playwright E2E test covering the happy path
+- Every new database query gets tested against the test DB the suite uses
+- **Critical-path E2E must stay green in CI (merge-blocking).** The one
+  Playwright smoke test (`e2e/critical-path.spec.ts`: auth → stroke game →
+  scores → scorecard) guards that the assembled spine is reachable — the class
+  of break unit tests miss. New screens get E2E coverage **when they touch the
+  critical path**; broader per-screen coverage is added as specific regressions
+  warrant — not up front. (The old "every screen gets an E2E test" rule was
+  aspirational and unmet; this is what's actually enforced.) E2E auth is a
+  `storageState` login as `test-owner` (`e2e/auth.setup.ts`); tests seed a unique
+  trip and tear it down. The 12 older `e2e/*.spec.ts` are a deferred, mock-based
+  set that no project runs yet.
 - Tests live next to what they test (`trips.test.ts` alongside `trips.ts`)
 - No task is considered complete until its tests pass
-- CI runs Vitest and Playwright on every push via GitHub Actions
+- CI runs Vitest (full) + the critical-path Playwright E2E on every push via
+  GitHub Actions; both are merge-blocking
 
 ## Seed Data Rules
 

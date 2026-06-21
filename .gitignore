@@ -50,3 +50,6 @@ next-env.d.ts
 .test-auth-pool.json
 .test-auth.json
 .claude/scheduled_tasks.lock
+
+# Playwright auth state (session — never commit)
+e2e/.auth/
