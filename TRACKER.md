@@ -32,17 +32,18 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
   prune-at-seam discipline recorded in CLAUDE.md.
 - **The bones-to-body competition redesign** — board row grammar, lifecycle state machine, two-phase config
   hub (all 3 formats), course/handicap conformance, stroke handicaps. Phase 1 fully closed.
+- **R3 (canonical components)** (#422-#425) — ONE `Avatar` primitive + one pure `initials.ts` util, every
+  variation a composing wrapper (the team-color disc is competition identity); plus the evidenced dead-code
+  sweep (scoreboard subtree + `lib/scoring`). Audit-before-delete held throughout.
+- **R4 (glossary)** (#426-#427) — ratified nomenclature into CLAUDE.md (home of record); `matches.activate`
+  -> `enableScoring` (code-identifier); `game_organizers` -> `game_delegates` (table + its 2 policies + the
+  `is_game_delegate` helper + 5 dependent RLS policies, atomic mig 061). Phase-0 re-verify found `round`
+  already clean and `planner`->`organizer` already shipped (mig 029) — **2 of the 4 renames were no-ops.**
 
 ### NEXT — the polish period ("make BBMI FLAWLESS"; this IS the structural-first cleanup)
-- **R2 (docs) — partially done, finish it:** `PROJECT_STATUS.md` deleted; this tracker is the SoR; issue
-  discipline in CLAUDE.md. **Remaining:** confirm CLAUDE.md authority table points here; confirm a root
-  `README.md` exists (audit found none); confirm the base-branch-check rule landed after the wrong-base
-  merge incident.
-- **R3 (canonical components) — NEXT UP:** canonical **Avatar** (audit found it done ~7 ways + 3 initials
-  algorithms — Zach's canary) made the only path; then the dead-code sweep (~13 nominated files, with
-  keep-file traps). Backed by the E2E net.
-- **R4 (glossary):** ratify Section 3 into CLAUDE.md; mechanical rename-and-verify per concept at drift
-  sites (start: `matches.activate`->`enableScoring`, the role triple).
+- **R2 (docs) — nearly done:** `PROJECT_STATUS.md` deleted; this tracker is the SoR; CLAUDE.md authority
+  table points here; the base-branch-check rule landed. **Only remaining gap:** no root `README.md` exists
+  (the audit flagged it) — write one as the polish period wraps.
 - **Navigation system** (R3/R4-adjacent, Circle-compatible): declare the depth vocabulary (route /
   overlay / in-place), audit surfaces for back-button mismatches, define the desktop master-detail mapping
   (desktop != blown-up mobile). Parked until in R3/R4; design-doc first, build after. *Captured here, not
