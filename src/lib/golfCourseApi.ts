@@ -41,10 +41,12 @@ export function normalizeSearch(courses: RawSearchCourse[]): CourseSearchResult[
     // club, with the course appended when it adds information.
     const club = c.club_name?.trim() ?? "";
     const course = c.course_name?.trim() ?? "";
+    const clubLc = club.toLowerCase();
+    const courseLc = course.toLowerCase();
     const name =
-      club && course && club.toLowerCase() !== course.toLowerCase()
+      club && course && clubLc !== courseLc && !courseLc.startsWith(clubLc)
         ? `${club} — ${course}`
-        : club || course || "Unknown course";
+        : course || club || "Unknown course";
     return {
       id: String(c.id ?? ""),
       name,
@@ -184,13 +186,15 @@ export function transformCourse(courseId: string, raw: RawGolfApiCourse): Course
 
   const clubN = raw.club_name?.trim() ?? "";
   const courseN = raw.course_name?.trim() ?? "";
+  const clubNLc = clubN.toLowerCase();
+  const courseNLc = courseN.toLowerCase();
 
   return {
     externalId: String(raw.id ?? courseId),
     name:
-      clubN && courseN && clubN.toLowerCase() !== courseN.toLowerCase()
+      clubN && courseN && clubNLc !== courseNLc && !courseNLc.startsWith(clubNLc)
         ? `${clubN} — ${courseN}`
-        : clubN || courseN || "Unknown course",
+        : courseN || clubN || "Unknown course",
     clubName: raw.club_name ?? "",
     location,
     teeBoxes,
