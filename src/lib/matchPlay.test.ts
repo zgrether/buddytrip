@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { strokeHoles, netForHole, buildDecided, matchState, type HoleResult } from "./matchPlay";
+import { strokeHoles, buildDecided, matchState, type HoleResult } from "./matchPlay";
 
 describe("strokeHoles", () => {
   it("returns nothing for n <= 0", () => {
@@ -33,13 +33,6 @@ describe("strokeHoles", () => {
   it("no-index fallback respects a passed holeCount (won't strike beyond the round)", () => {
     // 12 strokes on a 9-hole round with no index → every hole, capped at 9.
     expect([...strokeHoles(12, undefined, 9)].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  });
-});
-
-describe("netForHole", () => {
-  it("subtracts a stroke only on a hole the player receives one (fallback)", () => {
-    expect(netForHole(5, 1, 1)).toBe(4); // hole 1 gets the stroke
-    expect(netForHole(5, 2, 1)).toBe(5); // hole 2 does not
   });
 });
 
