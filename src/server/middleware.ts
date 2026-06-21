@@ -157,8 +157,8 @@ export function requireCompetitionRole(minRole: CompetitionRole) {
 //
 // The per-game edit gate: passes if the user is a competition owner/co-admin
 // (granted by the container) OR a delegated organizer of THIS game
-// (game_organizers row). Game-isolated — a pick'em delegate cannot touch the
-// scramble. Mirror of the DB rule in migration 045 (is_game_organizer).
+// (game_delegates row). Game-isolated — a pick'em delegate cannot touch the
+// scramble. Mirror of the DB rule (is_game_delegate, migration 045 → renamed 061).
 //
 // Authority is the COMPETITION role, not the trip role — the trip→co-admin
 // mapping lives in resolveCompetitionRole (the container), so this gate stays
@@ -187,7 +187,7 @@ export function requireGameEdit() {
     if (!allowed) {
       // …otherwise a delegated organizer of THIS game (game-isolated).
       const { data } = await (
-        ctx.supabase.from("game_organizers") as unknown as {
+        ctx.supabase.from("game_delegates") as unknown as {
           select: (s: string) => {
             eq: (c: string, v: string) => {
               eq: (c: string, v: string) => {
@@ -240,7 +240,7 @@ export function requireGameRunAction() {
 
     if (!allowed) {
       const { data } = await (
-        ctx.supabase.from("game_organizers") as unknown as {
+        ctx.supabase.from("game_delegates") as unknown as {
           select: (s: string) => {
             eq: (c: string, v: string) => {
               eq: (c: string, v: string) => {

@@ -48,7 +48,7 @@ afterAll(async () => {
   if (gameIds.length) {
     await ctx.admin.from("score_entries").delete().in("game_id", gameIds);
     await ctx.admin.from("game_results").delete().in("game_id", gameIds);
-    await ctx.admin.from("game_organizers").delete().in("game_id", gameIds);
+    await ctx.admin.from("game_delegates").delete().in("game_id", gameIds);
     await ctx.admin.from("games").delete().in("id", gameIds);
   }
   await ctx.cleanup();
