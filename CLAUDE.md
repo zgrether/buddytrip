@@ -16,6 +16,9 @@
 - Every commit needs a clear message describing what changed
 - Create a PR after each phase is complete
 - Never merge a PR with failing tests
+- Verify a PR's base is `main` before merging unless intentionally stacking — a
+  stacked PR merged into its base branch instead of `main` strands its content
+  off `main` (the wrong-base incident that left PR 2's work unshipped)
 
 ## Issue Tracking (GitHub issues + `TRACKER.md`)
 
@@ -76,7 +79,7 @@ seam, never on a calendar.
 
 | Question | Defer to |
 |----------|---------|
-| What's done vs. what's next? | `PROJECT_STATUS.md` |
+| What's done vs. what's next? | `TRACKER.md` |
 | What's deferred and why? | `DEFERRED.md` |
 | Who can do what? | `PERMISSIONS.md` |
 | How should it look? | `STYLE_GUIDE.md` |
@@ -89,7 +92,7 @@ If documents conflict with each other → stop and flag, do not silently resolve
 
 ## Code Conventions
 
-- All decisions about what to build next come from `PROJECT_STATUS.md` (Phase 4 task list)
+- All decisions about what to build next come from `TRACKER.md` (forward-strategy SoR)
 - Supabase queries use the typed client from `src/lib/supabase.ts`
 - Auth guards use the `useTripRole(tripId)` hook
 - Error handling: tRPC procedures throw `TRPCError` with appropriate codes

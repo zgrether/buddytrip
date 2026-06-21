@@ -108,7 +108,7 @@ Do these in order. Steps 1–5 are dashboards/DNS; step 6 is docs only.
 5. **Supabase → Auth → SMTP:** Sender email → `noreply@newdomain.com`
    (the API key/host stay the same).
 6. **Docs (code, this repo):** update the deployment-URL references:
-   `CLAUDE.md`, `PROJECT_STATUS.md`, `design/README.md`, and the example values in
+   `CLAUDE.md`, `TRACKER.md`, `design/README.md`, and the example values in
    `.env.example` (`NEXT_PUBLIC_SITE_URL`, `RESEND_FROM`). **No application code
    changes** — the domain is never hardcoded.
 7. **Test** (use a non-owner address to prove real delivery):
