@@ -39,6 +39,15 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
   -> `enableScoring` (code-identifier); `game_organizers` -> `game_delegates` (table + its 2 policies + the
   `is_game_delegate` helper + 5 dependent RLS policies, atomic mig 061). Phase-0 re-verify found `round`
   already clean and `planner`->`organizer` already shipped (mig 029) — **2 of the 4 renames were no-ops.**
+- **Non-golf game scoring** (#430 + #432) — un-orphaned RunSheet; non-golf board rows tappable; explicit
+  `competitions.scoring_model` field (`match_play` / `points`, mig 062 — team count and scoring model are
+  independent axes); match-play manual games award winner-take-all via `WinLoseTieEditor` (three-way peer
+  framing, selection-state carries meaning); placement games use configured distribution. BBMI's euchre
+  standing corrected on deploy.
+- **Course search + name fix** (#434) — Enter fires deep search when local has no hits (reuses existing
+  throttled/counted path, no per-keystroke calls); `transformCourse` now combines `club_name + course_name`
+  matching `normalizeSearch` logic (fixed "South" stored instead of "Torrey Pines Municipal Golf Course —
+  South"); `startsWith` guard prevents redundant prefix when course name already contains club name.
 
 ### NEXT — the polish period ("make BBMI FLAWLESS"; this IS the structural-first cleanup)
 - **R2 (docs) — nearly done:** `PROJECT_STATUS.md` deleted; this tracker is the SoR; CLAUDE.md authority
