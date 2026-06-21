@@ -567,29 +567,17 @@ function SessionBreakdown({
   onOpenGame?: (gameId: string) => void;
 }) {
   return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="px-4 py-2.5"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+    <div>
+      <p
+        className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
       >
-        <p
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Sessions{" "}
-          <span style={{ color: "var(--color-bt-text)" }}>
-            · {sessionsDone} of {games.length} done
-          </span>
-        </p>
-      </div>
-
-      <div className="divide-y" style={{ "--tw-divide-color": "var(--color-bt-border)" } as React.CSSProperties}>
+        Sessions{" "}
+        <span style={{ color: "var(--color-bt-text)" }}>
+          · {sessionsDone} of {games.length} done
+        </span>
+      </p>
+      <div className="flex flex-col gap-2">
         {games.map((game) => (
           <GameRow
             key={game.id}
@@ -678,25 +666,14 @@ function EarlyState({
 
       {/* Schedule */}
       {liveGames.length > 0 && (
-        <div
-          className="overflow-hidden rounded-xl"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <div
-            className="px-4 py-2.5"
-            style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+        <div>
+          <p
+            className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
-            <p
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              The Schedule
-            </p>
-          </div>
-          <div className="divide-y" style={{ "--tw-divide-color": "var(--color-bt-border)" } as React.CSSProperties}>
+            The Schedule
+          </p>
+          <div className="flex flex-col gap-2">
             {liveGames.map((game) => (
               <GameRow
                 key={game.id}
