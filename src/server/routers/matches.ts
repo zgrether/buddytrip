@@ -9,7 +9,7 @@ import { computeMatchPlayResults } from "../lib/matchPlay";
  *
  * Setup writes (pairings, handicap, reorder, activate) are gated by
  * `requireGameEdit()` — trip Owner/Organizer OR a delegated organizer of THIS
- * game (game_organizers / migration 045). This extends the per-game delegate
+ * game (game_delegates / migration 045 → 061). This extends the per-game delegate
  * path (originally landed for games / game_results) to the match-setup router so
  * a game's delegate can actually run it (§10), game-isolated: a delegate of one
  * game can't touch another. Score entry reuses Slice A's `scores.upsertEntry`

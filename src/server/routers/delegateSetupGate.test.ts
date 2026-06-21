@@ -4,7 +4,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 /**
  * Per-game delegate gate, extended to the SETUP routers (§10).
  *
- * Migration 045 landed the delegate path (game_organizers / requireGameEdit) on
+ * Migration 045 landed the delegate path (game_delegates / requireGameEdit) on
  * games + game_results, but the setup mutations — matches (pairings / handicap /
  * activate) and playGroups (foursomes / strokes) — were still gated
  * requireTripRole("Organizer"). Stage 4 extends requireGameEdit() to them so a
@@ -44,7 +44,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const id of gameIds) {
-    await ctx.admin.from("game_organizers").delete().eq("game_id", id);
+    await ctx.admin.from("game_delegates").delete().eq("game_id", id);
     await ctx.admin.from("game_participants").delete().eq("game_id", id);
     await ctx.admin.from("game_matches").delete().eq("game_id", id);
     await ctx.admin.from("play_groups").delete().eq("game_id", id);

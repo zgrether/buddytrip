@@ -46,7 +46,7 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const id of gameIds) {
     await ctx.admin.from("game_results").delete().eq("game_id", id);
-    await ctx.admin.from("game_organizers").delete().eq("game_id", id);
+    await ctx.admin.from("game_delegates").delete().eq("game_id", id);
     await ctx.admin.from("games").delete().eq("id", id);
   }
   await ctx.cleanup();

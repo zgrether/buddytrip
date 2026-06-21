@@ -133,7 +133,7 @@ export const competitionsRouter = router({
             .order("created_at", { ascending: false })
             .then((r) => r.data ?? []),
           ctx.supabase
-            .from("game_organizers")
+            .from("game_delegates")
             .select("game_id")
             .eq("user_id", ctx.user!.id)
             .then((r) => (r.data ?? []).map((x) => x.game_id as string)),

@@ -40,7 +40,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await ctx.admin.from("game_organizers").delete().eq("game_id", gameId);
+  await ctx.admin.from("game_delegates").delete().eq("game_id", gameId);
   await ctx.admin.from("game_results").delete().eq("game_id", gameId);
   await ctx.admin.from("games").delete().eq("id", gameId);
   await ctx.cleanup();

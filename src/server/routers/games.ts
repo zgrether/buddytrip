@@ -558,7 +558,7 @@ export const gamesRouter = router({
   // setPointsTotal — Owner/Organizer ONLY (the delegation boundary, Stage 3).
   // A game's TOTAL is owner-set; a game-delegate distributes WITHIN it but can't
   // change it. requireTripRole("Organizer") blocks a Member-level delegate
-  // outright (a delegate has only a game_organizers grant, not Organizer role).
+  // outright (a delegate has only a game_delegates grant, not Organizer role).
   // NULL clears the total (match games, whose total is derived).
   setPointsTotal: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string(), total: z.number().min(0).nullable() }))
@@ -781,7 +781,7 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const { error } = await ctx.supabase
-        .from("game_organizers")
+        .from("game_delegates")
         .upsert(
           { game_id: input.gameId, user_id: input.userId, granted_by: ctx.user!.id },
           { onConflict: "game_id,user_id", ignoreDuplicates: true }
@@ -796,7 +796,7 @@ export const gamesRouter = router({
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
-        .from("game_organizers")
+        .from("game_delegates")
         .delete()
         .eq("game_id", input.gameId)
         .eq("user_id", input.userId);
@@ -810,7 +810,7 @@ export const gamesRouter = router({
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
       const { data } = await ctx.supabase
-        .from("game_organizers")
+        .from("game_delegates")
         .select("user_id, granted_by, created_at")
         .eq("game_id", input.gameId);
       return data ?? [];
@@ -826,7 +826,7 @@ export const gamesRouter = router({
     .use(requireTripMember)
     .query(async ({ ctx }) => {
       const { data } = await ctx.supabase
-        .from("game_organizers")
+        .from("game_delegates")
         .select("game_id")
         .eq("user_id", ctx.user!.id);
       return (data ?? []).map((r) => r.game_id as string);
