@@ -1,6 +1,8 @@
 "use client";
 
+import { Mail } from "lucide-react";
 import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
+import { initialsFor } from "@/lib/initials";
 
 /**
  * Avatar — renders a user's chosen Tabler icon (if `avatarIcon` is set)
@@ -72,17 +74,6 @@ const SM_RESPONSIVE_CLASSES =
   "h-[30px] w-[30px] md:h-[34px] md:w-[34px] " +
   "[&_svg]:h-[20px] [&_svg]:w-[20px] md:[&_svg]:h-[22px] md:[&_svg]:w-[22px] " +
   "[&_span]:text-[11px] md:[&_span]:text-[12px]";
-
-/** "Zach Grether" → "ZG"; "Llama" → "L"; "" → "?" */
-export function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts
-    .map((w) => w[0] ?? "")
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
 
 export function Avatar({
   name,
@@ -167,4 +158,48 @@ export function Avatar({
       )}
     </div>
   );
+}
+
+// ── Named wrappers that COMPOSE the primitive (never a fresh implementation) ──
+// These live with Avatar so identity rendering has one known home.
+
+/**
+ * InvitedAvatar — Avatar + the amber ✉ corner badge for a pending (invited)
+ * member. `size` and `ringColor` (the badge's cutout ring, matched to the
+ * surface behind it) are the only things callers vary.
+ */
+export function InvitedAvatar({
+  name,
+  avatarIcon,
+  size = "md",
+  ringColor = "var(--color-bt-card)",
+}: {
+  name: string;
+  avatarIcon?: string | null;
+  size?: "sm" | "md";
+  ringColor?: string;
+}) {
+  return (
+    <span className="relative inline-flex flex-shrink-0">
+      <Avatar name={name} avatarIcon={avatarIcon ?? null} size={size} />
+      <span
+        className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
+        style={{
+          // Amber (--color-bt-warning) reads as "needs your attention", which is
+          // what Pending means (Task 61 tried planning-blue, Task 62 reverted).
+          background: "var(--color-bt-warning)",
+          color: "var(--color-bt-on-accent)",
+          border: `1.5px solid ${ringColor}`,
+        }}
+        aria-label="Invited"
+      >
+        <Mail size={7} strokeWidth={3} />
+      </span>
+    </span>
+  );
+}
+
+/** PlaceholderAvatar — a muted (grey) Avatar IS the placeholder treatment. */
+export function PlaceholderAvatar({ name }: { name: string }) {
+  return <Avatar name={name} muted sizePx={32} />;
 }

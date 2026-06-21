@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, Check, Mail, Shield, Users, X, type LucideIcon } from "lucide-react";
+import { Calendar, Check, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
-import { Avatar } from "@/components/Avatar";
+import { Avatar, InvitedAvatar } from "@/components/Avatar";
 import {
   useEmailValidation,
   validationBorder,
@@ -403,40 +403,16 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               const accountName = member.user?.name ?? member.displayName;
               const accountIcon = member.user?.avatar_icon ?? null;
               if (status === "placeholder") {
-                return (
-                  <span
-                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      border: "1px solid var(--color-bt-border)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    {(accountName || "?")
-                      .split(/\s+/)
-                      .map((w) => w[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </span>
-                );
+                return <Avatar name={accountName} muted size="md" />;
               }
               if (status === "invited") {
+                // Badge ring matches the editor's float surface.
                 return (
-                  <span className="relative h-9 w-9 flex-shrink-0">
-                    <Avatar name={accountName} avatarIcon={accountIcon} size="md" />
-                    <span
-                      className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
-                      style={{
-                        background: "var(--color-bt-warning)",
-                        color: "var(--color-bt-on-accent)",
-                        border: "1.5px solid var(--color-bt-card-float)",
-                      }}
-                      aria-label="Invited"
-                    >
-                      <Mail size={8} strokeWidth={3} />
-                    </span>
-                  </span>
+                  <InvitedAvatar
+                    name={accountName}
+                    avatarIcon={accountIcon}
+                    ringColor="var(--color-bt-card-float)"
+                  />
                 );
               }
               return <Avatar name={accountName} avatarIcon={accountIcon} size="md" />;

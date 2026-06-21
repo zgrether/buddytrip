@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Mail, Plus } from "lucide-react";
-import { Avatar } from "@/components/Avatar";
+import { Calendar, Plus } from "lucide-react";
+import { Avatar, InvitedAvatar, PlaceholderAvatar } from "@/components/Avatar";
 import { parseLocalDate } from "@/lib/dates";
 import {
   TravelEditor,
@@ -109,56 +109,10 @@ export function RolePill({ role }: { role: string }) {
   return null;
 }
 
-// ── PlaceholderAvatar — neutral square instead of the old Ghost icon ──────
-
-export function PlaceholderAvatar({ name }: { name: string }) {
-  const initials =
-    name
-      .split(/\s+/)
-      .map((w) => w[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "?";
-  return (
-    <div
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-        color: "var(--color-bt-text-dim)",
-      }}
-      aria-label="Placeholder crew member"
-    >
-      {initials}
-    </div>
-  );
-}
-
-// ── InvitedAvatar — team-color circle + amber ✉ corner badge ──────────────
-
-export function InvitedAvatar({ name, avatarIcon }: { name: string; avatarIcon?: string | null }) {
-  return (
-    <div className="relative h-8 w-8 flex-shrink-0">
-      <Avatar name={name} avatarIcon={avatarIcon ?? null} size="md" />
-      <span
-        className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
-        style={{
-          // Pending status uses --color-bt-warning (amber). Task 61
-          // briefly tried planning-blue for "softer" treatment but the
-          // blue washed out against everything else; Task 62 reverted —
-          // amber stands out and reads as "needs your attention" which
-          // matches what the Pending state actually means.
-          background: "var(--color-bt-warning)",
-          color: "var(--color-bt-on-accent)",
-          border: "1.5px solid var(--color-bt-card)",
-        }}
-        aria-label="Invited"
-      >
-        <Mail size={7} strokeWidth={3} />
-      </span>
-    </div>
-  );
-}
+// InvitedAvatar + PlaceholderAvatar now live with the Avatar primitive
+// (@/components/Avatar); re-exported so existing `./CrewRoster` importers
+// (CrewTab, CrewEmailPanel) keep working without touching them.
+export { InvitedAvatar, PlaceholderAvatar };
 
 // ── CrewRow ───────────────────────────────────────────────────────────────
 //
