@@ -159,16 +159,17 @@ export function GameRow({
   // The format icon shows FULL color only while scoring is enabled AND the game
   // isn't yet a finished record; Final quiets it back down (sheds the arm tell).
   const armedIcon = iconArmed(game) && !isFinal;
+  // Panel surface — each game is its own standalone card (not a row inside a
+  // shared panel). Setting-up gets a dashed left edge as its "not built yet"
+  // tell; it lives on the panel border so the inner content never shifts.
+  const panelStyle: React.CSSProperties = {
+    background: "var(--color-bt-card)",
+    border: "1px solid var(--color-bt-border)",
+    ...(lifecycle === "setting-up" ? { borderLeft: "2px dashed var(--color-bt-border)" } : {}),
+  };
   const rowStyle: React.CSSProperties = {
     // The one reserved background is Live (§A2) — the only "act now" fill.
     background: lifecycle === "live" ? "var(--color-bt-accent-faint)" : undefined,
-    // Setting-up gets the only special outline: a dashed left edge that reads
-    // "not built yet." Every other state reserves the same 2px transparent so
-    // the name never shifts as the outline appears/disappears.
-    borderLeft:
-      lifecycle === "setting-up"
-        ? "2px dashed var(--color-bt-border)"
-        : "2px solid transparent",
     // Final is a quiet record — recess the whole tile (§A3 "recessed").
     opacity: isFinal ? 0.72 : 1,
   };
@@ -253,7 +254,8 @@ export function GameRow({
     return (
       <Link
         href={href}
-        className="block hover:opacity-80 transition-opacity"
+        className="block rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
+        style={panelStyle}
         onPointerEnter={() => onPrefetch(game.id)}
         onPointerDown={() => onPrefetch(game.id)}
       >
@@ -269,14 +271,15 @@ export function GameRow({
       <button
         type="button"
         onClick={() => onOpenGame(game.id)}
-        className="block w-full text-left hover:opacity-80 transition-opacity"
+        className="block w-full text-left rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
+        style={panelStyle}
         data-testid={`game-open-${game.id}`}
       >
         {inner}
       </button>
     );
   }
-  return <div>{inner}</div>;
+  return <div className="rounded-xl overflow-hidden" style={panelStyle}>{inner}</div>;
 }
 
 /** §A5 outer column: `—` when nothing's in play, `N PTS` while unresolved, the
