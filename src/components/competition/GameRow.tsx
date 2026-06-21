@@ -117,6 +117,7 @@ export function GameRow({
   tripId,
   mine,
   onPrefetch,
+  onOpenGame,
 }: {
   game: LBGame;
   teams: LBTeam[];
@@ -124,6 +125,10 @@ export function GameRow({
   tripId: string;
   mine: boolean;
   onPrefetch: (gameId: string) => void;
+  /** Non-golf games have no game-board route; when the viewer can act on them
+   *  (editors only), the row opens the manual run sheet in place instead of
+   *  navigating. Omitted → the row stays inert (crew, or no manual path). */
+  onOpenGame?: (gameId: string) => void;
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
@@ -254,6 +259,21 @@ export function GameRow({
       >
         {inner}
       </Link>
+    );
+  }
+  // Non-golf game (no route): an editor taps to open the manual run sheet in
+  // place — the same tap feel as a golf row, no navigation. Without onOpenGame
+  // (crew) the row stays a plain, inert tile.
+  if (onOpenGame) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenGame(game.id)}
+        className="block w-full text-left hover:opacity-80 transition-opacity"
+        data-testid={`game-open-${game.id}`}
+      >
+        {inner}
+      </button>
     );
   }
   return <div>{inner}</div>;

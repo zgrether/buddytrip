@@ -67,9 +67,12 @@ interface Props {
   onAddGame?: () => void;
   /** Tap a team name on the hero → its in-place editor (routed by the face). */
   onEditTeam?: () => void;
+  /** Tap a non-golf game row (no route) → open its manual run sheet (routed by
+   *  the face). Editors only; omitted for crew. */
+  onOpenGame?: (gameId: string) => void;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false, onAddGame, onEditTeam }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false, onAddGame, onEditTeam, onOpenGame }: Props) {
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     {
@@ -165,6 +168,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
         onPrefetch={prefetchGame}
         canEdit={canEdit}
         onAddGame={onAddGame}
+        onOpenGame={onOpenGame}
       />
     );
   }
@@ -244,6 +248,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
         onPrefetch={prefetchGame}
         canEdit={canEdit}
         onAddGame={onAddGame}
+        onOpenGame={onOpenGame}
       />
     </div>
   );
@@ -254,7 +259,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, teams, cellsByGame, sessionsDone, tripId, mineSet, onPrefetch, canEdit, onAddGame,
+  games, teams, cellsByGame, sessionsDone, tripId, mineSet, onPrefetch, canEdit, onAddGame, onOpenGame,
 }: {
   games: LBGame[];
   teams: LBTeam[];
@@ -265,6 +270,7 @@ function GamesSection({
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   onAddGame?: () => void;
+  onOpenGame?: (gameId: string) => void;
 }) {
   const addBtn = canEdit && onAddGame && (
     <button
@@ -309,6 +315,7 @@ function GamesSection({
         tripId={tripId}
         mineSet={mineSet}
         onPrefetch={onPrefetch}
+        onOpenGame={onOpenGame}
       />
       {addBtn}
     </div>
@@ -548,6 +555,7 @@ function SessionBreakdown({
   tripId,
   mineSet,
   onPrefetch,
+  onOpenGame,
 }: {
   games: LBGame[];
   teams: LBTeam[];
@@ -556,6 +564,7 @@ function SessionBreakdown({
   tripId: string;
   mineSet: Set<string>;
   onPrefetch: (gameId: string) => void;
+  onOpenGame?: (gameId: string) => void;
 }) {
   return (
     <div
@@ -590,6 +599,7 @@ function SessionBreakdown({
             tripId={tripId}
             mine={mineSet.has(game.id)}
             onPrefetch={onPrefetch}
+            onOpenGame={onOpenGame}
           />
         ))}
       </div>
@@ -608,6 +618,7 @@ function EarlyState({
   onPrefetch,
   canEdit,
   onAddGame,
+  onOpenGame,
 }: {
   teams: LBTeam[];
   liveGames: LBGame[];
@@ -617,6 +628,7 @@ function EarlyState({
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   onAddGame?: () => void;
+  onOpenGame?: (gameId: string) => void;
 }) {
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
@@ -694,6 +706,7 @@ function EarlyState({
                 tripId={tripId}
                 mine={mineSet.has(game.id)}
                 onPrefetch={onPrefetch}
+                onOpenGame={onOpenGame}
               />
             ))}
           </div>
