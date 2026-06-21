@@ -1,6 +1,7 @@
 "use client";
 
 import { Trophy } from "lucide-react";
+import { Avatar } from "@/components/Avatar";
 import type { Participant } from "./types";
 
 /**
@@ -89,12 +90,7 @@ export function FinalStandings({
               <div style={{ width: 30, fontSize: first ? 17 : 14, fontWeight: 700, color: `var(--color-bt-place-${place}-text)` }}>
                 {tied ? `T${r.position}` : ordinal(r.position)}
               </div>
-              <span
-                className="flex items-center justify-center"
-                style={{ width: 38, height: 38, borderRadius: "50%", background: `${p?.color ?? "#888"}22`, border: `1.5px solid ${p?.color ?? "#888"}55`, color: p?.color ?? "#888", fontSize: 14, fontWeight: 700, flexShrink: 0 }}
-              >
-                {p?.initials ?? "?"}
-              </span>
+              <Avatar name={p?.name ?? ""} teamColor={p?.color ?? "#888"} variant="chip" sizePx={38} />
               <div className="min-w-0 flex-1">
                 <div style={{ fontSize: first ? 16 : 15, fontWeight: first ? 700 : 500, color: "var(--color-bt-text)" }}>
                   {p?.name ?? "Player"}

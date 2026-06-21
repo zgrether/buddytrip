@@ -15,7 +15,7 @@ import { HandicapRoster, type HandicapPlayer } from "@/components/games/Handicap
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -89,7 +89,7 @@ export default function NewGamePage() {
   const toParticipants = (userIds: string[]): Participant[] =>
     userIds.map((uid, i) => {
       const name = memberById.get(uid)?.name ?? "Player";
-      return { id: uid, name, initials: initialsOf(name), color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
+      return { id: uid, name, color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
     });
 
   // The roster already saved on the resumed game (empty until players are added).
@@ -105,7 +105,7 @@ export default function NewGamePage() {
     if (urlGameId && resumeRoster.length > 0) {
       const participants = resumeRoster.map((uid, i) => {
         const name = memberById.get(uid)?.name ?? "Player";
-        return { id: uid, name, initials: initialsOf(name), color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
+        return { id: uid, name, color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
       });
       return { id: urlGameId, participants };
     }

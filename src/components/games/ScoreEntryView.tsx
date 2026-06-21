@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronLeft, Grid3x3, Settings } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
+import { Avatar } from "@/components/Avatar";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { GolfChip } from "./GolfChip";
@@ -312,22 +313,7 @@ export function ScoreEntryView({
                   paddingLeft: 13,
                 }}
               >
-                <span
-                  className="flex items-center justify-center"
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    background: `${p.color}22`,
-                    border: `1.5px solid ${p.color}55`,
-                    color: p.color,
-                    fontSize: 15,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  {p.initials}
-                </span>
+                <Avatar name={p.name} teamColor={p.color} variant="chip" sizePx={34} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>

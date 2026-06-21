@@ -20,7 +20,7 @@ import { GameConfigurationView } from "@/components/games/GameConfigurationView"
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
-import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
@@ -322,7 +322,6 @@ export default function NewMatchGamePage() {
     return {
       id,
       name,
-      initials: initialsOf(name),
       color: sideColor(id) ?? fallbackColor ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(id) ?? null,
     };
@@ -339,7 +338,6 @@ export default function NewMatchGamePage() {
     return {
       id: sideId,
       name,
-      initials: initialsOf(name),
       color: sideColor(sideId) ?? PLAYER_COLORS[0],
       avatarIcon: members[0] ? (avatarIconOf.get(members[0]) ?? null) : null,
     };
@@ -1257,7 +1255,6 @@ function MatchSetup({
     return {
       id: userId,
       name,
-      initials: initialsOf(name),
       color: colorOf.get(userId) ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(userId) ?? null,
     };
@@ -1269,7 +1266,6 @@ function MatchSetup({
     return {
       id: members.join("+"),
       name,
-      initials: initialsOf(name),
       color: colorOf.get(members[0]) ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(members[0]) ?? null,
     };

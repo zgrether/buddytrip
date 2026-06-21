@@ -48,6 +48,14 @@ interface AvatarProps {
    * Ignored in competition mode (teamColor wins).
    */
   accent?: boolean;
+  /**
+   * "chip" — the scorecard/leaderboard identity chip: the player's initials in
+   * their identity `teamColor` as a faint-fill circle (bg `color22`, fg `color`,
+   * weight 700), instead of the solid white-on-color competition treatment. A
+   * hairline `color55` border appears only on larger chips (the tiny 18px grid
+   * chip stays borderless, as it always was). Requires `teamColor`.
+   */
+  variant?: "chip";
   className?: string;
 }
 
@@ -83,6 +91,7 @@ export function Avatar({
   sizePx,
   muted = false,
   accent = false,
+  variant,
   className,
 }: AvatarProps) {
   // An explicit sizePx wins over the named preset and disables the
@@ -99,24 +108,36 @@ export function Avatar({
     : SIZE_MAP[size];
   const isResponsive = size === "sm" && fixedPx === null;
 
+  // Chip ("faint fill") → identity-color initials on a faint identity-color
+  //   circle; a hairline border only on larger chips (tiny grid chip stays bare).
   // Competition context (team color set) → white foreground on team-color bg.
   // Accent ("filled") → dark foreground on a solid teal circle.
   // Default → teal (or muted grey) foreground on a neutral raised surface.
-  const competitionMode = !!teamColor;
-  const background = competitionMode
+  const isChip = variant === "chip" && !!teamColor;
+  const competitionMode = !isChip && !!teamColor;
+  const background = isChip
+    ? `${teamColor}22`
+    : competitionMode
+      ? (teamColor as string)
+      : accent
+        ? "var(--color-bt-accent)"
+        : "var(--color-bt-card-raised)";
+  const foreground = isChip
     ? (teamColor as string)
-    : accent
-      ? "var(--color-bt-accent)"
-      : "var(--color-bt-card-raised)";
-  const foreground = competitionMode
-    ? "#ffffff"
-    : accent
-      ? "#0d1f1a"
-      : muted
-        ? "var(--color-bt-text-dim)"
-        : "var(--color-bt-accent)";
-  const border =
-    competitionMode || accent ? "none" : "1.5px solid var(--color-bt-border)";
+    : competitionMode
+      ? "#ffffff"
+      : accent
+        ? "#0d1f1a"
+        : muted
+          ? "var(--color-bt-text-dim)"
+          : "var(--color-bt-accent)";
+  const border = isChip
+    ? circle >= 28
+      ? `1.5px solid ${teamColor}55`
+      : "none"
+    : competitionMode || accent
+      ? "none"
+      : "1.5px solid var(--color-bt-border)";
 
   // Look up the icon component. If avatarIcon is set but unknown (e.g. an
   // old value from before we curated the list), fall back to initials.
@@ -138,7 +159,7 @@ export function Avatar({
         background,
         border,
         color: foreground,
-        fontWeight: 500,
+        fontWeight: isChip ? 700 : 500,
       }}
       aria-label={avatarIcon ? `${name} avatar` : `${name} initials`}
     >

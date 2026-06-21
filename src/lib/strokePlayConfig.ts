@@ -1,5 +1,4 @@
 import type { ScoreUnit } from "@/components/games/types";
-import { initialsFor } from "@/lib/initials";
 
 /**
  * Client-side stroke-play scorecard config, shared by the DB-backed trip game
@@ -89,10 +88,3 @@ export function strokeIndexOf(units: ScoreUnit[]): number[] {
 // Player identity palette (identity colors, not theme tokens — sanctioned like
 // team colors per STYLE_GUIDE §7).
 export const PLAYER_COLORS = ["#2dd4bf", "#60a5fa", "#f59e0b", "#a855f7"];
-
-/**
- * @deprecated Import `initialsFor` from `@/lib/initials` directly. This alias
- * remains only while `Participant.initials` is precomputed for the scorecard
- * chips; it goes away when those route through the Avatar primitive.
- */
-export const initialsOf = initialsFor;

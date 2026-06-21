@@ -1,6 +1,7 @@
 "use client";
 
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
+import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
 import {
   scoreCellKey,
@@ -240,12 +241,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
             return (
               <div key={p.id} className="flex" style={{ height: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
                 <div className="flex items-center gap-1.5" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
-                  <span
-                    className="flex items-center justify-center"
-                    style={{ width: 18, height: 18, borderRadius: "50%", background: `${p.color}22`, color: p.color, fontSize: 8, fontWeight: 700, flexShrink: 0 }}
-                  >
-                    {p.initials}
-                  </span>
+                  <Avatar name={p.name} teamColor={p.color} variant="chip" sizePx={18} />
                   <span style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.name}
                   </span>

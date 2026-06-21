@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry, type StrokeStanding } from "@/lib/strokePlay";
-import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
+import { STROKE_PLAY_UNITS, PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
@@ -85,7 +85,6 @@ export default function QuickGamePage() {
     const players: Participant[] = valid.map((name, i) => ({
       id: crypto.randomUUID(),
       name,
-      initials: initialsOf(name),
       color: PLAYER_COLORS[i % PLAYER_COLORS.length],
     }));
     setState({ players, values: {}, finished: false, currentHole: 1 });
