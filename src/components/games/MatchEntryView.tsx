@@ -469,7 +469,7 @@ function PlayerRow({
         paddingLeft: 11,
       }}
     >
-      <Avatar name={player.name} avatarIcon={player.avatarIcon} sizePx={34} />
+      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={34} />
       <div className="min-w-0 flex-1">
         <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>
           {player.name}

@@ -1284,7 +1284,7 @@ function MatchSetup({
           </div>
         )}
         {Array.from({ length: playersPerSide }).map((_, k) => (
-          <Slot key={k} player={memberPart(members[k])} onTap={() => openSelector(matchIdx, slot, k)} />
+          <Slot key={k} player={memberPart(members[k])} teamColor={team?.color} onTap={() => openSelector(matchIdx, slot, k)} />
         ))}
       </div>
     );
@@ -1648,7 +1648,7 @@ function PlayerSelector({
         <div className="mt-2 flex flex-col gap-1.5">
           {available.length === 0 && <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Everyone&apos;s assigned.</span>}
           {available.map((id) => (
-            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} onClick={() => onPick(id)} />
+            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} teamColor={teamColor} onClick={() => onPick(id)} />
           ))}
         </div>
         {taken.length > 0 && (
@@ -1656,7 +1656,7 @@ function PlayerSelector({
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Already in a match</div>
             <div className="mt-2 flex flex-col gap-1.5">
               {taken.map((id) => (
-                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
+                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} teamColor={teamColor} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
               ))}
             </div>
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
@@ -1697,7 +1697,7 @@ function Stepper({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled: boo
   );
 }
 
-function Slot({ player, onTap }: { player: Participant | null; onTap: () => void }) {
+function Slot({ player, onTap, teamColor }: { player: Participant | null; onTap: () => void; teamColor?: string | null }) {
   if (!player) {
     // The plus + label live together inside one dashed pill (card-raised so it
     // reads as a fillable block). Always "+ Add player".
@@ -1720,17 +1720,17 @@ function Slot({ player, onTap }: { player: Participant | null; onTap: () => void
       className="flex items-center gap-2"
       style={{ width: "100%", minWidth: 0, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
-      <Avatar name={player.name} avatarIcon={player.avatarIcon} sizePx={30} />
+      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={teamColor ?? player.color} sizePx={30} />
       <span style={{ minWidth: 0, fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
     </button>
   );
 }
 
-function SelectorRow({ name, avatarIcon, sub, dim, onClick }: { name: string; avatarIcon?: string | null; sub?: string; dim?: boolean; onClick: () => void }) {
+function SelectorRow({ name, avatarIcon, teamColor, sub, dim, onClick }: { name: string; avatarIcon?: string | null; teamColor?: string | null; sub?: string; dim?: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex w-full items-center justify-between gap-2 text-left" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
       <span className="flex min-w-0 items-center gap-2.5">
-        <Avatar name={name} avatarIcon={avatarIcon} sizePx={30} />
+        <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={30} />
         <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
       </span>
       {sub && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>{sub}</span>}
