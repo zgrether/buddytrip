@@ -95,8 +95,8 @@ describe("matches router (Slice B — setup + visibility)", () => {
     expect(res.matches).toHaveLength(2);
   });
 
-  it("activate — publishes pairings; the Member can now see them", async () => {
-    await ctx.callerAs("planner").matches.activate({ tripId, gameId });
+  it("enableScoring — publishes pairings; the Member can now see them", async () => {
+    await ctx.callerAs("planner").matches.enableScoring({ tripId, gameId });
     const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId });
     expect(res.published).toBe(true);
     expect(res.matches).toHaveLength(2);
@@ -149,7 +149,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
         matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
       })
     ).rejects.toThrow();
-    await expect(ctx.callerAs("member").matches.activate({ tripId, gameId })).rejects.toThrow();
+    await expect(ctx.callerAs("member").matches.enableScoring({ tripId, gameId })).rejects.toThrow();
   });
 });
 
