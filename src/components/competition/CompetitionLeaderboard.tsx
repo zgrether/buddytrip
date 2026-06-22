@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo } from "react";
-import { Trophy, CloudOff, RefreshCw, Plus, Users } from "lucide-react";
+import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GameRow, fmtPts } from "./GameRow";
 
@@ -75,15 +75,12 @@ interface Props {
   onAddGame?: () => void;
   /** Tap a team name on the hero → opens the Rosters overlay (routed by the face). */
   onEditTeam?: () => void;
-  /** Open the Rosters overlay — the header "Rosters" button. Member-visible
-   *  (the overlay reads are member-accessible); routed by the face. */
-  onOpenRosters?: () => void;
   /** Tap a non-golf game row (no route) → open its manual run sheet (routed by
    *  the face). Editors only; omitted for crew. */
   onOpenGame?: (gameId: string) => void;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false, onAddGame, onEditTeam, onOpenRosters, onOpenGame }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false, onAddGame, onEditTeam, onOpenGame }: Props) {
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     {
@@ -226,9 +223,8 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
           border: "1px solid var(--color-bt-border)",
         }}
       >
-        {/* Magic-number subtitle + the Rosters entry point (member-visible:
-            anyone can glance up to see the lineup — W-TEAMSURFACE-01). */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+        {/* Magic-number subtitle */}
+        <div className="px-4 pt-3 pb-2">
           <p
             className="text-[11px] font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -239,22 +235,6 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
               ? `First to ${fmtPts(winNumber)} wins`
               : "Competition standings"}
           </p>
-          {onOpenRosters && teams.length > 0 && (
-            <button
-              type="button"
-              onClick={onOpenRosters}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "0.5px solid var(--color-bt-border)",
-              }}
-              data-testid="open-rosters"
-            >
-              <Users size={13} style={{ color: "var(--color-bt-accent)" }} />
-              Rosters
-            </button>
-          )}
         </div>
 
         {teams.length === 2 ? (

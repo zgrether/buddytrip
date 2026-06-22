@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionHeader } from "./CompetitionHeader";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
@@ -215,15 +215,31 @@ export function CompetitionFace({
     <div className="space-y-4">
       {header}
 
+      {/* Rosters entry point (W-TEAMSURFACE-01) — board-level so it shows in EVERY
+          standings state (empty / setup / live / final), which is precisely when
+          you need it. Member-visible: the board only renders to those who can see
+          the competition, and the overlay reads are member-accessible. A hero
+          team-name tap (onEditTeam) is the secondary entry. */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setRostersOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold"
+          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)" }}
+          data-testid="open-rosters"
+        >
+          <Users size={14} style={{ color: "var(--color-bt-accent)" }} />
+          Rosters
+        </button>
+      </div>
+
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
         onAddGame={() => setAddingGame(true)}
-        // Team management now lives in the Rosters overlay (W-TEAMSURFACE-01), not
-        // Settings — the header "Rosters" button and a hero team-name tap both
-        // open it. Member-visible, so it's not canEdit-gated.
-        onOpenRosters={() => setRostersOpen(true)}
+        // A hero team-name tap also opens the Rosters overlay (the team-edit is
+        // there now, not Settings). Member-visible, so not canEdit-gated.
         onEditTeam={() => setRostersOpen(true)}
         onOpenGame={canEdit ? openManualGame : undefined}
       />
