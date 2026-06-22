@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
+import { isManualGameType } from "@/lib/gameTypes";
 
 const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
 // Roster-gated golf formats: a stroke field / rack auto-grouping is "configured"
@@ -60,7 +61,7 @@ export async function computeCompetitionLeaderboard(
   // These reads are independent — run them in parallel (one round-trip's worth
   // of latency instead of stacked). `game_results` + the match counts alone
   // depend on the game ids, so they wait below.
-  const [teamsRes, compRes, gameRowsRes, assignmentsRes, templatesRes] = await Promise.all([
+  const [teamsRes, compRes, gameRowsRes, assignmentsRes] = await Promise.all([
     supabase
       .from("teams")
       .select("id, name, short_name, color")
@@ -83,10 +84,6 @@ export async function computeCompetitionLeaderboard(
       .from("team_assignments")
       .select("team_id")
       .eq("competition_id", competitionId),
-    // Template → result_strategy map, so we can tell a NON-GOLF MANUAL game
-    // (result_strategy NULL) from a golf game. Only manual games get the
-    // match-play winner-take-all award; golf scoring is never touched.
-    supabase.from("game_type_templates").select("id, result_strategy"),
   ]);
   const teams = teamsRes.data;
   const teamIds = (teams ?? []).map((t) => t.id as string);
@@ -94,11 +91,10 @@ export async function computeCompetitionLeaderboard(
   // Scoring-model axis (independent of team count; default match_play). Branches
   // ONLY the non-golf result award below — the hero stays on teams.length.
   const scoringModel = (comp?.scoring_model as string | null) ?? "match_play";
-  const strategyByType = new Map<string, string | null>(
-    (templatesRes.data ?? []).map((t) => [t.id as string, (t.result_strategy as string | null) ?? null])
-  );
-  const isManualType = (typeId: string | null) =>
-    typeId != null && strategyByType.has(typeId) && strategyByType.get(typeId) == null;
+  // A NON-GOLF MANUAL game (result_strategy NULL) vs a golf game — sourced from
+  // the format definitions in code (W-PERF-01), no longer a DB template fetch.
+  // Only manual games get the match-play winner-take-all award; golf untouched.
+  const isManualType = (typeId: string | null) => isManualGameType(typeId);
   const allGames = gameRowsRes.data ?? [];
   const live = allGames.filter((g) => g.status !== "dropped");
   const sizeByTeam = new Map<string, number>();

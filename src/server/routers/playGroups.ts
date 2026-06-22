@@ -5,6 +5,7 @@ import { requireTripMember, requireGameEdit } from "../middleware";
 import { clampStrokes } from "@/lib/handicap";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
+import { getGameTypeDefinition } from "@/lib/gameTypes";
 
 /**
  * playGroups — foursomes for a game (the scoring-side use of `play_groups`,
@@ -109,13 +110,10 @@ export const playGroupsRouter = router({
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set strokes: ${error.message}` });
 
       // Re-derive in-progress results; leave a complete (frozen) game untouched.
+      // Result strategy from the format definition in code (W-PERF-01); an
+      // unknown/unset type falls back to stroke_total (no recompute branch fires).
       if (game.status !== "complete") {
-        const { data: tmpl } = await ctx.supabase
-          .from("game_type_templates")
-          .select("result_strategy")
-          .eq("id", game.game_type_id as string)
-          .maybeSingle();
-        const strategy = (tmpl?.result_strategy as string | null) ?? "stroke_total";
+        const strategy = getGameTypeDefinition(game.game_type_id as string)?.resultStrategy ?? "stroke_total";
         if (strategy === "match_play") await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
         else if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
       }

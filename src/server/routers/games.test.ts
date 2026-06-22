@@ -128,9 +128,13 @@ describe("games router — result_strategy dispatch guard", () => {
     expect(results).toHaveLength(0);
   });
 
-  it("finish — unknown result_strategy throws rather than silently scoring as stroke play", async () => {
-    // Temporarily insert a template with an unregistered strategy, use it to
-    // create a game, exercise the guard, then clean up.
+  it("finish — an unregistered game type throws rather than silently scoring as stroke play", async () => {
+    // The B2 guard, generalized by W-PERF-01: format definitions live in code,
+    // so "unrecognized" now means "game_type_id not in the code catalog" (it used
+    // to mean "unknown result_strategy string read from the DB"). The DB FK on
+    // games.game_type_id still requires the type row to EXIST, so we seed it — but
+    // because the id is absent from GAME_TYPE_DEFINITIONS, finish refuses to
+    // compute. Seed, exercise the guard, clean up.
     const FAKE_ID = "gtt_b2_test_unknown";
     await ctx.admin.from("game_type_templates").insert({
       id: FAKE_ID,
@@ -147,7 +151,7 @@ describe("games router — result_strategy dispatch guard", () => {
     try {
       const game = await ctx.caller().games.create({ tripId, gameTypeId: FAKE_ID, name: "Unknown" });
       await expect(ctx.caller().games.finish({ tripId, gameId: game.id })).rejects.toMatchObject({
-        message: expect.stringContaining("Unknown result_strategy 'unknown_strategy'"),
+        message: expect.stringContaining(`Unknown game type '${FAKE_ID}'`),
       });
       // Guard fires before any compute — no results written.
       const { data: results } = await ctx.admin.from("game_results").select("id").eq("game_id", game.id);

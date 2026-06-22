@@ -9,8 +9,9 @@ import { computeRackNStackResults } from "../lib/rackNStack";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema, type SnapshotTee } from "@/lib/courseIndex";
+import { buildScorecardSchema, validateStrokeIndex, type SnapshotTee } from "@/lib/courseIndex";
 import { validatePlacement } from "@/lib/gameConfig";
+import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -116,32 +117,12 @@ export const gamesRouter = router({
       return data;
     }),
 
-  // listTypes — the format catalog driving the creation chips (data-driven, NOT a
-  // hardcoded enum). `manual` (no result_strategy / no scorecard_schema) is the
-  // non-engine "Other" type; the rest are engine golf formats. (§2b/§7)
-  listTypes: authedProcedure.query(async ({ ctx }) => {
-    const { data, error } = await ctx.supabase
-      .from("game_type_templates")
-      .select("id, key, name, description, result_strategy, scorecard_schema, category, compatible_modifiers, sort_order")
-      .order("sort_order", { ascending: true });
-    if (error) {
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to list game types: ${error.message}` });
-    }
-    return (data ?? []).map((t) => ({
-      id: t.id as string,
-      key: t.key as string,
-      name: t.name as string,
-      description: (t.description as string | null) ?? null,
-      // "engine" = computes results from a scorecard; otherwise manual (entered).
-      isEngine: t.result_strategy != null,
-      isGolf: t.scorecard_schema != null, // golf engine types carry a scorecard
-      resultStrategy: (t.result_strategy as string | null) ?? null,
-      // The creation Type tier (golf | card | yard | bar | other). Data-driven.
-      category: (t.category as string | null) ?? "other",
-      // Optional special rules this format supports (SPECIAL RULES toggles).
-      compatibleModifiers: (t.compatible_modifiers as string[] | null) ?? [],
-    }));
-  }),
+  // listTypes — the format catalog driving the creation chips. Format DEFINITIONS
+  // live in CODE now (W-PERF-01, `@/lib/gameTypes`), read synchronously — so this
+  // no longer hits the DB. The add-game dialog imports `GAME_TYPES` directly and
+  // never calls this; the procedure stays as a thin server-side accessor (tests /
+  // any future server caller) returning the SAME code array, contract unchanged.
+  listTypes: authedProcedure.query(() => GAME_TYPES),
 
   // listByTrip — any trip member.
   listByTrip: authedProcedure
@@ -309,12 +290,9 @@ export const gamesRouter = router({
         });
       }
 
-      const { data: template } = await ctx.supabase
-        .from("game_type_templates")
-        .select("scorecard_schema")
-        .eq("id", game.game_type_id as string)
-        .maybeSingle();
-      const baseSchema = template?.scorecard_schema as ScorecardSchema | null;
+      // Base scorecard comes from the format definition in code (W-PERF-01) —
+      // buildScorecardSchema deep-clones it, so sharing the const is safe.
+      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
       if (!baseSchema?.units) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -366,15 +344,13 @@ export const gamesRouter = router({
         });
       }
 
-      const { data: template } = await ctx.supabase
-        .from("game_type_templates")
-        .select("scorecard_schema")
-        .eq("id", game.game_type_id as string)
-        .maybeSingle();
+      // Revert to the format's CODE-defined base schema (W-PERF-01) — the
+      // template default with no course par/index.
+      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
 
       const { error } = await ctx.supabase
         .from("games")
-        .update({ scorecard_schema: template?.scorecard_schema ?? null, course_id: null })
+        .update({ scorecard_schema: baseSchema, course_id: null })
         .eq("id", input.gameId);
       if (error) {
         throw new TRPCError({
@@ -405,17 +381,24 @@ export const gamesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
 
-      const { data: template } = await ctx.supabase
-        .from("game_type_templates")
-        .select("result_strategy")
-        .eq("id", game.game_type_id as string)
-        .maybeSingle();
-      const strategy = template?.result_strategy as string | null;
+      // Result strategy comes from the format definition in CODE (W-PERF-01).
+      // An unregistered game_type_id (not in the code catalog) is the generalized
+      // form of the B2 guard — refuse to compute rather than silently scoring as
+      // stroke play. (Before W-PERF-01 the guard caught an unknown result_strategy
+      // STRING read from the DB; the code catalog is closed, so "unknown type" is
+      // the only way to be unrecognized now.)
+      const def = getGameTypeDefinition(game.game_type_id as string);
+      if (!def) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Unknown game type '${game.game_type_id}' — refusing to compute to avoid silent stroke-play scoring`,
+        });
+      }
+      const strategy = def.resultStrategy;
 
-      // Data-driven branch on the template's result_strategy (CLAUDE.md #8) —
-      // new strategies slot in here without touching the rest of finish.
+      // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new
+      // strategies slot in here without touching the rest of finish.
       // null (manual): finish has no placements input — caller must use post.
-      // Unregistered string: loud throw; silent stroke-play fallback is gone.
       let matches: MatchOutcome[] = [];
       let teams: RackTeamOutcome[] = [];
       let standings: StrokeStanding[] = [];
@@ -431,9 +414,11 @@ export const gamesRouter = router({
       } else if (strategy === "stroke_total") {
         standings = await computeStrokePlayResults(ctx.supabase, input.gameId);
       } else {
+        // Defense in depth: the union above is exhaustive, so this is unreachable
+        // via types — a new ResultStrategy that forgets a branch trips it loudly.
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Unknown result_strategy '${strategy}' — refusing to compute to avoid silent stroke-play scoring`,
+          message: `Unhandled result_strategy '${strategy as string}' — refusing to compute to avoid silent stroke-play scoring`,
         });
       }
 
@@ -702,12 +687,16 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const { data: template } = await ctx.supabase
-        .from("game_type_templates")
-        .select("result_strategy")
-        .eq("id", game.game_type_id as string)
-        .maybeSingle();
-      const strategy = (template?.result_strategy as string | null) ?? null;
+      // Result strategy from the format definition in CODE (W-PERF-01); an
+      // unregistered type loud-fails (the generalized B2 guard — see finish).
+      const def = getGameTypeDefinition(game.game_type_id as string);
+      if (!def) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Unknown game type '${game.game_type_id}' — refusing to compute to avoid silent stroke-play scoring`,
+        });
+      }
+      const strategy = def.resultStrategy;
 
       if (strategy === null) {
         // Manual: commit the entered finishing order (shared write path).
@@ -722,9 +711,10 @@ export const gamesRouter = router({
       } else if (strategy === "stroke_total") {
         await computeStrokePlayResults(ctx.supabase, input.gameId);
       } else {
+        // Defense in depth: union is exhaustive, unreachable via types.
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Unknown result_strategy '${strategy}' — refusing to compute to avoid silent stroke-play scoring`,
+          message: `Unhandled result_strategy '${strategy as string}' — refusing to compute to avoid silent stroke-play scoring`,
         });
       }
 
