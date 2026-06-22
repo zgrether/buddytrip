@@ -6,7 +6,8 @@ import { trpc } from "@/lib/trpc-client";
 import { CompetitionHeader } from "./CompetitionHeader";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettings } from "./CompetitionSettings";
-import { GameSheet, RunSheet, type GameType, type GameRow, type LBTeamLite } from "./CompetitionGamesPanel";
+import { GameSheet, RunSheet, type GameRow, type LBTeamLite } from "./CompetitionGamesPanel";
+import { GAME_TYPES } from "@/lib/gameTypes";
 
 interface Competition {
   id: string;
@@ -75,9 +76,10 @@ export function CompetitionFace({
   const [view, setView] = useState<FaceView>("board");
   const [addingGame, setAddingGame] = useState(false);
 
-  // GameSheet (add-game modal) needs the type catalog — fetched once here so the
-  // modal opens without its own waterfall. Only editors ever open it.
-  const { data: gameTypes = [] } = trpc.games.listTypes.useQuery(undefined, { enabled: canEdit });
+  // GameSheet (add-game modal) needs the type catalog. Format definitions live in
+  // CODE (W-PERF-01) — read synchronously, no fetch — so the modal's top half is
+  // present the instant it opens, even on the bad signal organizers hit on-site.
+  const gameTypes = GAME_TYPES;
 
   // ── Non-golf (manual) game scoring + config-reopen, routed from the board ───
   // Golf games open via their per-format route (the GameRow links). Non-golf
@@ -275,7 +277,7 @@ export function CompetitionFace({
           tripId={tripId}
           competitionId={competition.id}
           game={editing}
-          types={gameTypes as GameType[]}
+          types={gameTypes}
           canEdit={canEdit}
           onClose={() => {
             setAddingGame(false);
@@ -297,7 +299,7 @@ export function CompetitionFace({
           game={running}
           teams={(lb?.teams ?? []) as LBTeamLite[]}
           initialOrder={runningOrder}
-          isEngine={!!(gameTypes as GameType[]).find((t) => t.id === running.game_type_id)?.isEngine}
+          isEngine={!!gameTypes.find((t) => t.id === running.game_type_id)?.isEngine}
           matchPlay={(competition.scoring_model ?? "match_play") === "match_play"}
           onClose={() => {
             setRunning(null);

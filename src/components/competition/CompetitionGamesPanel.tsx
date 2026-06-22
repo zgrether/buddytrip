@@ -12,6 +12,13 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
   validatePlacement, matchReadout, placementFit, matchFit, deriveMatchCount, type MatchFormat,
 } from "@/lib/gameConfig";
+// Format definitions live in code (W-PERF-01) — the catalog + its type come from
+// here, read synchronously, never fetched. Re-exported below so existing
+// consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
+// import path.
+import { GAME_TYPES, type GameType } from "@/lib/gameTypes";
+
+export type { GameType };
 
 // Mirrors the builder cap (matches router / match-new page). The page-one match
 // count seeds the builder's initial slot count up to here.
@@ -73,18 +80,6 @@ export interface GameRow {
   corrections_open: boolean;
 }
 
-export interface GameType {
-  id: string;
-  key: string;
-  name: string;
-  description: string | null;
-  isEngine: boolean;
-  isGolf: boolean;
-  resultStrategy: string | null;
-  category: string;
-  compatibleModifiers: string[];
-}
-
 interface Member { memberId: string; displayName: string }
 
 // ── Static option tables ──────────────────────────────────────────────────────
@@ -131,7 +126,7 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit, isOwner 
   const [running, setRunning] = useState<GameRow | null>(null); // game being posted/corrected
 
   const { data: allGames = [] } = trpc.games.listByTrip.useQuery({ tripId }, { enabled: !!tripId });
-  const { data: types = [] } = trpc.games.listTypes.useQuery(undefined, { enabled: !!tripId });
+  const types = GAME_TYPES; // format definitions in code (W-PERF-01) — no fetch
   const { data: lb } = trpc.competitions.leaderboard.useQuery({ tripId, competitionId }, { enabled: !!competitionId });
 
   const games = useMemo(

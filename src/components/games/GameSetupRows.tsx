@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
-import { GameSheet, type GameType, type GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { GameSheet, type GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { GAME_TYPES } from "@/lib/gameTypes";
 
 /**
  * §B setup-shell drill-down rows (Phase 2B.2). The standardized top of every
@@ -36,8 +37,8 @@ export function GameSetupRows({
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
 
-  // Types only needed once the config editor opens.
-  const { data: types = [] } = trpc.games.listTypes.useQuery(undefined, { enabled: configOpen });
+  // Format definitions live in code (W-PERF-01) — no fetch, always available.
+  const types = GAME_TYPES;
   const applyCourse = trpc.games.applyCourse.useMutation();
   const utils = trpc.useUtils();
 
@@ -89,7 +90,7 @@ export function GameSetupRows({
           tripId={tripId}
           competitionId={competitionId}
           game={game}
-          types={types as GameType[]}
+          types={types}
           canEdit={canEdit}
           onClose={() => {
             setConfigOpen(false);

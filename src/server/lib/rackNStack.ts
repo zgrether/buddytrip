@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch } from "@/lib/pointsDistribution";
+import { getGameTypeDefinition } from "@/lib/gameTypes";
 
 /**
  * DB-persist side of rack-n-stack. Builds the SAME read-model the live client
@@ -49,15 +50,11 @@ export async function computeRackNStackResults(
   const perMatch = isPerMatch(game.points_distribution);
   const value = perMatch ? (game.points_distribution as { value: number }).value : 1;
 
-  // Effective par/index: the game's course snapshot, else its template default.
+  // Effective par/index: the game's course snapshot, else its format's default
+  // schema — from the code definitions now (W-PERF-01), not a DB template fetch.
   let schema = game.scorecard_schema as SchemaShape | null;
   if (!schema?.units?.metadata?.par && game.game_type_id) {
-    const { data: tmpl } = await supabase
-      .from("game_type_templates")
-      .select("scorecard_schema")
-      .eq("id", game.game_type_id as string)
-      .maybeSingle();
-    schema = (tmpl?.scorecard_schema as SchemaShape | null) ?? null;
+    schema = (getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema as SchemaShape | null) ?? null;
   }
   const par = schema?.units?.metadata?.par;
   const strokeIndex = schema?.units?.metadata?.handicap_index;

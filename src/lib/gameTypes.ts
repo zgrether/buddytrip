@@ -1,0 +1,325 @@
+/**
+ * gameTypes — the format DEFINITIONS, in code (W-PERF-01).
+ *
+ * A game format's definition is "what that format IS" — its name, the engine that
+ * scores it (`resultStrategy`), the scorecard shape it carries, the categories and
+ * modifiers it offers. None of this varies per game or per trip; it is fixed by
+ * the code that implements each format. So it lives HERE, read synchronously and
+ * locally — NOT fetched from the DB at dialog-open (which blanked the add-game
+ * dialog's top half for 20–30s on bad signal at the course).
+ *
+ * The rule (CLAUDE.md, the data-vs-code seam): data that CHANGES (per-user,
+ * per-trip, over time) → database; data FIXED BY THE CODE → code. The DB keeps
+ * only the per-game REFERENCE (`games.game_type_id`) + genuine per-instance config
+ * (points, course snapshot, modifiers-enabled); the code stores what that
+ * reference MEANS.
+ *
+ * CLIENT-SAFE: this module imports only a pure type from `@/lib/courseIndex` and
+ * defines const data — no Supabase, no tRPC server, no node deps. The add-game
+ * dialog imports `GAME_TYPES` directly, so the format chips are present before the
+ * component even mounts: no fetch, no loading state, offline-safe.
+ *
+ * This is the concrete precursor to R1's template registry — the clean code-home
+ * now; R1 generalizes routing/grouping/handicap/readiness over it later. It is NOT
+ * the full registry: it relocates the existing definitions, nothing more.
+ *
+ * SOURCE OF TRUTH: the values below are copied VERBATIM from the live
+ * `game_type_templates` rows (incl. each `scorecard_schema`, which had drifted
+ * from its seed migration — e.g. stroke play's live `handicap_index`). The
+ * `game_type_templates` table is intentionally LEFT IN PLACE until every reader is
+ * proven migrated (audit-before-delete); a later migration archives it.
+ */
+
+import type { ScorecardSchema } from "@/lib/courseIndex";
+
+/** The scoring engines a format can dispatch to. `null` = manual / non-engine
+ *  (finishing order entered by hand — cornhole, trivia, generic games). */
+export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack";
+
+/** Creation Type tier the dialog groups formats under. */
+export type GameCategory = "golf" | "card" | "yard" | "bar" | "other";
+
+/**
+ * The full definition of one game format — the code home of record. Every field
+ * is a property of the FORMAT, not of any particular game. Only a subset is read
+ * today (resultStrategy, scorecardSchema, category, compatibleModifiers, the
+ * display strings); the structural axes (`supportsSides` etc.) are carried for
+ * faithfulness + future readers. The two reserved-empty jsonb columns
+ * (`config`/`config_schema`, always `{}`/unused) are intentionally omitted.
+ */
+export interface GameTypeDefinition {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+  category: GameCategory;
+  /** How scores are entered. null for manual (no scorecard entry). */
+  entrySchema: string | null;
+  /** The scoring engine; null = manual. Branches games.finish / games.post. */
+  resultStrategy: ResultStrategy | null;
+  /** The base scorecard the format carries; null = non-golf (no scorecard).
+   *  applyCourse patches a COPY of this with the course's par/index. */
+  scorecardSchema: ScorecardSchema | null;
+  /** Special-rule keys this format offers (golf modifier toggles). */
+  compatibleModifiers: string[];
+  // ── Structural axes (definition, not read by any current reader) ──
+  supportsFreeForAll: boolean | null;
+  supportsSides: boolean | null;
+  requiresSides: boolean | null;
+  maxPlayersPerSide: number | null;
+  compatibleCompetitionFormats: string[] | null;
+}
+
+// ── Shared golf scorecard schemas ────────────────────────────────────────────
+// Copied verbatim from the live `game_type_templates.scorecard_schema`. The
+// par-72 layout is the template DEFAULT; applyCourse overwrites par + index with
+// the chosen course's real values (on a deep clone — buildScorecardSchema never
+// mutates the input, so sharing these consts is safe).
+
+const HOLE_LABELS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18"];
+const PAR_72 = [4,5,3,4,4,3,5,4,4,4,3,5,4,4,3,4,5,4];
+const SECTIONS_18 = [
+  { name: "Front 9", units: ["1","2","3","4","5","6","7","8","9"] },
+  { name: "Back 9", units: ["10","11","12","13","14","15","16","17","18"] },
+];
+
+const STROKE_INDEX_DEFAULT = [7,3,15,1,11,5,17,9,13,8,4,16,2,12,6,18,10,14];
+
+// Asserted `as ScorecardSchema`: these mirror the DB's untyped `jsonb` and carry
+// fields beyond courseIndex's intentionally-minimal "shape we read/patch" type
+// (entry/interaction/participants, scoring.aggregation/tiebreaker). The assertion
+// preserves them verbatim without widening the shared contract.
+const strokeSchema = {
+  units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72, handicap_index: STROKE_INDEX_DEFAULT } },
+  entry: { value_type: "integer", value_label: "Strokes", min: 1, max: null },
+  scoring: { strategy: "stroke_total", direction: "low_wins", aggregation: "sum", sections: SECTIONS_18, tiebreaker: "shared" },
+  interaction: { model: "simultaneous", entry_timing: "per_unit" },
+  participants: { min: 2, max: 4, participant_type: "individual", assigned_pairings: false },
+} as ScorecardSchema;
+
+const singlesSchema = {
+  units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72, handicap_index: STROKE_INDEX_DEFAULT } },
+  entry: { value_type: "integer", value_label: "Strokes", min: 1, max: null },
+  scoring: { strategy: "match_play", direction: "low_wins", aggregation: "match", sections: SECTIONS_18, tiebreaker: "shared" },
+  interaction: { model: "simultaneous", entry_timing: "per_unit" },
+  participants: { min: 2, max: 4, participant_type: "individual", assigned_pairings: true },
+} as ScorecardSchema;
+
+const doublesSchema = {
+  // NB: doubles carries par only (no handicap_index) — matches the live row.
+  units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72 } },
+  entry: { value_type: "integer", value_label: "Strokes", min: 1, max: null },
+  scoring: { strategy: "match_play", direction: "low_wins", aggregation: "match", sections: SECTIONS_18, tiebreaker: "shared" },
+  interaction: { model: "simultaneous", entry_timing: "per_unit" },
+  participants: { min: 4, max: 8, participant_type: "side", players_per_side: 2, assigned_pairings: true },
+} as ScorecardSchema;
+
+const rackSchema = {
+  units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72, handicap_index: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] } },
+  entry: { value_type: "integer", value_label: "Strokes", min: 1, max: null },
+  scoring: { strategy: "rack_n_stack", direction: "low_wins", aggregation: "net_to_par", sections: SECTIONS_18, tiebreaker: "shared" },
+  interaction: { model: "simultaneous", entry_timing: "per_unit" },
+  participants: { min: 2, max: null, participant_type: "individual", assigned_pairings: false },
+} as ScorecardSchema;
+
+// ── The format catalog ───────────────────────────────────────────────────────
+
+/** Every game format, keyed by id (= `games.game_type_id`). The home of record. */
+export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
+  gtt_stroke_play: {
+    id: "gtt_stroke_play",
+    key: "stroke_play",
+    name: "Stroke Play",
+    description: "Individual gross stroke play — lowest total wins.",
+    sortOrder: 0,
+    category: "golf",
+    entrySchema: "user_holes",
+    resultStrategy: "stroke_total",
+    scorecardSchema: strokeSchema,
+    compatibleModifiers: ["glorious_holes"],
+    supportsFreeForAll: true,
+    supportsSides: false,
+    requiresSides: false,
+    maxPlayersPerSide: null,
+    compatibleCompetitionFormats: ["free_for_all"],
+  },
+  gtt_match_play_singles: {
+    id: "gtt_match_play_singles",
+    key: "match_play_singles",
+    name: "Singles Match Play",
+    description: "1v1 match play — low net wins each hole; the match resolves W/H/L hole-by-hole.",
+    sortOrder: 1,
+    category: "golf",
+    entrySchema: "user_holes",
+    resultStrategy: "match_play",
+    scorecardSchema: singlesSchema,
+    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    supportsFreeForAll: false,
+    supportsSides: true,
+    requiresSides: true,
+    maxPlayersPerSide: 1,
+    compatibleCompetitionFormats: ["ryder_cup"],
+  },
+  gtt_match_play_doubles: {
+    id: "gtt_match_play_doubles",
+    key: "match_play_doubles",
+    name: "2v2 Match Play",
+    description: "2v2 match play — one score per side per hole, low net wins each hole; the match resolves W/H/L hole-by-hole between two pairs. Scramble / Alt-Shot / Best-Ball are presets over this one engine.",
+    sortOrder: 2,
+    category: "golf",
+    entrySchema: "group_holes",
+    resultStrategy: "match_play",
+    scorecardSchema: doublesSchema,
+    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    supportsFreeForAll: false,
+    supportsSides: true,
+    requiresSides: true,
+    maxPlayersPerSide: 2,
+    compatibleCompetitionFormats: ["ryder_cup"],
+  },
+  gtt_rack_n_stack: {
+    id: "gtt_rack_n_stack",
+    key: "rack_n_stack",
+    name: "Rack-n-Stack",
+    description: "Net stroke play scored as a rank-paired team board: each team is sorted by net-to-par and paired by rank; the lower net wins each slot (a tie halves).",
+    sortOrder: 2,
+    category: "golf",
+    entrySchema: "user_holes",
+    resultStrategy: "rack_n_stack",
+    scorecardSchema: rackSchema,
+    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    supportsFreeForAll: false,
+    supportsSides: true,
+    requiresSides: true,
+    maxPlayersPerSide: null,
+    compatibleCompetitionFormats: ["ryder_cup"],
+  },
+  gtt_generic_card: {
+    id: "gtt_generic_card",
+    key: "generic_card",
+    name: "Generic Card Game",
+    description: "No built-in scoring engine — name it and enter the result by hand.",
+    sortOrder: 90,
+    category: "card",
+    entrySchema: null,
+    resultStrategy: null,
+    scorecardSchema: null,
+    compatibleModifiers: [],
+    supportsFreeForAll: null,
+    supportsSides: null,
+    requiresSides: null,
+    maxPlayersPerSide: null,
+    compatibleCompetitionFormats: null,
+  },
+  gtt_generic_yard: {
+    id: "gtt_generic_yard",
+    key: "generic_yard",
+    name: "Generic Yard Game",
+    description: "No built-in scoring engine — name it and enter the result by hand.",
+    sortOrder: 91,
+    category: "yard",
+    entrySchema: null,
+    resultStrategy: null,
+    scorecardSchema: null,
+    compatibleModifiers: [],
+    supportsFreeForAll: null,
+    supportsSides: null,
+    requiresSides: null,
+    maxPlayersPerSide: null,
+    compatibleCompetitionFormats: null,
+  },
+  gtt_generic_bar: {
+    id: "gtt_generic_bar",
+    key: "generic_bar",
+    name: "Generic Bar Game",
+    description: "No built-in scoring engine — name it and enter the result by hand.",
+    sortOrder: 92,
+    category: "bar",
+    entrySchema: null,
+    resultStrategy: null,
+    scorecardSchema: null,
+    compatibleModifiers: [],
+    supportsFreeForAll: null,
+    supportsSides: null,
+    requiresSides: null,
+    maxPlayersPerSide: null,
+    compatibleCompetitionFormats: null,
+  },
+  gtt_manual: {
+    id: "gtt_manual",
+    key: "manual",
+    name: "Generic Game",
+    description: "A non-engine contest (cornhole, trivia, pick'em, H-O-R-S-E…) — finishing order entered by hand.",
+    sortOrder: 99,
+    category: "other",
+    entrySchema: null,
+    resultStrategy: null,
+    scorecardSchema: null,
+    compatibleModifiers: [],
+    supportsFreeForAll: true,
+    supportsSides: true,
+    requiresSides: false,
+    maxPlayersPerSide: null,
+    compatibleCompetitionFormats: null,
+  },
+};
+
+/** All definitions, sorted by sortOrder then id (stable) — the catalog order. */
+export const GAME_TYPE_LIST: GameTypeDefinition[] = Object.values(GAME_TYPE_DEFINITIONS).sort(
+  (a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)
+);
+
+// ── Client-facing shape ──────────────────────────────────────────────────────
+
+/**
+ * The shape the creation UI consumes — the format catalog as the add-game dialog
+ * needs it. `isEngine`/`isGolf` are DERIVED (an engine computes results; a golf
+ * type carries a scorecard), so the two booleans can't drift from the strategy /
+ * schema they're derived from.
+ */
+export interface GameType {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  isEngine: boolean;
+  isGolf: boolean;
+  resultStrategy: string | null;
+  category: string;
+  compatibleModifiers: string[];
+}
+
+/** Project a definition to the client `GameType` shape. */
+export function toGameType(d: GameTypeDefinition): GameType {
+  return {
+    id: d.id,
+    key: d.key,
+    name: d.name,
+    description: d.description,
+    isEngine: d.resultStrategy != null,
+    isGolf: d.scorecardSchema != null,
+    resultStrategy: d.resultStrategy,
+    category: d.category,
+    compatibleModifiers: d.compatibleModifiers,
+  };
+}
+
+/** The client format catalog — import this directly; never fetch it. */
+export const GAME_TYPES: GameType[] = GAME_TYPE_LIST.map(toGameType);
+
+// ── Lookups (the server readers' synchronous replacement for the DB query) ────
+
+/** The definition for a game type id, or undefined if the id is unregistered. */
+export function getGameTypeDefinition(id: string | null | undefined): GameTypeDefinition | undefined {
+  return id ? GAME_TYPE_DEFINITIONS[id] : undefined;
+}
+
+/** A type is "manual" (non-engine, finishing order entered by hand) when it is a
+ *  KNOWN format whose resultStrategy is null. An unregistered id is NOT manual —
+ *  it's unknown (the caller decides how to fail). Mirrors the old leaderboard
+ *  `isManualType` (known AND null), now sourced from code. */
+export function isManualGameType(id: string | null | undefined): boolean {
+  const def = getGameTypeDefinition(id);
+  return def != null && def.resultStrategy == null;
+}
