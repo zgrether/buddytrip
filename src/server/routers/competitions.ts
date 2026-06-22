@@ -315,4 +315,48 @@ export const competitionsRouter = router({
 
       return { success: true };
     }),
+
+  // resetScoring — owner-only. Clears every game's RESULTS back to unscored;
+  // keeps full config (pairings, course, points, handicaps) + identity. Games are
+  // immediately re-scoreable. Delegates to the transactional plpgsql primitive
+  // (migration 063) — all-or-nothing per competition. The danger-zone ladder's
+  // first rung (below it: resetToSkeleton; below that: delete).
+  resetScoring: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
+    .use(requireCompetitionRole("owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("reset_competition_scoring", {
+        p_trip_id: input.tripId,
+        p_competition_id: input.competitionId,
+      });
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reset scoring: ${error.message}`,
+        });
+      }
+      return { success: true };
+    }),
+
+  // resetToSkeleton — owner-only. SUPERSET of resetScoring: the SQL primitive
+  // CALLS reset_competition_scoring first, then additionally clears config back
+  // to unconfigured shells (keeps teams + game shells + point values). Used for
+  // "set up wrong, redo" and cleaning a competition's test games. Also the op the
+  // future scoring_model-change path will call (pre-score model switch).
+  resetToSkeleton: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
+    .use(requireCompetitionRole("owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("reset_competition_to_skeleton", {
+        p_trip_id: input.tripId,
+        p_competition_id: input.competitionId,
+      });
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reset to skeleton: ${error.message}`,
+        });
+      }
+      return { success: true };
+    }),
 });
