@@ -4,6 +4,7 @@ import { createElement } from "react";
 import Link from "next/link";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Avatar } from "@/components/Avatar";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
@@ -116,6 +117,9 @@ export function GameRow({
   cells,
   tripId,
   mine,
+  viewerName,
+  viewerAvatarIcon,
+  viewerTeamColor,
   onPrefetch,
   onOpenGame,
 }: {
@@ -124,6 +128,12 @@ export function GameRow({
   cells: Map<string, LBCell> | undefined;
   tripId: string;
   mine: boolean;
+  /** The viewer's display name + chosen avatar icon + competition-team color —
+   *  rendered as the delegate marker when `mine` (the viewer's avatar in their
+   *  team color, §10). Only needed when the viewer delegates this game. */
+  viewerName?: string | null;
+  viewerAvatarIcon?: string | null;
+  viewerTeamColor?: string | null;
   onPrefetch: (gameId: string) => void;
   /** Non-golf games have no game-board route; when the viewer can act on them
    *  (editors only), the row opens the manual run sheet in place instead of
@@ -144,32 +154,55 @@ export function GameRow({
   const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal;
   const scorecardOpens = showScorecard && game.hasCourse === true && !!href;
   const showDelegate = mine && !isFinal;
+  // A row is tappable when it has a golf route OR a non-golf editor handler —
+  // gates the setting-up CTA subtitle (an inert crew row gets no "tap to…").
+  const tappable = !!href || !!onOpenGame;
 
-  // Subtitle / running state (§A3). Setting-up + Final carry none — the dashed
-  // outline and the outer result speak for them. Live's real running state
-  // ("Blue 2 up · thru 13") is deferred to a state-driven slot.
+  // §A3 arm tell: the format icon goes full-color once scoring is enabled
+  // (armed). The same signal splits the Ready subtitle (see below); Final quiets
+  // it back down (sheds the arm tell).
+  const armed = iconArmed(game);
+  const armedIcon = armed && !isFinal;
+
+  // Subtitle / running state (§A3), all keyed off the one derived lifecycle:
+  //  - live   → running state (the real "Blue 2 up · thru 13" is deferred).
+  //  - ready  → SPLIT by the arm tell: armed = good to go; not-armed = the
+  //             remaining pre-live step (so the muted icon has a matching nudge).
+  //  - setting-up → a tap-to-continue CTA, but only when the row is tappable;
+  //             an inert crew row leans on the dashed outline alone (§A3).
+  //  - final  → none; the recessed tile + outer result speak for it.
   const subtitle =
     lifecycle === "live"
       ? "Underway · scoring"
       : lifecycle === "ready"
-      ? "Ready to play"
+      ? armed
+        ? "Ready to play"
+        : "Assign players + handicaps"
+      : lifecycle === "setting-up"
+      ? tappable
+        ? "Tap to keep setting up"
+        : null
       : null;
 
-  // §A3 layer table — each visual layer wired to the one derived lifecycle.
-  // The format icon shows FULL color only while scoring is enabled AND the game
-  // isn't yet a finished record; Final quiets it back down (sheds the arm tell).
-  const armedIcon = iconArmed(game) && !isFinal;
   // Panel surface — each game is its own standalone card (not a row inside a
-  // shared panel). Setting-up gets a dashed left edge as its "not built yet"
-  // tell; it lives on the panel border so the inner content never shifts.
+  // shared panel). Only the ACTIVE states carry a fill: Ready (a solid card,
+  // "built + waiting") and Live (the one reserved accent-faint "act now" fill,
+  // §A2). Setting-up and Final get NO fill — setting-up is an outline-only dashed
+  // shell ("not built yet"), Final a recessed, dimmed record. The border lives on
+  // the panel so the inner content never shifts.
   const panelStyle: React.CSSProperties = {
-    background: "var(--color-bt-card)",
-    border: "1px solid var(--color-bt-border)",
-    ...(lifecycle === "setting-up" ? { borderLeft: "2px dashed var(--color-bt-border)" } : {}),
+    background:
+      lifecycle === "ready"
+        ? "var(--color-bt-card)"
+        : lifecycle === "live"
+        ? "var(--color-bt-accent-faint)"
+        : undefined, // setting-up + final: no fill
+    border:
+      lifecycle === "setting-up"
+        ? "1.5px dashed var(--color-bt-border)"
+        : "1px solid var(--color-bt-border)",
   };
   const rowStyle: React.CSSProperties = {
-    // The one reserved background is Live (§A2) — the only "act now" fill.
-    background: lifecycle === "live" ? "var(--color-bt-accent-faint)" : undefined,
     // Final is a quiet record — recess the whole tile (§A3 "recessed").
     opacity: isFinal ? 0.72 : 1,
   };
@@ -199,7 +232,20 @@ export function GameRow({
           >
             {game.name}
           </span>
-          {showDelegate && <YoursBadge />}
+          {showDelegate && (
+            // The delegate marker IS the viewer's avatar in their COMPETITION-TEAM
+            // color (§10) — competition identity, not a separate "Yours" word-chip.
+            // Reuses the one Avatar primitive (R3). teamColor null (viewer not on a
+            // team) → Avatar's accent ("you") fallback.
+            <Avatar
+              name={viewerName || "You"}
+              avatarIcon={viewerAvatarIcon ?? null}
+              teamColor={viewerTeamColor ?? null}
+              accent
+              sizePx={20}
+              className="shrink-0"
+            />
+          )}
           {lifecycle === "live" && <LiveBadge />}
         </div>
         {subtitle && (
@@ -351,21 +397,3 @@ export function LiveBadge() {
   );
 }
 
-/** "Yours"— marks a game the viewer is the delegate of (§10). Display-only;
- *  the controls live on the game page, not the board row (§5). Dropped at Final
- *  alongside the scorecard (round-3.1 §A2 — Final sheds operational chrome). */
-export function YoursBadge() {
-  return (
-    <span
-      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-      style={{
-        background: "var(--color-bt-accent-faint)",
-        color: "var(--color-bt-accent)",
-        border: "1px solid var(--color-bt-accent-border)",
-      }}
-      data-testid="game-yours-badge"
-    >
-      Yours
-    </span>
-  );
-}
