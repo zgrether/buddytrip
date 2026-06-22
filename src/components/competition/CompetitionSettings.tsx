@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, RotateCcw, Eraser } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { TeamsPanel } from "./TeamsPanel";
@@ -193,6 +193,10 @@ function DetailsSection({
 
 // ── Danger zone (delete) ─────────────────────────────────────────────────────
 
+/** Which danger-zone confirm is open. The escalating ladder, mildest → severest:
+ *  reset scoring → reset to skeleton → delete. */
+type DangerConfirm = null | "scoring" | "skeleton" | "delete";
+
 function DangerSection({
   competition,
   tripId,
@@ -203,9 +207,10 @@ function DangerSection({
   onDeleted?: () => void;
 }) {
   const utils = trpc.useUtils();
-  const [confirming, setConfirming] = useState(false);
+  const [confirm, setConfirm] = useState<DangerConfirm>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Cascade-tally inputs for the confirm copy (assignments + competition games).
+  // Cascade-tally inputs for the delete confirm copy (assignments + games).
   const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
     { tripId, competitionId: competition.id },
     { enabled: !!competition.id }
@@ -219,6 +224,34 @@ function DangerSection({
     (g) => g.competition_id === competition.id
   ).length;
 
+  // A reset changes results + (for skeleton) config across every game. Two layers
+  // of cache to clear:
+  //  1. Board surfaces render from the faceBootstrap snapshot (#10) → re-resolve
+  //     it + the child caches other board surfaces read directly.
+  //  2. Per-GAME surfaces — the score-entry / scorecard / match pages read
+  //     games.getById + scores/matches/playGroups.listByGame, which the board
+  //     PREFETCHES on row hover (fresh for the 60s staleTime). Without clearing
+  //     these, opening a game after a reset shows its OLD scores + pairings until
+  //     the staleTime expires (the 15-30s lag). Invalidate every cached instance
+  //     (all gameIds) so an opened game refetches the cleared state on mount.
+  function invalidateAfterReset() {
+    utils.competitions.faceBootstrap.invalidate({ tripId });
+    utils.competitions.leaderboard.invalidate({ tripId, competitionId: competition.id });
+    utils.games.listByTrip.invalidate({ tripId });
+    utils.games.getById.invalidate();
+    utils.scores.listByGame.invalidate();
+    utils.matches.listByGame.invalidate();
+    utils.playGroups.listByGame.invalidate();
+  }
+
+  const resetScoring = trpc.competitions.resetScoring.useMutation({
+    onSuccess: () => { invalidateAfterReset(); setConfirm(null); },
+    onError: (e) => setError(e.message ?? "Failed to reset scoring"),
+  });
+  const resetToSkeleton = trpc.competitions.resetToSkeleton.useMutation({
+    onSuccess: () => { invalidateAfterReset(); setConfirm(null); },
+    onError: (e) => setError(e.message ?? "Failed to reset to skeleton"),
+  });
   const deleteComp = trpc.competitions.delete.useMutation({
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
@@ -226,45 +259,122 @@ function DangerSection({
       // returns to the empty/intro state without a hard refresh (#10).
       utils.competitions.faceBootstrap.invalidate({ tripId });
     },
-    onSuccess: () => {
-      setConfirming(false);
-      onDeleted?.();
-    },
+    onSuccess: () => { setConfirm(null); onDeleted?.(); },
+    onError: (e) => setError(e.message ?? "Failed to delete competition"),
   });
+
+  const open = (which: DangerConfirm) => { setError(null); setConfirm(which); };
 
   return (
     <section className="space-y-3">
       <SectionLabel danger>Danger zone</SectionLabel>
       <div
-        className="rounded-xl p-4"
+        className="space-y-3 rounded-xl p-4"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
-        <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          Deleting removes the competition and everything in it — teams, rosters, and games. This can&rsquo;t be undone.
-        </p>
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold"
-          style={{ background: "transparent", color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-border)" }}
-          data-testid="competition-delete-btn"
-        >
-          <Trash2 size={14} />
-          Delete competition
-        </button>
+        {/* The escalating ladder: clear scores → strip setup → delete. */}
+        <DangerRow
+          icon={<RotateCcw size={14} />}
+          tone="warning"
+          label="Reset all scoring"
+          blurb="Clears every game's scores. Teams, games, and setup stay — each game is ready to re-score."
+          onClick={() => open("scoring")}
+          testId="comp-reset-scoring-btn"
+        />
+        <DangerRow
+          icon={<Eraser size={14} />}
+          tone="warning"
+          label="Reset all games to skeleton"
+          blurb="Resets every game to unconfigured. Teams stay; all pairings, courses, handicaps, and scores are cleared."
+          onClick={() => open("skeleton")}
+          testId="comp-reset-skeleton-btn"
+        />
+        <DangerRow
+          icon={<Trash2 size={14} />}
+          tone="danger"
+          label="Delete competition"
+          blurb="Removes the competition and everything in it — teams, rosters, and games. This can't be undone."
+          onClick={() => open("delete")}
+          testId="competition-delete-btn"
+        />
+        {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
       </div>
 
-      {confirming && (
-        <DeleteCompetitionConfirmModal
-          competitionName={competition.name}
-          teamsCount={teamsCount}
-          gamesCount={gamesCount}
+      {confirm === "scoring" && (
+        <DangerConfirmModal
+          tone="warning"
+          icon={<RotateCcw size={18} />}
+          title="Reset all scoring?"
+          body="Clears all scores. Teams, games, and setup stay — every game is ready to re-score."
+          confirmLabel="Reset scoring"
+          pendingLabel="Resetting…"
+          isPending={resetScoring.isPending}
+          testId="comp-reset-scoring-confirm"
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => resetScoring.mutate({ tripId, competitionId: competition.id })}
+        />
+      )}
+      {confirm === "skeleton" && (
+        <DangerConfirmModal
+          tone="warning"
+          icon={<Eraser size={18} />}
+          title="Reset all games to skeleton?"
+          body="Resets every game to unconfigured. Teams stay; all pairings, courses, handicaps, and scores are cleared — each game needs setting up again."
+          confirmLabel="Reset to skeleton"
+          pendingLabel="Resetting…"
+          isPending={resetToSkeleton.isPending}
+          testId="comp-reset-skeleton-confirm"
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => resetToSkeleton.mutate({ tripId, competitionId: competition.id })}
+        />
+      )}
+      {confirm === "delete" && (
+        <DangerConfirmModal
+          tone="danger"
+          icon={<Trash2 size={18} />}
+          title={`Delete “${competition.name}”?`}
+          body={`This will delete all teams, events, and groups${describeCascade(teamsCount, gamesCount)}. This cannot be undone.`}
+          confirmLabel="Delete Competition"
+          pendingLabel="Deleting…"
           isPending={deleteComp.isPending}
-          onCancel={() => setConfirming(false)}
+          testId="competition-delete-confirm"
+          onCancel={() => setConfirm(null)}
           onConfirm={() => deleteComp.mutate({ tripId, competitionId: competition.id })}
         />
       )}
     </section>
+  );
+}
+
+/** One danger-zone action: a labelled button with a one-line cost blurb above it.
+ *  `tone` colors the text/icon (warning = reversible-but-heavy; danger = gone). */
+function DangerRow({
+  icon, tone, label, blurb, onClick, testId,
+}: {
+  icon: React.ReactNode;
+  tone: "warning" | "danger";
+  label: string;
+  blurb: string;
+  onClick: () => void;
+  testId: string;
+}) {
+  const color = tone === "danger" ? "var(--color-bt-danger)" : "var(--color-bt-warning)";
+  return (
+    <div>
+      <p className="mb-1.5 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        {blurb}
+      </p>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold"
+        style={{ background: "transparent", color, border: "1px solid var(--color-bt-border)" }}
+        data-testid={testId}
+      >
+        {icon}
+        {label}
+      </button>
+    </div>
   );
 }
 
@@ -279,24 +389,34 @@ function SectionLabel({ children, danger }: { children: React.ReactNode; danger?
   );
 }
 
-// ── DeleteCompetitionConfirmModal (relocated from the header) ─────────────────
+// ── DangerConfirmModal — the one in-app confirm for every danger-zone action ──
+// (No window.confirm anywhere — #433.) Cost-naming body, tone-colored icon/CTA.
 
-function DeleteCompetitionConfirmModal({
-  competitionName,
-  teamsCount,
-  gamesCount,
+function DangerConfirmModal({
+  tone,
+  icon,
+  title,
+  body,
+  confirmLabel,
+  pendingLabel,
   isPending,
+  testId,
   onCancel,
   onConfirm,
 }: {
-  competitionName: string;
-  teamsCount: number;
-  gamesCount: number;
+  tone: "warning" | "danger";
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  pendingLabel: string;
   isPending: boolean;
+  testId: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const summary = describeCascade(teamsCount, gamesCount);
+  const accent = tone === "danger" ? "var(--color-bt-danger)" : "var(--color-bt-warning)";
+  const accentFaint = tone === "danger" ? "var(--color-bt-danger-faint)" : "var(--color-bt-warning-faint)";
 
   return (
     <ScrollLock>
@@ -313,15 +433,15 @@ function DeleteCompetitionConfirmModal({
           <div className="px-5 pt-5 pb-3 text-center sm:text-left">
             <div
               className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl sm:mx-0"
-              style={{ background: "var(--color-bt-danger-faint)", color: "var(--color-bt-danger)" }}
+              style={{ background: accentFaint, color: accent }}
             >
-              <Trash2 size={18} />
+              {icon}
             </div>
             <h3 className="mt-3 text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-              Delete &ldquo;{competitionName}&rdquo;?
+              {title}
             </h3>
             <p className="mt-1.5 text-sm leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              This will delete all teams, events, and groups{summary}. This cannot be undone.
+              {body}
             </p>
           </div>
           <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
@@ -339,10 +459,10 @@ function DeleteCompetitionConfirmModal({
               onClick={onConfirm}
               disabled={isPending}
               className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: "var(--color-bt-danger)" }}
-              data-testid="competition-delete-confirm"
+              style={{ background: accent }}
+              data-testid={testId}
             >
-              {isPending ? "Deleting…" : "Delete Competition"}
+              {isPending ? pendingLabel : confirmLabel}
             </button>
           </div>
         </div>
