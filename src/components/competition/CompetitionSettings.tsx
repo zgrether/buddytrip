@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Trash2, RotateCcw, Eraser } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
-import { TeamsPanel } from "./TeamsPanel";
 
 interface Competition {
   id: string;
@@ -18,24 +17,19 @@ interface Props {
   tripId: string;
   canEdit: boolean;
   isOwner: boolean;
-  /** Live = structure locked (TeamsPanel can't restructure mid-competition). */
-  isLive: boolean;
-  /** Roster-build phase — show the one-way "Save rosters" commit button. */
-  rosterBuilding: boolean;
-  /** Commit the roster build (advances the flag to `saved` + returns to board). */
-  onSaveRosters: () => void;
   /** Fired after the owner deletes the competition (host resets its flag). */
   onDeleted?: () => void;
 }
 
 /**
- * CompetitionSettings — the single home for everything that used to be scattered
- * across the header (edit modal, delete trash) and the retired setup guide
- * (all-teams roster page). Reached from the header gear and the board's pre-save
- * "Team Rosters" button. Three sections:
+ * CompetitionSettings — competition META + danger zone. Reached from the header
+ * gear. Two sections:
  *   1. Details   — name + tagline, inline-edited (was the header pencil modal)
- *   2. Rosters   — the all-teams TeamsPanel (+ the one-way "Save rosters" commit)
- *   3. Danger    — delete the competition (was the header trash; owner + pre-live)
+ *   2. Danger    — reset / delete the competition (owner + pre-live)
+ *
+ * Team management is NO LONGER here — it moved to the member-visible Rosters
+ * overlay opened from the leaderboard header (W-TEAMSURFACE-01), where roster
+ * editing is live + drag-based rather than form-and-save.
  *
  * STANDARD PALETTE ONLY — no competition accent / tonal shift.
  */
@@ -44,35 +38,11 @@ export function CompetitionSettings({
   tripId,
   canEdit,
   isOwner,
-  isLive,
-  rosterBuilding,
-  onSaveRosters,
   onDeleted,
 }: Props) {
   return (
     <div className="space-y-6">
       <DetailsSection competition={competition} tripId={tripId} canEdit={canEdit} />
-
-      <section className="space-y-3">
-        <SectionLabel>Team Rosters</SectionLabel>
-        <TeamsPanel
-          competitionId={competition.id}
-          tripId={tripId}
-          canEdit={canEdit}
-          structureLocked={isLive}
-        />
-        {canEdit && rosterBuilding && (
-          <button
-            type="button"
-            onClick={onSaveRosters}
-            className="w-full"
-            style={{ height: 48, borderRadius: 12, background: "var(--color-bt-accent)", color: "var(--color-bt-base)", fontSize: 15, fontWeight: 600 }}
-            data-testid="comp-save-rosters"
-          >
-            Save rosters
-          </button>
-        )}
-      </section>
 
       {isOwner && competition.status === "upcoming" && (
         <DangerSection competition={competition} tripId={tripId} onDeleted={onDeleted} />

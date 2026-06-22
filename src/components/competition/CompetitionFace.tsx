@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, Users, X } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionHeader } from "./CompetitionHeader";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettings } from "./CompetitionSettings";
+import { RostersOverlay } from "./RostersOverlay";
 import { GameSheet, RunSheet, type GameRow, type LBTeamLite } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 
@@ -75,6 +76,7 @@ export function CompetitionFace({
   // board and returns to it. "Add a game" opens a modal over the board.
   const [view, setView] = useState<FaceView>("board");
   const [addingGame, setAddingGame] = useState(false);
+  const [rostersOpen, setRostersOpen] = useState(false);
 
   // GameSheet (add-game modal) needs the type catalog. Format definitions live in
   // CODE (W-PERF-01) — read synchronously, no fetch — so the modal's top half is
@@ -202,12 +204,6 @@ export function CompetitionFace({
           tripId={tripId}
           canEdit={canEdit}
           isOwner={isOwner}
-          isLive={isLive}
-          rosterBuilding={rosterSetup === "building"}
-          // "Save rosters" (setup phase only) commits the roster build one-way:
-          // the board's Team Rosters button gives way to the moved-to-Settings
-          // signpost. Returns to the board so the transition is visible.
-          onSaveRosters={() => { setRosterSetup("saved"); setView("board"); }}
           onDeleted={onCompetitionDeleted}
         />
       </div>
@@ -219,52 +215,16 @@ export function CompetitionFace({
     <div className="space-y-4">
       {header}
 
-      {/* Setup-phase roster affordance: the Team Rosters button (building) gives
-          way to a dismissable "moved to Settings" signpost (saved) → clean
-          (dismissed). Editors only — the crew never sees management chrome. */}
-      {canEdit && rosterSetup === "building" && (
-        <button
-          type="button"
-          onClick={() => setView("settings")}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-          data-testid="comp-team-rosters-btn"
-        >
-          <Users size={15} style={{ color: "var(--color-bt-accent)" }} /> Team Rosters
-        </button>
-      )}
-      {canEdit && rosterSetup === "saved" && (
-        <div
-          className="flex items-start gap-3 rounded-lg px-3 py-2.5"
-          style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}
-          data-testid="comp-rosters-moved-signpost"
-        >
-          <p className="min-w-0 flex-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            Roster management has moved to Settings —{" "}
-            <button type="button" onClick={() => setView("settings")} className="font-semibold underline" style={{ color: "var(--color-bt-accent)" }}>
-              Open Settings
-            </button>
-            . Manage a team by tapping its name.
-          </p>
-          <button
-            type="button"
-            onClick={() => setRosterSetup("dismissed")}
-            aria-label="Dismiss"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="comp-rosters-signpost-dismiss"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
         onAddGame={() => setAddingGame(true)}
-        onEditTeam={canEdit ? () => setView("settings") : undefined}
+        // Team management now lives in the Rosters overlay (W-TEAMSURFACE-01), not
+        // Settings — the header "Rosters" button and a hero team-name tap both
+        // open it. Member-visible, so it's not canEdit-gated.
+        onOpenRosters={() => setRostersOpen(true)}
+        onEditTeam={() => setRostersOpen(true)}
         onOpenGame={canEdit ? openManualGame : undefined}
       />
 
@@ -306,6 +266,21 @@ export function CompetitionFace({
             utils.competitions.faceBootstrap.invalidate({ tripId });
           }}
           onEditConfig={() => { setEditing(running); setRunning(null); }}
+        />
+      )}
+
+      {/* Rosters overlay — the one home for team management (W-TEAMSURFACE-01),
+          member-visible, owner-editable. Opened from the leaderboard header (or a
+          hero team-name tap). Carries the relocated "Save rosters" commit. */}
+      {rostersOpen && (
+        <RostersOverlay
+          tripId={tripId}
+          competitionId={competition.id}
+          isOwner={isOwner}
+          structureLocked={isLive}
+          rosterBuilding={rosterSetup === "building"}
+          onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
+          onClose={() => setRostersOpen(false)}
         />
       )}
     </div>
