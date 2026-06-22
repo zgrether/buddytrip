@@ -45,10 +45,12 @@ export interface LBCell {
   points: number;
 }
 
-/** The viewer's identity, threaded to GameRow for the delegate marker (§10). */
+/** The viewer's identity, threaded to GameRow for the delegate marker (§10).
+ *  `teamColor` paints the marker in the viewer's competition-team color. */
 export interface LBViewer {
   name: string | null;
   avatarIcon: string | null;
+  teamColor: string | null;
 }
 
 interface LeaderboardData {
@@ -103,17 +105,26 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
     [myDelegateIds]
   );
 
-  // The viewer's identity for the delegate marker (the avatar's filled treatment
-  // carries "yours", §10). Cheap, cached `getMe`; only the rows the viewer
-  // delegates render it. Falls back to a generic "You" avatar if not yet loaded.
+  // The viewer's identity for the delegate marker (§10). The marker is the
+  // viewer's avatar in THEIR TEAM color (competition identity); only the rows the
+  // viewer delegates render it. `getMe` + the team assignment list are both cheap
+  // + cached. teamColor is null when the viewer isn't on a team → Avatar falls
+  // back to its accent ("you") treatment.
   const { data: me } = trpc.users.getMe.useQuery();
-  const viewer = useMemo(
-    () => ({
+  const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
+    { tripId, competitionId },
+    { enabled: !!competitionId }
+  );
+  const viewer = useMemo<LBViewer>(() => {
+    const myTeamId =
+      (assignments as { user_id: string; team_id: string }[]).find((a) => a.user_id === me?.id)?.team_id ?? null;
+    const teamColor = myTeamId ? (data?.teams.find((t) => t.id === myTeamId)?.color ?? null) : null;
+    return {
       name: (me?.name as string | null) ?? null,
       avatarIcon: (me?.avatar_icon as string | null) ?? null,
-    }),
-    [me]
-  );
+      teamColor,
+    };
+  }, [me, assignments, data?.teams]);
 
   const liveGames = useMemo(
     () => (data?.games ?? []).filter((g) => !g.dropped),
@@ -612,6 +623,7 @@ function SessionBreakdown({
             mine={mineSet.has(game.id)}
             viewerName={viewer.name}
             viewerAvatarIcon={viewer.avatarIcon}
+            viewerTeamColor={viewer.teamColor}
             onPrefetch={onPrefetch}
             onOpenGame={onOpenGame}
           />
@@ -712,6 +724,7 @@ function EarlyState({
                 mine={mineSet.has(game.id)}
                 viewerName={viewer.name}
                 viewerAvatarIcon={viewer.avatarIcon}
+                viewerTeamColor={viewer.teamColor}
                 onPrefetch={onPrefetch}
                 onOpenGame={onOpenGame}
               />

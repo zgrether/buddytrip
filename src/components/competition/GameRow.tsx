@@ -119,6 +119,7 @@ export function GameRow({
   mine,
   viewerName,
   viewerAvatarIcon,
+  viewerTeamColor,
   onPrefetch,
   onOpenGame,
 }: {
@@ -127,11 +128,12 @@ export function GameRow({
   cells: Map<string, LBCell> | undefined;
   tripId: string;
   mine: boolean;
-  /** The viewer's display name + chosen avatar icon — rendered as the delegate
-   *  marker when `mine` (the avatar's own filled treatment carries "yours", §10).
-   *  Only needed when the viewer delegates this game. */
+  /** The viewer's display name + chosen avatar icon + competition-team color —
+   *  rendered as the delegate marker when `mine` (the viewer's avatar in their
+   *  team color, §10). Only needed when the viewer delegates this game. */
   viewerName?: string | null;
   viewerAvatarIcon?: string | null;
+  viewerTeamColor?: string | null;
   onPrefetch: (gameId: string) => void;
   /** Non-golf games have no game-board route; when the viewer can act on them
    *  (editors only), the row opens the manual run sheet in place instead of
@@ -183,18 +185,24 @@ export function GameRow({
       : null;
 
   // Panel surface — each game is its own standalone card (not a row inside a
-  // shared panel). Setting-up is outlined with an ALL-SIDES dash as its "not
-  // built yet" tell; on the panel border so the inner content never shifts.
+  // shared panel). Only the ACTIVE states carry a fill: Ready (a solid card,
+  // "built + waiting") and Live (the one reserved accent-faint "act now" fill,
+  // §A2). Setting-up and Final get NO fill — setting-up is an outline-only dashed
+  // shell ("not built yet"), Final a recessed, dimmed record. The border lives on
+  // the panel so the inner content never shifts.
   const panelStyle: React.CSSProperties = {
-    background: "var(--color-bt-card)",
+    background:
+      lifecycle === "ready"
+        ? "var(--color-bt-card)"
+        : lifecycle === "live"
+        ? "var(--color-bt-accent-faint)"
+        : undefined, // setting-up + final: no fill
     border:
       lifecycle === "setting-up"
         ? "1.5px dashed var(--color-bt-border)"
         : "1px solid var(--color-bt-border)",
   };
   const rowStyle: React.CSSProperties = {
-    // The one reserved background is Live (§A2) — the only "act now" fill.
-    background: lifecycle === "live" ? "var(--color-bt-accent-faint)" : undefined,
     // Final is a quiet record — recess the whole tile (§A3 "recessed").
     opacity: isFinal ? 0.72 : 1,
   };
@@ -225,13 +233,14 @@ export function GameRow({
             {game.name}
           </span>
           {showDelegate && (
-            // The delegate marker IS the viewer's avatar in its filled (accent)
-            // treatment — the same "this is you" affordance as the top-nav
-            // account avatar (§10). The avatar's own treatment carries "yours";
-            // no separate word-chip. Reuses the one Avatar primitive (R3).
+            // The delegate marker IS the viewer's avatar in their COMPETITION-TEAM
+            // color (§10) — competition identity, not a separate "Yours" word-chip.
+            // Reuses the one Avatar primitive (R3). teamColor null (viewer not on a
+            // team) → Avatar's accent ("you") fallback.
             <Avatar
               name={viewerName || "You"}
               avatarIcon={viewerAvatarIcon ?? null}
+              teamColor={viewerTeamColor ?? null}
               accent
               sizePx={20}
               className="shrink-0"
