@@ -45,6 +45,12 @@ export interface LBCell {
   points: number;
 }
 
+/** The viewer's identity, threaded to GameRow for the delegate marker (§10). */
+export interface LBViewer {
+  name: string | null;
+  avatarIcon: string | null;
+}
+
 interface LeaderboardData {
   teams: LBTeam[];
   games: LBGame[];
@@ -95,6 +101,18 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
   const mineSet = useMemo(
     () => new Set(myDelegateIds as string[]),
     [myDelegateIds]
+  );
+
+  // The viewer's identity for the delegate marker (the avatar's filled treatment
+  // carries "yours", §10). Cheap, cached `getMe`; only the rows the viewer
+  // delegates render it. Falls back to a generic "You" avatar if not yet loaded.
+  const { data: me } = trpc.users.getMe.useQuery();
+  const viewer = useMemo(
+    () => ({
+      name: (me?.name as string | null) ?? null,
+      avatarIcon: (me?.avatar_icon as string | null) ?? null,
+    }),
+    [me]
   );
 
   const liveGames = useMemo(
@@ -165,6 +183,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
         winNumber={winNumber}
         tripId={tripId}
         mineSet={mineSet}
+        viewer={viewer}
         onPrefetch={prefetchGame}
         canEdit={canEdit}
         onAddGame={onAddGame}
@@ -245,6 +264,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
         sessionsDone={sessionsDone}
         tripId={tripId}
         mineSet={mineSet}
+        viewer={viewer}
         onPrefetch={prefetchGame}
         canEdit={canEdit}
         onAddGame={onAddGame}
@@ -259,7 +279,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, teams, cellsByGame, sessionsDone, tripId, mineSet, onPrefetch, canEdit, onAddGame, onOpenGame,
+  games, teams, cellsByGame, sessionsDone, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame, onOpenGame,
 }: {
   games: LBGame[];
   teams: LBTeam[];
@@ -267,6 +287,7 @@ function GamesSection({
   sessionsDone: number;
   tripId: string;
   mineSet: Set<string>;
+  viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   onAddGame?: () => void;
@@ -314,6 +335,7 @@ function GamesSection({
         sessionsDone={sessionsDone}
         tripId={tripId}
         mineSet={mineSet}
+        viewer={viewer}
         onPrefetch={onPrefetch}
         onOpenGame={onOpenGame}
       />
@@ -554,6 +576,7 @@ function SessionBreakdown({
   sessionsDone,
   tripId,
   mineSet,
+  viewer,
   onPrefetch,
   onOpenGame,
 }: {
@@ -563,6 +586,7 @@ function SessionBreakdown({
   sessionsDone: number;
   tripId: string;
   mineSet: Set<string>;
+  viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
   onOpenGame?: (gameId: string) => void;
 }) {
@@ -586,6 +610,8 @@ function SessionBreakdown({
             cells={cellsByGame.get(game.id)}
             tripId={tripId}
             mine={mineSet.has(game.id)}
+            viewerName={viewer.name}
+            viewerAvatarIcon={viewer.avatarIcon}
             onPrefetch={onPrefetch}
             onOpenGame={onOpenGame}
           />
@@ -603,6 +629,7 @@ function EarlyState({
   winNumber,
   tripId,
   mineSet,
+  viewer,
   onPrefetch,
   canEdit,
   onAddGame,
@@ -613,6 +640,7 @@ function EarlyState({
   winNumber: number;
   tripId: string;
   mineSet: Set<string>;
+  viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   onAddGame?: () => void;
@@ -682,6 +710,8 @@ function EarlyState({
                 cells={undefined}
                 tripId={tripId}
                 mine={mineSet.has(game.id)}
+                viewerName={viewer.name}
+                viewerAvatarIcon={viewer.avatarIcon}
                 onPrefetch={onPrefetch}
                 onOpenGame={onOpenGame}
               />
