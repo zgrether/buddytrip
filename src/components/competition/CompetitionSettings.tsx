@@ -224,13 +224,24 @@ function DangerSection({
     (g) => g.competition_id === competition.id
   ).length;
 
-  // A reset changes results + (for skeleton) config across every game — the board
-  // + leaderboard render from the faceBootstrap snapshot, so re-resolve it (#10),
-  // plus the child caches other surfaces read directly.
+  // A reset changes results + (for skeleton) config across every game. Two layers
+  // of cache to clear:
+  //  1. Board surfaces render from the faceBootstrap snapshot (#10) → re-resolve
+  //     it + the child caches other board surfaces read directly.
+  //  2. Per-GAME surfaces — the score-entry / scorecard / match pages read
+  //     games.getById + scores/matches/playGroups.listByGame, which the board
+  //     PREFETCHES on row hover (fresh for the 60s staleTime). Without clearing
+  //     these, opening a game after a reset shows its OLD scores + pairings until
+  //     the staleTime expires (the 15-30s lag). Invalidate every cached instance
+  //     (all gameIds) so an opened game refetches the cleared state on mount.
   function invalidateAfterReset() {
     utils.competitions.faceBootstrap.invalidate({ tripId });
     utils.competitions.leaderboard.invalidate({ tripId, competitionId: competition.id });
     utils.games.listByTrip.invalidate({ tripId });
+    utils.games.getById.invalidate();
+    utils.scores.listByGame.invalidate();
+    utils.matches.listByGame.invalidate();
+    utils.playGroups.listByGame.invalidate();
   }
 
   const resetScoring = trpc.competitions.resetScoring.useMutation({
