@@ -52,16 +52,22 @@ describe("teams router", () => {
     expect(teams.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("update — planner can rename a team", async () => {
-    const caller = ctx.callerAs("planner");
-    const teams = await caller.teams.list({ tripId, competitionId });
+  it("update — the owner can rename a team's identity; a co-admin (Organizer) cannot (PR b2)", async () => {
+    // Identity (name/short/color) is the captain tier now: owner OR the team's
+    // captain. A co-admin (Organizer) who is NOT the captain is re-gated out —
+    // captain-specific cases live in teams.identity.test.ts.
+    const teams = await ctx.caller().teams.list({ tripId, competitionId });
     const target = teams[0];
-    const updated = await caller.teams.update({
+    const updated = await ctx.caller().teams.update({
       tripId,
       teamId: target.id,
       name: "Team Hammer 2.0",
     });
     expect(updated.name).toBe("Team Hammer 2.0");
+
+    await expect(
+      ctx.callerAs("planner").teams.update({ tripId, teamId: target.id, name: "Nope" })
+    ).rejects.toThrow();
   });
 
   it("delete — a co-admin (trip Organizer) can delete a team; a member cannot", async () => {
