@@ -15,7 +15,6 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
-import { TeamMemberChip } from "./TeamMemberChip";
 
 interface Props {
   competitionId: string;
@@ -33,6 +32,12 @@ interface Props {
    * structure lock, not a data lock — same builder, fewer affordances.
    */
   structureLocked?: boolean;
+  /**
+   * Embedded mode: the panel is hosted inside the Rosters overlay (W-TEAMSURFACE-01),
+   * which already supplies the card chrome + "Rosters" title. Drop the bordered
+   * wrapper + the redundant section title; keep the status + add-team toolbar.
+   */
+  embedded?: boolean;
 }
 
 interface Team {
@@ -211,8 +216,11 @@ export function TeamsPanel({
   creating: creatingProp,
   onCreatingChange,
   structureLocked = false,
+  embedded = false,
 }: Props) {
+  const utils = trpc.useUtils();
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [deletingTeam, setDeletingTeam] = useState<Team | null>(null);
   const [creatingLocal, setCreatingLocal] = useState(false);
   const creating = creatingProp ?? creatingLocal;
   const setCreating = (v: boolean) => {
@@ -239,31 +247,53 @@ export function TeamsPanel({
     ? "Not set up"
     : `${teamsTyped.length} team${teamsTyped.length === 1 ? "" : "s"} · ${assignedCount} of ${totalMembers} assigned`;
 
+  // List-level delete (W-TEAMDEL-01): the delete affordance lives on each team
+  // card, NOT buried in the edit modal. Lifted here so one confirm + mutation
+  // serves the whole list. Same invalidations the edit modal used.
+  const deleteTeam = trpc.teams.delete.useMutation({
+    onSettled: () => {
+      utils.teams.list.invalidate({ tripId, competitionId });
+      utils.teamAssignments.list.invalidate({ tripId, competitionId });
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    },
+    onSuccess: () => setDeletingTeam(null),
+  });
+  const deletingMemberCount = deletingTeam
+    ? (assignments as Assignment[]).filter((a) => a.team_id === deletingTeam.id).length
+    : 0;
+
   return (
     <div
       data-testid="teams-panel"
-      className="overflow-hidden rounded-xl"
-      style={{ border: "1px solid var(--color-bt-border)" }}
+      className={embedded ? "" : "overflow-hidden rounded-xl"}
+      style={embedded ? undefined : { border: "1px solid var(--color-bt-border)" }}
     >
-      {/* Section header */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <span style={{ color: "var(--color-bt-accent)" }} aria-hidden>
-            <div className="flex items-center">
-              <User size={14} />
-              <ArrowRight size={11} className="mx-0.5" />
-              <Users size={14} />
+      {/* Header — full section header standalone; a slim status+add toolbar when
+          embedded in the Rosters overlay (which owns the title). */}
+      <div className={`flex items-center justify-between px-4 ${embedded ? "pt-1 pb-3" : "py-3"}`}>
+        {embedded ? (
+          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {statusText}
+          </p>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <span style={{ color: "var(--color-bt-accent)" }} aria-hidden>
+              <div className="flex items-center">
+                <User size={14} />
+                <ArrowRight size={11} className="mx-0.5" />
+                <Users size={14} />
+              </div>
+            </span>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Team Rosters
+              </p>
+              <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {statusText}
+              </p>
             </div>
-          </span>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Team Rosters
-            </p>
-            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {statusText}
-            </p>
           </div>
-        </div>
+        )}
         {canEdit && !structureLocked && (
           <button
             type="button"
@@ -273,6 +303,7 @@ export function TeamsPanel({
               background: "var(--color-bt-accent)",
               color: "var(--color-bt-base)",
             }}
+            data-testid="teams-add"
           >
             <Plus size={12} />
             Team
@@ -289,8 +320,8 @@ export function TeamsPanel({
 
       {/* Content */}
       <div
-        className="space-y-4 px-4 pb-4 pt-3"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+        className={`space-y-4 px-4 pb-4 ${embedded ? "" : "pt-3"}`}
+        style={embedded ? undefined : { borderTop: "1px solid var(--color-bt-border)" }}
       >
         {!teamsExist && (
           <NoTeamsEmptyState
@@ -347,7 +378,9 @@ export function TeamsPanel({
                   members={members as Member[]}
                   assignments={assignments as Assignment[]}
                   canEdit={canEdit}
+                  structureLocked={structureLocked}
                   onEdit={() => setEditingTeam(team)}
+                  onDelete={() => setDeletingTeam(team)}
                   tripId={tripId}
                   competitionId={competitionId}
                 />
@@ -363,12 +396,21 @@ export function TeamsPanel({
           tripId={tripId}
           competitionId={competitionId}
           team={editingTeam}
-          structureLocked={structureLocked}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
           onClose={() => {
             setCreating(false);
             setEditingTeam(null);
           }}
+        />
+      )}
+
+      {deletingTeam && (
+        <DeleteTeamConfirmModal
+          teamName={deletingTeam.name}
+          memberCount={deletingMemberCount}
+          isPending={deleteTeam.isPending}
+          onCancel={() => setDeletingTeam(null)}
+          onConfirm={() => deleteTeam.mutate({ tripId, teamId: deletingTeam.id })}
         />
       )}
     </div>
@@ -439,7 +481,9 @@ function TeamCard({
   members,
   assignments,
   canEdit,
+  structureLocked,
   onEdit,
+  onDelete,
   tripId,
   competitionId,
 }: {
@@ -447,7 +491,9 @@ function TeamCard({
   members: Member[];
   assignments: Assignment[];
   canEdit: boolean;
+  structureLocked: boolean;
   onEdit: () => void;
+  onDelete: () => void;
   tripId: string;
   competitionId: string;
 }) {
@@ -460,9 +506,9 @@ function TeamCard({
     teamMemberIds.includes(m.user_id ?? m.memberId)
   );
 
-  // Optimistic — the dropped chip needs to land in the target team
+  // Optimistic — the dropped player needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
-  // per-chip × button (Owner-only) inside the team card.
+  // per-row × button inside the team card.
   const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
 
   function handleDrop(e: React.DragEvent) {
@@ -472,6 +518,12 @@ function TeamCard({
     if (!userId) return;
     assign.mutate({ tripId, competitionId, userId, teamId: team.id });
   }
+
+  const headerBg = {
+    background: dragOver
+      ? `color-mix(in srgb, ${team.color} 14%, var(--color-bt-card-raised))`
+      : `color-mix(in srgb, ${team.color} 8%, var(--color-bt-card-raised))`,
+  };
 
   return (
     <div
@@ -494,69 +546,72 @@ function TeamCard({
       onDrop={canEdit ? handleDrop : undefined}
       data-testid={`team-card-${team.id}`}
     >
-      <div
-        className="flex items-center gap-3 px-3 py-2.5"
-        style={{
-          background: dragOver
-            ? `color-mix(in srgb, ${team.color} 14%, var(--color-bt-card-raised))`
-            : `color-mix(in srgb, ${team.color} 8%, var(--color-bt-card-raised))`,
-        }}
-      >
-        <span
-          className="h-6 w-6 flex-shrink-0 rounded-full"
-          style={{ background: team.color }}
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p
-              className="truncate text-sm font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              {team.name}
-            </p>
-            <span
-              className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-              style={{
-                background: "var(--color-bt-card)",
-                color: "var(--color-bt-text-dim)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              {team.short_name}
-            </span>
-            <span className="ml-auto text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {teamMembers.length} member{teamMembers.length === 1 ? "" : "s"}
-            </span>
-          </div>
-        </div>
-        {canEdit && (
+      {/* Header — the team identity is tap-to-edit for the owner (W-TEAMTAP-01):
+          the whole name area is a button with a pencil cue, not a buried icon.
+          Delete is a sibling list-level affordance (W-TEAMDEL-01), not inside the
+          edit modal. */}
+      <div className="flex items-center gap-1 px-3 py-2.5" style={headerBg}>
+        {canEdit ? (
           <button
             type="button"
             onClick={onEdit}
             aria-label={`Edit ${team.name}`}
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-opacity hover:opacity-80"
+            data-testid={`team-edit-${team.id}`}
           >
-            <Pencil size={13} />
+            <span className="h-6 w-6 flex-shrink-0 rounded-full" style={{ background: team.color }} aria-hidden />
+            <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {team.name}
+            </span>
+            <span
+              className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold"
+              style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+            >
+              {team.short_name}
+            </span>
+            <Pencil size={12} className="flex-shrink-0 opacity-60 group-hover:opacity-100" style={{ color: "var(--color-bt-accent)" }} />
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1">
+            <span className="h-6 w-6 flex-shrink-0 rounded-full" style={{ background: team.color }} aria-hidden />
+            <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {team.name}
+            </span>
+            <span
+              className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold"
+              style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+            >
+              {team.short_name}
+            </span>
+          </div>
+        )}
+        <span className="flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          {teamMembers.length}
+        </span>
+        {canEdit && !structureLocked && (
+          // Delete-team lives at the list level (W-TEAMDEL-01). Hidden once live —
+          // removing a team is a structure change (§9).
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label={`Delete ${team.name}`}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ color: "var(--color-bt-danger)" }}
+            data-testid={`team-delete-${team.id}`}
+          >
+            <Trash2 size={13} />
           </button>
         )}
       </div>
 
-      {/* Members area — chips sit directly on the team card, no inner box */}
-      <div
-        className="flex flex-wrap gap-2 px-3 pb-3 pt-2"
-        style={{ minHeight: 40 }}
-      >
+      {/* Members — full-width player rows (W-TEAMBUILD-01), via the Avatar
+          team-color disc. A row is the drag source (owner, desktop); its × is
+          the per-player remove. The captain ★ slot lands here in PR (b). */}
+      <div className="space-y-1.5 px-3 pb-3 pt-1" style={{ minHeight: 40 }}>
         {teamMembers.length === 0 && (
-          <p
-            className="text-[11px] italic"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
+          <p className="px-1 py-1.5 text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
             {canEdit ? (
               <>
-                {/* Drag affordance lives on lg+ only — fall back to a
-                    neutral phrase on touch widths (tablet + phone) */}
                 <span className="hidden lg:inline">Drop a crew member here</span>
                 <span className="lg:hidden">No members yet</span>
               </>
@@ -568,11 +623,10 @@ function TeamCard({
         {teamMembers.map((m) => {
           const id = m.user_id ?? m.memberId;
           return (
-            <TeamMemberChip
+            <PlayerRow
               key={id}
-              displayName={m.displayName}
-              avatarIcon={m.user?.avatar_icon}
-              isGuest={m.isGuest}
+              name={m.displayName}
+              avatarIcon={m.user?.avatar_icon ?? null}
               teamColor={team.color}
               draggable={canEdit}
               onDragStart={
@@ -583,19 +637,63 @@ function TeamCard({
                     }
                   : undefined
               }
-              onRemove={
-                // Swapping/unassigning a player is co-admin team-editing, not
-                // competition-destructive — owner & co-admins both do it.
-                canEdit
-                  ? () => remove.mutate({ tripId, competitionId, userId: id })
-                  : undefined
-              }
+              onRemove={canEdit ? () => remove.mutate({ tripId, competitionId, userId: id }) : undefined}
               removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
             />
           );
         })}
       </div>
+    </div>
+  );
+}
 
+// ── PlayerRow ───────────────────────────────────────────────────────────────
+// Full-width player card (W-TEAMBUILD-01): the team-color Avatar disc (R3) + name
+// + (owner) remove. Draggable for the desktop assign-by-drag flow. The captain ★
+// affordance lands to the right of the name in PR (b).
+
+function PlayerRow({
+  name,
+  avatarIcon,
+  teamColor,
+  draggable,
+  onDragStart,
+  onRemove,
+  removeAriaLabel,
+}: {
+  name: string;
+  avatarIcon: string | null;
+  teamColor: string;
+  draggable: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onRemove?: () => void;
+  removeAriaLabel: string;
+}) {
+  return (
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+    >
+      {draggable && (
+        <GripVertical size={14} className="hidden flex-shrink-0 lg:block" style={{ color: "var(--color-bt-text-dim)" }} />
+      )}
+      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} />
+      <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+        {name}
+      </span>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={removeAriaLabel}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -955,15 +1053,12 @@ function TeamSheet({
   tripId,
   competitionId,
   team,
-  structureLocked = false,
   existingTeamNames,
   onClose,
 }: {
   tripId: string;
   competitionId: string;
   team: Team | null;
-  /** Live structure-lock (§9): hide the delete-team affordance (rename stays). */
-  structureLocked?: boolean;
   /** Lowercased names of teams already in this competition — used to skip
    *  collisions when rolling a name from a theme. The current team's own
    *  name is excluded by the caller in edit mode. */
@@ -983,16 +1078,6 @@ function TeamSheet({
   });
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  // Snapshot member count for the confirm dialog before delete fires.
-  const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
-    { tripId, competitionId },
-    { enabled: isEdit && !structureLocked }
-  );
-  const memberCount = team
-    ? (assignments as Assignment[]).filter((a) => a.team_id === team.id).length
-    : 0;
 
   // The leaderboard roll-up (competitions.leaderboard) bakes in each team's
   // color / name / short_name, and the board renders from that bootstrap-seeded
@@ -1009,17 +1094,6 @@ function TeamSheet({
     onSettled: () => {
       utils.teams.list.invalidate({ tripId, competitionId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-    },
-  });
-  const deleteTeam = trpc.teams.delete.useMutation({
-    onSettled: () => {
-      utils.teams.list.invalidate({ tripId, competitionId });
-      utils.teamAssignments.list.invalidate({ tripId, competitionId });
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-    },
-    onSuccess: () => {
-      setConfirmingDelete(false);
-      onClose();
     },
   });
 
@@ -1235,46 +1309,16 @@ function TeamSheet({
             </p>
           )}
 
-          <div className="flex items-center gap-2">
-            {isEdit && !structureLocked && team && (
-              // Delete-team is co-admin team-editing (reaching this sheet already
-              // requires edit access) — not competition-destructive. Hidden once
-              // live: removing a team is a structure change (§9).
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                aria-label={`Delete ${team.name}`}
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
-                style={{
-                  background: "transparent",
-                  color: "var(--color-bt-danger)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                <Trash2 size={15} />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={create.isPending || update.isPending}
-              className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {isEdit ? "Save Team" : "Add Team"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={create.isPending || update.isPending}
+            className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {isEdit ? "Save Team" : "Add Team"}
+          </button>
         </div>
-
-        {confirmingDelete && team && (
-          <DeleteTeamConfirmModal
-            teamName={team.name}
-            memberCount={memberCount}
-            isPending={deleteTeam.isPending}
-            onCancel={() => setConfirmingDelete(false)}
-            onConfirm={() => deleteTeam.mutate({ tripId, teamId: team.id })}
-          />
-        )}
       </div>
     </div>
     </ScrollLock>

@@ -73,7 +73,7 @@ interface Props {
    *  the home now). Crew (non-editors) get none of these. */
   canEdit?: boolean;
   onAddGame?: () => void;
-  /** Tap a team name on the hero → its in-place editor (routed by the face). */
+  /** Tap a team name on the hero → opens the Rosters overlay (routed by the face). */
   onEditTeam?: () => void;
   /** Tap a non-golf game row (no route) → open its manual run sheet (routed by
    *  the face). Editors only; omitted for crew. */
