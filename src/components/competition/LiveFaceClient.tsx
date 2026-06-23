@@ -7,6 +7,7 @@ import { Trophy } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { canAccessCompetition } from "@/lib/competitionAccess";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
@@ -85,17 +86,25 @@ export function LiveFaceClient({
   //
   // Stage B: the server route resolves this and hands it down as initialData, so
   // `boot` is defined on the very first (SSR) render — the board/guide render
-  // populated in the server HTML, zero client round-trip for first paint. We
-  // stamp initialDataUpdatedAt = now so the freshly-resolved data counts as
-  // fresh under the 60s staleTime → no redundant refetch on mount (one resolve
-  // per load). Realtime + the leaderboard's own refetchInterval keep it live;
-  // soft navigation re-runs the server component for a fresh resolve.
+  // populated in the server HTML, zero client round-trip for first paint.
+  //
+  // STRUCTURE layer (the alive-face cut): faceBootstrap is the slow-changing
+  // competition shape, so it's KEPT — staleTime Infinity + a long gcTime
+  // (STRUCTURE_QUERY). A warm remount (trip↔live, game→back) reads the kept cache
+  // with no refetch, instead of re-fetching the whole blob on every boundary. It
+  // refreshes only by INVALIDATION: structural mutations (pattern #10) and the
+  // realtime competition hook (which now invalidates faceBootstrap, not just
+  // getByTrip — the go-live reveal rode on the old 60s staleTime + the soft-nav
+  // server re-run, both gone now). The warm soft-nav server re-resolve itself is
+  // suppressed by the Router Cache (experimental.staleTimes.dynamic). The STATE
+  // layer (standings) rides its own cadence — see the seed below + the
+  // leaderboard's 30s poll.
   const { data: boot, isLoading: loading } =
     trpc.competitions.faceBootstrap.useQuery(
       { tripId },
       initialBoot
-        ? { initialData: initialBoot, initialDataUpdatedAt: () => Date.now() }
-        : undefined,
+        ? { ...STRUCTURE_QUERY, initialData: initialBoot, initialDataUpdatedAt: () => Date.now() }
+        : STRUCTURE_QUERY,
     );
 
   const competition = boot?.competition ?? null;
@@ -110,23 +119,36 @@ export function LiveFaceClient({
 
   // Seed the child caches from the one bootstrap so the board/guide — and the
   // setup↔leaderboard toggle, and the sub-views — render from cache with NO
-  // extra round-trips. The global 60s staleTime keeps the seed fresh, so the
-  // children's own useQuery calls don't re-fetch. Keyed on `boot` so it runs
-  // exactly once per resolve, synchronously DURING render — before the face's
-  // children mount and fire their queries (an effect runs too late: child
-  // mount-effects fire before the parent's, so they'd re-fetch first). This
-  // also runs during the SSR render pass, so the children render populated in
-  // the server HTML (Stage B first paint).
+  // extra round-trips. Keyed on `boot` so it runs once per resolve, synchronously
+  // DURING render — before the face's children mount and fire their queries (an
+  // effect runs too late: child mount-effects fire before the parent's, so they'd
+  // re-fetch first). This also runs during the SSR render pass, so the children
+  // render populated in the server HTML (Stage B first paint).
+  //
+  // The STRUCTURE children (competition, games, teams, assignments) are seeded
+  // ALWAYS — they're kept (STRUCTURE_QUERY) and the seed value is the same kept
+  // structure, so re-seeding on remount is a harmless no-op overwrite. But the
+  // STATE child (competitions.leaderboard) is seeded ONLY-IF-ABSENT: with
+  // faceBootstrap now kept, `boot.leaderboard` can be staler than the live 30s
+  // poll (individual score entry doesn't invalidate faceBootstrap), so an
+  // always-seed would clobber fresher standings on every remount. Seed it for the
+  // cold first paint; thereafter the leaderboard's own poll + direct invalidation
+  // own it (the structure/state cut, applied at the seed).
   useMemo(() => {
     if (!boot) return;
     utils.competitions.getByTrip.setData({ tripId }, boot.competition as never);
     utils.games.myDelegateGameIds.setData({ tripId }, boot.myDelegateGameIds);
     if (boot.competition) {
       const cid = boot.competition.id as string;
-      utils.competitions.leaderboard.setData(
-        { tripId, competitionId: cid },
-        boot.leaderboard as never,
-      );
+      if (
+        utils.competitions.leaderboard.getData({ tripId, competitionId: cid }) ===
+        undefined
+      ) {
+        utils.competitions.leaderboard.setData(
+          { tripId, competitionId: cid },
+          boot.leaderboard as never,
+        );
+      }
       utils.games.listByTrip.setData({ tripId }, boot.games as never);
       utils.teams.list.setData({ tripId, competitionId: cid }, boot.teams as never);
       utils.teamAssignments.list.setData(

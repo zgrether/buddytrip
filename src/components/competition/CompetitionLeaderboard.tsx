@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { GameRow, fmtPts } from "./GameRow";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
   // sees (no filtered view). Empty for non-delegates, so the badge never shows.
   const { data: myDelegateIds = [] } = trpc.games.myDelegateGameIds.useQuery(
     { tripId },
-    { enabled: !!tripId }
+    { ...STRUCTURE_QUERY, enabled: !!tripId }
   );
   const mineSet = useMemo(
     () => new Set(myDelegateIds as string[]),
@@ -111,10 +112,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
   // viewer delegates render it. `getMe` + the team assignment list are both cheap
   // + cached. teamColor is null when the viewer isn't on a team → Avatar falls
   // back to its accent ("you") treatment.
-  const { data: me } = trpc.users.getMe.useQuery();
+  const { data: me } = trpc.users.getMe.useQuery(undefined, STRUCTURE_QUERY);
   const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
     { tripId, competitionId },
-    { enabled: !!competitionId }
+    { ...STRUCTURE_QUERY, enabled: !!competitionId }
   );
   const viewer = useMemo<LBViewer>(() => {
     const myTeamId =
@@ -153,14 +154,21 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
   // pattern — is the real mobile fix; logged in DEFERRED.md.)
   const utils = trpc.useUtils();
   useEffect(() => {
-    void utils.tripMembers.list.prefetch({ tripId });
+    void utils.tripMembers.list.prefetch({ tripId }, STRUCTURE_QUERY);
   }, [utils, tripId]);
+  // The STRUCTURE prefetches carry STRUCTURE_QUERY (staleTime Infinity) so they
+  // NO-OP when the structure is already cached at any age — without it the
+  // prefetch's own default 60s staleTime would re-fetch fresh structure in the
+  // background on every >60s reopen, defeating the kept-structure cut on the
+  // consuming page. (Invalidation still overrides Infinity, so a structural
+  // mutation re-warms them.) Only `scores` (STATE) stays on the short default so
+  // a reopen warms fresh scores.
   const prefetchGame = useCallback(
     (gameId: string) => {
-      void utils.games.getById.prefetch({ tripId, gameId });
+      void utils.games.getById.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
       void utils.scores.listByGame.prefetch({ tripId, gameId });
-      void utils.matches.listByGame.prefetch({ tripId, gameId });
-      void utils.games.listOrganizers.prefetch({ tripId, gameId });
+      void utils.matches.listByGame.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
+      void utils.games.listOrganizers.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
     },
     [utils, tripId],
   );
