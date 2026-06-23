@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireCompetitionRole } from "../middleware";
+import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
 
 /**
  * teams — competition-scoped teams.
@@ -90,7 +90,9 @@ export const teamsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — modify a team (canEdit)
+  // update — modify a team's IDENTITY: name / short name / color (PR b2).
+  // Identity is the captain tier: owner OR the team's captain (requireTeamIdentityEdit).
+  // Structure (create/delete/assign/remove) stays owner-only — unchanged.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -103,7 +105,7 @@ export const teamsRouter = router({
         colorDim: z.string().min(1).max(20).optional(),
       })
     )
-    .use(requireCompetitionRole("co_admin"))
+    .use(requireTeamIdentityEdit())
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) patch.name = input.name;

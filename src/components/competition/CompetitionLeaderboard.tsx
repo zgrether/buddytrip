@@ -73,8 +73,9 @@ interface Props {
    *  the home now). Crew (non-editors) get none of these. */
   canEdit?: boolean;
   onAddGame?: () => void;
-  /** Tap a team name on the hero → opens the Rosters overlay (routed by the face). */
-  onEditTeam?: () => void;
+  /** Tap a team name on the hero/list → opens Rosters focused on that team's
+   *  identity editor (captain-scoped; routed by the face). Member-visible. */
+  onEditTeam?: (teamId: string) => void;
   /** Tap a non-golf game row (no route) → open its manual run sheet (routed by
    *  the face). Editors only; omitted for crew. */
   onOpenGame?: (gameId: string) => void;
@@ -255,6 +256,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
             winNumber={winNumber}
             pointsToClinch={pointsToClinch}
             clincher={clincher}
+            onEditTeam={onEditTeam}
           />
         )}
       </div>
@@ -372,8 +374,8 @@ function TwoTeamHero({
   winNumber: number;
   pointsToClinch: Record<string, number>;
   clincher: LBTeam | null;
-  /** Tap a team name → its in-place editor (editors only). */
-  onEditTeam?: () => void;
+  /** Tap a team name → that team's identity editor (owner / its captain). */
+  onEditTeam?: (teamId: string) => void;
 }) {
   const [a, b] = teams;
   const aTotal = teamTotals[a.id] ?? 0;
@@ -387,11 +389,12 @@ function TwoTeamHero({
 
   return (
     <div className="px-4 pb-4">
-      {/* Team name row — tap a name to manage that team (editors). */}
+      {/* Team name row — tap a name → Rosters focused on that team (its identity
+          editor opens for the owner / that team's captain; read-only otherwise). */}
       <div className="flex items-center justify-between">
         <button
           type="button"
-          onClick={onEditTeam}
+          onClick={() => onEditTeam?.(a.id)}
           disabled={!onEditTeam}
           className="text-[11px] font-bold uppercase tracking-widest disabled:cursor-default"
           style={{ color: a.color }}
@@ -401,7 +404,7 @@ function TwoTeamHero({
         </button>
         <button
           type="button"
-          onClick={onEditTeam}
+          onClick={() => onEditTeam?.(b.id)}
           disabled={!onEditTeam}
           className="text-[11px] font-bold uppercase tracking-widest disabled:cursor-default"
           style={{ color: b.color }}
@@ -489,6 +492,7 @@ function NTeamRankedList({
   winNumber,
   pointsToClinch,
   clincher,
+  onEditTeam,
 }: {
   teams: LBTeam[];
   teamTotals: Record<string, number>;
@@ -496,6 +500,8 @@ function NTeamRankedList({
   winNumber: number;
   pointsToClinch: Record<string, number>;
   clincher: LBTeam | null;
+  /** Tap a team name → that team's identity editor (owner / its captain). */
+  onEditTeam?: (teamId: string) => void;
 }) {
   const sorted = [...teams].sort(
     (a, b) => (teamTotals[b.id] ?? 0) - (teamTotals[a.id] ?? 0)
@@ -531,19 +537,29 @@ function NTeamRankedList({
                 {idx + 1}
               </span>
 
-              {/* Dot + name */}
+              {/* Dot + name — tappable → that team's Rosters/identity editor. */}
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="flex items-center gap-1.5">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: team.color }}
-                  />
-                  <span
-                    className="truncate text-sm font-semibold"
-                    style={{ color: hasClinched ? "var(--color-bt-text)" : "var(--color-bt-text)" }}
-                  >
-                    {team.name}
-                  </span>
+                  {onEditTeam ? (
+                    <button
+                      type="button"
+                      onClick={() => onEditTeam(team.id)}
+                      className="flex min-w-0 items-center gap-1.5 text-left"
+                      data-testid={`comp-team-name-${team.id}`}
+                    >
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: team.color }} />
+                      <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                        {team.name}
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: team.color }} />
+                      <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                        {team.name}
+                      </span>
+                    </>
+                  )}
                   {hasClinched && (
                     <Trophy
                       size={12}

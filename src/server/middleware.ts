@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { middleware } from "./trpc";
 
 // ---------------------------------------------------------------------------
@@ -169,6 +170,68 @@ export function requireCompetitionRole(minRole: CompetitionRole) {
 // game-EDIT mutation (configure / enter-results); game CREATE stays trip-role
 // (you can't be delegated to a game that doesn't exist yet).
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// requireTeamIdentityEdit
+//
+// The captain permission tier (Rosters PR b2). Editing a team's IDENTITY
+// (name / short name / color) is allowed for the trip Owner OR the captain of
+// THAT team (team_assignments.is_captain). STRUCTURE (assign/remove players,
+// create/delete team) stays owner-only and does NOT use this gate — don't widen
+// it. Reads tripId + teamId from rawInput. Chain AFTER authedProcedure.
+// ---------------------------------------------------------------------------
+
+export function requireTeamIdentityEdit() {
+  return middleware(async ({ ctx, getRawInput, next }) => {
+    const raw = await getRawInput();
+    const parsed = z.object({ tripId: z.string(), teamId: z.string() }).safeParse(raw);
+    if (!parsed.success) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "tripId and teamId are required" });
+    }
+    const { tripId, teamId } = parsed.data;
+    const db = ctx.supabase as unknown as SupabaseClient;
+
+    // The team must belong to THIS trip (defends a teamId from another trip
+    // paired with a trip the caller happens to be a member of).
+    const { data: team } = await db
+      .from("teams")
+      .select("competition_id")
+      .eq("id", teamId)
+      .maybeSingle();
+    if (!team) throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
+    const { data: comp } = await db
+      .from("competitions")
+      .select("trip_id")
+      .eq("id", team.competition_id as string)
+      .maybeSingle();
+    if (!comp || comp.trip_id !== tripId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Team not found in this trip" });
+    }
+
+    // Owner of the trip → allowed (resolveTripRole also confirms membership).
+    const role = await resolveTripRole(ctx, tripId);
+    if (role === "Owner") {
+      return next({ ctx: { ...ctx, tripId } });
+    }
+
+    // Else: the captain of THIS team may edit its identity.
+    const { data: cap } = await db
+      .from("team_assignments")
+      .select("user_id")
+      .eq("team_id", teamId)
+      .eq("user_id", ctx.user!.id)
+      .eq("is_captain", true)
+      .maybeSingle();
+    if (cap) {
+      return next({ ctx: { ...ctx, tripId } });
+    }
+
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only the owner or this team's captain can edit its identity.",
+    });
+  });
+}
 
 export function requireGameEdit() {
   return middleware(async ({ ctx, getRawInput, next }) => {

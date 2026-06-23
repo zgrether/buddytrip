@@ -31,7 +31,9 @@ export function RostersOverlay({
 }: {
   tripId: string;
   competitionId: string;
-  /** Owner gates every edit affordance; everyone else gets a read-only view. */
+  /** Owner gates every STRUCTURE affordance; everyone else gets a read-only view.
+   *  IDENTITY editing (name/short/color) additionally opens to a team's captain,
+   *  resolved inside TeamsPanel (the per-card pencil). */
   isOwner: boolean;
   /** Live: team STRUCTURE is frozen (no add/delete team) — rename + swap stay. */
   structureLocked: boolean;

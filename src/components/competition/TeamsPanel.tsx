@@ -41,7 +41,7 @@ interface Props {
   embedded?: boolean;
 }
 
-interface Team {
+export interface Team {
   id: string;
   name: string;
   short_name: string;
@@ -268,11 +268,23 @@ export function TeamsPanel({
     { enabled: !!competitionId }
   );
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  // The viewer — to resolve "is the captain of THIS team" for identity editing
+  // (PR b2). canEdit is the owner (structure); identity opens to owner OR captain.
+  const { data: me } = trpc.users.getMe.useQuery();
 
   const teamsTyped = teams as Team[];
+  const assignmentsTyped = assignments as Assignment[];
   const totalMembers = members.length;
   const assignedCount = assignments.length;
   const teamsExist = teamsTyped.length > 0;
+
+  // Identity edit (name/short/color) inside the overlay = owner OR the captain of
+  // THAT team — gates the per-card pencil/header (PR b2). The leaderboard
+  // team-name tap opens a STANDALONE editor instead (CompetitionFace), so the
+  // overlay only edits via its own pencil.
+  const isCaptainOf = (teamId: string) =>
+    !!me && assignmentsTyped.some((a) => a.user_id === me.id && a.team_id === teamId && a.is_captain);
+  const canEditIdentity = (teamId: string) => canEdit || isCaptainOf(teamId);
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -409,6 +421,7 @@ export function TeamsPanel({
                   members={members as Member[]}
                   assignments={assignments as Assignment[]}
                   canEdit={canEdit}
+                  canEditIdentity={canEditIdentity(team.id)}
                   structureLocked={structureLocked}
                   onEdit={() => setEditingTeam(team)}
                   onDelete={() => setDeletingTeam(team)}
@@ -512,6 +525,7 @@ function TeamCard({
   members,
   assignments,
   canEdit,
+  canEditIdentity,
   structureLocked,
   onEdit,
   onDelete,
@@ -521,7 +535,11 @@ function TeamCard({
   team: Team;
   members: Member[];
   assignments: Assignment[];
+  /** STRUCTURE (owner): drag/remove players, delete team, set captain ★. */
   canEdit: boolean;
+  /** IDENTITY (owner OR this team's captain): tap the header to edit name/short/
+   *  color (PR b2). A captain edits ONLY their own team's identity. */
+  canEditIdentity: boolean;
   structureLocked: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -585,7 +603,7 @@ function TeamCard({
           Delete is a sibling list-level affordance (W-TEAMDEL-01), not inside the
           edit modal. */}
       <div className="flex items-center gap-1 px-3 py-2.5" style={headerBg}>
-        {canEdit ? (
+        {canEditIdentity ? (
           <button
             type="button"
             onClick={onEdit}
@@ -1126,8 +1144,11 @@ function CrewRoster({
 }
 
 // ── TeamSheet (create + edit) ───────────────────────────────────────────────
+// Exported so the leaderboard team-name tap can open it STANDALONE (PR b2
+// follow-up) — owner / captain-of-that-team edit a team's identity without the
+// full Rosters overlay. The update mutation is captain-gated server-side.
 
-function TeamSheet({
+export function TeamSheet({
   tripId,
   competitionId,
   team,
