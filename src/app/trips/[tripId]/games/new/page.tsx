@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
@@ -41,19 +42,22 @@ export default function NewGamePage() {
   const isId = UUID_RE.test(param);
   const resolved = trpc.trips.resolveSlug.useQuery(
     { slugOrId: param },
-    { enabled: !isId, retry: false }
+    { ...STRUCTURE_QUERY, enabled: !isId, retry: false }
   );
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
   const { canEdit } = useTripRole(tripId);
 
-  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
   // The game-to-resume (its roster) + its saved scores. Enabled only when we
   // arrived with ?game — the standalone "new game" flow leaves these idle.
+  // The game (config/roster) is STRUCTURE — kept; the scores are STATE — they
+  // keep the default short staleTime so a reopen refreshes them (the cut: reopen
+  // a game and the structure is instant, only the scores re-fetch).
   const gameQ = trpc.games.getById.useQuery(
     { tripId: tripId!, gameId: urlGameId! },
-    { enabled: !!tripId && !!urlGameId }
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId }
   );
   const scoresQ = trpc.scores.listByGame.useQuery(
     { tripId: tripId!, gameId: urlGameId! },

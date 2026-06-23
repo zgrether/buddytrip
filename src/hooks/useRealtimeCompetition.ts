@@ -15,6 +15,14 @@ import { trpc } from "@/lib/trpc-client";
  * on `competitions` filtered by `trip_id=eq.{tripId}`. On any change,
  * invalidates the `competitions.getByTrip` query so TanStack refetches
  * and re-renders consumers (the competition face / leaderboard, etc.).
+ *
+ * It ALSO invalidates competitions.faceBootstrap — the Live face's kept
+ * STRUCTURE snapshot (the board reads competition status/name from
+ * boot.competition). faceBootstrap is now staleTime: Infinity (STRUCTURE_QUERY)
+ * and warm soft-nav no longer re-resolves it server-side (Router Cache), so a
+ * watching member's go-live reveal can no longer ride the old 60s staleTime /
+ * soft-nav re-run — it must come from this invalidation (pattern #10: invalidate
+ * the bootstrap, not only the child).
  */
 export function useRealtimeCompetition(tripId: string | null) {
   const utils = trpc.useUtils();
@@ -23,8 +31,14 @@ export function useRealtimeCompetition(tripId: string | null) {
     if (!tripId) return;
 
     const supabase = getRealtimeClient();
-    const refresh = () => {
+    // On an ACTUAL competition change (go-live, name, tagline), invalidate BOTH
+    // getByTrip AND the Live face's kept structure snapshot (faceBootstrap) — the
+    // board reads competition status from boot.competition, and faceBootstrap is
+    // now staleTime: Infinity, so a watching member's go-live reveal must come
+    // from this invalidation (pattern #10).
+    const onChange = () => {
       utils.competitions.getByTrip.invalidate({ tripId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     };
     const channel = supabase
       .channel(`competition:${tripId}`)
@@ -36,13 +50,18 @@ export function useRealtimeCompetition(tripId: string | null) {
           table: "competitions",
           filter: `trip_id=eq.${tripId}`,
         },
-        refresh
+        onChange
       )
       // Backfill on (re)connect: a dead zone drops the socket, so any change
       // during it would otherwise sit stale up to the 60s staleTime. Refetching
       // on the SUBSCRIBED tick self-heals on reconnect (mirrors useRealtimeChat).
+      // NOTE: this fires on EVERY mount, not just reconnect — so it deliberately
+      // does NOT touch faceBootstrap. faceBootstrap is the kept STRUCTURE layer
+      // (load once, keep); re-invalidating it here would re-resolve the whole
+      // structure on every trip→live, the exact tap-around refetch the cut
+      // removes. getByTrip is cheap and stays on the per-mount heal.
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") refresh();
+        if (status === "SUBSCRIBED") utils.competitions.getByTrip.invalidate({ tripId });
       });
 
     return () => {

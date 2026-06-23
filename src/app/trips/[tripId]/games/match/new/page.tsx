@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -63,29 +64,29 @@ export default function NewMatchGamePage() {
   const search = useSearchParams();
 
   const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { enabled: !isId, retry: false });
+  const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
   const { canEdit: tripCanEdit, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
-  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
   // Competition roster (Slice D): a competition game pairs from the players
   // assigned to its teams, not the whole trip crew. Names still resolve from
-  // crew (the roster is a subset of trip members).
-  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  // crew (the roster is a subset of trip members). All STRUCTURE — kept.
+  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competitionId = competition.data?.id as string | undefined;
   const utils = trpc.useUtils();
   const assignQ = trpc.teamAssignments.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
-    { enabled: !!tripId && !!competitionId }
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
   );
   // Teams (Slice D, ordered by created_at). A Ryder-cup match binds a side to a
   // team: side A → team[0], side B → team[1]. That makes the pair picker
   // constrainable to one team (no cross-team pair) and the strip team-colored.
   const teamsQ = trpc.teams.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
-    { enabled: !!tripId && !!competitionId }
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
   );
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
@@ -113,14 +114,18 @@ export default function NewMatchGamePage() {
   const [courseName, setCourseName] = useState<string | null>(null);
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
 
-  const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
-  const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  // game config + pairings are STRUCTURE (kept); scores are STATE (the match
+  // RESULTS within matches.listByGame change on finish/recompute, which invalidate
+  // it — not on the fast score cadence — so it caches as structure too). Only the
+  // raw scores stay short, so a reopen refreshes them while the rest is instant.
+  const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
+  const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   // Per-game delegate (§10): a member granted as this game's organizer runs it
   // like an editor — config, pairings, score, finish. The server gate
   // (requireGameEdit) admits them; the UI must light up the same way. Trip
   // Owner/Organizer keep edit on every game; a delegate only on theirs.
-  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
 
   // Format: the resumed game's type is authoritative; a brand-new game (no game
   // yet) reads the `?format=doubles` hint. `sided` switches the whole flow

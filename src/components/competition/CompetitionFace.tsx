@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { CompetitionHeader } from "./CompetitionHeader";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettings } from "./CompetitionSettings";
@@ -94,7 +95,9 @@ export function CompetitionFace({
   // GameSheet. This restores the entry points the retired CompetitionGamesPanel
   // wired; the board only re-attaches them. Both queries are seeded by
   // faceBootstrap (cache hit — no extra waterfall) and editor-only.
-  const { data: allGames = [] } = trpc.games.listByTrip.useQuery({ tripId }, { enabled: canEdit });
+  // STRUCTURE (games list) is kept (STRUCTURE_QUERY); the leaderboard is STATE —
+  // it keeps the default short staleTime + the board's own 30s poll.
+  const { data: allGames = [] } = trpc.games.listByTrip.useQuery({ tripId }, { ...STRUCTURE_QUERY, enabled: canEdit });
   const { data: lb } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId: competition.id },
     { enabled: canEdit }
@@ -102,10 +105,10 @@ export function CompetitionFace({
 
   // Team-identity editing from a leaderboard name tap (PR b2): the standalone
   // editor needs full team rows; the captain check needs assignments + the viewer.
-  // All member-visible + faceBootstrap-seeded (cache hits), so enabled for everyone.
-  const { data: teamsList = [] } = trpc.teams.list.useQuery({ tripId, competitionId: competition.id });
-  const { data: teamAssignmentsList = [] } = trpc.teamAssignments.list.useQuery({ tripId, competitionId: competition.id });
-  const { data: me } = trpc.users.getMe.useQuery();
+  // All member-visible + faceBootstrap-seeded (cache hits) STRUCTURE, so kept.
+  const { data: teamsList = [] } = trpc.teams.list.useQuery({ tripId, competitionId: competition.id }, STRUCTURE_QUERY);
+  const { data: teamAssignmentsList = [] } = trpc.teamAssignments.list.useQuery({ tripId, competitionId: competition.id }, STRUCTURE_QUERY);
+  const { data: me } = trpc.users.getMe.useQuery(undefined, STRUCTURE_QUERY);
 
   const canEditTeamIdentity = (teamId: string) =>
     isOwner ||

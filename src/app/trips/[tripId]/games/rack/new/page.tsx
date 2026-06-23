@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -59,7 +60,7 @@ export default function RackNStackPage() {
   const router = useRouter();
   const search = useSearchParams();
   const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { enabled: !isId, retry: false });
+  const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
   const { canEdit: tripCanEdit, loading: roleLoading } = useTripRole(tripId);
@@ -70,7 +71,7 @@ export default function RackNStackPage() {
   // Resume the trip's latest in-progress rack game so returning here (no nav
   // entry yet) lands on the SAME game instead of starting a fresh one — which
   // would look like the handicaps/scores were lost.
-  const gamesList = trpc.games.listByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const gamesList = trpc.games.listByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const resumeId = useMemo(() => {
     const g = (gamesList.data ?? []).find((x) => x.game_type_id === RACK && x.status !== "complete");
     return (g?.id as string | undefined) ?? null;
@@ -86,18 +87,20 @@ export default function RackNStackPage() {
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
 
-  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
-  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
+  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competitionId = competition.data?.id as string | undefined;
-  const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: competitionId! }, { enabled: !!tripId && !!competitionId });
-  const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: competitionId! }, { enabled: !!tripId && !!competitionId });
+  const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: competitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId });
+  const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: competitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId });
 
-  const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
-  const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  // game config + foursomes are STRUCTURE (kept); only the raw scores stay short
+  // (STATE) so a reopen is instant while the scores re-fetch.
+  const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
+  const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
   // Per-game delegate (§10): this game's delegate runs it like an editor (the
   // server's requireGameEdit admits them); trip staff keep edit everywhere.
-  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   const amDelegate = useMemo(
     () => !!me && (orgQ.data as { user_id: string }[] | undefined ?? []).some((o) => o.user_id === me.id),
     [orgQ.data, me]
