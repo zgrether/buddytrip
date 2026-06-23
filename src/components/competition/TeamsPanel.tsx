@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   ArrowRight,
   GripVertical,
@@ -39,6 +39,10 @@ interface Props {
    * wrapper + the redundant section title; keep the status + add-team toolbar.
    */
   embedded?: boolean;
+  /** Leaderboard team-name tap intent (PR b2): auto-open this team's identity
+   *  editor on mount IF the viewer may edit it (owner or its captain). A
+   *  non-permitted intent is a graceful no-op — the overlay just shows. */
+  initialEditTeamId?: string | null;
 }
 
 interface Team {
@@ -248,6 +252,7 @@ export function TeamsPanel({
   onCreatingChange,
   structureLocked = false,
   embedded = false,
+  initialEditTeamId = null,
 }: Props) {
   const utils = trpc.useUtils();
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -268,11 +273,32 @@ export function TeamsPanel({
     { enabled: !!competitionId }
   );
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  // The viewer — to resolve "is the captain of THIS team" for identity editing
+  // (PR b2). canEdit is the owner (structure); identity opens to owner OR captain.
+  const { data: me } = trpc.users.getMe.useQuery();
 
   const teamsTyped = teams as Team[];
+  const assignmentsTyped = assignments as Assignment[];
   const totalMembers = members.length;
   const assignedCount = assignments.length;
   const teamsExist = teamsTyped.length > 0;
+
+  // Identity edit (name/short/color) = owner OR the captain of THAT team.
+  const isCaptainOf = (teamId: string) =>
+    !!me && assignmentsTyped.some((a) => a.user_id === me.id && a.team_id === teamId && a.is_captain);
+  const canEditIdentity = (teamId: string) => canEdit || isCaptainOf(teamId);
+
+  // Leaderboard team-name tap → auto-open that team's identity editor, once data
+  // is ready, IF the viewer may edit it (graceful no-op otherwise — PR b2).
+  const editIntentHandled = useRef(false);
+  useEffect(() => {
+    if (editIntentHandled.current || !initialEditTeamId || !me) return;
+    const target = teamsTyped.find((t) => t.id === initialEditTeamId);
+    if (!target) return; // teams not loaded yet
+    editIntentHandled.current = true;
+    if (canEdit || isCaptainOf(target.id)) setEditingTeam(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditTeamId, me, teamsTyped]);
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -409,6 +435,7 @@ export function TeamsPanel({
                   members={members as Member[]}
                   assignments={assignments as Assignment[]}
                   canEdit={canEdit}
+                  canEditIdentity={canEditIdentity(team.id)}
                   structureLocked={structureLocked}
                   onEdit={() => setEditingTeam(team)}
                   onDelete={() => setDeletingTeam(team)}
@@ -512,6 +539,7 @@ function TeamCard({
   members,
   assignments,
   canEdit,
+  canEditIdentity,
   structureLocked,
   onEdit,
   onDelete,
@@ -521,7 +549,11 @@ function TeamCard({
   team: Team;
   members: Member[];
   assignments: Assignment[];
+  /** STRUCTURE (owner): drag/remove players, delete team, set captain ★. */
   canEdit: boolean;
+  /** IDENTITY (owner OR this team's captain): tap the header to edit name/short/
+   *  color (PR b2). A captain edits ONLY their own team's identity. */
+  canEditIdentity: boolean;
   structureLocked: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -585,7 +617,7 @@ function TeamCard({
           Delete is a sibling list-level affordance (W-TEAMDEL-01), not inside the
           edit modal. */}
       <div className="flex items-center gap-1 px-3 py-2.5" style={headerBg}>
-        {canEdit ? (
+        {canEditIdentity ? (
           <button
             type="button"
             onClick={onEdit}

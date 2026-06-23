@@ -77,6 +77,9 @@ export function CompetitionFace({
   const [view, setView] = useState<FaceView>("board");
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
+  // Leaderboard team-name tap → open Rosters focused on this team's identity
+  // editor (the overlay decides if the viewer — owner or captain — may edit it).
+  const [rostersEditTeamId, setRostersEditTeamId] = useState<string | null>(null);
 
   // GameSheet (add-game modal) needs the type catalog. Format definitions live in
   // CODE (W-PERF-01) — read synchronously, no fetch — so the modal's top half is
@@ -223,7 +226,7 @@ export function CompetitionFace({
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => setRostersOpen(true)}
+          onClick={() => { setRostersEditTeamId(null); setRostersOpen(true); }}
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold"
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)" }}
           data-testid="open-rosters"
@@ -238,9 +241,9 @@ export function CompetitionFace({
         tripId={tripId}
         canEdit={canEdit}
         onAddGame={() => setAddingGame(true)}
-        // A hero team-name tap also opens the Rosters overlay (the team-edit is
-        // there now, not Settings). Member-visible, so not canEdit-gated.
-        onEditTeam={() => setRostersOpen(true)}
+        // A hero team-name tap opens Rosters focused on THAT team's identity
+        // editor (captain-scoped, decided in the overlay). Member-visible.
+        onEditTeam={(teamId) => { setRostersEditTeamId(teamId); setRostersOpen(true); }}
         onOpenGame={canEdit ? openManualGame : undefined}
       />
 
@@ -295,8 +298,9 @@ export function CompetitionFace({
           isOwner={isOwner}
           structureLocked={isLive}
           rosterBuilding={rosterSetup === "building"}
-          onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
-          onClose={() => setRostersOpen(false)}
+          initialEditTeamId={rostersEditTeamId}
+          onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); setRostersEditTeamId(null); }}
+          onClose={() => { setRostersOpen(false); setRostersEditTeamId(null); }}
         />
       )}
     </div>
