@@ -104,4 +104,40 @@ export const teamAssignmentsRouter = router({
 
       return { success: true };
     }),
+
+  // -----------------------------------------------------------------------
+  // setCaptain — mark/unmark a player as their team's captain (Owner only).
+  // Appointing a captain is a STRUCTURE act (the owner appoints; the captain
+  // doesn't pass it on). Delegates to the atomic plpgsql swap (migration 064):
+  // isCaptain=true clears the team's prior captain then sets this one (one per
+  // team, declaratively enforced); isCaptain=false unmarks just this user.
+  // Throws if the target isn't assigned to the team.
+  // -----------------------------------------------------------------------
+  setCaptain: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        competitionId: z.string(),
+        teamId: z.string(),
+        userId: z.string(),
+        isCaptain: z.boolean(),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("set_team_captain", {
+        p_trip_id: input.tripId,
+        p_competition_id: input.competitionId,
+        p_team_id: input.teamId,
+        p_user_id: input.userId,
+        p_is_captain: input.isCaptain,
+      });
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to set captain: ${error.message}`,
+        });
+      }
+      return { success: true };
+    }),
 });

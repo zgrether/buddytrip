@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   Sparkles,
+  Star,
   Trash2,
   User,
   Users,
@@ -52,6 +53,7 @@ interface Assignment {
   competition_id: string;
   user_id: string;
   team_id: string;
+  is_captain?: boolean;
 }
 
 interface Member {
@@ -204,7 +206,36 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
     },
   });
 
-  return { assign, remove };
+  // setCaptain (PR b) — optimistic: the target gets the flag; any other captain
+  // on the SAME team is cleared (one-per-team). faceBootstrap also seeds
+  // teamAssignments.list, so re-resolve it (#10) — the captain survives an
+  // overlay close/reopen, not just the live optimistic state.
+  const setCaptain = trpc.teamAssignments.setCaptain.useMutation({
+    onMutate: async (vars) => {
+      await utils.teamAssignments.list.cancel(queryKey);
+      const previous = utils.teamAssignments.list.getData(queryKey);
+      utils.teamAssignments.list.setData(queryKey, (old) => {
+        const list = (old as Assignment[] | undefined) ?? [];
+        return list.map((a) => {
+          if (a.team_id !== vars.teamId) return a;
+          if (a.user_id === vars.userId) return { ...a, is_captain: vars.isCaptain };
+          return a.is_captain ? { ...a, is_captain: false } : a;
+        }) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctxRollback) => {
+      if (ctxRollback?.previous) {
+        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
+      }
+    },
+    onSettled: () => {
+      utils.teamAssignments.list.invalidate(queryKey);
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+    },
+  });
+
+  return { assign, remove, setCaptain };
 }
 
 // ── TeamsPanel ──────────────────────────────────────────────────────────────
@@ -508,8 +539,11 @@ function TeamCard({
 
   // Optimistic — the dropped player needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
-  // per-row × button inside the team card.
-  const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
+  // per-row × button; `setCaptain` powers the ★ (owner only).
+  const { assign, remove, setCaptain } = useTeamAssignmentMutations(tripId, competitionId);
+
+  const captainOf = (userId: string) =>
+    assignments.find((a) => a.user_id === userId && a.team_id === team.id)?.is_captain ?? false;
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -622,6 +656,7 @@ function TeamCard({
         )}
         {teamMembers.map((m) => {
           const id = m.user_id ?? m.memberId;
+          const isCaptain = captainOf(id);
           return (
             <PlayerRow
               key={id}
@@ -629,6 +664,7 @@ function TeamCard({
               avatarIcon={m.user?.avatar_icon ?? null}
               teamColor={team.color}
               draggable={canEdit}
+              isCaptain={isCaptain}
               onDragStart={
                 canEdit
                   ? (e) => {
@@ -639,6 +675,13 @@ function TeamCard({
               }
               onRemove={canEdit ? () => remove.mutate({ tripId, competitionId, userId: id }) : undefined}
               removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
+              // Owner sets captain (PR b); members see the filled ★ read-only.
+              onToggleCaptain={
+                canEdit
+                  ? () => setCaptain.mutate({ tripId, competitionId, teamId: team.id, userId: id, isCaptain: !isCaptain })
+                  : undefined
+              }
+              captainAriaLabel={isCaptain ? `Remove ${m.displayName} as captain` : `Make ${m.displayName} captain`}
             />
           );
         })}
@@ -649,25 +692,31 @@ function TeamCard({
 
 // ── PlayerRow ───────────────────────────────────────────────────────────────
 // Full-width player card (W-TEAMBUILD-01): the team-color Avatar disc (R3) + name
-// + (owner) remove. Draggable for the desktop assign-by-drag flow. The captain ★
-// affordance lands to the right of the name in PR (b).
+// + captain ★ + (owner) remove. Draggable for the desktop assign-by-drag flow.
 
 function PlayerRow({
   name,
   avatarIcon,
   teamColor,
   draggable,
+  isCaptain,
   onDragStart,
   onRemove,
   removeAriaLabel,
+  onToggleCaptain,
+  captainAriaLabel,
 }: {
   name: string;
   avatarIcon: string | null;
   teamColor: string;
   draggable: boolean;
+  isCaptain: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onRemove?: () => void;
   removeAriaLabel: string;
+  /** Owner-only: tap the ★ to mark/unmark captain. Absent for members. */
+  onToggleCaptain?: () => void;
+  captainAriaLabel: string;
 }) {
   return (
     <div
@@ -683,6 +732,35 @@ function PlayerRow({
       <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
         {name}
       </span>
+
+      {/* Captain ★ — owner taps to mark/unmark (filled = captain, outline = not);
+          a member sees only the filled ★ on the captain, read-only. One per team
+          (the server clears the prior). */}
+      {onToggleCaptain ? (
+        <button
+          type="button"
+          onClick={onToggleCaptain}
+          aria-label={captainAriaLabel}
+          aria-pressed={isCaptain}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+          style={{ color: isCaptain ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          data-testid="captain-toggle"
+        >
+          <Star size={15} fill={isCaptain ? "currentColor" : "none"} />
+        </button>
+      ) : (
+        isCaptain && (
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center"
+            style={{ color: "var(--color-bt-accent)" }}
+            aria-label={`${name} is captain`}
+            title="Captain"
+          >
+            <Star size={15} fill="currentColor" />
+          </span>
+        )
+      )}
+
       {onRemove && (
         <button
           type="button"
