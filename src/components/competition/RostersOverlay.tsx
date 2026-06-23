@@ -26,7 +26,6 @@ export function RostersOverlay({
   isOwner,
   structureLocked,
   rosterBuilding,
-  initialEditTeamId,
   onSaveRosters,
   onClose,
 }: {
@@ -34,15 +33,12 @@ export function RostersOverlay({
   competitionId: string;
   /** Owner gates every STRUCTURE affordance; everyone else gets a read-only view.
    *  IDENTITY editing (name/short/color) additionally opens to a team's captain,
-   *  resolved inside TeamsPanel. */
+   *  resolved inside TeamsPanel (the per-card pencil). */
   isOwner: boolean;
   /** Live: team STRUCTURE is frozen (no add/delete team) — rename + swap stay. */
   structureLocked: boolean;
   /** Roster-build phase: show the one-way "Save rosters" commit (owner only). */
   rosterBuilding: boolean;
-  /** Leaderboard team-name tap: auto-open this team's identity editor if the
-   *  viewer may edit it (owner or its captain — PR b2). */
-  initialEditTeamId?: string | null;
   /** Commit the roster build (advances roster_setup → saved) + closes. */
   onSaveRosters: () => void;
   onClose: () => void;
@@ -94,7 +90,6 @@ export function RostersOverlay({
               canEdit={isOwner}
               structureLocked={structureLocked}
               embedded
-              initialEditTeamId={initialEditTeamId}
             />
           </div>
 

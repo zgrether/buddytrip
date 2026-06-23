@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import {
   ArrowRight,
   GripVertical,
@@ -39,13 +39,9 @@ interface Props {
    * wrapper + the redundant section title; keep the status + add-team toolbar.
    */
   embedded?: boolean;
-  /** Leaderboard team-name tap intent (PR b2): auto-open this team's identity
-   *  editor on mount IF the viewer may edit it (owner or its captain). A
-   *  non-permitted intent is a graceful no-op — the overlay just shows. */
-  initialEditTeamId?: string | null;
 }
 
-interface Team {
+export interface Team {
   id: string;
   name: string;
   short_name: string;
@@ -252,7 +248,6 @@ export function TeamsPanel({
   onCreatingChange,
   structureLocked = false,
   embedded = false,
-  initialEditTeamId = null,
 }: Props) {
   const utils = trpc.useUtils();
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -283,22 +278,13 @@ export function TeamsPanel({
   const assignedCount = assignments.length;
   const teamsExist = teamsTyped.length > 0;
 
-  // Identity edit (name/short/color) = owner OR the captain of THAT team.
+  // Identity edit (name/short/color) inside the overlay = owner OR the captain of
+  // THAT team — gates the per-card pencil/header (PR b2). The leaderboard
+  // team-name tap opens a STANDALONE editor instead (CompetitionFace), so the
+  // overlay only edits via its own pencil.
   const isCaptainOf = (teamId: string) =>
     !!me && assignmentsTyped.some((a) => a.user_id === me.id && a.team_id === teamId && a.is_captain);
   const canEditIdentity = (teamId: string) => canEdit || isCaptainOf(teamId);
-
-  // Leaderboard team-name tap → auto-open that team's identity editor, once data
-  // is ready, IF the viewer may edit it (graceful no-op otherwise — PR b2).
-  const editIntentHandled = useRef(false);
-  useEffect(() => {
-    if (editIntentHandled.current || !initialEditTeamId || !me) return;
-    const target = teamsTyped.find((t) => t.id === initialEditTeamId);
-    if (!target) return; // teams not loaded yet
-    editIntentHandled.current = true;
-    if (canEdit || isCaptainOf(target.id)) setEditingTeam(target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialEditTeamId, me, teamsTyped]);
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -1158,8 +1144,11 @@ function CrewRoster({
 }
 
 // ── TeamSheet (create + edit) ───────────────────────────────────────────────
+// Exported so the leaderboard team-name tap can open it STANDALONE (PR b2
+// follow-up) — owner / captain-of-that-team edit a team's identity without the
+// full Rosters overlay. The update mutation is captain-gated server-side.
 
-function TeamSheet({
+export function TeamSheet({
   tripId,
   competitionId,
   team,

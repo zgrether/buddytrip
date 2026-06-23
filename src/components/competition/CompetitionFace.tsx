@@ -7,6 +7,7 @@ import { CompetitionHeader } from "./CompetitionHeader";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettings } from "./CompetitionSettings";
 import { RostersOverlay } from "./RostersOverlay";
+import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet, RunSheet, type GameRow, type LBTeamLite } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 
@@ -77,9 +78,9 @@ export function CompetitionFace({
   const [view, setView] = useState<FaceView>("board");
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
-  // Leaderboard team-name tap → open Rosters focused on this team's identity
-  // editor (the overlay decides if the viewer — owner or captain — may edit it).
-  const [rostersEditTeamId, setRostersEditTeamId] = useState<string | null>(null);
+  // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
+  // that-team), NOT the overlay; non-permitted taps fall to the read-only overlay.
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
 
   // GameSheet (add-game modal) needs the type catalog. Format definitions live in
   // CODE (W-PERF-01) — read synchronously, no fetch — so the modal's top half is
@@ -98,6 +99,30 @@ export function CompetitionFace({
     { tripId, competitionId: competition.id },
     { enabled: canEdit }
   );
+
+  // Team-identity editing from a leaderboard name tap (PR b2): the standalone
+  // editor needs full team rows; the captain check needs assignments + the viewer.
+  // All member-visible + faceBootstrap-seeded (cache hits), so enabled for everyone.
+  const { data: teamsList = [] } = trpc.teams.list.useQuery({ tripId, competitionId: competition.id });
+  const { data: teamAssignmentsList = [] } = trpc.teamAssignments.list.useQuery({ tripId, competitionId: competition.id });
+  const { data: me } = trpc.users.getMe.useQuery();
+
+  const canEditTeamIdentity = (teamId: string) =>
+    isOwner ||
+    (teamAssignmentsList as { user_id: string; team_id: string; is_captain?: boolean }[]).some(
+      (a) => a.user_id === me?.id && a.team_id === teamId && a.is_captain
+    );
+
+  // Owner / captain-of-that-team → standalone identity editor. Otherwise the
+  // graceful read-only path: open the Rosters overlay (see the lineup, no edit).
+  const handleEditTeam = (teamId: string) => {
+    if (canEditTeamIdentity(teamId)) {
+      const team = (teamsList as Team[]).find((t) => t.id === teamId);
+      if (team) setEditingTeam(team);
+    } else {
+      setRostersOpen(true);
+    }
+  };
   const compGames = useMemo(
     () => (allGames as GameRow[]).filter((g) => g.competition_id === competition.id),
     [allGames, competition.id]
@@ -220,13 +245,13 @@ export function CompetitionFace({
 
       {/* Rosters entry point (W-TEAMSURFACE-01) — board-level so it shows in EVERY
           standings state (empty / setup / live / final), which is precisely when
-          you need it. Member-visible: the board only renders to those who can see
-          the competition, and the overlay reads are member-accessible. A hero
-          team-name tap (onEditTeam) is the secondary entry. */}
+          you need it. Member-visible. This (and the in-overlay pencil) are the
+          ONLY ways the overlay opens; a hero team-name tap goes to the standalone
+          identity editor instead. */}
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => { setRostersEditTeamId(null); setRostersOpen(true); }}
+          onClick={() => setRostersOpen(true)}
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold"
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)" }}
           data-testid="open-rosters"
@@ -241,9 +266,9 @@ export function CompetitionFace({
         tripId={tripId}
         canEdit={canEdit}
         onAddGame={() => setAddingGame(true)}
-        // A hero team-name tap opens Rosters focused on THAT team's identity
-        // editor (captain-scoped, decided in the overlay). Member-visible.
-        onEditTeam={(teamId) => { setRostersEditTeamId(teamId); setRostersOpen(true); }}
+        // A hero team-name tap → STANDALONE identity editor (owner / captain of
+        // that team); a non-permitted tap falls to the read-only overlay.
+        onEditTeam={handleEditTeam}
         onOpenGame={canEdit ? openManualGame : undefined}
       />
 
@@ -289,8 +314,8 @@ export function CompetitionFace({
       )}
 
       {/* Rosters overlay — the one home for team management (W-TEAMSURFACE-01),
-          member-visible, owner-editable. Opened from the leaderboard header (or a
-          hero team-name tap). Carries the relocated "Save rosters" commit. */}
+          member-visible, owner-editable. Opened ONLY via the Rosters button (or a
+          non-permitted team-name tap). Carries the relocated "Save rosters" commit. */}
       {rostersOpen && (
         <RostersOverlay
           tripId={tripId}
@@ -298,9 +323,23 @@ export function CompetitionFace({
           isOwner={isOwner}
           structureLocked={isLive}
           rosterBuilding={rosterSetup === "building"}
-          initialEditTeamId={rostersEditTeamId}
-          onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); setRostersEditTeamId(null); }}
-          onClose={() => { setRostersOpen(false); setRostersEditTeamId(null); }}
+          onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
+          onClose={() => setRostersOpen(false)}
+        />
+      )}
+
+      {/* Standalone team-identity editor — opened by a leaderboard team-name tap
+          for the owner / that team's captain (PR b2). Reuses TeamSheet directly,
+          no overlay. The update is captain-gated server-side. */}
+      {editingTeam && (
+        <TeamSheet
+          tripId={tripId}
+          competitionId={competition.id}
+          team={editingTeam}
+          existingTeamNames={(teamsList as Team[])
+            .filter((t) => t.id !== editingTeam.id)
+            .map((t) => t.name.toLowerCase())}
+          onClose={() => setEditingTeam(null)}
         />
       )}
     </div>
