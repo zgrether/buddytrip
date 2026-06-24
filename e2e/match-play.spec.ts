@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -71,36 +71,55 @@ test.afterAll(async () => {
   await admin.from("trips").delete().eq("id", tripId);
 });
 
-test("match-play spine — 1v1: create → pair → enter a hole → scorecard reflects it", async ({ page }) => {
-  // Several sequential remote round-trips (create, pairing, enable, score writes).
-  test.setTimeout(60_000);
+/** Latest game in the trip (tests run serially; each makes one game). */
+async function latestGameId(): Promise<string> {
+  const { data } = await admin
+    .from("games").select("id").eq("trip_id", tripId)
+    .order("created_at", { ascending: false }).limit(1).single();
+  return data!.id as string;
+}
+async function handicapByUser(gameId: string): Promise<Map<string, number>> {
+  const { data } = await admin
+    .from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId);
+  return new Map((data ?? []).map((p) => [p.user_id as string, p.handicap_strokes as number]));
+}
 
-  // 1. New 1v1 match game (no ?format → singles).
+/** Drive a fresh 1v1 to fully-set-up-but-not-enabled: create → pair MP Owner (A)
+ *  vs MP Member (B) → give MP Member a stroke via the RELOCATED Handicaps row.
+ *  Leaves the page on the checklist with Save / Enable available. */
+async function driveToSetupWithHandicap(page: Page) {
   await page.goto(`/trips/${tripId}/games/match/new`);
   const createBtn = page.getByRole("button", { name: "Create game" });
   await expect(createBtn).toBeVisible({ timeout: 20_000 });
   await createBtn.click();
 
-  // 2. Set the pairing on the "Set Pairings" setup screen: tap each empty slot →
-  //    pick a player from the selector (waiting for the selector to open before
-  //    picking). After slot A is filled the remaining "Add player" is slot B.
+  // Pair each slot — tap "Add player", pick from the selector. After slot A fills,
+  // the remaining "Add player" is slot B.
   const addPlayer = page.getByRole("button", { name: "Add player" });
   await expect(addPlayer.first()).toBeVisible({ timeout: 20_000 });
   await addPlayer.first().click();
-  const ownerRow = page.getByRole("button", { name: /MP Owner/ });
-  await expect(ownerRow).toBeVisible({ timeout: 10_000 });
-  await ownerRow.click();
-
-  // Slot A now shows MP Owner; the remaining "Add player" is slot B.
+  await page.getByRole("button", { name: /MP Owner/ }).click();
   await expect(page.getByRole("button", { name: /MP Owner/ })).toBeVisible(); // slot A filled
   await addPlayer.first().click();
-  const memberRow = page.getByRole("button", { name: /MP Member/ });
-  await expect(memberRow).toBeVisible({ timeout: 10_000 });
-  await memberRow.click();
+  await page.getByRole("button", { name: /MP Member/ }).click();
 
-  // 3. Enable scoring → the overview. Gate on the button being ENABLED — that's
-  //    the signal both slots are filled (filledCount > 0), so the click can't race
-  //    an incomplete pairing and trip the collapse confirm.
+  // Give MP Member a stroke via the RELOCATED Handicaps row (no longer inline in
+  // the pairing builder). Scoped to the handicaps section so it's the relocated
+  // control, not a pairing slot. Picking a side defaults to 1 stroke → the control
+  // resolves to "on hole …"; gate on that so the tap can't silently race the row.
+  const handicaps = page.getByTestId("handicaps-section");
+  await expect(handicaps).toBeVisible({ timeout: 10_000 });
+  await handicaps.getByRole("button", { name: /MP Member/ }).click();
+  await expect(handicaps.getByText(/on hole/i)).toBeVisible({ timeout: 10_000 });
+}
+
+test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
+  test.setTimeout(60_000);
+  await driveToSetupWithHandicap(page);
+
+  // Enable scoring → the overview. Gate on the button being ENABLED — that's
+  // the signal both slots are filled (filledCount > 0), so the click can't race
+  // an incomplete pairing and trip the collapse confirm.
   const enableBtn = page.getByRole("button", { name: "Enable scoring" });
   await expect(enableBtn).toBeEnabled({ timeout: 10_000 });
   await enableBtn.click();
@@ -122,9 +141,18 @@ test("match-play spine — 1v1: create → pair → enter a hole → scorecard r
   await score6.click();
   await page.getByRole("button", { name: "Confirm score" }).click();
 
-  // 6. Open the scorecard grid and assert BOTH scores landed in the right cells
-  //    (keyed by participant id = user id, hole "1").
+  // 6. Open the scorecard grid and assert BOTH gross scores landed in the right
+  //    cells (keyed by participant id = user id, hole "1"). The relocated handicap
+  //    affects NET, not these gross cells.
   await page.getByRole("button", { name: "Scorecard grid" }).click();
   await expect(page.getByTestId(`score-cell-${ownerId}-1`)).toHaveText("4");
   await expect(page.getByTestId(`score-cell-${memberId}-1`)).toHaveText("6");
+
+  // The handicap RELOCATION, gated end-to-end: the stroke set in the relocated row
+  // persisted (setHandicap → game_participants.handicap_strokes; recipient = n,
+  // other side = 0). This same saveSetup is what the decoupled "Save setup" CTA
+  // calls (minus enableScoring), so the enable-decouple's persistence rides on it.
+  const hcap = await handicapByUser(await latestGameId());
+  expect(hcap.get(memberId)).toBe(1);
+  expect(hcap.get(ownerId)).toBe(0);
 });
