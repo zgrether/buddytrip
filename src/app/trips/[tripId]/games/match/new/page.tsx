@@ -67,7 +67,7 @@ export default function NewMatchGamePage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit: tripCanEdit, loading: roleLoading } = useTripRole(tripId);
+  const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -760,6 +760,7 @@ export default function NewMatchGamePage() {
         competitionId={gameCompId}
         game={gameQ.data as unknown as GameRow}
         canEdit={canEdit}
+        isOwner={isOwner}
         onChanged={() => {
           void gameQ.refetch();
           if (competitionId) {
@@ -768,6 +769,7 @@ export default function NewMatchGamePage() {
             utils.games.listByTrip.invalidate({ tripId });
           }
         }}
+        onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
         whosPlayingLabel={`${groups.length} ${groups.length === 1 ? "matchup" : "matchups"} · pairings & strokes`}
         onEditWhosPlaying={startSetup}
         scoringEnabled={scoringEnabled}
