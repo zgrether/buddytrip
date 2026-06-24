@@ -81,6 +81,11 @@ test.afterAll(async () => {
 });
 
 test("scoring spine — stroke game: create → enter scores → scorecard reflects them", async ({ page }) => {
+  // Each UI step here is a round-trip to the REMOTE DB (create, enable + a
+  // follow-up game refetch, score writes), so give the whole spine generous
+  // headroom over the 30s default — a slow round-trip shouldn't read as a break.
+  test.setTimeout(60_000);
+
   // 1. New stroke-play game for this trip (owner is authenticated via storageState).
   await page.goto(`/trips/${tripId}/games/new`);
 
@@ -89,14 +94,30 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   await page.getByRole("button", { name: "E2E Member", exact: true }).click();
   await page.getByRole("button", { name: "Start game" }).click();
 
-  // 3. Enable scoring → reach the score-entry view.
-  await page.getByRole("button", { name: "Enable scoring" }).click();
+  // 3. Enable scoring → reach the score-entry view. handleEnable fires the
+  //    enableScoring mutation AND THEN refetches the game (two sequential remote
+  //    round-trips) before scoring_enabled flips; only then does the EnableScoring
+  //    gate unmount and the keypad mount. The first keypad tap used to race that
+  //    settle — the long-standing keypad-click flake (#454). Wait for the FULL
+  //    transition explicitly: the "Enable scoring" button disappearing is the
+  //    precise "gate→play transition complete" signal, so the tap can't land on a
+  //    keypad that's about to remount on the refetch.
+  const enableBtn = page.getByRole("button", { name: "Enable scoring" });
+  await enableBtn.click();
+  await expect(enableBtn).toBeHidden({ timeout: 20_000 });
 
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
-  //    Distinct values so the assertion can't pass on par/coincidence.
-  await page.getByRole("button", { name: "Score 7", exact: true }).click();
+  //    Distinct values so the assertion can't pass on par/coincidence. Wait for
+  //    each keypad key to be present before tapping rather than assuming it has
+  //    already rendered (the view settles between players on each confirm).
+  const score7 = page.getByRole("button", { name: "Score 7", exact: true });
+  await expect(score7).toBeVisible({ timeout: 20_000 });
+  await score7.click();
   await page.getByRole("button", { name: "Confirm score" }).click();
-  await page.getByRole("button", { name: "Score 3", exact: true }).click();
+
+  const score3 = page.getByRole("button", { name: "Score 3", exact: true });
+  await expect(score3).toBeVisible({ timeout: 20_000 });
+  await score3.click();
   await page.getByRole("button", { name: "Confirm score" }).click();
 
   // 5. Open the review scorecard and assert BOTH entered scores surface in the
