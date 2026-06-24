@@ -286,6 +286,7 @@ export function CompetitionFace({
           game={editing}
           types={gameTypes}
           canEdit={canEdit}
+          scoringModel={competition.scoring_model ?? "match_play"}
           onClose={() => {
             setAddingGame(false);
             setEditing(null);

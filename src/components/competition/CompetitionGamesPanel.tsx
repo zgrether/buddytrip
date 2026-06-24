@@ -16,7 +16,7 @@ import {
 // here, read synchronously, never fetched. Re-exported below so existing
 // consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
 // import path.
-import { GAME_TYPES, type GameType } from "@/lib/gameTypes";
+import { GAME_TYPES, gameTypesForScoringModel, type GameType, type ScoringModel } from "@/lib/gameTypes";
 
 export type { GameType };
 
@@ -372,22 +372,30 @@ function RunButton({ state, onClick }: { state: RunState; onClick: () => void })
 type Tab = "game" | "config";
 
 export function GameSheet({
-  tripId, competitionId, game, types, canEdit, onClose,
+  tripId, competitionId, game, types, canEdit, scoringModel, onClose,
 }: {
   tripId: string;
   competitionId: string;
   game: GameRow | null;
   types: GameType[];
   canEdit: boolean;
+  /** The competition's scoring-model (W-TYPE-01) — the create picker offers only
+   *  formats compatible with it. Omit/null → offer everything. */
+  scoringModel?: ScoringModel | null;
   onClose: () => void;
 }) {
   const isEdit = !!game;
   const utils = trpc.useUtils();
 
+  // W-TYPE-01: the CREATE picker offers only formats whose scoring-model matches
+  // the competition's (match_play → 1v1/2v2/rack + manual; points → Stroke +
+  // manual). Lookups for an EXISTING game's type read the full catalog (`types`)
+  // so editing never breaks even if a type weren't offerable.
+  const offerable = gameTypesForScoringModel(scoringModel, types);
   const initialType = types.find((t) => t.id === game?.game_type_id);
   const [category, setCategory] = useState<string>(initialType?.category ?? "golf");
   const [gameTypeId, setGameTypeId] = useState<string>(
-    game?.game_type_id ?? types.find((t) => t.category === "golf")?.id ?? types[0]?.id ?? ""
+    game?.game_type_id ?? offerable.find((t) => t.category === "golf")?.id ?? offerable[0]?.id ?? ""
   );
   const [title, setTitle] = useState(game?.name ?? "");
   const [tab, setTab] = useState<Tab>("game");
@@ -427,8 +435,8 @@ export function GameSheet({
   const [courseName, setCourseName] = useState<string | null>(null);
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
 
-  const categoriesPresent = CATEGORY_ORDER.filter((c) => types.some((t) => t.category === c));
-  const categoryTypes = types.filter((t) => t.category === category);
+  const categoriesPresent = CATEGORY_ORDER.filter((c) => offerable.some((t) => t.category === c));
+  const categoryTypes = offerable.filter((t) => t.category === category);
   const effectiveTypeId = categoryTypes.some((t) => t.id === gameTypeId) ? gameTypeId : categoryTypes[0]?.id ?? "";
   const selectedType = types.find((t) => t.id === effectiveTypeId);
   // Per-match formats: 1v1 match play AND rack-n-stack (a set of rank-paired
