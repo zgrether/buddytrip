@@ -68,8 +68,26 @@ export interface GameTypeDefinition {
   supportsSides: boolean | null;
   requiresSides: boolean | null;
   maxPlayersPerSide: number | null;
-  compatibleCompetitionFormats: string[] | null;
+  /**
+   * Which competition SCORING-MODELs (`match_play | points`) this format can be
+   * scored in — the canonical competition axis (`competitions.scoring_model`,
+   * W-NONGOLF-02), deliberately independent of team count. `null` = unconstrained
+   * (the manual non-engine types fit any competition).
+   *
+   * Renamed from the old `compatibleCompetitionFormats` (values `ryder_cup` /
+   * `free_for_all`): that was dead metadata — read by nothing — and named after
+   * competition ARCHETYPES that fused scoring-model + team-shape. The shape axis
+   * lives in supportsSides/requiresSides/maxPlayersPerSide, so this is purely the
+   * scoring-model compatibility, re-tagged to the axis the W-TYPE-01 add-game
+   * filter reads. NB rack-n-stack is `match_play` — its net-stroke ENTRY mechanics
+   * are not the points SCORING-model; it produces per-slot win/halve like match
+   * play and computes in a match-play cup (raw stroke does not).
+   */
+  compatibleScoringModels: ScoringModel[] | null;
 }
+
+/** The competition scoring-model axis (W-NONGOLF-02) — `competitions.scoring_model`. */
+export type ScoringModel = "match_play" | "points";
 
 // ── Shared golf scorecard schemas ────────────────────────────────────────────
 // Copied verbatim from the live `game_type_templates.scorecard_schema`. The
@@ -142,7 +160,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: false,
     requiresSides: false,
     maxPlayersPerSide: null,
-    compatibleCompetitionFormats: ["free_for_all"],
+    compatibleScoringModels: ["points"],
   },
   gtt_match_play_singles: {
     id: "gtt_match_play_singles",
@@ -159,7 +177,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: true,
     requiresSides: true,
     maxPlayersPerSide: 1,
-    compatibleCompetitionFormats: ["ryder_cup"],
+    compatibleScoringModels: ["match_play"],
   },
   gtt_match_play_doubles: {
     id: "gtt_match_play_doubles",
@@ -176,7 +194,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: true,
     requiresSides: true,
     maxPlayersPerSide: 2,
-    compatibleCompetitionFormats: ["ryder_cup"],
+    compatibleScoringModels: ["match_play"],
   },
   gtt_rack_n_stack: {
     id: "gtt_rack_n_stack",
@@ -193,7 +211,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: true,
     requiresSides: true,
     maxPlayersPerSide: null,
-    compatibleCompetitionFormats: ["ryder_cup"],
+    compatibleScoringModels: ["match_play"],
   },
   gtt_generic_card: {
     id: "gtt_generic_card",
@@ -210,7 +228,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: null,
     requiresSides: null,
     maxPlayersPerSide: null,
-    compatibleCompetitionFormats: null,
+    compatibleScoringModels: null,
   },
   gtt_generic_yard: {
     id: "gtt_generic_yard",
@@ -227,7 +245,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: null,
     requiresSides: null,
     maxPlayersPerSide: null,
-    compatibleCompetitionFormats: null,
+    compatibleScoringModels: null,
   },
   gtt_generic_bar: {
     id: "gtt_generic_bar",
@@ -244,7 +262,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: null,
     requiresSides: null,
     maxPlayersPerSide: null,
-    compatibleCompetitionFormats: null,
+    compatibleScoringModels: null,
   },
   gtt_manual: {
     id: "gtt_manual",
@@ -261,7 +279,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     supportsSides: true,
     requiresSides: false,
     maxPlayersPerSide: null,
-    compatibleCompetitionFormats: null,
+    compatibleScoringModels: null,
   },
 };
 
@@ -288,6 +306,9 @@ export interface GameType {
   resultStrategy: string | null;
   category: string;
   compatibleModifiers: string[];
+  /** Scoring-models this format can be scored in; `null` = any (manual types).
+   *  The W-TYPE-01 add-game filter reads this against `competitions.scoring_model`. */
+  compatibleScoringModels: ScoringModel[] | null;
 }
 
 /** Project a definition to the client `GameType` shape. */
@@ -302,11 +323,39 @@ export function toGameType(d: GameTypeDefinition): GameType {
     resultStrategy: d.resultStrategy,
     category: d.category,
     compatibleModifiers: d.compatibleModifiers,
+    compatibleScoringModels: d.compatibleScoringModels,
   };
 }
 
 /** The client format catalog — import this directly; never fetch it. */
 export const GAME_TYPES: GameType[] = GAME_TYPE_LIST.map(toGameType);
+
+// ── W-TYPE-01 — the add-game compatibility filter (data here, called by the modal) ──
+
+/**
+ * Is this format offerable in a competition of the given scoring-model? A format
+ * with `null` compatibility (the manual types) fits any competition; otherwise it
+ * must list the model. A `null`/absent scoring-model (a not-yet-classified comp)
+ * is permissive — show everything rather than an empty menu.
+ */
+export function isGameTypeForScoringModel(
+  type: Pick<GameType, "compatibleScoringModels">,
+  scoringModel: ScoringModel | null | undefined,
+): boolean {
+  if (!scoringModel) return true;
+  if (type.compatibleScoringModels == null) return true;
+  return type.compatibleScoringModels.includes(scoringModel);
+}
+
+/** The catalog filtered to a competition's scoring-model — what the add-game
+ *  modal offers (only WIRED types: match_play → 1v1/2v2/rack + manual; points →
+ *  Stroke + manual, until stableford/sabotage/skins are built). */
+export function gameTypesForScoringModel(
+  scoringModel: ScoringModel | null | undefined,
+  catalog: GameType[] = GAME_TYPES,
+): GameType[] {
+  return catalog.filter((t) => isGameTypeForScoringModel(t, scoringModel));
+}
 
 // ── Lookups (the server readers' synchronous replacement for the DB query) ────
 
