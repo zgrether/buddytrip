@@ -46,7 +46,7 @@ export default function NewGamePage() {
   );
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
-  const { canEdit } = useTripRole(tripId);
+  const { canEdit, isOwner } = useTripRole(tripId);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -352,7 +352,9 @@ export default function NewGamePage() {
           competitionId={gameCompetitionId}
           game={gameQ.data as unknown as GameRow}
           canEdit={canEdit}
+          isOwner={isOwner}
           onChanged={() => void refreshGame()}
+          onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
           onEditWhosPlaying={() => { setShowConfig(false); setShowHandicaps(true); }}
           scoringEnabled={scoringEnabled}

@@ -63,7 +63,7 @@ export default function RackNStackPage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit: tripCanEdit, loading: roleLoading } = useTripRole(tripId);
+  const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const utils = trpc.useUtils();
 
@@ -459,7 +459,9 @@ export default function RackNStackPage() {
         competitionId={competitionId ?? null}
         game={gameQ.data as unknown as GameRow}
         canEdit={canEdit}
+        isOwner={isOwner}
         onChanged={() => void refreshGame()}
+        onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
         whosPlayingLabel={`${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · auto-grouped · strokes`}
         onEditWhosPlaying={() => { setShowConfig(false); setShowHandicaps(true); }}
         scoringEnabled={scoringEnabled}

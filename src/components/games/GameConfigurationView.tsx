@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { GameDangerZone } from "@/components/games/GameDangerZone";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -22,7 +23,9 @@ export function GameConfigurationView({
   competitionId,
   game,
   canEdit,
+  isOwner,
   onChanged,
+  onDeleted,
   whosPlayingLabel,
   onEditWhosPlaying,
   scoringEnabled,
@@ -36,7 +39,12 @@ export function GameConfigurationView({
   competitionId: string | null;
   game: GameRow;
   canEdit: boolean;
+  /** Owner gates the per-game danger zone (reset/delete) — owner-only, matching
+   *  the server. Co-admins/delegates configure but don't get the danger ladder. */
+  isOwner: boolean;
   onChanged: () => void;
+  /** Game deleted from the danger zone — leave the page (back to the board). */
+  onDeleted: () => void;
   /** Summary + drill-down into the format's existing who's-playing/handicaps
    *  editor (the setup body — pairings / groups). Omit when the format has no
    *  post-create roster editor (stroke today — its handicaps step lands in §3). */
@@ -105,6 +113,18 @@ export function GameConfigurationView({
               : "Disabled — closed to the crew. Keep configuring here; enable when you’re ready. Any scores already entered are kept."}
           </p>
         </div>
+
+        {/* Per-game danger zone — owner-only (reset scores → reset settings →
+            delete), reusing the shared confirm vocabulary + the Phase A resets. */}
+        {isOwner && (
+          <GameDangerZone
+            tripId={tripId}
+            gameId={game.id}
+            competitionId={competitionId}
+            onChanged={onChanged}
+            onDeleted={onDeleted}
+          />
+        )}
       </div>
     </div>
   );
