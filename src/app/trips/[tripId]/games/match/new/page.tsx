@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus, Check, Circle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -492,16 +492,17 @@ export default function NewMatchGamePage() {
     void commitReady();
   }
 
-  // Persist the pairings + handicaps, publish (enableScoring), land on the overview.
-  // Operates on `filledDraft` ONLY — unfilled slots are discarded here (the
-  // collapse: setPairings clean-replaces, so the dropped rows are gone and the
-  // board recomputes points-in-play / clinch from the filled count). No separate
-  // Save-then-Activate; the two formats differ only in side shape + procedure.
-  async function commitReady() {
-    if (!tripId || !gameId) return;
-    setConfirmCollapse(false);
+  // Persist the pairings + handicaps for the FILLED matches — WITHOUT enabling
+  // scoring (the config-checklist decouple). Operates on `filledDraft` ONLY —
+  // unfilled slots are discarded (setPairings clean-replaces, so dropped rows are
+  // gone and the board recomputes points-in-play / clinch from the filled count).
+  // This is exactly what commitReady used to persist, minus the enableScoring — so
+  // a standalone Save carries everything (pairings AND the per-match handicaps).
+  // Returns false when there's nothing to save (no full match).
+  async function saveSetup(): Promise<boolean> {
+    if (!tripId || !gameId) return false;
     const matches = filledDraft;
-    if (matches.length === 0) return;
+    if (matches.length === 0) return false;
     if (sided) {
       const saved = await setDoublesPairings.mutateAsync({
         tripId,
@@ -519,7 +520,7 @@ export default function NewMatchGamePage() {
         if (!recipient?.id) return [];
         return [setDoublesHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientPlayGroupId: recipient.id, strokes: Math.abs(d.handicap) })];
       });
-      await Promise.all([...handicapWrites, enableScoring.mutateAsync({ tripId, gameId })]);
+      await Promise.all(handicapWrites);
     } else {
       const saved = await setPairings.mutateAsync({
         tripId,
@@ -536,10 +537,37 @@ export default function NewMatchGamePage() {
         const recipientUserId = d.handicap < 0 ? d.a[0] : d.b[0];
         return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) })];
       });
-      await Promise.all([...handicapWrites, enableScoring.mutateAsync({ tripId, gameId })]);
+      await Promise.all(handicapWrites);
     }
-    // Saving setup changes the configured match count → refresh the board so
-    // "first to XX" reflects it on screen.
+    return true;
+  }
+
+  // Save without enabling — the standalone "configure now, open later" path the
+  // decouple unlocks. Persists everything (pairings + handicaps), then refreshes
+  // the board so the saved match count / "first to XX" reflect it; STAYS on the
+  // checklist (no enable).
+  async function handleSaveSetup() {
+    setConfirmCollapse(false);
+    const ok = await saveSetup();
+    if (ok) await refreshAfterMatchCountChange();
+  }
+
+  // Enable scoring = save THEN enable, land on the overview. The save carries the
+  // full config; enabling is the separate, readiness-gated step. The board refresh
+  // runs AFTER enableScoring so matchesQ.published is true on the overview (the
+  // refetch in saveSetup would otherwise predate the publish). Optimistically flip
+  // scoring_enabled in the game cache so the overview transition doesn't wait on a
+  // refetch (#459).
+  async function commitReady() {
+    if (!tripId || !gameId) return;
+    setConfirmCollapse(false);
+    const ok = await saveSetup();
+    if (!ok) return;
+    await enableScoring.mutateAsync({ tripId, gameId });
+    const cur = utils.games.getById.getData({ tripId, gameId });
+    if (cur) {
+      utils.games.getById.setData({ tripId, gameId }, { ...cur, scoring_enabled: true } as typeof cur);
+    }
     await refreshAfterMatchCountChange();
     go("overview");
   }
@@ -831,46 +859,97 @@ export default function NewMatchGamePage() {
 
       {screen === "member-wait" && <MemberNotReady gameName={gameQ.data?.name as string | undefined} />}
 
-      {screen === "setup" && (
-        <>
-          {/* §B setup shell (Phase 2B.2): the standardized course + Name·Format·
-              Points drill-down rows above the format's own who's-playing body
-              (the pairing cards). Handicaps stay inline per pairing; "Enable
-              scoring" is MatchSetup's bottom CTA. */}
+      {screen === "setup" && (() => {
+        // The config CHECKLIST (Phase 1) — the rows you resolve to ready a match
+        // game, the same surface pre- and post-live. Matches is the unit row (the
+        // pairing builder); Handicaps relocated to its own row, gated by Matches.
+        const allFilled = draft.length > 0 && filledDraft.length === draft.length;
+        const anyHandicap = draft.some((d) => d.handicap !== 0);
+        const savingSetup =
+          setPairings.isPending || setHandicap.isPending ||
+          setDoublesPairings.isPending || setDoublesHandicap.isPending;
+        const availableCount = (gameCompId && rosterIds.length > 0 ? rosterIds.length : (crew.data?.length ?? 0));
+        return (
+        <div className="flex flex-col gap-5 pb-4">
+          {/* Available Players — read-only summary (the pool the game draws from;
+              a pluggable source is W-STANDALONE-01). */}
+          <ChecklistRow label="Available players" value={`${availableCount} player${availableCount === 1 ? "" : "s"}`} muted />
+
+          {/* Matches — the pairing builder (the score-entry unit). */}
+          <ChecklistSection label="Matches" resolved={filledDraft.length > 0}>
+            <MatchSetup
+              tripId={tripId}
+              draft={draft}
+              setDraft={setDraft}
+              playersPerSide={playersPerSide}
+              teamA={teamForSlot("a")}
+              teamB={teamForSlot("b")}
+              nameOf={nameOf}
+              colorOf={colorOf}
+              avatarIconOf={avatarIconOf}
+              openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
+            />
+          </ChecklistSection>
+
+          {/* Handicaps — relocated from the pairing builder; gated by Matches.
+              "Off — scratch" (no strokes) is a valid done. */}
+          <ChecklistSection label="Handicaps" optional resolved={anyHandicap} acknowledgedEmpty={filledDraft.length > 0 && !anyHandicap}>
+            <HandicapsSection
+              draft={draft}
+              setDraft={setDraft}
+              playersPerSide={playersPerSide}
+              nameOf={nameOf}
+              colorOf={colorOf}
+              avatarIconOf={avatarIconOf}
+            />
+          </ChecklistSection>
+
+          {/* Golf Course + Name·Format·Points — the existing standardized drill rows. */}
           {gameQ.data && (
-            <div style={{ marginBottom: 14 }}>
-              <GameSetupRows
-                tripId={tripId}
-                competitionId={gameCompId}
-                game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
-                onChanged={() => {
-                  void gameQ.refetch();
-                  if (competitionId) {
-                    utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-                    utils.competitions.faceBootstrap.invalidate({ tripId });
-                    utils.games.listByTrip.invalidate({ tripId });
-                  }
-                }}
-              />
-            </div>
+            <GameSetupRows
+              tripId={tripId}
+              competitionId={gameCompId}
+              game={gameQ.data as unknown as GameRow}
+              canEdit={canEdit}
+              onChanged={() => {
+                void gameQ.refetch();
+                if (competitionId) {
+                  utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+                  utils.competitions.faceBootstrap.invalidate({ tripId });
+                  utils.games.listByTrip.invalidate({ tripId });
+                }
+              }}
+            />
           )}
-          <MatchSetup
-            tripId={tripId}
-            draft={draft}
-            setDraft={setDraft}
-            playersPerSide={playersPerSide}
-            teamA={teamForSlot("a")}
-            teamB={teamForSlot("b")}
-            nameOf={nameOf}
-            colorOf={colorOf}
-            avatarIconOf={avatarIconOf}
-            openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
-            onReady={attemptReady}
-            saving={setPairings.isPending || setHandicap.isPending || setDoublesPairings.isPending || setDoublesHandicap.isPending || enableScoring.isPending}
-          />
-        </>
-      )}
+
+          {/* Modifiers — acknowledge-only: the toggle targets exist but no modifier
+              has a scoring effect yet, so the row is inert until those land. */}
+          <ChecklistRow label="Modifiers" value="None — coming soon" muted />
+
+          {/* The decoupled CTAs (Phase 2b): Save persists the config WITHOUT
+              enabling (configure now, open later); Enable scoring saves + enables,
+              readiness-gated on a real match. */}
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={handleSaveSetup}
+              disabled={filledDraft.length === 0 || savingSetup}
+              className="w-full disabled:opacity-40"
+              style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
+              data-testid="match-save-setup"
+            >
+              {savingSetup ? "Saving…" : "Save setup"}
+            </button>
+            <PrimaryButton
+              label={enableScoring.isPending ? "Enabling…" : "Enable scoring"}
+              onClick={attemptReady}
+              disabled={savingSetup || enableScoring.isPending || filledDraft.length === 0}
+              outlined={!allFilled}
+            />
+          </div>
+        </div>
+        );
+      })()}
 
       {screen === "overview" && (
         <Overview
@@ -1209,8 +1288,6 @@ function MatchSetup({
   colorOf,
   avatarIconOf,
   openSelector,
-  onReady,
-  saving,
 }: {
   tripId: string;
   draft: DraftMatch[];
@@ -1224,8 +1301,6 @@ function MatchSetup({
   colorOf: Map<string, string>;
   avatarIconOf: Map<string, string | null>;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
-  onReady: () => void;
-  saving: boolean;
 }) {
   // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
   // the original array (0..length). The accent line shows only once the cursor
@@ -1266,17 +1341,6 @@ function MatchSetup({
       avatarIcon: avatarIconOf.get(userId) ?? null,
     };
   }
-  // A whole side as one Participant ("Alice & Bob") — for the handicap control.
-  function sidePart(members: string[]): Participant | null {
-    if (members.length === 0) return null;
-    const name = members.map((u) => nameOf.get(u) ?? "Player").join(" & ");
-    return {
-      id: members.join("+"),
-      name,
-      color: colorOf.get(members[0]) ?? PLAYER_COLORS[0],
-      avatarIcon: avatarIconOf.get(members[0]) ?? null,
-    };
-  }
   // The member slots for one side — 1 for singles, 2 stacked for doubles. Each
   // sub-slot picks a single player into that member position. A team header
   // (Blue / Red) names the side's team so the constraint is legible.
@@ -1297,23 +1361,14 @@ function MatchSetup({
     );
   };
 
-  // Filled = both sides fully assigned (a real match). Drives the advance
-  // affordance: outlined until every slot is filled, disabled with none filled.
-  const filledCount = draft.filter((d) => d.a.length === playersPerSide && d.b.length === playersPerSide).length;
-  const allFilled = draft.length > 0 && filledCount === draft.length;
-
   return (
-    <div>
+    <div data-testid="match-pairings">
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
         Tap a slot to pick a player · drag to reorder.
       </p>
 
       <div className="flex flex-col gap-3">
         {draft.map((d, i) => {
-          // Both sides complete (full pairs in doubles) → show the handicap control.
-          const aFull = d.a.length === playersPerSide;
-          const bFull = d.b.length === playersPerSide;
-          const both = aFull && bFull;
           const dragging = dragState?.from === i;
           const dropIndicator: "top" | "bottom" | null =
             dragState?.ins === i
@@ -1397,16 +1452,9 @@ function MatchSetup({
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
                 {sideSlots(d.b, i, "b")}
               </div>
-              {both && (
-                <div style={{ marginTop: 12 }}>
-                  <RelHandicapControl
-                    a={sidePart(d.a)!}
-                    b={sidePart(d.b)!}
-                    value={d.handicap}
-                    onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
-                  />
-                </div>
-              )}
+              {/* Handicaps are no longer inline here — they relocated to the
+                  checklist's Handicaps row (gated by Matches). MatchSetup is the
+                  pairing builder only. */}
             </div>
           );
         })}
@@ -1424,16 +1472,130 @@ function MatchSetup({
           Add match
         </button>
       )}
+    </div>
+  );
+}
 
-      {/* Advance is a SIGNAL, not a gate (collapse-on-incomplete): clickable
-          while slots are unfilled, outlined until every slot is assigned, filled
-          once complete. Disabled only with nothing to tee off (no full match). */}
-      <PrimaryButton
-        label={saving ? "Enabling…" : "Enable scoring"}
-        onClick={onReady}
-        disabled={saving || filledCount === 0}
-        outlined={!allFilled}
-      />
+/**
+ * HandicapsSection — the relocated per-match handicap controls (config-checklist
+ * Phase 1). Lifted out of MatchSetup so handicaps are their own checklist row,
+ * gated by Matches: it renders one RelHandicapControl per FULLY-PAIRED match
+ * (nothing to allocate strokes between until both sides are set). Edits the same
+ * draft.handicap the inline control did; the parent's saveSetup persists it.
+ */
+function HandicapsSection({
+  draft,
+  setDraft,
+  playersPerSide,
+  nameOf,
+  colorOf,
+  avatarIconOf,
+}: {
+  draft: DraftMatch[];
+  setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
+  playersPerSide: number;
+  nameOf: Map<string, string>;
+  colorOf: Map<string, string>;
+  avatarIconOf: Map<string, string | null>;
+}) {
+  const sidePart = (members: string[]): Participant | null => {
+    if (members.length === 0) return null;
+    return {
+      id: members.join("+"),
+      name: members.map((u) => nameOf.get(u) ?? "Player").join(" & "),
+      color: colorOf.get(members[0]) ?? PLAYER_COLORS[0],
+      avatarIcon: avatarIconOf.get(members[0]) ?? null,
+    };
+  };
+  const filled = draft
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.a.length === playersPerSide && d.b.length === playersPerSide);
+
+  if (filled.length === 0) {
+    return (
+      <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="handicaps-need-matches">
+        Set the matchups first — strokes are assigned per matchup.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3" data-testid="handicaps-section">
+      {filled.map(({ d, i }) => (
+        <div key={i}>
+          {draft.length > 1 && (
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Match {i + 1}
+            </span>
+          )}
+          <RelHandicapControl
+            a={sidePart(d.a)!}
+            b={sidePart(d.b)!}
+            value={d.handicap}
+            onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Checklist primitives (config-checklist Phase 1) — the row STATES, reusing the
+ * surface language. A section header carries the resolve state:
+ *   - unresolved        → hollow circle, dim label ("needs attention")
+ *   - resolved          → accent check ("set up with real content")
+ *   - acknowledged-empty→ a muted check ("Off"/"None" — a valid done; the net-new
+ *     state, distinct from unresolved (not dashed/hollow) AND from resolved
+ *     (muted, not accent)).
+ */
+function ChecklistSection({
+  label,
+  optional,
+  resolved,
+  acknowledgedEmpty,
+  children,
+}: {
+  label: string;
+  optional?: boolean;
+  resolved?: boolean;
+  acknowledgedEmpty?: boolean;
+  children: React.ReactNode;
+}) {
+  const glyph = resolved ? (
+    <Check size={13} style={{ color: "var(--color-bt-accent)" }} />
+  ) : acknowledgedEmpty ? (
+    <Check size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+  ) : (
+    <Circle size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+  );
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5 px-0.5">
+        {glyph}
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          {label}
+        </span>
+        {optional && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)", fontWeight: 500 }}>· optional</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** A read-only checklist summary row (no editor) — the resolved-but-not-editable
+ *  rows (Available Players; Modifiers until effects land). */
+function ChecklistRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3"
+      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        {label}
+      </span>
+      <span className="truncate text-sm" style={{ color: muted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
+        {value}
+      </span>
     </div>
   );
 }
