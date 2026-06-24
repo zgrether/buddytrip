@@ -148,6 +148,14 @@ export class TestContext {
     return createCallerForUser(getSharedUser(role));
   }
 
+  /** A raw Supabase client carrying a role's authenticated JWT (anon key +
+   *  Bearer) — the `authenticated` Postgres role, RLS + function grants applied.
+   *  Use to test what a logged-in user can reach DIRECTLY (e.g. an rpc() call to
+   *  a SECURITY DEFINER function), bypassing the tRPC layer. */
+  authedClient(role: UserRole): SupabaseClient {
+    return createAuthenticatedClient(getSharedUser(role));
+  }
+
   // ---- Trip helpers ----
 
   /** Create a trip with the primary user as Owner. */

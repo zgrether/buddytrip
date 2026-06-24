@@ -821,4 +821,47 @@ export const gamesRouter = router({
         .eq("user_id", ctx.user!.id);
       return (data ?? []).map((r) => r.game_id as string);
     }),
+
+  // resetScoring — owner-only, ONE game. Clears this game's RESULTS back to
+  // unscored; keeps config + identity (incl. its per-match point value). The
+  // per-game rung of the danger-zone ladder (below it: resetToSkeleton; below
+  // that: delete) — the level-down sibling of competitions.resetScoring (#442).
+  // Delegates to the transactional plpgsql primitive (migration 066); the SQL
+  // wrapper re-asserts owner on the game's REAL trip (authoritative), so this
+  // can't be spoofed by passing a trip you own + a foreign gameId.
+  resetScoring: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("reset_game_scoring", {
+        p_game_id: input.gameId,
+      });
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reset game scoring: ${error.message}`,
+        });
+      }
+      return { success: true };
+    }),
+
+  // resetToSkeleton — owner-only, ONE game. SUPERSET of resetScoring: the SQL
+  // primitive clears scoring then additionally clears config back to an
+  // unconfigured shell (keeps identity + the per-match point value, §E-1).
+  // The level-down sibling of competitions.resetToSkeleton.
+  resetToSkeleton: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("reset_game_to_skeleton", {
+        p_game_id: input.gameId,
+      });
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reset game to skeleton: ${error.message}`,
+        });
+      }
+      return { success: true };
+    }),
 });
