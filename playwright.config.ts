@@ -25,11 +25,12 @@ export default defineConfig({
     // does a server-side getUser() that route-mocks can't satisfy).
     { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
-      // Scoped to the ONE critical-path spec — the merge-blocking CI gate. The
-      // other e2e/*.spec.ts files are the deferred mocked set (Issue #29) and
-      // match no project, so they don't run.
+      // The merge-blocking CI gate: the real-UI scoring SPINES — stroke
+      // (critical-path) and match-play (the reference format the config-checklist
+      // + future formats build on). The other e2e/*.spec.ts files are the
+      // deferred mocked set (Issue #29) and match no project, so they don't run.
       name: "critical-path",
-      testMatch: /critical-path\.spec\.ts/,
+      testMatch: /(critical-path|match-play)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
       dependencies: ["setup"],
     },
