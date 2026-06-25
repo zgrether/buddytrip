@@ -101,7 +101,7 @@ const COMP_FORMATS = [
   { key: "live_results", label: "Live Results", desc: "A running tally that updates as it plays (e.g. Pick'em).", Icon: Radio },
 ] as const;
 
-function formatLabel(key: string | null): string | null {
+export function formatLabel(key: string | null): string | null {
   return COMP_FORMATS.find((f) => f.key === key)?.label ?? null;
 }
 
@@ -982,7 +982,7 @@ function GameTab({
 }
 
 /** The integrated −/value/+ point control (matches the mock). */
-function PointStepper({
+export function PointStepper({
   label, caption, value, onChange, footer, max,
 }: {
   label: string; caption: string; value: number; onChange: (n: number) => void; footer?: React.ReactNode; max?: number;
@@ -1023,7 +1023,7 @@ function StepBtn({ dir, onClick, disabled }: { dir: "inc" | "dec"; onClick: () =
   );
 }
 
-function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout> }) {
+export function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout> }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1299,7 +1299,7 @@ function FitWarning({ message }: { message: string }) {
 
 // ── Placement editor (distributes the owner total) ────────────────────────────
 
-function PlacementEditor({
+export function PlacementEditor({
   total, placeInputs, setPlaceInputs, placement,
 }: {
   total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
@@ -1382,7 +1382,7 @@ function PlacementEditor({
 
 // ── "How's it played?" format sheet ───────────────────────────────────────────
 
-function FormatSheet({
+export function FormatSheet({
   current, onPick, onClose,
 }: {
   current: string | null; onPick: (k: string) => void; onClose: () => void;
@@ -1806,7 +1806,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+export function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -1818,14 +1818,14 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-function ordinalShort(n: number): string {
+export function ordinalShort(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 /** Whole numbers as-is, halves as ½ (0.5 → "½", 1.5 → "1½"). */
-function fmtValue(n: number): string {
+export function fmtValue(n: number): string {
   const whole = Math.floor(n);
   const isHalf = Math.abs(n - whole - 0.5) < 0.001;
   if (!isHalf) return String(whole);

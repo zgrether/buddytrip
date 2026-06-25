@@ -3,6 +3,8 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
+import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
+import { GameRulesNote } from "@/components/games/GameRulesNote";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -71,6 +73,11 @@ export function GameConfigurationView({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        {/* Zone 1 — IDENTITY (W-EDITMODAL-01): name (tap-to-edit) + assigned-to. */}
+        {competitionId && (
+          <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
+        )}
+
         {/* Same editors as the setup hull — reused, never rebuilt. */}
         <GameSetupRows
           tripId={tripId}
@@ -96,6 +103,10 @@ export function GameConfigurationView({
             <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
           </button>
         )}
+
+        {/* Zone 3 — RULES note (W-EDITMODAL-01): saves on blur (no Save&exit here —
+            the back arrow navigates; the blur commit is the flush). */}
+        {competitionId && <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />}
 
         {/* Enabled / Disabled — the pressed-state control. */}
         <div className="mt-6">

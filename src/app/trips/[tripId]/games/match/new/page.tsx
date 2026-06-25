@@ -19,6 +19,8 @@ import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
+import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
+import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
@@ -126,6 +128,10 @@ export default function NewMatchGamePage() {
   // never discarded on a transient error), so this offers a retry rather than a
   // silent loss.
   const [collapseError, setCollapseError] = useState(false);
+  // Zone-3 rules note (W-EDITMODAL-01) — "Save & exit" flushes any typed-but-
+  // unsaved rules through this handle before navigating (the one field with no
+  // collapse event of its own).
+  const rulesRef = useRef<GameRulesNoteHandle>(null);
   // Back-stack: forward transitions push the screen they left; Back pops to it.
   // Empty stack means we arrived directly (derived screen) → leave to trip home.
   const [navStack, setNavStack] = useState<Screen[]>([]);
@@ -432,6 +438,13 @@ export default function NewMatchGamePage() {
     setManualScreen(navStack[navStack.length - 1]);
     setNavStack((s) => s.slice(0, -1));
   };
+  // "Save & exit" (W-EDITMODAL-01): flush the Zone-3 rules note (its only commit
+  // event) then leave. Checklist rows already persisted on collapse; this just
+  // guarantees the rules textarea isn't lost. Always available — leaving is too.
+  async function handleSaveExit() {
+    await rulesRef.current?.flush();
+    goBack();
+  }
 
   // Seed the editable draft from the server when we land on setup for an
   // existing game (e.g. owner opens a pending game, or taps Edit) and the local
@@ -959,6 +972,14 @@ export default function NewMatchGamePage() {
         const handicapsSummary = !matchesExist ? "Set matches first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
         return (
           <div className="flex flex-col gap-2.5 pb-4">
+            {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
+                "Assigned to" frame. Display-first, above the checklist. Competition
+                games only — it re-homes the modal's name/delegate, which were
+                competition-scoped (a standalone game has no delegate/config row). */}
+            {gameCompId && gameQ.data && (
+              <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
+            )}
+
             {/* Available Players — expands to the canonical rosters view. For a
                 competition game this is the SAME TeamsPanel the Rosters overlay
                 uses, but READ-ONLY (canEdit=false): the pool is revealed, not
@@ -1061,6 +1082,13 @@ export default function NewMatchGamePage() {
                 modifier has a scoring effect yet, so the row is inert until then. */}
             <ChecklistRow label="Modifiers" value="None — coming soon" state="acknowledged-empty" />
 
+            {/* Zone 3 — RULES / notes (W-EDITMODAL-01): freeform, below the
+                checklist. Saves on blur; "Save & exit" flushes it via rulesRef.
+                Competition games only (re-homes the modal's rules field). */}
+            {gameCompId && gameQ.data && (
+              <GameRulesNote ref={rulesRef} tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
+            )}
+
             {collapseError && (
               <button
                 type="button"
@@ -1072,8 +1100,9 @@ export default function NewMatchGamePage() {
               </button>
             )}
 
-            {/* The CTA: Enable scoring saves the config + enables, readiness-gated
-                on a real match. (No "Save setup" — edits persist on collapse now.) */}
+            {/* Exit (W-EDITMODAL-01): Enable scoring (primary, readiness-gated, the
+                commit-to-play) + Save & exit (secondary, always enabled — the
+                leave-and-resume door; flushes the rules note then navigates). */}
             <div className="flex flex-col gap-2 pt-2">
               <PrimaryButton
                 label={enableScoring.isPending ? "Enabling…" : "Enable scoring"}
@@ -1081,6 +1110,17 @@ export default function NewMatchGamePage() {
                 disabled={savingSetup || enableScoring.isPending || filledDraft.length === 0}
                 outlined={!allFilled}
               />
+              {gameCompId && (
+                <button
+                  type="button"
+                  onClick={handleSaveExit}
+                  className="w-full"
+                  style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
+                  data-testid="match-save-exit"
+                >
+                  Save &amp; exit
+                </button>
+              )}
             </div>
           </div>
         );

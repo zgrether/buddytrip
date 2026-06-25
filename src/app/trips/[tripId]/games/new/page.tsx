@@ -14,6 +14,8 @@ import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
+import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -47,6 +49,7 @@ export default function NewGamePage() {
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
   const { canEdit, isOwner } = useTripRole(tripId);
+  const rulesRef = useRef<GameRulesNoteHandle>(null);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -315,6 +318,13 @@ export default function NewGamePage() {
         onEnable={handleEnable}
         onBack={() => router.back()}
         pending={enableScoring.isPending}
+        identityHeader={gameCompetitionId && gameQ.data
+          ? <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
+          : undefined}
+        rulesNote={gameCompetitionId && gameQ.data
+          ? <GameRulesNote ref={rulesRef} tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
+          : undefined}
+        onSaveExit={gameCompetitionId ? async () => { await rulesRef.current?.flush(); router.back(); } : undefined}
         setupRows={
           gameQ.data ? (
             <>

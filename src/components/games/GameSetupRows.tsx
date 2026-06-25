@@ -4,28 +4,24 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
-import { GameSheet, type GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { GAME_TYPES } from "@/lib/gameTypes";
+import { formatLabel, type GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 
 /**
- * §B setup-shell drill-down rows (Phase 2B.2). The standardized top of every
- * format's setup phase: the **course pre-step** then **Name · Format · Points**,
- * each opening its ALREADY-BUILT editor (CoursePicker / the GameSheet add-edit
- * modal — reuse, never rebuild). The format's own who's-playing + handicaps body
- * renders BELOW this, and "Enable scoring" is the bottom CTA — this component is
- * just the shared hull header. Course is optional and never gates readiness.
+ * §B setup-shell drill-down rows: the **course pre-step** then **Format · Points**.
+ * Course opens the CoursePicker overlay (deferred-split, unchanged); Format·Points
+ * is an **in-place accordion panel** (W-EDITMODAL-01 — the old two-tab Edit-Game
+ * modal is retired for this row). The game's NAME + assignment moved to the Zone-1
+ * identity header and its RULES to the Zone-3 note (both page-level), so this row
+ * is just competition-format + points now.
  *
  * Open-state is **optionally controlled by the page** (`courseOpen`/`configOpen`
  * + the open/close callbacks). When the match-setup checklist drives it, the
- * one-panel-at-a-time rule spans EVERY row (tapping Course collapses any open
- * accordion row). Every OTHER consumer (stroke/rack/new/config-view) omits the
- * props and gets the original self-managed behavior — so this lift doesn't ripple
- * across them. These two editors stay OVERLAYS this pass (the CoursePicker split +
- * the Game-config modal-shed are tracked follow-ons).
- *
- * No checklist, no top-level Save: edits are live (CoursePicker applies on pick;
- * GameSheet persists on its own Save), and `onChanged` refetches the game so the
- * row summaries and the body update in place.
+ * one-panel-at-a-time rule spans EVERY row. Every OTHER consumer (stroke/rack/new/
+ * config-view) omits the props and self-manages (the accordion opens/closes
+ * locally) — so the conversion fixes the modal leak on all of them without a
+ * ripple. `onChanged` refetches the game so the Course row summary updates; the
+ * Format·Points panel persists + invalidates itself.
  */
 export function GameSetupRows({
   tripId,
@@ -66,8 +62,6 @@ export function GameSetupRows({
   const openConfig = onOpenConfig ?? (() => setConfigOpenLocal(true));
   const closeEditor = onCloseEditor ?? (() => { setCourseOpenLocal(false); setConfigOpenLocal(false); });
 
-  // Format definitions live in code (W-PERF-01) — no fetch, always available.
-  const types = GAME_TYPES;
   const applyCourse = trpc.games.applyCourse.useMutation();
   const utils = trpc.useUtils();
 
@@ -89,12 +83,16 @@ export function GameSetupRows({
       />
       {competitionId && (
         <ChecklistRow
-          label="Name · Format · Points"
-          value={`${game.name ?? "Untitled"}${pointsSummary(game) ? ` · ${pointsSummary(game)}` : ""}`}
+          label="Format · Points"
+          value={formatPointsSummary(game)}
           state="resolved"
           disabled={!canEdit}
-          onClick={openConfig}
-        />
+          expanded={configOpen}
+          onToggle={configOpen ? closeEditor : openConfig}
+          testId="row-format-points"
+        >
+          <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} />
+        </ChecklistRow>
       )}
 
       {courseOpen && (
@@ -115,21 +113,14 @@ export function GameSetupRows({
         />
       )}
 
-      {configOpen && competitionId && (
-        <GameSheet
-          tripId={tripId}
-          competitionId={competitionId}
-          game={game}
-          types={types}
-          canEdit={canEdit}
-          onClose={() => {
-            closeEditor();
-            onChanged();
-          }}
-        />
-      )}
     </>
   );
+}
+
+/** "Head to head · 2/match" — the Format·Points row's loud summary. */
+function formatPointsSummary(game: GameRow): string {
+  const parts = [formatLabel(game.competition_format ?? null), pointsSummary(game)].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "Set format & points";
 }
 
 /** A compact points summary for the config row: "2/match" · "8 pts". */
