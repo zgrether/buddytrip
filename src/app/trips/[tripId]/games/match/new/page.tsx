@@ -18,6 +18,7 @@ import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
@@ -950,12 +951,6 @@ export default function NewMatchGamePage() {
           setDoublesPairings.isPending || setDoublesHandicap.isPending;
         const tA = teamForSlot("a");
         const tB = teamForSlot("b");
-        // The pool, revealed: the two team rosters (a 2-team competition game) or
-        // the flat crew (standalone). "16 players" alone is useless — show WHO.
-        const pool: { heading: string | null; color?: string; members: string[] }[] =
-          twoTeams
-            ? teams.map((t) => ({ heading: t.name, color: t.color, members: rosterOfTeam(t.id) }))
-            : [{ heading: null, members: (crew.data ?? []).map((c) => c.user_id) }];
         const availableCount = (gameCompId && rosterIds.length > 0 ? rosterIds.length : (crew.data?.length ?? 0));
         const matchesSummary = matchesExist
           ? `${filledDraft.length} match${filledDraft.length === 1 ? "" : "es"}${tA && tB ? ` · ${tA.name} vs ${tB.name}` : ""}`
@@ -964,7 +959,11 @@ export default function NewMatchGamePage() {
         const handicapsSummary = !matchesExist ? "Set matches first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
         return (
           <div className="flex flex-col gap-2.5 pb-4">
-            {/* Available Players — expands to the actual rosters (read-only). */}
+            {/* Available Players — expands to the canonical rosters view. For a
+                competition game this is the SAME TeamsPanel the Rosters overlay
+                uses, but READ-ONLY (canEdit=false): the pool is revealed, not
+                editable — team setup isn't reachable from a game's setup, not even
+                for the owner. Standalone (no teams) falls back to the flat crew. */}
             <ChecklistRow
               label="Available players"
               value={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
@@ -973,26 +972,18 @@ export default function NewMatchGamePage() {
               onToggle={() => toggleRow("players")}
               testId="row-players"
             >
-              <div className="flex flex-col gap-3" data-testid="players-rosters">
-                {pool.map((grp, gi) => (
-                  <div key={gi} className="flex flex-col gap-1.5">
-                    {grp.heading && (
-                      <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {grp.color && <span className="h-2 w-2 rounded-full" style={{ background: grp.color }} />}
-                        {grp.heading}
+              <div data-testid="players-rosters">
+                {gameCompId ? (
+                  <TeamsPanel tripId={tripId} competitionId={gameCompId} canEdit={false} structureLocked embedded />
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {(crew.data ?? []).map((c) => (
+                      <span key={c.user_id} className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+                        {nameOf.get(c.user_id) ?? "Player"}
                       </span>
-                    )}
-                    {grp.members.length === 0 ? (
-                      <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>No players yet</span>
-                    ) : (
-                      grp.members.map((uid) => (
-                        <span key={uid} className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                          {nameOf.get(uid) ?? "Player"}
-                        </span>
-                      ))
-                    )}
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             </ChecklistRow>
 

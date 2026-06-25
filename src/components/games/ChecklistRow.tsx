@@ -105,16 +105,16 @@ export function ChecklistRow({
   // title. Unresolved / acknowledged-empty keep the quiet caption + dim summary.
   const content =
     isOpen ? (
-      <div className="flex min-w-0 flex-col">{labelCaption}</div>
+      <div className="flex min-w-0 flex-1 flex-col">{labelCaption}</div>
     ) : state === "resolved" ? (
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {labelCaption}
         <span className="truncate text-[15px] font-semibold" style={{ color: "var(--color-bt-text)", marginTop: 1 }}>
           {value}
         </span>
       </div>
     ) : (
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {labelCaption}
         <span className="truncate text-sm" style={{ color: "var(--color-bt-text-dim)", marginTop: 2 }}>
           {value}
