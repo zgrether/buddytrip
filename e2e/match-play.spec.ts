@@ -93,24 +93,39 @@ async function driveToSetupWithHandicap(page: Page) {
   await expect(createBtn).toBeVisible({ timeout: 20_000 });
   await createBtn.click();
 
-  // Pair each slot — tap "Add player", pick from the selector. After slot A fills,
-  // the remaining "Add player" is slot B.
-  const addPlayer = page.getByRole("button", { name: "Add player" });
-  await expect(addPlayer.first()).toBeVisible({ timeout: 20_000 });
+  // The checklist model: each editor is a Sheet behind its row. Open the MATCHES
+  // row → its Sheet → pair both slots (scoped to the sheet's pairing builder so the
+  // slot-fill check isn't fooled by the player-selector modal) → dismiss (the
+  // recede). The player selector renders at page level OVER the sheet.
+  await page.getByTestId("row-matches").click();
+  const matchesSheet = page.getByTestId("matches-sheet");
+  await expect(matchesSheet).toBeVisible({ timeout: 20_000 });
+  const addPlayer = matchesSheet.getByRole("button", { name: "Add player" });
+  await expect(addPlayer.first()).toBeVisible({ timeout: 10_000 });
   await addPlayer.first().click();
   await page.getByRole("button", { name: /MP Owner/ }).click();
-  await expect(page.getByRole("button", { name: /MP Owner/ })).toBeVisible(); // slot A filled
+  await expect(matchesSheet.getByRole("button", { name: /MP Owner/ })).toBeVisible({ timeout: 10_000 }); // slot A filled
   await addPlayer.first().click();
   await page.getByRole("button", { name: /MP Member/ }).click();
+  await expect(matchesSheet.getByRole("button", { name: /MP Member/ })).toBeVisible({ timeout: 10_000 }); // slot B filled
+  await page.getByRole("button", { name: "Close" }).click(); // dismiss → recede to the row
+  await expect(matchesSheet).toBeHidden({ timeout: 10_000 });
 
-  // Give MP Member a stroke via the RELOCATED Handicaps row (no longer inline in
-  // the pairing builder). Scoped to the handicaps section so it's the relocated
-  // control, not a pairing slot. Picking a side defaults to 1 stroke → the control
-  // resolves to "on hole …"; gate on that so the tap can't silently race the row.
+  // Open the HANDICAPS row → its Sheet → give MP Member a stroke via the relocated
+  // control. The Handicaps row is read-only ("Set matches first") until the pairing
+  // reflects — gate on it leaving that state so the tap can't hit the non-tappable
+  // row. Picking a side defaults to 1 stroke → resolves to "on hole …"; gate on
+  // that too so the tap can't race the sheet's just-rendered control.
+  await expect(page.getByTestId("row-handicaps")).not.toContainText("Set matches first", { timeout: 10_000 });
+  await page.getByTestId("row-handicaps").click();
+  const handicapsSheet = page.getByTestId("handicaps-sheet");
+  await expect(handicapsSheet).toBeVisible({ timeout: 10_000 });
   const handicaps = page.getByTestId("handicaps-section");
   await expect(handicaps).toBeVisible({ timeout: 10_000 });
   await handicaps.getByRole("button", { name: /MP Member/ }).click();
   await expect(handicaps.getByText(/on hole/i)).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Close" }).click(); // dismiss → recede to the row
+  await expect(handicapsSheet).toBeHidden({ timeout: 10_000 });
 }
 
 test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {

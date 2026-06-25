@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
+import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { GameSheet, type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 
@@ -49,19 +49,20 @@ export function GameSetupRows({
   const courseName = (courseQ.data?.name as string | undefined) ?? null;
 
   return (
-    <div className="flex flex-col gap-2">
-      <DrillRow
+    <>
+      <ChecklistRow
         label="Course / tee"
         optional
         value={courseName ?? "Add a course"}
-        muted={!courseName}
+        state={courseName ? "resolved" : "unresolved"}
         disabled={!canEdit}
         onClick={() => setCoursePickerOpen(true)}
       />
       {competitionId && (
-        <DrillRow
+        <ChecklistRow
           label="Name · Format · Points"
           value={`${game.name ?? "Untitled"}${pointsSummary(game) ? ` · ${pointsSummary(game)}` : ""}`}
+          state="resolved"
           disabled={!canEdit}
           onClick={() => setConfigOpen(true)}
         />
@@ -98,7 +99,7 @@ export function GameSetupRows({
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -114,41 +115,3 @@ function pointsSummary(game: GameRow): string | null {
   return null;
 }
 
-/** One drill-down setup row: label (+ optional tag), summary value, chevron. The
- *  emptiness of an unfilled value is a neutral "more to add" cue, not an error. */
-function DrillRow({
-  label,
-  value,
-  optional,
-  muted,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  value: string;
-  optional?: boolean;
-  muted?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          {label}
-          {optional && <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· optional</span>}
-        </span>
-        <span className="truncate text-sm" style={{ color: muted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)", marginTop: 2 }}>
-          {value}
-        </span>
-      </div>
-      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-    </button>
-  );
-}
