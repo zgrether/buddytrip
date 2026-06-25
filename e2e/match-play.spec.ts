@@ -84,48 +84,75 @@ async function handicapByUser(gameId: string): Promise<Map<string, number>> {
   return new Map((data ?? []).map((p) => [p.user_id as string, p.handicap_strokes as number]));
 }
 
+/** Number of FULLY-paired (both sides set) matches persisted for the latest game.
+ *  "Create game" seeds an empty-sided row, so we count only the filled ones —
+ *  that's what persist-on-collapse must write. */
+async function filledMatchCount(gameId: string): Promise<number> {
+  const { data } = await admin.from("game_matches").select("side_a,side_b").eq("game_id", gameId);
+  return (data ?? []).filter((m) => m.side_a && m.side_b).length;
+}
+
 /** Drive a fresh 1v1 to fully-set-up-but-not-enabled: create → pair MP Owner (A)
  *  vs MP Member (B) → give MP Member a stroke via the RELOCATED Handicaps row.
- *  Leaves the page on the checklist with Save / Enable available. */
+ *  Leaves the page on the checklist with Enable available. */
 async function driveToSetupWithHandicap(page: Page) {
   await page.goto(`/trips/${tripId}/games/match/new`);
   const createBtn = page.getByRole("button", { name: "Create game" });
   await expect(createBtn).toBeVisible({ timeout: 20_000 });
   await createBtn.click();
 
-  // The checklist model: each editor is a Sheet behind its row. Open the MATCHES
-  // row → its Sheet → pair both slots (scoped to the sheet's pairing builder so the
-  // slot-fill check isn't fooled by the player-selector modal) → dismiss (the
-  // recede). The player selector renders at page level OVER the sheet.
-  await page.getByTestId("row-matches").click();
-  const matchesSheet = page.getByTestId("matches-sheet");
-  await expect(matchesSheet).toBeVisible({ timeout: 20_000 });
-  const addPlayer = matchesSheet.getByRole("button", { name: "Add player" });
-  await expect(addPlayer.first()).toBeVisible({ timeout: 10_000 });
-  await addPlayer.first().click();
-  await page.getByRole("button", { name: /MP Owner/ }).click();
-  await expect(matchesSheet.getByRole("button", { name: /MP Owner/ })).toBeVisible({ timeout: 10_000 }); // slot A filled
-  await addPlayer.first().click();
-  await page.getByRole("button", { name: /MP Member/ }).click();
-  await expect(matchesSheet.getByRole("button", { name: /MP Member/ })).toBeVisible({ timeout: 10_000 }); // slot B filled
-  await page.getByRole("button", { name: "Close" }).click(); // dismiss → recede to the row
-  await expect(matchesSheet).toBeHidden({ timeout: 10_000 });
+  // Accordion toggle = the row's HEADER button (the first button in the row). When
+  // a panel is expanded its body fills the row, so clicking the row CENTER would
+  // land in the editor, not the header — target the header explicitly to collapse.
+  const toggle = (tid: string) => page.getByTestId(tid).getByRole("button").first();
 
-  // Open the HANDICAPS row → its Sheet → give MP Member a stroke via the relocated
-  // control. The Handicaps row is read-only ("Set matches first") until the pairing
-  // reflects — gate on it leaving that state so the tap can't hit the non-tappable
-  // row. Picking a side defaults to 1 stroke → resolves to "on hole …"; gate on
-  // that too so the tap can't race the sheet's just-rendered control.
+  // The accordion model: each editor expands IN PLACE beneath its row (no Sheet).
+  // Tap the MATCHES row → its panel drops down → pair both slots (scoped to the
+  // pairing builder so the slot-fill check isn't fooled by the player-selector
+  // modal, which renders at page level OVER the panel).
+  await toggle("row-matches").click();
+  const pairings = page.getByTestId("match-pairings");
+  await expect(pairings).toBeVisible({ timeout: 20_000 });
+  // Fill slot A then slot B. Each pick is gated open→pick→closed so the picks can't
+  // race the picker mount/unmount: open the slot, wait for the picker, pick (scoped
+  // to the picker so the click can't hit a filled-slot button), wait for it to
+  // close, then confirm the slot filled (Add-player count dropped) before the next.
+  // (1 match = 2 slots; the count is read only when the picker is closed.)
+  const selector = page.getByTestId("player-selector");
+  const addPlayer = pairings.getByRole("button", { name: "Add player" });
+  await expect(addPlayer).toHaveCount(2, { timeout: 10_000 });
+  await addPlayer.first().click();
+  await expect(selector).toBeVisible({ timeout: 10_000 });
+  await selector.getByRole("button", { name: /MP Owner/ }).click();
+  await expect(selector).toBeHidden({ timeout: 10_000 });
+  await expect(addPlayer).toHaveCount(1, { timeout: 10_000 }); // slot A filled
+  await addPlayer.click(); // the single remaining add = slot B
+  await expect(selector).toBeVisible({ timeout: 10_000 });
+  await selector.getByRole("button", { name: /MP Member/ }).click();
+  await expect(selector).toBeHidden({ timeout: 10_000 });
+  await expect(addPlayer).toHaveCount(0, { timeout: 10_000 }); // both slots filled
+
+  // Open the HANDICAPS row DIRECTLY (no explicit collapse of Matches first). The
+  // one-open rule collapses Matches — and persist-on-collapse must commit its
+  // pairing in the background. Gate on the row leaving "Set matches first" (which
+  // reflects the client draft, so it's ready as soon as both slots are filled).
   await expect(page.getByTestId("row-handicaps")).not.toContainText("Set matches first", { timeout: 10_000 });
-  await page.getByTestId("row-handicaps").click();
-  const handicapsSheet = page.getByTestId("handicaps-sheet");
-  await expect(handicapsSheet).toBeVisible({ timeout: 10_000 });
+  await toggle("row-handicaps").click();
+
+  // persist-on-collapse, isolated from Enable: opening Handicaps collapsed Matches,
+  // which must have written the filled pairing to the server already.
+  await expect.poll(async () => filledMatchCount(await latestGameId()), { timeout: 15_000 }).toBeGreaterThan(0);
+
+  // The Handicaps panel is now open in place → give MP Member a stroke via the
+  // relocated control. Picking a side defaults to 1 stroke → "on hole …"; gate on
+  // that so the tap can't race the just-rendered control.
   const handicaps = page.getByTestId("handicaps-section");
   await expect(handicaps).toBeVisible({ timeout: 10_000 });
   await handicaps.getByRole("button", { name: /MP Member/ }).click();
   await expect(handicaps.getByText(/on hole/i)).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Close" }).click(); // dismiss → recede to the row
-  await expect(handicapsSheet).toBeHidden({ timeout: 10_000 });
+  // Collapse Handicaps (tap the header again) → persist-on-collapse commits the stroke.
+  await toggle("row-handicaps").click();
+  await expect(handicaps).toBeHidden({ timeout: 10_000 });
 }
 
 test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
@@ -165,8 +192,8 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
 
   // The handicap RELOCATION, gated end-to-end: the stroke set in the relocated row
   // persisted (setHandicap → game_participants.handicap_strokes; recipient = n,
-  // other side = 0). This same saveSetup is what the decoupled "Save setup" CTA
-  // calls (minus enableScoring), so the enable-decouple's persistence rides on it.
+  // other side = 0). The accordion's persist-on-collapse is what wrote it (the
+  // stroke committed when the Handicaps panel collapsed, before Enable).
   const hcap = await handicapByUser(await latestGameId());
   expect(hcap.get(memberId)).toBe(1);
   expect(hcap.get(ownerId)).toBe(0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -10,7 +10,6 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
-import { Sheet } from "@/components/Sheet";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
 import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
@@ -19,6 +18,7 @@ import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
@@ -100,10 +100,32 @@ export default function NewMatchGamePage() {
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // Setup editing state
   const [draft, setDraft] = useState<DraftMatch[]>([]);
+  // Once the user TOUCHES the draft in a setup session, the server must never
+  // re-derive over it. The seed effect's `draft.length` guard alone is not enough:
+  // under concurrent renders its closure can read a stale length and re-seed,
+  // wiping in-progress edits when serverMatches lands mid-setup (the create-refetch
+  // race the accordion's instant-open exposed). A ref is always current, so it's
+  // the reliable lock. Reset on every fresh seed entry (create / Edit).
+  const draftTouched = useRef(false);
+  // The user-edit setter: marks the draft touched, then updates it. Use this for
+  // EVERY user edit (picks, reorder, remove, add, handicap); use raw setDraft only
+  // for SEEDING (create / resume / Edit), which must NOT set the touched lock.
+  const editDraft = (fn: (prev: DraftMatch[]) => DraftMatch[]) => {
+    draftTouched.current = true;
+    setDraft(fn);
+  };
   const [selector, setSelector] = useState<{ matchIdx: number; slot: "a" | "b"; memberIdx: number } | null>(null);
-  // Which checklist editor is open as a Sheet overlay (config-checklist model —
-  // the row is home, the editor surfaces over it and recedes on dismiss).
-  const [editorSheet, setEditorSheet] = useState<"matches" | "handicaps" | null>(null);
+  // Which checklist row's editor is OPEN — the accordion model's single source of
+  // truth, owned by the page so ONE panel is open at a time across EVERY row (the
+  // Matches/Handicaps/Players accordions AND the Course/Config overlays). Opening
+  // one collapses any other; collapsing a draft editor (matches/handicaps) commits
+  // it (persist-on-collapse). The one-open rule physically gates Handicaps: it
+  // can't be open while Matches is, so you set matches → collapse → open handicaps.
+  const [openRow, setOpenRow] = useState<"matches" | "handicaps" | "players" | "course" | "config" | null>(null);
+  // Surfaced when a persist-on-collapse save fails — the draft is kept (edits are
+  // never discarded on a transient error), so this offers a retry rather than a
+  // silent loss.
+  const [collapseError, setCollapseError] = useState(false);
   // Back-stack: forward transitions push the screen they left; Back pops to it.
   // Empty stack means we arrived directly (derived screen) → leave to trip home.
   const [navStack, setNavStack] = useState<Screen[]>([]);
@@ -414,8 +436,10 @@ export default function NewMatchGamePage() {
   // Seed the editable draft from the server when we land on setup for an
   // existing game (e.g. owner opens a pending game, or taps Edit) and the local
   // draft is empty. Create + Edit also seed via their handlers; this covers a
-  // direct/derived landing.
+  // direct/derived landing. Once the user has TOUCHED the draft, never re-derive
+  // (the ref guard, immune to the stale-closure race the length guard alone hits).
   useEffect(() => {
+    if (draftTouched.current) return;
     if (screen !== "setup" || draft.length > 0) return;
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
@@ -469,12 +493,22 @@ export default function NewMatchGamePage() {
     if (sided) await setDoublesPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
     else await setPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
     await refreshAfterMatchCountChange();
-    setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
+    // The DERIVED screen flips to "setup" the instant setGameId ran (above), so the
+    // checklist is already interactive — and the user may have started pairing while
+    // this create flow finished its awaits. Only seed the blank cards if they
+    // HAVEN'T (the seed effect already seeded them otherwise); never clobber a draft
+    // the user has touched. (Don't reset draftTouched here either — that would
+    // re-arm the seed effect to overwrite live edits.)
+    if (!draftTouched.current) {
+      setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
+    }
     go("setup");
   }
 
   function startSetup() {
-    // Seed the draft from server (or blank cards).
+    // Seed the draft from server (or blank cards). Fresh seed entry → clear the
+    // touched lock so the server can re-derive until the user edits again.
+    draftTouched.current = false;
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
     } else if (draft.length === 0) {
@@ -490,6 +524,9 @@ export default function NewMatchGamePage() {
   // nothing filled there's no match to play, so it's a no-op.
   function attemptReady() {
     if (filledDraft.length === 0) return;
+    // Enable commits everything itself (commitReady → saveSetup) — collapse any
+    // open row WITHOUT re-firing persist-on-collapse (raw setter, not changeOpenRow).
+    setOpenRow(null);
     if (filledDraft.length < draft.length) {
       setConfirmCollapse(true);
       return;
@@ -547,15 +584,9 @@ export default function NewMatchGamePage() {
     return true;
   }
 
-  // Save without enabling — the standalone "configure now, open later" path the
-  // decouple unlocks. Persists everything (pairings + handicaps), then refreshes
-  // the board so the saved match count / "first to XX" reflect it; STAYS on the
-  // checklist (no enable).
-  async function handleSaveSetup() {
-    setConfirmCollapse(false);
-    const ok = await saveSetup();
-    if (ok) await refreshAfterMatchCountChange();
-  }
+  // ("Configure now, open later" no longer needs an explicit Save — collapsing a
+  // draft editor persists it via persistDraftOnCollapse, so leaving the checklist
+  // with rows collapsed has already saved everything.)
 
   // Enable scoring = save THEN enable, land on the overview. The save carries the
   // full config; enabling is the separate, readiness-gated step. The board refresh
@@ -576,6 +607,47 @@ export default function NewMatchGamePage() {
     await refreshAfterMatchCountChange();
     go("overview");
   }
+
+  // ── Accordion control (one panel open at a time) ──────────────────────────
+  // Persist-on-collapse: closing a draft editor (Matches/Handicaps) commits its
+  // pairings + handicaps in the BACKGROUND. The row already reads resolved from
+  // the client draft (optimistic — the check/value land on tap, not on the
+  // server return); this just syncs it. No-op until a real match exists. On
+  // failure the draft is KEPT (never discard edits) and an inline retry surfaces.
+  async function persistDraftOnCollapse() {
+    if (filledDraft.length === 0) return;
+    try {
+      const ok = await saveSetup();
+      if (ok) {
+        setCollapseError(false);
+        // Mark the competition board stale so a LATER view refetches — but do NOT
+        // refetch matchesQ here. Refetching mid-setup updates serverMatches with
+        // the just-written (read-after-write racy) rows, which re-derives the
+        // STILL-OPEN draft from server and wipes in-progress edits. The board
+        // isn't visible during setup; it refreshes on Enable (commitReady) or on
+        // the next mount. (These invalidates are no-op refetch here since those
+        // queries aren't active on this page — they just go stale.)
+        if (competitionId) {
+          utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+          utils.games.listByTrip.invalidate({ tripId });
+          utils.competitions.faceBootstrap.invalidate({ tripId });
+        }
+      }
+    } catch {
+      setCollapseError(true);
+    }
+  }
+
+  // The single entry point for changing which row is open. Leaving a draft editor
+  // commits it (covers BOTH collapse paths: tapping the row to close it AND
+  // opening another row, since one-at-a-time collapses the current one first).
+  function changeOpenRow(next: typeof openRow) {
+    if (next === openRow) return;
+    if (openRow === "matches" || openRow === "handicaps") void persistDraftOnCollapse();
+    setOpenRow(next);
+  }
+  // Accordion header tap: toggle this row (collapsing whatever else was open).
+  const toggleRow = (row: typeof openRow) => changeOpenRow(openRow === row ? null : row);
 
   // Dynamic match count — mid-life +1 / −1 (the explicit "arm with 1, add a 2nd
   // mid-life" path). Each persists incrementally (NOT a bulk re-save, so
@@ -865,57 +937,115 @@ export default function NewMatchGamePage() {
       {screen === "member-wait" && <MemberNotReady gameName={gameQ.data?.name as string | undefined} />}
 
       {screen === "setup" && (() => {
-        // The config CHECKLIST — six UNIFORM canonical rows; each opens its editor
-        // as a Sheet overlay (the row is home, the editor surfaces and recedes on
-        // dismiss). Matches is the unit row; Handicaps relocated, gated by Matches.
+        // The config CHECKLIST — UNIFORM canonical rows; each EXPANDS its editor IN
+        // PLACE (the row is the frame; the panel drops down beneath it, sheds all
+        // modal chrome). One open at a time (page-owned `openRow`) — which also
+        // physically gates Handicaps behind Matches. Collapse = acknowledge +
+        // persist (the draft editors commit on close). Course + Name·Format·Points
+        // stay overlays this pass (tracked follow-ons) but ride the same one-open.
         const allFilled = draft.length > 0 && filledDraft.length === draft.length;
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         const matchesExist = filledDraft.length > 0;
         const savingSetup =
           setPairings.isPending || setHandicap.isPending ||
           setDoublesPairings.isPending || setDoublesHandicap.isPending;
-        const availableCount = (gameCompId && rosterIds.length > 0 ? rosterIds.length : (crew.data?.length ?? 0));
         const tA = teamForSlot("a");
         const tB = teamForSlot("b");
+        const availableCount = (gameCompId && rosterIds.length > 0 ? rosterIds.length : (crew.data?.length ?? 0));
         const matchesSummary = matchesExist
           ? `${filledDraft.length} match${filledDraft.length === 1 ? "" : "es"}${tA && tB ? ` · ${tA.name} vs ${tB.name}` : ""}`
           : "Not set";
         const handicapsState: ChecklistRowState = !matchesExist ? "unresolved" : anyHandicap ? "resolved" : "acknowledged-empty";
         const handicapsSummary = !matchesExist ? "Set matches first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
         return (
-        <>
           <div className="flex flex-col gap-2.5 pb-4">
-            {/* Available Players — read-only summary (pool = roster/crew; a
-                pluggable source is W-STANDALONE-01). */}
-            <ChecklistRow label="Available players" value={`${availableCount} player${availableCount === 1 ? "" : "s"}`} state="resolved" />
+            {/* Available Players — expands to the canonical rosters view. For a
+                competition game this is the SAME TeamsPanel the Rosters overlay
+                uses, but READ-ONLY (canEdit=false): the pool is revealed, not
+                editable — team setup isn't reachable from a game's setup, not even
+                for the owner. Standalone (no teams) falls back to the flat crew. */}
+            <ChecklistRow
+              label="Available players"
+              value={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
+              state="resolved"
+              expanded={openRow === "players"}
+              onToggle={() => toggleRow("players")}
+              testId="row-players"
+            >
+              <div data-testid="players-rosters">
+                {gameCompId ? (
+                  <TeamsPanel tripId={tripId} competitionId={gameCompId} canEdit={false} structureLocked embedded />
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {(crew.data ?? []).map((c) => (
+                      <span key={c.user_id} className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+                        {nameOf.get(c.user_id) ?? "Player"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ChecklistRow>
 
-            {/* Matches — the pairing builder (the score-entry unit), behind a Sheet. */}
+            {/* Matches — the pairing builder (the score-entry unit), in place. */}
             <ChecklistRow
               label="Matches"
               value={matchesSummary}
               state={matchesExist ? "resolved" : "unresolved"}
-              onClick={() => setEditorSheet("matches")}
+              expanded={openRow === "matches"}
+              onToggle={() => toggleRow("matches")}
               testId="row-matches"
-            />
+            >
+              <MatchSetup
+                tripId={tripId}
+                draft={draft}
+                setDraft={editDraft}
+                playersPerSide={playersPerSide}
+                teamA={tA}
+                teamB={tB}
+                nameOf={nameOf}
+                colorOf={colorOf}
+                avatarIconOf={avatarIconOf}
+                openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
+              />
+            </ChecklistRow>
 
             {/* Handicaps — relocated; gated by Matches ("Off — scratch" is a valid
-                done). Read-only (no editor) until matches exist. */}
+                done). The one-open rule IS the gate: you can't open it while
+                Matches is open, and it stays non-tappable until matches exist. */}
             <ChecklistRow
               label="Handicaps"
               value={handicapsSummary}
               state={handicapsState}
               optional
-              onClick={matchesExist ? () => setEditorSheet("handicaps") : undefined}
+              expanded={openRow === "handicaps"}
+              onToggle={matchesExist ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
-            />
+            >
+              <HandicapsSection
+                draft={draft}
+                setDraft={editDraft}
+                playersPerSide={playersPerSide}
+                nameOf={nameOf}
+                colorOf={colorOf}
+                avatarIconOf={avatarIconOf}
+              />
+            </ChecklistRow>
 
-            {/* Golf Course + Name·Format·Points — the shared canonical rows. */}
+            {/* Golf Course + Name·Format·Points — shared canonical rows. These two
+                stay OVERLAYS this pass (CoursePicker split + config modal-shed are
+                tracked follow-ons), but ride the page's one-open via openRow. */}
             {gameQ.data && (
               <GameSetupRows
                 tripId={tripId}
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
                 canEdit={canEdit}
+                courseOpen={openRow === "course"}
+                configOpen={openRow === "config"}
+                onOpenCourse={() => changeOpenRow("course")}
+                onOpenConfig={() => changeOpenRow("config")}
+                onCloseEditor={() => changeOpenRow(null)}
                 onChanged={() => {
                   void gameQ.refetch();
                   if (competitionId) {
@@ -931,19 +1061,20 @@ export default function NewMatchGamePage() {
                 modifier has a scoring effect yet, so the row is inert until then. */}
             <ChecklistRow label="Modifiers" value="None — coming soon" state="acknowledged-empty" />
 
-            {/* The decoupled CTAs: Save persists config WITHOUT enabling; Enable
-                scoring saves + enables, readiness-gated on a real match. */}
-            <div className="flex flex-col gap-2 pt-2">
+            {collapseError && (
               <button
                 type="button"
-                onClick={handleSaveSetup}
-                disabled={filledDraft.length === 0 || savingSetup}
-                className="w-full disabled:opacity-40"
-                style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
-                data-testid="match-save-setup"
+                onClick={() => void persistDraftOnCollapse()}
+                className="text-left text-[13px]"
+                style={{ color: "var(--color-bt-danger)" }}
               >
-                {savingSetup ? "Saving…" : "Save setup"}
+                Couldn’t save your changes — tap to retry.
               </button>
+            )}
+
+            {/* The CTA: Enable scoring saves the config + enables, readiness-gated
+                on a real match. (No "Save setup" — edits persist on collapse now.) */}
+            <div className="flex flex-col gap-2 pt-2">
               <PrimaryButton
                 label={enableScoring.isPending ? "Enabling…" : "Enable scoring"}
                 onClick={attemptReady}
@@ -952,38 +1083,6 @@ export default function NewMatchGamePage() {
               />
             </div>
           </div>
-
-          {/* ── Editor overlays (the recede): the heavy editors live BEHIND their
-              rows, surfacing as Sheets and dismissing back to the updated row. ── */}
-          {editorSheet === "matches" && (
-            <Sheet title="Matches" subtitle="Who plays whom — the score-entry unit" onClose={() => setEditorSheet(null)} testId="matches-sheet">
-              <MatchSetup
-                tripId={tripId}
-                draft={draft}
-                setDraft={setDraft}
-                playersPerSide={playersPerSide}
-                teamA={tA}
-                teamB={tB}
-                nameOf={nameOf}
-                colorOf={colorOf}
-                avatarIconOf={avatarIconOf}
-                openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
-              />
-            </Sheet>
-          )}
-          {editorSheet === "handicaps" && (
-            <Sheet title="Handicaps" subtitle="Strokes per matchup — Off is a valid done" onClose={() => setEditorSheet(null)} testId="handicaps-sheet">
-              <HandicapsSection
-                draft={draft}
-                setDraft={setDraft}
-                playersPerSide={playersPerSide}
-                nameOf={nameOf}
-                colorOf={colorOf}
-                avatarIconOf={avatarIconOf}
-              />
-            </Sheet>
-          )}
-        </>
         );
       })()}
 
@@ -1048,7 +1147,7 @@ export default function NewMatchGamePage() {
             nameOf={nameOf}
             avatarIconOf={avatarIconOf}
             onPick={(userId) => {
-              setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId, playersPerSide));
+              editDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId, playersPerSide));
               setSelector(null);
             }}
             onClose={() => setSelector(null)}
@@ -1779,7 +1878,7 @@ function PlayerSelector({
       : `Match ${matchIdx + 1} · Player ${slot === "a" ? 1 : 2}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} data-testid="player-selector">
       <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ background: "var(--color-bt-card-float)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 16px 28px", maxHeight: "75vh", overflowY: "auto" }}>
         <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {teamColor && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />}
