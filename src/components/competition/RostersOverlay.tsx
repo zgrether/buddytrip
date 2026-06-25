@@ -1,7 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
-import { ScrollLock } from "@/hooks/useScrollLock";
+import { Sheet } from "@/components/Sheet";
 import { TeamsPanel } from "./TeamsPanel";
 
 /**
@@ -44,71 +43,34 @@ export function RostersOverlay({
   onClose: () => void;
 }) {
   return (
-    <ScrollLock>
-      <div
-        className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-        style={{ background: "var(--color-bt-overlay-drawer)" }}
-        onClick={onClose}
-        data-testid="rosters-overlay"
-      >
-        <div
-          className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-t-2xl sm:rounded-2xl"
-          style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+    <Sheet
+      title="Rosters"
+      subtitle={isOwner ? "Tap a team to edit · drag a player onto a team to assign" : "Who’s on which team"}
+      onClose={onClose}
+      testId="rosters-overlay"
+      maxWidthClass="max-w-3xl"
+      footer={
+        isOwner && rosterBuilding ? (
+          <button
+            type="button"
+            onClick={onSaveRosters}
+            className="w-full rounded-xl py-3 text-sm font-semibold"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            data-testid="rosters-save"
           >
-            <div>
-              <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-                Rosters
-              </h3>
-              <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                {isOwner
-                  ? "Tap a team to edit · drag a player onto a team to assign"
-                  : "Who’s on which team"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex h-8 w-8 items-center justify-center rounded-lg"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Body — the relocated team-builder (read-only for non-owners). */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <TeamsPanel
-              tripId={tripId}
-              competitionId={competitionId}
-              canEdit={isOwner}
-              structureLocked={structureLocked}
-              embedded
-            />
-          </div>
-
-          {/* Footer — the one-way roster-build commit (owner, building phase). */}
-          {isOwner && rosterBuilding && (
-            <div className="border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
-              <button
-                type="button"
-                onClick={onSaveRosters}
-                className="w-full rounded-xl py-3 text-sm font-semibold"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                data-testid="rosters-save"
-              >
-                Save rosters
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </ScrollLock>
+            Save rosters
+          </button>
+        ) : undefined
+      }
+    >
+      {/* The relocated team-builder (read-only for non-owners). */}
+      <TeamsPanel
+        tripId={tripId}
+        competitionId={competitionId}
+        canEdit={isOwner}
+        structureLocked={structureLocked}
+        embedded
+      />
+    </Sheet>
   );
 }
