@@ -155,7 +155,12 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "stroke_total",
     scorecardSchema: strokeSchema,
-    compatibleModifiers: ["glorious_holes"],
+    // ⚠ TESTABILITY VALUES, NOT real-world applicability. Crossed deliberately so each
+    // golf format exercises one Modifiers render branch (hide / checkbox / stepper / both).
+    // Real applicability is different (e.g. glorious_holes doubles a hole's MATCH value, so it
+    // does NOT apply to stroke play). Reconcile to real applicability when modifier scoring
+    // logic is built — see W-GAMEPAGE-01 §6.5. Tracked in DEFERRED.md.
+    compatibleModifiers: ["moving_tees", "glorious_holes"], // BOTH cards branch
     supportsFreeForAll: true,
     supportsSides: false,
     requiresSides: false,
@@ -172,7 +177,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "match_play",
     scorecardSchema: singlesSchema,
-    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    compatibleModifiers: ["moving_tees"], // ⚠ test-matrix value (CHECKBOX-only branch) — see note on gtt_stroke_play
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
@@ -189,7 +194,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "group_holes",
     resultStrategy: "match_play",
     scorecardSchema: doublesSchema,
-    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    compatibleModifiers: ["glorious_holes"], // ⚠ test-matrix value (STEPPER-only branch) — see note on gtt_stroke_play
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
@@ -206,7 +211,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "rack_n_stack",
     scorecardSchema: rackSchema,
-    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    compatibleModifiers: [], // ⚠ test-matrix value (HIDE-the-row branch: a golf format with none) — see note on gtt_stroke_play
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
