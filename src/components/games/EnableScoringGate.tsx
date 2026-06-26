@@ -22,6 +22,9 @@ export function EnableScoringGate({
   onBack,
   pending,
   setupRows,
+  identityHeader,
+  rulesNote,
+  onSaveExit,
 }: {
   title: string;
   subtitle: string;
@@ -31,6 +34,13 @@ export function EnableScoringGate({
   /** The standardized setup drill-down rows (GameSetupRows). Omitted for a
    *  standalone game with nothing competition-scoped to configure. */
   setupRows?: React.ReactNode;
+  /** Zone-1 identity header (name + assigned-to), above the rows (W-EDITMODAL-01). */
+  identityHeader?: React.ReactNode;
+  /** Zone-3 rules note, below the rows (W-EDITMODAL-01). */
+  rulesNote?: React.ReactNode;
+  /** "Save & exit" (secondary, always-enabled) — flushes rules + navigates back.
+   *  Omitted → only "Enable scoring" + the back arrow (e.g. standalone games). */
+  onSaveExit?: () => void;
 }) {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
@@ -48,7 +58,9 @@ export function EnableScoringGate({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        {identityHeader}
         {setupRows}
+        {rulesNote}
 
         <div
           className="mt-4 flex items-center gap-3 rounded-xl px-4 py-3.5"
@@ -71,6 +83,15 @@ export function EnableScoringGate({
         >
           {pending ? "Enabling…" : "Enable scoring"}
         </button>
+        {onSaveExit && (
+          <button
+            onClick={onSaveExit}
+            className="mt-2 w-full"
+            style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
+          >
+            Save &amp; exit
+          </button>
+        )}
       </div>
     </div>
   );

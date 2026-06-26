@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -17,6 +17,8 @@ import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
+import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -64,6 +66,7 @@ export default function RackNStackPage() {
   const tripId = isId ? param : resolved.data?.id;
 
   const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
+  const rulesRef = useRef<GameRulesNoteHandle>(null);
   const me = useCurrentUser();
   const utils = trpc.useUtils();
 
@@ -546,6 +549,13 @@ export default function RackNStackPage() {
         onEnable={handleEnable}
         onBack={() => router.back()}
         pending={enableScoring.isPending}
+        identityHeader={competitionId && gameQ.data
+          ? <GameIdentityHeader tripId={tripId!} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
+          : undefined}
+        rulesNote={competitionId && gameQ.data
+          ? <GameRulesNote ref={rulesRef} tripId={tripId!} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
+          : undefined}
+        onSaveExit={competitionId ? async () => { await rulesRef.current?.flush(); router.back(); } : undefined}
         setupRows={
           gameQ.data ? (
             <GameSetupRows
