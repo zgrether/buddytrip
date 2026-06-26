@@ -76,6 +76,8 @@ export interface GameRow {
   modifiers: Record<string, Record<string, unknown>> | null;
   scorecard_schema: unknown | null;
   course_id: string | null;
+  /** The BACK nine of a retained two-nines 18 (W-9HOLE-01); null otherwise. */
+  back_course_id: string | null;
   schedule_item_id: string | null;
   corrections_open: boolean;
 }

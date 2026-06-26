@@ -117,6 +117,34 @@ const range = (from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, i) => String(from + i));
 
 /**
+ * Compose two 9-hole nines into a retained two-nines 18 (W-9HOLE-01).
+ *
+ * Par + yards concatenate (front 1-9, back 10-18). The stroke index is the
+ * load-bearing part: the two nines each carry their own 1..9 ranking, so they're
+ * INTERLEAVED into a 1..18 permutation the golf-correct way — the FRONT takes the
+ * ODD overall ranks (`2·SI−1`: 1→1, 2→3, …, 9→17) and the BACK takes the EVEN
+ * (`2·SI`: 1→2, …, 9→18). That spreads a player's handicap strokes across both
+ * nines (naive front-then-back would dump every stroke on the front and mis-
+ * allocate match-play strokes — wrong for a real competition). Index is composed
+ * only when BOTH nines have one; if either is index-off the 18 is index-off too
+ * (sequential fallback downstream).
+ */
+export function composeTwoNines(
+  front: { par: number[]; index?: number[] | null; yards?: (number | null)[] | null },
+  back: { par: number[]; index?: number[] | null; yards?: (number | null)[] | null }
+): { par: number[]; index: number[] | null; yards: (number | null)[] } {
+  const f9 = <T>(a: T[] | null | undefined, fill: T): T[] => (a ?? []).slice(0, 9).concat(Array(9).fill(fill)).slice(0, 9);
+  const par = [...f9(front.par, 4), ...f9(back.par, 4)];
+  const yards = [...f9(front.yards, null), ...f9(back.yards, null)];
+  const fIdx = front.index, bIdx = back.index;
+  const index =
+    fIdx?.length === 9 && bIdx?.length === 9
+      ? [...fIdx.map((si) => 2 * si - 1), ...bIdx.map((si) => 2 * si)]
+      : null;
+  return { par, index, yards };
+}
+
+/**
  * Build the per-game scorecard_schema snapshot (§0 contract): clone the template
  * and overwrite the hole layout (count/labels/sections) + metadata.par +
  * metadata.handicap_index with the applied course's data. Front/back sections

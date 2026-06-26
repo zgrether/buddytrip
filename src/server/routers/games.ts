@@ -9,7 +9,7 @@ import { computeRackNStackResults } from "../lib/rackNStack";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { buildScorecardSchema, validateStrokeIndex, type SnapshotTee } from "@/lib/courseIndex";
+import { buildScorecardSchema, composeTwoNines, validateStrokeIndex, type SnapshotTee, type ScorecardSchema } from "@/lib/courseIndex";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 
@@ -301,9 +301,11 @@ export const gamesRouter = router({
       }
 
       const snapshot = buildScorecardSchema(baseSchema, par, handicapIndex, holeCount, selectedTee);
+      // Applying a (fresh) front course resets any prior two-nines back ref — a
+      // 9-hole course lands as a lone front "needs a back nine" until setBackNine.
       const { error } = await ctx.supabase
         .from("games")
-        .update({ scorecard_schema: snapshot, course_id: input.courseId })
+        .update({ scorecard_schema: snapshot, course_id: input.courseId, back_course_id: null })
         .eq("id", input.gameId);
       if (error) {
         throw new TRPCError({
@@ -350,7 +352,7 @@ export const gamesRouter = router({
 
       const { error } = await ctx.supabase
         .from("games")
-        .update({ scorecard_schema: baseSchema, course_id: null })
+        .update({ scorecard_schema: baseSchema, course_id: null, back_course_id: null })
         .eq("id", input.gameId);
       if (error) {
         throw new TRPCError({
@@ -358,6 +360,86 @@ export const gamesRouter = router({
           message: `Failed to clear course: ${error.message}`,
         });
       }
+
+      const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
+      return data;
+    }),
+
+  // setBackNine — compose (or SWAP) the BACK nine of a retained two-nines 18
+  // (W-9HOLE-01). The FRONT (course_id) must be a 9-hole course; its frozen 9 is
+  // read from the existing snapshot (provenance: the front never changes on a
+  // back swap). The back is a 9-hole course supplied here. The two nines compose
+  // into an 18 (interleaved stroke index) snapshotted onto the game.
+  //
+  // Unlike applyCourse, this does NOT freeze on front scores — a back swap is a
+  // legitimate day-of move. It CLEARS only holes 10-18 (the back's scores belong
+  // to the old nine), leaving holes 1-9 (front) + their scores untouched. Net and
+  // back-nine handicap allocation re-derive on read from the new index for free.
+  setBackNine: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), backCourseId: z.string().min(1), backTeeSetName: z.string().optional() }))
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, game_type_id, course_id, back_course_id, scorecard_schema")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      if (!game.course_id) throw new TRPCError({ code: "BAD_REQUEST", message: "Set a front nine first." });
+
+      const schema = game.scorecard_schema as ScorecardSchema | null;
+      const frontMeta = schema?.units?.metadata;
+      const frontCount = schema?.units?.count ?? frontMeta?.par?.length ?? 0;
+      // Only a two-nines game gets a back: a 9-hole front (count 9) composing its
+      // first back, or an already-composed 18 (count 18 + a back ref) swapping it.
+      // A real 18-hole course (count 18, no back ref) is rejected.
+      if (!frontMeta?.par?.length || (frontCount === 18 && !game.back_course_id)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This isn't a 9-hole front — it doesn't take a back nine." });
+      }
+
+      const { data: back } = await ctx.supabase
+        .from("courses")
+        .select("hole_count, par, handicap_index, has_stroke_index, tee_sets")
+        .eq("id", input.backCourseId)
+        .maybeSingle();
+      if (!back) throw new TRPCError({ code: "NOT_FOUND", message: "Back-nine course not found" });
+      if ((back.hole_count as number) !== 9) throw new TRPCError({ code: "BAD_REQUEST", message: "The back nine must be a 9-hole course." });
+      const backHasIndex = ((back.has_stroke_index as boolean | null) ?? true) && Array.isArray(back.handicap_index);
+      if (backHasIndex && !validateStrokeIndex(back.handicap_index as number[], 9).valid) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Back-nine stroke index is not a valid permutation." });
+      }
+
+      const backTees = (back.tee_sets as SnapshotTee[] | null) ?? [];
+      const backTee = (input.backTeeSetName ? backTees.find((t) => t.name === input.backTeeSetName) : undefined) ?? backTees[0] ?? null;
+
+      // The frozen FRONT 9 comes from the snapshot (works whether the current
+      // schema is a 9 front or an 18 being re-swapped — slice the first 9).
+      const composed = composeTwoNines(
+        { par: frontMeta.par, index: frontMeta.handicap_index ?? null, yards: frontMeta.tee?.yards ?? null },
+        { par: back.par as number[], index: backHasIndex ? (back.handicap_index as number[]) : null, yards: backTee?.yards ?? null }
+      );
+      const composedTee: SnapshotTee | null = frontMeta.tee
+        ? { ...frontMeta.tee, yards: composed.yards }
+        : (backTee ? { ...backTee, yards: composed.yards } : null);
+
+      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
+      if (!baseSchema?.units) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." });
+      const snapshot = buildScorecardSchema(baseSchema, composed.par, composed.index, 18, composedTee);
+
+      // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
+      // front (1-9) is left intact. (A no-op on the first compose.)
+      await ctx.supabase
+        .from("score_entries")
+        .delete()
+        .eq("game_id", input.gameId)
+        .in("unit_label", ["10", "11", "12", "13", "14", "15", "16", "17", "18"]);
+
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ scorecard_schema: snapshot, back_course_id: input.backCourseId })
+        .eq("id", input.gameId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set back nine: ${error.message}` });
 
       const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
       return data;

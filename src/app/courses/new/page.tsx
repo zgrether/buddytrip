@@ -34,9 +34,13 @@ function NewCourseInner() {
   const tripId = params.get("trip");
   const gameId = params.get("game");
   const provider = params.get("provider");
+  // slot=back (W-9HOLE-01): the saved course is the BACK nine — compose it onto
+  // the game's front via setBackNine instead of applyCourse-ing it as the course.
+  const isBack = params.get("slot") === "back";
 
   const createCourse = trpc.courses.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
+  const setBackNine = trpc.games.setBackNine.useMutation();
   const utils = trpc.useUtils();
 
   const leave = () => { if (window.history.length > 1) router.back(); else router.push(tripId ? `/trips/${tripId}` : "/dashboard"); };
@@ -49,7 +53,8 @@ function NewCourseInner() {
       // Apply to the originating game (when we came from one) so the Course row
       // returns resolved. No game → just saved to the library.
       if (tripId && gameId) {
-        await applyCourse.mutateAsync({ tripId, gameId, courseId, teeSetName: teeName });
+        if (isBack) await setBackNine.mutateAsync({ tripId, gameId, backCourseId: courseId, backTeeSetName: teeName });
+        else await applyCourse.mutateAsync({ tripId, gameId, courseId, teeSetName: teeName });
         utils.courses.getById.invalidate({ courseId });
         utils.games.getById.invalidate({ tripId, gameId });
         utils.games.listByTrip.invalidate({ tripId });
@@ -65,7 +70,8 @@ function NewCourseInner() {
   return (
     <CourseEntryFlow
       providerId={provider}
-      saving={createCourse.isPending || applyCourse.isPending}
+      defaultHoleCount={isBack ? 9 : 18}
+      saving={createCourse.isPending || applyCourse.isPending || setBackNine.isPending}
       onSave={handleSave}
       onCancel={leave}
     />
