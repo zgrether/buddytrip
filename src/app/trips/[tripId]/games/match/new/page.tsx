@@ -26,6 +26,7 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
+import { filledMatches, allMatchesFilled } from "@/lib/matchDraft";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 /** "07:40" → "7:40 AM". Empty/invalid → "". */
@@ -168,7 +169,7 @@ export default function NewMatchGamePage() {
   // game to these: the unfilled slots are discarded and points-in-play / the cup
   // clinch recompute from this count. "Defined" was builder-time intent only.
   const filledDraft = useMemo(
-    () => draft.filter((d) => d.a.length === playersPerSide && d.b.length === playersPerSide),
+    () => filledMatches(draft, playersPerSide),
     [draft, playersPerSide]
   );
 
@@ -927,7 +928,7 @@ export default function NewMatchGamePage() {
         // physically gates Handicaps behind Matches. Collapse = acknowledge +
         // persist (the draft editors commit on close). Course + Name·Format·Points
         // stay overlays this pass (tracked follow-ons) but ride the same one-open.
-        const allFilled = draft.length > 0 && filledDraft.length === draft.length;
+        const allFilled = allMatchesFilled(draft, playersPerSide);
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         const matchesExist = filledDraft.length > 0;
         const savingSetup =
