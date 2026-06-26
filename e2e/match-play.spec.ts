@@ -125,6 +125,11 @@ async function driveToSetupWithHandicap(page: Page) {
   await expect(createBtn).toBeVisible({ timeout: 20_000 });
   await createBtn.click();
 
+  // T2 hard block (W-GAMEPAGE-01 §6.1): "Create game" seeds exactly ONE empty
+  // match (build-as-you-go), so Enable scoring is DISABLED until both slots fill.
+  // No silent collapse-to-filled-count — an empty slot keeps the gate shut.
+  await expect(page.getByRole("button", { name: "Enable scoring" })).toBeDisabled({ timeout: 20_000 });
+
   // Accordion toggle = the row's HEADER button (the first button in the row). When
   // a panel is expanded its body fills the row, so clicking the row CENTER would
   // land in the editor, not the header — target the header explicitly to collapse.
@@ -190,9 +195,9 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   test.setTimeout(60_000);
   await driveToSetupWithHandicap(page);
 
-  // Enable scoring → the overview. Gate on the button being ENABLED — that's
-  // the signal both slots are filled (filledCount > 0), so the click can't race
-  // an incomplete pairing and trip the collapse confirm.
+  // Enable scoring → the overview. Gate on the button being ENABLED — under the
+  // T2 hard block that's the signal EVERY match is fully paired (the single match
+  // here), so the click can't race an incomplete pairing.
   const enableBtn = page.getByRole("button", { name: "Enable scoring" });
   await expect(enableBtn).toBeEnabled({ timeout: 10_000 });
   await enableBtn.click();
