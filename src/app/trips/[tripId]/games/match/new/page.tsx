@@ -18,7 +18,6 @@ import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
-import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
@@ -936,7 +935,9 @@ export default function NewMatchGamePage() {
           setDoublesPairings.isPending || setDoublesHandicap.isPending;
         const tA = teamForSlot("a");
         const tB = teamForSlot("b");
-        const availableCount = (gameCompId && rosterIds.length > 0 ? rosterIds.length : (crew.data?.length ?? 0));
+        // Standalone-only readout now (T4 hides this row for competitions), so the
+        // count is just the trip crew — no roster branch.
+        const availableCount = crew.data?.length ?? 0;
         // Hard block (W-GAMEPAGE-01 §6.1): the row resolves only when EVERY match
         // is fully paired — an empty slot is an unfinished add, not a quiet drop.
         const matchesSummary = allFilled
@@ -972,20 +973,20 @@ export default function NewMatchGamePage() {
               <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
             )}
 
-            {/* Available Players — between Identity and Settings, not a labeled
-                zone. (T4 gates this to standalone-only.) */}
-            <ChecklistRow
-              label="Available players"
-              value={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
-              state="resolved"
-              expanded={openRow === "players"}
-              onToggle={() => toggleRow("players")}
-              testId="row-players"
-            >
-              <div data-testid="players-rosters">
-                {gameCompId ? (
-                  <TeamsPanel tripId={tripId} competitionId={gameCompId} canEdit={false} structureLocked embedded />
-                ) : (
+            {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
+                competition the rosters live on the competition face (the leaderboard
+                + RostersOverlay own team membership), so this read-only echo is
+                redundant noise here; the row is hidden entirely. */}
+            {!gameCompId && (
+              <ChecklistRow
+                label="Available players"
+                value={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
+                state="resolved"
+                expanded={openRow === "players"}
+                onToggle={() => toggleRow("players")}
+                testId="row-players"
+              >
+                <div data-testid="players-rosters">
                   <div className="flex flex-col gap-1">
                     {(crew.data ?? []).map((c) => (
                       <span key={c.user_id} className="text-sm" style={{ color: "var(--color-bt-text)" }}>
@@ -993,9 +994,9 @@ export default function NewMatchGamePage() {
                       </span>
                     ))}
                   </div>
-                )}
-              </div>
-            </ChecklistRow>
+                </div>
+              </ChecklistRow>
+            )}
 
             {/* ── Zone 3 — SETTINGS (the required spine that gates Enable scoring):
                 Matches · Course · Format·Points (W-GAMEPAGE-01 §5). ── */}
