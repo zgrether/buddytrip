@@ -413,10 +413,19 @@ export const gamesRouter = router({
       const backTees = (back.tee_sets as SnapshotTee[] | null) ?? [];
       const backTee = (input.backTeeSetName ? backTees.find((t) => t.name === input.backTeeSetName) : undefined) ?? backTees[0] ?? null;
 
-      // The frozen FRONT 9 comes from the snapshot (works whether the current
-      // schema is a 9 front or an 18 being re-swapped — slice the first 9).
+      // Recover the FRONT nine's ORIGINAL 1..9 data from the snapshot. On the
+      // first compose the schema IS a 9-hole front (index already 1..9). On a
+      // SWAP the schema is the previously-composed 18, whose first 9 stroke-index
+      // values are the INTERLEAVED odd ranks (2·s−1) — de-interleave them back to
+      // 1..9 (`(v+1)/2`) so composeTwoNines re-interleaves correctly against the
+      // new back. (par/yards just slice; only the index is interleaved.)
+      const frontIdx9: number[] | null = frontMeta.handicap_index?.length
+        ? (frontCount === 18
+            ? frontMeta.handicap_index.slice(0, 9).map((v) => (v + 1) / 2)
+            : frontMeta.handicap_index.slice(0, 9))
+        : null;
       const composed = composeTwoNines(
-        { par: frontMeta.par, index: frontMeta.handicap_index ?? null, yards: frontMeta.tee?.yards ?? null },
+        { par: frontMeta.par.slice(0, 9), index: frontIdx9, yards: frontMeta.tee?.yards?.slice(0, 9) ?? null },
         { par: back.par as number[], index: backHasIndex ? (back.handicap_index as number[]) : null, yards: backTee?.yards ?? null }
       );
       const composedTee: SnapshotTee | null = frontMeta.tee
