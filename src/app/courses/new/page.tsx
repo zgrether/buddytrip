@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { CourseEntryFlow } from "@/components/games/course/CourseEntryFlow";
@@ -17,7 +18,17 @@ import { CourseEntryFlow } from "@/components/games/course/CourseEntryFlow";
  * can't), so leaving and returning is safe. `?provider=` seeds a golfcourseapi
  * pull for review; absent → a blank manual build.
  */
+// useSearchParams() forces client-side rendering, so the page that calls it must
+// sit under a Suspense boundary (Next.js bails out of static prerender otherwise).
 export default function NewCoursePage() {
+  return (
+    <Suspense fallback={<div className="fixed inset-0" style={{ background: "var(--color-bt-base)" }} />}>
+      <NewCourseInner />
+    </Suspense>
+  );
+}
+
+function NewCourseInner() {
   const router = useRouter();
   const params = useSearchParams();
   const tripId = params.get("trip");
