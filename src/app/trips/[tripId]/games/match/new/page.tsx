@@ -996,11 +996,8 @@ export default function NewMatchGamePage() {
               <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
             )}
 
-            {/* Available Players — expands to the canonical rosters view. For a
-                competition game this is the SAME TeamsPanel the Rosters overlay
-                uses, but READ-ONLY (canEdit=false): the pool is revealed, not
-                editable — team setup isn't reachable from a game's setup, not even
-                for the owner. Standalone (no teams) falls back to the flat crew. */}
+            {/* Available Players — between Identity and Settings, not a labeled
+                zone. (T4 gates this to standalone-only.) */}
             <ChecklistRow
               label="Available players"
               value={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
@@ -1023,6 +1020,10 @@ export default function NewMatchGamePage() {
                 )}
               </div>
             </ChecklistRow>
+
+            {/* ── Zone 3 — SETTINGS (the required spine that gates Enable scoring):
+                Matches · Course · Format·Points (W-GAMEPAGE-01 §5). ── */}
+            <ZoneHeader>Settings</ZoneHeader>
 
             {/* Matches — the pairing builder (the score-entry unit), in place. */}
             <ChecklistRow
@@ -1047,9 +1048,10 @@ export default function NewMatchGamePage() {
               />
             </ChecklistRow>
 
-            {/* Course — BEFORE Handicaps (W-9HOLE-01 reorder). Handicaps' per-hole
-                stroke allocation needs the course's stroke-index table, so Course
-                resolves first; the one-open chain reads Matches → Course → Handicaps. */}
+            {/* Course — Handicaps' per-hole stroke allocation needs the course's
+                stroke-index table, so Course resolves before Handicaps (W-9HOLE-01);
+                the one-open chain reads Matches → Course → Handicaps (Handicaps is
+                in Zone 4 below). */}
             {gameQ.data && (
               <GameSetupRows
                 slot="course"
@@ -1064,9 +1066,27 @@ export default function NewMatchGamePage() {
               />
             )}
 
+            {/* Format · Points — the last Settings row (the spine: matches × value). */}
+            {gameQ.data && (
+              <GameSetupRows
+                slot="config"
+                tripId={tripId}
+                competitionId={gameCompId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                configOpen={openRow === "config"}
+                onOpenConfig={() => changeOpenRow("config")}
+                onCloseEditor={() => changeOpenRow(null)}
+                onChanged={onSetupChanged}
+              />
+            )}
+
+            {/* ── Zone 4 — OPTIONS (never gate Enable): Handicaps · Modifiers ·
+                Rules of the Day (W-GAMEPAGE-01 §5). ── */}
+            <ZoneHeader>Options</ZoneHeader>
+
             {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
-                resolve (a complete 18) before per-hole strokes can be allocated. The
-                one-open rule physically enforces the chain. */}
+                resolve (a complete 18) before per-hole strokes can be allocated. */}
             <ChecklistRow
               label="Handicaps"
               value={handicapsSummary}
@@ -1086,28 +1106,12 @@ export default function NewMatchGamePage() {
               />
             </ChecklistRow>
 
-            {/* Format · Points — AFTER Handicaps (the reorder). */}
-            {gameQ.data && (
-              <GameSetupRows
-                slot="config"
-                tripId={tripId}
-                competitionId={gameCompId}
-                game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
-                configOpen={openRow === "config"}
-                onOpenConfig={() => changeOpenRow("config")}
-                onCloseEditor={() => changeOpenRow(null)}
-                onChanged={onSetupChanged}
-              />
-            )}
-
             {/* Modifiers — acknowledge-only: the toggle targets exist but no
                 modifier has a scoring effect yet, so the row is inert until then. */}
             <ChecklistRow label="Modifiers" value="None — coming soon" state="acknowledged-empty" />
 
-            {/* Zone 3 — RULES / notes (W-EDITMODAL-01): freeform, below the
-                checklist. Saves on blur; "Save & exit" flushes it via rulesRef.
-                Competition games only (re-homes the modal's rules field). */}
+            {/* Rules of the Day — freeform note (W-EDITMODAL-01). Saves on blur;
+                "Save & exit" flushes it via rulesRef. Competition games only. */}
             {gameCompId && gameQ.data && (
               <GameRulesNote ref={rulesRef} tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
             )}
@@ -1367,6 +1371,19 @@ function assignInDraft(
  * back arrow only (top-left), centered title (white) + subtitle, optional
  * top-right slot (the overview's Edit link).
  */
+/** A labeled zone divider on the setup face (W-GAMEPAGE-01 §5) — the groups are
+ *  labels, not panes (one scrolling column). Token-styled, quiet caption. */
+function ZoneHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 pt-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        {children}
+      </span>
+      <span className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+    </div>
+  );
+}
+
 function SetupHeader({
   title,
   subtitle,
