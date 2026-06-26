@@ -96,9 +96,6 @@ export default function NewMatchGamePage() {
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
 
-  // New-game form. Dynamic match count: start at 1 (a single default match) and
-  // grow one at a time — never force the full suggested count up front.
-  const [matchCount, setMatchCount] = useState(1);
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // Setup editing state
   const [draft, setDraft] = useState<DraftMatch[]>([]);
@@ -140,7 +137,6 @@ export default function NewMatchGamePage() {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   // Collapse-on-advance: when teeing off with some slots still unfilled, confirm
   // the consequence (the game drops to the filled count; cup clinch shifts).
-  const [confirmCollapse, setConfirmCollapse] = useState(false);
   // Course (Slice C): picked on the new-game screen, applied to the game once
   // it's created. id null until chosen.
   const [courseId, setCourseId] = useState<string | null>(null);
@@ -240,25 +236,14 @@ export default function NewMatchGamePage() {
   // undifferentiated, so any two of the crew pair up (Slice B). In a 2-team
   // competition the cap becomes min(teamA, teamB) since matches cross the team
   // line — generally min team size across teams — which is Slice D's concern.
-  const crewCount = crew.data?.length ?? 0;
-  // 1v1 needs 2 players per match, 2v2 needs 4 (two pairs).
-  const maxMatches = Math.max(1, Math.floor(crewCount / (sided ? 4 : 2)));
-
-  // Competition roster + the singles match cap = min(teamA, teamB). Used to seed
-  // a resumed competition game's pairings and to scope the player picker.
+  // Build-as-you-go (W-GAMEPAGE-01 §6.1): matches start at one and grow via
+  // "+ Add match" — no pre-seeded count, so the old crew/roster match caps that
+  // sized the initial draft are gone.
   const gameCompId = (gameQ.data?.competition_id as string | null) ?? null;
   const rosterIds = useMemo(
     () => [...new Set((assignQ.data ?? []).map((a) => a.user_id as string))],
     [assignQ.data]
   );
-  const compMatchCount = useMemo(() => {
-    const sizes = new Map<string, number>();
-    for (const a of assignQ.data ?? []) sizes.set(a.team_id as string, (sizes.get(a.team_id as string) ?? 0) + 1);
-    // A 2v2 match consumes 2 from each team, a 1v1 consumes 1 — so the cap is
-    // min over teams of floor(teamSize / playersPerSide).
-    const counts = [...sizes.values()].map((n) => Math.floor(n / playersPerSide));
-    return counts.length >= 2 ? Math.max(1, Math.min(...counts)) : 0;
-  }, [assignQ.data, playersPerSide]);
 
   const status = gameQ.data?.status as string | undefined;
   // Phase 2B.1: scoring enabled is the real "open for scoring" flag (publish no
@@ -459,12 +444,10 @@ export default function NewMatchGamePage() {
       return;
     }
     // Resume-into-empty: a competition game tapped from the leaderboard arrives
-    // with no game_matches, so the derived "setup" landing had an empty draft and
-    // a disabled CTA. Seed blank pairing cards from the roster's match cap (or the
-    // crew cap for a standalone game) so setup is fillable.
-    const n = compMatchCount || maxMatches;
-    if (n > 0) setDraft(Array.from({ length: n }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
-  }, [screen, draft.length, serverMatches, handicapOf, membersOfSide, sided, compMatchCount, maxMatches]);
+    // with no game_matches → seed ONE empty match (build-as-you-go; no pre-seeded
+    // count — W-GAMEPAGE-01 §6.1). "+ Add match" grows it from there.
+    setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
+  }, [screen, draft.length, serverMatches, handicapOf, membersOfSide, sided]);
 
   // After a +1/−1 (or initial create): re-pull the game's matches AND refresh
   // the competition board so "first to XX" / "X of Y" recompute ON SCREEN. The
@@ -498,22 +481,18 @@ export default function NewMatchGamePage() {
         // Non-fatal: the game still works on the template default par/index.
       }
     }
-    const count = Math.min(Math.max(1, matchCount), maxMatches);
-    // Persist the configured matches as rows NOW (empty) so the game has ≥1
-    // configured match from creation — the board's clinch goalpost (value ×
-    // count) is live immediately, not 0 until tee-off.
-    const emptyMatches = Array.from({ length: count }, (_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
+    // Persist ONE empty match row so the game has a configured match from
+    // creation (build-as-you-go — W-GAMEPAGE-01 §6.1; "+ Add match" grows it).
+    const emptyMatches = [{ sideA: null, sideB: null, matchNumber: 1 }];
     if (sided) await setDoublesPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
     else await setPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
     await refreshAfterMatchCountChange();
     // The DERIVED screen flips to "setup" the instant setGameId ran (above), so the
     // checklist is already interactive — and the user may have started pairing while
-    // this create flow finished its awaits. Only seed the blank cards if they
-    // HAVEN'T (the seed effect already seeded them otherwise); never clobber a draft
-    // the user has touched. (Don't reset draftTouched here either — that would
-    // re-arm the seed effect to overwrite live edits.)
+    // this create flow finished its awaits. Only seed the blank card if they
+    // HAVEN'T (the seed effect already seeded otherwise); never clobber a touched draft.
     if (!draftTouched.current) {
-      setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
+      setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
     }
     go("setup");
   }
@@ -525,7 +504,7 @@ export default function NewMatchGamePage() {
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
     } else if (draft.length === 0) {
-      setDraft(Array.from({ length: matchCount }, (_, i) => ({ matchNumber: i + 1, a: [], b: [], handicap: 0 })));
+      setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
     }
     go("setup");
   }
@@ -536,14 +515,13 @@ export default function NewMatchGamePage() {
   // count and the cup clinch shifts — a surfaced consequence, not a scold). With
   // nothing filled there's no match to play, so it's a no-op.
   function attemptReady() {
-    if (filledDraft.length === 0) return;
-    // Enable commits everything itself (commitReady → saveSetup) — collapse any
-    // open row WITHOUT re-firing persist-on-collapse (raw setter, not changeOpenRow).
+    // Hard block (W-GAMEPAGE-01 §6.1/§7): every match must be fully paired — the
+    // Enable button is disabled while any slot is empty, so this is a guard, not a
+    // gate. (No more collapse-on-incomplete: an empty match is an unfinished add,
+    // resolved by filling or removing it — not auto-dropped.)
+    if (draft.length === 0 || filledDraft.length !== draft.length) return;
+    // Collapse any open row WITHOUT re-firing persist-on-collapse (raw setter).
     setOpenRow(null);
-    if (filledDraft.length < draft.length) {
-      setConfirmCollapse(true);
-      return;
-    }
     void commitReady();
   }
 
@@ -609,7 +587,6 @@ export default function NewMatchGamePage() {
   // refetch (#459).
   async function commitReady() {
     if (!tripId || !gameId) return;
-    setConfirmCollapse(false);
     const ok = await saveSetup();
     if (!ok) return;
     await enableScoring.mutateAsync({ tripId, gameId });
@@ -921,11 +898,6 @@ export default function NewMatchGamePage() {
       <div className="w-full px-4 py-5">
       {screen === "new" && (
         <NewGame
-          sided={sided}
-          matchCount={matchCount}
-          setMatchCount={setMatchCount}
-          maxMatches={maxMatches}
-          crewCount={crewCount}
           teeTime={teeTime}
           setTeeTime={setTeeTime}
           courseName={courseName}
@@ -965,9 +937,13 @@ export default function NewMatchGamePage() {
         const tA = teamForSlot("a");
         const tB = teamForSlot("b");
         const availableCount = (gameCompId && rosterIds.length > 0 ? rosterIds.length : (crew.data?.length ?? 0));
-        const matchesSummary = matchesExist
+        // Hard block (W-GAMEPAGE-01 §6.1): the row resolves only when EVERY match
+        // is fully paired — an empty slot is an unfinished add, not a quiet drop.
+        const matchesSummary = allFilled
           ? `${filledDraft.length} match${filledDraft.length === 1 ? "" : "es"}${tA && tB ? ` · ${tA.name} vs ${tB.name}` : ""}`
-          : "Not set";
+          : draft.length === 0
+            ? "Not set"
+            : "Finish or remove the empty match";
         // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
         // stroke allocation needs the course's stroke-index table, so a complete
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
@@ -1029,7 +1005,7 @@ export default function NewMatchGamePage() {
             <ChecklistRow
               label="Matches"
               value={matchesSummary}
-              state={matchesExist ? "resolved" : "unresolved"}
+              state={allFilled ? "resolved" : "unresolved"}
               expanded={openRow === "matches"}
               onToggle={() => toggleRow("matches")}
               testId="row-matches"
@@ -1134,8 +1110,7 @@ export default function NewMatchGamePage() {
               <PrimaryButton
                 label={enableScoring.isPending ? "Enabling…" : "Enable scoring"}
                 onClick={attemptReady}
-                disabled={savingSetup || enableScoring.isPending || filledDraft.length === 0}
-                outlined={!allFilled}
+                disabled={savingSetup || enableScoring.isPending || !allFilled}
               />
               {gameCompId && (
                 <button
@@ -1221,85 +1196,6 @@ export default function NewMatchGamePage() {
           />
         );
       })()}
-
-      {/* Collapse-on-incomplete confirm — fires only when teeing off with some
-          slots unfilled. States the real drop (filled count · points) and that
-          the cup clinch recalculates; confirming discards the unfilled slots. */}
-      {confirmCollapse && (
-        <CollapseConfirm
-          filled={filledDraft.length}
-          total={draft.length}
-          perMatchValue={(gameQ.data?.points_distribution as { value?: number } | null)?.value ?? null}
-          inCompetition={!!gameCompId}
-          pending={setPairings.isPending || setDoublesPairings.isPending || enableScoring.isPending}
-          onConfirm={() => void commitReady()}
-          onCancel={() => setConfirmCollapse(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-/**
- * Collapse confirm (advance with unfilled slots). A consequence notice, not a
- * scold: the unfilled matches aren't being created, so the game drops to the
- * filled count, its points-in-play drop with it, and — in a competition — the
- * cup's first-to-win total recalculates (the surprising part, so say it).
- * Recovery is adding matches later, not an undo.
- */
-function CollapseConfirm({
-  filled,
-  total,
-  perMatchValue,
-  inCompetition,
-  pending,
-  onConfirm,
-  onCancel,
-}: {
-  filled: number;
-  total: number;
-  perMatchValue: number | null;
-  inCompetition: boolean;
-  pending: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const unfilled = total - filled;
-  const pts = perMatchValue != null ? filled * perMatchValue : null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ maxWidth: 360, background: "var(--color-bt-card-float)", borderRadius: 18, padding: 20, border: "1px solid var(--color-bt-border)" }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)" }}>
-          {unfilled} {unfilled === 1 ? "match isn’t" : "matches aren’t"} set
-        </div>
-        <p style={{ fontSize: 14, lineHeight: 1.5, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
-          Enable scoring now and this game collapses to{" "}
-          <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
-            {filled} {filled === 1 ? "match" : "matches"}
-            {pts != null ? ` · ${pts} pts` : ""}
-          </span>
-          . The unfilled {unfilled === 1 ? "slot is" : "slots are"} discarded.
-          {inCompetition && " The cup’s first-to-win total recalculates from the lower total."}
-        </p>
-        <div className="mt-5 flex flex-col gap-2">
-          <button
-            onClick={onConfirm}
-            disabled={pending}
-            className="w-full disabled:opacity-40"
-            style={{ height: 48, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
-          >
-            {pending ? "Enabling…" : `Enable with ${filled}`}
-          </button>
-          <button
-            onClick={onCancel}
-            disabled={pending}
-            className="w-full disabled:opacity-40"
-            style={{ height: 46, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
-          >
-            Keep setting up
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1419,11 +1315,6 @@ function SetupHeader({
 }
 
 function NewGame({
-  sided,
-  matchCount,
-  setMatchCount,
-  maxMatches,
-  crewCount,
   teeTime,
   setTeeTime,
   courseName,
@@ -1432,11 +1323,6 @@ function NewGame({
   pending,
   canEdit,
 }: {
-  sided: boolean;
-  matchCount: number;
-  setMatchCount: (n: number) => void;
-  maxMatches: number;
-  crewCount: number;
   teeTime: string;
   setTeeTime: (t: string) => void;
   courseName: string | null;
@@ -1446,9 +1332,9 @@ function NewGame({
   canEdit: boolean;
 }) {
   if (!canEdit) return <MemberNotReady />;
-  // Clamp the displayed value to the crew-derived cap (state may still hold an
-  // old value while the crew query resolves).
-  const value = Math.min(Math.max(1, matchCount), maxMatches);
+  // Build-as-you-go (W-GAMEPAGE-01 §6.1): creating the game seeds exactly ONE
+  // empty match — no up-front count. Matches are added one at a time on the setup
+  // face, so there's no stepper here.
   return (
     <div>
       <div className="flex flex-col gap-3.5">
@@ -1469,23 +1355,6 @@ function NewGame({
           value={parseTime(teeTime)}
           onChange={(v) => setTeeTime(toTime24(v))}
         />
-
-        {/* Matches — count stepper. */}
-        <div>
-          <FieldLabel>Matches to add</FieldLabel>
-          <div className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5" style={pillStyle}>
-            <span style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
-              {value} {value === 1 ? "match" : "matches"}
-            </span>
-            <div className="flex items-center gap-2">
-              <Stepper dir="dec" disabled={value <= 1} onClick={() => setMatchCount(Math.max(1, value - 1))} />
-              <Stepper dir="inc" disabled={value >= maxMatches} onClick={() => setMatchCount(Math.min(maxMatches, value + 1))} />
-            </div>
-          </div>
-          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6, paddingLeft: 2 }}>
-            {crewCount} in the crew · up to {maxMatches} {sided ? "2v2" : "singles"} match{maxMatches === 1 ? "" : "es"}
-          </p>
-        </div>
       </div>
 
       <PrimaryButton label="Create game" onClick={onCreate} disabled={pending} />
@@ -2006,14 +1875,6 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
     >
       {children}
     </label>
-  );
-}
-
-function Stepper({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} disabled={disabled} className="flex items-center justify-center disabled:opacity-30" style={{ width: 30, height: 30, borderRadius: 8, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}>
-      {dir === "inc" ? <Plus size={16} /> : <Minus size={16} />}
-    </button>
   );
 }
 
