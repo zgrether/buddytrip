@@ -1,6 +1,6 @@
 # W-GAMEPAGE-01 — Game-page lifecycle overhaul
 
-**Status:** DESIGN COMPLETE — not yet specced into PRs.
+**Status:** DESIGN COMPLETE. Phase (a) SHIPPED (#467). Remaining: Modifiers, (b) course-flow, (c) destructive guard, (d) surface-2 + back-stack + GameConfigurationView (→ W-BACKNAV-01).
 **Scope of this file:** W-GAMEPAGE-01 only. The earlier WS4 reconciliation sections
 (consolidation audit, engine decisions, betting/Circle) are a *separate* recovery pass
 and are deliberately not rebuilt here.
@@ -191,7 +191,7 @@ shows the check/value instantly, background save, rollback on failure).
 - **Hard-gated on BOTH Matches AND Course** (a complete 18). Handicaps without a stroke-index
   table isn't a valid configured state.
 
-> **✓ Resolved (pending #466 merge) — indexed-nine compose verified.** The "N strokes on holes
+> **✓ Closed (#466 merged) — indexed-nine compose verified.** The "N strokes on holes
 > a, b, c" allocation consumes the **stroke-index table** from the composed course. The indexed-nine
 > compose (two real indexed 9-hole courses → interleaved 18 → correct handicap allocation — the real
 > September/BBMI path) is now **verified on real indexed data** through the actual
@@ -200,8 +200,7 @@ shows the check/value instantly, background save, rollback on failure).
 > bug** (#465's swap read the already-composed 18's interleaved front index, length 18 not 1–9, so
 > `composeTwoNines` silently dropped the index → index-off allocation on every back-nine swap; the
 > #465 eye-check missed it because its course had no index to lose). `games.9hole.test.ts` locks the
-> regression. **Flip this note to fully-closed once #466 merges.** Handicaps hole-allocation is safe
-> for the BBMI 3×9.
+> regression. Handicaps hole-allocation is safe for the BBMI 3×9.
 
 ### 6.5 Modifiers  *(optional — hidden when none apply)*
 - **Applicability is data-driven.** Read `compatible_modifiers` from the `game_type_templates`
@@ -325,7 +324,7 @@ These are deliberately unresolved. Several cross PR boundaries (§14).
 
 Likely split (updated post-W-GAMEPAGE-01a Phase 0):
 
-- **(a) Structural core** — *scope corrected:* Zone grouping (Zone 1/3/4 only on `match/new`; **no
+- **(a) Structural core** — ✅ SHIPPED (#467: T1 zones · T2 hard-block + count-stepper/CollapseConfirm removed · T3 Total Points · T4 hide roster · T5 `matchDraft.ts` + tests). *Scope as built:* Zone grouping (Zone 1/3/4 only on `match/new`; **no
   Zone 2** until d) + Matches hard-block model (remove pre-create count stepper, remove #460
   collapse-on-incomplete, gate on any-empty-slot) + Total Points readout (pipe derived count into the
   Points panel) + hide Available Players for competitions. The accordion (§9) and identity header
@@ -365,7 +364,7 @@ per-task commits, `tsc --noEmit` + `next lint` clean, verify-by-eye on real data
 | Moving Tees | `{enabled}`; no parameter. |
 | Accordion | Single open, global; no carve-out. |
 | Handicaps gate | Hard-gated on Matches AND Course (complete 18). |
-| Handicaps trust | **Verified on real indexed data (#466)** — interleaved 1–18, allocation across both nines, swap-preserves-front. Compose caught + fixed a shipped swap-path index-drop bug. Safe for BBMI 3×9. *(Flip to fully-closed on #466 merge.)* |
+| Handicaps trust | **Closed (#466 merged)** — verified on real indexed data: interleaved 1–18, allocation across both nines, swap-preserves-front. Compose caught + fixed a shipped swap-path index-drop bug. Safe for BBMI 3×9. |
 
 ---
 
