@@ -26,11 +26,15 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * is what matters, and it's always written atomically. Optimistic via `setData`.
  */
 export function FormatPointsPanel({
-  tripId, game, canEdit,
+  tripId, game, canEdit, matchCount,
 }: {
   tripId: string;
   game: GameRow;
   canEdit: boolean;
+  /** Valid (fully-paired) match count — drives the "Total points available"
+   *  readout for match-format games (W-GAMEPAGE-01 §6.2). Derived, not snapshotted:
+   *  Total = matchCount × points-per-match, recomputing as matches are added. */
+  matchCount?: number;
 }) {
   const gameId = game.id;
   const utils = trpc.useUtils();
@@ -123,12 +127,34 @@ export function FormatPointsPanel({
 
       {/* Points */}
       {isMatchPlay ? (
-        <PointStepper
-          label="Points per match"
-          caption="POINTS PER MATCH"
-          value={perMatchValue}
-          onChange={readOnly ? () => {} : onPerMatch}
-        />
+        <>
+          <PointStepper
+            label="Points per match"
+            caption="POINTS PER MATCH"
+            value={perMatchValue}
+            onChange={readOnly ? () => {} : onPerMatch}
+          />
+          {/* Total points available (W-GAMEPAGE-01 §6.2) — derived live from the
+              valid match count × per-match value, so it tracks matches as they're
+              added (never snapshotted). Hidden until at least one match resolves. */}
+          {matchCount != null && matchCount > 0 && (
+            <div
+              className="flex items-center justify-between rounded-lg px-3 py-2.5"
+              style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              data-testid="total-points-available"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                Total points available
+              </span>
+              <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                {matchCount * perMatchValue}
+                <span className="ml-1 text-[11px] font-normal" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {matchCount} × {perMatchValue}
+                </span>
+              </span>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <PointStepper

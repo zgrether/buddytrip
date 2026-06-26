@@ -1050,6 +1050,7 @@ export default function NewMatchGamePage() {
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
                 canEdit={canEdit}
+                matchCount={filledDraft.length}
                 configOpen={openRow === "config"}
                 onOpenConfig={() => changeOpenRow("config")}
                 onCloseEditor={() => changeOpenRow(null)}

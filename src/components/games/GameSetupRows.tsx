@@ -30,6 +30,7 @@ export function GameSetupRows({
   canEdit,
   onChanged,
   slot = "both",
+  matchCount,
   courseOpen: courseOpenProp,
   configOpen: configOpenProp,
   onOpenCourse,
@@ -47,6 +48,10 @@ export function GameSetupRows({
    *  match page place Course BEFORE Handicaps and Format·Points after. Default
    *  "both" — the other surfaces render them together as one block. */
   slot?: "course" | "config" | "both";
+  /** Valid (fully-paired) match count, for the per-match "Total points" readout
+   *  (W-GAMEPAGE-01 §6.2). Derived live by the page — omit on surfaces that don't
+   *  build matches (no Total shown). */
+  matchCount?: number;
   /** Page-owned one-open state (controlled). Omit → self-managed (uncontrolled). */
   courseOpen?: boolean;
   configOpen?: boolean;
@@ -112,7 +117,7 @@ export function GameSetupRows({
           onToggle={configOpen ? closeEditor : openConfig}
           testId="row-format-points"
         >
-          <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} />
+          <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} />
         </ChecklistRow>
       )}
     </>
