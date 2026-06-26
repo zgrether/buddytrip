@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
-import { CourseSearchPanel } from "@/components/games/course/CourseSearchPanel";
+import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { formatLabel, type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
@@ -29,6 +29,7 @@ export function GameSetupRows({
   game,
   canEdit,
   onChanged,
+  slot = "both",
   courseOpen: courseOpenProp,
   configOpen: configOpenProp,
   onOpenCourse,
@@ -42,6 +43,10 @@ export function GameSetupRows({
   game: GameRow;
   canEdit: boolean;
   onChanged: () => void;
+  /** Which rows to render (W-9HOLE-01 reorder): "course" or "config" lets the
+   *  match page place Course BEFORE Handicaps and Format·Points after. Default
+   *  "both" — the other surfaces render them together as one block. */
+  slot?: "course" | "config" | "both";
   /** Page-owned one-open state (controlled). Omit → self-managed (uncontrolled). */
   courseOpen?: boolean;
   configOpen?: boolean;
@@ -62,48 +67,42 @@ export function GameSetupRows({
   const openConfig = onOpenConfig ?? (() => setConfigOpenLocal(true));
   const closeEditor = onCloseEditor ?? (() => { setCourseOpenLocal(false); setConfigOpenLocal(false); });
 
-  const applyCourse = trpc.games.applyCourse.useMutation();
-  const utils = trpc.useUtils();
-
-  const courseQ = trpc.courses.getById.useQuery(
-    { courseId: game.course_id ?? "" },
-    { enabled: !!game.course_id }
-  );
-  const courseName = (courseQ.data?.name as string | undefined) ?? null;
+  // Course resolved = a complete 18 (W-9HOLE-01): a real 18-hole course, or a
+  // 9-hole front with a back nine composed in. A lone 9-hole front (schema count
+  // 9) is NOT resolved — it "needs a back nine", which keeps Handicaps gated.
+  const frontId = game.course_id ?? null;
+  const backId = (game.back_course_id as string | null) ?? null;
+  const count = ((game.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0;
+  const courseResolved = !!frontId && count === 18;
+  const frontQ = trpc.courses.getById.useQuery({ courseId: frontId ?? "" }, { enabled: !!frontId });
+  const backQ = trpc.courses.getById.useQuery({ courseId: backId ?? "" }, { enabled: !!backId });
+  const frontName = (frontQ.data?.name as string | undefined) ?? null;
+  const backName = (backQ.data?.name as string | undefined) ?? null;
+  const courseValue =
+    !frontId ? "Add a course"
+    : count === 9 ? `${frontName ?? "Front nine"} · needs a back nine`
+    : backId ? `${frontName ?? "Front"} + ${backName ?? "Back"}`
+    : (frontName ?? "Course");
 
   return (
     <>
-      <ChecklistRow
-        label="Course / tee"
-        optional
-        value={courseName ?? "Add a course"}
-        state={courseName ? "resolved" : "unresolved"}
-        disabled={!canEdit}
-        expanded={courseOpen}
-        onToggle={courseOpen ? closeEditor : openCourse}
-        testId="row-course"
-      >
-        {/* The PICKER, inline (W-COURSESPLIT-01): search/select an existing course
-            applies live; "Add course manually" + API results navigate to the heavy
-            entry page (/courses/new) and return with the course applied. */}
-        <CourseSearchPanel
-          tripId={tripId}
-          gameId={game.id}
-          onApply={({ id, teeName }) => {
-            applyCourse.mutate(
-              { tripId, gameId: game.id, courseId: id, teeSetName: teeName },
-              {
-                onSuccess: () => {
-                  utils.courses.getById.invalidate({ courseId: id });
-                  onChanged();
-                },
-              }
-            );
-            closeEditor();
-          }}
-        />
-      </ChecklistRow>
-      {competitionId && (
+      {slot !== "config" && (
+        <ChecklistRow
+          label="Course / tee"
+          optional
+          value={courseValue}
+          state={courseResolved ? "resolved" : "unresolved"}
+          disabled={!canEdit}
+          expanded={courseOpen}
+          onToggle={courseOpen ? closeEditor : openCourse}
+          testId="row-course"
+        >
+          {/* W-9HOLE-01: front picker → a 9-hole course "needs a back nine" → the
+              back picker composes a retained two-nines 18, swappable day-of. */}
+          <CourseRowContent tripId={tripId} game={game} canEdit={canEdit} onChanged={onChanged} />
+        </ChecklistRow>
+      )}
+      {slot !== "course" && competitionId && (
         <ChecklistRow
           label="Format · Points"
           value={formatPointsSummary(game)}

@@ -3,9 +3,50 @@ import {
   validateStrokeIndex,
   applyStrokeIndexSwap,
   buildScorecardSchema,
+  composeTwoNines,
   type ScorecardSchema,
   type IndexEntry,
 } from "./courseIndex";
+
+describe("composeTwoNines (W-9HOLE-01)", () => {
+  const fPar = [4, 3, 5, 4, 4, 3, 5, 4, 4];
+  const bPar = [4, 4, 3, 5, 4, 4, 3, 5, 4];
+  const fIdx = [1, 9, 3, 5, 7, 8, 2, 6, 4]; // 1..9 permutation
+  const bIdx = [2, 4, 8, 6, 1, 3, 9, 5, 7]; // 1..9 permutation
+
+  it("concatenates par front then back (18 holes)", () => {
+    expect(composeTwoNines({ par: fPar }, { par: bPar }).par).toEqual([...fPar, ...bPar]);
+  });
+
+  it("interleaves the stroke index — front gets ODD ranks, back gets EVEN", () => {
+    const { index } = composeTwoNines({ par: fPar, index: fIdx }, { par: bPar, index: bIdx });
+    expect(index!.slice(0, 9)).toEqual(fIdx.map((s) => 2 * s - 1));
+    expect(index!.slice(9)).toEqual(bIdx.map((s) => 2 * s));
+  });
+
+  it("produces a valid 1..18 permutation", () => {
+    const { index } = composeTwoNines({ par: fPar, index: fIdx }, { par: bPar, index: bIdx });
+    expect(validateStrokeIndex(index!, 18).valid).toBe(true);
+  });
+
+  it("spreads strokes across BOTH nines (the fairness reason) — not all on the front", () => {
+    const { index } = composeTwoNines({ par: fPar, index: fIdx }, { par: bPar, index: bIdx });
+    const hardest9 = index!.map((v, i) => ({ v, hole: i + 1 })).filter((x) => x.v <= 9).map((x) => x.hole).sort((a, b) => a - b);
+    expect(hardest9).not.toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(hardest9.some((h) => h >= 10)).toBe(true);
+  });
+
+  it("drops the index when either nine is index-off (sequential fallback downstream)", () => {
+    expect(composeTwoNines({ par: fPar, index: fIdx }, { par: bPar, index: null }).index).toBeNull();
+    expect(composeTwoNines({ par: fPar, index: null }, { par: bPar, index: bIdx }).index).toBeNull();
+  });
+
+  it("concatenates yards, padding nulls when absent", () => {
+    const { yards } = composeTwoNines({ par: fPar, yards: [100, 200, 300, 400, 500, 600, 700, 800, 900] }, { par: bPar });
+    expect(yards.slice(0, 9)).toEqual([100, 200, 300, 400, 500, 600, 700, 800, 900]);
+    expect(yards.slice(9)).toEqual(Array(9).fill(null));
+  });
+});
 
 describe("validateStrokeIndex", () => {
   it("accepts a complete permutation of 1..N", () => {

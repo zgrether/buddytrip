@@ -21,13 +21,18 @@ import type { RecentCourse } from "./CoursePicker";
  * applied tee is what the row's loud value shows).
  */
 export function CourseSearchPanel({
-  tripId, gameId, onApply,
+  tripId, gameId, onApply, mode = "front",
 }: {
   tripId: string;
   gameId: string;
-  /** Apply a SAVED course (the parent runs applyCourse). */
+  /** Apply a SAVED course (the parent runs applyCourse / setBackNine). */
   onApply: (course: { id: string; name: string; teeName?: string }) => void;
+  /** "back" (W-9HOLE-01) → pick the BACK nine: restrict to 9-hole courses, hide
+   *  the golfcourseapi search (a back nine is a saved/manual 9-holer), and the
+   *  entry page lands in back-slot mode. Default "front" (the whole course). */
+  mode?: "front" | "back";
 }) {
+  const back = mode === "back";
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -72,10 +77,12 @@ export function CourseSearchPanel({
     setTeePickFor(c);
   }
   const entryHref = (provider?: string) =>
-    `/courses/new?trip=${encodeURIComponent(tripId)}&game=${encodeURIComponent(gameId)}${provider ? `&provider=${encodeURIComponent(provider)}` : ""}`;
+    `/courses/new?trip=${encodeURIComponent(tripId)}&game=${encodeURIComponent(gameId)}${back ? "&slot=back" : ""}${provider ? `&provider=${encodeURIComponent(provider)}` : ""}`;
 
-  const local = (localSearch.data as RecentCourse[]) ?? [];
-  const recents = (recent.data as RecentCourse[]) ?? [];
+  // The back nine must be a 9-hole course — filter the saved lists to nines.
+  const nine = (cs: RecentCourse[]) => (back ? cs.filter((c) => c.hole_count === 9) : cs);
+  const local = nine((localSearch.data as RecentCourse[]) ?? []);
+  const recents = nine((recent.data as RecentCourse[]) ?? []);
   const showResults = query.trim().length >= 2;
   const courseSub = useMemo(() => (c: RecentCourse) => {
     const par = (c.par ?? []).reduce<number>((a, p) => a + p, 0);
@@ -115,8 +122,8 @@ export function CourseSearchPanel({
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (!localSearch.isFetching && local.length === 0) void searchFullDatabase(); } }}
-          placeholder="Search your courses"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (!back && !localSearch.isFetching && local.length === 0) void searchFullDatabase(); } }}
+          placeholder={back ? "Search your 9-hole courses" : "Search your courses"}
           className="w-full bg-transparent py-2.5 text-sm outline-none"
           style={{ color: "var(--color-bt-text)" }}
         />
@@ -130,7 +137,9 @@ export function CourseSearchPanel({
             {local.map((c) => <PickRow key={c.id} name={c.name} sub={courseSub(c)} onClick={() => selectSaved(c)} />)}
           </div>
 
-          {atCap ? (
+          {/* The golfcourseapi search is front-only — a back nine is a saved or
+              hand-entered 9-holer (API results carry no hole-count to filter). */}
+          {back ? null : atCap ? (
             <div className="flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}>
               <AlertTriangle size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }} />
               <span style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)" }}>Course search is temporarily unavailable — add the course manually below.</span>
@@ -161,12 +170,11 @@ export function CourseSearchPanel({
           )}
         </>
       ) : (
-        recents.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Recent courses</p>
-            {recents.map((c) => <PickRow key={c.id} name={c.name} sub={courseSub(c)} onClick={() => selectSaved(c)} />)}
-          </div>
-        )
+        <div className="flex flex-col gap-2">
+          {recents.length > 0 && <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{back ? "Your 9-hole courses" : "Recent courses"}</p>}
+          {recents.map((c) => <PickRow key={c.id} name={c.name} sub={courseSub(c)} onClick={() => selectSaved(c)} />)}
+          {back && recents.length === 0 && <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No saved 9-hole courses yet — add one below.</p>}
+        </div>
       )}
 
       <button
@@ -176,7 +184,7 @@ export function CourseSearchPanel({
         style={{ borderColor: "var(--color-bt-accent-border)", borderStyle: "dashed", color: "var(--color-bt-accent)", background: "transparent" }}
       >
         <PencilLine size={16} />
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Add course manually</span>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{back ? "Add a 9-hole course manually" : "Add course manually"}</span>
       </button>
     </div>
   );

@@ -24,6 +24,8 @@ let admin: SupabaseClient;
 let tripId: string;
 let ownerId: string;
 let memberId: string;
+let courseName: string;
+let courseId: string;
 
 async function ensureUser(email: string, name: string): Promise<string> {
   const { data: list, error } = await admin.auth.admin.listUsers();
@@ -56,6 +58,27 @@ test.beforeAll(async () => {
     { trip_id: tripId, user_id: memberId, role: "Member", status: "in", nickname: "MP Member" },
   ]);
   if (mErr) throw new Error(`seed members failed: ${mErr.message}`);
+
+  // Handicaps is now gated on a resolved Course (W-9HOLE-01) — seed an 18-hole
+  // course (1 tee, valid stroke index) so the standalone game can apply it and
+  // reach Handicaps. Unique name + newest created_at → it leads the picker.
+  courseName = `E2E Course ${Date.now()}`;
+  const { data: course, error: cErr } = await admin
+    .from("courses")
+    .insert({
+      name: courseName,
+      hole_count: 18,
+      par: Array(18).fill(4),
+      handicap_index: Array.from({ length: 18 }, (_, i) => i + 1),
+      has_stroke_index: true,
+      tee_sets: [{ name: "White", yards: Array(18).fill(350) }],
+      source: "manual",
+      created_by: ownerId,
+    })
+    .select("id")
+    .single();
+  if (cErr || !course) throw new Error(`seed course failed: ${cErr?.message}`);
+  courseId = course.id as string;
 });
 
 test.afterAll(async () => {
@@ -69,6 +92,7 @@ test.afterAll(async () => {
   }
   await admin.from("trip_members").delete().eq("trip_id", tripId);
   await admin.from("trips").delete().eq("id", tripId);
+  if (courseId) await admin.from("courses").delete().eq("id", courseId);
 });
 
 /** Latest game in the trip (tests run serially; each makes one game). */
@@ -132,16 +156,23 @@ async function driveToSetupWithHandicap(page: Page) {
   await expect(selector).toBeHidden({ timeout: 10_000 });
   await expect(addPlayer).toHaveCount(0, { timeout: 10_000 }); // both slots filled
 
-  // Open the HANDICAPS row DIRECTLY (no explicit collapse of Matches first). The
-  // one-open rule collapses Matches — and persist-on-collapse must commit its
-  // pairing in the background. Gate on the row leaving "Set matches first" (which
-  // reflects the client draft, so it's ready as soon as both slots are filled).
-  await expect(page.getByTestId("row-handicaps")).not.toContainText("Set matches first", { timeout: 10_000 });
-  await toggle("row-handicaps").click();
+  // Course is gated BEFORE Handicaps now (W-9HOLE-01) — apply the seeded 18-hole
+  // course so Handicaps unlocks. Opening Course collapses Matches, committing the
+  // pairing via persist-on-collapse (the same commit the handicaps step relied on).
+  await toggle("row-course").click();
+  const coursePanel = page.getByTestId("course-search-panel");
+  await expect(coursePanel).toBeVisible({ timeout: 10_000 });
+  await coursePanel.getByRole("button", { name: new RegExp(courseName) }).click();
+  // 1 tee → applies directly; the row resolves to the course name.
+  await expect(page.getByTestId("row-course")).toContainText(courseName, { timeout: 10_000 });
 
-  // persist-on-collapse, isolated from Enable: opening Handicaps collapsed Matches,
+  // persist-on-collapse, isolated from Enable: opening Course collapsed Matches,
   // which must have written the filled pairing to the server already.
   await expect.poll(async () => filledMatchCount(await latestGameId()), { timeout: 15_000 }).toBeGreaterThan(0);
+
+  // Open the HANDICAPS row — now ungated (Matches + Course both resolved).
+  await expect(page.getByTestId("row-handicaps")).not.toContainText(/first/, { timeout: 10_000 });
+  await toggle("row-handicaps").click();
 
   // The Handicaps panel is now open in place → give MP Member a stroke via the
   // relocated control. Picking a side defaults to 1 stroke → "on hole …"; gate on

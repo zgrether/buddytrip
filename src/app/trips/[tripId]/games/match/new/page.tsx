@@ -968,8 +968,24 @@ export default function NewMatchGamePage() {
         const matchesSummary = matchesExist
           ? `${filledDraft.length} match${filledDraft.length === 1 ? "" : "es"}${tA && tB ? ` · ${tA.name} vs ${tB.name}` : ""}`
           : "Not set";
-        const handicapsState: ChecklistRowState = !matchesExist ? "unresolved" : anyHandicap ? "resolved" : "acknowledged-empty";
-        const handicapsSummary = !matchesExist ? "Set matches first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
+        // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
+        // stroke allocation needs the course's stroke-index table, so a complete
+        // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
+        // schema (a lone 9-hole front still "needs a back nine" → not resolved).
+        const courseResolved =
+          !!gameQ.data?.course_id &&
+          (((gameQ.data?.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
+        const handicapsReady = matchesExist && courseResolved;
+        const handicapsState: ChecklistRowState = !handicapsReady ? "unresolved" : anyHandicap ? "resolved" : "acknowledged-empty";
+        const handicapsSummary = !matchesExist ? "Set matches first" : !courseResolved ? "Set the course first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
+        const onSetupChanged = () => {
+          void gameQ.refetch();
+          if (competitionId) {
+            utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+            utils.competitions.faceBootstrap.invalidate({ tripId });
+            utils.games.listByTrip.invalidate({ tripId });
+          }
+        };
         return (
           <div className="flex flex-col gap-2.5 pb-4">
             {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
@@ -1031,16 +1047,33 @@ export default function NewMatchGamePage() {
               />
             </ChecklistRow>
 
-            {/* Handicaps — relocated; gated by Matches ("Off — scratch" is a valid
-                done). The one-open rule IS the gate: you can't open it while
-                Matches is open, and it stays non-tappable until matches exist. */}
+            {/* Course — BEFORE Handicaps (W-9HOLE-01 reorder). Handicaps' per-hole
+                stroke allocation needs the course's stroke-index table, so Course
+                resolves first; the one-open chain reads Matches → Course → Handicaps. */}
+            {gameQ.data && (
+              <GameSetupRows
+                slot="course"
+                tripId={tripId}
+                competitionId={gameCompId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                courseOpen={openRow === "course"}
+                onOpenCourse={() => changeOpenRow("course")}
+                onCloseEditor={() => changeOpenRow(null)}
+                onChanged={onSetupChanged}
+              />
+            )}
+
+            {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
+                resolve (a complete 18) before per-hole strokes can be allocated. The
+                one-open rule physically enforces the chain. */}
             <ChecklistRow
               label="Handicaps"
               value={handicapsSummary}
               state={handicapsState}
               optional
               expanded={openRow === "handicaps"}
-              onToggle={matchesExist ? () => toggleRow("handicaps") : undefined}
+              onToggle={handicapsReady ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
             >
               <HandicapsSection
@@ -1053,28 +1086,18 @@ export default function NewMatchGamePage() {
               />
             </ChecklistRow>
 
-            {/* Golf Course + Name·Format·Points — shared canonical rows. These two
-                stay OVERLAYS this pass (CoursePicker split + config modal-shed are
-                tracked follow-ons), but ride the page's one-open via openRow. */}
+            {/* Format · Points — AFTER Handicaps (the reorder). */}
             {gameQ.data && (
               <GameSetupRows
+                slot="config"
                 tripId={tripId}
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
                 canEdit={canEdit}
-                courseOpen={openRow === "course"}
                 configOpen={openRow === "config"}
-                onOpenCourse={() => changeOpenRow("course")}
                 onOpenConfig={() => changeOpenRow("config")}
                 onCloseEditor={() => changeOpenRow(null)}
-                onChanged={() => {
-                  void gameQ.refetch();
-                  if (competitionId) {
-                    utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-                    utils.competitions.faceBootstrap.invalidate({ tripId });
-                    utils.games.listByTrip.invalidate({ tripId });
-                  }
-                }}
+                onChanged={onSetupChanged}
               />
             )}
 

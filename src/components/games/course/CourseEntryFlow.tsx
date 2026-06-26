@@ -29,12 +29,15 @@ const blankTee = (n: number, name: string) => ({ name, yards: Array(n).fill(null
  */
 export function CourseEntryFlow({
   providerId,
+  defaultHoleCount = 18,
   saving,
   onSave,
   onCancel,
 }: {
   /** golfcourseapi summary id → seed the draft from a pull (review). Null → blank. */
   providerId?: string | null;
+  /** A back nine (W-9HOLE-01) starts as a 9-hole build (it composes onto a front). */
+  defaultHoleCount?: 9 | 18;
   /** The parent's create+apply is in-flight (disables the primary CTA). */
   saving?: boolean;
   /** Persist + apply + return. Receives the finished draft as a create payload. */
@@ -47,7 +50,7 @@ export function CourseEntryFlow({
   onCancel: () => void;
 }) {
   const [screen, setScreen] = useState<"new" | "entry" | "confirm">(providerId ? "confirm" : "new");
-  const [draft, setDraft] = useState<Draft>(() => blankDraft(18));
+  const [draft, setDraft] = useState<Draft>(() => blankDraft(defaultHoleCount));
   const [activeTee, setActiveTee] = useState(0);
   const [hole, setHole] = useState(1);
   const [editingHole, setEditingHole] = useState<number | null>(null);
