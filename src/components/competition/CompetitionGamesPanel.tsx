@@ -8,6 +8,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
+import { ModifierCards } from "@/components/games/ModifierCards";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
   validatePlacement, matchReadout, placementFit, matchFit, deriveMatchCount, type MatchFormat,
@@ -106,14 +107,6 @@ const COMP_FORMATS = [
 export function formatLabel(key: string | null): string | null {
   return COMP_FORMATS.find((f) => f.key === key)?.label ?? null;
 }
-
-/** Display metadata for the golf special-rule keys. Which rules are AVAILABLE
- *  comes from the game type's model (compatibleModifiers); this is just the copy.
- *  Per-rule configurability is deferred — each is on/off for now. */
-const SPECIAL_RULES: Record<string, { label: string; desc: string }> = {
-  moving_tees: { label: "Moving tees", desc: "The trailing team picks the tee box on the next hole." },
-  glorious_holes: { label: "Glorious finishing holes", desc: "The closing holes carry extra weight." },
-};
 
 /** Singles vs doubles for the match readout. Only singles exists today. */
 function matchFormatFor(gameTypeId: string | null): MatchFormat {
@@ -1088,7 +1081,9 @@ function ConfigTab({
       </Field>
 
       {isGolf && availableModifiers.length > 0 && (
-        <SpecialRules available={availableModifiers} modifiers={modifiers} setModifiers={setModifiers} />
+        <Field label="Special rules">
+          <ModifierCards available={availableModifiers} modifiers={modifiers} onChange={setModifiers} readOnly={!canEdit} />
+        </Field>
       )}
 
       <Field label="Competition format">
@@ -1222,72 +1217,6 @@ function DelegationBlock({
         Hand this game&rsquo;s setup and running to one person — they get their own Configuration tab.
       </p>
     </Field>
-  );
-}
-
-/**
- * SPECIAL RULES — golf-only, model-driven optional rules (e.g. moving tees,
- * glorious finishing holes). Which rules appear comes from the game type's
- * `compatibleModifiers`; enabled ones are stored in `games.modifiers` keyed by
- * rule, value = per-rule config (deferred — on/off for now).
- */
-function SpecialRules({
-  available, modifiers, setModifiers,
-}: {
-  available: string[];
-  modifiers: Record<string, Record<string, unknown>>;
-  setModifiers: (m: Record<string, Record<string, unknown>>) => void;
-}) {
-  const toggle = (key: string) => {
-    const next = { ...modifiers };
-    if (next[key]) delete next[key];
-    else next[key] = {};
-    setModifiers(next);
-  };
-  return (
-    <Field label="Special rules">
-      <div className="space-y-1.5">
-        {available.map((key) => {
-          const meta = SPECIAL_RULES[key] ?? { label: key, desc: "" };
-          const on = !!modifiers[key];
-          return (
-            <div
-              key={key}
-              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
-              style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{meta.label}</p>
-                {meta.desc && <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{meta.desc}</p>}
-              </div>
-              <Switch on={on} onClick={() => toggle(key)} label={meta.label} />
-            </div>
-          );
-        })}
-      </div>
-      <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Optional. Fine-tuning each rule comes later — flip it on now to flag it for the day.
-      </p>
-    </Field>
-  );
-}
-
-function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      onClick={onClick}
-      className="relative h-6 w-10 flex-shrink-0 rounded-full transition-colors"
-      style={{ background: on ? "var(--color-bt-accent)" : "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <span
-        className="absolute top-0.5 h-4 w-4 rounded-full transition-all"
-        style={{ left: on ? "20px" : "2px", background: on ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}
-      />
-    </button>
   );
 }
 
