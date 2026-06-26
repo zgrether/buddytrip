@@ -40,7 +40,7 @@ type TeeSet = {
   bogeyRating?: number | null;
   yards: (number | null)[];
 };
-interface Draft {
+export interface Draft {
   name: string;
   location: string;
   holeCount: 9 | 18;
@@ -54,11 +54,11 @@ interface Draft {
   existingId?: string;
 }
 
-type Screen = "search" | "confirm" | "new" | "entry" | "saved";
+export type Screen = "search" | "confirm" | "new" | "entry" | "saved";
 
 const blankTee = (n: number, name: string): TeeSet => ({ name, yards: Array(n).fill(null) });
 
-function blankDraft(holeCount: 9 | 18): Draft {
+export function blankDraft(holeCount: 9 | 18): Draft {
   return {
     name: "",
     location: "",
@@ -435,7 +435,7 @@ export function CoursePicker({
   );
 }
 
-interface RecentCourse {
+export interface RecentCourse {
   id: string;
   name: string;
   location: string | null;
@@ -593,7 +593,7 @@ function SearchScreen({
   );
 }
 
-function CourseRow({ name, sub, onClick }: { name: string; sub?: string | null; onClick: () => void }) {
+export function CourseRow({ name, sub, onClick }: { name: string; sub?: string | null; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left" style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
       <span className="min-w-0">
@@ -606,7 +606,7 @@ function CourseRow({ name, sub, onClick }: { name: string; sub?: string | null; 
 }
 
 // ── Confirm (lookup) ──────────────────────────────────────────────────────────
-function ConfirmScreen({
+export function ConfirmScreen({
   draft,
   mode,
   activeTee,
@@ -730,7 +730,7 @@ function ConfirmScreen({
 }
 
 // ── New course (manual setup) ─────────────────────────────────────────────────
-function NewCourseScreen({
+export function NewCourseScreen({
   draft,
   setDraft,
   onStart,
@@ -884,7 +884,7 @@ function TeeList({
 }
 
 // ── Stepped per-hole entry (manual) ───────────────────────────────────────────
-function EntryScreen({
+export function EntryScreen({
   draft,
   hole,
   setHole,
@@ -998,7 +998,7 @@ function EntryScreen({
 }
 
 // ── Single-hole edit (from confirm) ───────────────────────────────────────────
-function HoleEditScreen({
+export function HoleEditScreen({
   draft,
   hole,
   activeTee,
@@ -1105,7 +1105,7 @@ function TeeChip({ name, on, onClick }: { name: string; on: boolean; onClick: ()
 // Lands here after "Save to my courses" — the new course is highlighted (NEW),
 // NOT auto-selected for play. Adding a course and using one are separate
 // concerns (spec §6); tapping a row reviews it (→ Confirm, mode 'use').
-function SavedScreen({
+export function SavedScreen({
   courses,
   savedId,
   onPick,
@@ -1195,7 +1195,7 @@ function IconCol({ children }: { children: React.ReactNode }) {
   return <span className="flex items-center justify-center" style={{ width: ICON_COL, flexShrink: 0 }}>{children}</span>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{label}</label>
@@ -1204,7 +1204,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Footer({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
+export function Footer({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <div className="shrink-0" style={{ padding: 16, borderTop: "1px solid var(--color-bt-subtle-border)", background: "var(--color-bt-base)" }}>
       <button onClick={onClick} disabled={disabled} className="w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>

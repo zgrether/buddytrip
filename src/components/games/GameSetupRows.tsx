@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
-import { CoursePicker } from "@/components/games/course/CoursePicker";
+import { CourseSearchPanel } from "@/components/games/course/CourseSearchPanel";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { formatLabel, type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
@@ -79,25 +79,16 @@ export function GameSetupRows({
         value={courseName ?? "Add a course"}
         state={courseName ? "resolved" : "unresolved"}
         disabled={!canEdit}
-        onClick={openCourse}
-      />
-      {competitionId && (
-        <ChecklistRow
-          label="Format · Points"
-          value={formatPointsSummary(game)}
-          state="resolved"
-          disabled={!canEdit}
-          expanded={configOpen}
-          onToggle={configOpen ? closeEditor : openConfig}
-          testId="row-format-points"
-        >
-          <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} />
-        </ChecklistRow>
-      )}
-
-      {courseOpen && (
-        <CoursePicker
-          onClose={closeEditor}
+        expanded={courseOpen}
+        onToggle={courseOpen ? closeEditor : openCourse}
+        testId="row-course"
+      >
+        {/* The PICKER, inline (W-COURSESPLIT-01): search/select an existing course
+            applies live; "Add course manually" + API results navigate to the heavy
+            entry page (/courses/new) and return with the course applied. */}
+        <CourseSearchPanel
+          tripId={tripId}
+          gameId={game.id}
           onApply={({ id, teeName }) => {
             applyCourse.mutate(
               { tripId, gameId: game.id, courseId: id, teeSetName: teeName },
@@ -111,8 +102,20 @@ export function GameSetupRows({
             closeEditor();
           }}
         />
+      </ChecklistRow>
+      {competitionId && (
+        <ChecklistRow
+          label="Format · Points"
+          value={formatPointsSummary(game)}
+          state="resolved"
+          disabled={!canEdit}
+          expanded={configOpen}
+          onToggle={configOpen ? closeEditor : openConfig}
+          testId="row-format-points"
+        >
+          <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} />
+        </ChecklistRow>
       )}
-
     </>
   );
 }
