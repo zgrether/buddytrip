@@ -70,8 +70,11 @@ export function CourseSearchPanel({
     setApiSearching(false);
   }
 
-  // Select a SAVED course: one tee → apply; many → expand the tee chooser.
+  // Select a SAVED course. FRONT: one tee → apply; many → tee chooser. BACK: the
+  // back nine INHERITS the front's tee (pin #3), so never prompt — apply with no
+  // teeName and let setBackNine resolve it (match front's tee, fall back to first).
   function selectSaved(c: RecentCourse) {
+    if (back) { onApply({ id: c.id, name: c.name }); return; }
     const tees = c.tee_sets ?? [];
     if (tees.length <= 1) { onApply({ id: c.id, name: c.name, teeName: tees[0]?.name?.trim() || undefined }); return; }
     setTeePickFor(c);

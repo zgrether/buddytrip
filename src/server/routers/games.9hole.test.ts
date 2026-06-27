@@ -122,4 +122,44 @@ describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
       ctx.caller().games.setBackNine({ tripId, gameId: g.id, backCourseId: backId })
     ).rejects.toThrow();
   });
+
+  // W-GAMEPAGE-01 pin #3 — the back nine INHERITS the front's tee. The composed
+  // tee NAME is always the front's; the back-9 YARDAGE comes from the same-named
+  // tee on the back course, falling back to the back's first tee when absent.
+  it("back-nine tee inherits the front's tee name; falls back to the back's first tee when absent", async () => {
+    const teeYards = (g: { scorecard_schema: unknown }) =>
+      (g.scorecard_schema as { units: { metadata: { tee: { name: string; yards: number[] } } } }).units.metadata.tee;
+
+    const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Tee inherit" });
+    const front = await ctx.caller().courses.create({
+      name: `TF ${Date.now()}`, holeCount: 9, par: par9, handicapIndex: fIdx, hasStrokeIndex: true,
+      teeSets: [{ name: "White", yards: Array(9).fill(350) }], source: "manual",
+    });
+    createdCourses.push(front.id as string);
+    await ctx.caller().games.applyCourse({ tripId, gameId: g.id, courseId: front.id }); // front tee = White
+
+    // INHERIT-MATCH: back course lists Blue FIRST, then White (distinct yards). With
+    // no explicit tee, the back-9 yards must come from White (inherit) — NOT Blue (first).
+    const backMatch = await ctx.caller().courses.create({
+      name: `TBM ${Date.now()}`, holeCount: 9, par: par9, handicapIndex: bIdx, hasStrokeIndex: true,
+      teeSets: [{ name: "Blue", yards: Array(9).fill(500) }, { name: "White", yards: Array(9).fill(300) }], source: "manual",
+    });
+    createdCourses.push(backMatch.id as string);
+    await ctx.caller().games.setBackNine({ tripId, gameId: g.id, backCourseId: backMatch.id });
+    let tee = teeYards(await ctx.caller().games.getById({ tripId, gameId: g.id }));
+    expect(tee.name).toBe("White"); // composed name = the front's
+    expect(tee.yards.slice(9)).toEqual(Array(9).fill(300)); // inherited White on the back, not Blue (first)
+
+    // FALLBACK: swap to a back with NO White (only Gold). Back-9 yards fall back to
+    // the first tee (Gold); the composed name still reads the front's White.
+    const backNoMatch = await ctx.caller().courses.create({
+      name: `TBN ${Date.now()}`, holeCount: 9, par: par9, handicapIndex: b2Idx, hasStrokeIndex: true,
+      teeSets: [{ name: "Gold", yards: Array(9).fill(411) }], source: "manual",
+    });
+    createdCourses.push(backNoMatch.id as string);
+    await ctx.caller().games.setBackNine({ tripId, gameId: g.id, backCourseId: backNoMatch.id });
+    tee = teeYards(await ctx.caller().games.getById({ tripId, gameId: g.id }));
+    expect(tee.name).toBe("White"); // still the front's name
+    expect(tee.yards.slice(9)).toEqual(Array(9).fill(411)); // fell back to Gold (the back's first tee)
+  });
 });

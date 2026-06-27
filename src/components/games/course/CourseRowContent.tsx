@@ -44,6 +44,18 @@ export function CourseRowContent({
   const frontName = (frontQ.data?.name as string | undefined) ?? "Front nine";
   const backName = (backQ.data?.name as string | undefined) ?? "Back nine";
 
+  // Back-nine tee inheritance fallback (pin #3). The composed tee NAME is the
+  // front's (setBackNine), but the back-9 yardages come from a same-named tee on
+  // the back course — and when the back course has no tee by that name, its FIRST
+  // tee was used instead. Surface that so the inherited name isn't silently
+  // mismatched. Derived from the snapshot's tee name vs the back course's tees.
+  const appliedTeeName = ((game.scorecard_schema as { units?: { metadata?: { tee?: { name?: string } } } } | null)
+    ?.units?.metadata?.tee?.name ?? "").trim();
+  const backTees = ((backQ.data?.tee_sets as { name?: string }[] | undefined) ?? []);
+  const backTeeFallback =
+    !!backId && !!appliedTeeName && backTees.length > 0 &&
+    !backTees.some((t) => (t.name ?? "").trim() === appliedTeeName);
+
   // Swap/change sub-views (only meaningful in the resolved state).
   const [view, setView] = useState<"default" | "swapBack">("default");
 
@@ -94,6 +106,11 @@ export function CourseRowContent({
         <div className="flex flex-col gap-2">
           <NineSummary label="Front nine" name={frontName} />
           <NineSummary label="Back nine" name={backName} />
+          {backTeeFallback && (
+            <p className="px-1 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }} data-testid="back-tee-fallback">
+              {backName} has no {appliedTeeName} tee — its first tee’s yardages are used for the back nine.
+            </p>
+          )}
         </div>
       ) : (
         <NineSummary label="Course" name={frontName} />
