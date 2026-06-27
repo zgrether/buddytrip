@@ -1,6 +1,7 @@
 "use client";
 
 import { strokeHoles } from "@/lib/matchPlay";
+import { Stepper } from "@/components/games/Stepper";
 import type { Participant } from "./types";
 
 /**
@@ -72,21 +73,21 @@ export function RelHandicapControl({ a, b, value, onChange }: RelHandicapControl
         </Segment>
       </div>
 
-      {/* Row 2 · Magnitude (stepper) */}
-      <div
-        className="flex items-center justify-center"
-        style={{ gap: 18, marginTop: 12, opacity: even ? 0.35 : 1, pointerEvents: even ? "none" : "auto" }}
-      >
-        <StepButton symbol="−" disabled={even || n <= 1} onClick={() => step(-1)} />
-        <div className="text-center" style={{ minWidth: 44 }}>
-          <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, color: "var(--color-bt-text)" }}>
-            {even ? "—" : n}
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-bt-text-dim)", marginTop: 4 }}>
-            {n === 1 ? "STROKE" : "STROKES"}
-          </div>
-        </div>
-        <StepButton symbol="+" disabled={even || n >= MAX} onClick={() => step(1)} />
+      {/* Row 2 · Magnitude — the canonical full Stepper (P-B). Delta callbacks keep
+          `step`'s sign-aware, never-crosses-Even behavior; formatValue shows "—"
+          when even; the wrapper dims/locks the whole control in the Even state. */}
+      <div style={{ marginTop: 12, opacity: even ? 0.35 : 1, pointerEvents: even ? "none" : "auto" }}>
+        <Stepper
+          size="full"
+          value={n}
+          min={1}
+          max={MAX}
+          disabled={even}
+          onDecrement={() => step(-1)}
+          onIncrement={() => step(1)}
+          formatValue={() => (even ? "—" : String(n))}
+          label={n === 1 ? "STROKE" : "STROKES"}
+        />
       </div>
 
       {/* Resolved line */}
@@ -123,26 +124,3 @@ function Segment({ selected, onClick, children }: { selected: boolean; onClick: 
   );
 }
 
-function StepButton({ symbol, disabled, onClick }: { symbol: string; disabled: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={symbol === "+" ? "Add a stroke" : "Remove a stroke"}
-      className="flex items-center justify-center"
-      style={{
-        width: 52,
-        height: 48,
-        borderRadius: 12,
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-        color: "var(--color-bt-text)",
-        fontSize: 24,
-        fontWeight: 600,
-        opacity: disabled ? 0.4 : 1,
-      }}
-    >
-      {symbol}
-    </button>
-  );
-}
