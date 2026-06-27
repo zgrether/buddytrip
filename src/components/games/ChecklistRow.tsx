@@ -1,45 +1,68 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ChevronRight, ChevronDown, Check } from "lucide-react";
+import { ChevronRight, ChevronDown, Check, X, type LucideIcon } from "lucide-react";
 
 /**
- * ChecklistRow — the ONE canonical config-checklist row (config-checklist model).
- * Every config aspect renders as this: uniform height + shape, `✓ LABEL · value ·
- * chevron`. It now behaves like an actual checklist item — **tap to expand the
- * editor IN PLACE** (a drop-down panel beneath the row, NOT a modal floating over
- * the page), edit live, **collapse = acknowledge** (the check appears; closing IS
- * accepting — no separate Accept button). The parent owns a single `openRowId` so
- * only one panel is open at a time (which also physically gates dependent rows).
+ * ChecklistRow — the ONE canonical config-checklist row (W-GAMEPAGE visual pass
+ * P-A; vocabulary §2–§5/§12). Every config aspect renders as this: a semantic
+ * **type-icon** (left) + **title / subtitle** + a trailing chevron / inline slot.
+ * Tap to expand the editor IN PLACE (a drop-down panel beneath the row, NOT a
+ * modal); **collapse = acknowledge**. The parent owns a single `openRowId` so only
+ * one panel is open at a time (which also physically gates dependent rows).
  *
- * Three presentations of a row:
+ * Three presentations:
  *   - **accordion** (`onToggle` + `children`) — tap toggles an in-place panel.
- *   - **overlay-tappable** (`onClick`, no children) — opens a separate editor
- *     (the Course picker / the Game-config Sheet, which stay overlays this pass);
+ *   - **overlay-tappable** (`onClick`, no children) — opens a separate editor; the
  *     trailing chevron points right.
- *   - **read-only** (neither) — a static summary row (Modifiers).
+ *   - **read-only** (neither) — a static summary row.
  *
- * Layout — **check LEADING (left), chevron TRAILING (right)** so the row reads as
- * a checklist and the check + chevron never fight (the #461 right-side conflict).
- *
- * Three STATES as distinct visuals (reusing GameRow's language + the net-new one):
- *   - unresolved          → skeleton: dashed border, NO fill, NO check, dim
- *     summary ("Not set"); needs attention.
- *   - acknowledged-empty  → solid border + `--color-bt-card-raised` fill + a
- *     leading check + dim "Off"/"None"; a valid done (you looked, chose nothing).
- *   - resolved            → ready: `--color-bt-card` fill + solid border + a
- *     leading check + the real summary announced LOUD (value is the prominent
- *     element, label the quiet caption — answers shout, questions whisper).
- * While EXPANDED the row shows its label as the active title (the loud-value
- * treatment is the collapsed-resolved state) and the trailing chevron points up.
+ * Two states + one error (vocabulary §4 — the old 3-state model collapsed to 2):
+ *   - **empty** → dashed border, transparent surface, MUTED icon, no badge. Both
+ *     "required-and-unsatisfied" and "optional-and-untouched" land here.
+ *   - **resolved** → solid border, `--color-bt-card` surface, WHITE icon, a small
+ *     teal **check badge** overlaid on the icon. **The icon never swaps for a check
+ *     (§3 keystone) — it persists; the badge is added.**
+ *   - **invalid** → the §6.1 hard-block (a match with an empty player slot): danger
+ *     border, danger icon + a red-X badge. A separate error treatment, not part of
+ *     the empty/resolved pair.
  */
-export type ChecklistRowState = "unresolved" | "acknowledged-empty" | "resolved";
+export type ChecklistRowState = "empty" | "resolved" | "invalid";
+
+/** The state→treatment mapping (vocabulary §4), pure so it's unit-testable apart
+ *  from render. Returns token-ready CSS values + which badge (if any) overlays the
+ *  persistent type-icon. `isOpen` (editing) suppresses the badge and raises the
+ *  surface. */
+export interface RowVisuals {
+  surface: string;
+  border: string;
+  iconColor: string;
+  iconBg: string;
+  /** Bottom-right overlay on the icon — never replaces it (§3 keystone). */
+  badge: "check" | "x" | null;
+}
+export function checklistRowVisuals(state: ChecklistRowState, isOpen: boolean): RowVisuals {
+  const resolved = state === "resolved";
+  const invalid = state === "invalid";
+  const active = resolved || isOpen;
+  return {
+    surface: isOpen ? "var(--color-bt-card-raised)" : resolved ? "var(--color-bt-card)" : "transparent",
+    border: invalid
+      ? "1.5px solid var(--color-bt-danger)"
+      : state === "empty" && !isOpen
+        ? "1.5px dashed var(--color-bt-border)"
+        : "1px solid var(--color-bt-border)",
+    iconColor: invalid ? "var(--color-bt-danger)" : active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+    iconBg: active ? "var(--color-bt-card-raised)" : "transparent",
+    badge: (resolved || invalid) && !isOpen ? (invalid ? "x" : "check") : null,
+  };
+}
 
 export function ChecklistRow({
-  label,
-  value,
+  icon: Icon,
+  title,
+  subtitle,
   state,
-  optional,
   onClick,
   expanded,
   onToggle,
@@ -47,11 +70,14 @@ export function ChecklistRow({
   disabled,
   testId,
 }: {
-  label: string;
-  /** One-line summary (the resolved content, or "Not set" / "Off" / "None"). */
-  value: string;
+  /** The row's semantic type-icon (lucide). Persists in every state. */
+  icon: LucideIcon;
+  /** Large title (~16.5px) — the row/game-type name (varies by state for Course). */
+  title: string;
+  /** Small status line (~12.5px dim). ReactNode so a teal segment can be embedded
+   *  (the Points "…: N" live value). */
+  subtitle?: React.ReactNode;
   state: ChecklistRowState;
-  optional?: boolean;
   /** Overlay-tappable row (opens a separate editor). Omit for accordion/read-only. */
   onClick?: () => void;
   /** Accordion: whether this row's in-place panel is open (parent-owned). */
@@ -65,62 +91,60 @@ export function ChecklistRow({
 }) {
   const accordion = !!onToggle && !disabled;
   const overlay = !!onClick && !disabled && !accordion;
-  const acknowledged = state === "resolved" || state === "acknowledged-empty";
   const isOpen = accordion && !!expanded;
 
-  const fill =
-    isOpen ? "var(--color-bt-card-raised)"
-    : state === "resolved" ? "var(--color-bt-card)"
-    : state === "acknowledged-empty" ? "var(--color-bt-card-raised)"
-    : undefined; // unresolved: no fill
-  const border = state === "unresolved" && !isOpen ? "1.5px dashed var(--color-bt-border)" : "1px solid var(--color-bt-border)";
+  // State → treatment (§4/§12), via the shared pure mapping.
+  const { surface, border, iconColor, iconBg, badge } = checklistRowVisuals(state, isOpen);
+  // The badge's 2px ring matches the row surface so it reads as an overlay, not a
+  // floating dot. (Badge only shows collapsed, so the surface is card/transparent.)
+  const ringColor = state === "resolved" ? "var(--color-bt-card)" : "var(--color-bt-base)";
 
-  // Auto-scroll: when the panel opens, lift the row's top to the top of the
-  // screen so the dropped-down editor has full vertical room. The page scrolls in
-  // the window (the setup header is in-flow, not sticky), so block:"start" lands
-  // the row at the viewport top; a little scroll-margin keeps it off the edge.
+  // Auto-scroll: when the panel opens, lift the row's top to the top of the screen
+  // so the dropped-down editor has full vertical room.
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isOpen) rowRef.current?.scrollIntoView({ block: "start" });
   }, [isOpen]);
 
-  // Leading: the check (acknowledged + collapsed). While expanded the row is
-  // "being decided" → no check yet (collapse re-acknowledges). Reserve the slot
-  // either way so labels align across all rows (one styling language).
-  const leading = (
-    <span className="flex w-5 shrink-0 items-center justify-center">
-      {acknowledged && !isOpen && <Check size={16} style={{ color: "var(--color-bt-accent)" }} />}
+  const iconBlock = (
+    <span
+      className="relative flex shrink-0 items-center justify-center"
+      style={{ width: 38, height: 38, borderRadius: 10, background: iconBg }}
+    >
+      <Icon size={18} style={{ color: iconColor }} strokeWidth={1.75} />
+      {badge && (
+        <span
+          className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full"
+          style={{
+            width: 16,
+            height: 16,
+            background: badge === "x" ? "var(--color-bt-danger)" : "var(--color-bt-accent)",
+            border: `2px solid ${ringColor}`,
+          }}
+          aria-hidden="true"
+        >
+          {badge === "x" ? (
+            <X size={9} strokeWidth={3} style={{ color: "var(--color-bt-text)" }} />
+          ) : (
+            <Check size={10} strokeWidth={3} style={{ color: "var(--color-bt-on-accent)" }} />
+          )}
+        </span>
+      )}
     </span>
   );
 
-  const labelCaption = (
-    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-      {label}
-      {optional && <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· optional</span>}
-    </span>
+  const content = (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <span className="truncate" style={{ fontSize: 16.5, fontWeight: 500, color: "var(--color-bt-text)", lineHeight: 1.25 }}>
+        {title}
+      </span>
+      {subtitle != null && (
+        <span className="truncate" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
+          {subtitle}
+        </span>
+      )}
+    </div>
   );
-
-  // Content column — by state. Resolved + collapsed announces the VALUE loud
-  // (label demoted to a quiet caption). Expanded shows the label as the active
-  // title. Unresolved / acknowledged-empty keep the quiet caption + dim summary.
-  const content =
-    isOpen ? (
-      <div className="flex min-w-0 flex-1 flex-col">{labelCaption}</div>
-    ) : state === "resolved" ? (
-      <div className="flex min-w-0 flex-1 flex-col">
-        {labelCaption}
-        <span className="truncate text-[15px] font-semibold" style={{ color: "var(--color-bt-text)", marginTop: 1 }}>
-          {value}
-        </span>
-      </div>
-    ) : (
-      <div className="flex min-w-0 flex-1 flex-col">
-        {labelCaption}
-        <span className="truncate text-sm" style={{ color: "var(--color-bt-text-dim)", marginTop: 2 }}>
-          {value}
-        </span>
-      </div>
-    );
 
   const trailing = (
     <span className="flex shrink-0 items-center">
@@ -134,13 +158,13 @@ export function ChecklistRow({
 
   const headerInner = (
     <>
-      {leading}
+      {iconBlock}
       {content}
       {trailing}
     </>
   );
-  const headerClass = "flex w-full items-center gap-2.5 px-3.5 py-3 text-left disabled:opacity-60";
-  const containerStyle = { background: fill, border } as React.CSSProperties;
+  const headerClass = "flex w-full items-center gap-3 px-3.5 py-3 text-left disabled:opacity-60";
+  const containerStyle = { background: surface, border } as React.CSSProperties;
 
   // Accordion: a header button toggling an in-place panel below (same bordered
   // frame — the row IS the frame; the panel sheds all modal chrome).
@@ -159,7 +183,7 @@ export function ChecklistRow({
     );
   }
 
-  // Overlay-tappable (Course / Game-config) — opens a separate editor.
+  // Overlay-tappable — opens a separate editor.
   if (overlay) {
     return (
       <button type="button" onClick={onClick} disabled={disabled} className={`${headerClass} rounded-xl`} style={containerStyle} data-testid={testId}>

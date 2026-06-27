@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus, Trash2, Swords, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -30,7 +30,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled } from "@/lib/matchDraft";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
-import { enabledCount, modifiersSummary, type ModifiersMap } from "@/lib/modifiers";
+import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 /** "07:40" → "7:40 AM". Empty/invalid → "". */
@@ -982,13 +982,16 @@ export default function NewMatchGamePage() {
         // Standalone-only readout now (T4 hides this row for competitions), so the
         // count is just the trip crew — no roster branch.
         const availableCount = crew.data?.length ?? 0;
-        // Hard block (W-GAMEPAGE-01 §6.1): the row resolves only when EVERY match
-        // is fully paired — an empty slot is an unfinished add, not a quiet drop.
-        const matchesSummary = allFilled
-          ? `${filledDraft.length} match${filledDraft.length === 1 ? "" : "es"}${tA && tB ? ` · ${tA.name} vs ${tB.name}` : ""}`
-          : draft.length === 0
-            ? "Not set"
-            : "Finish or remove the empty match";
+        // §5 row copy (visual-pass P-A). Matches title is the format name; the
+        // subtitle is a status line ("x of y matches assigned"), not a value dump
+        // (team names live in the expanded editor). Matches uses the INVALID state
+        // while any slot is empty (§4/§6.1 hard-block) — never plain dashed-empty,
+        // since the seeded match always has a slot to fill until paired.
+        const matchesTitle = sided ? "2v2 Matches" : "1-on-1 Matches";
+        const matchesSubtitle = filledDraft.length === 0
+          ? "0 matches assigned"
+          : `${filledDraft.length} of ${draft.length} matches assigned`;
+        const matchesState: ChecklistRowState = allFilled ? "resolved" : "invalid";
         // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
         // stroke allocation needs the course's stroke-index table, so a complete
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
@@ -997,16 +1000,15 @@ export default function NewMatchGamePage() {
           !!gameQ.data?.course_id &&
           (((gameQ.data?.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
         const handicapsReady = matchesExist && courseResolved;
-        const handicapsState: ChecklistRowState = !handicapsReady ? "unresolved" : anyHandicap ? "resolved" : "acknowledged-empty";
-        const handicapsSummary = !matchesExist ? "Set matches first" : !courseResolved ? "Set the course first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
+        const handicapsState: ChecklistRowState = anyHandicap ? "resolved" : "empty";
+        const handicapsSubtitle = anyHandicap ? "Handicaps assigned" : "No handicaps assigned";
         // Modifiers (W-GAMEPAGE-01 §6.5) — applicability is data-driven from the
         // format's gameTypes.ts compatibleModifiers (NOT the deprecated DB column).
-        // Empty → the row is hidden entirely. Check semantics: ≥1 enabled =
-        // resolved (check); applicable-but-none = unresolved (NO check — an optional
-        // row isn't "set" just by being offered).
+        // Empty → the row is hidden entirely.
         const availableModifiers = GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? [];
         const modifiersOn = enabledCount(modifiersDraft, availableModifiers);
-        const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "unresolved";
+        const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "empty";
+        const modifiersSubtitle = modifiersOn > 0 ? "Modifiers have been added" : "No modifiers added to your round yet";
         const onSetupChanged = () => {
           void gameQ.refetch();
           if (competitionId) {
@@ -1031,8 +1033,9 @@ export default function NewMatchGamePage() {
                 redundant noise here; the row is hidden entirely. */}
             {!gameCompId && (
               <ChecklistRow
-                label="Available players"
-                value={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
+                icon={Users}
+                title="Players"
+                subtitle={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
                 state="resolved"
                 expanded={openRow === "players"}
                 onToggle={() => toggleRow("players")}
@@ -1056,9 +1059,10 @@ export default function NewMatchGamePage() {
 
             {/* Matches — the pairing builder (the score-entry unit), in place. */}
             <ChecklistRow
-              label="Matches"
-              value={matchesSummary}
-              state={allFilled ? "resolved" : "unresolved"}
+              icon={Swords}
+              title={matchesTitle}
+              subtitle={matchesSubtitle}
+              state={matchesState}
               expanded={openRow === "matches"}
               onToggle={() => toggleRow("matches")}
               testId="row-matches"
@@ -1118,10 +1122,10 @@ export default function NewMatchGamePage() {
             {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
                 resolve (a complete 18) before per-hole strokes can be allocated. */}
             <ChecklistRow
-              label="Handicaps"
-              value={handicapsSummary}
+              icon={SlidersHorizontal}
+              title="Handicaps"
+              subtitle={handicapsSubtitle}
               state={handicapsState}
-              optional
               expanded={openRow === "handicaps"}
               onToggle={handicapsReady ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
@@ -1142,8 +1146,9 @@ export default function NewMatchGamePage() {
                 (+ a hole-count stepper for glorious_holes), persist-on-collapse. */}
             {availableModifiers.length > 0 && (
               <ChecklistRow
-                label="Modifiers"
-                value={modifiersSummary(modifiersDraft, availableModifiers)}
+                icon={Sparkles}
+                title="Game Modifiers"
+                subtitle={modifiersSubtitle}
                 state={modifiersState}
                 expanded={openRow === "modifiers"}
                 onToggle={() => toggleRow("modifiers")}
