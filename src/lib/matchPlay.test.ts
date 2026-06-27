@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { strokeHoles, buildDecided, matchState, type HoleResult } from "./matchPlay";
+import { strokeHoles, buildDecided, matchState, matchHasScores, type HoleResult } from "./matchPlay";
+
+// W-GAMEPAGE-01 §11 — the destructive-edit guard's "scores exist" signal. A hole
+// is decided only when both sides' grosses are in, so a non-empty decided list IS
+// "this match has entered scores" (removing it must confirm first).
+describe("matchHasScores", () => {
+  it("is false for a match with no decided holes (nothing to lose → no confirm)", () => {
+    expect(matchHasScores([])).toBe(false);
+  });
+  it("is true once any hole is decided (scores entered → confirm before removal)", () => {
+    expect(matchHasScores(["W"])).toBe(true);
+    expect(matchHasScores(["H", "L", "W"])).toBe(true);
+  });
+});
 
 describe("strokeHoles", () => {
   it("returns nothing for n <= 0", () => {

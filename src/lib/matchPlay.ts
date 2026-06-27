@@ -9,6 +9,17 @@
 
 export type HoleResult = "W" | "L" | "H"; // A vs B on NET; decided holes only, play order
 
+/**
+ * Has this match had any scores entered? (W-GAMEPAGE-01 §11.) A hole is decided
+ * only when both sides' grosses are in (see `buildDecided`), so a non-empty
+ * `decided` list IS the "scores exist" signal the destructive-edit guard keys on
+ * — removing a scored match clears entered scores, so it must confirm first.
+ * Pure + named so the guard and its test share one definition.
+ */
+export function matchHasScores(decided: HoleResult[]): boolean {
+  return decided.length > 0;
+}
+
 export interface MatchState {
   thru: number; // decided holes counted toward the official result
   diff: number; // + = A up, − = B up (frozen at close-out)
