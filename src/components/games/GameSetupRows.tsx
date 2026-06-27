@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { trpc } from "@/lib/trpc-client";
+import { Flag, Hash } from "lucide-react";
 import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
-import { formatLabel, type GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 
 /**
@@ -75,28 +75,28 @@ export function GameSetupRows({
   // Course resolved = a complete 18 (W-9HOLE-01): a real 18-hole course, or a
   // 9-hole front with a back nine composed in. A lone 9-hole front (schema count
   // 9) is NOT resolved — it "needs a back nine", which keeps Handicaps gated.
+  // §5 Course subtitle reports the handicaps GATE, not the course name (the name
+  // lives in the expanded CourseRowContent), so we no longer fetch front/back names
+  // here — only whether the course resolves to a complete 18.
   const frontId = game.course_id ?? null;
-  const backId = (game.back_course_id as string | null) ?? null;
   const count = ((game.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0;
   const courseResolved = !!frontId && count === 18;
-  const frontQ = trpc.courses.getById.useQuery({ courseId: frontId ?? "" }, { enabled: !!frontId });
-  const backQ = trpc.courses.getById.useQuery({ courseId: backId ?? "" }, { enabled: !!backId });
-  const frontName = (frontQ.data?.name as string | undefined) ?? null;
-  const backName = (backQ.data?.name as string | undefined) ?? null;
-  const courseValue =
-    !frontId ? "Add a course"
-    : count === 9 ? `${frontName ?? "Front nine"} · needs a back nine`
-    : backId ? `${frontName ?? "Front"} + ${backName ?? "Back"}`
-    : (frontName ?? "Course");
+  // Points (§5): the row subtitle is the live "Total Points Available: N" (N teal),
+  // derived from per-match × the valid match count. Per-match drives resolved/empty.
+  const perMatch = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
+  const pointsTotal = (matchCount ?? 0) * perMatch;
 
   return (
     <>
       {slot !== "config" && (
         <ChecklistRow
-          label="Course / tee"
-          optional
-          value={courseValue}
-          state={courseResolved ? "resolved" : "unresolved"}
+          icon={Flag}
+          // §5 Course: the title flips on confirm; the subtitle reports the
+          // HANDICAPS GATE (course gates handicaps), not the course name — the name
+          // lives in the expanded editor (CourseRowContent).
+          title={courseResolved ? "Golf Course Selected" : "No Golf Course"}
+          subtitle={courseResolved ? "Handicaps enabled" : "Handicaps disabled"}
+          state={courseResolved ? "resolved" : "empty"}
           disabled={!canEdit}
           expanded={courseOpen}
           onToggle={courseOpen ? closeEditor : openCourse}
@@ -109,9 +109,15 @@ export function GameSetupRows({
       )}
       {slot !== "course" && competitionId && (
         <ChecklistRow
-          label="Format · Points"
-          value={formatPointsSummary(game)}
-          state="resolved"
+          icon={Hash}
+          title="Points Per Match"
+          subtitle={
+            <>
+              Total Points Available:{" "}
+              <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>{pointsTotal}</span>
+            </>
+          }
+          state={perMatch > 0 ? "resolved" : "empty"}
           disabled={!canEdit}
           expanded={configOpen}
           onToggle={configOpen ? closeEditor : openConfig}
@@ -122,23 +128,5 @@ export function GameSetupRows({
       )}
     </>
   );
-}
-
-/** "Head to head · 2/match" — the Format·Points row's loud summary. */
-function formatPointsSummary(game: GameRow): string {
-  const parts = [formatLabel(game.competition_format ?? null), pointsSummary(game)].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "Set format & points";
-}
-
-/** A compact points summary for the config row: "2/match" · "8 pts". */
-function pointsSummary(game: GameRow): string | null {
-  const d = game.points_distribution;
-  if (d?.type === "per_match") return `${d.value}/match`;
-  if (d?.type === "placement") {
-    const total = game.points_total ?? d.values.reduce((a, b) => a + b, 0);
-    return `${total} pts`;
-  }
-  if (game.points_total != null) return `${game.points_total} pts`;
-  return null;
 }
 
