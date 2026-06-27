@@ -1,6 +1,6 @@
 # W-GAMEPAGE-01 — Game-page lifecycle overhaul
 
-**Status:** DESIGN COMPLETE. SHIPPED: phase (a) (#467) · Modifiers (#469). Remaining: (b) course-flow, (c) destructive guard *(A-only — PR #471 open; player-path orphan deferred to (d), issue #470)*, (d) surface-2 + back-stack + GameConfigurationView (→ W-BACKNAV-01).
+**Status:** DESIGN COMPLETE. SHIPPED: (a) #467 · Modifiers #469 · (c) #471 (A-only) · (b) #473. **Only (d) remains** (= W-BACKNAV-01: surface-2 + back-stack + toggle/lock + GameConfigurationView absorption; carries issue #470). *Owed before/with (d): a **copy pass** (placeholder voice across modifiers / scored-removal / course empty-state + fallback) and a **visual/vocabulary pass** (iconography + the mock's component vocabulary), so (d)'s new surfaces inherit them.*
 **Scope of this file:** W-GAMEPAGE-01 only. The earlier WS4 reconciliation sections
 (consolidation audit, engine decisions, betting/Circle) are a *separate* recovery pass
 and are deliberately not rebuilt here.
@@ -175,10 +175,14 @@ shows the check/value instantly, background save, rollback on failure).
 - **Points follows Matches:** surface **Total Points Available = match count × per-match** so the
   stakes are visible (the current app shows per-match only).
 
-### 6.3 Course / Tee
+### 6.3 Course / Tee  *(✅ SHIPPED — #464/#465/#473)*
 - Resolved state: course + tee shown, "× Change course" button (Image 5).
 - Selection runs the **staged search flow** (§10).
 - Gates Handicaps (§6.4) — handicaps require a complete 18 with a stroke-index table.
+- **Two-nines tee (pin #3, #473):** a composed back nine **inherits the front's tee** — the
+  back-9 yardages come from the same-named tee on the back course, falling back to the back's
+  first tee when that name is absent, with the fallback **surfaced** ("…has no White tee — its
+  first tee's yardages are used for the back nine"). The composed tee NAME is always the front's.
 
 ### 6.4 Handicaps  *(optional)*
 - Per match: `MATCH N · WHO GETS STROKES?` with a **three-segment selector**:
@@ -282,25 +286,39 @@ panel conditionally there.
 
 ---
 
-## 10. Staged course-search flow
+## 10. Staged course-search flow  *(✅ SHIPPED — all five stages; #464 + #473)*
 
 1. **Default:** recents + a search bar.
-2. **On type:** switch to local / BBMI courses, **live-filter** (no API call yet).
-3. **On enter:** **fire the API call.** Adds a `SEARCH RESULTS` section (deduped against local) —
-   and **only now** surface the "+ Add course manually" button (not before).
+2. **On type:** switch to local / BBMI courses, **live-filter** (no external API call yet).
+3. **On enter:** **fire the API call.** Adds a `SEARCH RESULTS` section, **deduped against the
+   user's saved courses by name** (#473, stage 3). The **"+ Add course manually"** button is hidden
+   on recents + while live-filtering and surfaces **only after the search runs — including when
+   results are empty** (pin #4, closed #473). **Front-mode-only nuance (load-bearing):** the
+   hide-until-search rule applies to FRONT mode; **back-nine mode hides the external API entirely**
+   (a back nine is always saved/manual), so there the manual button stays **always-visible** — a
+   blanket "hide until search" would break the #465 back-9 flow.
 4. **18-hole pick:** choose tee → Confirm 18-Hole Round.
 5. **9-hole pick:** Confirm 9-Hole Round **or** "+ Add Back 9" — the #465 W-9HOLE inline flow,
-   presented inline (not a separate screen).
+   presented inline (not a separate screen). The back nine **inherits the front's tee** (§6.3 / pin
+   #3, #473) — no separate back-tee prompt.
 
 ---
 
-## 11. Destructive-edit guard (point-of-action, not global)
+## 11. Destructive-edit guard (point-of-action, not global)  *(✅ SHIPPED (A-only) — #471)*
 
-- Removing a player or match **that has scores** → warn + confirm
-  ("Match N has scores — removing clears them").
-- Fires **only** on removal-of-a-scored-unit. Everything else re-derives safely
-  (derive-don't-snapshot).
-- Partly already enforced: `applyCourse` freezes on scores.
+- **Match removal — SHIPPED (#471, A-only).** The overview's `−1` control was already gated and
+  `removeMatch` already clears scores server-side; #471 swapped the unstyled `window.confirm` for the
+  styled `DangerConfirmModal` ("…has scores — removing clears them"), clearing a standing #433
+  violation. Predicate `matchHasScores(decided)` in `matchPlay.ts`. Fires **only** on
+  removal-of-a-scored-unit; everything else re-derives safely (derive-don't-snapshot).
+- **Signal note (do NOT "unify" these):** `applyCourse`'s freeze is **game-scope, server-side**; this
+  guard is **match-scope, client-side** (`decideds[i]`). They answer different questions and are
+  **deliberately separate** — merging them would be a wrong cleanup.
+- **Player removal — DEFERRED to (d) (issue #470).** `assignPlayer` / `setPairings` don't clear
+  `score_entries`, so a removed/reassigned scored player's rows **silently orphan**; reachable only
+  post-enable via the un-built settings-lock gap. One instance of a broader hazard: **setup-face
+  writes don't reconcile against existing scores** — (d) owns the general fix, not a second
+  point-of-action patch.
 
 ---
 
@@ -316,7 +334,7 @@ panel conditionally there.
 
 ## 13. OPEN pins (settle at spec/build time)
 
-These are deliberately unresolved. Several cross PR boundaries (§14).
+These are deliberately unresolved. Both remaining cross into (d) / W-BACKNAV-01 (§14).
 
 1. **Surface 2 — full page vs `<Sheet>` overlay.** Lean `<Sheet>` (nav-consistent,
    recede-and-return) — but then "switch to setup" = dismiss-sheet + mode-transition-replace on
@@ -324,9 +342,11 @@ These are deliberately unresolved. Several cross PR boundaries (§14).
    Settle with the nav-consistency lens (W-BACKNAV-01).
 2. **Scoring→Setup re-render — clean in-place navigate vs reload.** Reload is a UX smell; prefer a
    clean navigate if state remaps cleanly. Phase 0 / build call.
-3. **Back-nine tee — inherit the front's tee vs pick its own.** Lean inherit.
-4. **Add-manually timing — confirm that API-returns-nothing surfaces the manual button cleanly**
-   (it should appear with SEARCH RESULTS on enter, even when results are empty).
+
+*Closed (#473):* ~~#3 Back-nine tee~~ → resolved to **inherit-by-name, else first-tee, surfaced**
+(not the naive "lean inherit" — front and back can be different courses with different tee sets, so
+fail-loud; §6.3/§10). ~~#4 Add-manually timing~~ → manual button surfaces after search incl. empty
+results, front-mode-only gating (§10).
 
 ---
 
@@ -340,14 +360,25 @@ Likely split (updated post-W-GAMEPAGE-01a Phase 0):
   Points panel) + hide Available Players for competitions. The accordion (§9) and identity header
   (§5 Zone 1) are **already shipped** (#462/#463) — confirm, don't build. **The toggle/lock moved
   OUT of (a) → (d)** (the toggle isn't on the setup screen pre-enable).
-- **(b) Course-flow refinement** — staged search (§10) is ~shipped (#464); remnant is mostly OPEN pin
-  #4. Likely a punch-list, not a full phase.
-- **(c) Destructive-edit guard** (§11) — small, contained.
+- **(b) Course-flow refinement** — ✅ SHIPPED (#473): manual-entry timing (pin #4, front-mode-only +
+  empty-results path), API-vs-local dedup (§10 stage 3), back-9 tee inherit + surfaced fallback (pin
+  #3). **The Settings spine (Matches · Points · Course) is now complete.** (Staged search core was
+  #464.)
+- **(c) Destructive-edit guard** (§11) — ✅ SHIPPED (#471, A-only): styled scored-match-removal
+  confirm (`DangerConfirmModal`) + `matchHasScores` predicate. **(B)** player-path orphan = issue
+  #470, deferred to (d).
 - **(d) Surface-2 + back-stack nav + toggle/lock** (§2 surface 2, §3 toggle lock + directional
   confirms, §4) — nav-adjacent; reuse `<Sheet>`; keep consistent with W-BACKNAV-01. **Also absorbs
   `GameConfigurationView`** (the post-enable edit surface found in Phase 0) into the two-surface
   model — reconcile it against setup-face / scoring-face / settings-summary rather than leaving two
-  divergent config surfaces. Carries OPEN pins #1, #2.
+  divergent config surfaces. Carries OPEN pins #1, #2. **Inputs to carry in:**
+  - **Issue #470** — setup-face writes (`assignPlayer` / `setPairings`) silently orphan scores;
+    (d)'s settings-lock / flip-to-setup model must **reconcile setup-face edits against existing
+    scores as a pattern**, not just guard one path (§11).
+  - **Modifiers four-branch eye-verify gap** — the rack-hide and stroke-both Modifier render
+    branches go through `CompetitionGamesPanel` (unreachable on `match/new` today), so they're
+    unit-locked only; unifying the config surfaces in (d) makes **all four** branches eye-verifiable
+    on one path.
 - **Modifiers** (§6.5) — ✅ SHIPPED (#469): shared `lib/modifiers.ts` + `ModifierCards.tsx`, data-driven from `gameTypes.ts`, config-only, no engine. Phase 0 reversed the DB-applicability + camelCase + `{enabled,holes}` assumptions (see §6.5 reconcile note).
 
 Each PR follows the standard CC contract: Phase 0 diagnose-first report-and-STOP, DO-NOT lists,
