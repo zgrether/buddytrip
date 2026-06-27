@@ -27,6 +27,9 @@ import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/ma
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled } from "@/lib/matchDraft";
+import { GAME_TYPES } from "@/lib/gameTypes";
+import { ModifierCards } from "@/components/games/ModifierCards";
+import { enabledCount, modifiersSummary, type ModifiersMap } from "@/lib/modifiers";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 /** "07:40" → "7:40 AM". Empty/invalid → "". */
@@ -120,11 +123,16 @@ export default function NewMatchGamePage() {
   // one collapses any other; collapsing a draft editor (matches/handicaps) commits
   // it (persist-on-collapse). The one-open rule physically gates Handicaps: it
   // can't be open while Matches is, so you set matches → collapse → open handicaps.
-  const [openRow, setOpenRow] = useState<"matches" | "handicaps" | "players" | "course" | "config" | null>(null);
+  const [openRow, setOpenRow] = useState<"matches" | "handicaps" | "players" | "course" | "config" | "modifiers" | null>(null);
   // Surfaced when a persist-on-collapse save fails — the draft is kept (edits are
   // never discarded on a transient error), so this offers a retry rather than a
   // silent loss.
   const [collapseError, setCollapseError] = useState(false);
+  // Modifiers draft (golf "special rules" — config-only, W-GAMEPAGE-01 §6.5).
+  // Page-owned so the row persists on collapse like Matches/Handicaps. Seeded
+  // from the game's modifiers whenever the row is CLOSED (never mid-edit — see
+  // the seed effect below).
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
   // Zone-3 rules note (W-EDITMODAL-01) — "Save & exit" flushes any typed-but-
   // unsaved rules through this handle before navigating (the one field with no
   // collapse event of its own).
@@ -199,6 +207,9 @@ export default function NewMatchGamePage() {
   // both refresh the board after (see refreshAfterMatchCountChange).
   const addMatch = trpc.matches.addMatch.useMutation();
   const removeMatch = trpc.matches.removeMatch.useMutation();
+  // Modifiers (golf "special rules" — config-only, W-GAMEPAGE-01 §6.5). Persisted
+  // via games.update on accordion-collapse; presence-model jsonb (lib/modifiers).
+  const updateModifiers = trpc.games.update.useMutation();
   // Finishing retries (idempotent recompute); a failure stays on the overview
   // and surfaces via the global error toast — loud + retryable, not a silent
   // stall. Score writes go through useScoreSaver (above).
@@ -449,6 +460,15 @@ export default function NewMatchGamePage() {
     setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
   }, [screen, draft.length, serverMatches, handicapOf, membersOfSide, sided]);
 
+  // Seed the modifiers draft from the server — but ONLY while the row is closed,
+  // so an in-progress edit is never clobbered. On collapse the row persists +
+  // optimistically updates the game cache, so this re-syncs to the same value
+  // (and picks up any external change while closed). Mirrors the draft seed.
+  useEffect(() => {
+    if (openRow === "modifiers") return;
+    setModifiersDraft(((gameQ.data?.modifiers as ModifiersMap | null) ?? {}));
+  }, [gameQ.data?.modifiers, openRow]);
+
   // After a +1/−1 (or initial create): re-pull the game's matches AND refresh
   // the competition board so "first to XX" / "X of Y" recompute ON SCREEN. The
   // board has no realtime sub (only a 30s poll) and re-seeds competitions.
@@ -628,12 +648,34 @@ export default function NewMatchGamePage() {
     }
   }
 
+  // Modifiers persist-on-collapse: write the draft to games.modifiers, optimistic
+  // on the game cache so the row's resolved/summary lands instantly, then mark the
+  // competition board stale (CLAUDE.md #10 — faceBootstrap is the one that refreshes
+  // the Live face). All-config-valid, so no draft-keep-on-error dance like Matches.
+  async function persistModifiersOnCollapse() {
+    if (!tripId || !gameId) return;
+    const cur = utils.games.getById.getData({ tripId, gameId });
+    if (cur) utils.games.getById.setData({ tripId, gameId }, { ...cur, modifiers: modifiersDraft } as typeof cur);
+    try {
+      await updateModifiers.mutateAsync({ tripId, gameId, modifiers: modifiersDraft });
+      if (competitionId) {
+        utils.games.listByTrip.invalidate({ tripId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      }
+    } catch {
+      // Re-sync from the server cache on failure (the optimistic write is rolled
+      // back by the next gameQ read; the row stays usable).
+      void gameQ.refetch();
+    }
+  }
+
   // The single entry point for changing which row is open. Leaving a draft editor
   // commits it (covers BOTH collapse paths: tapping the row to close it AND
   // opening another row, since one-at-a-time collapses the current one first).
   function changeOpenRow(next: typeof openRow) {
     if (next === openRow) return;
     if (openRow === "matches" || openRow === "handicaps") void persistDraftOnCollapse();
+    if (openRow === "modifiers") void persistModifiersOnCollapse();
     setOpenRow(next);
   }
   // Accordion header tap: toggle this row (collapsing whatever else was open).
@@ -956,6 +998,14 @@ export default function NewMatchGamePage() {
         const handicapsReady = matchesExist && courseResolved;
         const handicapsState: ChecklistRowState = !handicapsReady ? "unresolved" : anyHandicap ? "resolved" : "acknowledged-empty";
         const handicapsSummary = !matchesExist ? "Set matches first" : !courseResolved ? "Set the course first" : anyHandicap ? "Strokes assigned" : "Off — scratch";
+        // Modifiers (W-GAMEPAGE-01 §6.5) — applicability is data-driven from the
+        // format's gameTypes.ts compatibleModifiers (NOT the deprecated DB column).
+        // Empty → the row is hidden entirely. Check semantics: ≥1 enabled =
+        // resolved (check); applicable-but-none = unresolved (NO check — an optional
+        // row isn't "set" just by being offered).
+        const availableModifiers = GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? [];
+        const modifiersOn = enabledCount(modifiersDraft, availableModifiers);
+        const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "unresolved";
         const onSetupChanged = () => {
           void gameQ.refetch();
           if (competitionId) {
@@ -1085,9 +1135,27 @@ export default function NewMatchGamePage() {
               />
             </ChecklistRow>
 
-            {/* Modifiers — acknowledge-only: the toggle targets exist but no
-                modifier has a scoring effect yet, so the row is inert until then. */}
-            <ChecklistRow label="Modifiers" value="None — coming soon" state="acknowledged-empty" />
+            {/* Modifiers (W-GAMEPAGE-01 §6.5) — config-only "special rules" driven
+                by the format's compatibleModifiers (gameTypes.ts). Hidden entirely
+                when the format offers none; otherwise an accordion of toggle cards
+                (+ a hole-count stepper for glorious_holes), persist-on-collapse. */}
+            {availableModifiers.length > 0 && (
+              <ChecklistRow
+                label="Modifiers"
+                value={modifiersSummary(modifiersDraft, availableModifiers)}
+                state={modifiersState}
+                expanded={openRow === "modifiers"}
+                onToggle={() => toggleRow("modifiers")}
+                testId="row-modifiers"
+              >
+                <ModifierCards
+                  available={availableModifiers}
+                  modifiers={modifiersDraft}
+                  onChange={setModifiersDraft}
+                  readOnly={!canEdit}
+                />
+              </ChecklistRow>
+            )}
 
             {/* Rules of the Day — freeform note (W-EDITMODAL-01). Saves on blur;
                 "Save & exit" flushes it via rulesRef. Competition games only. */}
