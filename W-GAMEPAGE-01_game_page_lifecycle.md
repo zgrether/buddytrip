@@ -1,6 +1,6 @@
 # W-GAMEPAGE-01 — Game-page lifecycle overhaul
 
-**Status:** DESIGN COMPLETE. Phase (a) SHIPPED (#467). Remaining: Modifiers, (b) course-flow, (c) destructive guard, (d) surface-2 + back-stack + GameConfigurationView (→ W-BACKNAV-01).
+**Status:** DESIGN COMPLETE. SHIPPED: phase (a) (#467) · Modifiers (#469). Remaining: (b) course-flow, (c) destructive guard *(A-only — PR #471 open; player-path orphan deferred to (d), issue #470)*, (d) surface-2 + back-stack + GameConfigurationView (→ W-BACKNAV-01).
 **Scope of this file:** W-GAMEPAGE-01 only. The earlier WS4 reconciliation sections
 (consolidation audit, engine decisions, betting/Circle) are a *separate* recovery pass
 and are deliberately not rebuilt here.
@@ -203,30 +203,40 @@ shows the check/value instantly, background save, rollback on failure).
 > regression. Handicaps hole-allocation is safe for the BBMI 3×9.
 
 ### 6.5 Modifiers  *(optional — hidden when none apply)*
-- **Applicability is data-driven.** Read `compatible_modifiers` from the `game_type_templates`
-  table. **Do not** mirror the list in a code enum — the table is the single source; a duplicated
-  enum is exactly the DB-vs-code drift that bites later.
-- **What lives in code is a modifier registry**, not the applicability list:
-  `key → { label, description, controlType, jsonbWriter }`. Data answers *which modifiers apply*;
-  code answers *how each renders and stores*.
-- **Panel logic:** read the template's `compatible_modifiers` → look each key up in the registry →
-  render those cards. **List empty → hide the entire Modifiers row** (don't render a dead "no
-  modifiers" stub). Consequence: the Options group has variable membership; accepted.
-- **Config-only scope.** A toggled modifier writes to `games.modifiers` jsonb and does **nothing**
-  to scoring behavior. The execution engines (moving tees, carry-style scoring) stay deferred
-  (see `DEFERRED.md`). This is not a broken promise: in the hand-entered-scoring era a toggled
-  modifier is a **structured rule-of-the-day** — the app records "last 3 holes worth double" even
-  though it doesn't compute it.
-- **Copy guardrail:** the on-state must **not** imply auto-enforcement. Moving Tee Boxes especially
-  looks like it should be changing the scorecard. "Set, not yet auto-scored" has to carry in the
-  copy. (Replaces the current app's "coming soon" stub, which was holding that expectation.)
 
-**Modifier definitions (initial registry + jsonb shape):**
+> **✓ RECONCILED to as-built (#469 merged).** Phase 0 corrected three specifics this section
+> originally got wrong against the codebase — keys, applicability source, and jsonb shape (the
+> strikethroughs below). The design intent (config-only, hide-when-none, copy guardrail) shipped
+> intact.
 
-| Key | Control | jsonb shape | Notes |
+- **Applicability is code-driven** (~~read `compatible_modifiers` from the DB~~). The applicable set
+  comes from `gameTypes.ts` `compatibleModifiers` — format-definition data fixed by the code that
+  implements each format, never per-game/per-trip. W-PERF-01 moved format defs into code because
+  DB-fetching them blanked the add-game dialog for 20–30s on bad signal; reading modifiers
+  applicability from the DB would reintroduce that. The `game_type_templates.compatible_modifiers`
+  column is **deprecated** — not read, not written.
+- **What lives in code is a modifier registry** (`src/lib/modifiers.ts`):
+  `key → { label, description, controlType }` + pure presence-model read/write helpers. Code answers
+  *which modifiers apply* (via `gameTypes.ts`) **and** *how each renders and stores*.
+- **Panel logic** (`ModifierCards.tsx`, shared by the `match/new` setup row + `GameConfigurationView`):
+  read the format's `compatibleModifiers` → look each key up in the registry → render those cards.
+  **List empty → hide the entire Modifiers row.** Consequence: the Options group has variable
+  membership; accepted.
+- **Config-only scope.** A toggled modifier writes to `games.modifiers` jsonb and does **nothing** to
+  scoring behavior. Execution engines stay deferred (`DEFERRED.md`). Not a broken promise: in the
+  hand-entered era a toggled modifier is a **structured rule-of-the-day** — recorded, not computed.
+- **Copy guardrail:** the on-state must **not** imply auto-enforcement. Moving Tees especially looks
+  like it should change the scorecard. "Recorded, not yet auto-scored" carries in the shipped copy.
+  (Final voice pending Zach.)
+
+**Modifier definitions (as built — snake_case keys, presence-model jsonb):**
+Presence of a key in `games.modifiers` = enabled; absence = disabled (~~`{ enabled: bool }`~~).
+The reader is legacy-tolerant: a production `glorious_holes: {}` (no `holes`) reads as the default 3.
+
+| Key | Control | jsonb value (when present) | Notes |
 |---|---|---|---|
-| `gloriousFinishingHoles` | checkbox + **hole-count** stepper | `{ enabled: bool, holes: N }` | Stepper is the **number of trailing holes** worth double. Doubling is **fixed/implied** — it is not a multiplier. **Default `holes: 3`** so the control opens matching the "last 3 holes" suggestion in its own copy. |
-| `movingTees` | checkbox | `{ enabled: bool }` | No parameter. |
+| `glorious_holes` | checkbox + **hole-count** stepper | `{ holes: N }` | Stepper = **number of trailing holes** worth double. Doubling is **fixed/implied**, not a multiplier. **Default `holes: 3`.** |
+| `moving_tees` | checkbox | `{}` | No parameter. |
 
 ---
 
@@ -338,7 +348,7 @@ Likely split (updated post-W-GAMEPAGE-01a Phase 0):
   `GameConfigurationView`** (the post-enable edit surface found in Phase 0) into the two-surface
   model — reconcile it against setup-face / scoring-face / settings-summary rather than leaving two
   divergent config surfaces. Carries OPEN pins #1, #2.
-- **Modifiers** (§6.5) — can ride with (a) or be its own small PR; config-only, no engine.
+- **Modifiers** (§6.5) — ✅ SHIPPED (#469): shared `lib/modifiers.ts` + `ModifierCards.tsx`, data-driven from `gameTypes.ts`, config-only, no engine. Phase 0 reversed the DB-applicability + camelCase + `{enabled,holes}` assumptions (see §6.5 reconcile note).
 
 Each PR follows the standard CC contract: Phase 0 diagnose-first report-and-STOP, DO-NOT lists,
 per-task commits, `tsc --noEmit` + `next lint` clean, verify-by-eye on real data, audit-before-delete.
@@ -356,11 +366,11 @@ per-task commits, `tsc --noEmit` + `next lint` clean, verify-by-eye on real data
 | Matches validity | **Any** match with an empty slot = invalid (not just trailing); hard-blocks Enable scoring. **Replaces #460 collapse-on-incomplete.** |
 | Points | Follows Matches; surface Total = valid-matches × per-match (count piped into Points panel). |
 | Competition Format | Sets leaderboard label only; in-app run deferred; hand-entry until then. |
-| Modifiers applicability | `compatible_modifiers` from `game_type_templates` (data, not enum). |
-| Modifiers render/store | Code registry: `key → {label, description, controlType, jsonbWriter}`. |
+| Modifiers applicability | **As built (#469):** code-driven from `gameTypes.ts` `compatibleModifiers` (NOT the deprecated DB `compatible_modifiers`). |
+| Modifiers render/store | Shared `lib/modifiers.ts` registry `key → {label, description, controlType}` + presence-model helpers; `ModifierCards.tsx` UI. |
 | Modifiers empty | Hide the entire row. |
 | Modifiers scope | Config-only → `games.modifiers` jsonb; engine deferred. |
-| Glorious Finishing Holes | Hole-**count** stepper, doubling implied; `{enabled, holes}`; default `holes: 3`. |
+| Glorious Finishing Holes | **As built:** key `glorious_holes`; hole-**count** stepper, doubling implied; value `{ holes: N }` (presence = enabled); default `holes: 3`; legacy `{}` → 3. |
 | Moving Tees | `{enabled}`; no parameter. |
 | Accordion | Single open, global; no carve-out. |
 | Handicaps gate | Hard-gated on Matches AND Course (complete 18). |

@@ -3,7 +3,7 @@
 *Only genuinely open items. Ordered by when they need to happen.*
 *Competition/gaming design detail lives in `COMPETITION_ENGINE.md` — this file
 is the build backlog that points to it.*
-*Last updated: 2026-06-08*
+*Last updated: 2026-06-26*
 
 > Beta is effectively launched (bbmi.app live, wired up, not yet announced).
 > Real users for the next ~3 months are the golf crew + occasional testers
@@ -97,6 +97,22 @@ The heart of the event.
     of the course's stored tee sets rotate. Cannot be worked independently of
     moving tees — it's a configuration knob on this feature. All tee sets are
     already persisted (`courses.tee_sets`, mig 059), so the data is ready.
+
+- **Reconcile modifier applicability to REAL (not testability) when this engine is
+  built** (captured 2026-06-26, W-GAMEPAGE-01 Modifiers / #469). The config-only
+  Modifiers panel shipped, but `gameTypes.ts` `compatibleModifiers` currently holds
+  a **crossed test-matrix** (each golf format offers one render branch: rack=none /
+  singles=`moving_tees` / doubles=`glorious_holes` / stroke=both) **flagged loudly
+  in-file as NOT real applicability**. Real applicability differs: `glorious_holes`
+  is point-valued/match formats only (it doubles a hole's *match* value, so it does
+  NOT apply to raw stroke play); `moving_tees` is any stroke-input scorecard. When
+  the scoring engine lands, set the real sets.
+- **Generalize the per-modifier config (moving-scale)**: the shipped registry
+  (`lib/modifiers.ts`) is presence-model with a per-key jsonb config — `glorious_holes`
+  already carries a `{ holes: N }` param. Moving tees' tee-subset selection (sub-note
+  above) is the next parameterized modifier; generalize `controlType` + the read/write
+  helpers rather than special-casing each. (Spec note: "moving-tees moving-scale
+  generalization.")
 
 ### Desktop side-by-side tee display (someday nomination — not actionable now)
 
