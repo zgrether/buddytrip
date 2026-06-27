@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, AlertTriangle, PencilLine, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { searchCourses, teeColor, type CourseSummary } from "@/lib/courseService";
+import { manualEntryVisible, dedupeApiCourses } from "@/lib/courseSearch";
 import type { RecentCourse } from "./CoursePicker";
 
 /**
@@ -70,8 +71,11 @@ export function CourseSearchPanel({
     setApiSearching(false);
   }
 
-  // Select a SAVED course: one tee → apply; many → expand the tee chooser.
+  // Select a SAVED course. FRONT: one tee → apply; many → tee chooser. BACK: the
+  // back nine INHERITS the front's tee (pin #3), so never prompt — apply with no
+  // teeName and let setBackNine resolve it (match front's tee, fall back to first).
   function selectSaved(c: RecentCourse) {
+    if (back) { onApply({ id: c.id, name: c.name }); return; }
     const tees = c.tee_sets ?? [];
     if (tees.length <= 1) { onApply({ id: c.id, name: c.name, teeName: tees[0]?.name?.trim() || undefined }); return; }
     setTeePickFor(c);
@@ -84,6 +88,12 @@ export function CourseSearchPanel({
   const local = nine((localSearch.data as RecentCourse[]) ?? []);
   const recents = nine((recent.data as RecentCourse[]) ?? []);
   const showResults = query.trim().length >= 2;
+  // Dedup API results against the user's SAVED courses by name (§10 stage 3): a
+  // course already saved shows in the local list above, so don't double-list it.
+  const apiDeduped = useMemo(
+    () => dedupeApiCourses(apiResults, [...local, ...recents].map((c) => c.name)),
+    [apiResults, local, recents]
+  );
   const courseSub = useMemo(() => (c: RecentCourse) => {
     const par = (c.par ?? []).reduce<number>((a, p) => a + p, 0);
     return [c.location, par ? `Par ${par}` : "", `${c.hole_count} holes`].filter(Boolean).join(" · ");
@@ -159,12 +169,18 @@ export function CourseSearchPanel({
           {apiSearched && (
             <div className="flex flex-col gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>From the course database</p>
-              {apiResults.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No matches in the database.</p>
+              {apiDeduped.length === 0 ? (
+                // Empty (§10 / pin #4): no dead end — the manual-entry button
+                // surfaces directly below (gated on apiSearched). Distinguish a
+                // truly-empty return from "all matches already saved above". Copy
+                // is honest placeholder; final voice pending Zach.
+                <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+                  {apiResults.length === 0 ? "No courses found — add it manually below." : "Everything matching is already in your courses above."}
+                </p>
               ) : (
                 // Picking an API result NAVIGATES to the entry page (it needs a pull
                 // + review before it becomes a saved course).
-                apiResults.map((c) => <PickRow key={c.id} name={c.name} sub={c.location} onClick={() => router.push(entryHref(c.id))} />)
+                apiDeduped.map((c) => <PickRow key={c.id} name={c.name} sub={c.location} onClick={() => router.push(entryHref(c.id))} />)
               )}
             </div>
           )}
@@ -177,15 +193,22 @@ export function CourseSearchPanel({
         </div>
       )}
 
-      <button
-        onClick={() => router.push(entryHref())}
-        data-testid="course-add-manually"
-        className="flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3"
-        style={{ borderColor: "var(--color-bt-accent-border)", borderStyle: "dashed", color: "var(--color-bt-accent)", background: "transparent" }}
-      >
-        <PencilLine size={16} />
-        <span style={{ fontSize: 14, fontWeight: 600 }}>{back ? "Add a 9-hole course manually" : "Add course manually"}</span>
-      </button>
+      {/* Manual entry timing (§10 / pin #4): FRONT mode gates this behind the
+          full-database search — hidden on recents + while live-filtering, shown
+          only once the user has searched (incl. an EMPTY result, so a no-match
+          query still has a path forward). BACK mode has no API stage (a back nine
+          is a saved/manual 9-holer), so the button stays available throughout. */}
+      {manualEntryVisible({ back, apiSearched }) && (
+        <button
+          onClick={() => router.push(entryHref())}
+          data-testid="course-add-manually"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3"
+          style={{ borderColor: "var(--color-bt-accent-border)", borderStyle: "dashed", color: "var(--color-bt-accent)", background: "transparent" }}
+        >
+          <PencilLine size={16} />
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{back ? "Add a 9-hole course manually" : "Add course manually"}</span>
+        </button>
+      )}
     </div>
   );
 }

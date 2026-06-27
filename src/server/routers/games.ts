@@ -411,7 +411,17 @@ export const gamesRouter = router({
       }
 
       const backTees = (back.tee_sets as SnapshotTee[] | null) ?? [];
-      const backTee = (input.backTeeSetName ? backTees.find((t) => t.name === input.backTeeSetName) : undefined) ?? backTees[0] ?? null;
+      // Back-nine tee INHERITS the front's tee (W-GAMEPAGE-01 pin #3): match the
+      // front's applied tee NAME on the back course so the back-9 yardages come
+      // from the same-named tee; fall back to the back's first tee when that name
+      // is absent (the UI surfaces the fallback). An explicit backTeeSetName (a
+      // deliberate override) still wins. The composed tee NAME stays the front's
+      // (see composedTee below) regardless — this only picks the back-9 yards.
+      const frontTeeName = frontMeta.tee?.name?.trim();
+      const backTee =
+        (input.backTeeSetName ? backTees.find((t) => t.name === input.backTeeSetName) : undefined) ??
+        (frontTeeName ? backTees.find((t) => (t.name ?? "").trim() === frontTeeName) : undefined) ??
+        backTees[0] ?? null;
 
       // Recover the FRONT nine's ORIGINAL 1..9 data from the snapshot. On the
       // first compose the schema IS a 9-hole front (index already 1..9). On a
