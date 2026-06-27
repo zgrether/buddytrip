@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -23,7 +23,8 @@ import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/Game
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
-import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
+import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult } from "@/lib/matchPlay";
+import { DangerConfirmModal } from "@/components/DangerZone";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled } from "@/lib/matchDraft";
@@ -1743,6 +1744,12 @@ function Overview({
   onRemoveMatch: (matchId: string) => void;
   mutatingCount: boolean;
 }) {
+  // Destructive-edit guard (W-GAMEPAGE-01 §11): removing a SCORED match clears its
+  // entered scores, so it confirms first via the shared DangerConfirmModal (the one
+  // in-app confirm vocabulary, #433 — replaces the old window.confirm). An UNSCORED
+  // match removes with no friction. Holds the pending match while the modal is open.
+  // (Declared before the early return below — hooks must run every render.)
+  const [pendingRemoval, setPendingRemoval] = useState<{ matchId: string; label: string } | null>(null);
   if (!published) return <MemberNotReady gameName={gameName} />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
@@ -1780,15 +1787,15 @@ function Overview({
                 onClick={() => onOpenMatch(g.matchId)}
               />
             </div>
-            {/* −1: remove this match (live count). Warn first if it has scores —
-                never silently drop entry. Down to the minimum of 1. */}
+            {/* −1: remove this match (live count). A SCORED match confirms first
+                (the modal below) — never silently drop entry; an unscored one goes
+                straight through. Down to the minimum of 1. */}
             {canEdit && !complete && groups.length > 1 && (
               <button
                 type="button"
                 onClick={() => {
-                  const scored = decideds[i].length > 0;
-                  if (scored && !window.confirm(`Match ${i + 1} has scores entered. Remove it and discard them?`)) return;
-                  onRemoveMatch(g.matchId);
+                  if (matchHasScores(decideds[i])) setPendingRemoval({ matchId: g.matchId, label: `Match ${i + 1}` });
+                  else onRemoveMatch(g.matchId);
                 }}
                 disabled={mutatingCount}
                 title="Remove match"
@@ -1844,6 +1851,27 @@ function Overview({
         <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
           {finishing ? "Re-locking…" : "Re-lock result"}
         </button>
+      )}
+
+      {/* Scored-match removal confirm (W-GAMEPAGE-01 §11). Cancel preserves the
+          scores; confirm fires removeMatch, which clears the orphaned entries
+          server-side. Copy is honest placeholder — final voice pending Zach. */}
+      {pendingRemoval && (
+        <DangerConfirmModal
+          tone="danger"
+          icon={<Trash2 size={18} />}
+          title={`Remove ${pendingRemoval.label}?`}
+          body={`${pendingRemoval.label} has scores entered — removing it discards them. This can't be undone.`}
+          confirmLabel="Remove & discard"
+          pendingLabel="Removing…"
+          isPending={mutatingCount}
+          testId="confirm-remove-scored-match"
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => {
+            onRemoveMatch(pendingRemoval.matchId);
+            setPendingRemoval(null);
+          }}
+        />
       )}
     </div>
   );
