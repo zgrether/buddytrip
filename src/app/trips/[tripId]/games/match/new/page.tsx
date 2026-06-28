@@ -1151,13 +1151,12 @@ export default function NewMatchGamePage() {
                 playersPerSide={playersPerSide}
                 nameOf={nameOf}
                 colorOf={colorOf}
-                // P-D defect 1: color by SLOT (side A = team[0], side B = team[1]) —
-                // the same `teamForSlot` binding the Matches panel uses (tA/tB) — so a
-                // player on a side reads that side's team color in this match, matching
-                // the Matches panel. tA/tB are undefined for a standalone game → the
-                // per-player palette fallback applies.
-                teamA={tA}
-                teamB={tB}
+                // P-D defect 1: resolve each player's TEAM color from their roster
+                // assignment (teamOfUser) — the same source the overview uses — so the
+                // assigned players read Rhinos red / Phoenix purple. An UNASSIGNED
+                // player (no team_assignments row) correctly gets undefined → the
+                // per-player palette fallback (not a bug). Undefined for standalone.
+                teamColorOf={(id) => (twoTeams ? teamById.get(teamOfUser.get(id) ?? "")?.color : undefined)}
                 avatarIconOf={avatarIconOf}
               />
             </ChecklistRow>
@@ -1682,8 +1681,7 @@ function HandicapsSection({
   playersPerSide,
   nameOf,
   colorOf,
-  teamA,
-  teamB,
+  teamColorOf,
   avatarIconOf,
 }: {
   draft: DraftMatch[];
@@ -1691,22 +1689,22 @@ function HandicapsSection({
   playersPerSide: number;
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
-  /** The teams bound to side A / side B (2-team competition). The handicap avatars
-   *  color by SLOT — side A = team[0], side B = team[1] — exactly like the Matches
-   *  panel (`teamForSlot`), so a player on side A reads that side's team color in
-   *  this match (NOT their individual roster row). Undefined for a standalone game
-   *  → falls back to the per-player palette. (P-D defect 1: colorOf alone is the
-   *  neutral palette and loses team identity.) */
-  teamA?: { color: string };
-  teamB?: { color: string };
+  /** A player's TEAM color from their roster assignment (`teamOfUser`), the same
+   *  source the overview uses (`sideColor`/`teamOfSide`) — so the handicap avatars
+   *  match every other team-avatar surface (Rhinos red / Phoenix purple). A player
+   *  with NO team assignment correctly returns undefined → the per-player palette
+   *  fallback (NOT a bug — an unassigned player has no team color). Undefined for a
+   *  standalone (non-2-team) game too. (P-D defect 1: colorOf alone was the neutral
+   *  palette and lost team identity for the assigned players.) */
+  teamColorOf: (userId: string) => string | undefined;
   avatarIconOf: Map<string, string | null>;
 }) {
-  const sidePart = (members: string[], teamColor: string | undefined): Participant | null => {
+  const sidePart = (members: string[]): Participant | null => {
     if (members.length === 0) return null;
     return {
       id: members.join("+"),
       name: members.map((u) => nameOf.get(u) ?? "Player").join(" & "),
-      color: teamColor ?? colorOf.get(members[0]) ?? PLAYER_COLORS[0],
+      color: teamColorOf(members[0]) ?? colorOf.get(members[0]) ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(members[0]) ?? null,
     };
   };
@@ -1728,8 +1726,8 @@ function HandicapsSection({
         // left gutter instead (passed below), shown only when there's >1 match.
         <RelHandicapControl
           key={i}
-          a={sidePart(d.a, teamA?.color)!}
-          b={sidePart(d.b, teamB?.color)!}
+          a={sidePart(d.a)!}
+          b={sidePart(d.b)!}
           value={d.handicap}
           matchNumber={draft.length > 1 ? i + 1 : undefined}
           onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
