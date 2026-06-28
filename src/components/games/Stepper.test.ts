@@ -35,6 +35,13 @@ describe("stepperBounds", () => {
     expect(stepperBounds(0, 0, 18).atFloor).toBe(true); // HandicapRoster min=0 (SCR)
     expect(stepperBounds(1, 1, 9).atFloor).toBe(true); // ModifierCards glorious_holes min=1
   });
+
+  it("inline Points control (Phase C): min 0, no max — `−` disabled at 0, `+` always free", () => {
+    expect(stepperBounds(0, 0).atFloor).toBe(true); // can't go below 0 points
+    expect(stepperBounds(0, 0).decValue).toBe(0); // clamps at the floor
+    expect(stepperBounds(0, 0).atCeil).toBe(false); // no ceiling
+    expect(stepperBounds(0, 0).incValue).toBe(1); // `+` lifts it out of empty
+  });
 });
 
 describe("STEPPER_SIZES", () => {
