@@ -17,9 +17,16 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  *    the owner fills the checklist; filled → it's that delegate's assignment. The
  *    delegate grant is owner-only (`addOrganizer`/`removeOrganizer`), so non-owners
  *    see it read-only. A delegate landing here reads "… · Assigned to: you".
+ *
+ * This is the ONE shared setup-face header — match renders it directly, stroke/rack
+ * via `EnableScoringGate`'s `identityHeader` slot. The optional **`children`** below
+ * the assigned-to frame is the **mode-controls slot** (A2-precursor): the single home
+ * where A2-ux mounts the Game Management panel + Setup/Scoring toggle, so the toggle
+ * lands in one place across all three formats rather than three insertions. Empty by
+ * default → no visual change.
  */
 export function GameIdentityHeader({
-  tripId, game, canEdit, isOwner,
+  tripId, game, canEdit, isOwner, children,
 }: {
   tripId: string;
   game: GameRow;
@@ -27,6 +34,9 @@ export function GameIdentityHeader({
   canEdit: boolean;
   /** Can change the ASSIGNMENT (owner-only — matches the server gate). */
   isOwner: boolean;
+  /** Mode-controls slot (A2-precursor) — the Game Management panel/toggle mounts
+   *  here in A2-ux. Rendered below the assigned-to frame; omitted → nothing renders. */
+  children?: React.ReactNode;
 }) {
   const gameId = game.id;
   const me = useCurrentUser();
@@ -144,6 +154,10 @@ export function GameIdentityHeader({
           </button>
         )}
       </div>
+
+      {/* Mode-controls slot (A2-precursor) — the Game Management panel/toggle mounts
+          here in A2-ux. Empty today, so this is a no-op render. */}
+      {children && <div className="mt-3">{children}</div>}
     </div>
   );
 }
