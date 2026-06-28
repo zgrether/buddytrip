@@ -74,6 +74,7 @@ export function ChecklistRow({
   expanded,
   onToggle,
   children,
+  control,
   disabled,
   testId,
 }: {
@@ -93,11 +94,18 @@ export function ChecklistRow({
   onToggle?: () => void;
   /** Accordion: the dropped-down editor content (rendered beneath when expanded). */
   children?: React.ReactNode;
+  /** Inline trailing control (e.g. a `<Stepper inline>`) that the row carries in
+   *  place of a chevron — the row does NOT open and is **exempt from the single-open
+   *  accordion** (W-GAMEPAGE Phase C: the Points row). Mutually exclusive with
+   *  accordion/overlay; the control owns its own taps. */
+  control?: React.ReactNode;
   disabled?: boolean;
   testId?: string;
 }) {
   const accordion = !!onToggle && !disabled;
   const overlay = !!onClick && !disabled && !accordion;
+  // A control row carries an inline control and never toggles (no accordion/overlay).
+  const controlRow = !!control && !accordion && !overlay;
   const isOpen = accordion && !!expanded;
 
   // State → treatment (§4/§12), via the shared pure mapping.
@@ -153,7 +161,10 @@ export function ChecklistRow({
     </div>
   );
 
-  const trailing = (
+  const trailing = controlRow ? (
+    // The inline control sits where the chevron would — it owns its own taps.
+    <span className="flex shrink-0 items-center">{control}</span>
+  ) : (
     <span className="flex shrink-0 items-center">
       {accordion ? (
         <ChevronDown size={16} style={{ color: "var(--color-bt-text-dim)", transform: isOpen ? "rotate(180deg)" : undefined, transition: "transform 120ms" }} />
