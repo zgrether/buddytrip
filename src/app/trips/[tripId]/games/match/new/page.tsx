@@ -1151,6 +1151,12 @@ export default function NewMatchGamePage() {
                 playersPerSide={playersPerSide}
                 nameOf={nameOf}
                 colorOf={colorOf}
+                // P-D defect 1: resolve each player's TEAM color from their roster
+                // assignment (teamOfUser) — the same source the overview uses — so the
+                // assigned players read Rhinos red / Phoenix purple. An UNASSIGNED
+                // player (no team_assignments row) correctly gets undefined → the
+                // per-player palette fallback (not a bug). Undefined for standalone.
+                teamColorOf={(id) => (twoTeams ? teamById.get(teamOfUser.get(id) ?? "")?.color : undefined)}
                 avatarIconOf={avatarIconOf}
               />
             </ChecklistRow>
@@ -1675,6 +1681,7 @@ function HandicapsSection({
   playersPerSide,
   nameOf,
   colorOf,
+  teamColorOf,
   avatarIconOf,
 }: {
   draft: DraftMatch[];
@@ -1682,6 +1689,14 @@ function HandicapsSection({
   playersPerSide: number;
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
+  /** A player's TEAM color from their roster assignment (`teamOfUser`), the same
+   *  source the overview uses (`sideColor`/`teamOfSide`) — so the handicap avatars
+   *  match every other team-avatar surface (Rhinos red / Phoenix purple). A player
+   *  with NO team assignment correctly returns undefined → the per-player palette
+   *  fallback (NOT a bug — an unassigned player has no team color). Undefined for a
+   *  standalone (non-2-team) game too. (P-D defect 1: colorOf alone was the neutral
+   *  palette and lost team identity for the assigned players.) */
+  teamColorOf: (userId: string) => string | undefined;
   avatarIconOf: Map<string, string | null>;
 }) {
   const sidePart = (members: string[]): Participant | null => {
@@ -1689,7 +1704,7 @@ function HandicapsSection({
     return {
       id: members.join("+"),
       name: members.map((u) => nameOf.get(u) ?? "Player").join(" & "),
-      color: colorOf.get(members[0]) ?? PLAYER_COLORS[0],
+      color: teamColorOf(members[0]) ?? colorOf.get(members[0]) ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(members[0]) ?? null,
     };
   };
