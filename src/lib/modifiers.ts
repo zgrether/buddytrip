@@ -28,7 +28,9 @@ export type ModifierControl = "checkbox" | "checkbox+stepper";
 export interface ModifierDef {
   key: string;
   label: string;
-  /** Honest, config-only copy — must not imply the app auto-enforces the rule. */
+  /** The card description — Zach's exact mock wording (W-GAMEPAGE P-E). No
+   *  "config-only / not-auto-scored" disclaimer: a stale disclaimer left in when
+   *  scoring logic lands is worse than none (deliberate reversal of #469). */
   description: string;
   controlType: ModifierControl;
 }
@@ -40,14 +42,14 @@ export const GLORIOUS_HOLES_MAX = 9;
 export const MODIFIER_REGISTRY: Record<string, ModifierDef> = {
   moving_tees: {
     key: "moving_tees",
-    label: "Moving tees",
-    description: "Trailing side picks the next tee box. Recorded as a rule of the day — not auto-scored yet.",
+    label: "Moving tee boxes",
+    description: "Score well and everyone else will appreciate you moving back a tee. Score not so well, and move up a tee to get your mojo back. We'll help guide you so you don't forget.",
     controlType: "checkbox",
   },
   glorious_holes: {
     key: "glorious_holes",
     label: "Glorious finishing holes",
-    description: "The closing holes carry double. Recorded as a rule of the day — not auto-scored yet.",
+    description: "We suggest making the last 3 holes worth double for keeping things interesting up until the end, but you can choose your own adventure.",
     controlType: "checkbox+stepper",
   },
 };

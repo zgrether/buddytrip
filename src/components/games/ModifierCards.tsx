@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { Stepper } from "@/components/games/Stepper";
 import {
   modifierDef,
@@ -49,19 +50,20 @@ export function ModifierCards({
             style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
             data-testid={`modifier-card-${key}`}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{def.label}</p>
-                {def.description && (
-                  <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{def.description}</p>
-                )}
-              </div>
-              <Switch
+            <div className="flex items-start gap-3">
+              {/* Checkbox LEADING (§10): teal fill + dark check on, bordered off. */}
+              <Checkbox
                 on={on}
                 disabled={readOnly}
                 onClick={() => onChange(setModifierEnabled(modifiers, key, !on))}
                 label={def.label}
               />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{def.label}</p>
+                {def.description && (
+                  <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{def.description}</p>
+                )}
+              </div>
             </div>
             {/* Stepper only for checkbox+stepper modifiers, and only once enabled. */}
             {def.controlType === "checkbox+stepper" && on && (
@@ -74,9 +76,6 @@ export function ModifierCards({
           </div>
         );
       })}
-      <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Optional. These are recorded as rules of the day — the app doesn’t auto-score them yet.
-      </p>
     </div>
   );
 }
@@ -104,24 +103,25 @@ function HoleStepper({ value, onChange, disabled }: { value: number; onChange: (
   );
 }
 
-/** The on/off toggle — the existing checked-state pattern (preserved from the
- *  shipped SpecialRules panel so both surfaces read identically). */
-function Switch({ on, onClick, label, disabled }: { on: boolean; onClick: () => void; label: string; disabled?: boolean }) {
+/** The on/off CHECKBOX (§10): teal fill + dark check glyph when on, transparent +
+ *  bordered when off. Toggles the modifier's presence in the jsonb exactly as the
+ *  old Switch did — appearance change only. */
+function Checkbox({ on, onClick, label, disabled }: { on: boolean; onClick: () => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
-      role="switch"
+      role="checkbox"
       aria-checked={on}
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className="relative h-6 w-10 flex-shrink-0 rounded-full transition-colors disabled:opacity-40"
-      style={{ background: on ? "var(--color-bt-accent)" : "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40"
+      style={{
+        background: on ? "var(--color-bt-accent)" : "transparent",
+        border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+      }}
     >
-      <span
-        className="absolute top-0.5 h-4 w-4 rounded-full transition-all"
-        style={{ left: on ? "20px" : "2px", background: on ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}
-      />
+      {on && <Check size={13} strokeWidth={3} style={{ color: "var(--color-bt-on-accent)" }} />}
     </button>
   );
 }
