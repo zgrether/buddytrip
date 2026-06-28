@@ -17,6 +17,20 @@ export interface MatchSides {
   b: string[];
 }
 
+/**
+ * The floor-aware "×" action on the setup draft (Matches panel). With MORE than one
+ * match, REMOVE the match at `index`. With exactly ONE match, CLEAR its slots instead
+ * — empty both sides + reset the handicap — keeping one empty match rather than
+ * deleting it. The server enforces a floor of ≥1 match (`setPairings`/
+ * `setDoublesPairings` `.min(1)`, `removeMatch`'s throw), so the last match is
+ * cleared, never removed (no zero-match state). Pure — returns a new draft, never
+ * mutates; preserves any other fields on the match (e.g. `matchNumber`) via spread.
+ */
+export function removeOrClearMatch<M extends MatchSides & { handicap: number }>(draft: M[], index: number): M[] {
+  if (draft.length > 1) return draft.filter((_, j) => j !== index);
+  return draft.map((m, j) => (j === index ? { ...m, a: [], b: [], handicap: 0 } : m));
+}
+
 /** True when both sides carry exactly `playersPerSide` players. */
 export function isMatchFilled(match: MatchSides, playersPerSide: number): boolean {
   return match.a.length === playersPerSide && match.b.length === playersPerSide;

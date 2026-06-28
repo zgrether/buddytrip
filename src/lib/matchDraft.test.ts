@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, type MatchSides } from "./matchDraft";
+import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeOrClearMatch, type MatchSides } from "./matchDraft";
 
 // Readiness rework P1b — the ONE match-play readiness threshold, shared by the
 // setup-page Enable gate and the server `isConfigured` so they can't drift.
@@ -110,5 +110,43 @@ describe("allMatchesFilled (the Enable-scoring gate)", () => {
   it("2v2: every side must be at full strength", () => {
     expect(allMatchesFilled([singles(["a", "b"], ["c", "d"])], 2)).toBe(true);
     expect(allMatchesFilled([singles(["a", "b"], ["c"])], 2)).toBe(false);
+  });
+});
+
+// The floor-aware "×" action: remove the match when there's more than one, CLEAR
+// the slots when it's the last (the server enforces ≥1 match — the last is cleared,
+// never deleted, so there's no zero-match state).
+describe("removeOrClearMatch (the floor-aware × action)", () => {
+  const m = (a: string[], b: string[], handicap = 0) => ({ a, b, handicap, matchNumber: 0 });
+
+  it("with >1 match, REMOVES the match at the index", () => {
+    const draft = [m(["a"], ["b"]), m(["c"], ["d"]), m(["e"], ["f"])];
+    const out = removeOrClearMatch(draft, 1);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toBe(draft[0]); // untouched rows are the same refs
+    expect(out[1]).toBe(draft[2]);
+  });
+
+  it("with exactly 1 match, CLEARS its slots — keeps ONE empty match (never zero)", () => {
+    const draft = [m(["a", "b"], ["c", "d"], 3)];
+    const out = removeOrClearMatch(draft, 0);
+    expect(out).toHaveLength(1); // the floor — not deleted
+    expect(out[0].a).toEqual([]);
+    expect(out[0].b).toEqual([]);
+    expect(out[0].handicap).toBe(0); // strokes reset with the pairing
+    expect(out[0].matchNumber).toBe(0); // other fields preserved
+  });
+
+  it("a cleared last match reads as NOT ready (Enable blocked, downstream locked)", () => {
+    const cleared = removeOrClearMatch([m(["a"], ["b"])], 0);
+    expect(allMatchesFilled(cleared, 1)).toBe(false); // can't enable
+    expect(hasValidMatch(cleared, 1)).toBe(false); // Points/Handicaps/Modifiers stay locked
+  });
+
+  it("does not mutate the input draft", () => {
+    const draft = [m(["a"], ["b"])];
+    const snapshot = JSON.parse(JSON.stringify(draft));
+    removeOrClearMatch(draft, 0);
+    expect(draft).toEqual(snapshot);
   });
 });
