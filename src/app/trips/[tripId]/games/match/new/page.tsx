@@ -1582,7 +1582,14 @@ function MatchSetup({
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Match {i + 1}</span>
                 <div className="flex items-center gap-1">
                   {/* Remove this match (down to the minimum of 1). Pre-tee-off
-                      draft has no persisted scores, so removal is free here. */}
+                      draft has no persisted scores, so removal is FREE here — and
+                      the panel is open/editing, where nothing must read as an error
+                      (readiness rework P2b: open → neutral always). So this is a
+                      DIM control (matching the grip handle below), not a danger-red
+                      one — the red `−` was the lone red left in the open panel and
+                      the thing that made "1 of 2" look invalid vs "1 of 1". The
+                      runtime-overview remove (a scored, destructive match) keeps
+                      its danger color; this draft one does not. */}
                   {draft.length > 1 && (
                     <button
                       type="button"
@@ -1590,7 +1597,7 @@ function MatchSetup({
                       title="Remove match"
                       aria-label={`Remove match ${i + 1}`}
                       className="flex items-center justify-center"
-                      style={{ width: 24, height: 24, color: "var(--color-bt-danger)" }}
+                      style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
                     >
                       <Minus size={16} />
                     </button>
