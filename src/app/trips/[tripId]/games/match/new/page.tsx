@@ -334,6 +334,11 @@ export default function NewMatchGamePage() {
   // A side's display color: its TEAM color in a 2-team competition, else the
   // per-player palette (standalone / non-team game) — unchanged for those.
   const sideColor = (sideId: string) => (twoTeams ? teamOfSide(sideId)?.color : undefined) ?? colorOf.get(sideId);
+  // THE canonical roster-based team-color resolver (team identity = the person's
+  // roster, never the slot). A user's team color in a 2-team competition; undefined
+  // when teamless or standalone → the consumer falls back to the neutral palette.
+  // Shared by the Matches panel (MatchSetup) and the handicap selector.
+  const teamColorOf = (userId: string) => (twoTeams ? teamById.get(teamOfUser.get(userId) ?? "")?.color : undefined);
   // The roster of one team — the constrained pool for that side's picker, so a
   // cross-team pair is impossible to assemble (Step 3: invalid unrepresentable).
   const rosterOfTeam = (teamId: string) =>
@@ -991,8 +996,6 @@ export default function NewMatchGamePage() {
         const savingSetup =
           setPairings.isPending || setHandicap.isPending ||
           setDoublesPairings.isPending || setDoublesHandicap.isPending;
-        const tA = teamForSlot("a");
-        const tB = teamForSlot("b");
         // Standalone-only readout now (T4 hides this row for competitions), so the
         // count is just the trip crew — no roster branch.
         const availableCount = crew.data?.length ?? 0;
@@ -1086,10 +1089,9 @@ export default function NewMatchGamePage() {
                 draft={draft}
                 setDraft={editDraft}
                 playersPerSide={playersPerSide}
-                teamA={tA}
-                teamB={tB}
                 nameOf={nameOf}
                 colorOf={colorOf}
+                teamColorOf={teamColorOf}
                 avatarIconOf={avatarIconOf}
                 openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
               />
@@ -1151,12 +1153,10 @@ export default function NewMatchGamePage() {
                 playersPerSide={playersPerSide}
                 nameOf={nameOf}
                 colorOf={colorOf}
-                // P-D defect 1: resolve each player's TEAM color from their roster
-                // assignment (teamOfUser) — the same source the overview uses — so the
-                // assigned players read Rhinos red / Phoenix purple. An UNASSIGNED
-                // player (no team_assignments row) correctly gets undefined → the
-                // per-player palette fallback (not a bug). Undefined for standalone.
-                teamColorOf={(id) => (twoTeams ? teamById.get(teamOfUser.get(id) ?? "")?.color : undefined)}
+                // Roster team color (the shared canonical resolver) — assigned
+                // players read their team color; an unassigned player gets undefined →
+                // the neutral palette (honest). Same source the Matches panel + overview use.
+                teamColorOf={teamColorOf}
                 avatarIconOf={avatarIconOf}
               />
             </ChecklistRow>
@@ -1291,7 +1291,6 @@ export default function NewMatchGamePage() {
             draft={draft}
             crew={selectorCrew}
             nameOf={nameOf}
-            avatarIconOf={avatarIconOf}
             onPick={(userId) => {
               editDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId, playersPerSide));
               setSelector(null);
@@ -1470,10 +1469,9 @@ function MatchSetup({
   draft,
   setDraft,
   playersPerSide,
-  teamA,
-  teamB,
   nameOf,
   colorOf,
+  teamColorOf,
   avatarIconOf,
   openSelector,
 }: {
@@ -1481,12 +1479,13 @@ function MatchSetup({
   draft: DraftMatch[];
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
   playersPerSide: number;
-  /** The teams bound to side A / side B (2-team competition). Undefined → no
-   *  team binding (standalone), and the per-side team header is hidden. */
-  teamA?: { name: string; color: string };
-  teamB?: { name: string; color: string };
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
+  /** A player's TEAM color from their ROSTER assignment (`teamOfUser`) — team
+   *  identity is the person, never the slot. A player dropped from their team
+   *  resolves to undefined → the neutral per-player palette (the honest "no team"
+   *  state), exactly like the handicap selector. Undefined for standalone games. */
+  teamColorOf: (userId: string) => string | undefined;
   avatarIconOf: Map<string, string | null>;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
 }) {
@@ -1525,22 +1524,20 @@ function MatchSetup({
     return {
       id: userId,
       name,
-      color: colorOf.get(userId) ?? PLAYER_COLORS[0],
+      // Roster team color (neutral if the player is teamless) — NOT the slot's.
+      color: teamColorOf(userId) ?? colorOf.get(userId) ?? PLAYER_COLORS[0],
       avatarIcon: avatarIconOf.get(userId) ?? null,
     };
   }
   // The member slots for one side — 1 for singles, 2 stacked for doubles. Each
-  // sub-slot picks a single player into that member position. A team header
-  // (Blue / Red) names the side's team so the constraint is legible.
-  // A side's slots — FLAT (config-checklist flatten): no bordered per-team panel /
-  // team-name header; team identity rides as the slot's color marker (dot/ring).
-  // Visual weight = conceptual weight: a side is just its player slot(s).
+  // sub-slot picks a single player into that member position. Team identity rides
+  // on the player avatar's ROSTER color (memberPart → teamColorOf), never the slot —
+  // so a dropped-from-team player reads neutral here, honestly (not the slot's color).
   const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b") => {
-    const team = slot === "a" ? teamA : teamB;
     return (
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: playersPerSide }).map((_, k) => (
-          <Slot key={k} player={memberPart(members[k])} teamColor={team?.color} onTap={() => openSelector(matchIdx, slot, k)} />
+          <Slot key={k} player={memberPart(members[k])} onTap={() => openSelector(matchIdx, slot, k)} />
         ))}
       </div>
     );
@@ -1932,7 +1929,6 @@ function PlayerSelector({
   draft,
   crew,
   nameOf,
-  avatarIconOf,
   onPick,
   onClose,
 }: {
@@ -1947,7 +1943,6 @@ function PlayerSelector({
   draft: DraftMatch[];
   crew: string[];
   nameOf: Map<string, string>;
-  avatarIconOf: Map<string, string | null>;
   onPick: (userId: string) => void;
   onClose: () => void;
 }) {
@@ -1981,7 +1976,7 @@ function PlayerSelector({
         <div className="mt-2 flex flex-col gap-1.5">
           {available.length === 0 && <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Everyone&apos;s assigned.</span>}
           {available.map((id) => (
-            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} teamColor={teamColor} onClick={() => onPick(id)} />
+            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={teamColor} onClick={() => onPick(id)} />
           ))}
         </div>
         {taken.length > 0 && (
@@ -1989,7 +1984,7 @@ function PlayerSelector({
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Already in a match</div>
             <div className="mt-2 flex flex-col gap-1.5">
               {taken.map((id) => (
-                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} teamColor={teamColor} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
+                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={teamColor} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
               ))}
             </div>
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
@@ -2022,7 +2017,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Slot({ player, onTap, teamColor }: { player: Participant | null; onTap: () => void; teamColor?: string | null }) {
+function Slot({ player, onTap }: { player: Participant | null; onTap: () => void }) {
   if (!player) {
     // The plus + label live together inside one dashed pill (card-raised so it
     // reads as a fillable block). Always "+ Add player".
@@ -2045,17 +2040,21 @@ function Slot({ player, onTap, teamColor }: { player: Participant | null; onTap:
       className="flex items-center gap-2"
       style={{ width: "100%", minWidth: 0, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
-      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={teamColor ?? player.color} sizePx={30} />
+      {/* Roster team color (neutral if teamless) — §11 team initial; no avatarIcon
+          (closes #477 in the setup panel). player.color is roster-resolved upstream. */}
+      <Avatar name={player.name} teamColor={player.color} sizePx={30} />
       <span style={{ minWidth: 0, fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
     </button>
   );
 }
 
-function SelectorRow({ name, avatarIcon, teamColor, sub, dim, onClick }: { name: string; avatarIcon?: string | null; teamColor?: string | null; sub?: string; dim?: boolean; onClick: () => void }) {
+function SelectorRow({ name, teamColor, sub, dim, onClick }: { name: string; teamColor?: string | null; sub?: string; dim?: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex w-full items-center justify-between gap-2 text-left" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
       <span className="flex min-w-0 items-center gap-2.5">
-        <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={30} />
+        {/* §11 team initial, no avatarIcon (closes #477). teamColor is the slot's
+            team — correct here: the picker list is constrained to that team. */}
+        <Avatar name={name} teamColor={teamColor} sizePx={30} />
         <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
       </span>
       {sub && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>{sub}</span>}
