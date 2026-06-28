@@ -30,7 +30,7 @@ import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult 
 import { DangerConfirmModal } from "@/components/DangerZone";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeOrClearMatch } from "@/lib/matchDraft";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
@@ -1704,13 +1704,7 @@ function MatchSetup({
                   meanings (no room for a label). */}
               <button
                 type="button"
-                onClick={() =>
-                  setDraft((prev) =>
-                    prev.length > 1
-                      ? prev.filter((_, j) => j !== i)
-                      : prev.map((m, j) => (j === i ? { ...m, a: [], b: [], handicap: 0 } : m))
-                  )
-                }
+                onClick={() => setDraft((prev) => removeOrClearMatch(prev, i))}
                 title={draft.length > 1 ? "Remove match" : "Clear players"}
                 aria-label={draft.length > 1 ? `Remove match ${i + 1}` : `Clear match ${i + 1}`}
                 className="flex items-center justify-center"
