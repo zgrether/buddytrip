@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
-import { assertRosterUnlocked } from "../lib/rosterLock";
+import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
 
 /**
  * team_assignments — composite PK (competition_id, user_id) means a user
@@ -38,6 +38,14 @@ export const teamAssignmentsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
     .query(({ ctx, input }) => listTeamAssignments(ctx, input.competitionId)),
+
+  // rosterLocked — has scoring started (any score entered)? Drives the Rosters
+  // sheet's disabled remove/delete controls (C1 is the enforcement; this is so the
+  // block isn't a surprising error). Adds stay enabled regardless.
+  rosterLocked: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
+    .use(requireTripMember)
+    .query(({ ctx, input }) => competitionHasScore(ctx.supabase, input.competitionId)),
 
   // -----------------------------------------------------------------------
   // assign — set a user's team (canEdit). Upsert behaviour relies on the

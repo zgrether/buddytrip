@@ -267,6 +267,13 @@ export function TeamsPanel({
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
+  // Roster-removal lock: once any game has a score, removals/trades/team-deletes are
+  // server-blocked (C1). Disable those controls here so the block isn't a surprise;
+  // ADDS stay enabled. (Distinct from `structureLocked`/go-live.)
+  const { data: removalsLocked = false } = trpc.teamAssignments.rosterLocked.useQuery(
+    { tripId, competitionId },
+    { enabled: !!competitionId }
+  );
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   // The viewer — to resolve "is the captain of THIS team" for identity editing
   // (PR b2). canEdit is the owner (structure); identity opens to owner OR captain.
@@ -366,6 +373,17 @@ export function TeamsPanel({
         className={`space-y-4 px-4 pb-4 ${embedded ? "" : "pt-3"}`}
         style={embedded ? undefined : { borderTop: "1px solid var(--color-bt-border)" }}
       >
+        {canEdit && removalsLocked && (
+          // Quiet explanation, not an alarm — the controls below are disabled, this
+          // says why. Adds stay live.
+          <p
+            className="rounded-lg px-3 py-2 text-[11px]"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+            data-testid="rosters-locked-note"
+          >
+            Scoring has started — rosters are locked for removals. You can still add players.
+          </p>
+        )}
         {!teamsExist && (
           <NoTeamsEmptyState
             canEdit={canEdit && !structureLocked}
@@ -423,6 +441,7 @@ export function TeamsPanel({
                   canEdit={canEdit}
                   canEditIdentity={canEditIdentity(team.id)}
                   structureLocked={structureLocked}
+                  removalsLocked={removalsLocked}
                   onEdit={() => setEditingTeam(team)}
                   onDelete={() => setDeletingTeam(team)}
                   tripId={tripId}
@@ -527,6 +546,7 @@ function TeamCard({
   canEdit,
   canEditIdentity,
   structureLocked,
+  removalsLocked,
   onEdit,
   onDelete,
   tripId,
@@ -541,6 +561,9 @@ function TeamCard({
    *  color (PR b2). A captain edits ONLY their own team's identity. */
   canEditIdentity: boolean;
   structureLocked: boolean;
+  /** Scoring has started → removals/trades/team-delete are blocked (C1). Disables
+   *  the per-player ×, the move-drag, and the team-delete trash; adds stay live. */
+  removalsLocked: boolean;
   onEdit: () => void;
   onDelete: () => void;
   tripId: string;
@@ -640,9 +663,10 @@ function TeamCard({
         <span className="flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
           {teamMembers.length}
         </span>
-        {canEdit && !structureLocked && (
-          // Delete-team lives at the list level (W-TEAMDEL-01). Hidden once live —
-          // removing a team is a structure change (§9).
+        {canEdit && !structureLocked && !removalsLocked && (
+          // Delete-team lives at the list level (W-TEAMDEL-01). Hidden once live OR
+          // once scoring starts — deleting a team is a mass removal (the locked note
+          // above explains it).
           <button
             type="button"
             onClick={onDelete}
@@ -681,10 +705,11 @@ function TeamCard({
               name={m.displayName}
               avatarIcon={m.user?.avatar_icon ?? null}
               teamColor={team.color}
-              draggable={canEdit}
+              // Dragging an assigned player = a MOVE/trade → disabled once removals lock.
+              draggable={canEdit && !removalsLocked}
               isCaptain={isCaptain}
               onDragStart={
-                canEdit
+                canEdit && !removalsLocked
                   ? (e) => {
                       e.dataTransfer.setData(DND_USER_KEY, id);
                       e.dataTransfer.effectAllowed = "move";
@@ -692,6 +717,7 @@ function TeamCard({
                   : undefined
               }
               onRemove={canEdit ? () => remove.mutate({ tripId, competitionId, userId: id }) : undefined}
+              removeLocked={removalsLocked}
               removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
               // Owner sets captain (PR b); members see the filled ★ read-only.
               onToggleCaptain={
@@ -720,6 +746,7 @@ function PlayerRow({
   isCaptain,
   onDragStart,
   onRemove,
+  removeLocked = false,
   removeAriaLabel,
   onToggleCaptain,
   captainAriaLabel,
@@ -731,6 +758,8 @@ function PlayerRow({
   isCaptain: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onRemove?: () => void;
+  /** Scoring started → the × is shown DISABLED (with a why-tooltip), not hidden. */
+  removeLocked?: boolean;
   removeAriaLabel: string;
   /** Owner-only: tap the ★ to mark/unmark captain. Absent for members. */
   onToggleCaptain?: () => void;
@@ -782,9 +811,11 @@ function PlayerRow({
       {onRemove && (
         <button
           type="button"
-          onClick={onRemove}
+          onClick={removeLocked ? undefined : onRemove}
+          disabled={removeLocked}
           aria-label={removeAriaLabel}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+          title={removeLocked ? "Locked — scoring has started. You can still add players." : undefined}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           <X size={14} />
