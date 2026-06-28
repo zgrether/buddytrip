@@ -28,6 +28,7 @@ import { DangerConfirmModal } from "@/components/DangerZone";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady } from "@/lib/matchDraft";
+import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
@@ -977,6 +978,13 @@ export default function NewMatchGamePage() {
         // persist (the draft editors commit on close). Course + Name·Format·Points
         // stay overlays this pass (tracked follow-ons) but ride the same one-open.
         const allFilled = allMatchesFilled(draft, playersPerSide);
+        // Roster integrity (team-identity PR 1, the D-gap catch): a paired side whose
+        // player has LOST their team is invalid even though its SLOTS are full
+        // (dropped-after-paired). The keystone predicate (teamRoster.ts) — distinct
+        // from the slot-filled `allFilled` above. Only meaningful in a 2-team
+        // competition (standalone match play has no teams → always roster-valid).
+        const teamedUserIds = new Set(teamOfUser.keys());
+        const allRosterValid = !twoTeams || draft.every((d) => matchRosterValid(d.a, d.b, playersPerSide, teamedUserIds));
         // C3: points > 0 joins the Enable gate (Phase C) — but ONLY for a
         // COMPETITION game. Points-per-match is a cup concept: the inline Points row
         // exists only when `gameCompId` is set (GameSetupRows gates it on
@@ -987,7 +995,7 @@ export default function NewMatchGamePage() {
         // shows, so the row's resolved state and the gate agree (one truth);
         // pointsReady is the family's client-gate extension (matchDraft.ts).
         const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
-        const enableReady = allFilled && (!gameCompId || pointsReady(pointsPerMatch));
+        const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(pointsPerMatch));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points,
         // Handicaps, and Modifiers stay LOCKED until a match exists (they mean nothing
@@ -1008,7 +1016,11 @@ export default function NewMatchGamePage() {
         const matchesSubtitle = filledDraft.length === 0
           ? "0 matches assigned"
           : `${filledDraft.length} of ${draft.length} matches assigned`;
-        const matchesState: ChecklistRowState = allFilled ? "resolved" : "invalid";
+        // Resolved only when slots are filled AND every paired side is rostered;
+        // a dropped-after-paired side flips it to the invalid (red) verdict, surfaced
+        // the same way as the slot-filled hard-block (P2/P2b collapse-boundary timing
+        // unchanged — this only adds a reason a match is invalid).
+        const matchesState: ChecklistRowState = allFilled && allRosterValid ? "resolved" : "invalid";
         // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
         // stroke allocation needs the course's stroke-index table, so a complete
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
