@@ -1637,9 +1637,12 @@ function MatchSetup({
               }}
               // The match is one flat grid ROW (no frame, no "MATCH N" band). The
               // four structural columns (grab │ # │ vs │ ×) center against the team
-              // columns, which hold one chip (1v1) or two stacked chips (2v2).
+              // columns, which hold one chip (1v1) or two stacked chips (2v2). A
+              // hairline separator above every match but the first delimits them —
+              // quiet in 1v1, load-bearing in 2v2 (it makes the 2-row match read as
+              // one unit).
               className="grid items-center"
-              style={{ position: "relative", gridTemplateColumns: MATCH_GRID, gap: 8, padding: "8px 0", opacity: dragging ? 0.4 : 1 }}
+              style={{ position: "relative", gridTemplateColumns: MATCH_GRID, gap: 8, padding: "10px 0", opacity: dragging ? 0.4 : 1, borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
             >
               {dropIndicator && (
                 <div
