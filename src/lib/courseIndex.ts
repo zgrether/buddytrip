@@ -99,6 +99,13 @@ export interface ScorecardUnits {
     par?: number[];
     handicap_index?: number[];
     tee?: SnapshotTee;
+    /** The BACK nine's chosen tee NAME on a composed two-nines 18 (W-GAMEPAGE P-F0a).
+     *  The composed `tee.name` is the FRONT's; this records which tee the back nine
+     *  actually used (name-match-else-first), so the §16 split-band header can label
+     *  the back band honestly. ABSENT on single courses and on every game composed
+     *  before P-F0 — readers MUST treat absent as "fall back to the composed/front
+     *  tee name" (no migration backfills it). */
+    backTeeName?: string;
     [k: string]: unknown;
   };
 }
@@ -155,7 +162,11 @@ export function buildScorecardSchema(
   par: number[],
   handicapIndex: number[] | null | undefined,
   holeCount: number,
-  tee?: SnapshotTee | null
+  tee?: SnapshotTee | null,
+  /** The back nine's chosen tee NAME (composed two-nines 18 only; P-F0a). Provided
+   *  by `setBackNine`; omitted by `applyCourse` (a fresh front clears any stale
+   *  back-tee name, same as it resets back_course_id). */
+  backTeeName?: string | null
 ): ScorecardSchema {
   const next = JSON.parse(JSON.stringify(template)) as ScorecardSchema;
   const labels = range(1, holeCount);
@@ -170,6 +181,10 @@ export function buildScorecardSchema(
   // display + provenance. Omitted when no course/tee is applied.
   if (tee) metadata.tee = { ...tee, yards: tee.yards.slice(0, holeCount) };
   else delete metadata.tee;
+  // The back nine's chosen tee name (P-F0a) — capture-only; absent on single
+  // courses and pre-P-F0 composes (readers fall back to the composed tee name).
+  if (backTeeName && backTeeName.trim()) metadata.backTeeName = backTeeName.trim();
+  else delete metadata.backTeeName;
 
   next.units = { ...next.units, count: holeCount, labels, metadata };
 

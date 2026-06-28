@@ -444,7 +444,10 @@ export const gamesRouter = router({
 
       const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
       if (!baseSchema?.units) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." });
-      const snapshot = buildScorecardSchema(baseSchema, composed.par, composed.index, 18, composedTee);
+      // P-F0a: record the back nine's CHOSEN tee name (the composed tee carries the
+      // FRONT's name) so the §16 split-band header can label the back band honestly.
+      // Capture-only — `backTee` selection / yardages above are unchanged.
+      const snapshot = buildScorecardSchema(baseSchema, composed.par, composed.index, 18, composedTee, backTee?.name ?? null);
 
       // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
       // front (1-9) is left intact. (A no-op on the first compose.)
