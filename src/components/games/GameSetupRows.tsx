@@ -5,6 +5,7 @@ import { Flag, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { Stepper } from "@/components/games/Stepper";
+import { pointsReady } from "@/lib/matchDraft";
 import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -135,10 +136,12 @@ export function GameSetupRows({
             subtitle={
               <>
                 Total Points Available:{" "}
-                <span style={{ color: perMatch > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{pointsTotal}</span>
+                <span style={{ color: pointsReady(perMatch) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{pointsTotal}</span>
               </>
             }
-            state={perMatch > 0 ? "resolved" : "empty"}
+            // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
+            // points term satisfied (they can't disagree).
+            state={pointsReady(perMatch) ? "resolved" : "empty"}
             disabled={!canEdit}
             testId="row-format-points"
             control={
