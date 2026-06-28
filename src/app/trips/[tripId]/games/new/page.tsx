@@ -13,9 +13,12 @@ import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
+import { ModifierCards } from "@/components/games/ModifierCards";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
+import { GAME_TYPES } from "@/lib/gameTypes";
+import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { useTripRole } from "@/hooks/useTripRole";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -76,6 +79,8 @@ export default function NewGamePage() {
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   const [showConfig, setShowConfig] = useState(false); // §B 2B.3 Configuration page
   const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
+  const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
@@ -193,6 +198,40 @@ export default function NewGamePage() {
     setStrokes
       .mutateAsync({ tripId: tripId!, gameId: activeGameId!, userId, strokes })
       .then((r) => { void gameQ.refetch(); return r; });
+
+  // A1 P0 — Game Modifiers, the home stroke play was missing (the match page had
+  // it; stroke didn't, yet stroke has functional modifiers — moving_tees /
+  // glorious_holes). Same component + same games.modifiers wiring as the match
+  // page; persisted on-change (the stroke page's idiom — like onSetStrokes —
+  // rather than the match accordion's persist-on-collapse). Seed the draft once
+  // from the saved game, then own it locally.
+  const availableModifiers = GAME_TYPES.find(
+    (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
+  )?.compatibleModifiers ?? [];
+  const modifiersSeededRef = useRef(false);
+  useEffect(() => {
+    if (modifiersSeededRef.current || !gameQ.data) return;
+    setModifiersDraft(((gameQ.data as { modifiers?: ModifiersMap | null }).modifiers) ?? {});
+    modifiersSeededRef.current = true;
+  }, [gameQ.data]);
+  const updateModifiers = trpc.games.update.useMutation();
+  function persistModifiers(next: ModifiersMap) {
+    if (!tripId || !activeGameId) return;
+    setModifiersDraft(next);
+    const cur = utils.games.getById.getData({ tripId, gameId: activeGameId });
+    if (cur) utils.games.getById.setData({ tripId, gameId: activeGameId }, { ...cur, modifiers: next } as typeof cur);
+    updateModifiers.mutate(
+      { tripId, gameId: activeGameId, modifiers: next },
+      {
+        onSuccess: () => {
+          if (gameCompetitionId) {
+            utils.competitions.faceBootstrap.invalidate({ tripId });
+            utils.games.listByTrip.invalidate({ tripId });
+          }
+        },
+      }
+    );
+  }
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
@@ -307,6 +346,29 @@ export default function NewGamePage() {
     );
   }
 
+  // A1 P0 — Game Modifiers drill-down (mirrors the Handicaps overlay above): the
+  // SAME ModifierCards the match setup page uses, persisted on-change.
+  if (game && showModifiers && canEdit) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh", background: "var(--color-bt-base)" }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+          <button
+            type="button"
+            onClick={() => setShowModifiers(false)}
+            className="flex items-center gap-1 text-sm font-semibold"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} /> Back
+          </button>
+          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={!canEdit} />
+        </div>
+      </div>
+    );
+  }
+
   // ── Enable gate (Phase 2B.1) → §B setup hull (2B.2). A configured game must be
   // enabled before its score screen opens; the gate also hosts the standardized
   // course + Name·Format·Points drill-down rows + (§3) the Handicaps step. ──
@@ -343,6 +405,13 @@ export default function NewGamePage() {
                 }}
               />
               <HandicapsRow strokesOf={strokesOf} onClick={() => setShowHandicaps(true)} disabled={!canEdit} />
+              {availableModifiers.length > 0 && (
+                <ModifiersRow
+                  count={enabledCount(modifiersDraft, availableModifiers)}
+                  onClick={() => setShowModifiers(true)}
+                  disabled={!canEdit}
+                />
+              )}
             </>
           ) : null
         }
@@ -505,6 +574,32 @@ function HandicapsRow({ strokesOf, onClick, disabled }: { strokesOf: Map<string,
         </span>
         <span className="truncate text-sm" style={{ color: withStrokes ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", marginTop: 2 }}>
           {withStrokes > 0 ? `${withStrokes} player${withStrokes === 1 ? "" : "s"} get strokes` : "Add per-player strokes"}
+        </span>
+      </div>
+      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+    </button>
+  );
+}
+
+/** A1 P0 — Game Modifiers drill-down row in the stroke setup hull (the home stroke
+ *  was missing; the match page had it). Mirrors HandicapsRow's style; opens the
+ *  full-screen ModifierCards overlay. Shown only when the format offers modifiers
+ *  (stroke → moving_tees / glorious_holes; a format with none hides the row). */
+function ModifiersRow({ count, onClick, disabled }: { count: number; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <div className="flex min-w-0 flex-col">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Game Modifiers <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· optional</span>
+        </span>
+        <span className="truncate text-sm" style={{ color: count > 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", marginTop: 2 }}>
+          {count > 0 ? `${count} modifier${count === 1 ? "" : "s"} added` : "Add special rules"}
         </span>
       </div>
       <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />

@@ -7,8 +7,6 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
-import { CoursePicker } from "@/components/games/course/CoursePicker";
-import { ModifierCards } from "@/components/games/ModifierCards";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
@@ -23,18 +21,16 @@ import { GAME_TYPES, gameTypesForScoringModel, type GameType, type ScoringModel 
 export type { GameType };
 
 /**
- * CompetitionGamesPanel — the Slice D contest list + the two-tab add/edit page
- * (Game · Configuration), on `games`.
+ * CompetitionGamesPanel — the Slice D contest list + the single-tab add/edit Game
+ * sheet, on `games`.
  *
- * Game tab (owner-controlled): Type → format → name → course (golf) → the
- * owner-set point value (a placement TOTAL, or a match per-match value), set with
- * an integrated stepper. Non-golf types offer a single "Generic <Type> Game".
- *
- * Configuration tab (the hub returned to via the dashboard tap-through):
- * a single role-aware delegate at the top; a MODEL-AWARE point editor (placement
- * → place splits that must SUM to the owner total; match → a derived readout);
- * the rules-of-the-day explainer; and the "How's it played?" format chooser. A
- * single save persists both tabs (and reconciles the delegate grant).
+ * The Game sheet (A1 teardown — one tab, the light skeleton): Type → Format →
+ * Title → Delegate (a single role-aware grant) → Competition format ("How's it
+ * played?", the leaderboard label / future scoreboard-layout selector) → points
+ * (a placement TOTAL + place-splits that must SUM to it, or a match per-match
+ * value). Course / pairings / handicaps / rules / modifiers all live on the
+ * game's SETUP page now (the modal stopped duplicating them — A1 P-C/P-D). A
+ * single save persists the sheet and reconciles the delegate grant.
  */
 
 interface Props {
@@ -358,9 +354,7 @@ function RunButton({ state, onClick }: { state: RunState; onClick: () => void })
   );
 }
 
-// ── Two-tab Game sheet ────────────────────────────────────────────────────────
-
-type Tab = "game" | "config";
+// ── Game sheet (A1 P-D: single tab — the light add/edit skeleton) ──────────────
 
 export function GameSheet({
   tripId, competitionId, game, types, canEdit, scoringModel, onClose,
@@ -389,7 +383,6 @@ export function GameSheet({
     game?.game_type_id ?? offerable.find((t) => t.category === "golf")?.id ?? offerable[0]?.id ?? ""
   );
   const [title, setTitle] = useState(game?.name ?? "");
-  const [tab, setTab] = useState<Tab>("game");
 
   // Owner total (placement) / per-match value (match) — integer steppers, so
   // there's always a concrete value (defaults: 8 placement, 1 per match).
@@ -406,21 +399,17 @@ export function GameSheet({
     return [""];
   });
   const [compFormat, setCompFormat] = useState<string | null>(game?.competition_format ?? null);
-  const [rules, setRules] = useState<string>(game?.rules_for_today ?? "");
-  // Enabled special rules (golf) — keyed by modifier, value = per-rule config.
-  const [modifiers, setModifiers] = useState<Record<string, Record<string, unknown>>>(game?.modifiers ?? {});
+  // A1 P-D: rules_for_today + modifiers are no longer edited in the modal (they live
+  // on the setup pages — GameRulesNote + the Modifiers rows), so their state is gone.
   // Single delegate. undefined = not-yet-initialized from the existing grant.
   const [delegateId, setDelegateId] = useState<string | null | undefined>(game ? undefined : null);
   const [formatSheetOpen, setFormatSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Course (Phase 1.0): the panel previously SHOWED course state but had no way
-  // to set it — competition games had no course-selection entry point, so the
-  // stroke index never reached the (conformant) handicap path. Wire the existing
-  // CoursePicker here. Local state tracks the pick; on an existing game we
-  // persist immediately via applyCourse, on a new game we apply after create.
-  const [courseId, setCourseId] = useState<string | null>(game?.course_id ?? null);
-  const [courseName, setCourseName] = useState<string | null>(null);
-  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
+  // Course (A1 P-C): the modal's course picker was a HOLDOVER — it duplicated the
+  // setup-page Course row (GameSetupRows slot="course"), which is now the single
+  // course-selection home. The picker is stripped; this read-only id is kept only
+  // for the dead MakeItReady readout (removed with it in P-D).
+  const courseId = game?.course_id ?? null;
 
   const categoriesPresent = CATEGORY_ORDER.filter((c) => offerable.some((t) => t.category === c));
   const categoryTypes = offerable.filter((t) => t.category === category);
@@ -467,50 +456,8 @@ export function GameSheet({
   const deleteGame = trpc.games.delete.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();
   const removeOrg = trpc.games.removeOrganizer.useMutation();
-  const applyCourse = trpc.games.applyCourse.useMutation();
-  const clearCourse = trpc.games.clearCourse.useMutation();
-
-  // Resolve the applied course's NAME for the field label (a pre-set course
-  // has an id but no just-picked name). Skipped when nothing's applied.
-  const courseQ = trpc.courses.getById.useQuery(
-    { courseId: courseId ?? "" },
-    { enabled: !!courseId },
-  );
-  const resolvedCourseName = courseName ?? ((courseQ.data?.name as string | undefined) ?? null);
-
-  // Pick a course: snapshot it onto an existing game now; for a new game stash
-  // the id and apply it right after create (persist()).
-  async function handlePickCourse(id: string, name: string) {
-    setCourseId(id);
-    setCourseName(name);
-    setCoursePickerOpen(false);
-    if (isEdit && game) {
-      try {
-        await applyCourse.mutateAsync({ tripId, gameId: game.id, courseId: id });
-        utils.games.listByTrip.invalidate({ tripId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to apply course");
-      }
-    }
-  }
-
-  // Clear the applied course (× on the field). On an existing game, persist the
-  // clear (reverts the snapshot to the template default); on a new game just
-  // drop the stashed pick.
-  async function handleClearCourse() {
-    setCourseId(null);
-    setCourseName(null);
-    if (isEdit && game) {
-      try {
-        await clearCourse.mutateAsync({ tripId, gameId: game.id });
-        utils.games.listByTrip.invalidate({ tripId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to clear course");
-      }
-    }
-  }
+  // Course apply/clear lived here for the stripped holdover picker (A1 P-C) — the
+  // setup-page Course row (applyCourse/clearCourse via GameSetupRows) owns it now.
 
   // Derived validation (the same pure fn the server uses).
   const started = !isMatchPlay && (placeInputs[0]?.trim() ?? "") !== "";
@@ -525,7 +472,7 @@ export function GameSheet({
   useEffect(() => {
     if (error) setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, total, perMatchValue, placeInputs, compFormat, effectiveTypeId, rules]);
+  }, [title, total, perMatchValue, placeInputs, compFormat, effectiveTypeId]);
 
   function buildDistribution(): PointsDistribution | null {
     if (isMatchPlay) return { type: "per_match", value: perMatchValue > 0 ? perMatchValue : 1 };
@@ -541,19 +488,22 @@ export function GameSheet({
 
   async function persist(): Promise<boolean> {
     setError(null);
-    if (canEdit && !title.trim()) { setError("Add a title to save this game"); setTab("game"); return false; }
-    if (!effectiveTypeId) { setError("Pick a format"); setTab("game"); return false; }
-    if (blockedPartial) { setTab("config"); return false; } // button is disabled too
+    if (canEdit && !title.trim()) { setError("Add a title to save this game"); return false; }
+    if (!effectiveTypeId) { setError("Pick a format"); return false; }
+    if (blockedPartial) return false; // button is disabled too
     const distribution = buildDistribution();
     try {
       let gameId: string;
+      // A1 P-D: the modal no longer edits rules_for_today or modifiers (they live on
+      // the setup pages — GameRulesNote + the Modifiers rows), so they're OMITTED from
+      // update() and NOT clobbered (games.update is a patch — undefined = unchanged).
       if (isEdit && game) {
         gameId = game.id;
         if (canEdit) {
-          await update.mutateAsync({ tripId, gameId, name: title.trim(), competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
+          await update.mutateAsync({ tripId, gameId, name: title.trim(), competitionFormat: (compFormat as never) ?? null });
           await setTotalM.mutateAsync({ tripId, gameId, total: isMatchPlay ? null : total });
         } else {
-          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
+          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null });
         }
         await setDist.mutateAsync({ tripId, gameId, distribution });
       } else {
@@ -569,17 +519,11 @@ export function GameSheet({
           pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : total,
         })) as { id: string };
         gameId = created.id;
-        if (compFormat || rules.trim() || Object.keys(modifiers).length > 0) {
-          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
+        if (compFormat) {
+          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null });
         }
-        // Apply a course chosen during create (snapshots par + stroke index).
-        if (courseId) {
-          try {
-            await applyCourse.mutateAsync({ tripId, gameId, courseId });
-          } catch {
-            // Non-fatal: the game still saves on the template default par/index.
-          }
-        }
+        // Course (A1 P-C): no longer applied at create — the new game's course is
+        // set on its setup-page Course row (the single home).
         // C1: Add no longer seeds match rows. Matches are build-as-you-go in the
         // configurer — the setup page seeds ONE empty match when it lands with zero
         // rows (match/new/page.tsx) and "+ Add match" grows it. (The old count
@@ -656,15 +600,13 @@ export function GameSheet({
                 <X size={16} />
               </button>
             </div>
-            <div className="flex px-4">
-              <TabButton active={tab === "game"} onClick={() => setTab("game")}>Game</TabButton>
-              <TabButton active={tab === "config"} onClick={() => setTab("config")}>Configuration</TabButton>
-            </div>
           </div>
 
+          {/* A1 P-D: single tab — the Configuration tab + its now-homed/dead contents
+              (Rules → setup GameRulesNote, Modifiers → setup rows, MakeItReady → dead)
+              are gone. The Game tab is the whole light skeleton. */}
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {tab === "game" ? (
-              <GameTab
+            <GameTab
                 isEdit={isEdit}
                 canEdit={canEdit}
                 categoriesPresent={categoriesPresent}
@@ -677,10 +619,6 @@ export function GameSheet({
                 title={title}
                 setTitle={setTitle}
                 isGolf={isGolf}
-                courseId={courseId}
-                courseName={resolvedCourseName}
-                onPickCourse={() => setCoursePickerOpen(true)}
-                onClearCourse={handleClearCourse}
                 isMatchPlay={isMatchPlay}
                 isPairedMatch={isPairedMatch}
                 existingMatchCount={existingMatchCount}
@@ -689,33 +627,17 @@ export function GameSheet({
                 perMatchValue={perMatchValue}
                 setPerMatchValue={setPerMatchValue}
                 readout={readout}
-              />
-            ) : (
-              <ConfigTab
-                canEdit={canEdit}
                 members={members as Member[]}
                 delegateId={desiredDelegate}
                 setDelegateId={setDelegateId}
-                isMatchPlay={isMatchPlay}
-                isGolf={isGolf}
-                courseId={courseId}
-                total={total}
+                compFormat={compFormat}
+                openFormatSheet={() => setFormatSheetOpen(true)}
                 placeInputs={placeInputs}
                 setPlaceInputs={setPlaceInputs}
                 placement={placement}
                 pFit={pFit}
                 mFit={mFit}
-                readout={readout}
-                perMatchValue={perMatchValue}
-                rules={rules}
-                setRules={setRules}
-                availableModifiers={selectedType?.compatibleModifiers ?? []}
-                modifiers={modifiers}
-                setModifiers={setModifiers}
-                compFormat={compFormat}
-                openFormatSheet={() => setFormatSheetOpen(true)}
               />
-            )}
 
             {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
 
@@ -748,16 +670,6 @@ export function GameSheet({
                 {isDropped ? <RotateCcw size={15} /> : <Trash2 size={15} />}
               </button>
             )}
-            {tab === "game" && (
-              <button
-                type="button"
-                onClick={() => setTab("config")}
-                className="flex-1 rounded-xl py-3 text-sm font-semibold"
-                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-              >
-                Configuration ›
-              </button>
-            )}
             <button
               type="button"
               onClick={handleSave}
@@ -780,12 +692,6 @@ export function GameSheet({
         />
       )}
 
-      {coursePickerOpen && (
-        <CoursePicker
-          onApply={({ id, name }) => void handlePickCourse(id, name)}
-          onClose={() => setCoursePickerOpen(false)}
-        />
-      )}
     </ScrollLock>
   );
 }
@@ -794,18 +700,24 @@ export function GameSheet({
 
 function GameTab({
   isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
-  setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, onClearCourse, isMatchPlay,
+  setGameTypeId, selectedType, title, setTitle, isGolf, isMatchPlay,
   isPairedMatch, existingMatchCount,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
+  members, delegateId, setDelegateId, compFormat, openFormatSheet,
+  placeInputs, setPlaceInputs, placement, pFit, mFit,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
-  setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; courseName: string | null;
-  onPickCourse: () => void; onClearCourse: () => void; isMatchPlay: boolean;
+  setTitle: (s: string) => void; isGolf: boolean; isMatchPlay: boolean;
   isPairedMatch: boolean; existingMatchCount: number | null;
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
+  members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+  compFormat: string | null; openFormatSheet: () => void;
+  placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
+  placement: ReturnType<typeof validatePlacement>;
+  pFit: ReturnType<typeof placementFit>; mFit: ReturnType<typeof matchFit>;
 }) {
   const readOnly = !canEdit;
   return (
@@ -848,52 +760,13 @@ function GameTab({
         />
       </Field>
 
-      {isGolf && (
-        <Field label="Course">
-          {courseId ? (
-            // Applied: show the course name (tap to change) + an × to clear.
-            <div
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <button
-                type="button"
-                onClick={readOnly ? undefined : onPickCourse}
-                disabled={readOnly}
-                className="min-w-0 flex-1 truncate text-left disabled:opacity-70"
-              >
-                {courseName ?? "Course applied"}
-              </button>
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={onClearCourse}
-                  aria-label="Clear course"
-                  title="Clear course"
-                  className="ml-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={readOnly ? undefined : onPickCourse}
-              disabled={readOnly}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm disabled:opacity-70"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <span>Select a course</span>
-              <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-          )}
-          <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            The golf course is optional, but required if you want to keep score.
-          </p>
-        </Field>
-      )}
+      {/* Delegate (A1 P-A) — moved here from the retired Configuration tab. It's the
+          one config keeper with no setup-page edit-home (the setup page shows the
+          grant read-only in GameIdentityHeader). */}
+      <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
+
+      {/* Course (A1 P-C): the picker was a holdover that duplicated the setup-page
+          Course row — stripped. A golf game gets its course on the setup page. */}
 
       {/* W-GAMEPAGE Phase-C teardown: Add Game no longer sets match-play points.
           A new match game is created at 0 points (build-as-you-go) and its
@@ -903,30 +776,64 @@ function GameTab({
           row, so the modal stays their points home. */}
       {isMatchPlay ? (
         isEdit ? (
-          <PointStepper
-            label="Points per match"
-            caption="POINTS PER MATCH"
-            value={perMatchValue}
-            onChange={readOnly ? () => {} : setPerMatchValue}
-            footer={<MatchReadoutLine readout={readout} />}
-          />
+          <>
+            <PointStepper
+              label="Points per match"
+              caption="POINTS PER MATCH"
+              value={perMatchValue}
+              onChange={readOnly ? () => {} : setPerMatchValue}
+              footer={<MatchReadoutLine readout={readout} />}
+            />
+            {mFit.state === "warn" && <FitWarning message={mFit.message!} />}
+          </>
         ) : null
       ) : (
-        <PointStepper
-          label="Point value"
-          caption="POINTS FOR THIS GAME"
-          value={total}
-          onChange={readOnly ? () => {} : setTotal}
-          footer={
-            <div className="flex items-center gap-1.5">
-              <SlidersHorizontal size={12} style={{ color: "var(--color-bt-text-dim)" }} />
-              <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Split across finishing places on the Configuration tab ›
-              </span>
-            </div>
-          }
-        />
+        // Placement points (A1 P-D): the total stepper + the placement split editor
+        // moved here from the retired Configuration tab — placement games set their
+        // points in the modal (the create-time home; the setup-page FormatPointsPanel
+        // covers edit).
+        <>
+          <PointStepper
+            label="Point value"
+            caption="POINTS FOR THIS GAME"
+            value={total}
+            onChange={readOnly ? () => {} : setTotal}
+            footer={
+              <div className="flex items-center gap-1.5">
+                <SlidersHorizontal size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Split across finishing places below
+                </span>
+              </div>
+            }
+          />
+          <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={setPlaceInputs} placement={placement} />
+          {pFit.state === "warn" && <FitWarning message={pFit.message!} />}
+        </>
       )}
+
+      {/* Competition format (A1 P-B) — moved here from the retired Configuration tab.
+          KEPT (not dropped): it's the sole editor of a live, leaderboard-visible
+          field whose INTENT is the (Tier-2) game-scoreboard layout for non-golf games
+          — bracket / summation / best-of / custom / win-lose-tie. Today it only drives
+          the leaderboard label (`formatLabel`); the layout system is future scope, with
+          win/lose/tie as its built seed. (See the coherence trace in the PR notes —
+          this overlaps conceptually with `competitions.scoring_model`, the live points
+          axis, which this PR does NOT resolve.) */}
+      <Field label="Competition format">
+        <button
+          type="button"
+          onClick={openFormatSheet}
+          className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm"
+          style={{ background: "var(--color-bt-card-raised)", color: compFormat ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <span>{formatLabel(compFormat) ?? "How's it played?"}</span>
+          <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
+        </button>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Sets the label on the leaderboard. Running it up in-app comes later — until then you enter results by hand.
+        </p>
+      </Field>
 
       {/* Matches (1v1/2v2 only): EDIT shows the derived live count (changed in the
           builder). Add no longer seeds a count — build-as-you-go owns it: the setup
@@ -982,124 +889,7 @@ export function MatchReadoutLine({ readout }: { readout: ReturnType<typeof match
   );
 }
 
-// ── Configuration tab ─────────────────────────────────────────────────────────
-
-function ConfigTab({
-  canEdit, members, delegateId, setDelegateId, isMatchPlay, isGolf, courseId, total, placeInputs, setPlaceInputs,
-  placement, pFit, mFit, readout, perMatchValue, rules, setRules, availableModifiers, modifiers, setModifiers,
-  compFormat, openFormatSheet,
-}: {
-  canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
-  isMatchPlay: boolean; isGolf: boolean; courseId: string | null; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
-  placement: ReturnType<typeof validatePlacement>; pFit: ReturnType<typeof placementFit>;
-  mFit: ReturnType<typeof matchFit>; readout: ReturnType<typeof matchReadout>;
-  perMatchValue: number; rules: string; setRules: (s: string) => void;
-  availableModifiers: string[]; modifiers: Record<string, Record<string, unknown>>;
-  setModifiers: (m: Record<string, Record<string, unknown>>) => void;
-  compFormat: string | null; openFormatSheet: () => void;
-}) {
-  return (
-    <>
-      <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
-
-      {isMatchPlay ? (
-        <Field label="Point value">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black tabular-nums" style={{ color: "var(--color-bt-text)" }}>{fmtValue(perMatchValue)}</span>
-            <span className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>/ match · set on Game tab</span>
-          </div>
-          <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-            <MatchReadoutLine readout={readout} />
-          </div>
-        </Field>
-      ) : (
-        <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={setPlaceInputs} placement={placement} />
-      )}
-
-      {!isMatchPlay && pFit.state === "warn" && <FitWarning message={pFit.message!} />}
-      {isMatchPlay && mFit.state === "warn" && <FitWarning message={mFit.message!} />}
-
-      <Field label="Rules explainer">
-        <textarea
-          value={rules}
-          onChange={(e) => setRules(e.target.value)}
-          rows={3}
-          maxLength={2000}
-          placeholder="Tap out the rules of the day — formats, gimmes, mulligans, tiebreakers…"
-          className="w-full resize-none rounded-lg px-3 py-2 text-sm outline-none"
-          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-        />
-      </Field>
-
-      {isGolf && availableModifiers.length > 0 && (
-        <Field label="Special rules">
-          <ModifierCards available={availableModifiers} modifiers={modifiers} onChange={setModifiers} readOnly={!canEdit} />
-        </Field>
-      )}
-
-      <Field label="Competition format">
-        <button
-          type="button"
-          onClick={openFormatSheet}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm"
-          style={{ background: "var(--color-bt-card-raised)", color: compFormat ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span>{formatLabel(compFormat) ?? "How's it played?"}</span>
-          <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Sets the label on the leaderboard. Running it up in-app comes later — until then you enter results by hand.
-        </p>
-      </Field>
-
-      <MakeItReady canEdit={canEdit} isGolf={isGolf} isMatchPlay={isMatchPlay} courseId={courseId} />
-    </>
-  );
-}
-
-/**
- * MAKE IT READY — the day-of setup checklist (owner only). Stubbed: the rows show
- * the correct ready/not-set state but the deep setup (course picker, pairings,
- * handicaps) is wired in a follow-up — for now results are entered by hand. Rows
- * are model-aware: every game can group/pair; only golf/match carry a course and
- * handicaps.
- */
-function MakeItReady({
-  canEdit, isGolf, isMatchPlay, courseId,
-}: {
-  canEdit: boolean; isGolf: boolean; isMatchPlay: boolean; courseId: string | null;
-}) {
-  if (!canEdit) return null;
-  const rows: { Icon: typeof Flag; label: string; state: string; ready: boolean }[] = [];
-  if (isGolf) rows.push({ Icon: Flag, label: "Course", state: courseId ? "Applied" : "Not set", ready: !!courseId });
-  rows.push({ Icon: Users, label: "Groups & pairings", state: "Not set", ready: false });
-  if (isGolf || isMatchPlay) rows.push({ Icon: Target, label: "Handicaps", state: "Not set", ready: false });
-
-  return (
-    <Field label="Make it ready">
-      <div className="space-y-1.5">
-        {rows.map((r) => (
-          <div
-            key={r.label}
-            className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm"
-            style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <span className="flex items-center gap-2" style={{ color: "var(--color-bt-text)" }}>
-              <r.Icon size={14} style={{ color: "var(--color-bt-accent)" }} />
-              {r.label}
-            </span>
-            <span className="text-[11px] font-semibold" style={{ color: r.ready ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
-              {r.state}
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Course, pairings and handicap setup lands in a follow-up — for now, enter results by hand.
-      </p>
-    </Field>
-  );
-}
+// ── Delegate picker (on the Game tab since A1 P-A) ─────────────────────────────
 
 function DelegationBlock({
   canEdit, members, delegateId, setDelegateId,
@@ -1115,7 +905,7 @@ function DelegationBlock({
         <div>
           <p className="text-sm font-semibold" style={{ color: "var(--color-bt-accent)" }}>You&rsquo;ve been asked to help set this up</p>
           <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Configure away. The owner keeps the basics (name, course, value) on the Game tab.
+            Configure away. The owner keeps the basics (name, format, value) here.
           </p>
         </div>
       </div>
@@ -1165,7 +955,7 @@ function DelegationBlock({
         </div>
       )}
       <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Hand this game&rsquo;s setup and running to one person — they get their own Configuration tab.
+        Hand this game&rsquo;s setup and running to one person — they can configure it on the game page.
       </p>
     </Field>
   );
@@ -1638,20 +1428,6 @@ function EngineReview({
 }
 
 // ── small shared bits ─────────────────────────────────────────────────────────
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="relative px-3 py-2.5 text-sm font-semibold"
-      style={{ color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
-    >
-      {children}
-      {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full" style={{ background: "var(--color-bt-accent)" }} />}
-    </button>
-  );
-}
 
 function TypeChip({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
