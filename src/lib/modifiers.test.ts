@@ -29,6 +29,19 @@ describe("registry", () => {
   it("modifierDef soft-falls-back for an unknown key (fail soft, not crash)", () => {
     expect(modifierDef("not_a_real_key")).toEqual({ key: "not_a_real_key", label: "not_a_real_key", description: "", controlType: "checkbox" });
   });
+  // P-E (§10): titles are the card wording; descriptions are Zach's mock copy with
+  // NO "not-auto-scored" disclaimer (deliberate reversal of #469) — locked so it
+  // can't silently drift back.
+  it("labels match the card titles", () => {
+    expect(MODIFIER_REGISTRY.moving_tees.label).toBe("Moving tee boxes");
+    expect(MODIFIER_REGISTRY.glorious_holes.label).toBe("Glorious finishing holes");
+  });
+  it("descriptions carry NO auto-scored / config-only disclaimer", () => {
+    for (const def of Object.values(MODIFIER_REGISTRY)) {
+      expect(def.description.length).toBeGreaterThan(0);
+      expect(def.description.toLowerCase()).not.toMatch(/auto-scored|config-only|rule of the day/);
+    }
+  });
 });
 
 // The four render branches the crossed test-matrix exercises (Task 0). Maps each
