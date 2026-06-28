@@ -233,6 +233,47 @@ export function requireTeamIdentityEdit() {
   });
 }
 
+// canEditGame — the NON-throwing core of requireGameEdit (A2-core). True when the
+// user is a competition owner/co-admin (container-granted) OR a delegate of THIS
+// game (game_delegates row). The throwing middlewares below wrap it; READS that
+// must stay callable by members (e.g. the game scoreboard page, which a member
+// loads but sees redacted for a pending game) call it directly and branch on the
+// boolean instead of catching a throw. One home for "can this user edit / see the
+// setup of this game". Mirrors the DB rule `is_game_delegate` (migration 061).
+export async function canEditGame(
+  ctx: {
+    supabase: { from: (t: string) => unknown };
+    user: { id: string } | null;
+    membershipCache: Map<string, TripRole>;
+  },
+  tripId: string,
+  gameId: string
+): Promise<boolean> {
+  // Competition role first (owner/co-admin edit any game). resolveCompetitionRole
+  // returns "member" for a plain member (it only throws for a non-member, which a
+  // requireTripMember-gated read has already excluded) — so this is safe on reads.
+  const compRole = await resolveCompetitionRole(ctx, tripId);
+  if (COMP_ROLE_LEVEL[compRole] >= COMP_ROLE_LEVEL.co_admin) return true;
+  if (!ctx.user) return false;
+  // …otherwise a delegated organizer of THIS game (game-isolated).
+  const { data } = await (
+    ctx.supabase.from("game_delegates") as unknown as {
+      select: (s: string) => {
+        eq: (c: string, v: string) => {
+          eq: (c: string, v: string) => {
+            maybeSingle: () => Promise<{ data: { game_id: string } | null }>;
+          };
+        };
+      };
+    }
+  )
+    .select("game_id")
+    .eq("game_id", gameId)
+    .eq("user_id", ctx.user.id)
+    .maybeSingle();
+  return !!data;
+}
+
 export function requireGameEdit() {
   return middleware(async ({ ctx, getRawInput, next }) => {
     const raw = await getRawInput();
@@ -242,32 +283,7 @@ export function requireGameEdit() {
     }
     const { tripId, gameId } = parsed.data;
 
-    // Competition role first (owner/co-admin edit any game) — the container
-    // grants it; this gate never checks the trip role itself.
-    const compRole = await resolveCompetitionRole(ctx, tripId); // throws if not a member
-    let allowed = COMP_ROLE_LEVEL[compRole] >= COMP_ROLE_LEVEL.co_admin;
-
-    if (!allowed) {
-      // …otherwise a delegated organizer of THIS game (game-isolated).
-      const { data } = await (
-        ctx.supabase.from("game_delegates") as unknown as {
-          select: (s: string) => {
-            eq: (c: string, v: string) => {
-              eq: (c: string, v: string) => {
-                maybeSingle: () => Promise<{ data: { game_id: string } | null }>;
-              };
-            };
-          };
-        }
-      )
-        .select("game_id")
-        .eq("game_id", gameId)
-        .eq("user_id", ctx.user!.id)
-        .maybeSingle();
-      allowed = !!data;
-    }
-
-    if (!allowed) {
+    if (!(await canEditGame(ctx, tripId, gameId))) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "Requires competition co-admin access or a game-organizer grant for this game",
@@ -298,29 +314,7 @@ export function requireGameRunAction() {
     }
     const { tripId, gameId } = parsed.data;
 
-    const compRole = await resolveCompetitionRole(ctx, tripId); // throws if not a member
-    let allowed = COMP_ROLE_LEVEL[compRole] >= COMP_ROLE_LEVEL.co_admin;
-
-    if (!allowed) {
-      const { data } = await (
-        ctx.supabase.from("game_delegates") as unknown as {
-          select: (s: string) => {
-            eq: (c: string, v: string) => {
-              eq: (c: string, v: string) => {
-                maybeSingle: () => Promise<{ data: { game_id: string } | null }>;
-              };
-            };
-          };
-        }
-      )
-        .select("game_id")
-        .eq("game_id", gameId)
-        .eq("user_id", ctx.user!.id)
-        .maybeSingle();
-      allowed = !!data;
-    }
-
-    if (!allowed) {
+    if (!(await canEditGame(ctx, tripId, gameId))) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "Posting and score corrections are limited to a competition owner/co-admin or this game's delegate.",
