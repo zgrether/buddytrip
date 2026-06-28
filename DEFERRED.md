@@ -401,3 +401,40 @@ already fixed). Summary:
 - 2 conditional title colors → `var(--color-bt-text)`
 
 Fix incrementally; line-by-line locations in STYLE_GUIDE.md Section 7.
+
+---
+
+## Team trades / mid-competition roster moves (durable scoring attribution)
+
+**Parked — not BBMI scope. Captured because it shapes the score-record schema the engine spec depends on.**
+
+Moving a player between teams, or a player leaving mid-competition, must preserve scoring history
+correctly. The core rule:
+
+**A score carries two durable references — the person who earned it, and the team it counted for at the
+moment it was earned.** Team totals roll up from the **recorded** team on each score, NOT from the
+player's *current* team membership re-derived at calculation time.
+
+Why both references, and why durable:
+- **Person reference** — a score is a person's contribution; it stays attached to that person across any
+  roster change. (A traded player's earned points are theirs; a slot's new occupant does not inherit
+  them.)
+- **Team reference (at time of scoring)** — scores still belong to a team for rollup; the competition is
+  team-vs-team. But the team must be **recorded on the score when entered**, not looked up live. If team
+  is re-derived from current membership at calc time (today's model), then:
+  - trading a player **retroactively moves their historical points** to the new team (wrong), and
+  - swapping a new person into a slot **hands them the departed player's history** (wrong).
+
+So the schema-shaping decision for the engine: **score records must carry both `person` and the
+`team` the score counted toward, captured at entry time** (a recorded attribution, not a live derivation).
+Team rollup sums by the recorded team; per-person views read by person. This is what makes trades, swaps,
+and departures behave correctly without rewriting history.
+
+**Current state leans this way already** — `game_matches` store person/play_group refs (no team_id), and
+scoring currently attributes by roster *at read time*. The change is to **capture** the team attribution at
+score-entry (or first-score lock) so it stops being a live derivation that roster edits can retroactively
+alter. The lock-on-first-score guard (team-identity PR 2) is the near-term protection; durable per-score
+team attribution is the full long-term model this entry captures.
+
+**Not built for BBMI** — teams are set and stay set for September, and the lock guard prevents the broken
+state. This is the post-launch model for competitions where rosters genuinely change mid-event.
