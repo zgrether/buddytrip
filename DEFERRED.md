@@ -114,6 +114,13 @@ The heart of the event.
   helpers rather than special-casing each. (Spec note: "moving-tees moving-scale
   generalization.")
 
+### 2v2 per-individual handicaps
+
+The per-match handicap **side selector** (1v1 match play) assigns strokes to a *side*. In 2v2 best ball
+you need to stroke a *specific person* (e.g. just Buddy so he's competitive vs Steve), which the side
+selector can't express. **Deferred — not built.** Offline workaround is fine for now (BBMI Saturday is
+1v1). Build when 2v2 scoring logic lands. (Visual vocabulary §9 / §14.)
+
 ### Desktop side-by-side tee display (someday nomination — not actionable now)
 
 *Captured 2026-06-20 (golfcourseapi build). NOTE: CLAUDE.md references a
