@@ -31,6 +31,7 @@ export function GameSetupRows({
   onChanged,
   slot = "both",
   matchCount,
+  configLocked = false,
   courseOpen: courseOpenProp,
   configOpen: configOpenProp,
   onOpenCourse,
@@ -52,6 +53,10 @@ export function GameSetupRows({
    *  (W-GAMEPAGE-01 §6.2). Derived live by the page — omit on surfaces that don't
    *  build matches (no Total shown). */
   matchCount?: number;
+  /** Lock the Points (config) row until ≥1 valid match exists (readiness rework P3
+   *  — points mean nothing before a match). Locked = read-only, no chevron, same as
+   *  a gated Handicaps row. Default false (unlocked). */
+  configLocked?: boolean;
   /** Page-owned one-open state (controlled). Omit → self-managed (uncontrolled). */
   courseOpen?: boolean;
   configOpen?: boolean;
@@ -120,7 +125,9 @@ export function GameSetupRows({
           state={perMatch > 0 ? "resolved" : "empty"}
           disabled={!canEdit}
           expanded={configOpen}
-          onToggle={configOpen ? closeEditor : openConfig}
+          // P3: locked until a match exists → omit onToggle (read-only, no chevron),
+          // matching the gated Handicaps row. (The Enable gate / Points>0 stay P-C.)
+          onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
           testId="row-format-points"
         >
           <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} />

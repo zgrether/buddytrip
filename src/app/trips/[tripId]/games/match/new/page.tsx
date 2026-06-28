@@ -27,7 +27,7 @@ import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult 
 import { DangerConfirmModal } from "@/components/DangerZone";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch } from "@/lib/matchDraft";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
@@ -973,7 +973,10 @@ export default function NewMatchGamePage() {
         // stay overlays this pass (tracked follow-ons) but ride the same one-open.
         const allFilled = allMatchesFilled(draft, playersPerSide);
         const anyHandicap = draft.some((d) => d.handicap !== 0);
-        const matchesExist = filledDraft.length > 0;
+        // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points,
+        // Handicaps, and Modifiers stay LOCKED until a match exists (they mean nothing
+        // before there's a match to apply them to). One named predicate, shared.
+        const matchesExist = hasValidMatch(draft, playersPerSide);
         const savingSetup =
           setPairings.isPending || setHandicap.isPending ||
           setDoublesPairings.isPending || setDoublesHandicap.isPending;
@@ -1108,6 +1111,7 @@ export default function NewMatchGamePage() {
                 game={gameQ.data as unknown as GameRow}
                 canEdit={canEdit}
                 matchCount={filledDraft.length}
+                configLocked={!matchesExist}
                 configOpen={openRow === "config"}
                 onOpenConfig={() => changeOpenRow("config")}
                 onCloseEditor={() => changeOpenRow(null)}
@@ -1151,7 +1155,7 @@ export default function NewMatchGamePage() {
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
                 expanded={openRow === "modifiers"}
-                onToggle={() => toggleRow("modifiers")}
+                onToggle={matchesExist ? () => toggleRow("modifiers") : undefined}
                 testId="row-modifiers"
               >
                 <ModifierCards
