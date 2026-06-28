@@ -123,7 +123,7 @@ describe("summary + count (row resolved/unresolved drivers)", () => {
   it("multiple enabled join in the available order", () => {
     expect(enabledCount({ moving_tees: {}, glorious_holes: { holes: 2 } }, available)).toBe(2);
     expect(modifiersSummary({ moving_tees: {}, glorious_holes: { holes: 2 } }, available)).toBe(
-      "Moving tees · Glorious finishing holes (last 2)"
+      "Moving tee boxes · Glorious finishing holes (last 2)"
     );
   });
   it("ignores enabled keys that are not in the applicable set", () => {

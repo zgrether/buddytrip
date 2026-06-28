@@ -76,9 +76,6 @@ export function ModifierCards({
           </div>
         );
       })}
-      <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Optional. These are recorded as rules of the day — the app doesn’t auto-score them yet.
-      </p>
     </div>
   );
 }
