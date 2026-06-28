@@ -692,6 +692,8 @@ export function GameSheet({
                 members={members as Member[]}
                 delegateId={desiredDelegate}
                 setDelegateId={setDelegateId}
+                compFormat={compFormat}
+                openFormatSheet={() => setFormatSheetOpen(true)}
               />
             ) : (
               <ConfigTab
@@ -712,8 +714,6 @@ export function GameSheet({
                 availableModifiers={selectedType?.compatibleModifiers ?? []}
                 modifiers={modifiers}
                 setModifiers={setModifiers}
-                compFormat={compFormat}
-                openFormatSheet={() => setFormatSheetOpen(true)}
               />
             )}
 
@@ -797,7 +797,7 @@ function GameTab({
   setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, onClearCourse, isMatchPlay,
   isPairedMatch, existingMatchCount,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
-  members, delegateId, setDelegateId,
+  members, delegateId, setDelegateId, compFormat, openFormatSheet,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
@@ -808,6 +808,7 @@ function GameTab({
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
   members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+  compFormat: string | null; openFormatSheet: () => void;
 }) {
   const readOnly = !canEdit;
   return (
@@ -935,6 +936,29 @@ function GameTab({
         />
       )}
 
+      {/* Competition format (A1 P-B) — moved here from the retired Configuration tab.
+          KEPT (not dropped): it's the sole editor of a live, leaderboard-visible
+          field whose INTENT is the (Tier-2) game-scoreboard layout for non-golf games
+          — bracket / summation / best-of / custom / win-lose-tie. Today it only drives
+          the leaderboard label (`formatLabel`); the layout system is future scope, with
+          win/lose/tie as its built seed. (See the coherence trace in the PR notes —
+          this overlaps conceptually with `competitions.scoring_model`, the live points
+          axis, which this PR does NOT resolve.) */}
+      <Field label="Competition format">
+        <button
+          type="button"
+          onClick={openFormatSheet}
+          className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm"
+          style={{ background: "var(--color-bt-card-raised)", color: compFormat ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <span>{formatLabel(compFormat) ?? "How's it played?"}</span>
+          <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
+        </button>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Sets the label on the leaderboard. Running it up in-app comes later — until then you enter results by hand.
+        </p>
+      </Field>
+
       {/* Matches (1v1/2v2 only): EDIT shows the derived live count (changed in the
           builder). Add no longer seeds a count — build-as-you-go owns it: the setup
           page seeds one empty match on landing and "+ Add match" grows it (C1). */}
@@ -994,7 +1018,6 @@ export function MatchReadoutLine({ readout }: { readout: ReturnType<typeof match
 function ConfigTab({
   canEdit, isMatchPlay, isGolf, courseId, total, placeInputs, setPlaceInputs,
   placement, pFit, mFit, readout, perMatchValue, rules, setRules, availableModifiers, modifiers, setModifiers,
-  compFormat, openFormatSheet,
 }: {
   canEdit: boolean;
   isMatchPlay: boolean; isGolf: boolean; courseId: string | null; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
@@ -1003,7 +1026,6 @@ function ConfigTab({
   perMatchValue: number; rules: string; setRules: (s: string) => void;
   availableModifiers: string[]; modifiers: Record<string, Record<string, unknown>>;
   setModifiers: (m: Record<string, Record<string, unknown>>) => void;
-  compFormat: string | null; openFormatSheet: () => void;
 }) {
   return (
     <>
@@ -1041,21 +1063,6 @@ function ConfigTab({
           <ModifierCards available={availableModifiers} modifiers={modifiers} onChange={setModifiers} readOnly={!canEdit} />
         </Field>
       )}
-
-      <Field label="Competition format">
-        <button
-          type="button"
-          onClick={openFormatSheet}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm"
-          style={{ background: "var(--color-bt-card-raised)", color: compFormat ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span>{formatLabel(compFormat) ?? "How's it played?"}</span>
-          <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Sets the label on the leaderboard. Running it up in-app comes later — until then you enter results by hand.
-        </p>
-      </Field>
 
       <MakeItReady canEdit={canEdit} isGolf={isGolf} isMatchPlay={isMatchPlay} courseId={courseId} />
     </>
