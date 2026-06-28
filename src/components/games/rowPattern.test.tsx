@@ -1,24 +1,31 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RowGutter } from "./RowGutter";
+import { DragHandle } from "./DragHandle";
+import { RowNumber } from "./RowNumber";
 import { PlayerChip } from "./PlayerChip";
 
-// Matches/Handicaps shared row pattern, Phase 1 — the primitives render in
-// isolation (no live screen consumes them yet; visual verification lands in Phases
-// 2/3 when wired in). Rendered via react-dom/server (the test env is node, no RTL).
+// Matches/Handicaps shared row pattern (Phase 1b — RowGutter split into two
+// independent grid cells). The primitives render in isolation (no live screen
+// consumes them yet; visual verification lands in Phases 2/3 when wired in).
+// Rendered via react-dom/server (the test env is node, no RTL).
 
-describe("RowGutter", () => {
-  it("renders the row number, with the drag handle by default", () => {
-    const html = renderToStaticMarkup(<RowGutter number={3} />);
-    expect(html).toContain(">3<"); // the number
-    expect(html).toContain("Drag to reorder"); // the handle (aria-label/title)
+describe("DragHandle", () => {
+  it("renders the grip and forwards the arm handler (owns no drag state)", () => {
+    const onMouseDown = vi.fn();
+    const el = DragHandle({ onMouseDown }) as React.ReactElement<{ onMouseDown?: () => void }>;
+    expect(el.props.onMouseDown).toBe(onMouseDown); // forwarded, not swallowed
+    const html = renderToStaticMarkup(<DragHandle />);
+    expect(html).toContain("Drag to reorder"); // the grip's aria-label/title
+    expect(html).toContain("cursor-grab");
   });
+});
 
-  it("hides the handle when showHandle=false but RESERVES its slot (alignment) + keeps the number", () => {
-    const html = renderToStaticMarkup(<RowGutter number={1} showHandle={false} />);
-    expect(html).toContain(">1<");
-    expect(html).not.toContain("Drag to reorder"); // no handle
-    expect(html).toContain("width:22px"); // the handle slot is still reserved so the number aligns
+describe("RowNumber", () => {
+  it("renders the number as a quiet tabular-nums index — no handle", () => {
+    const html = renderToStaticMarkup(<RowNumber number={3} />);
+    expect(html).toContain(">3<");
+    expect(html).toContain("tabular-nums");
+    expect(html).not.toContain("Drag to reorder"); // independent of DragHandle
   });
 });
 
