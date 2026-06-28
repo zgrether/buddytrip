@@ -1707,19 +1707,16 @@ function HandicapsSection({
   return (
     <div className="flex flex-col gap-3" data-testid="handicaps-section">
       {filled.map(({ d, i }) => (
-        <div key={i}>
-          {draft.length > 1 && (
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-              Match {i + 1}
-            </span>
-          )}
-          <RelHandicapControl
-            a={sidePart(d.a)!}
-            b={sidePart(d.b)!}
-            value={d.handicap}
-            onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
-          />
-        </div>
+        // §8: the per-row "Match N" header is gone — the number rides the control's
+        // left gutter instead (passed below), shown only when there's >1 match.
+        <RelHandicapControl
+          key={i}
+          a={sidePart(d.a)!}
+          b={sidePart(d.b)!}
+          value={d.handicap}
+          matchNumber={draft.length > 1 ? i + 1 : undefined}
+          onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
+        />
       ))}
     </div>
   );
