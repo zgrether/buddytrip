@@ -1,8 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, type MatchSides } from "./matchDraft";
+import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, type MatchSides } from "./matchDraft";
 
 // Readiness rework P1b — the ONE match-play readiness threshold, shared by the
 // setup-page Enable gate and the server `isConfigured` so they can't drift.
+// Readiness rework P3 — the downstream gate (Points/Handicaps/Modifiers locked
+// until a valid match exists).
+describe("hasValidMatch (the downstream gate)", () => {
+  const s = (a: string[], b: string[]): MatchSides => ({ a, b });
+  it("true only when ≥1 match is fully paired", () => {
+    expect(hasValidMatch([s(["x"], ["y"])], 1)).toBe(true); // 1 paired
+    expect(hasValidMatch([s(["x"], ["y"]), s([], [])], 1)).toBe(true); // ≥1 paired (the other empty)
+  });
+  it("false at zero paired — incl. a seeded-but-empty match", () => {
+    expect(hasValidMatch([s([], [])], 1)).toBe(false); // seeded empty only
+    expect(hasValidMatch([s(["x"], [])], 1)).toBe(false); // half-paired only
+    expect(hasValidMatch([], 1)).toBe(false);
+  });
+});
+
 describe("matchPlayReady (the shared threshold)", () => {
   it("ready only when there is ≥1 match AND every match is paired (paired === total)", () => {
     expect(matchPlayReady(5, 5)).toBe(true); // all paired
