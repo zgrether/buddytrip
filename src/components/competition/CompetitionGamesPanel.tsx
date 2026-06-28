@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Flag, Plus, Minus, Pencil, Star, Trash2, X, Trophy, RotateCcw,
+  Flag, Plus, Pencil, Star, Trash2, X, Trophy, RotateCcw,
   Spade, Target, Beer, Dices, Swords, Radio, ChevronRight, ChevronUp, ChevronDown, Check, Users, Info, SlidersHorizontal,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ModifierCards } from "@/components/games/ModifierCards";
+import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
   validatePlacement, matchReadout, placementFit, matchFit, deriveMatchCount, type MatchFormat,
@@ -982,16 +983,13 @@ export function PointStepper({
 }: {
   label: string; caption: string; value: number; onChange: (n: number) => void; footer?: React.ReactNode; max?: number;
 }) {
+  // A Field + footer composition over the canonical <Stepper> (P-B). The bespoke
+  // step-buttons are gone; min stays 1 and fmtValue keeps the ½-point display.
   return (
     <Field label={label} required>
       <div className="rounded-xl" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
-        <div className="flex items-center gap-3 px-3 py-3">
-          <StepBtn dir="dec" disabled={value <= 1} onClick={() => onChange(Math.max(1, value - 1))} />
-          <div className="flex-1 text-center">
-            <div className="text-3xl font-black leading-none tabular-nums" style={{ color: "var(--color-bt-text)" }}>{fmtValue(value)}</div>
-            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{caption}</div>
-          </div>
-          <StepBtn dir="inc" disabled={max != null && value >= max} onClick={() => onChange(max != null ? Math.min(max, value + 1) : value + 1)} />
+        <div className="px-3 py-3">
+          <Stepper size="full" value={value} min={1} max={max} onChange={onChange} label={caption} formatValue={fmtValue} />
         </div>
         {footer && (
           <div className="px-3 py-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
@@ -1000,21 +998,6 @@ export function PointStepper({
         )}
       </div>
     </Field>
-  );
-}
-
-function StepBtn({ dir, onClick, disabled }: { dir: "inc" | "dec"; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={dir === "inc" ? "Increase" : "Decrease"}
-      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg disabled:opacity-40"
-      style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-    >
-      {dir === "inc" ? <Plus size={16} /> : <Minus size={16} />}
-    </button>
   );
 }
 

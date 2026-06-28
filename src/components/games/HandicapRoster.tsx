@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Plus, Minus } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
+import { Stepper } from "@/components/games/Stepper";
 import { clampStrokes, strokeHint, MAX_STROKES } from "@/lib/handicap";
 
 /**
@@ -132,13 +133,17 @@ export function HandicapRoster({
                   <span className="truncate block" style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
                   {hint && <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1 }}>{hint}</span>}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <StepBtn dir="dec" disabled={strokes <= 0} onClick={() => bump(p.id, strokes, -1)} />
-                  <span style={{ minWidth: 34, textAlign: "center", fontSize: strokes === 0 ? 13 : 17, fontWeight: 700, color: strokes === 0 ? "var(--color-bt-text-dim)" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
-                    {strokes === 0 ? "SCR" : strokes}
-                  </span>
-                  <StepBtn dir="inc" disabled={strokes >= MAX_STROKES} onClick={() => bump(p.id, strokes, 1)} />
-                </div>
+                {/* Delta callbacks (not onChange) so bump's pending-ref rapid-tap
+                    handling is preserved; formatValue keeps "SCR" at 0 (P-B). */}
+                <Stepper
+                  size="full"
+                  value={strokes}
+                  min={0}
+                  max={MAX_STROKES}
+                  onDecrement={() => bump(p.id, strokes, -1)}
+                  onIncrement={() => bump(p.id, strokes, 1)}
+                  formatValue={(n) => (n === 0 ? "SCR" : String(n))}
+                />
               </div>
             );
           })}
@@ -154,15 +159,3 @@ export function HandicapRoster({
   );
 }
 
-function StepBtn({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="flex items-center justify-center disabled:opacity-30"
-      style={{ width: 34, height: 34, borderRadius: 9, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-    >
-      {dir === "inc" ? <Plus size={16} /> : <Minus size={16} />}
-    </button>
-  );
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus } from "lucide-react";
+import { Stepper } from "@/components/games/Stepper";
 import {
   modifierDef,
   isModifierEnabled,
@@ -81,7 +81,9 @@ export function ModifierCards({
   );
 }
 
-/** Trailing-hole count for glorious finishing holes (the only stepper modifier). */
+/** Trailing-hole count for glorious finishing holes (the only stepper modifier).
+ *  The count lives in the canonical compact <Stepper> now (P-B); the label carries
+ *  the meaning the old inline sentence did. */
 function HoleStepper({ value, onChange, disabled }: { value: number; onChange: (n: number) => void; disabled?: boolean }) {
   return (
     <div
@@ -89,29 +91,16 @@ function HoleStepper({ value, onChange, disabled }: { value: number; onChange: (
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       data-testid="glorious-holes-stepper"
     >
-      <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Last <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>{value}</span> hole{value === 1 ? "" : "s"} worth double
-      </span>
-      <div className="flex items-center gap-2">
-        <StepBtn dir="dec" disabled={disabled || value <= GLORIOUS_HOLES_MIN} onClick={() => onChange(value - 1)} />
-        <StepBtn dir="inc" disabled={disabled || value >= GLORIOUS_HOLES_MAX} onClick={() => onChange(value + 1)} />
-      </div>
+      <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>Final holes worth double</span>
+      <Stepper
+        size="compact"
+        value={value}
+        min={GLORIOUS_HOLES_MIN}
+        max={GLORIOUS_HOLES_MAX}
+        onChange={onChange}
+        disabled={disabled}
+      />
     </div>
-  );
-}
-
-function StepBtn({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={dir === "inc" ? "Increase" : "Decrease"}
-      className="flex items-center justify-center disabled:opacity-30"
-      style={{ width: 30, height: 30, borderRadius: 8, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-    >
-      {dir === "inc" ? <Plus size={16} /> : <Minus size={16} />}
-    </button>
   );
 }
 
