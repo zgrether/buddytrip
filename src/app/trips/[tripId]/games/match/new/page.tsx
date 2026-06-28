@@ -1555,10 +1555,15 @@ function MatchSetup({
       avatarIcon: avatarIconOf.get(userId) ?? null,
     };
   }
-  // The member slots for one side — 1 for singles, 2 stacked for doubles. Each
-  // sub-slot picks a single player into that member position. Team identity rides
-  // on the player avatar's ROSTER color (memberPart → teamColorOf), never the slot —
-  // so a dropped-from-team player reads neutral here, honestly (not the slot's color).
+  // One TEAM COLUMN of the match grid — it holds the same column in both formats,
+  // just 1 chip tall (1v1) or 2 chips tall (2v2). NOT a separate team-row, NOT a
+  // per-row team label: a 2v2 match is the SAME six columns as 1v1, only two chips
+  // stacked per side. The within-side gap (6px) is deliberately tighter than the
+  // between-match separator (P2c) so the two chips read as ONE side; the grid's
+  // items-center then centers the structural cells (grab/#/vs/×) against the stack
+  // (the "span both rows, centered" effect). Each sub-slot picks a single player.
+  // Team identity rides on the player avatar's ROSTER color (memberPart →
+  // teamColorOf), never the slot — a dropped-from-team player reads neutral, honestly.
   const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b") => {
     return (
       <div className="flex flex-col gap-1.5">
