@@ -66,3 +66,16 @@ export function matchPlayReady(pairedCount: number, totalCount: number): boolean
 export function allMatchesFilled(draft: MatchSides[], playersPerSide: number): boolean {
   return matchPlayReady(filledMatches(draft, playersPerSide).length, draft.length);
 }
+
+/**
+ * The POINTS term of the Enable gate (W-GAMEPAGE Phase C / P-C). A match game can't
+ * Enable scoring at 0 points-per-match — there's nothing to award — so points > 0
+ * joins all-matches-paired in the gate. This is the SAME truth the Points row reads
+ * for its resolved/empty state (`GameSetupRows`), so the row and the gate can't
+ * disagree: points > 0 ⟺ Points row resolved ⟺ this term satisfied. Kept separate
+ * from `matchPlayReady` (the server shares that for `isConfigured`) — this is a
+ * client-gate extension of the family, not a change to the shared pairing threshold.
+ */
+export function pointsReady(pointsPerMatch: number): boolean {
+  return pointsPerMatch > 0;
+}

@@ -5,20 +5,20 @@ import { trpc } from "@/lib/trpc-client";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { validatePlacement } from "@/lib/gameConfig";
 import {
-  Field, PointStepper, PlacementEditor, FormatSheet, formatLabel,
+  PointStepper, PlacementEditor,
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
-import { ChevronRight } from "lucide-react";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
- * Zone 2 "Format · Points" accordion body (W-EDITMODAL-01) — the focused points +
- * competition-format editor that replaces the old Edit-Game modal for this row.
- * Name moved to the Zone-1 header; Course/Matches/Modifiers/Rules/Delegate live in
- * their own rows/zones — so this panel is JUST format + points.
+ * Points accordion body for **placement** (stroke/non-golf) games — the point value
+ * + the placement split. Phase C narrowed this: the competition-format picker is
+ * removed (not re-homed — the Add/Edit modal still sets `competition_format`), and
+ * match-format games (1v1/2v2/rack) no longer use this panel at all — they carry an
+ * INLINE per-match stepper in the row (`GameSetupRows` → `PointsPerMatchControl`).
+ * So this is now JUST the placement points editor.
  *
- * Persistence: format saves on pick (independent `update{competitionFormat}`);
- * points save as the **total + distribution PAIR** (`setPointsTotal` +
+ * Persistence: points save as the **total + distribution PAIR** (`setPointsTotal` +
  * `setPointsDistribution` together — never one without the other). Saved on-change
  * rather than on-collapse: every intermediate points value is VALID (unlike the
  * draft editors' half-filled matches), so there's no invalid-intermediate to hide,
@@ -48,10 +48,7 @@ export function FormatPointsPanel({
   const [placeInputs, setPlaceInputs] = useState<string[]>(
     dist0?.type === "placement" && dist0.values.length > 0 ? dist0.values.map(String) : [""]
   );
-  const [compFormat, setCompFormat] = useState<string | null>(game.competition_format ?? null);
-  const [formatSheetOpen, setFormatSheetOpen] = useState(false);
 
-  const update = trpc.games.update.useMutation();
   const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setDistM = trpc.games.setPointsDistribution.useMutation();
 
@@ -98,34 +95,12 @@ export function FormatPointsPanel({
     if (!startedNext) void savePoints(null, total);
     else if (p.saveable) void savePoints({ type: "placement", values: vals }, total);
   }
-  function onFormat(key: string | null) {
-    setCompFormat(key);
-    setFormatSheetOpen(false);
-    optimisticGame({ competition_format: key } as Partial<GameRow>);
-    update.mutate({ tripId, gameId, competitionFormat: (key as never) ?? null }, { onSuccess: refresh });
-  }
 
   const readOnly = !canEdit;
   return (
     <div className="flex flex-col gap-4" data-testid="format-points-panel">
-      {/* Competition format */}
-      <Field label="Competition format">
-        <button
-          type="button"
-          onClick={() => { if (!readOnly) setFormatSheetOpen(true); }}
-          disabled={readOnly}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm"
-          style={{ background: "var(--color-bt-card-raised)", color: compFormat ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span>{formatLabel(compFormat) ?? "How's it played?"}</span>
-          <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Sets the label on the leaderboard. Running it up in-app comes later — until then you enter results by hand.
-        </p>
-      </Field>
-
-      {/* Points */}
+      {/* Points (Phase C: the competition-format picker is gone — removed, not
+          re-homed; the Add/Edit modal still sets competition_format). */}
       {isMatchPlay ? (
         <>
           <PointStepper
@@ -165,10 +140,6 @@ export function FormatPointsPanel({
           />
           <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={readOnly ? () => {} : onPlaceInputs} placement={placement} />
         </>
-      )}
-
-      {formatSheetOpen && (
-        <FormatSheet current={compFormat} onPick={(k) => onFormat(k)} onClose={() => setFormatSheetOpen(false)} />
       )}
     </div>
   );

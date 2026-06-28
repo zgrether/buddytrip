@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Flag, Hash } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
+import { GAME_TYPES } from "@/lib/gameTypes";
+import { Stepper } from "@/components/games/Stepper";
+import { pointsReady } from "@/lib/matchDraft";
 import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
+import type { PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
  * §B setup-shell drill-down rows: the **course pre-step** then **Format · Points**.
@@ -90,6 +95,11 @@ export function GameSetupRows({
   // derived from per-match × the valid match count. Per-match drives resolved/empty.
   const perMatch = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
   const pointsTotal = (matchCount ?? 0) * perMatch;
+  // Match-format games (1v1/2v2/rack) carry the points INLINE (Phase C §7 — a
+  // right-justified stepper, no expansion). Placement (stroke/non-golf) keeps the
+  // expandable editor (its split needs a body).
+  const ptype = GAME_TYPES.find((t) => t.id === game.game_type_id)?.resultStrategy;
+  const isMatchPlay = ptype === "match_play" || ptype === "rack_n_stack";
 
   return (
     <>
@@ -113,27 +123,115 @@ export function GameSetupRows({
         </ChecklistRow>
       )}
       {slot !== "course" && competitionId && (
-        <ChecklistRow
-          icon={Hash}
-          title="Points Per Match"
-          subtitle={
-            <>
-              Total Points Available:{" "}
-              <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>{pointsTotal}</span>
-            </>
-          }
-          state={perMatch > 0 ? "resolved" : "empty"}
-          disabled={!canEdit}
-          expanded={configOpen}
-          // P3: locked until a match exists → omit onToggle (read-only, no chevron),
-          // matching the gated Handicaps row. (The Enable gate / Points>0 stay P-C.)
-          onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
-          testId="row-format-points"
-        >
-          <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} />
-        </ChecklistRow>
+        isMatchPlay ? (
+          // Points row INLINE (Phase C §7): the row carries a right-justified
+          // <Stepper inline> and never opens — exempt from the single-open accordion.
+          // The competition-format picker is gone (removed, not re-homed — the Add/Edit
+          // modal still sets competition_format). Dashed/empty at 0 (reachable since
+          // C1's default-0); resolved + teal check + teal total at >0. The stepper
+          // stays live so `+` lifts it out of empty; `−` disabled at 0 (Stepper floor).
+          <ChecklistRow
+            icon={Hash}
+            title="Points Per Match"
+            subtitle={
+              <>
+                Total Points Available:{" "}
+                <span style={{ color: pointsReady(perMatch) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{pointsTotal}</span>
+              </>
+            }
+            // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
+            // points term satisfied (they can't disagree).
+            state={pointsReady(perMatch) ? "resolved" : "empty"}
+            disabled={!canEdit}
+            testId="row-format-points"
+            control={
+              <PointsPerMatchControl
+                tripId={tripId}
+                game={game}
+                perMatch={perMatch}
+                // P3: locked until ≥1 valid match exists (points mean nothing before
+                // a match). Locked → the stepper is disabled (read-only), matching the
+                // gated rows. Otherwise live.
+                disabled={configLocked || !canEdit}
+              />
+            }
+          />
+        ) : (
+          // Placement (stroke/non-golf): keep the expandable editor (the split needs
+          // a body). Format picker removed from FormatPointsPanel.
+          <ChecklistRow
+            icon={Hash}
+            title="Points"
+            subtitle={
+              <>
+                Total Points Available:{" "}
+                <span style={{ color: perMatch > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{pointsTotal}</span>
+              </>
+            }
+            state={perMatch > 0 ? "resolved" : "empty"}
+            disabled={!canEdit}
+            expanded={configOpen}
+            onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
+            testId="row-format-points"
+          >
+            <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} />
+          </ChecklistRow>
+        )
       )}
     </>
+  );
+}
+
+/**
+ * The inline per-match points control (Phase C §7) — a canonical `<Stepper inline>`
+ * that persists on each change. Floor is 0 (reachable since Add defaults new games
+ * to 0); `−` disable-styles at 0. Writes the total+distribution PAIR atomically
+ * (total null for match games — the total is derived = value × matchCount), optimistic
+ * on the `getById` cache so the row's subtitle/check/total land instantly, then marks
+ * the competition board stale (CLAUDE.md #10 — faceBootstrap refreshes the Live face).
+ */
+function PointsPerMatchControl({
+  tripId, game, perMatch, disabled,
+}: {
+  tripId: string;
+  game: GameRow;
+  perMatch: number;
+  disabled?: boolean;
+}) {
+  const gameId = game.id;
+  const utils = trpc.useUtils();
+  const setTotalM = trpc.games.setPointsTotal.useMutation();
+  const setDistM = trpc.games.setPointsDistribution.useMutation();
+  // Local value for snappy stepping; re-sync if the persisted value changes elsewhere.
+  const [value, setValue] = useState(perMatch);
+  useEffect(() => { setValue(perMatch); }, [perMatch]);
+
+  function onChange(v: number) {
+    setValue(v);
+    const next: PointsDistribution = { type: "per_match", value: v };
+    const cur = utils.games.getById.getData({ tripId, gameId });
+    if (cur) utils.games.getById.setData({ tripId, gameId }, { ...cur, points_total: null, points_distribution: next } as typeof cur);
+    void (async () => {
+      try {
+        await setTotalM.mutateAsync({ tripId, gameId, total: null });
+        await setDistM.mutateAsync({ tripId, gameId, distribution: next });
+        utils.games.listByTrip.invalidate({ tripId });
+        if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
+      } catch {
+        utils.games.getById.invalidate({ tripId, gameId });
+      }
+    })();
+  }
+
+  return (
+    <Stepper
+      size="inline"
+      value={value}
+      min={0}
+      onChange={disabled ? () => {} : onChange}
+      disabled={disabled}
+      testId="points-stepper"
+    />
   );
 }
 

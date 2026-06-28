@@ -12,7 +12,7 @@ import { ModifierCards } from "@/components/games/ModifierCards";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import {
-  validatePlacement, matchReadout, placementFit, matchFit, deriveMatchCount, type MatchFormat,
+  validatePlacement, matchReadout, placementFit, matchFit, type MatchFormat,
 } from "@/lib/gameConfig";
 // Format definitions live in code (W-PERF-01) — the catalog + its type come from
 // here, read synchronously, never fetched. Re-exported below so existing
@@ -21,11 +21,6 @@ import {
 import { GAME_TYPES, gameTypesForScoringModel, type GameType, type ScoringModel } from "@/lib/gameTypes";
 
 export type { GameType };
-
-// Mirrors the builder cap (matches router / match-new page). The page-one match
-// count seeds the builder's initial slot count up to here.
-const MAX_MATCHES = 24;
-const MATCH_PLAY_DOUBLES = "gtt_match_play_doubles";
 
 /**
  * CompetitionGamesPanel — the Slice D contest list + the two-tab add/edit page
@@ -403,10 +398,6 @@ export function GameSheet({
     const d = game?.points_distribution;
     return d?.type === "per_match" ? d.value : 1;
   });
-  // Page-one match count (1v1/2v2 only): SEEDS the builder's initial slot count
-  // on create — it is NOT a stored target. null = "follow the team-size default"
-  // (updates as teams get sized); a number = the owner set it explicitly.
-  const [matchCountOverride, setMatchCountOverride] = useState<number | null>(null);
   // Placement split. 1st place initializes EMPTY (never 0) so "untouched" stays
   // distinct from "entered 0".
   const [placeInputs, setPlaceInputs] = useState<string[]>(() => {
@@ -442,7 +433,6 @@ export function GameSheet({
   // Paired match play (1v1 / 2v2) — the ONLY formats that get a page-one match
   // count. Rack (rack_n_stack) auto-groups by team size, stroke has no matches.
   const isPairedMatch = selectedType?.resultStrategy === "match_play";
-  const isDoubles = effectiveTypeId === MATCH_PLAY_DOUBLES;
   const isGolf = category === "golf";
 
   // Members (for the delegate picker + name resolution) and the existing grant.
@@ -461,13 +451,6 @@ export function GameSheet({
   const teamSizes = useMemo(() => Object.values((teamCounts as Record<string, number>) ?? {}), [teamCounts]);
   const numTeams = teamSizes.length;
 
-  // The team-size estimate the builder would otherwise seed with — the default
-  // the page-one field pre-fills (clamped ≥1, ≤ cap). The owner can override it.
-  const derivedMatchCount = Math.max(
-    1,
-    Math.min(MAX_MATCHES, deriveMatchCount(teamSizes, matchFormatFor(effectiveTypeId)) ?? 1)
-  );
-  const matchCount = matchCountOverride ?? derivedMatchCount;
   // On edit, "how many matches" is DERIVED from the live rows (display only —
   // the count is changed in the builder, not re-typed here).
   const existingMatchesQ = trpc.matches.listByGame.useQuery(
@@ -486,10 +469,6 @@ export function GameSheet({
   const removeOrg = trpc.games.removeOrganizer.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const clearCourse = trpc.games.clearCourse.useMutation();
-  // Seed the builder's slots on create — empty (unpaired) rows, which count 0
-  // until paired (#394), so the game stays Setting-up · — until the builder.
-  const setPairings = trpc.matches.setPairings.useMutation();
-  const setDoublesPairings = trpc.matches.setDoublesPairings.useMutation();
 
   // Resolve the applied course's NAME for the field label (a pre-set course
   // has an id but no just-picked name). Skipped when nothing's applied.
@@ -578,9 +557,16 @@ export function GameSheet({
         }
         await setDist.mutateAsync({ tripId, gameId, distribution });
       } else {
+        // C1 default-0: a NEW match game is created at 0 points-per-match — its
+        // value is set on the setup page's inline Points row (C2), and 0 keeps the
+        // Enable gate shut (C3) until it's set. Placement games keep the Add
+        // stepper, so their distribution comes from `buildDistribution()`.
+        const createDistribution: PointsDistribution | null = isMatchPlay
+          ? { type: "per_match", value: 0 }
+          : distribution;
         const created = (await create.mutateAsync({
           tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
-          pointsDistribution: distribution, pointsTotal: isMatchPlay ? null : total,
+          pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : total,
         })) as { id: string };
         gameId = created.id;
         if (compFormat || rules.trim() || Object.keys(modifiers).length > 0) {
@@ -594,19 +580,10 @@ export function GameSheet({
             // Non-fatal: the game still saves on the template default par/index.
           }
         }
-        // Seed the builder's slots (1v1/2v2 only): persist `matchCount` EMPTY
-        // match rows. They're the slots the builder opens with — not a stored
-        // target; under #394 they count 0 until paired, so the game still reads
-        // Setting-up · — on the board. Non-fatal (the builder can seed itself).
-        if (isPairedMatch) {
-          const empty = Array.from({ length: matchCount }, (_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
-          try {
-            if (isDoubles) await setDoublesPairings.mutateAsync({ tripId, gameId, matches: empty });
-            else await setPairings.mutateAsync({ tripId, gameId, matches: empty });
-          } catch {
-            // Non-fatal: the builder seeds from the team-size estimate if absent.
-          }
-        }
+        // C1: Add no longer seeds match rows. Matches are build-as-you-go in the
+        // configurer — the setup page seeds ONE empty match when it lands with zero
+        // rows (match/new/page.tsx) and "+ Add match" grows it. (The old count
+        // stepper + its seeding here were redundant with that.)
       }
       if (canEdit) {
         await reconcileDelegate(gameId);
@@ -706,8 +683,6 @@ export function GameSheet({
                 onClearCourse={handleClearCourse}
                 isMatchPlay={isMatchPlay}
                 isPairedMatch={isPairedMatch}
-                matchCount={matchCount}
-                setMatchCount={setMatchCountOverride}
                 existingMatchCount={existingMatchCount}
                 total={total}
                 setTotal={setTotal}
@@ -820,7 +795,7 @@ export function GameSheet({
 function GameTab({
   isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
   setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, onClearCourse, isMatchPlay,
-  isPairedMatch, matchCount, setMatchCount, existingMatchCount,
+  isPairedMatch, existingMatchCount,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
@@ -828,7 +803,7 @@ function GameTab({
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
   setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; courseName: string | null;
   onPickCourse: () => void; onClearCourse: () => void; isMatchPlay: boolean;
-  isPairedMatch: boolean; matchCount: number; setMatchCount: (n: number) => void; existingMatchCount: number | null;
+  isPairedMatch: boolean; existingMatchCount: number | null;
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
 }) {
@@ -920,14 +895,22 @@ function GameTab({
         </Field>
       )}
 
+      {/* W-GAMEPAGE Phase-C teardown: Add Game no longer sets match-play points.
+          A new match game is created at 0 points (build-as-you-go) and its
+          points-per-match is set on the setup page's inline Points row (C2). So
+          the match-play stepper shows on EDIT only; placement (stroke/non-golf)
+          keeps its Add stepper — placement games have no inline setup-page Points
+          row, so the modal stays their points home. */}
       {isMatchPlay ? (
-        <PointStepper
-          label="Points per match"
-          caption="POINTS PER MATCH"
-          value={perMatchValue}
-          onChange={readOnly ? () => {} : setPerMatchValue}
-          footer={<MatchReadoutLine readout={readout} />}
-        />
+        isEdit ? (
+          <PointStepper
+            label="Points per match"
+            caption="POINTS PER MATCH"
+            value={perMatchValue}
+            onChange={readOnly ? () => {} : setPerMatchValue}
+            footer={<MatchReadoutLine readout={readout} />}
+          />
+        ) : null
       ) : (
         <PointStepper
           label="Point value"
@@ -945,33 +928,18 @@ function GameTab({
         />
       )}
 
-      {/* Number of matches (1v1/2v2 only) — SEEDS the builder's slot count on
-          create; you still assign players in the builder. On edit it's derived
-          from the live rows (display only — change it in the builder). */}
-      {isPairedMatch && (
-        isEdit ? (
-          <Field label="Matches">
-            <div className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}>
-              <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
-                {existingMatchCount ?? "—"} {existingMatchCount === 1 ? "match" : "matches"}
-              </span>{" "}
-              · add or remove in Set Pairings
-            </div>
-          </Field>
-        ) : (
-          <PointStepper
-            label="Number of matches"
-            caption="MATCHES"
-            value={matchCount}
-            onChange={readOnly ? () => {} : setMatchCount}
-            max={MAX_MATCHES}
-            footer={
-              <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Opens the builder with {matchCount} {matchCount === 1 ? "slot" : "slots"} · assign players there
-              </span>
-            }
-          />
-        )
+      {/* Matches (1v1/2v2 only): EDIT shows the derived live count (changed in the
+          builder). Add no longer seeds a count — build-as-you-go owns it: the setup
+          page seeds one empty match on landing and "+ Add match" grows it (C1). */}
+      {isPairedMatch && isEdit && (
+        <Field label="Matches">
+          <div className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}>
+            <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
+              {existingMatchCount ?? "—"} {existingMatchCount === 1 ? "match" : "matches"}
+            </span>{" "}
+            · add or remove in Set Pairings
+          </div>
+        </Field>
       )}
     </>
   );

@@ -27,7 +27,7 @@ import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult 
 import { DangerConfirmModal } from "@/components/DangerZone";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady } from "@/lib/matchDraft";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
@@ -972,6 +972,17 @@ export default function NewMatchGamePage() {
         // persist (the draft editors commit on close). Course + Name·Format·Points
         // stay overlays this pass (tracked follow-ons) but ride the same one-open.
         const allFilled = allMatchesFilled(draft, playersPerSide);
+        // C3: points > 0 joins the Enable gate (Phase C) — but ONLY for a
+        // COMPETITION game. Points-per-match is a cup concept: the inline Points row
+        // exists only when `gameCompId` is set (GameSetupRows gates it on
+        // competitionId), and a STANDALONE match game has no points at all (created
+        // with points_distribution null). So the points term is conditional —
+        // otherwise a standalone game (no Points UI, always 0) could NEVER enable.
+        // The per-match value read here is the SAME number the inline Points row
+        // shows, so the row's resolved state and the gate agree (one truth);
+        // pointsReady is the family's client-gate extension (matchDraft.ts).
+        const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
+        const enableReady = allFilled && (!gameCompId || pointsReady(pointsPerMatch));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points,
         // Handicaps, and Modifiers stay LOCKED until a match exists (they mean nothing
@@ -1188,10 +1199,16 @@ export default function NewMatchGamePage() {
                 commit-to-play) + Save & exit (secondary, always enabled — the
                 leave-and-resume door; flushes the rules note then navigates). */}
             <div className="flex flex-col gap-2 pt-2">
+              {/* Enable spine = all matches paired AND points > 0 (C3). Course is
+                  DELIBERATELY NOT in this gate — ever. A game must be able to start
+                  with no course: an off-API course, dead cell signal, or network
+                  outage are all real, and you only lose course metrics + handicaps,
+                  never the ability to play. Do not "complete the spine" by adding
+                  courseResolved here. */}
               <PrimaryButton
                 label={enableScoring.isPending ? "Enabling…" : "Enable scoring"}
                 onClick={attemptReady}
-                disabled={savingSetup || enableScoring.isPending || !allFilled}
+                disabled={savingSetup || enableScoring.isPending || !enableReady}
               />
               {gameCompId && (
                 <button

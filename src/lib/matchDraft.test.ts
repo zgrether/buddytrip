@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, type MatchSides } from "./matchDraft";
+import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, type MatchSides } from "./matchDraft";
 
 // Readiness rework P1b — the ONE match-play readiness threshold, shared by the
 // setup-page Enable gate and the server `isConfigured` so they can't drift.
@@ -15,6 +15,32 @@ describe("hasValidMatch (the downstream gate)", () => {
     expect(hasValidMatch([s([], [])], 1)).toBe(false); // seeded empty only
     expect(hasValidMatch([s(["x"], [])], 1)).toBe(false); // half-paired only
     expect(hasValidMatch([], 1)).toBe(false);
+  });
+});
+
+// W-GAMEPAGE Phase C / P-C — points > 0 joins the Enable gate, and it's the SAME
+// truth the inline Points row reads for resolved/empty, so they can't disagree.
+describe("pointsReady (the points term of the Enable gate)", () => {
+  it("true only at points > 0", () => {
+    expect(pointsReady(1)).toBe(true);
+    expect(pointsReady(3)).toBe(true);
+    expect(pointsReady(0)).toBe(false); // the C1 default for a new match game
+    expect(pointsReady(-1)).toBe(false);
+  });
+});
+
+describe("the Enable gate = all matches paired AND points > 0 (C3)", () => {
+  const s = (a: string[], b: string[]): MatchSides => ({ a, b });
+  const enableReady = (draft: MatchSides[], pps: number, points: number) =>
+    allMatchesFilled(draft, pps) && pointsReady(points);
+  it("true only when every match is paired AND points > 0", () => {
+    expect(enableReady([s(["x"], ["y"])], 1, 3)).toBe(true); // paired + points
+  });
+  it("false at points 0 even with every match paired", () => {
+    expect(enableReady([s(["x"], ["y"])], 1, 0)).toBe(false);
+  });
+  it("false when a match is unpaired even with points > 0", () => {
+    expect(enableReady([s(["x"], ["y"]), s([], [])], 1, 3)).toBe(false);
   });
 });
 
