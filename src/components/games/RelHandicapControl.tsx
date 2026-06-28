@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { strokeHoles } from "@/lib/matchPlay";
 import { Stepper } from "@/components/games/Stepper";
-import { Avatar } from "@/components/Avatar";
+import { RowNumber } from "@/components/games/RowNumber";
+import { PlayerChip } from "@/components/games/PlayerChip";
 import type { Participant } from "./types";
 
 /**
@@ -12,11 +14,14 @@ import type { Participant } from "./types";
  * undraggable one-thumbed in the sun; the number matters most in the big-mismatch
  * case, exactly where a bare slider fails).
  *
- * §8 look: the selected segment is an OUTLINE (teal border), never a solid fill —
- * a fill fights the team avatars the player segments now carry. The per-row
- * "WHO GETS STROKES?" header is gone; the match number sits in a small left gutter.
- * Reveal is altitude-aware: Even shows one muted caption (no stepper); a side
- * selected reveals the centered <Stepper full> + a muted recipient caption.
+ * Look (§8, as revised by the row-pattern Phase 3): the row shares the Matches
+ * skeleton — a RowNumber gutter + the shared PlayerChip (avatar 30, left-aligned) —
+ * with a `[A│Even│B]` segmented selector. The selected segment is a TEAL FILL (faint
+ * wash + teal border), the scoped selection-state treatment for segmented selectors
+ * (vocabulary §1/§8); unselected segments are the recessed card-raised chip. The
+ * per-row "WHO GETS STROKES?" header is gone; the match number rides the gutter.
+ * Reveal is altitude-aware: Even is just the row (no stepper, no caption); a side
+ * selected reveals the <Stepper full> + a muted recipient caption.
  *
  * Same data model (NO behavior change — P-D is appearance + layout only): one
  * signed value, strokes to exactly ONE side, never split.
@@ -40,9 +45,11 @@ export interface RelHandicapView {
   even: boolean;
   recipient: string | null;
   holes: number[];
-  /** The muted reveal caption: "Even match …" or "{recipient} gets strokes on holes …". */
+  /** The muted recipient caption ("{recipient} gets strokes on holes …"), shown only
+   *  for a stroked side. EMPTY for Even — the selected Even segment already says it,
+   *  so an Even match is just the row (P3b dropped "Even match — no strokes given"). */
   caption: string;
-  /** Even → no stepper (one line); a side → the centered <Stepper full> reveals. */
+  /** Even → no stepper (one line, no caption); a side → the centered <Stepper full> reveals. */
   showStepper: boolean;
 }
 export function relHandicapView(value: number, aName: string, bName: string): RelHandicapView {
@@ -52,8 +59,9 @@ export function relHandicapView(value: number, aName: string, bName: string): Re
   const even = side === "even";
   const recipient = even ? null : side === "a" ? aName : bName;
   const holes = [...strokeHoles(n)].sort((x, y) => x - y);
+  // Even → no caption (the segment says it); a side → who gets the strokes.
   const caption = even
-    ? "Even match — no strokes given"
+    ? ""
     : `${recipient} gets strokes on hole${n === 1 ? "" : "s"} ${holes.join(", ")}`;
   return { side, n, even, recipient, holes, caption, showStepper: !even };
 }
@@ -83,63 +91,99 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
     onChange(side === "a" ? -mag : mag);
   };
 
+  // Geometric stepper alignment (§8 — measured, NOT a pixel breakpoint). The reveal
+  // is centered under the MIDDLE (Even) column by default (mobile-first: the stepper
+  // is wider than a narrow player column). As a progressive enhancement, when the
+  // selected player's column is wide enough to CONTAIN the stepper
+  // (`playerColumnWidth ≥ stepperWidth`), it snaps to center under that name instead.
+  // The default is centered (textAlign on the wrapper), so `offset` only ever shifts
+  // it sideways under the name — no flash, and the narrow case never moves.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const stepperRef = useRef<HTMLDivElement>(null);
+  const segARef = useRef<HTMLButtonElement>(null);
+  const segBRef = useRef<HTMLButtonElement>(null);
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    if (!showStepper) return;
+    const measure = () => {
+      const content = contentRef.current;
+      const stepper = stepperRef.current;
+      const seg = side === "a" ? segARef.current : segBRef.current;
+      if (!content || !stepper || !seg) return;
+      const cRect = content.getBoundingClientRect();
+      const sRect = seg.getBoundingClientRect();
+      const W = cRect.width;
+      const S = stepper.offsetWidth; // the stepper's intrinsic width (inline-block)
+      const colW = sRect.width;
+      const colCenter = sRect.left + sRect.width / 2 - cRect.left;
+      // Snap under the name only when the column can hold the stepper; else stay
+      // centered (offset 0 = under the middle, the default).
+      setOffset(colW >= S ? colCenter - W / 2 : 0);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (contentRef.current) ro.observe(contentRef.current);
+    return () => ro.disconnect();
+  }, [showStepper, side]);
+
   return (
     // The match-number gutter sits LEFT of the match CONTENT column (§8 — no header).
     // The reveal (stepper + caption) lives INSIDE that content column, so it aligns
     // under the player columns / matchup — not centered on the whole panel (defect 2).
     <div className="flex items-start" style={{ gap: 10 }}>
       {matchNumber != null && (
-        <span
-          className="flex flex-shrink-0 items-center justify-center"
-          // height matches the segmented track (44 segment + 2×4 padding) so the
-          // number centers with the segments row, not the whole content column.
-          style={{ width: 16, height: 52, fontSize: 13, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}
-        >
-          {matchNumber}
-        </span>
+        // The shared RowNumber cell (row pattern Phase 1b) — same recessed treatment
+        // as the Matches number column (no DragHandle; handicaps don't reorder). Height
+        // matches the segmented track (44 segment + 2×4 padding) so the number centers
+        // with the segments row, not the whole content column.
+        <RowNumber number={matchNumber} className="flex-shrink-0" style={{ width: 22, height: 52 }} />
       )}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div ref={contentRef} className="flex min-w-0 flex-1 flex-col">
         {/* Segmented selector */}
         <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}>
-          <Segment selected={side === "a"} onClick={() => pickSide("a")}>
-            <Avatar name={a.name} teamColor={a.color} sizePx={22} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+          <Segment selected={side === "a"} onClick={() => pickSide("a")} innerRef={segARef}>
+            {/* The SHARED PlayerChip (avatar 30, left-aligned) — identical to the
+                Matches chip. The segment wrapper owns the selection surface, so the
+                chip's own surface is stripped to transparent and shows it through. */}
+            <PlayerChip name={a.name} teamColor={a.color} style={{ background: "transparent", border: "none", height: "100%" }} />
           </Segment>
           <Segment selected={even} onClick={() => onChange(0)} narrow>
             Even
           </Segment>
-          <Segment selected={side === "b"} onClick={() => pickSide("b")}>
-            <Avatar name={b.name} teamColor={b.color} sizePx={22} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
+          <Segment selected={side === "b"} onClick={() => pickSide("b")} innerRef={segBRef}>
+            <PlayerChip name={b.name} teamColor={b.color} style={{ background: "transparent", border: "none", height: "100%" }} />
           </Segment>
         </div>
 
-        {/* Reveal (§8) — under the matchup (defect 2): Even → one muted caption, no
-            stepper. Side selected → the centered <Stepper full> (P-B) + a muted
-            recipient caption (NOT teal — teal is the selected outline only). The
-            stepper centers within THIS content column, i.e. under the player columns. */}
-        {showStepper ? (
+        {/* Reveal (§8) — under the matchup (defect 2): Even is JUST the row (no
+            stepper, no caption — the selected Even segment already says it, P3b).
+            Side selected → the centered <Stepper full> (P-B) + a muted recipient
+            caption (NOT teal — teal is the selection fill only). The stepper centers
+            within THIS content column, i.e. under the player columns. */}
+        {showStepper && (
           <>
-            <div style={{ marginTop: 12 }}>
-              <Stepper
-                size="full"
-                value={n}
-                min={1}
-                max={MAX}
-                onDecrement={() => step(-1)}
-                onIncrement={() => step(1)}
-                formatValue={() => String(n)}
-                label={n === 1 ? "STROKE" : "STROKES"}
-              />
+            {/* Centered by default (textAlign → under the middle column); the measured
+                `offset` only shifts it under the selected name when that column can
+                hold it (geometric, P3c). inline-block so offsetWidth = the stepper's
+                intrinsic width (the `S` the effect compares against the column). */}
+            <div style={{ marginTop: 12, textAlign: "center" }}>
+              <div ref={stepperRef} style={{ display: "inline-block", transform: `translateX(${offset}px)` }}>
+                <Stepper
+                  size="full"
+                  value={n}
+                  min={1}
+                  max={MAX}
+                  onDecrement={() => step(-1)}
+                  onIncrement={() => step(1)}
+                  formatValue={() => String(n)}
+                  label={n === 1 ? "STROKE" : "STROKES"}
+                />
+              </div>
             </div>
             <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
               {caption}
             </div>
           </>
-        ) : (
-          <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
-            {caption}
-          </div>
         )}
       </div>
     </div>
@@ -147,33 +191,43 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
 }
 
 /**
- * One segment. Selected = teal OUTLINE on a lifted (card-raised) chip with white
- * text — never a solid fill (§8; a fill muddies the team avatars). Unselected =
- * transparent on the recessed track, muted text, a transparent border so selection
- * never shifts layout. `narrow` is the Even segment (no avatar, hugs its centered
- * label). Player chips are LEFT-aligned (avatar then name) — table-like, the
- * direction the Matches redesign is heading (defect 3).
+ * One segment — the selection wrapper around the shared PlayerChip (player segments)
+ * or the centered "Even" label (narrow). Selected = TEAL FILL (faint teal wash + teal
+ * border) — the scoped selection-state treatment for segmented selectors (§1/§8).
+ * Unselected = the recessed card-raised chip with a transparent border, so selection
+ * never shifts layout. `narrow` is the Even segment (no chip, hugs its centered label).
  */
 function Segment({
-  selected, onClick, children, narrow = false,
+  selected, onClick, children, narrow = false, innerRef,
 }: {
   selected: boolean;
   onClick: () => void;
   children: React.ReactNode;
   narrow?: boolean;
+  /** The selected player segment is measured against the stepper width (P3c). */
+  innerRef?: React.Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={innerRef}
       type="button"
       onClick={onClick}
-      className="flex min-w-0 items-center gap-1.5"
+      className="flex min-w-0 items-center"
       style={{
         flex: narrow ? "0 0 auto" : "1 1 0",
-        justifyContent: narrow ? "center" : "flex-start",
+        justifyContent: "center",
+        // Player segments carry the shared PlayerChip (which owns its own avatar
+        // inset), so the segment adds no padding; the narrow Even segment hugs its
+        // centered label with its own padding.
         height: 44,
-        borderRadius: 9,
-        padding: narrow ? "0 14px" : "0 10px",
-        background: selected ? "var(--color-bt-card-raised)" : "transparent",
+        borderRadius: 10,
+        padding: narrow ? "0 14px" : 0,
+        // Selection treatment = TEAL FILL (the scoped expansion of the teal
+        // discipline — teal-fill is permitted as a SELECTION state in segmented
+        // selectors; see W-GAMEPAGE-01_visual_vocabulary §1/§8). Selected = faint
+        // teal wash + teal border; unselected = the recessed card-raised chip + a
+        // transparent border so selection never shifts layout.
+        background: selected ? "rgba(45,212,191,0.14)" : "var(--color-bt-card-raised)",
         border: selected ? "1.5px solid var(--color-bt-accent)" : "1.5px solid transparent",
         color: selected ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
         fontSize: 14,

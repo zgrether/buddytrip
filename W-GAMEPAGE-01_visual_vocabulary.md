@@ -23,9 +23,15 @@ accent(teal)→`--color-bt-accent`, danger→`--color-bt-danger`.
    teal check overlay — it never swaps the icon out for a check. Rows stay identifiable in any state
    (critical in a mostly-collapsed accordion).
 2. **Teal means something, always.** Teal is reserved for: the check badge (done), the active-selection
-   outline (live choice), and live computed values (the points total). **Never** captions, helper text,
-   default icon color, or required markers. Teal earns meaning by being rare. *(This was corrected
-   repeatedly — over-teal is the default mistake.)*
+   outline (live choice), live computed values (the points total), and — the one scoped expansion (row
+   pattern Phase 3) — the **selection-state fill of a segmented selector** (see §8). **Never** captions,
+   helper text, default icon color, or required markers. Teal earns meaning by being rare. *(This was
+   corrected repeatedly — over-teal is the default mistake.)*
+   - **Scoped exception — teal-fill as a selection state.** A segmented selector (the §8 `[A│Even│B]`
+     handicap selector) marks its selected segment with a **faint teal wash** (`rgba(45,212,191,0.14)`)
+     **plus** the teal border. This is deliberate and bounded to segmented selectors — it is NOT a license
+     to fill arbitrary surfaces with teal. The general rule (teal = outline/accent, not fill) still holds
+     everywhere else; here the fill *is* the selection signal, distinct from a value or a badge.
 3. **Show the control when live; summarize when not.** No dead/greyed controls reserved "just in case"
    (e.g. no stepper under an Even match).
 4. **Reuse primitives — match, don't reinvent.** The stepper and avatars already exist; adopt their
@@ -129,14 +135,23 @@ Three densities, one component:
 - **Match number on the LEFT** (a small left gutter, like the matches design). The per-row
   `MATCH # · WHO GETS STROKES?` header is **removed** — the control answers it, repeating it five times
   wasted vertical space.
-- **Segmented control:** `[avatar + Player A] │ [Even] │ [avatar + Player B]`. Even segment is narrow,
-  no avatar; player segments carry the team avatar (§11).
-- **Selected = outline, not fill.** Active segment gets a teal border; **no solid teal fill** (solid
-  fill fights the avatar colors and muddies them).
-- **Even selected →** no stepper rendered, just a muted caption "Even match — no strokes given".
-- **Side selected →** the centered full stepper reveals, with a **muted** caption naming the recipient:
-  "{Player} gets strokes on holes 1, 2, 3" (names the recipient so the centered stepper isn't
-  ambiguous; **not teal**).
+- **Shared skeleton (row pattern Phase 3).** The row now uses the same primitives as the Matches setup
+  grid: the **`RowNumber`** gutter (number only — handicaps don't reorder, so no `DragHandle`) + the
+  shared **`PlayerChip`** (avatar **30**, left-aligned, team-colored §11) + a **separator** hairline
+  between matches. Matches and Handicaps are genuine siblings sharing real primitives.
+- **Segmented control:** `[PlayerChip A] │ [Even] │ [PlayerChip B]`. Even segment is narrow, no avatar;
+  player segments carry the shared chip.
+- **Selected = TEAL FILL + teal border** (revised in Phase 3 — was outline-only). The selected segment
+  (player OR Even) gets the faint teal wash (`rgba(45,212,191,0.14)`) **plus** the teal border;
+  unselected segments are the recessed card-raised chip with a transparent border. This is the one scoped
+  expansion of the teal discipline — teal-fill as a *selection state* in segmented selectors (see §1).
+- **Even selected →** **just the row** — no stepper, **no caption**. The "Even match — no strokes given"
+  line was **dropped** (the selected Even segment already says it).
+- **Side selected →** the full stepper reveals, with a **muted** caption naming the recipient:
+  "{Player} gets strokes on holes 1, 2, 3" (**not teal**). The stepper is positioned **geometrically**:
+  centered under the **middle** column by default (mobile-first), snapping under the **selected player's
+  column** when that column is wide enough to contain the stepper (`playerColumnWidth ≥ stepperWidth`) —
+  a measured rule, not a pixel breakpoint.
 - **Even matches = one line; stroked matches = two lines.** Massive vertical savings vs. the current
   match-play handicaps screen.
 

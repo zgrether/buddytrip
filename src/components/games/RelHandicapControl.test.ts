@@ -1,18 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { relHandicapView } from "./RelHandicapControl";
 
-// W-GAMEPAGE visual pass P-D §8 — the altitude-aware reveal. Pure view-model so the
-// "Even = one line (no stepper)" vs "side = stepper + recipient caption" logic is
-// testable apart from render. (The segment outline + avatars are CSS — eye-verified.)
+// W-GAMEPAGE visual pass P-D §8, revised by row-pattern Phase 3 — the altitude-aware
+// reveal. Pure view-model so the "Even = just the row (no stepper, no caption)" vs
+// "side = stepper + recipient caption" logic is testable apart from render. (The
+// teal-fill selection + the shared chip/gutter are CSS — eye-verified.)
 describe("relHandicapView (the §8 reveal view-model)", () => {
-  it("Even (value 0): no stepper, no recipient, the muted Even caption", () => {
+  it("Even (value 0): no stepper, no recipient, NO caption (P3b dropped it)", () => {
     const v = relHandicapView(0, "Ann", "Bob");
     expect(v.side).toBe("even");
     expect(v.even).toBe(true);
-    expect(v.showStepper).toBe(false); // Even is ONE line — no stepper rendered
+    expect(v.showStepper).toBe(false); // Even is JUST the row — no stepper rendered
     expect(v.recipient).toBeNull();
     expect(v.holes).toEqual([]);
-    expect(v.caption).toBe("Even match — no strokes given");
+    // The "Even match — no strokes given" caption was dropped — the selected Even
+    // segment already says it, so an Even match is one line with no caption beneath.
+    expect(v.caption).toBe("");
   });
 
   it("left side (value < 0): side a gets strokes; stepper shows; recipient caption", () => {
