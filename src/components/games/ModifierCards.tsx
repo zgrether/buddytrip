@@ -81,15 +81,12 @@ export function ModifierCards({
 }
 
 /** Trailing-hole count for glorious finishing holes (the only stepper modifier).
- *  The count lives in the canonical compact <Stepper> now (P-B); the label carries
- *  the meaning the old inline sentence did. */
+ *  The count lives in the canonical compact <Stepper> (P-B). De-framed (§10): no
+ *  border/surface of its own — it's part of the modifier card, not a box-in-a-box.
+ *  `pl-8` aligns its label under the title (past the leading checkbox + gap). */
 function HoleStepper({ value, onChange, disabled }: { value: number; onChange: (n: number) => void; disabled?: boolean }) {
   return (
-    <div
-      className="mt-2.5 flex items-center justify-between rounded-lg px-3 py-2"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      data-testid="glorious-holes-stepper"
-    >
+    <div className="mt-2 flex items-center justify-between pl-8" data-testid="glorious-holes-stepper">
       <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>Final holes worth double</span>
       <Stepper
         size="compact"
