@@ -635,7 +635,32 @@ export default function NewMatchGamePage() {
   // server return); this just syncs it. No-op until a real match exists. On
   // failure the draft is KEPT (never discard edits) and an inline retry surfaces.
   async function persistDraftOnCollapse() {
-    if (filledDraft.length === 0) return;
+    if (filledDraft.length === 0) {
+      // Clear-to-empty: the floor-of-one × emptied the last match's slots, so the
+      // draft has its row(s) but nothing filled. Persist them as EMPTY matches (null
+      // sides — the shape creation seeds) so the clear SURVIVES reload; otherwise
+      // saveSetup's filled-only write skips it and the server keeps the old players
+      // (the revert-on-reload bug). Scoped to a draft that is ALL-empty (every slot
+      // empty) — the deliberate post-clear state — so a transient half-filled slot is
+      // left unpersisted (existing behavior), never wiped. saveSetup itself stays
+      // filled-only: it's also the Enable gate's "ready" signal, which empty is not.
+      const allEmpty = draft.length > 0 && draft.every((m) => m.a.length === 0 && m.b.length === 0);
+      if (!allEmpty || !tripId || !gameId) return;
+      try {
+        const empty = draft.map((_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
+        if (sided) await setDoublesPairings.mutateAsync({ tripId, gameId, matches: empty });
+        else await setPairings.mutateAsync({ tripId, gameId, matches: empty });
+        setCollapseError(false);
+        if (competitionId) {
+          utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+          utils.games.listByTrip.invalidate({ tripId });
+          utils.competitions.faceBootstrap.invalidate({ tripId });
+        }
+      } catch {
+        setCollapseError(true);
+      }
+      return;
+    }
     try {
       const ok = await saveSetup();
       if (ok) {
@@ -1671,21 +1696,28 @@ function MatchSetup({
                   red — draft removal is free (no persisted scores) and the open panel
                   must never read as an error. Far right. The runtime-overview remove
                   (a scored, destructive match) keeps its danger color; this one does
-                  not. Hidden at the floor of 1, but the column stays so rows align. */}
-              {draft.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setDraft((prev) => prev.filter((_, j) => j !== i))}
-                  title="Remove match"
-                  aria-label={`Remove match ${i + 1}`}
-                  className="flex items-center justify-center"
-                  style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-                >
-                  <X size={16} />
-                </button>
-              ) : (
-                <span />
-              )}
+                  not. ALWAYS present, floor-aware: with >1 match it REMOVES the row;
+                  on the LAST match it CLEARS the slots (empties both sides back to the
+                  dashed "+ add player" state) rather than deleting it — the server
+                  enforces a floor of ≥1 match (setPairings .min(1) / removeMatch's
+                  throw), so the last match is cleared, never removed. One glyph, both
+                  meanings (no room for a label). */}
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft((prev) =>
+                    prev.length > 1
+                      ? prev.filter((_, j) => j !== i)
+                      : prev.map((m, j) => (j === i ? { ...m, a: [], b: [], handicap: 0 } : m))
+                  )
+                }
+                title={draft.length > 1 ? "Remove match" : "Clear players"}
+                aria-label={draft.length > 1 ? `Remove match ${i + 1}` : `Clear match ${i + 1}`}
+                className="flex items-center justify-center"
+                style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+              >
+                <X size={16} />
+              </button>
             </div>
           );
         })}
