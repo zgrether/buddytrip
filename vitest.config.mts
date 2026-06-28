@@ -6,6 +6,10 @@ import { config } from "dotenv";
 config({ path: path.resolve(__dirname, ".env.local") });
 
 export default defineConfig({
+  // Match the Next app's automatic JSX runtime so component .tsx files (which omit
+  // `import React`) render under react-dom/server in tests (the row-pattern
+  // primitives are the first such test).
+  esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
     testTimeout: 30_000,
