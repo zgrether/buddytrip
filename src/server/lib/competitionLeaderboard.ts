@@ -3,6 +3,7 @@ import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/co
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { isManualGameType } from "@/lib/gameTypes";
+import { matchPlayReady } from "@/lib/matchDraft";
 
 const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
 // Roster-gated golf formats: a stroke field / rack auto-grouping is "configured"
@@ -13,7 +14,10 @@ const ROSTER_TYPES = new Set(["gtt_stroke_play", "gtt_rack_n_stack"]);
  * Is the game configured enough to be Ready (vs still Setting up)? "Ready must
  * be earned, not assumed" — exists-and-not-live ≠ Ready. The format's REQUIRED
  * roster is the gate; course + handicaps are optional and NEVER gate readiness:
- *  - match play → pairings assigned (game_matches rows)
+ *  - match play → ALL pairings assigned (`matchPlayReady`: paired === total, ≥1) —
+ *    the SAME threshold the setup-page Enable gate uses, so list-ready ⟺
+ *    setup-can-enable (readiness rework P1b). A partly-paired game (3/5) is NOT
+ *    configured → it reads "setting up" on the list, matching its setup page.
  *  - stroke / rack → participants assigned (game_participants rows)
  *  - manual / side events → points configured (no roster to assign)
  * One signal: lifecycle AND the row's `N PTS`/`—` both read it, so they can't
@@ -21,11 +25,12 @@ const ROSTER_TYPES = new Set(["gtt_stroke_play", "gtt_rack_n_stack"]);
  */
 function isConfigured(
   typeId: string | null,
-  matchCount: number,
+  matchPaired: number,
+  matchTotal: number,
   participantCount: number,
   hasPoints: boolean
 ): boolean {
-  if (typeId && MATCH_PLAY_TYPES.has(typeId)) return matchCount > 0;
+  if (typeId && MATCH_PLAY_TYPES.has(typeId)) return matchPlayReady(matchPaired, matchTotal);
   if (typeId && ROSTER_TYPES.has(typeId)) return participantCount > 0;
   return hasPoints;
 }
@@ -138,7 +143,13 @@ export async function computeCompetitionLeaderboard(
   // "configured rows incl. empty, ≥1 from creation" goalpost — pairing now moves
   // the live clinch target, by design.)
   const matchCountByGame = new Map<string, number>();
+  // Total match ROWS (paired + the seeded/unpaired) per game — already in the
+  // fetched data, no extra query. Feeds the readiness threshold: a match game is
+  // configured only when EVERY row is paired (`paired === total`), the SAME bar
+  // the setup-page Enable gate uses (`matchPlayReady`) — readiness rework P1b.
+  const totalMatchRowsByGame = new Map<string, number>();
   for (const r of (matchRowsRes.data ?? []) as { game_id: string; side_a: unknown; side_b: unknown }[]) {
+    totalMatchRowsByGame.set(r.game_id, (totalMatchRowsByGame.get(r.game_id) ?? 0) + 1);
     if (r.side_a == null || r.side_b == null) continue;
     matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
   }
@@ -278,6 +289,7 @@ export async function computeCompetitionLeaderboard(
         configured: isConfigured(
           typeId,
           matchCountByGame.get(gid) ?? 0,
+          totalMatchRowsByGame.get(gid) ?? 0,
           participantCountByGame.get(gid) ?? 0,
           hasPoints
         ),
