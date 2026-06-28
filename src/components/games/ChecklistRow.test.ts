@@ -38,6 +38,22 @@ describe("checklistRowVisuals", () => {
     expect(checklistRowVisuals("empty", true).border).toBe("1px solid var(--color-bt-border)");
   });
 
+  // Readiness rework P2 — the collapse-boundary verdict: while OPEN, an invalid row
+  // reads fully NEUTRAL (no red border / danger icon / X badge); the red verdict
+  // only appears once COLLAPSED. Kills the mid-build red↔teal flicker.
+  it("invalid is NEUTRAL while open, red only when collapsed", () => {
+    const open = checklistRowVisuals("invalid", true);
+    expect(open.border).not.toContain("danger"); // no red border while editing
+    expect(open.iconColor).not.toContain("danger"); // no danger icon while editing
+    expect(open.iconColor).toBe("var(--color-bt-text)"); // active/white, the editing look
+    expect(open.badge).toBeNull();
+
+    const collapsed = checklistRowVisuals("invalid", false);
+    expect(collapsed.border).toContain("var(--color-bt-danger)"); // verdict resolves on collapse
+    expect(collapsed.iconColor).toBe("var(--color-bt-danger)");
+    expect(collapsed.badge).toBe("x");
+  });
+
   it("the icon container is raised only when active (resolved/open), transparent when empty", () => {
     expect(checklistRowVisuals("empty", false).iconBg).toBe("transparent");
     expect(checklistRowVisuals("resolved", false).iconBg).toBe("var(--color-bt-card-raised)");
