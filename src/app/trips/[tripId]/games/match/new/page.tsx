@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, GripVertical, Plus, Minus, Trash2, Swords, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Plus, Minus, Trash2, X, Swords, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -14,6 +14,9 @@ import { ChecklistRow, type ChecklistRowState } from "@/components/games/Checkli
 import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
+import { DragHandle } from "@/components/games/DragHandle";
+import { RowNumber } from "@/components/games/RowNumber";
+import { PlayerChip } from "@/components/games/PlayerChip";
 import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -1105,6 +1108,7 @@ export default function NewMatchGamePage() {
                 colorOf={colorOf}
                 teamColorOf={teamColorOf}
                 avatarIconOf={avatarIconOf}
+                teamForSlot={teamForSlot}
                 openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
               />
             </ChecklistRow>
@@ -1477,6 +1481,11 @@ function NewGame({
   );
 }
 
+// The Matches setup grid — ONE template shared by the branded header and every
+// match row, so the six columns line up: grab │ # │ Team A │ vs │ Team B │ ×.
+// The two team columns flex (minmax(0,1fr)); the four structural columns are fixed.
+const MATCH_GRID = "24px 22px minmax(0,1fr) auto minmax(0,1fr) 24px";
+
 function MatchSetup({
   draft,
   setDraft,
@@ -1485,6 +1494,7 @@ function MatchSetup({
   colorOf,
   teamColorOf,
   avatarIconOf,
+  teamForSlot,
   openSelector,
 }: {
   tripId: string;
@@ -1499,6 +1509,10 @@ function MatchSetup({
    *  state), exactly like the handicap selector. Undefined for standalone games. */
   teamColorOf: (userId: string) => string | undefined;
   avatarIconOf: Map<string, string | null>;
+  /** The team bound to a setup slot (side A → team[0], side B → team[1]) — drives
+   *  the shared branded column header. Undefined in a standalone (non-2-team) game,
+   *  where the header falls back to a neutral "Side A / Side B". */
+  teamForSlot: (slot: "a" | "b") => { name: string; color: string } | undefined;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
 }) {
   // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
@@ -1541,10 +1555,15 @@ function MatchSetup({
       avatarIcon: avatarIconOf.get(userId) ?? null,
     };
   }
-  // The member slots for one side — 1 for singles, 2 stacked for doubles. Each
-  // sub-slot picks a single player into that member position. Team identity rides
-  // on the player avatar's ROSTER color (memberPart → teamColorOf), never the slot —
-  // so a dropped-from-team player reads neutral here, honestly (not the slot's color).
+  // One TEAM COLUMN of the match grid — it holds the same column in both formats,
+  // just 1 chip tall (1v1) or 2 chips tall (2v2). NOT a separate team-row, NOT a
+  // per-row team label: a 2v2 match is the SAME six columns as 1v1, only two chips
+  // stacked per side. The within-side gap (6px) is deliberately tighter than the
+  // between-match separator (P2c) so the two chips read as ONE side; the grid's
+  // items-center then centers the structural cells (grab/#/vs/×) against the stack
+  // (the "span both rows, centered" effect). Each sub-slot picks a single player.
+  // Team identity rides on the player avatar's ROSTER color (memberPart →
+  // teamColorOf), never the slot — a dropped-from-team player reads neutral, honestly.
   const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b") => {
     return (
       <div className="flex flex-col gap-1.5">
@@ -1555,13 +1574,37 @@ function MatchSetup({
     );
   };
 
+  // The shared branded header team for a slot: the bound team's name + color in a
+  // 2-team competition, else a neutral "Side A/B" (a standalone game has no teams).
+  const headerTeam = (slot: "a" | "b") => {
+    const t = teamForSlot(slot);
+    return t ?? { name: slot === "a" ? "Side A" : "Side B", color: "var(--color-bt-text-dim)" };
+  };
+  const a = headerTeam("a");
+  const b = headerTeam("b");
+
   return (
     <div data-testid="match-pairings">
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
         Tap a slot to pick a player · drag to reorder.
       </p>
 
-      <div className="flex flex-col gap-3">
+      {/* Shared branded column header (BOTH formats): team names centered +
+          team-colored in their columns, "vs" centered in its; grab/#/× columns
+          empty. Same MATCH_GRID template as the rows below → the columns line up. */}
+      <div
+        className="grid items-center"
+        style={{ gridTemplateColumns: MATCH_GRID, gap: 8, paddingBottom: 8, marginBottom: 8, borderBottom: "1px solid var(--color-bt-border)" }}
+      >
+        <span />
+        <span />
+        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: a.color }}>{a.name}</span>
+        <span className="text-center" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
+        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: b.color }}>{b.name}</span>
+        <span />
+      </div>
+
+      <div className="flex flex-col">
         {draft.map((d, i) => {
           const dragging = dragState?.from === i;
           const dropIndicator: "top" | "bottom" | null =
@@ -1592,7 +1635,14 @@ function MatchSetup({
                 setDragState(null);
                 setArmedIdx(null);
               }}
-              style={{ position: "relative", padding: "12px 12px 14px", borderRadius: 14, background: "var(--color-bt-card)", border: `1px solid ${dragging ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`, opacity: dragging ? 0.4 : 1 }}
+              // The match is one flat grid ROW (no frame, no "MATCH N" band). The
+              // four structural columns (grab │ # │ vs │ ×) center against the team
+              // columns, which hold one chip (1v1) or two stacked chips (2v2). A
+              // hairline separator above every match but the first delimits them —
+              // quiet in 1v1, load-bearing in 2v2 (it makes the 2-row match read as
+              // one unit).
+              className="grid items-center"
+              style={{ position: "relative", gridTemplateColumns: MATCH_GRID, gap: 8, padding: "10px 0", opacity: dragging ? 0.4 : 1, borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
             >
               {dropIndicator && (
                 <div
@@ -1601,7 +1651,7 @@ function MatchSetup({
                     position: "absolute",
                     left: 2,
                     right: 2,
-                    [dropIndicator === "top" ? "top" : "bottom"]: -8,
+                    [dropIndicator === "top" ? "top" : "bottom"]: -1,
                     height: 2,
                     borderRadius: 2,
                     background: "var(--color-bt-accent)",
@@ -1610,52 +1660,32 @@ function MatchSetup({
                   }}
                 />
               )}
-              <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Match {i + 1}</span>
-                <div className="flex items-center gap-1">
-                  {/* Remove this match (down to the minimum of 1). Pre-tee-off
-                      draft has no persisted scores, so removal is FREE here — and
-                      the panel is open/editing, where nothing must read as an error
-                      (readiness rework P2b: open → neutral always). So this is a
-                      DIM control (matching the grip handle below), not a danger-red
-                      one — the red `−` was the lone red left in the open panel and
-                      the thing that made "1 of 2" look invalid vs "1 of 1". The
-                      runtime-overview remove (a scored, destructive match) keeps
-                      its danger color; this draft one does not. */}
-                  {draft.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setDraft((prev) => prev.filter((_, j) => j !== i))}
-                      title="Remove match"
-                      aria-label={`Remove match ${i + 1}`}
-                      className="flex items-center justify-center"
-                      style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-                    >
-                      <Minus size={16} />
-                    </button>
-                  )}
-                  <span
-                    onMouseDown={() => setArmedIdx(i)}
-                    onMouseUp={() => setArmedIdx(null)}
-                    title="Drag to reorder"
-                    aria-label="Drag to reorder"
-                    className="flex cursor-grab items-center justify-center active:cursor-grabbing"
-                    style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)", touchAction: "none" }}
-                  >
-                    <GripVertical size={16} />
-                  </span>
-                </div>
-              </div>
-              {/* Grid with minmax(0,1fr) columns → the two slots are always
-                  equal width regardless of name length, vs stays centered. */}
-              <div className="grid items-center" style={{ gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8 }}>
-                {sideSlots(d.a, i, "a")}
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-                {sideSlots(d.b, i, "b")}
-              </div>
-              {/* Handicaps are no longer inline here — they relocated to the
-                  checklist's Handicaps row (gated by Matches). MatchSetup is the
-                  pairing builder only. */}
+              {/* grab — far left, away from the × (reorder isn't next to remove). */}
+              <DragHandle onMouseDown={() => setArmedIdx(i)} onMouseUp={() => setArmedIdx(null)} />
+              {/* # — the table index column (separate from grab). */}
+              <RowNumber number={i + 1} />
+              {sideSlots(d.a, i, "a")}
+              <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
+              {sideSlots(d.b, i, "b")}
+              {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
+                  red — draft removal is free (no persisted scores) and the open panel
+                  must never read as an error. Far right. The runtime-overview remove
+                  (a scored, destructive match) keeps its danger color; this one does
+                  not. Hidden at the floor of 1, but the column stays so rows align. */}
+              {draft.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setDraft((prev) => prev.filter((_, j) => j !== i))}
+                  title="Remove match"
+                  aria-label={`Remove match ${i + 1}`}
+                  className="flex items-center justify-center"
+                  style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+                >
+                  <X size={16} />
+                </button>
+              ) : (
+                <span />
+              )}
             </div>
           );
         })}
@@ -2044,18 +2074,13 @@ function Slot({ player, onTap }: { player: Participant | null; onTap: () => void
       </button>
     );
   }
-  // Filled block — lighter card-raised pill so the player stands out on the card.
-  // Avatar is always left of the name (we never put it after the name).
+  // Filled — the shared PlayerChip (avatar 30, left-aligned, §11 team initial, no
+  // avatarIcon; player.color is roster-resolved upstream). The button is just the
+  // tap target (reset surface); the chip owns the visual, so the Matches slot and
+  // the handicap segment render an identical chip.
   return (
-    <button
-      onClick={onTap}
-      className="flex items-center gap-2"
-      style={{ width: "100%", minWidth: 0, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-    >
-      {/* Roster team color (neutral if teamless) — §11 team initial; no avatarIcon
-          (closes #477 in the setup panel). player.color is roster-resolved upstream. */}
-      <Avatar name={player.name} teamColor={player.color} sizePx={30} />
-      <span style={{ minWidth: 0, fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
+    <button onClick={onTap} className="block w-full text-left" style={{ minWidth: 0, padding: 0, border: "none", background: "none" }}>
+      <PlayerChip name={player.name} teamColor={player.color} />
     </button>
   );
 }
