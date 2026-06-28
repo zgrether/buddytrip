@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { assertRosterUnlocked } from "../lib/rosterLock";
 
 /**
  * team_assignments — composite PK (competition_id, user_id) means a user
@@ -53,6 +54,19 @@ export const teamAssignmentsRouter = router({
     )
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // Roster-removal lock — asymmetric: a pure ADD (no prior assignment) always
+      // passes. A MOVE/TRADE (already on a DIFFERENT team) removes them from that
+      // team, so it's blocked once scoring has started. (Re-assigning to the same
+      // team is a no-op, not a removal — passes.)
+      const { data: existing } = await ctx.supabase
+        .from("team_assignments")
+        .select("team_id")
+        .eq("competition_id", input.competitionId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+      const isMove = !!existing && (existing.team_id as string) !== input.teamId;
+      if (isMove) await assertRosterUnlocked(ctx.supabase, input.competitionId);
+
       const { data: inserted, error } = await ctx.supabase
         .from("team_assignments")
         .upsert(
@@ -89,6 +103,10 @@ export const teamAssignmentsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Roster-removal lock: a removal is blocked once any game in the competition
+      // has a score (it could orphan the player in a configured match).
+      await assertRosterUnlocked(ctx.supabase, input.competitionId);
+
       const { error } = await ctx.supabase
         .from("team_assignments")
         .delete()

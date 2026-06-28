@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
+import { assertRosterUnlocked } from "../lib/rosterLock";
 
 /**
  * teams — competition-scoped teams.
@@ -138,6 +139,17 @@ export const teamsRouter = router({
     .input(z.object({ tripId: z.string(), teamId: z.string() }))
     .use(requireCompetitionRole("co_admin"))
     .mutation(async ({ ctx, input }) => {
+      // Roster-removal lock: deleting a team is a MASS removal (cascades to clear
+      // its assignments), so it's blocked once the competition has any score.
+      const { data: team } = await ctx.supabase
+        .from("teams")
+        .select("competition_id")
+        .eq("id", input.teamId)
+        .maybeSingle();
+      if (team?.competition_id) {
+        await assertRosterUnlocked(ctx.supabase, team.competition_id as string);
+      }
+
       const { error } = await ctx.supabase
         .from("teams")
         .delete()
