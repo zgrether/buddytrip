@@ -1759,18 +1759,28 @@ function HandicapsSection({
     );
   }
   return (
-    <div className="flex flex-col gap-3" data-testid="handicaps-section">
-      {filled.map(({ d, i }) => (
+    // Separator hairline between matches (row pattern Phase 3) — the same delimiter
+    // Matches uses, replacing the old gap-3 spacing so the two surfaces read alike.
+    <div className="flex flex-col" data-testid="handicaps-section">
+      {filled.map(({ d, i }, idx) => (
         // §8: the per-row "Match N" header is gone — the number rides the control's
         // left gutter instead (passed below), shown only when there's >1 match.
-        <RelHandicapControl
+        <div
           key={i}
-          a={sidePart(d.a)!}
-          b={sidePart(d.b)!}
-          value={d.handicap}
-          matchNumber={draft.length > 1 ? i + 1 : undefined}
-          onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
-        />
+          style={{
+            borderTop: idx > 0 ? "1px solid var(--color-bt-border)" : undefined,
+            paddingTop: idx > 0 ? 14 : 0,
+            paddingBottom: 14,
+          }}
+        >
+          <RelHandicapControl
+            a={sidePart(d.a)!}
+            b={sidePart(d.b)!}
+            value={d.handicap}
+            matchNumber={draft.length > 1 ? i + 1 : undefined}
+            onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
+          />
+        </div>
       ))}
     </div>
   );

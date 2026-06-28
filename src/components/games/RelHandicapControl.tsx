@@ -13,11 +13,14 @@ import type { Participant } from "./types";
  * undraggable one-thumbed in the sun; the number matters most in the big-mismatch
  * case, exactly where a bare slider fails).
  *
- * §8 look: the selected segment is an OUTLINE (teal border), never a solid fill —
- * a fill fights the team avatars the player segments now carry. The per-row
- * "WHO GETS STROKES?" header is gone; the match number sits in a small left gutter.
- * Reveal is altitude-aware: Even shows one muted caption (no stepper); a side
- * selected reveals the centered <Stepper full> + a muted recipient caption.
+ * Look (§8, as revised by the row-pattern Phase 3): the row shares the Matches
+ * skeleton — a RowNumber gutter + the shared PlayerChip (avatar 30, left-aligned) —
+ * with a `[A│Even│B]` segmented selector. The selected segment is a TEAL FILL (faint
+ * wash + teal border), the scoped selection-state treatment for segmented selectors
+ * (vocabulary §1/§8); unselected segments are the recessed card-raised chip. The
+ * per-row "WHO GETS STROKES?" header is gone; the match number rides the gutter.
+ * Reveal is altitude-aware: Even is just the row (no stepper, no caption); a side
+ * selected reveals the <Stepper full> + a muted recipient caption.
  *
  * Same data model (NO behavior change — P-D is appearance + layout only): one
  * signed value, strokes to exactly ONE side, never split.
@@ -41,9 +44,11 @@ export interface RelHandicapView {
   even: boolean;
   recipient: string | null;
   holes: number[];
-  /** The muted reveal caption: "Even match …" or "{recipient} gets strokes on holes …". */
+  /** The muted recipient caption ("{recipient} gets strokes on holes …"), shown only
+   *  for a stroked side. EMPTY for Even — the selected Even segment already says it,
+   *  so an Even match is just the row (P3b dropped "Even match — no strokes given"). */
   caption: string;
-  /** Even → no stepper (one line); a side → the centered <Stepper full> reveals. */
+  /** Even → no stepper (one line, no caption); a side → the centered <Stepper full> reveals. */
   showStepper: boolean;
 }
 export function relHandicapView(value: number, aName: string, bName: string): RelHandicapView {
@@ -53,8 +58,9 @@ export function relHandicapView(value: number, aName: string, bName: string): Re
   const even = side === "even";
   const recipient = even ? null : side === "a" ? aName : bName;
   const holes = [...strokeHoles(n)].sort((x, y) => x - y);
+  // Even → no caption (the segment says it); a side → who gets the strokes.
   const caption = even
-    ? "Even match — no strokes given"
+    ? ""
     : `${recipient} gets strokes on hole${n === 1 ? "" : "s"} ${holes.join(", ")}`;
   return { side, n, even, recipient, holes, caption, showStepper: !even };
 }
@@ -113,11 +119,12 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
           </Segment>
         </div>
 
-        {/* Reveal (§8) — under the matchup (defect 2): Even → one muted caption, no
-            stepper. Side selected → the centered <Stepper full> (P-B) + a muted
-            recipient caption (NOT teal — teal is the selected outline only). The
-            stepper centers within THIS content column, i.e. under the player columns. */}
-        {showStepper ? (
+        {/* Reveal (§8) — under the matchup (defect 2): Even is JUST the row (no
+            stepper, no caption — the selected Even segment already says it, P3b).
+            Side selected → the centered <Stepper full> (P-B) + a muted recipient
+            caption (NOT teal — teal is the selection fill only). The stepper centers
+            within THIS content column, i.e. under the player columns. */}
+        {showStepper && (
           <>
             <div style={{ marginTop: 12 }}>
               <Stepper
@@ -135,10 +142,6 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
               {caption}
             </div>
           </>
-        ) : (
-          <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
-            {caption}
-          </div>
         )}
       </div>
     </div>
@@ -146,12 +149,11 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
 }
 
 /**
- * One segment. Selected = teal OUTLINE on a lifted (card-raised) chip with white
- * text — never a solid fill (§8; a fill muddies the team avatars). Unselected =
- * transparent on the recessed track, muted text, a transparent border so selection
- * never shifts layout. `narrow` is the Even segment (no avatar, hugs its centered
- * label). Player chips are LEFT-aligned (avatar then name) — table-like, the
- * direction the Matches redesign is heading (defect 3).
+ * One segment — the selection wrapper around the shared PlayerChip (player segments)
+ * or the centered "Even" label (narrow). Selected = TEAL FILL (faint teal wash + teal
+ * border) — the scoped selection-state treatment for segmented selectors (§1/§8).
+ * Unselected = the recessed card-raised chip with a transparent border, so selection
+ * never shifts layout. `narrow` is the Even segment (no chip, hugs its centered label).
  */
 function Segment({
   selected, onClick, children, narrow = false,
@@ -175,7 +177,12 @@ function Segment({
         height: 44,
         borderRadius: 10,
         padding: narrow ? "0 14px" : 0,
-        background: selected ? "var(--color-bt-card-raised)" : "transparent",
+        // Selection treatment = TEAL FILL (the scoped expansion of the teal
+        // discipline — teal-fill is permitted as a SELECTION state in segmented
+        // selectors; see W-GAMEPAGE-01_visual_vocabulary §1/§8). Selected = faint
+        // teal wash + teal border; unselected = the recessed card-raised chip + a
+        // transparent border so selection never shifts layout.
+        background: selected ? "rgba(45,212,191,0.14)" : "var(--color-bt-card-raised)",
         border: selected ? "1.5px solid var(--color-bt-accent)" : "1.5px solid transparent",
         color: selected ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
         fontSize: 14,
