@@ -28,6 +28,23 @@ export function filledMatches<M extends MatchSides>(draft: M[], playersPerSide: 
 }
 
 /**
+ * Does ≥1 valid (fully-paired) match exist? (Readiness rework P3 — the downstream
+ * gate.) Points / Handicaps / Modifiers mean nothing before there's a match to
+ * apply them to, so they stay LOCKED until this is true. This is the ONE "a match
+ * exists" definition the setup rows share — distinct from `matchPlayReady` (which
+ * needs ALL matches paired, the stricter Enable bar). A seeded-but-empty match
+ * does NOT count.
+ *
+ * ⚠ P-C seam: P-C adds "Points > 0 joins the Enable gate." That's a *separate*
+ * predicate on the Points value — it does NOT change THIS match-existence gate.
+ * Keep them apart: P3 = "can the row be edited at all"; P-C = "does the Enable
+ * button light up."
+ */
+export function hasValidMatch(draft: MatchSides[], playersPerSide: number): boolean {
+  return filledMatches(draft, playersPerSide).length > 0;
+}
+
+/**
  * The ONE match-play readiness threshold (readiness rework P1b). A match game is
  * ready ⟺ it has ≥1 match AND **every** match is paired — `paired === total`, no
  * empty slots. Both surfaces consume THIS so they can't drift: the setup-page
