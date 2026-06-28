@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { strokeHoles } from "@/lib/matchPlay";
 import { Stepper } from "@/components/games/Stepper";
 import { RowNumber } from "@/components/games/RowNumber";
@@ -90,6 +91,41 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
     onChange(side === "a" ? -mag : mag);
   };
 
+  // Geometric stepper alignment (§8 — measured, NOT a pixel breakpoint). The reveal
+  // is centered under the MIDDLE (Even) column by default (mobile-first: the stepper
+  // is wider than a narrow player column). As a progressive enhancement, when the
+  // selected player's column is wide enough to CONTAIN the stepper
+  // (`playerColumnWidth ≥ stepperWidth`), it snaps to center under that name instead.
+  // The default is centered (textAlign on the wrapper), so `offset` only ever shifts
+  // it sideways under the name — no flash, and the narrow case never moves.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const stepperRef = useRef<HTMLDivElement>(null);
+  const segARef = useRef<HTMLButtonElement>(null);
+  const segBRef = useRef<HTMLButtonElement>(null);
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    if (!showStepper) return;
+    const measure = () => {
+      const content = contentRef.current;
+      const stepper = stepperRef.current;
+      const seg = side === "a" ? segARef.current : segBRef.current;
+      if (!content || !stepper || !seg) return;
+      const cRect = content.getBoundingClientRect();
+      const sRect = seg.getBoundingClientRect();
+      const W = cRect.width;
+      const S = stepper.offsetWidth; // the stepper's intrinsic width (inline-block)
+      const colW = sRect.width;
+      const colCenter = sRect.left + sRect.width / 2 - cRect.left;
+      // Snap under the name only when the column can hold the stepper; else stay
+      // centered (offset 0 = under the middle, the default).
+      setOffset(colW >= S ? colCenter - W / 2 : 0);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (contentRef.current) ro.observe(contentRef.current);
+    return () => ro.disconnect();
+  }, [showStepper, side]);
+
   return (
     // The match-number gutter sits LEFT of the match CONTENT column (§8 — no header).
     // The reveal (stepper + caption) lives INSIDE that content column, so it aligns
@@ -102,10 +138,10 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
         // with the segments row, not the whole content column.
         <RowNumber number={matchNumber} className="flex-shrink-0" style={{ width: 22, height: 52 }} />
       )}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div ref={contentRef} className="flex min-w-0 flex-1 flex-col">
         {/* Segmented selector */}
         <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}>
-          <Segment selected={side === "a"} onClick={() => pickSide("a")}>
+          <Segment selected={side === "a"} onClick={() => pickSide("a")} innerRef={segARef}>
             {/* The SHARED PlayerChip (avatar 30, left-aligned) — identical to the
                 Matches chip. The segment wrapper owns the selection surface, so the
                 chip's own surface is stripped to transparent and shows it through. */}
@@ -114,7 +150,7 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
           <Segment selected={even} onClick={() => onChange(0)} narrow>
             Even
           </Segment>
-          <Segment selected={side === "b"} onClick={() => pickSide("b")}>
+          <Segment selected={side === "b"} onClick={() => pickSide("b")} innerRef={segBRef}>
             <PlayerChip name={b.name} teamColor={b.color} style={{ background: "transparent", border: "none", height: "100%" }} />
           </Segment>
         </div>
@@ -126,17 +162,23 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
             within THIS content column, i.e. under the player columns. */}
         {showStepper && (
           <>
-            <div style={{ marginTop: 12 }}>
-              <Stepper
-                size="full"
-                value={n}
-                min={1}
-                max={MAX}
-                onDecrement={() => step(-1)}
-                onIncrement={() => step(1)}
-                formatValue={() => String(n)}
-                label={n === 1 ? "STROKE" : "STROKES"}
-              />
+            {/* Centered by default (textAlign → under the middle column); the measured
+                `offset` only shifts it under the selected name when that column can
+                hold it (geometric, P3c). inline-block so offsetWidth = the stepper's
+                intrinsic width (the `S` the effect compares against the column). */}
+            <div style={{ marginTop: 12, textAlign: "center" }}>
+              <div ref={stepperRef} style={{ display: "inline-block", transform: `translateX(${offset}px)` }}>
+                <Stepper
+                  size="full"
+                  value={n}
+                  min={1}
+                  max={MAX}
+                  onDecrement={() => step(-1)}
+                  onIncrement={() => step(1)}
+                  formatValue={() => String(n)}
+                  label={n === 1 ? "STROKE" : "STROKES"}
+                />
+              </div>
             </div>
             <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
               {caption}
@@ -156,15 +198,18 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
  * never shifts layout. `narrow` is the Even segment (no chip, hugs its centered label).
  */
 function Segment({
-  selected, onClick, children, narrow = false,
+  selected, onClick, children, narrow = false, innerRef,
 }: {
   selected: boolean;
   onClick: () => void;
   children: React.ReactNode;
   narrow?: boolean;
+  /** The selected player segment is measured against the stepper width (P3c). */
+  innerRef?: React.Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={innerRef}
       type="button"
       onClick={onClick}
       className="flex min-w-0 items-center"
