@@ -2,7 +2,8 @@
 
 import { strokeHoles } from "@/lib/matchPlay";
 import { Stepper } from "@/components/games/Stepper";
-import { Avatar } from "@/components/Avatar";
+import { RowNumber } from "@/components/games/RowNumber";
+import { PlayerChip } from "@/components/games/PlayerChip";
 import type { Participant } from "./types";
 
 /**
@@ -89,28 +90,26 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
     // under the player columns / matchup — not centered on the whole panel (defect 2).
     <div className="flex items-start" style={{ gap: 10 }}>
       {matchNumber != null && (
-        <span
-          className="flex flex-shrink-0 items-center justify-center"
-          // height matches the segmented track (44 segment + 2×4 padding) so the
-          // number centers with the segments row, not the whole content column.
-          style={{ width: 16, height: 52, fontSize: 13, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}
-        >
-          {matchNumber}
-        </span>
+        // The shared RowNumber cell (row pattern Phase 1b) — same recessed treatment
+        // as the Matches number column (no DragHandle; handicaps don't reorder). Height
+        // matches the segmented track (44 segment + 2×4 padding) so the number centers
+        // with the segments row, not the whole content column.
+        <RowNumber number={matchNumber} className="flex-shrink-0" style={{ width: 22, height: 52 }} />
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Segmented selector */}
         <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}>
           <Segment selected={side === "a"} onClick={() => pickSide("a")}>
-            <Avatar name={a.name} teamColor={a.color} sizePx={22} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+            {/* The SHARED PlayerChip (avatar 30, left-aligned) — identical to the
+                Matches chip. The segment wrapper owns the selection surface, so the
+                chip's own surface is stripped to transparent and shows it through. */}
+            <PlayerChip name={a.name} teamColor={a.color} style={{ background: "transparent", border: "none", height: "100%" }} />
           </Segment>
           <Segment selected={even} onClick={() => onChange(0)} narrow>
             Even
           </Segment>
           <Segment selected={side === "b"} onClick={() => pickSide("b")}>
-            <Avatar name={b.name} teamColor={b.color} sizePx={22} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
+            <PlayerChip name={b.name} teamColor={b.color} style={{ background: "transparent", border: "none", height: "100%" }} />
           </Segment>
         </div>
 
@@ -166,13 +165,16 @@ function Segment({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-w-0 items-center gap-1.5"
+      className="flex min-w-0 items-center"
       style={{
         flex: narrow ? "0 0 auto" : "1 1 0",
-        justifyContent: narrow ? "center" : "flex-start",
+        justifyContent: "center",
+        // Player segments carry the shared PlayerChip (which owns its own avatar
+        // inset), so the segment adds no padding; the narrow Even segment hugs its
+        // centered label with its own padding.
         height: 44,
-        borderRadius: 9,
-        padding: narrow ? "0 14px" : "0 10px",
+        borderRadius: 10,
+        padding: narrow ? "0 14px" : 0,
         background: selected ? "var(--color-bt-card-raised)" : "transparent",
         border: selected ? "1.5px solid var(--color-bt-accent)" : "1.5px solid transparent",
         color: selected ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
