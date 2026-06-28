@@ -166,8 +166,10 @@ export function GameRow({
 
   // Subtitle / running state (§A3), all keyed off the one derived lifecycle:
   //  - live   → running state (the real "Blue 2 up · thru 13" is deferred).
-  //  - ready  → SPLIT by the arm tell: armed = good to go; not-armed = the
-  //             remaining pre-live step (so the muted icon has a matching nudge).
+  //  - ready  → SPLIT by the arm tell: armed = good to go; not-armed = the one
+  //             remaining step is ENABLING scoring (the roster IS assigned — that's
+  //             what `configured` means — and handicaps are optional/never gate, so
+  //             the old "Assign players + handicaps" was wrong; readiness rework P1a).
   //  - setting-up → a tap-to-continue CTA, but only when the row is tappable;
   //             an inert crew row leans on the dashed outline alone (§A3).
   //  - final  → none; the recessed tile + outer result speak for it.
@@ -177,7 +179,7 @@ export function GameRow({
       : lifecycle === "ready"
       ? armed
         ? "Ready to play"
-        : "Assign players + handicaps"
+        : "Ready — enable scoring"
       : lifecycle === "setting-up"
       ? tappable
         ? "Tap to keep setting up"
