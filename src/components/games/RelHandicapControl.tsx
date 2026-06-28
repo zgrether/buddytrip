@@ -84,22 +84,23 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
   };
 
   return (
-    <div>
-      {/* Match-number left gutter + the segmented selector (§8 — the header is gone;
-          the control itself answers "who gets strokes"). */}
-      <div className="flex items-center" style={{ gap: 10 }}>
-        {matchNumber != null && (
-          <span
-            className="flex-shrink-0 text-center"
-            style={{ width: 16, fontSize: 13, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}
-          >
-            {matchNumber}
-          </span>
-        )}
-        <div
-          className="flex flex-1"
-          style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}
+    // The match-number gutter sits LEFT of the match CONTENT column (§8 — no header).
+    // The reveal (stepper + caption) lives INSIDE that content column, so it aligns
+    // under the player columns / matchup — not centered on the whole panel (defect 2).
+    <div className="flex items-start" style={{ gap: 10 }}>
+      {matchNumber != null && (
+        <span
+          className="flex flex-shrink-0 items-center justify-center"
+          // height matches the segmented track (44 segment + 2×4 padding) so the
+          // number centers with the segments row, not the whole content column.
+          style={{ width: 16, height: 52, fontSize: 13, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}
         >
+          {matchNumber}
+        </span>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Segmented selector */}
+        <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}>
           <Segment selected={side === "a"} onClick={() => pickSide("a")}>
             <Avatar name={a.name} teamColor={a.color} sizePx={22} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
@@ -112,35 +113,35 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
           </Segment>
         </div>
-      </div>
 
-      {/* Reveal (§8): Even → one muted caption, no stepper. Side selected → the
-          centered canonical <Stepper full> (P-B) + a muted recipient caption (NOT
-          teal — teal is reserved for the selected segment's outline). Both the
-          stepper-gate and the caption come from the pure `relHandicapView`. */}
-      {showStepper ? (
-        <>
-          <div style={{ marginTop: 12 }}>
-            <Stepper
-              size="full"
-              value={n}
-              min={1}
-              max={MAX}
-              onDecrement={() => step(-1)}
-              onIncrement={() => step(1)}
-              formatValue={() => String(n)}
-              label={n === 1 ? "STROKE" : "STROKES"}
-            />
-          </div>
-          <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
+        {/* Reveal (§8) — under the matchup (defect 2): Even → one muted caption, no
+            stepper. Side selected → the centered <Stepper full> (P-B) + a muted
+            recipient caption (NOT teal — teal is the selected outline only). The
+            stepper centers within THIS content column, i.e. under the player columns. */}
+        {showStepper ? (
+          <>
+            <div style={{ marginTop: 12 }}>
+              <Stepper
+                size="full"
+                value={n}
+                min={1}
+                max={MAX}
+                onDecrement={() => step(-1)}
+                onIncrement={() => step(1)}
+                formatValue={() => String(n)}
+                label={n === 1 ? "STROKE" : "STROKES"}
+              />
+            </div>
+            <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
+              {caption}
+            </div>
+          </>
+        ) : (
+          <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
             {caption}
           </div>
-        </>
-      ) : (
-        <div className="text-center" style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 10 }}>
-          {caption}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -149,7 +150,9 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
  * One segment. Selected = teal OUTLINE on a lifted (card-raised) chip with white
  * text — never a solid fill (§8; a fill muddies the team avatars). Unselected =
  * transparent on the recessed track, muted text, a transparent border so selection
- * never shifts layout. `narrow` is the Even segment (no avatar, hugs its label).
+ * never shifts layout. `narrow` is the Even segment (no avatar, hugs its centered
+ * label). Player chips are LEFT-aligned (avatar then name) — table-like, the
+ * direction the Matches redesign is heading (defect 3).
  */
 function Segment({
   selected, onClick, children, narrow = false,
@@ -163,12 +166,13 @@ function Segment({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-w-0 items-center justify-center gap-1.5"
+      className="flex min-w-0 items-center gap-1.5"
       style={{
         flex: narrow ? "0 0 auto" : "1 1 0",
+        justifyContent: narrow ? "center" : "flex-start",
         height: 44,
         borderRadius: 9,
-        padding: narrow ? "0 14px" : "0 8px",
+        padding: narrow ? "0 14px" : "0 10px",
         background: selected ? "var(--color-bt-card-raised)" : "transparent",
         border: selected ? "1.5px solid var(--color-bt-accent)" : "1.5px solid transparent",
         color: selected ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
