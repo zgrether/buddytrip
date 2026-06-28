@@ -689,13 +689,13 @@ export function GameSheet({
                 perMatchValue={perMatchValue}
                 setPerMatchValue={setPerMatchValue}
                 readout={readout}
+                members={members as Member[]}
+                delegateId={desiredDelegate}
+                setDelegateId={setDelegateId}
               />
             ) : (
               <ConfigTab
                 canEdit={canEdit}
-                members={members as Member[]}
-                delegateId={desiredDelegate}
-                setDelegateId={setDelegateId}
                 isMatchPlay={isMatchPlay}
                 isGolf={isGolf}
                 courseId={courseId}
@@ -797,6 +797,7 @@ function GameTab({
   setGameTypeId, selectedType, title, setTitle, isGolf, courseId, courseName, onPickCourse, onClearCourse, isMatchPlay,
   isPairedMatch, existingMatchCount,
   total, setTotal, perMatchValue, setPerMatchValue, readout,
+  members, delegateId, setDelegateId,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
@@ -806,6 +807,7 @@ function GameTab({
   isPairedMatch: boolean; existingMatchCount: number | null;
   total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
+  members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
 }) {
   const readOnly = !canEdit;
   return (
@@ -847,6 +849,11 @@ function GameTab({
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", opacity: readOnly ? 0.7 : 1 }}
         />
       </Field>
+
+      {/* Delegate (A1 P-A) — moved here from the retired Configuration tab. It's the
+          one config keeper with no setup-page edit-home (the setup page shows the
+          grant read-only in GameIdentityHeader). */}
+      <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
 
       {isGolf && (
         <Field label="Course">
@@ -985,11 +992,11 @@ export function MatchReadoutLine({ readout }: { readout: ReturnType<typeof match
 // ── Configuration tab ─────────────────────────────────────────────────────────
 
 function ConfigTab({
-  canEdit, members, delegateId, setDelegateId, isMatchPlay, isGolf, courseId, total, placeInputs, setPlaceInputs,
+  canEdit, isMatchPlay, isGolf, courseId, total, placeInputs, setPlaceInputs,
   placement, pFit, mFit, readout, perMatchValue, rules, setRules, availableModifiers, modifiers, setModifiers,
   compFormat, openFormatSheet,
 }: {
-  canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+  canEdit: boolean;
   isMatchPlay: boolean; isGolf: boolean; courseId: string | null; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
   placement: ReturnType<typeof validatePlacement>; pFit: ReturnType<typeof placementFit>;
   mFit: ReturnType<typeof matchFit>; readout: ReturnType<typeof matchReadout>;
@@ -1000,8 +1007,6 @@ function ConfigTab({
 }) {
   return (
     <>
-      <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
-
       {isMatchPlay ? (
         <Field label="Point value">
           <div className="flex items-baseline gap-2">
