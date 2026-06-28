@@ -43,7 +43,14 @@ export interface RowVisuals {
 }
 export function checklistRowVisuals(state: ChecklistRowState, isOpen: boolean): RowVisuals {
   const resolved = state === "resolved";
-  const invalid = state === "invalid";
+  // Collapse-boundary validity (readiness rework P2): while the row is OPEN (the
+  // user is editing), an `invalid` row reads NEUTRAL — no red verdict. The
+  // invalid/resolved verdict resolves on COLLAPSE, so the red border + danger icon
+  // + red-X badge only apply when collapsed. (The badge already gated on `!isOpen`
+  // since P-A; folding `!isOpen` into `invalid` extends the same rule to the border
+  // + icon, killing the mid-build red↔teal flicker. The underlying `allFilled` truth
+  // is unchanged and still drives the Enable gate — this is presentation timing only.)
+  const invalid = state === "invalid" && !isOpen;
   const active = resolved || isOpen;
   return {
     surface: isOpen ? "var(--color-bt-card-raised)" : resolved ? "var(--color-bt-card)" : "transparent",
