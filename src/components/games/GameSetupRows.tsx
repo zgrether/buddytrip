@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc-client";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { Stepper } from "@/components/games/Stepper";
 import { pointsReady } from "@/lib/matchDraft";
+import { composedCourseTitle } from "@/lib/courseProvenance";
 import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -85,12 +86,26 @@ export function GameSetupRows({
   // Course resolved = a complete 18 (W-9HOLE-01): a real 18-hole course, or a
   // 9-hole front with a back nine composed in. A lone 9-hole front (schema count
   // 9) is NOT resolved — it "needs a back nine", which keeps Handicaps gated.
-  // §5 Course subtitle reports the handicaps GATE, not the course name (the name
-  // lives in the expanded CourseRowContent), so we no longer fetch front/back names
-  // here — only whether the course resolves to a complete 18.
   const frontId = game.course_id ?? null;
+  const backId = (game.back_course_id as string | null) ?? null;
   const count = ((game.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0;
   const courseResolved = !!frontId && count === 18;
+  // §5a (P-F0c): the RESOLVED Course title is the course NAME (the subtitle stays the
+  // handicaps gate). Lift the two-ID name fetch (front + back) to the collapsed row —
+  // CourseRowContent fetches the same names in its expanded body. Gated on
+  // slot/resolved so the config-slot instance and no-course games don't fetch.
+  // `composedCourseTitle` derives the shared leading base (or the §5a fallback).
+  const wantNames = slot !== "config" && courseResolved;
+  const frontNameQ = trpc.courses.getById.useQuery({ courseId: frontId ?? "" }, { enabled: wantNames && !!frontId });
+  const backNameQ = trpc.courses.getById.useQuery({ courseId: backId ?? "" }, { enabled: wantNames && !!backId });
+  const frontName = frontNameQ.data?.name as string | undefined;
+  const backName = backNameQ.data?.name as string | undefined;
+  const namesReady = !!frontName && (!backId || !!backName);
+  const courseTitle = !courseResolved
+    ? "No Golf Course"
+    : namesReady
+      ? composedCourseTitle(backId ? [frontName, backName] : [frontName])
+      : "Golf Course Selected"; // pre-load: keep the old title until names arrive
   // Points (§5): the row subtitle is the live "Total Points Available: N" (N teal),
   // derived from per-match × the valid match count. Per-match drives resolved/empty.
   const perMatch = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
@@ -106,10 +121,10 @@ export function GameSetupRows({
       {slot !== "config" && (
         <ChecklistRow
           icon={Flag}
-          // §5 Course: the title flips on confirm; the subtitle reports the
-          // HANDICAPS GATE (course gates handicaps), not the course name — the name
-          // lives in the expanded editor (CourseRowContent).
-          title={courseResolved ? "Golf Course Selected" : "No Golf Course"}
+          // §5a Course: the resolved title is the course NAME (single) / shared base
+          // (composed) / tap-nudge fallback. The subtitle stays the HANDICAPS GATE —
+          // never the course name.
+          title={courseTitle}
           subtitle={courseResolved ? "Handicaps enabled" : "Handicaps disabled"}
           state={courseResolved ? "resolved" : "empty"}
           disabled={!canEdit}
