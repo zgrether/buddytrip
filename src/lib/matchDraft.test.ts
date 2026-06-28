@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, type MatchSides } from "./matchDraft";
+import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, type MatchSides } from "./matchDraft";
+
+// Readiness rework P1b — the ONE match-play readiness threshold, shared by the
+// setup-page Enable gate and the server `isConfigured` so they can't drift.
+describe("matchPlayReady (the shared threshold)", () => {
+  it("ready only when there is ≥1 match AND every match is paired (paired === total)", () => {
+    expect(matchPlayReady(5, 5)).toBe(true); // all paired
+    expect(matchPlayReady(3, 5)).toBe(false); // partial — was wrongly "ready" on the list before
+    expect(matchPlayReady(0, 1)).toBe(false); // a seeded-but-empty match is not ready
+    expect(matchPlayReady(0, 0)).toBe(false); // nothing to score
+    expect(matchPlayReady(1, 1)).toBe(true);
+  });
+});
 
 // W-GAMEPAGE-01 §6.1/§7 — the hard-block readiness gate. An empty or half-filled
 // match must keep "Enable scoring" disabled (no silent collapse to the filled

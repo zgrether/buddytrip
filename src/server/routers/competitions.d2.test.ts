@@ -375,6 +375,42 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     expect(game.pointsTotal).toBe(2); // value 2 × 1 assigned match
   });
 
+  it("a MULTI-match game is NOT configured until EVERY match is paired (readiness rework P1b)", async () => {
+    // The threshold fix: the list called a match game ready at ≥1 paired, while the
+    // setup page only enables when ALL are paired. A 1-of-2 game must now read
+    // Setting up (not Ready), so the two surfaces agree.
+    const comp = await ctx.createCompetition(tripId, "D2 Partial Pairing Comp");
+    await ctx.createTeam(comp, "A", { shortName: "A" });
+    await ctx.createTeam(comp, "B", { shortName: "B" });
+    const g = await ctx.caller().games.create({
+      tripId, gameTypeId: "gtt_match_play_singles", name: "Partial", competitionId: comp,
+      pointsDistribution: { type: "per_match", value: 2 },
+    }) as { id: string };
+    gameIds.push(g.id);
+
+    // Two rows: one fully paired, one with an empty side → PARTIAL (1 of 2).
+    await ctx.admin.from("game_matches").delete().eq("game_id", g.id);
+    await ctx.admin.from("game_matches").insert([
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0,
+        side_a: { type: "user", id: ctx.getUser("owner").id },
+        side_b: { type: "user", id: ctx.getUser("member").id }, status: "pending" },
+      { id: crypto.randomUUID(), game_id: g.id, match_number: 2, display_order: 1,
+        side_a: { type: "user", id: ctx.getUser("planner").id },
+        side_b: null, status: "pending" },
+    ]);
+    let lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    let game = lb.games.find((x: { id: string }) => x.id === g.id) as { configured: boolean };
+    expect(game.configured).toBe(false); // 1 of 2 paired → still Setting up (was wrongly Ready before)
+
+    // Pair the second match → 2 of 2 → configured.
+    await ctx.admin.from("game_matches")
+      .update({ side_b: { type: "user", id: ctx.getUser("outsider").id } })
+      .eq("game_id", g.id).eq("match_number", 2);
+    lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    game = lb.games.find((x: { id: string }) => x.id === g.id) as { configured: boolean };
+    expect(game.configured).toBe(true); // all paired → Ready
+  });
+
   it("pointsTotal (§A5 outer column) reads the distribution sum when no owner total is set", async () => {
     // The board row's `N PTS` must match what rollUp counts as available, even
     // for a distribution-only placement game (no explicit points_total). 9+6=15.
