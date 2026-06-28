@@ -154,6 +154,18 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Delegate / revoke a game organizer | ✓ | ✓ | — | `games.addOrganizer` / `removeOrganizer` *(trip staff only — a delegate can't sub-delegate)* |
 | View who runs a game | ✓ | ✓ | ✓ | `games.listOrganizers` |
 
+> **Roster-removal lock once scoring starts (team-identity).** Once a competition
+> has **any entered score** (`score_entries` exists for any of its games), its team
+> rosters are **locked for REMOVALS** — `teamAssignments.remove`, a *move/trade*
+> (`teamAssignments.assign` to a **different** team), and `teams.delete` all throw
+> (`PRECONDITION_FAILED`). **Adding** a player to a team (`assign` with no prior
+> membership) stays allowed — an add can't orphan anyone in an existing match.
+> Before the first score, full roster editing per the role gates above. Enforced
+> server-side (`assertRosterUnlocked`); the Rosters sheet disables the removal
+> controls with an explanation (the add path stays live). Leaderboard standings are
+> never gated — they stay visible to all roles. Mid-competition trades are parked in
+> DEFERRED (durable per-score attribution); this lock is the BBMI-safe stance.
+
 > **Per-game organizer delegation (Slice D1 §8).** Game edit/configure/enter-results
 > resolves to **`canEdit || isGameOrganizer(gameId)`** — trip Owner/Organizer, OR a
 > user granted organizer of *that specific game* (`game_organizers` row). It is
