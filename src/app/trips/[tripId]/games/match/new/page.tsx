@@ -26,6 +26,7 @@ import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
+import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult } from "@/lib/matchPlay";
@@ -266,6 +267,10 @@ export default function NewMatchGamePage() {
   // longer goes Live — first score does, #396). The owner lands on the overview
   // once enabled (or active/complete); members see it once enabled (= published).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  // #501: game-altering config (matches/course/points/handicaps/modifiers) freezes
+  // in scoring mode. MatchSetup/HandicapsSection have no read-only mode, so their
+  // rows go non-expandable; GameSetupRows/ModifierCards take settingsEditable directly.
+  const settingsEditable = canEdit && !scoringEnabled;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
@@ -1098,6 +1103,10 @@ export default function NewMatchGamePage() {
               />
             )}
 
+            {/* #501: live-game lock — the settings below freeze until the owner/
+                delegate flips the toggle above back to Setup. */}
+            {scoringEnabled && canEdit && <ScoringLockBanner />}
+
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
                 competition the rosters live on the competition face (the leaderboard
                 + RostersOverlay own team membership), so this read-only echo is
@@ -1134,8 +1143,10 @@ export default function NewMatchGamePage() {
               title={matchesTitle}
               subtitle={matchesSubtitle}
               state={matchesState}
-              expanded={openRow === "matches"}
-              onToggle={() => toggleRow("matches")}
+              // #501: non-expandable AND force-collapsed in scoring mode (MatchSetup
+              // has no read-only mode, so it must not render interactively when live).
+              expanded={openRow === "matches" && settingsEditable}
+              onToggle={settingsEditable ? () => toggleRow("matches") : undefined}
               testId="row-matches"
             >
               <MatchSetup
@@ -1162,7 +1173,7 @@ export default function NewMatchGamePage() {
                 tripId={tripId}
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
+                canEdit={settingsEditable}
                 courseOpen={openRow === "course"}
                 onOpenCourse={() => changeOpenRow("course")}
                 onCloseEditor={() => changeOpenRow(null)}
@@ -1177,7 +1188,7 @@ export default function NewMatchGamePage() {
                 tripId={tripId}
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
+                canEdit={settingsEditable}
                 matchCount={filledDraft.length}
                 configLocked={!matchesExist}
                 configOpen={openRow === "config"}
@@ -1198,8 +1209,10 @@ export default function NewMatchGamePage() {
               title="Handicaps"
               subtitle={handicapsSubtitle}
               state={handicapsState}
-              expanded={openRow === "handicaps"}
-              onToggle={handicapsReady ? () => toggleRow("handicaps") : undefined}
+              // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
+              // has no read-only mode).
+              expanded={openRow === "handicaps" && settingsEditable}
+              onToggle={handicapsReady && settingsEditable ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
             >
               <HandicapsSection
@@ -1227,14 +1240,14 @@ export default function NewMatchGamePage() {
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
                 expanded={openRow === "modifiers"}
-                onToggle={matchesExist ? () => toggleRow("modifiers") : undefined}
+                onToggle={matchesExist && settingsEditable ? () => toggleRow("modifiers") : undefined}
                 testId="row-modifiers"
               >
                 <ModifierCards
                   available={availableModifiers}
                   modifiers={modifiersDraft}
                   onChange={setModifiersDraft}
-                  readOnly={!canEdit}
+                  readOnly={!settingsEditable}
                 />
               </ChecklistRow>
             )}
@@ -1289,6 +1302,7 @@ export default function NewMatchGamePage() {
                 status={gameQ.data.status as string | null | undefined}
                 onChanged={onSetupChanged}
                 onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+                disabled={scoringEnabled}
               />
             )}
           </div>
