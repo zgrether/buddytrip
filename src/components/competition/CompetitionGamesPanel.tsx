@@ -550,9 +550,9 @@ export function FormatSheet({
 /** Manual placement entry — order the teams 1st→last; PAYS shows the configured
  *  distribution (the poster sets ORDER, never points). */
 export function ManualPlacementEditor({
-  order, teams, dist, teamById, move,
+  order, dist, teamById, move,
 }: {
-  order: string[]; teams: LBTeamLite[]; dist: number[];
+  order: string[]; dist: number[];
   teamById: (id: string) => LBTeamLite | undefined; move: (i: number, dir: -1 | 1) => void;
 }) {
   return (
