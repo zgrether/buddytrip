@@ -3,20 +3,22 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
+import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
- * §B Configuration page (Phase 2B.3) — the post-Enable home for editing. The
- * ONE genuinely new §B surface. Reached from the score-entry hub (top-right), it
- * holds the SAME field editors as the setup hull (reuses `GameSetupRows` +
- * per-format drill-downs) PLUS the **Enabled / Disabled** pressed-state control.
+ * The ONE game settings page (A2-ux correction) — the single home for ALL setup.
+ * It holds the full redesigned checklist (reuses `GameSetupRows` + per-format
+ * drill-downs + an optional `extraRows` slot), the single **Setup / Scoring** toggle
+ * (`GameManagementPanel` — the one game-mode control, both directions), and the
+ * Danger Zone. Reached via the corner settings GEAR in BOTH modes (the scoreboard
+ * page is a pass-through that routes here — never a setup surface itself).
  *
- * Disable here = `scoring_enabled=false`, **scores kept**, and you keep
- * configuring RIGHT HERE — it is NOT a hub reverse-transform (the score-entry
- * hub never morphs backward; editing happens in Configuration). Re-Enable returns
- * to score entry. Vocabulary locked: Enabled / Disabled — never arm/open.
+ * Switching to Setup = `scoring_enabled=false`, **scores kept**, and you keep
+ * configuring RIGHT HERE (this page stays valid after the flip — not a
+ * self-destroying control). Switching to Scoring opens the game to the crew.
  */
 export function GameConfigurationView({
   subtitle,
@@ -30,7 +32,9 @@ export function GameConfigurationView({
   onDeleted,
   whosPlayingLabel,
   onEditWhosPlaying,
+  extraRows,
   scoringEnabled,
+  ready = true,
   onEnable,
   onDisable,
   busy,
@@ -52,7 +56,14 @@ export function GameConfigurationView({
    *  post-create roster editor (stroke today — its handicaps step lands in §3). */
   whosPlayingLabel?: string;
   onEditWhosPlaying?: () => void;
+  /** Extra setup rows below the who's-playing drill-down (e.g. the stroke
+   *  Modifiers row). The match page renders its full checklist inline, so this is
+   *  only for the GameSetupRows-based formats that need one more drill-down. */
+  extraRows?: React.ReactNode;
   scoringEnabled: boolean;
+  /** Minimum requirements met — gates the toggle's Scoring segment. Formats with
+   *  no hard readiness gate (stroke/rack) leave it at the default `true`. */
+  ready?: boolean;
   onEnable: () => void;
   onDisable: () => void;
   busy: boolean;
@@ -104,26 +115,26 @@ export function GameConfigurationView({
           </button>
         )}
 
+        {/* Optional extra drill-down rows (e.g. stroke's Modifiers). */}
+        {extraRows}
+
         {/* Zone 3 — RULES note (W-EDITMODAL-01): saves on blur (no Save&exit here —
             the back arrow navigates; the blur commit is the flush). */}
         {competitionId && <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />}
 
-        {/* Enabled / Disabled — the pressed-state control. */}
-        <div className="mt-6">
-          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Scoring</span>
-          <div
-            className="mt-2 flex gap-1 rounded-xl p-1"
-            style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <SegBtn label="Enabled" active={scoringEnabled} disabled={!canEdit || busy} onClick={scoringEnabled ? undefined : onEnable} />
-            <SegBtn label="Disabled" active={!scoringEnabled} disabled={!canEdit || busy} onClick={scoringEnabled ? onDisable : undefined} />
+        {/* The single Setup / Scoring toggle — the one game-mode control (it retired
+            the old Enabled/Disabled segmented control). Owner/delegate only. */}
+        {canEdit && (
+          <div className="mt-6">
+            <GameManagementPanel
+              mode={scoringEnabled ? "scoring" : "setup"}
+              ready={ready}
+              onEnable={onEnable}
+              onDisable={onDisable}
+              pending={busy}
+            />
           </div>
-          <p className="mt-2 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            {scoringEnabled
-              ? "Enabled — open to the crew for scoring. Disabling closes it and returns to setup; scores are kept."
-              : "Disabled — closed to the crew. Keep configuring here; enable when you’re ready. Any scores already entered are kept."}
-          </p>
-        </div>
+        )}
 
         {/* Per-game danger zone — owner-only (reset scores → reset settings →
             delete), reusing the shared confirm vocabulary + the Phase A resets. */}
@@ -132,29 +143,12 @@ export function GameConfigurationView({
             tripId={tripId}
             gameId={game.id}
             competitionId={competitionId}
+            status={game.status as string | null | undefined}
             onChanged={onChanged}
             onDeleted={onDeleted}
           />
         )}
       </div>
     </div>
-  );
-}
-
-function SegBtn({ label, active, disabled, onClick }: { label: string; active: boolean; disabled?: boolean; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || !onClick}
-      className="flex-1 rounded-lg py-2 text-sm font-semibold disabled:opacity-60"
-      style={
-        active
-          ? { background: "var(--color-bt-accent)", color: "#0d1f1a" }
-          : { background: "transparent", color: "var(--color-bt-text-dim)" }
-      }
-    >
-      {label}
-    </button>
   );
 }

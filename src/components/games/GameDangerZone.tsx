@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RotateCcw, Eraser, Trash2 } from "lucide-react";
+import { RotateCcw, Eraser, Trash2, Archive, ArchiveRestore } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
 
@@ -24,19 +24,23 @@ export function GameDangerZone({
   tripId,
   gameId,
   competitionId,
+  status,
   onChanged,
   onDeleted,
 }: {
   tripId: string;
   gameId: string;
   competitionId: string | null;
+  /** The game's status — drives Drop vs Restore (A2-ux: Drop/abandon's home). */
+  status?: string | null;
   /** Refetch the host's game view after a reset (config/scoring changed). */
   onChanged: () => void;
   /** Game removed — leave the page (back to the board / trip). */
   onDeleted: () => void;
 }) {
   const utils = trpc.useUtils();
-  const [confirm, setConfirm] = useState<"scoring" | "skeleton" | "delete" | null>(null);
+  const [confirm, setConfirm] = useState<"scoring" | "skeleton" | "drop" | "delete" | null>(null);
+  const isDropped = status === "dropped";
 
   function invalidateAfterReset() {
     void utils.games.getById.invalidate({ tripId, gameId });
@@ -68,6 +72,12 @@ export function GameDangerZone({
       onDeleted();
     },
   });
+  // A2-ux: Drop/abandon (status ⇄ dropped) — reversible archive, excluded from the
+  // leaderboard roll-up. Its ONLY home was the Edit modal; bringing it here (the one
+  // settings surface) unblocks retiring that modal. Restore is safe (no confirm).
+  const setStatus = trpc.games.setStatus.useMutation({
+    onSuccess: () => { setConfirm(null); invalidateAfterReset(); },
+  });
 
   return (
     <section className="mt-8 space-y-3">
@@ -92,6 +102,25 @@ export function GameDangerZone({
           onClick={() => setConfirm("skeleton")}
           testId="game-reset-skeleton-btn"
         />
+        {isDropped ? (
+          <DangerRow
+            icon={<ArchiveRestore size={14} />}
+            tone="warning"
+            label="Restore game"
+            blurb="Brings this abandoned game back onto the board. Its pairings and any scores are intact."
+            onClick={() => setStatus.mutate({ tripId, gameId, status: "pending" })}
+            testId="game-restore-btn"
+          />
+        ) : (
+          <DangerRow
+            icon={<Archive size={14} />}
+            tone="warning"
+            label="Abandon game"
+            blurb="Pulls this game from the board without deleting it — keeps it and its scores, hidden from the standings. Reversible."
+            onClick={() => setConfirm("drop")}
+            testId="game-drop-btn"
+          />
+        )}
         <DangerRow
           icon={<Trash2 size={14} />}
           tone="danger"
@@ -128,6 +157,20 @@ export function GameDangerZone({
           testId="game-reset-skeleton-confirm"
           onCancel={() => setConfirm(null)}
           onConfirm={() => resetToSkeleton.mutate({ tripId, gameId })}
+        />
+      )}
+      {confirm === "drop" && (
+        <DangerConfirmModal
+          tone="warning"
+          icon={<Archive size={18} />}
+          title="Abandon this game?"
+          body="Pulls it from the board and the standings without deleting it — the game and any scores are kept and can be restored later."
+          confirmLabel="Abandon game"
+          pendingLabel="Abandoning…"
+          isPending={setStatus.isPending}
+          testId="game-drop-confirm"
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => setStatus.mutate({ tripId, gameId, status: "dropped" })}
         />
       )}
       {confirm === "delete" && (

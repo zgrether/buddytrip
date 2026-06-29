@@ -18,12 +18,12 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  *    delegate grant is owner-only (`addOrganizer`/`removeOrganizer`), so non-owners
  *    see it read-only. A delegate landing here reads "… · Assigned to: you".
  *
- * This is the ONE shared setup-face header — match renders it directly, stroke/rack
- * via `EnableScoringGate`'s `identityHeader` slot. The optional **`children`** below
- * the assigned-to frame is the **mode-controls slot** (A2-precursor): the single home
- * where A2-ux mounts the Game Management panel + Setup/Scoring toggle, so the toggle
- * lands in one place across all three formats rather than three insertions. Empty by
- * default → no visual change.
+ * This is the ONE shared settings-page header — the match checklist renders it
+ * directly; stroke/rack render it inside `GameConfigurationView` (the ONE settings
+ * page). The optional **`children`** below the assigned-to frame is a mode-controls
+ * slot, empty by default → no visual change. (As of the A2-ux correction the
+ * Setup/Scoring toggle is a standalone `GameManagementPanel` on the settings page,
+ * not threaded through this slot.)
  */
 export function GameIdentityHeader({
   tripId, game, canEdit, isOwner, children,

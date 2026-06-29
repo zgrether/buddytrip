@@ -126,9 +126,10 @@ async function driveToSetupWithHandicap(page: Page) {
   await createBtn.click();
 
   // T2 hard block (W-GAMEPAGE-01 §6.1): "Create game" seeds exactly ONE empty
-  // match (build-as-you-go), so Enable scoring is DISABLED until both slots fill.
+  // match (build-as-you-go), so the Game-Play toggle's Scoring segment is DISABLED
+  // until both slots fill (A2-ux: the toggle replaced the bottom Enable button).
   // No silent collapse-to-filled-count — an empty slot keeps the gate shut.
-  await expect(page.getByRole("button", { name: "Enable scoring" })).toBeDisabled({ timeout: 20_000 });
+  await expect(page.getByTestId("mode-scoring")).toBeDisabled({ timeout: 20_000 });
 
   // Accordion toggle = the row's HEADER button (the first button in the row). When
   // a panel is expanded its body fills the row, so clicking the row CENTER would
@@ -195,12 +196,13 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   test.setTimeout(60_000);
   await driveToSetupWithHandicap(page);
 
-  // Enable scoring → the overview. Gate on the button being ENABLED — under the
-  // T2 hard block that's the signal EVERY match is fully paired (the single match
-  // here), so the click can't race an incomplete pairing.
-  const enableBtn = page.getByRole("button", { name: "Enable scoring" });
-  await expect(enableBtn).toBeEnabled({ timeout: 10_000 });
-  await enableBtn.click();
+  // Switch to Scoring → the overview (A2-ux: the Game-Play toggle's Scoring segment
+  // replaced the bottom Enable button). Gate on it being ENABLED — under the T2 hard
+  // block that's the signal EVERY match is fully paired (the single match here), so
+  // the click can't race an incomplete pairing.
+  const scoringSeg = page.getByTestId("mode-scoring");
+  await expect(scoringSeg).toBeEnabled({ timeout: 10_000 });
+  await scoringSeg.click();
 
   // 4. Open the single match (the strip card button) → the per-hole entry view.
   const matchCard = page.getByRole("button", { name: /Match 1.*MP Owner/ });
