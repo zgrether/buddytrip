@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireGameEdit } from "../middleware";
+import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
 import { clampStrokes } from "@/lib/handicap";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
@@ -121,10 +121,24 @@ export const playGroupsRouter = router({
     }),
 
   // listByGame — any trip member. Foursomes + each participant's group/handicap.
+  // A2-core access gate: a member can't read foursomes for a SETUP-mode (pending)
+  // game — only the owner/organizer/delegate setting it up can (RLS enforces the
+  // raw layer too).
   listByGame: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx, input }) => readGroups(ctx.supabase, input.gameId)),
+    .query(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("status")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (game && (game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId))) {
+        return { groups: [], participants: [] };
+      }
+      return readGroups(ctx.supabase, input.gameId);
+    }),
 });
 
 async function readGroups(supabase: import("@supabase/supabase-js").SupabaseClient, gameId: string) {

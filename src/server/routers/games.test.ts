@@ -69,10 +69,15 @@ describe("games router (Slice A — stroke play)", () => {
     ).rejects.toThrow();
   });
 
-  it("getById — any member sees the game + participants", async () => {
-    const game = await ctx.callerAs("member").games.getById({ tripId, gameId });
-    expect(game.id).toBe(gameId);
-    expect(game.participants).toHaveLength(2);
+  it("getById — a member gets the existence shell for a pending game; the owner sees the roster", async () => {
+    // A2-core: a SETUP-mode (pending) game is members-walled — the existence shell
+    // (the game row: name/type/status) stays so the placeholder renders, but the
+    // ROSTER is withheld from a plain member. The owner (editor) sees it in full.
+    const asMember = await ctx.callerAs("member").games.getById({ tripId, gameId });
+    expect(asMember.id).toBe(gameId);
+    expect(asMember.participants).toHaveLength(0);
+    const asOwner = await ctx.caller().games.getById({ tripId, gameId });
+    expect(asOwner.participants).toHaveLength(2);
   });
 
   it("listByTrip — any member sees the trip's games", async () => {

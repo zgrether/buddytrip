@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction } from "../middleware";
+import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
@@ -12,6 +12,7 @@ import type { StrokeStanding } from "@/lib/strokePlay";
 import { buildScorecardSchema, composeTwoNines, validateStrokeIndex, type SnapshotTee, type ScorecardSchema } from "@/lib/courseIndex";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
+import { assertGameReady } from "../lib/gameReadiness";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -164,13 +165,25 @@ export const gamesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
 
-      const { data: participants } = await ctx.supabase
-        .from("game_participants")
-        .select("*")
-        .eq("game_id", input.gameId)
-        .order("created_at", { ascending: true });
+      // A2-core access gate: a SETUP-mode (pending) game is members-walled — the
+      // game row stays readable (the existence shell the placeholder needs: name /
+      // type / status), but the ROSTER (a child) is withheld unless the caller can
+      // edit the game (owner / organizer / this game's delegate). Scores, matches,
+      // and foursomes are the other children, gated in their own reads + by RLS.
+      const hideSetup =
+        (game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId));
 
-      return { ...game, participants: participants ?? [] };
+      const participants = hideSetup
+        ? []
+        : (
+            await ctx.supabase
+              .from("game_participants")
+              .select("*")
+              .eq("game_id", input.gameId)
+              .order("created_at", { ascending: true })
+          ).data ?? [];
+
+      return { ...game, participants };
     }),
 
   // addParticipants — Owner/Organizer. 2–4 users, individual (no side/team).
@@ -614,9 +627,13 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
+      // A2-core: the mode toggle OWNS status — Setup→Scoring sets status:'active'
+      // (no longer "first score owns Live"). Server readiness guard refuses an
+      // under-configured flip (all formats), and publishes pairings.
+      await assertGameReady(ctx.supabase, input.gameId);
       const { error } = await ctx.supabase
         .from("games")
-        .update({ scoring_enabled: true, pairings_published_at: new Date().toISOString() })
+        .update({ scoring_enabled: true, status: "active", pairings_published_at: new Date().toISOString() })
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to enable scoring: ${error.message}` });
@@ -641,6 +658,16 @@ export const gamesRouter = router({
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to disable scoring: ${error.message}` });
+      // A2-core round-trip fix: enable flipped match rows pending→active; revert the
+      // active ones back to pending so Scoring→Setup→Scoring is a clean round-trip.
+      // (`complete`/frozen match rows are left alone; scores are never touched.)
+      if (next === "pending") {
+        await ctx.supabase
+          .from("game_matches")
+          .update({ status: "pending" })
+          .eq("game_id", input.gameId)
+          .eq("status", "active");
+      }
       return { success: true };
     }),
 

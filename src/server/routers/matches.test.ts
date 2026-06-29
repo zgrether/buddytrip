@@ -95,16 +95,32 @@ describe("matches router (Slice B — setup + visibility)", () => {
     expect(res.matches).toHaveLength(2);
   });
 
-  it("enableScoring — publishes pairings; the Member can now see them", async () => {
-    await ctx.callerAs("planner").matches.enableScoring({ tripId, gameId });
-    const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId });
+  it("enableScoring — readiness-gated; publishes + goes active; the Member can now see them", async () => {
+    // A2-core: enable now (a) is refused until every match is paired (the server
+    // readiness guard) and (b) the toggle OWNS status — Setup→Scoring sets
+    // status:'active' (no longer "first score owns Live"). The shared fixture has an
+    // empty slot, so use a dedicated game here to exercise both halves.
+    const g = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Enable Test" });
+    // under-configured (one empty slot) → enable REFUSED
+    await ctx.callerAs("planner").matches.setPairings({
+      tripId, gameId: g.id,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: null, matchNumber: 1 }],
+    });
+    await expect(
+      ctx.callerAs("planner").matches.enableScoring({ tripId, gameId: g.id })
+    ).rejects.toThrow(/finish setting up/i);
+    // fully paired → enable succeeds: publishes, member can see, status goes active
+    await ctx.callerAs("planner").matches.setPairings({
+      tripId, gameId: g.id,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    await ctx.callerAs("planner").matches.enableScoring({ tripId, gameId: g.id });
+    const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId: g.id });
     expect(res.published).toBe(true);
-    expect(res.matches).toHaveLength(2);
-    // Phase 2B.1: activate is match play's Enable — it publishes + enables, but
-    // no longer goes Live (status stays pending until the first score, #396).
-    const { data: game } = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", gameId).single();
-    expect((game as { status: string; scoring_enabled: boolean }).scoring_enabled).toBe(true);
-    expect((game as { status: string }).status).toBe("pending");
+    expect(res.matches).toHaveLength(1);
+    const { data: game } = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", g.id).single();
+    expect((game as { scoring_enabled: boolean }).scoring_enabled).toBe(true);
+    expect((game as { status: string }).status).toBe("active"); // A2-core: toggle owns status
   });
 
   it("assignPlayer — moving a player clears the vacated match's handicap", async () => {
