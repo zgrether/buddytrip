@@ -94,17 +94,19 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   await page.getByRole("button", { name: "E2E Member", exact: true }).click();
   await page.getByRole("button", { name: "Start game" }).click();
 
-  // 3. Enable scoring → reach the score-entry view. handleEnable fires the
-  //    enableScoring mutation AND THEN refetches the game (two sequential remote
-  //    round-trips) before scoring_enabled flips; only then does the EnableScoring
-  //    gate unmount and the keypad mount. The first keypad tap used to race that
-  //    settle — the long-standing keypad-click flake (#454). Wait for the FULL
-  //    transition explicitly: the "Enable scoring" button disappearing is the
-  //    precise "gate→play transition complete" signal, so the tap can't land on a
-  //    keypad that's about to remount on the refetch.
-  const enableBtn = page.getByRole("button", { name: "Enable scoring" });
-  await enableBtn.click();
-  await expect(enableBtn).toBeHidden({ timeout: 20_000 });
+  // 3. Enable scoring → reach the score-entry view. The setup-mode scoreboard is a
+  //    PASS-THROUGH (A2-ux correction): open the ONE settings page via the "set it
+  //    up" button, then flip the Setup/Scoring toggle's Scoring segment. Enabling
+  //    fires enableScoring AND refetches the game (two sequential remote round-trips)
+  //    before scoring_enabled flips; only then does the settings page unmount and the
+  //    keypad mount. The first keypad tap used to race that settle (#454), so wait for
+  //    the FULL transition: the Scoring toggle disappearing is the precise
+  //    "settings→play transition complete" signal.
+  await page.getByTestId("setup-go-to-settings").click();
+  const scoringSeg = page.getByTestId("mode-scoring");
+  await expect(scoringSeg).toBeEnabled({ timeout: 20_000 });
+  await scoringSeg.click();
+  await expect(scoringSeg).toBeHidden({ timeout: 20_000 });
 
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
   //    Distinct values so the assertion can't pass on par/coincidence. Wait for
