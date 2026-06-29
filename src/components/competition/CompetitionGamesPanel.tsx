@@ -1293,7 +1293,7 @@ export function RunSheet({
 
 /** Manual placement entry — order the teams 1st→last; PAYS shows the configured
  *  distribution (the poster sets ORDER, never points). */
-function ManualPlacementEditor({
+export function ManualPlacementEditor({
   order, teams, dist, teamById, move,
 }: {
   order: string[]; teams: LBTeamLite[]; dist: number[];
@@ -1339,7 +1339,7 @@ function ManualPlacementEditor({
  *  alone carries the meaning — no per-row "wins" label, no two rows both saying
  *  win. Posts winner→pos 1, loser→pos 2, tie→both pos 1; the leaderboard awards
  *  [total,0] (averaged for a tie). */
-function WinLoseTieEditor({
+export function WinLoseTieEditor({
   teams, result, onPick,
 }: {
   teams: LBTeamLite[]; result: string; onPick: (r: string) => void;

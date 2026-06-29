@@ -5,7 +5,10 @@ import Link from "next/link";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
+import { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
+
+export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
 
@@ -15,24 +18,6 @@ export function fmtPts(n: number): string {
   const isHalf = Math.abs(n - whole - 0.5) < 0.001;
   if (!isHalf) return String(whole);
   return whole === 0 ? "½" : `${whole}½`;
-}
-
-/** Map known game type IDs to their game board route segment. */
-const GAME_ROUTES: Record<string, string> = {
-  gtt_stroke_play: "new",
-  gtt_match_play_singles: "match/new",
-  gtt_match_play_doubles: "match/new",
-  gtt_rack_n_stack: "rack/new",
-};
-
-export function gameHref(
-  tripId: string,
-  gameTypeId: string | null,
-  gameId: string
-): string | null {
-  if (!gameTypeId) return null;
-  const seg = GAME_ROUTES[gameTypeId];
-  return seg ? `/trips/${tripId}/games/${seg}?game=${gameId}` : null;
 }
 
 /** §A1 format icon — the leading glyph that names the game's format, glanceable
@@ -47,13 +32,6 @@ const FORMAT_ICONS: Record<string, LucideIcon> = {
 };
 export function formatIcon(gameTypeId: string | null): LucideIcon {
   return (gameTypeId && FORMAT_ICONS[gameTypeId]) || Gamepad2;
-}
-
-/** Golf games carry a scorecard (§A3 scorecard column is golf-only). Today every
- *  built format is golf — proxy "golf" by "has a known game-board route"; a
- *  manual win/lose/halve side event (no route) is correctly excluded. */
-export function isGolfFormat(gameTypeId: string | null): boolean {
-  return !!gameTypeId && gameTypeId in GAME_ROUTES;
 }
 
 /**
