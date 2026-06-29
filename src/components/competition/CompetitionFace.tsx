@@ -254,7 +254,6 @@ export function CompetitionFace({
         <GameSheet
           tripId={tripId}
           competitionId={competition.id}
-          game={null}
           types={gameTypes}
           canEdit={canEdit}
           scoringModel={competition.scoring_model ?? "match_play"}

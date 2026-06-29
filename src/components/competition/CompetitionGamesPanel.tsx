@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Flag, Plus, Trash2, X, Trophy, RotateCcw,
+  Flag, Plus, X, Trophy,
   Spade, Target, Beer, Dices, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -88,11 +88,10 @@ export function formatLabel(key: string | null): string | null {
 // ── Game sheet (A1 P-D: single tab — the light add/edit skeleton) ──────────────
 
 export function GameSheet({
-  tripId, competitionId, game, types, canEdit, scoringModel, onClose,
+  tripId, competitionId, types, canEdit, scoringModel, onClose,
 }: {
   tripId: string;
   competitionId: string;
-  game: GameRow | null;
   types: GameType[];
   canEdit: boolean;
   /** The competition's scoring-model (W-TYPE-01) — the create picker offers only
@@ -100,33 +99,23 @@ export function GameSheet({
   scoringModel?: ScoringModel | null;
   onClose: () => void;
 }) {
-  const isEdit = !!game;
+  // #509: GameSheet is Add-only (the edit-reopen path was retired in #505; #503
+  // slimmed it to the skeleton). The old `isEdit`/`game` edit-mode branches were
+  // structurally dead and are gone — this component only ever CREATES a game.
   const utils = trpc.useUtils();
 
-  // W-TYPE-01: the CREATE picker offers only formats whose scoring-model matches
-  // the competition's (match_play → 1v1/2v2/rack + manual; points → Stroke +
-  // manual). Lookups for an EXISTING game's type read the full catalog (`types`)
-  // so editing never breaks even if a type weren't offerable.
+  // W-TYPE-01: the create picker offers only formats whose scoring-model matches
+  // the competition's (match_play → 1v1/2v2/rack + manual; points → Stroke + manual).
   const offerable = gameTypesForScoringModel(scoringModel, types);
-  const initialType = types.find((t) => t.id === game?.game_type_id);
-  const [category, setCategory] = useState<string>(initialType?.category ?? "golf");
+  const [category, setCategory] = useState<string>("golf");
   const [gameTypeId, setGameTypeId] = useState<string>(
-    game?.game_type_id ?? offerable.find((t) => t.category === "golf")?.id ?? offerable[0]?.id ?? ""
+    offerable.find((t) => t.category === "golf")?.id ?? offerable[0]?.id ?? ""
   );
-  const [title, setTitle] = useState(game?.name ?? "");
-
-  // A1 P-D: rules_for_today + modifiers are no longer edited in the modal (they live
-  // on the setup pages — GameRulesNote + the Modifiers rows), so their state is gone.
-  // competition_format (#503) left too — its home is the settings page (non-golf:
-  // NonGolfConfigurationView; golf never reads it). The modal is the pure skeleton.
-  // Single delegate. undefined = not-yet-initialized from the existing grant.
-  const [delegateId, setDelegateId] = useState<string | null | undefined>(game ? undefined : null);
+  const [title, setTitle] = useState("");
+  // Single delegate for the new game (assigned at create — the one config keeper
+  // with no setup-page edit-home; the setup page shows the grant read-only).
+  const [delegateId, setDelegateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Course (A1 P-C): the modal's course picker was a HOLDOVER — it duplicated the
-  // setup-page Course row (GameSetupRows slot="course"), which is now the single
-  // course-selection home. The picker is stripped; this read-only id is kept only
-  // for the dead MakeItReady readout (removed with it in P-D).
-  const courseId = game?.course_id ?? null;
 
   const categoriesPresent = CATEGORY_ORDER.filter((c) => offerable.some((t) => t.category === c));
   const categoryTypes = offerable.filter((t) => t.category === category);
@@ -136,39 +125,13 @@ export function GameSheet({
   // mini-matches) — both accumulate per-match points, not a placement total.
   const isMatchPlay =
     selectedType?.resultStrategy === "match_play" || selectedType?.resultStrategy === "rack_n_stack";
-  // Paired match play (1v1 / 2v2) — the ONLY formats that get a page-one match
-  // count. Rack (rack_n_stack) auto-groups by team size, stroke has no matches.
-  const isPairedMatch = selectedType?.resultStrategy === "match_play";
   const isGolf = category === "golf";
 
-  // Members (for the delegate picker + name resolution) and the existing grant.
+  // Members for the delegate picker + name resolution.
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, { enabled: canEdit });
-  const orgQuery = trpc.games.listOrganizers.useQuery(
-    { tripId, gameId: game?.id ?? "" },
-    { enabled: !!game?.id }
-  );
-  const originalOrgId = ((orgQuery.data as { user_id: string }[] | undefined)?.[0]?.user_id) ?? null;
-  useEffect(() => {
-    if (game && delegateId === undefined && orgQuery.isSuccess) setDelegateId(originalOrgId);
-  }, [game, delegateId, orgQuery.isSuccess, originalOrgId]);
-  const desiredDelegate = delegateId === undefined ? originalOrgId : delegateId;
-
-  // On edit, "how many matches" is DERIVED from the live rows (display only —
-  // the count is changed in the builder, not re-typed here).
-  const existingMatchesQ = trpc.matches.listByGame.useQuery(
-    { tripId, gameId: game?.id ?? "" },
-    { enabled: isEdit && isPairedMatch && !!game?.id }
-  );
-  const existingMatchCount = (existingMatchesQ.data?.matches?.length as number | undefined) ?? null;
 
   const create = trpc.games.create.useMutation();
-  const update = trpc.games.update.useMutation();
-  const setStatus = trpc.games.setStatus.useMutation();
-  const deleteGame = trpc.games.delete.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();
-  const removeOrg = trpc.games.removeOrganizer.useMutation();
-  // Course apply/clear lived here for the stripped holdover picker (A1 P-C) — the
-  // setup-page Course row (applyCourse/clearCourse via GameSetupRows) owns it now.
 
   // Clear a submit error as soon as the user changes anything relevant.
   useEffect(() => {
@@ -176,11 +139,17 @@ export function GameSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, effectiveTypeId]);
 
-  async function reconcileDelegate(gameId: string) {
-    const original = isEdit ? originalOrgId : null;
-    if (desiredDelegate === original) return;
-    if (original) await removeOrg.mutateAsync({ tripId, gameId, userId: original });
-    if (desiredDelegate) await addOrg.mutateAsync({ tripId, gameId, userId: desiredDelegate });
+  async function assignDelegate(gameId: string) {
+    // A new game has no prior grant — assign the chosen delegate (if any). The
+    // setData below seeds the listOrganizers cache the settings page reads, so the
+    // grant shows there without racing the background refetch.
+    if (delegateId) await addOrg.mutateAsync({ tripId, gameId, userId: delegateId });
+    utils.games.listOrganizers.setData(
+      { tripId, gameId },
+      delegateId
+        ? ([{ user_id: delegateId, granted_by: null, created_at: null }] as never)
+        : []
+    );
   }
 
   async function persist(): Promise<boolean> {
@@ -188,55 +157,23 @@ export function GameSheet({
     if (canEdit && !title.trim()) { setError("Add a title to save this game"); return false; }
     if (!effectiveTypeId) { setError("Pick a format"); return false; }
     try {
-      let gameId: string;
-      // A1 P-D / #503: the modal no longer edits rules_for_today, modifiers,
-      // competition_format, or POINTS (all live on the settings page now), so they're
-      // OMITTED from update() and NOT clobbered (games.update is a patch — undefined =
-      // unchanged). The modal is the pure skeleton: type/format/title/delegate.
-      if (isEdit && game) {
-        gameId = game.id;
-        if (canEdit) {
-          await update.mutateAsync({ tripId, gameId, name: title.trim() });
-        }
-      } else {
-        // #503: points are configured on the settings page now (golf: GameSetupRows;
-        // non-golf: NonGolfConfigurationView), not in the Add modal. A new game is
-        // created with the SAME sensible defaults the modal used to seed, so the row is
-        // valid without the field: a match game at 0 points-per-match (the C1 default-0
-        // that keeps the Enable gate shut until set), a placement game at the owner
-        // default 8 with no split yet (FormatPointsPanel reads `points_total ?? 8`).
-        const createDistribution: PointsDistribution | null = isMatchPlay
-          ? { type: "per_match", value: 0 }
-          : null;
-        const created = (await create.mutateAsync({
-          tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
-          pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 8,
-        })) as { id: string };
-        gameId = created.id;
-        // Course (A1 P-C): no longer applied at create — the new game's course is
-        // set on its setup-page Course row (the single home).
-        // C1: Add no longer seeds match rows. Matches are build-as-you-go in the
-        // configurer — the setup page seeds ONE empty match when it lands with zero
-        // rows (match/new/page.tsx) and "+ Add match" grows it. (The old count
-        // stepper + its seeding here were redundant with that.)
-      }
-      if (canEdit) {
-        await reconcileDelegate(gameId);
-        // Write the new grant straight into the listOrganizers cache. The
-        // mutations above already succeeded, so this is server truth — and
-        // unlike invalidate() (which only schedules a refetch) it's synchronous,
-        // so an IMMEDIATE reopen of the modal seeds from the correct value
-        // instead of racing the refetch against the dialog close.
-        utils.games.listOrganizers.setData(
-          { tripId, gameId },
-          desiredDelegate
-            ? ([{ user_id: desiredDelegate, granted_by: null, created_at: null }] as never)
-            : []
-        );
-      }
+      // #503: points are configured on the settings page now (golf: GameSetupRows;
+      // non-golf: NonGolfConfigurationView), not in the Add modal. A new game is
+      // created with sensible defaults so the row is valid without the field: a match
+      // game at 0 points-per-match (the C1 default-0 that keeps the Enable gate shut
+      // until set), a placement game at the owner default 8 with no split yet
+      // (FormatPointsPanel reads `points_total ?? 8`).
+      const createDistribution: PointsDistribution | null = isMatchPlay
+        ? { type: "per_match", value: 0 }
+        : null;
+      const created = (await create.mutateAsync({
+        tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
+        pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 8,
+      })) as { id: string };
+      const gameId = created.id;
+      // Course / match rows are NOT seeded here — set on the setup pages (A1 P-C / C1).
+      if (canEdit) await assignDelegate(gameId);
       utils.games.listByTrip.invalidate({ tripId });
-      // Background reconcile (eventual consistency) — the setData above is what
-      // makes the immediate reopen correct.
       utils.games.listOrganizers.invalidate({ tripId, gameId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       return true;
@@ -250,25 +187,7 @@ export function GameSheet({
     if (await persist()) onClose();
   }
 
-  async function handleDrop() {
-    if (!game) return;
-    await setStatus.mutateAsync({ tripId, gameId: game.id, status: game.status === "dropped" ? "pending" : "dropped" });
-    utils.games.listByTrip.invalidate({ tripId });
-    utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-    onClose();
-  }
-
-  async function handleDelete() {
-    if (!game) return;
-    if (!window.confirm("Delete this game permanently? It and all its scores are removed — this can't be undone. (To keep it but hide it from the board, use Abandon instead.)")) return;
-    await deleteGame.mutateAsync({ tripId, gameId: game.id });
-    utils.games.listByTrip.invalidate({ tripId });
-    utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-    onClose();
-  }
-
-  const busy = create.isPending || update.isPending;
-  const isDropped = game?.status === "dropped";
+  const busy = create.isPending;
 
   return (
     <ScrollLock>
@@ -285,7 +204,7 @@ export function GameSheet({
           <div style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
             <div className="flex items-center justify-between px-4 py-3">
               <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-                {isEdit ? "Edit Game" : "Add Game"}
+                Add Game
               </h3>
               <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
                 <X size={16} />
@@ -298,7 +217,6 @@ export function GameSheet({
               are gone. The Game tab is the whole light skeleton. */}
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             <GameTab
-                isEdit={isEdit}
                 canEdit={canEdit}
                 categoriesPresent={categoriesPresent}
                 category={category}
@@ -310,44 +228,15 @@ export function GameSheet({
                 title={title}
                 setTitle={setTitle}
                 isGolf={isGolf}
-                isPairedMatch={isPairedMatch}
-                existingMatchCount={existingMatchCount}
                 members={members as Member[]}
-                delegateId={desiredDelegate}
+                delegateId={delegateId}
                 setDelegateId={setDelegateId}
               />
 
             {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
-
-            {isEdit && game && canEdit && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleteGame.isPending}
-                data-testid="delete-game"
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold disabled:opacity-50"
-                style={{ background: "transparent", color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-border)" }}
-              >
-                <Trash2 size={12} />
-                Delete game permanently
-              </button>
-            )}
           </div>
 
           <div className="flex items-center gap-2 border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
-            {isEdit && game && canEdit && (
-              <button
-                type="button"
-                onClick={handleDrop}
-                disabled={setStatus.isPending}
-                aria-label={isDropped ? "Restore game" : "Drop game"}
-                title={isDropped ? "Restore" : "Drop (abandon)"}
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
-                style={{ background: "transparent", color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-border)" }}
-              >
-                {isDropped ? <RotateCcw size={15} /> : <Trash2 size={15} />}
-              </button>
-            )}
             <button
               type="button"
               onClick={handleSave}
@@ -356,7 +245,7 @@ export function GameSheet({
               className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              {isEdit ? "Save game" : "Add game"}
+              Add game
             </button>
           </div>
         </div>
@@ -368,46 +257,40 @@ export function GameSheet({
 // ── Game tab ──────────────────────────────────────────────────────────────────
 
 function GameTab({
-  isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
+  canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
   setGameTypeId, selectedType, title, setTitle, isGolf,
-  isPairedMatch, existingMatchCount,
   members, delegateId, setDelegateId,
 }: {
-  isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
+  canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
   setTitle: (s: string) => void; isGolf: boolean;
-  isPairedMatch: boolean; existingMatchCount: number | null;
   members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
 }) {
   const readOnly = !canEdit;
   return (
     <>
-      {!isEdit && (
-        <Field label="Type" required>
-          <div className="grid grid-cols-5 gap-2">
-            {categoriesPresent.map((c) => {
-              const m = CATEGORY_META[c];
-              return <TypeChip key={c} active={category === c} onClick={() => setCategory(c)} icon={<m.Icon size={18} />} label={m.label} />;
-            })}
-          </div>
-        </Field>
-      )}
+      <Field label="Type" required>
+        <div className="grid grid-cols-5 gap-2">
+          {categoriesPresent.map((c) => {
+            const m = CATEGORY_META[c];
+            return <TypeChip key={c} active={category === c} onClick={() => setCategory(c)} icon={<m.Icon size={18} />} label={m.label} />;
+          })}
+        </div>
+      </Field>
 
-      {!isEdit && (
-        <Field label="Format" required>
-          <div className="flex flex-wrap gap-1.5">
-            {categoryTypes.map((t) => (
-              <Chip key={t.id} active={effectiveTypeId === t.id} onClick={() => setGameTypeId(t.id)}>{t.name}</Chip>
-            ))}
-          </div>
-          {selectedType && !selectedType.isEngine && (
-            <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              No built-in scoring engine for this type yet — name it below and enter the result by hand.
-            </p>
-          )}
-        </Field>
-      )}
+      <Field label="Format" required>
+        <div className="flex flex-wrap gap-1.5">
+          {categoryTypes.map((t) => (
+            <Chip key={t.id} active={effectiveTypeId === t.id} onClick={() => setGameTypeId(t.id)}>{t.name}</Chip>
+          ))}
+        </div>
+        {selectedType && !selectedType.isEngine && (
+          <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            No built-in scoring engine for this type yet — name it below and enter the result by hand.
+          </p>
+        )}
+      </Field>
 
       <Field label="Title" required>
         <input
@@ -426,27 +309,9 @@ function GameTab({
           grant read-only in GameIdentityHeader). */}
       <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
 
-      {/* Course (A1 P-C): the picker was a holdover that duplicated the setup-page
-          Course row — stripped. A golf game gets its course on the setup page. */}
-
-      {/* #503: points left the modal too — they're configured on the settings page
-          (golf: GameSetupRows → FormatPointsPanel / inline per-match; non-golf:
-          NonGolfConfigurationView). A new game is created with sensible defaults
-          (see persist()); the modal is now the pure skeleton. */}
-
-      {/* Matches (1v1/2v2 only): EDIT shows the derived live count (changed in the
-          builder). Add no longer seeds a count — build-as-you-go owns it: the setup
-          page seeds one empty match on landing and "+ Add match" grows it (C1). */}
-      {isPairedMatch && isEdit && (
-        <Field label="Matches">
-          <div className="rounded-lg px-3 py-2.5 text-sm" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}>
-            <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
-              {existingMatchCount ?? "—"} {existingMatchCount === 1 ? "match" : "matches"}
-            </span>{" "}
-            · add or remove in Set Pairings
-          </div>
-        </Field>
-      )}
+      {/* Course (A1 P-C), points (#503), and Matches (build-as-you-go) all live on
+          the game's settings pages now — the Add modal is the pure skeleton
+          (type/format/title/delegate). */}
     </>
   );
 }
