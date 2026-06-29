@@ -133,6 +133,11 @@ describe("scores router (Slice A — per-hole entry)", () => {
     const kept = await ctx.admin.from("score_entries").select("value").eq("game_id", g.id).eq("participant_id", ownerId).eq("unit_label", "1").single();
     expect(kept.data?.value).toBe(4); // scores are NEVER deleted on Disable
 
+    // A2-core gate: reverted to setup (pending/disabled), a plain member can't read
+    // the kept scores via tRPC — only the owner/editor can (RLS walls the raw layer).
+    expect(await ctx.callerAs("member").scores.listByGame({ tripId, gameId: g.id })).toHaveLength(0);
+    expect((await ctx.caller().scores.listByGame({ tripId, gameId: g.id })).length).toBeGreaterThan(0);
+
     // While disabled, entries are refused again; re-enabling re-opens it.
     await expect(
       ctx.caller().scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "2", value: 5 })
