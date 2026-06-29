@@ -1339,7 +1339,7 @@ export function ManualPlacementEditor({
  *  alone carries the meaning — no per-row "wins" label, no two rows both saying
  *  win. Posts winner→pos 1, loser→pos 2, tie→both pos 1; the leaderboard awards
  *  [total,0] (averaged for a tie). */
-export function WinLoseTieEditor({
+function WinLoseTieEditor({
   teams, result, onPick,
 }: {
   teams: LBTeamLite[]; result: string; onPick: (r: string) => void;

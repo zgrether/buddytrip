@@ -67,12 +67,22 @@ export default function ManualGamePage() {
     { enabled: !!tripId && !!competitionId }
   );
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);
-  const initialOrder = useMemo(() => {
-    const cells = ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number }[])
+  const gameCells = useMemo(
+    () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number }[])
       .filter((c) => c.gameId === urlGameId)
-      .sort((a, b) => a.place - b.place);
-    return cells.length ? cells.map((c) => c.teamId) : teams.map((t) => t.id);
-  }, [lbQ.data, urlGameId, teams]);
+      .sort((a, b) => a.place - b.place),
+    [lbQ.data, urlGameId]
+  );
+  const initialOrder = useMemo(
+    () => (gameCells.length ? gameCells.map((c) => c.teamId) : teams.map((t) => t.id)),
+    [gameCells, teams]
+  );
+  // Seed the match control's declared outcome from the posted cells — a draw is
+  // both sides at place 1 (the win/lose/tie post writes both → position 1).
+  const initialResult = useMemo(() => {
+    if (gameCells.length === 2 && gameCells.every((c) => c.place === 1)) return "tie";
+    return gameCells[0]?.teamId;
+  }, [gameCells]);
 
   const scoringEnabled = (game as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
   // Non-golf is "ready" to score once points are configured (mirrors the server
@@ -223,6 +233,7 @@ export default function ManualGamePage() {
           teams={teams}
           scoringModel={scoringModel}
           initialOrder={initialOrder}
+          initialResult={initialResult}
           canEdit={canEdit}
           onPosted={() => router.back()}
         />
