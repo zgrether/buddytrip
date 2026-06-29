@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember } from "../middleware";
+import { requireTripMember, canEditGame } from "../middleware";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 /**
@@ -164,12 +164,18 @@ export const scoresRouter = router({
     .query(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id")
+        .select("id, status")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      // A2-core access gate: a member can't read scores for a SETUP-mode (pending)
+      // game — only the owner/organizer/delegate setting it up can. (RLS enforces
+      // this at the raw layer too.)
+      if ((game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId))) {
+        return [];
       }
       // Both scoring units: 'user' (1v1/stroke) and 'play_group' (2v2 sides).
       // Singles games have only 'user' rows, so this is unchanged for them.

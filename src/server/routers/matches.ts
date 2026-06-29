@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireGameEdit } from "../middleware";
+import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
 import { assertGameReady } from "../lib/gameReadiness";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 
@@ -642,7 +642,7 @@ export const matchesRouter = router({
     .query(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id, pairings_published_at")
+        .select("id, status, pairings_published_at")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
@@ -651,7 +651,12 @@ export const matchesRouter = router({
       }
       const published = !!game.pairings_published_at;
 
-      if (ctx.tripRole === "Member" && !published) {
+      // A2-core access gate: keyed on STATUS (the canonical setup/scoring signal),
+      // not pairings_published_at. A SETUP-mode (pending) game's matches are hidden
+      // from everyone EXCEPT the owner/organizer/this-game's-delegate (canEditGame —
+      // which, unlike the old `tripRole === "Member"` check, correctly lets a plain-
+      // member DELEGATE see the game they're setting up). RLS walls the raw layer too.
+      if ((game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId))) {
         return { published: false, matches: [], participants: [], playGroups: [] };
       }
 

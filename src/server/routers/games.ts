@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction } from "../middleware";
+import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
@@ -165,13 +165,25 @@ export const gamesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
 
-      const { data: participants } = await ctx.supabase
-        .from("game_participants")
-        .select("*")
-        .eq("game_id", input.gameId)
-        .order("created_at", { ascending: true });
+      // A2-core access gate: a SETUP-mode (pending) game is members-walled — the
+      // game row stays readable (the existence shell the placeholder needs: name /
+      // type / status), but the ROSTER (a child) is withheld unless the caller can
+      // edit the game (owner / organizer / this game's delegate). Scores, matches,
+      // and foursomes are the other children, gated in their own reads + by RLS.
+      const hideSetup =
+        (game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId));
 
-      return { ...game, participants: participants ?? [] };
+      const participants = hideSetup
+        ? []
+        : (
+            await ctx.supabase
+              .from("game_participants")
+              .select("*")
+              .eq("game_id", input.gameId)
+              .order("created_at", { ascending: true })
+          ).data ?? [];
+
+      return { ...game, participants };
     }),
 
   // addParticipants — Owner/Organizer. 2–4 users, individual (no side/team).
