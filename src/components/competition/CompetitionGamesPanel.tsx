@@ -1293,7 +1293,7 @@ export function RunSheet({
 
 /** Manual placement entry — order the teams 1st→last; PAYS shows the configured
  *  distribution (the poster sets ORDER, never points). */
-function ManualPlacementEditor({
+export function ManualPlacementEditor({
   order, teams, dist, teamById, move,
 }: {
   order: string[]; teams: LBTeamLite[]; dist: number[];
