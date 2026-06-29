@@ -6,6 +6,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
+import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -68,6 +69,11 @@ export function GameConfigurationView({
   onDisable: () => void;
   busy: boolean;
 }) {
+  // #501: in scoring mode game-altering settings freeze. `settingsEditable` gates
+  // every game-altering editor (course/points/who's-playing/handicaps/modifiers);
+  // Rules of the Day keeps plain `canEdit` (the carved-out exception), the toggle
+  // stays active (the path back to Setup), and the Danger Zone disables wholesale.
+  const settingsEditable = canEdit && !scoringEnabled;
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
       <header
@@ -89,19 +95,24 @@ export function GameConfigurationView({
           <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
         )}
 
-        {/* Same editors as the setup hull — reused, never rebuilt. */}
+        {/* #501: live-game lock banner — the settings below are frozen until the
+            owner/delegate toggles back to Setup. */}
+        {scoringEnabled && canEdit && <ScoringLockBanner />}
+
+        {/* Same editors as the setup hull — reused, never rebuilt. Locked in
+            scoring mode via settingsEditable. */}
         <GameSetupRows
           tripId={tripId}
           competitionId={competitionId}
           game={game}
-          canEdit={canEdit}
+          canEdit={settingsEditable}
           onChanged={onChanged}
         />
         {onEditWhosPlaying && (
           <button
             type="button"
             onClick={onEditWhosPlaying}
-            disabled={!canEdit}
+            disabled={!settingsEditable}
             className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
             style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
@@ -146,6 +157,7 @@ export function GameConfigurationView({
             status={game.status as string | null | undefined}
             onChanged={onChanged}
             onDeleted={onDeleted}
+            disabled={scoringEnabled}
           />
         )}
       </div>

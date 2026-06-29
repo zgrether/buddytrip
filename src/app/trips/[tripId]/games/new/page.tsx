@@ -16,7 +16,7 @@ import { ModifierCards } from "@/components/games/ModifierCards";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
-import { useTripRole } from "@/hooks/useTripRole";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -48,7 +48,9 @@ export default function NewGamePage() {
   );
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
-  const { canEdit, isOwner } = useTripRole(tripId);
+  // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
+  // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
+  const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -179,6 +181,9 @@ export default function NewGamePage() {
   const activeGameId = urlGameId ?? createdGame?.id;
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  // #501: game-altering settings freeze in scoring mode (the page-level Handicaps +
+  // Modifiers drill-downs; GameConfigurationView locks its own rows internally).
+  const settingsEditable = canEdit && !scoringEnabled;
   const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
   async function refreshGame() {
     await gameQ.refetch();
@@ -347,7 +352,7 @@ export default function NewGamePage() {
   // ── §3 Handicaps step — per-player ABSOLUTE strokes (stroke is per-player, not
   // per-matchup). Reached from the setup hull's Handicaps row AND Configuration.
   // Drives `netStrokeEntries`/`strokeHoles`: the input Phase 1 deferred. ──
-  if (game && showHandicaps && canEdit) {
+  if (game && showHandicaps && settingsEditable) {
     return (
       <div className="flex flex-col" style={{ height: "100vh" }}>
         <HandicapRoster
@@ -364,7 +369,7 @@ export default function NewGamePage() {
 
   // A1 P0 — Game Modifiers drill-down (mirrors the Handicaps overlay above): the
   // SAME ModifierCards the match setup page uses, persisted on-change.
-  if (game && showModifiers && canEdit) {
+  if (game && showModifiers && settingsEditable) {
     return (
       <div className="flex flex-col" style={{ height: "100vh", background: "var(--color-bt-base)" }}>
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
@@ -379,7 +384,7 @@ export default function NewGamePage() {
           <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
-          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={!canEdit} />
+          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={!settingsEditable} />
         </div>
       </div>
     );
@@ -455,7 +460,7 @@ export default function NewGamePage() {
               <ModifiersRow
                 count={enabledCount(modifiersDraft, availableModifiers)}
                 onClick={() => setShowModifiers(true)}
-                disabled={!canEdit}
+                disabled={!settingsEditable}
               />
             ) : undefined
           }

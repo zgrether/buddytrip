@@ -8,6 +8,7 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
+import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import {
   PointStepper,
   FormatSheet,
@@ -69,6 +70,10 @@ export function NonGolfConfigurationView({
   onDisable: () => void;
   busy: boolean;
 }) {
+  // #501: in scoring mode game-altering settings freeze (competition_format +
+  // points). Rules keeps plain canEdit (the exception), the toggle stays active
+  // (the path back to Setup), and the Danger Zone disables wholesale.
+  const settingsEditable = canEdit && !scoringEnabled;
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
       <header
@@ -88,22 +93,27 @@ export function NonGolfConfigurationView({
         {/* Identity — name (tap-to-edit) + assigned-to (same as golf). */}
         <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
 
-        {/* Competition format — relocated here as its real home, near the top
-            (it drives future matchup/bracket dev). */}
-        <CompetitionFormatRow tripId={tripId} game={game} canEdit={canEdit} onChanged={onChanged} />
+        {/* #501: live-game lock banner — settings below are frozen until toggled
+            back to Setup. */}
+        {scoringEnabled && canEdit && <ScoringLockBanner />}
 
-        {/* The points payload, by the competition's scoring model. */}
+        {/* Competition format — relocated here as its real home, near the top
+            (it drives future matchup/bracket dev). Locked in scoring mode. */}
+        <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
+
+        {/* The points payload, by the competition's scoring model. Locked in scoring. */}
         {scoringModel === "match_play" ? (
           <div className="mt-2">
-            <MatchValueStepper tripId={tripId} game={game} canEdit={canEdit} onChanged={onChanged} />
+            <MatchValueStepper tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
           </div>
         ) : (
           <div className="mt-2">
-            <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} />
+            <FormatPointsPanel tripId={tripId} game={game} canEdit={settingsEditable} />
           </div>
         )}
 
-        {/* Rules of the Day — saves on blur (same as golf). */}
+        {/* Rules of the Day — saves on blur (same as golf). The carved-out exception:
+            stays editable in scoring mode (notes, not game-altering). */}
         <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />
 
         {/* The single Setup / Scoring toggle — owner/delegate only. */}
@@ -119,7 +129,8 @@ export function NonGolfConfigurationView({
           </div>
         )}
 
-        {/* Per-game danger zone — owner-only (reset / abandon / delete). */}
+        {/* Per-game danger zone — owner-only (reset / abandon / delete). Disabled
+            wholesale in scoring mode (#501) — switch to Setup to manage the game. */}
         {isOwner && (
           <GameDangerZone
             tripId={tripId}
@@ -128,6 +139,7 @@ export function NonGolfConfigurationView({
             status={game.status as string | null | undefined}
             onChanged={onChanged}
             onDeleted={onDeleted}
+            disabled={scoringEnabled}
           />
         )}
       </div>

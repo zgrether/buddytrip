@@ -27,6 +27,7 @@ export function GameDangerZone({
   status,
   onChanged,
   onDeleted,
+  disabled = false,
 }: {
   tripId: string;
   gameId: string;
@@ -37,6 +38,10 @@ export function GameDangerZone({
   onChanged: () => void;
   /** Game removed — leave the page (back to the board / trip). */
   onDeleted: () => void;
+  /** #501: the whole zone is locked while the game is LIVE (scoring mode) — wiping
+   *  scores / settings or deleting mid-competition is a terrible UX. Switch back to
+   *  Setup (the toggle) to manage the game. Every action row disables. */
+  disabled?: boolean;
 }) {
   const utils = trpc.useUtils();
   const [confirm, setConfirm] = useState<"scoring" | "skeleton" | "drop" | "delete" | null>(null);
@@ -86,6 +91,11 @@ export function GameDangerZone({
         className="space-y-3 rounded-xl p-4"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
+        {disabled && (
+          <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }} data-testid="danger-zone-locked">
+            Locked while the game is live — switch back to Setup to reset or remove it.
+          </p>
+        )}
         <DangerRow
           icon={<RotateCcw size={14} />}
           tone="warning"
@@ -93,6 +103,7 @@ export function GameDangerZone({
           blurb="Clears this game's scores. Pairings, course, handicaps, and points stay — the game is ready to re-score."
           onClick={() => setConfirm("scoring")}
           testId="game-reset-scoring-btn"
+          disabled={disabled}
         />
         <DangerRow
           icon={<Eraser size={14} />}
@@ -101,6 +112,7 @@ export function GameDangerZone({
           blurb="Resets this game to unconfigured. Pairings, course, handicaps, and scores are cleared; the name and point value stay."
           onClick={() => setConfirm("skeleton")}
           testId="game-reset-skeleton-btn"
+          disabled={disabled}
         />
         {isDropped ? (
           <DangerRow
@@ -110,6 +122,7 @@ export function GameDangerZone({
             blurb="Brings this abandoned game back onto the board. Its pairings and any scores are intact."
             onClick={() => setStatus.mutate({ tripId, gameId, status: "pending" })}
             testId="game-restore-btn"
+            disabled={disabled}
           />
         ) : (
           <DangerRow
@@ -119,6 +132,7 @@ export function GameDangerZone({
             blurb="Pulls this game from the board without deleting it — keeps it and its scores, hidden from the standings. Reversible."
             onClick={() => setConfirm("drop")}
             testId="game-drop-btn"
+            disabled={disabled}
           />
         )}
         <DangerRow
@@ -128,6 +142,7 @@ export function GameDangerZone({
           blurb="Removes this game and everything in it — pairings, scores, and results. This can't be undone."
           onClick={() => setConfirm("delete")}
           testId="game-delete-btn"
+          disabled={disabled}
         />
       </div>
 

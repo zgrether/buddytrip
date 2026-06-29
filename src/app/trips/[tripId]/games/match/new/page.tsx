@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, Plus, Minus, Trash2, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { useTripRole } from "@/hooks/useTripRole";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
@@ -26,10 +26,10 @@ import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
+import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
-import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult } from "@/lib/matchPlay";
-import { DangerConfirmModal } from "@/components/DangerZone";
+import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeOrClearMatch } from "@/lib/matchDraft";
@@ -81,7 +81,6 @@ export default function NewMatchGamePage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -104,6 +103,9 @@ export default function NewMatchGamePage() {
   );
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
+  // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
+  // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
+  const { canEdit, isOwner, loading: roleLoading } = useGameEditAccess(tripId, gameId);
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
   // The settings page is an OVERLAY over the game scoreboard, browser-history aware:
   // opening it pushes a history entry, so the in-page back arrow and the OS/mouse
@@ -171,11 +173,6 @@ export default function NewMatchGamePage() {
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
-  // Per-game delegate (§10): a member granted as this game's organizer runs it
-  // like an editor — config, pairings, score, finish. The server gate
-  // (requireGameEdit) admits them; the UI must light up the same way. Trip
-  // Owner/Organizer keep edit on every game; a delegate only on theirs.
-  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
 
   // Format: the resumed game's type is authoritative; a brand-new game (no game
   // yet) reads the `?format=doubles` hint. `sided` switches the whole flow
@@ -200,11 +197,6 @@ export default function NewMatchGamePage() {
   // play_group), so the saver tags writes with participant_type='play_group'.
   const { values, setValues, saveStatus, onChange, onClear, retryCell } =
     useScoreSaver(tripId, gameId, sided ? "play_group" : undefined);
-  const amDelegate = useMemo(
-    () => !!me && (orgQ.data as { user_id: string }[] | undefined ?? []).some((o) => o.user_id === me.id),
-    [orgQ.data, me]
-  );
-  const canEdit = tripCanEdit || amDelegate;
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
@@ -215,11 +207,6 @@ export default function NewMatchGamePage() {
   const enableScoring = trpc.matches.enableScoring.useMutation();
   // Phase 2B.1: Disable scoring — close to the crew, back to setup, scores kept.
   const disableScoring = trpc.games.disableScoring.useMutation();
-  // Dynamic match count (+1 / −1). Each changes the game's configured match
-  // count → the clinch goalpost (value × count) on the competition board, so
-  // both refresh the board after (see refreshAfterMatchCountChange).
-  const addMatch = trpc.matches.addMatch.useMutation();
-  const removeMatch = trpc.matches.removeMatch.useMutation();
   // Modifiers (golf "special rules" — config-only, W-GAMEPAGE-01 §6.5). Persisted
   // via games.update on accordion-collapse; presence-model jsonb (lib/modifiers).
   const updateModifiers = trpc.games.update.useMutation();
@@ -274,6 +261,10 @@ export default function NewMatchGamePage() {
   // longer goes Live — first score does, #396). The owner lands on the overview
   // once enabled (or active/complete); members see it once enabled (= published).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  // #501: game-altering config (matches/course/points/handicaps/modifiers) freezes
+  // in scoring mode. MatchSetup/HandicapsSection have no read-only mode, so their
+  // rows go non-expandable; GameSetupRows/ModifierCards take settingsEditable directly.
+  const settingsEditable = canEdit && !scoringEnabled;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
@@ -742,24 +733,6 @@ export default function NewMatchGamePage() {
   // Dynamic match count — mid-life +1 / −1 (the explicit "arm with 1, add a 2nd
   // mid-life" path). Each persists incrementally (NOT a bulk re-save, so
   // in-progress matches are untouched) and refreshes the board reactively.
-  async function handleAddMatch() {
-    if (!tripId || !gameId) return;
-    try {
-      await addMatch.mutateAsync({ tripId, gameId });
-      await refreshAfterMatchCountChange();
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
-  async function handleRemoveMatch(matchId: string) {
-    if (!tripId || !gameId) return;
-    try {
-      await removeMatch.mutateAsync({ tripId, gameId, matchId });
-      await refreshAfterMatchCountChange();
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
 
   async function handleFinish() {
     if (!tripId || !gameId) return;
@@ -1106,6 +1079,10 @@ export default function NewMatchGamePage() {
               />
             )}
 
+            {/* #501: live-game lock — the settings below freeze until the owner/
+                delegate flips the toggle above back to Setup. */}
+            {scoringEnabled && canEdit && <ScoringLockBanner />}
+
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
                 competition the rosters live on the competition face (the leaderboard
                 + RostersOverlay own team membership), so this read-only echo is
@@ -1142,8 +1119,10 @@ export default function NewMatchGamePage() {
               title={matchesTitle}
               subtitle={matchesSubtitle}
               state={matchesState}
-              expanded={openRow === "matches"}
-              onToggle={() => toggleRow("matches")}
+              // #501: non-expandable AND force-collapsed in scoring mode (MatchSetup
+              // has no read-only mode, so it must not render interactively when live).
+              expanded={openRow === "matches" && settingsEditable}
+              onToggle={settingsEditable ? () => toggleRow("matches") : undefined}
               testId="row-matches"
             >
               <MatchSetup
@@ -1170,7 +1149,7 @@ export default function NewMatchGamePage() {
                 tripId={tripId}
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
+                canEdit={settingsEditable}
                 courseOpen={openRow === "course"}
                 onOpenCourse={() => changeOpenRow("course")}
                 onCloseEditor={() => changeOpenRow(null)}
@@ -1185,7 +1164,7 @@ export default function NewMatchGamePage() {
                 tripId={tripId}
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
+                canEdit={settingsEditable}
                 matchCount={filledDraft.length}
                 configLocked={!matchesExist}
                 configOpen={openRow === "config"}
@@ -1206,8 +1185,10 @@ export default function NewMatchGamePage() {
               title="Handicaps"
               subtitle={handicapsSubtitle}
               state={handicapsState}
-              expanded={openRow === "handicaps"}
-              onToggle={handicapsReady ? () => toggleRow("handicaps") : undefined}
+              // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
+              // has no read-only mode).
+              expanded={openRow === "handicaps" && settingsEditable}
+              onToggle={handicapsReady && settingsEditable ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
             >
               <HandicapsSection
@@ -1235,14 +1216,14 @@ export default function NewMatchGamePage() {
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
                 expanded={openRow === "modifiers"}
-                onToggle={matchesExist ? () => toggleRow("modifiers") : undefined}
+                onToggle={matchesExist && settingsEditable ? () => toggleRow("modifiers") : undefined}
                 testId="row-modifiers"
               >
                 <ModifierCards
                   available={availableModifiers}
                   modifiers={modifiersDraft}
                   onChange={setModifiersDraft}
-                  readOnly={!canEdit}
+                  readOnly={!settingsEditable}
                 />
               </ChecklistRow>
             )}
@@ -1297,6 +1278,7 @@ export default function NewMatchGamePage() {
                 status={gameQ.data.status as string | null | undefined}
                 onChanged={onSetupChanged}
                 onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+                disabled={scoringEnabled}
               />
             )}
           </div>
@@ -1329,15 +1311,6 @@ export default function NewMatchGamePage() {
             setView(locked ? "grid" : "entry");
             go("score");
           }}
-          // +1 mid-life: persist an empty match, then land on setup to pick its
-          // players. The board's clinch goalpost moves once the match is PAIRED
-          // (a match = assigned), not the instant the empty slot is added.
-          onAddMatch={async () => {
-            await handleAddMatch();
-            openConfig();
-          }}
-          onRemoveMatch={handleRemoveMatch}
-          mutatingCount={addMatch.isPending || removeMatch.isPending}
         />
       )}
       </div>
@@ -1865,9 +1838,6 @@ function Overview({
   onCorrect,
   correctingPending,
   onOpenMatch,
-  onAddMatch,
-  onRemoveMatch,
-  mutatingCount,
 }: {
   groups: MatchGroupData[];
   myId: string | undefined;
@@ -1889,17 +1859,7 @@ function Overview({
   onCorrect: () => void;
   correctingPending: boolean;
   onOpenMatch: (matchId: string) => void;
-  /** Dynamic match count — mid-life +1 / −1. */
-  onAddMatch: () => void;
-  onRemoveMatch: (matchId: string) => void;
-  mutatingCount: boolean;
 }) {
-  // Destructive-edit guard (W-GAMEPAGE-01 §11): removing a SCORED match clears its
-  // entered scores, so it confirms first via the shared DangerConfirmModal (the one
-  // in-app confirm vocabulary, #433 — replaces the old window.confirm). An UNSCORED
-  // match removes with no friction. Holds the pending match while the modal is open.
-  // (Declared before the early return below — hooks must run every render.)
-  const [pendingRemoval, setPendingRemoval] = useState<{ matchId: string; label: string } | null>(null);
   if (!published) return <MemberNotReady gameName={gameName} />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
@@ -1921,59 +1881,25 @@ function Overview({
         </div>
       )}
 
+      {/* #501 Part 3: the scoring board is read-and-score only — match count is
+          config, so the live +1/−1 affordances are gone. Add/remove matches in Setup
+          mode (toggle back → Matches row), where mid-game config is deliberate. */}
       <div className="flex flex-col gap-2.5">
         {groups.map((g, i) => (
-          <div key={g.matchId} className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <MatchCard
-                a={g.a}
-                b={g.b}
-                results={decideds[i]}
-                label={`Match ${i + 1}`}
-                youId={myId}
-                leftColor={g.leftColor}
-                rightColor={g.rightColor}
-                hideFormat
-                onClick={() => onOpenMatch(g.matchId)}
-              />
-            </div>
-            {/* −1: remove this match (live count). A SCORED match confirms first
-                (the modal below) — never silently drop entry; an unscored one goes
-                straight through. Down to the minimum of 1. */}
-            {canEdit && !complete && groups.length > 1 && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (matchHasScores(decideds[i])) setPendingRemoval({ matchId: g.matchId, label: `Match ${i + 1}` });
-                  else onRemoveMatch(g.matchId);
-                }}
-                disabled={mutatingCount}
-                title="Remove match"
-                aria-label={`Remove match ${i + 1}`}
-                className="flex shrink-0 items-center justify-center disabled:opacity-40"
-                style={{ width: 34, height: 34, borderRadius: 9999, color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger-border)" }}
-              >
-                <Minus size={16} />
-              </button>
-            )}
-          </div>
+          <MatchCard
+            key={g.matchId}
+            a={g.a}
+            b={g.b}
+            results={decideds[i]}
+            label={`Match ${i + 1}`}
+            youId={myId}
+            leftColor={g.leftColor}
+            rightColor={g.rightColor}
+            hideFormat
+            onClick={() => onOpenMatch(g.matchId)}
+          />
         ))}
       </div>
-
-      {/* +1: add another match mid-life (lands on setup to pick its players).
-          The board's "first to XX" moves once the new match is PAIRED. */}
-      {canEdit && !complete && groups.length < MAX_MATCHES && (
-        <button
-          type="button"
-          onClick={onAddMatch}
-          disabled={mutatingCount}
-          className="mt-3 flex w-full items-center justify-center gap-1.5 disabled:opacity-40"
-          style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
-        >
-          <Plus size={16} />
-          Add match
-        </button>
-      )}
 
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
         {complete
@@ -2001,27 +1927,6 @@ function Overview({
         <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
           {finishing ? "Re-locking…" : "Re-lock result"}
         </button>
-      )}
-
-      {/* Scored-match removal confirm (W-GAMEPAGE-01 §11). Cancel preserves the
-          scores; confirm fires removeMatch, which clears the orphaned entries
-          server-side. Copy is honest placeholder — final voice pending Zach. */}
-      {pendingRemoval && (
-        <DangerConfirmModal
-          tone="danger"
-          icon={<Trash2 size={18} />}
-          title={`Remove ${pendingRemoval.label}?`}
-          body={`${pendingRemoval.label} has scores entered — removing it discards them. This can't be undone.`}
-          confirmLabel="Remove & discard"
-          pendingLabel="Removing…"
-          isPending={mutatingCount}
-          testId="confirm-remove-scored-match"
-          onCancel={() => setPendingRemoval(null)}
-          onConfirm={() => {
-            onRemoveMatch(pendingRemoval.matchId);
-            setPendingRemoval(null);
-          }}
-        />
       )}
     </div>
   );
