@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Flag, Plus, Trash2, X, Trophy, RotateCcw,
-  Spade, Target, Beer, Dices, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info, SlidersHorizontal,
+  Spade, Target, Beer, Dices, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
-import {
-  validatePlacement, matchReadout, placementFit, matchFit, type MatchFormat,
-} from "@/lib/gameConfig";
+import { validatePlacement } from "@/lib/gameConfig";
 // Format definitions live in code (W-PERF-01) — the catalog + its type come from
 // here, read synchronously, never fetched. Re-exported below so existing
 // consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
@@ -21,13 +19,14 @@ import { gameTypesForScoringModel, type GameType, type ScoringModel } from "@/li
 export type { GameType };
 
 /**
- * The Game sheet (A1 teardown — one tab, the light skeleton): Type → Format →
- * Title → Delegate (a single role-aware grant) → Competition format ("How's it
- * played?", the leaderboard label / future scoreboard-layout selector) → points
- * (a placement TOTAL + place-splits that must SUM to it, or a match per-match
- * value). Course / pairings / handicaps / rules / modifiers all live on the
- * game's SETUP page now (the modal stopped duplicating them — A1 P-C/P-D). A
- * single save persists the sheet and reconciles the delegate grant.
+ * The Game sheet — the pure light skeleton (#503): Type → Format → Title →
+ * Delegate (a single role-aware grant). EVERYTHING else lives on the settings
+ * page now: competition_format (non-golf: NonGolfConfigurationView; golf reads it
+ * nowhere), points (golf: GameSetupRows → FormatPointsPanel / inline per-match;
+ * non-golf: NonGolfConfigurationView), and course / pairings / handicaps / rules /
+ * modifiers (A1 P-C/P-D). A new game is created with sensible point defaults so the
+ * row is valid without the field (see persist()); a single save persists the sheet
+ * and reconciles the delegate grant.
  *
  * This module also hosts shared scoring-UI bits (ManualPlacementEditor,
  * PlacementEditor, PointStepper, FormatSheet, fmtValue, …) used by the non-golf
@@ -86,11 +85,6 @@ export function formatLabel(key: string | null): string | null {
   return COMP_FORMATS.find((f) => f.key === key)?.label ?? null;
 }
 
-/** Singles vs doubles for the match readout. Only singles exists today. */
-function matchFormatFor(gameTypeId: string | null): MatchFormat {
-  return gameTypeId === "gtt_match_play_doubles" ? "doubles" : "singles";
-}
-
 // ── Game sheet (A1 P-D: single tab — the light add/edit skeleton) ──────────────
 
 export function GameSheet({
@@ -121,20 +115,6 @@ export function GameSheet({
   );
   const [title, setTitle] = useState(game?.name ?? "");
 
-  // Owner total (placement) / per-match value (match) — integer steppers, so
-  // there's always a concrete value (defaults: 8 placement, 1 per match).
-  const [total, setTotal] = useState<number>(game?.points_total ?? 8);
-  const [perMatchValue, setPerMatchValue] = useState<number>(() => {
-    const d = game?.points_distribution;
-    return d?.type === "per_match" ? d.value : 1;
-  });
-  // Placement split. 1st place initializes EMPTY (never 0) so "untouched" stays
-  // distinct from "entered 0".
-  const [placeInputs, setPlaceInputs] = useState<string[]>(() => {
-    const d = game?.points_distribution;
-    if (d?.type === "placement" && d.values.length > 0) return d.values.map(String);
-    return [""];
-  });
   // A1 P-D: rules_for_today + modifiers are no longer edited in the modal (they live
   // on the setup pages — GameRulesNote + the Modifiers rows), so their state is gone.
   // competition_format (#503) left too — its home is the settings page (non-golf:
@@ -173,10 +153,6 @@ export function GameSheet({
   }, [game, delegateId, orgQuery.isSuccess, originalOrgId]);
   const desiredDelegate = delegateId === undefined ? originalOrgId : delegateId;
 
-  const { data: teamCounts } = trpc.competitions.teamAssignmentCounts.useQuery({ tripId, competitionId });
-  const teamSizes = useMemo(() => Object.values((teamCounts as Record<string, number>) ?? {}), [teamCounts]);
-  const numTeams = teamSizes.length;
-
   // On edit, "how many matches" is DERIVED from the live rows (display only —
   // the count is changed in the builder, not re-typed here).
   const existingMatchesQ = trpc.matches.listByGame.useQuery(
@@ -187,8 +163,6 @@ export function GameSheet({
 
   const create = trpc.games.create.useMutation();
   const update = trpc.games.update.useMutation();
-  const setDist = trpc.games.setPointsDistribution.useMutation();
-  const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setStatus = trpc.games.setStatus.useMutation();
   const deleteGame = trpc.games.delete.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();
@@ -196,25 +170,11 @@ export function GameSheet({
   // Course apply/clear lived here for the stripped holdover picker (A1 P-C) — the
   // setup-page Course row (applyCourse/clearCourse via GameSetupRows) owns it now.
 
-  // Derived validation (the same pure fn the server uses).
-  const started = !isMatchPlay && (placeInputs[0]?.trim() ?? "") !== "";
-  const enteredValues = started ? placeInputs.map((s) => Number(s.trim() || "0")) : [];
-  const placement = validatePlacement(total, enteredValues);
-  const pFit = placementFit(enteredValues, numTeams);
-  const mFit = matchFit(teamSizes, matchFormatFor(effectiveTypeId));
-  const readout = matchReadout(perMatchValue, teamSizes, matchFormatFor(effectiveTypeId));
-  const blockedPartial = started && !placement.saveable;
-
   // Clear a submit error as soon as the user changes anything relevant.
   useEffect(() => {
     if (error) setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, total, perMatchValue, placeInputs, effectiveTypeId]);
-
-  function buildDistribution(): PointsDistribution | null {
-    if (isMatchPlay) return { type: "per_match", value: perMatchValue > 0 ? perMatchValue : 1 };
-    return started ? { type: "placement", values: enteredValues } : null;
-  }
+  }, [title, effectiveTypeId]);
 
   async function reconcileDelegate(gameId: string) {
     const original = isEdit ? originalOrgId : null;
@@ -227,31 +187,30 @@ export function GameSheet({
     setError(null);
     if (canEdit && !title.trim()) { setError("Add a title to save this game"); return false; }
     if (!effectiveTypeId) { setError("Pick a format"); return false; }
-    if (blockedPartial) return false; // button is disabled too
-    const distribution = buildDistribution();
     try {
       let gameId: string;
-      // A1 P-D: the modal no longer edits rules_for_today or modifiers (they live on
-      // the setup pages — GameRulesNote + the Modifiers rows), so they're OMITTED from
-      // update() and NOT clobbered (games.update is a patch — undefined = unchanged).
+      // A1 P-D / #503: the modal no longer edits rules_for_today, modifiers,
+      // competition_format, or POINTS (all live on the settings page now), so they're
+      // OMITTED from update() and NOT clobbered (games.update is a patch — undefined =
+      // unchanged). The modal is the pure skeleton: type/format/title/delegate.
       if (isEdit && game) {
         gameId = game.id;
         if (canEdit) {
           await update.mutateAsync({ tripId, gameId, name: title.trim() });
-          await setTotalM.mutateAsync({ tripId, gameId, total: isMatchPlay ? null : total });
         }
-        await setDist.mutateAsync({ tripId, gameId, distribution });
       } else {
-        // C1 default-0: a NEW match game is created at 0 points-per-match — its
-        // value is set on the setup page's inline Points row (C2), and 0 keeps the
-        // Enable gate shut (C3) until it's set. Placement games keep the Add
-        // stepper, so their distribution comes from `buildDistribution()`.
+        // #503: points are configured on the settings page now (golf: GameSetupRows;
+        // non-golf: NonGolfConfigurationView), not in the Add modal. A new game is
+        // created with the SAME sensible defaults the modal used to seed, so the row is
+        // valid without the field: a match game at 0 points-per-match (the C1 default-0
+        // that keeps the Enable gate shut until set), a placement game at the owner
+        // default 8 with no split yet (FormatPointsPanel reads `points_total ?? 8`).
         const createDistribution: PointsDistribution | null = isMatchPlay
           ? { type: "per_match", value: 0 }
-          : distribution;
+          : null;
         const created = (await create.mutateAsync({
           tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
-          pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : total,
+          pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 8,
         })) as { id: string };
         gameId = created.id;
         // Course (A1 P-C): no longer applied at create — the new game's course is
@@ -308,7 +267,7 @@ export function GameSheet({
     onClose();
   }
 
-  const busy = create.isPending || update.isPending || setDist.isPending || setTotalM.isPending;
+  const busy = create.isPending || update.isPending;
   const isDropped = game?.status === "dropped";
 
   return (
@@ -351,22 +310,11 @@ export function GameSheet({
                 title={title}
                 setTitle={setTitle}
                 isGolf={isGolf}
-                isMatchPlay={isMatchPlay}
                 isPairedMatch={isPairedMatch}
                 existingMatchCount={existingMatchCount}
-                total={total}
-                setTotal={setTotal}
-                perMatchValue={perMatchValue}
-                setPerMatchValue={setPerMatchValue}
-                readout={readout}
                 members={members as Member[]}
                 delegateId={desiredDelegate}
                 setDelegateId={setDelegateId}
-                placeInputs={placeInputs}
-                setPlaceInputs={setPlaceInputs}
-                placement={placement}
-                pFit={pFit}
-                mFit={mFit}
               />
 
             {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
@@ -403,7 +351,7 @@ export function GameSheet({
             <button
               type="button"
               onClick={handleSave}
-              disabled={busy || blockedPartial}
+              disabled={busy}
               data-testid="save-game"
               className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
@@ -421,23 +369,16 @@ export function GameSheet({
 
 function GameTab({
   isEdit, canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
-  setGameTypeId, selectedType, title, setTitle, isGolf, isMatchPlay,
+  setGameTypeId, selectedType, title, setTitle, isGolf,
   isPairedMatch, existingMatchCount,
-  total, setTotal, perMatchValue, setPerMatchValue, readout,
   members, delegateId, setDelegateId,
-  placeInputs, setPlaceInputs, placement, pFit, mFit,
 }: {
   isEdit: boolean; canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
-  setTitle: (s: string) => void; isGolf: boolean; isMatchPlay: boolean;
+  setTitle: (s: string) => void; isGolf: boolean;
   isPairedMatch: boolean; existingMatchCount: number | null;
-  total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
-  readout: ReturnType<typeof matchReadout>;
   members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
-  placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
-  placement: ReturnType<typeof validatePlacement>;
-  pFit: ReturnType<typeof placementFit>; mFit: ReturnType<typeof matchFit>;
 }) {
   const readOnly = !canEdit;
   return (
@@ -488,49 +429,10 @@ function GameTab({
       {/* Course (A1 P-C): the picker was a holdover that duplicated the setup-page
           Course row — stripped. A golf game gets its course on the setup page. */}
 
-      {/* W-GAMEPAGE Phase-C teardown: Add Game no longer sets match-play points.
-          A new match game is created at 0 points (build-as-you-go) and its
-          points-per-match is set on the setup page's inline Points row (C2). So
-          the match-play stepper shows on EDIT only; placement (stroke/non-golf)
-          keeps its Add stepper — placement games have no inline setup-page Points
-          row, so the modal stays their points home. */}
-      {isMatchPlay ? (
-        isEdit ? (
-          <>
-            <PointStepper
-              label="Points per match"
-              caption="POINTS PER MATCH"
-              value={perMatchValue}
-              onChange={readOnly ? () => {} : setPerMatchValue}
-              footer={<MatchReadoutLine readout={readout} />}
-            />
-            {mFit.state === "warn" && <FitWarning message={mFit.message!} />}
-          </>
-        ) : null
-      ) : (
-        // Placement points (A1 P-D): the total stepper + the placement split editor
-        // moved here from the retired Configuration tab — placement games set their
-        // points in the modal (the create-time home; the setup-page FormatPointsPanel
-        // covers edit).
-        <>
-          <PointStepper
-            label="Point value"
-            caption="POINTS FOR THIS GAME"
-            value={total}
-            onChange={readOnly ? () => {} : setTotal}
-            footer={
-              <div className="flex items-center gap-1.5">
-                <SlidersHorizontal size={12} style={{ color: "var(--color-bt-text-dim)" }} />
-                <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Split across finishing places below
-                </span>
-              </div>
-            }
-          />
-          <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={setPlaceInputs} placement={placement} />
-          {pFit.state === "warn" && <FitWarning message={pFit.message!} />}
-        </>
-      )}
+      {/* #503: points left the modal too — they're configured on the settings page
+          (golf: GameSetupRows → FormatPointsPanel / inline per-match; non-golf:
+          NonGolfConfigurationView). A new game is created with sensible defaults
+          (see persist()); the modal is now the pure skeleton. */}
 
       {/* Matches (1v1/2v2 only): EDIT shows the derived live count (changed in the
           builder). Add no longer seeds a count — build-as-you-go owns it: the setup
@@ -570,19 +472,6 @@ export function PointStepper({
         )}
       </div>
     </Field>
-  );
-}
-
-export function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout> }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Points available
-      </span>
-      <span className="text-sm font-bold tabular-nums" style={{ color: readout.available != null ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
-        {readout.available != null ? `${fmtValue(readout.available)} · ${readout.label}` : readout.label}
-      </span>
-    </div>
   );
 }
 
@@ -655,14 +544,6 @@ function DelegationBlock({
         Hand this game&rsquo;s setup and running to one person — they can configure it on the game page.
       </p>
     </Field>
-  );
-}
-
-function FitWarning({ message }: { message: string }) {
-  return (
-    <div className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning)" }}>
-      <span className="text-[11px] leading-relaxed" style={{ color: "var(--color-bt-warning)" }}>{message}</span>
-    </div>
   );
 }
 
