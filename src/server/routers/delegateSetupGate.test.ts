@@ -60,20 +60,24 @@ describe("matches setup gate admits the game delegate (§10)", () => {
     await ctx.caller().games.addOrganizer({ tripId, gameId: mine, userId: memberId });
 
     const member = ctx.callerAs("member");
-    const pairings = [{ sideA: null, sideB: null, matchNumber: 1 }];
+    const ownerId = ctx.getUser("owner").id;
 
-    // Delegate runs their game's setup…
+    // Delegate runs their game's setup — fully paired so the A2-core readiness
+    // guard passes (this test exercises the delegate GATE, not readiness).
     await expect(
-      member.matches.setPairings({ tripId, gameId: mine, matches: pairings })
+      member.matches.setPairings({
+        tripId, gameId: mine,
+        matches: [{ sideA: { type: "user", id: ownerId }, sideB: { type: "user", id: memberId }, matchNumber: 1 }],
+      })
     ).resolves.toBeTruthy();
-    // …enableScoring too.
+    // …enableScoring too (the gate admits the delegate; the game is ready).
     await expect(
       member.matches.enableScoring({ tripId, gameId: mine })
     ).resolves.toBeTruthy();
 
     // …but NOT another game (game-isolated).
     await expect(
-      member.matches.setPairings({ tripId, gameId: other, matches: pairings })
+      member.matches.setPairings({ tripId, gameId: other, matches: [{ sideA: null, sideB: null, matchNumber: 1 }] })
     ).rejects.toThrow(/Organizer|game-organizer/i);
   });
 

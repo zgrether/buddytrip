@@ -102,17 +102,21 @@ describe("scores router (Slice A — per-hole entry)", () => {
     expect(entry.value).toBe(4);
   });
 
-  it("Enable keeps the game pre-Live; the first score flips it to active", async () => {
+  it("Enable sets status:active (A2-core: the toggle owns status; first-score is a no-op fallback)", async () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Goes Live" });
     await ctx.caller().games.addParticipants({ tripId, gameId: g.id, userIds: [ownerId, memberId] });
     await ctx.caller().games.enableScoring({ tripId, gameId: g.id });
     const before = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", g.id).single();
     expect(before.data?.scoring_enabled).toBe(true);
-    expect(before.data?.status).toBe("pending"); // enabled but NOT yet Live — the §A "enabled" state
+    // A2-core: Setup→Scoring (enable) now SETS status:'active' directly — the mode
+    // toggle owns status (no longer "first score owns Live", #396 superseded).
+    expect(before.data?.status).toBe("active");
 
+    // The scores.ts first-score flip is now a documented no-op fallback: scoring
+    // still works and status stays active.
     await ctx.callerAs("member").scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 4 });
     const after = await ctx.admin.from("games").select("status").eq("id", g.id).single();
-    expect(after.data?.status).toBe("active"); // first score → Live (#396)
+    expect(after.data?.status).toBe("active");
   });
 
   it("Disable reverts active→pending and KEEPS scores; re-enable allows scoring again", async () => {

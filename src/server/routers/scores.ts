@@ -97,6 +97,11 @@ export const scoresRouter = router({
       // admits owner/organizer — so a member's own client can't flip the status.
       // Use the service-role client (same pattern as server-authored system
       // messages) for this automatic, non-privileged side effect.
+      //
+      // A2-core: status is NORMALLY set by the mode toggle (enableScoring now sets
+      // status:'active'), so on the happy path this is a no-op (a member can't reach
+      // a pending game to score it once the gate lands). It's kept as the FALLBACK
+      // for any enable path that bypasses the toggle.
       if (game.status === "pending") {
         await createAdminClient()
           .from("games")

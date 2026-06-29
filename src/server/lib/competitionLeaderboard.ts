@@ -3,37 +3,9 @@ import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/co
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { isManualGameType } from "@/lib/gameTypes";
-import { matchPlayReady } from "@/lib/matchDraft";
-
-const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
-// Roster-gated golf formats: a stroke field / rack auto-grouping is "configured"
-// once it has participants (match play instead needs pairing rows — see below).
-const ROSTER_TYPES = new Set(["gtt_stroke_play", "gtt_rack_n_stack"]);
-
-/**
- * Is the game configured enough to be Ready (vs still Setting up)? "Ready must
- * be earned, not assumed" — exists-and-not-live ≠ Ready. The format's REQUIRED
- * roster is the gate; course + handicaps are optional and NEVER gate readiness:
- *  - match play → ALL pairings assigned (`matchPlayReady`: paired === total, ≥1) —
- *    the SAME threshold the setup-page Enable gate uses, so list-ready ⟺
- *    setup-can-enable (readiness rework P1b). A partly-paired game (3/5) is NOT
- *    configured → it reads "setting up" on the list, matching its setup page.
- *  - stroke / rack → participants assigned (game_participants rows)
- *  - manual / side events → points configured (no roster to assign)
- * One signal: lifecycle AND the row's `N PTS`/`—` both read it, so they can't
- * disagree (the Ready-but-`—` divergence class).
- */
-function isConfigured(
-  typeId: string | null,
-  matchPaired: number,
-  matchTotal: number,
-  participantCount: number,
-  hasPoints: boolean
-): boolean {
-  if (typeId && MATCH_PLAY_TYPES.has(typeId)) return matchPlayReady(matchPaired, matchTotal);
-  if (typeId && ROSTER_TYPES.has(typeId)) return participantCount > 0;
-  return hasPoints;
-}
+// isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
+// "is it configured?" signal backs both this display AND the server enable guard.
+import { isConfigured, MATCH_PLAY_TYPES } from "@/server/lib/gameReadiness";
 
 /** Singles vs doubles head-to-head sizing for the team-size-derived formats
  *  (rack-n-stack). Match play itself counts its configured rows instead. */
