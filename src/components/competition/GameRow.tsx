@@ -99,7 +99,6 @@ export function GameRow({
   viewerAvatarIcon,
   viewerTeamColor,
   onPrefetch,
-  onOpenGame,
 }: {
   game: LBGame;
   teams: LBTeam[];
@@ -113,10 +112,6 @@ export function GameRow({
   viewerAvatarIcon?: string | null;
   viewerTeamColor?: string | null;
   onPrefetch: (gameId: string) => void;
-  /** Non-golf games have no game-board route; when the viewer can act on them
-   *  (editors only), the row opens the manual run sheet in place instead of
-   *  navigating. Omitted → the row stays inert (crew, or no manual path). */
-  onOpenGame?: (gameId: string) => void;
 }) {
   const href = gameHref(tripId, game.gameTypeId, game.id);
   const hasScores = cells && cells.size > 0;
@@ -132,9 +127,9 @@ export function GameRow({
   const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal;
   const scorecardOpens = showScorecard && game.hasCourse === true && !!href;
   const showDelegate = mine && !isFinal;
-  // A row is tappable when it has a golf route OR a non-golf editor handler —
-  // gates the setting-up CTA subtitle (an inert crew row gets no "tap to…").
-  const tappable = !!href || !!onOpenGame;
+  // A row is tappable when it has a route (golf OR the non-golf manual page) —
+  // gates the setting-up CTA subtitle (an inert, routeless row gets no "tap to…").
+  const tappable = !!href;
 
   // §A3 arm tell: the format icon goes full-color once scoring is enabled
   // (armed). The same signal splits the Ready subtitle (see below); Final quiets
@@ -289,22 +284,9 @@ export function GameRow({
       </Link>
     );
   }
-  // Non-golf game (no route): an editor taps to open the manual run sheet in
-  // place — the same tap feel as a golf row, no navigation. Without onOpenGame
-  // (crew) the row stays a plain, inert tile.
-  if (onOpenGame) {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenGame(game.id)}
-        className="block w-full text-left rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
-        style={panelStyle}
-        data-testid={`game-open-${game.id}`}
-      >
-        {inner}
-      </button>
-    );
-  }
+  // No route → an inert tile. (Non-golf games now HAVE a route — the manual
+  // scoreboard page — so they take the <Link> branch above like golf; the old
+  // tap-to-open-modal-in-place path was retired with the post-results modal.)
   return <div className="rounded-xl overflow-hidden" style={panelStyle}>{inner}</div>;
 }
 

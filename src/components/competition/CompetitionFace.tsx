@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -9,7 +9,7 @@ import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettings } from "./CompetitionSettings";
 import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
-import { GameSheet, RunSheet, type GameRow, type LBTeamLite } from "./CompetitionGamesPanel";
+import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 
 interface Competition {
@@ -88,20 +88,11 @@ export function CompetitionFace({
   // present the instant it opens, even on the bad signal organizers hit on-site.
   const gameTypes = GAME_TYPES;
 
-  // ── Non-golf (manual) game scoring + config-reopen, routed from the board ───
-  // Golf games open via their per-format route (the GameRow links). Non-golf
-  // games have no route, so an editor taps the row → the manual run sheet (the
-  // orphaned RunSheet, re-attached here), and its pencil reopens config in the
-  // GameSheet. This restores the entry points the retired CompetitionGamesPanel
-  // wired; the board only re-attaches them. Both queries are seeded by
-  // faceBootstrap (cache hit — no extra waterfall) and editor-only.
-  // STRUCTURE (games list) is kept (STRUCTURE_QUERY); the leaderboard is STATE —
-  // it keeps the default short staleTime + the board's own 30s poll.
-  const { data: allGames = [] } = trpc.games.listByTrip.useQuery({ tripId }, { ...STRUCTURE_QUERY, enabled: canEdit });
-  const { data: lb } = trpc.competitions.leaderboard.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: canEdit }
-  );
+  // Non-golf (manual) games now have their own scoreboard PAGE (the W-NONGOLF
+  // lifecycle surface) — an editor taps the row and NAVIGATES there (the GameRow
+  // link), the same as golf. The old in-place RunSheet + its pencil → GameSheet
+  // edit-reopen are retired (the page's gear → settings page is the edit home now,
+  // like golf). So this board no longer scores/edits non-golf games inline.
 
   // Team-identity editing from a leaderboard name tap (PR b2): the standalone
   // editor needs full team rows; the captain check needs assignments + the viewer.
@@ -126,27 +117,6 @@ export function CompetitionFace({
       setRostersOpen(true);
     }
   };
-  const compGames = useMemo(
-    () => (allGames as GameRow[]).filter((g) => g.competition_id === competition.id),
-    [allGames, competition.id]
-  );
-  const [running, setRunning] = useState<GameRow | null>(null); // manual game being posted
-  const [editing, setEditing] = useState<GameRow | null>(null); // game whose config is reopened
-  // Seed the run sheet's finishing order from the posted leaderboard cells (when
-  // correcting), else the roster order — mirrors the retired panel.
-  const runningOrder = useMemo(() => {
-    if (!running) return [];
-    const teams = (lb?.teams ?? []) as LBTeamLite[];
-    const cells = ((lb?.cells ?? []) as { gameId: string; teamId: string; place: number }[])
-      .filter((c) => c.gameId === running.id)
-      .sort((a, b) => a.place - b.place);
-    return cells.length ? cells.map((c) => c.teamId) : teams.map((t) => t.id);
-  }, [running, lb]);
-  const openManualGame = (gameId: string) => {
-    const g = compGames.find((x) => x.id === gameId);
-    if (g) setRunning(g);
-  };
-
   // ── Go live / back to setup (visibility switch, NOT a data lock) ───────────
   // Centralized here (not in the header) so going live can also flip the
   // default view to the board. Optimistic so the chrome-shrink + toggle update
@@ -272,48 +242,26 @@ export function CompetitionFace({
         // A hero team-name tap → STANDALONE identity editor (owner / captain of
         // that team); a non-permitted tap falls to the read-only overlay.
         onEditTeam={handleEditTeam}
-        onOpenGame={canEdit ? openManualGame : undefined}
       />
 
       {/* Add a game opens the GameSheet modal directly over the board (the
-          aggregate games panel was retired). It persists on its own Save and
-          invalidates the board's leaderboard; we also re-resolve faceBootstrap
-          so the board's GAMES list refreshes without a hard reload (#10). */}
-      {(addingGame || editing) && canEdit && (
+          aggregate games panel was retired). It's ADD-only now — editing an
+          existing game lives on the game's own settings page (the gear), for
+          golf AND non-golf alike. It persists on its own Save and invalidates
+          the board's leaderboard; we also re-resolve faceBootstrap so the
+          board's GAMES list refreshes without a hard reload (#10). */}
+      {addingGame && canEdit && (
         <GameSheet
           tripId={tripId}
           competitionId={competition.id}
-          game={editing}
+          game={null}
           types={gameTypes}
           canEdit={canEdit}
           scoringModel={competition.scoring_model ?? "match_play"}
           onClose={() => {
             setAddingGame(false);
-            setEditing(null);
             utils.competitions.faceBootstrap.invalidate({ tripId });
           }}
-        />
-      )}
-
-      {/* Manual (non-golf) scoring — the orphaned RunSheet re-attached to the
-          board. Tapping a non-golf row opens it (winner/loser/tie via the
-          finishing order → games.post → leaderboard); its pencil reopens config.
-          faceBootstrap is invalidated on close so the board reflects the posted
-          result without a hard reload (pattern #10 — the board seeds from it). */}
-      {running && canEdit && (
-        <RunSheet
-          tripId={tripId}
-          competitionId={competition.id}
-          game={running}
-          teams={(lb?.teams ?? []) as LBTeamLite[]}
-          initialOrder={runningOrder}
-          isEngine={!!gameTypes.find((t) => t.id === running.game_type_id)?.isEngine}
-          matchPlay={(competition.scoring_model ?? "match_play") === "match_play"}
-          onClose={() => {
-            setRunning(null);
-            utils.competitions.faceBootstrap.invalidate({ tripId });
-          }}
-          onEditConfig={() => { setEditing(running); setRunning(null); }}
         />
       )}
 
