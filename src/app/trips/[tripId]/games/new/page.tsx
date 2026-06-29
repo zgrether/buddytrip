@@ -73,10 +73,30 @@ export default function NewGamePage() {
   const [view, setView] = useState<"entry" | "grid" | "final">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
-  const [showConfig, setShowConfig] = useState(false); // §B 2B.3 Configuration page
+  const [showConfig, setShowConfig] = useState(false); // the ONE settings page
   const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
   const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
+
+  // Settings is a browser-history-aware overlay: opening it pushes a history entry
+  // so the in-page back arrow and the OS/mouse back are the SAME action and both
+  // return to the game page (not past it to the leaderboard).
+  function openConfig() {
+    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
+    setShowConfig(true);
+  }
+  function closeConfig() {
+    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
+      window.history.back();
+    } else {
+      setShowConfig(false);
+    }
+  }
+  useEffect(() => {
+    const onPop = () => setShowConfig(false);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
@@ -173,7 +193,7 @@ export default function NewGamePage() {
     try {
       await enableScoring.mutateAsync({ tripId, gameId: activeGameId });
       await refreshGame();
-      setShowConfig(false); // re-Enable from Configuration → back to score entry
+      closeConfig(); // leave settings for the live board (consumes the history entry)
     } catch {
       // surfaced via the global error toast
     }
@@ -381,7 +401,7 @@ export default function NewGamePage() {
             <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}</div>
           </div>
           {canEdit ? (
-            <button onClick={() => setShowConfig(true)} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
               <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
             </button>
           ) : <div className="h-9 w-9" />}
@@ -397,7 +417,7 @@ export default function NewGamePage() {
             {canEdit && (
               <button
                 type="button"
-                onClick={() => setShowConfig(true)}
+                onClick={openConfig}
                 data-testid="setup-go-to-settings"
                 className="mx-auto flex items-center justify-center gap-2"
                 style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
@@ -419,7 +439,7 @@ export default function NewGamePage() {
       <div className="fixed inset-0 z-50">
         <GameConfigurationView
           subtitle="Stroke Play"
-          onBack={() => setShowConfig(false)}
+          onBack={closeConfig}
           tripId={tripId}
           competitionId={gameCompetitionId}
           game={gameQ.data as unknown as GameRow}
@@ -499,7 +519,7 @@ export default function NewGamePage() {
             pips={entryPips}
             onBack={() => router.back()}
             onOpenGrid={() => setView("grid")}
-            onConfig={canEdit ? () => setShowConfig(true) : undefined}
+            onConfig={canEdit ? openConfig : undefined}
             onFinish={handleFinish}
           />
         )}

@@ -105,6 +105,12 @@ export default function NewMatchGamePage() {
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
+  // The settings page is an OVERLAY over the game scoreboard, browser-history aware:
+  // opening it pushes a history entry, so the in-page back arrow and the OS/mouse
+  // back are the SAME action and both return to the game page (not past it to the
+  // leaderboard). popstate (real back) closes it; closeConfig() routes the arrow
+  // through history.back() so they can't diverge.
+  const [cfgOpen, setCfgOpen] = useState(false);
 
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // Setup editing state
@@ -446,6 +452,27 @@ export default function NewMatchGamePage() {
     setManualScreen(navStack[navStack.length - 1]);
     setNavStack((s) => s.slice(0, -1));
   };
+
+  // Open the settings overlay + push a browser history entry (same URL) so a back —
+  // by the in-page arrow OR the browser/OS button — returns to the game page.
+  function openConfig() {
+    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
+    setCfgOpen(true);
+  }
+  // Close via history.back() when our entry is on top, so the arrow takes the exact
+  // same path as the browser back (popstate → setCfgOpen(false)); else close direct.
+  function closeConfig() {
+    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
+      window.history.back();
+    } else {
+      setCfgOpen(false);
+    }
+  }
+  useEffect(() => {
+    const onPop = () => setCfgOpen(false);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   // "Save & exit" (W-EDITMODAL-01): flush the Zone-3 rules note (its only commit
   // event) then leave. Checklist rows already persisted on collapse; this just
   // guarantees the rules textarea isn't lost. Always available — leaving is too.
@@ -461,9 +488,9 @@ export default function NewMatchGamePage() {
   // (the ref guard, immune to the stale-closure race the length guard alone hits).
   useEffect(() => {
     if (draftTouched.current) return;
-    // The checklist now lives on the settings page (screen "config", A2-ux
-    // correction); seed the draft when we land there with an empty local draft.
-    if (screen !== "config" || draft.length > 0) return;
+    // The checklist lives on the settings overlay; seed the draft when it opens
+    // with an empty local draft.
+    if (!cfgOpen || draft.length > 0) return;
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
       return;
@@ -472,7 +499,7 @@ export default function NewMatchGamePage() {
     // with no game_matches → seed ONE empty match (build-as-you-go; no pre-seeded
     // count — W-GAMEPAGE-01 §6.1). "+ Add match" grows it from there.
     setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
-  }, [screen, draft.length, serverMatches, handicapOf, membersOfSide, sided]);
+  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided]);
 
   // Seed the modifiers draft from the server — but ONLY while the row is closed,
   // so an in-progress edit is never clobbered. On collapse the row persists +
@@ -530,7 +557,7 @@ export default function NewMatchGamePage() {
     }
     // Land straight on the settings page (the checklist's home) — the owner just
     // created the game and wants to configure it (A2-ux correction).
-    go("config");
+    openConfig();
   }
 
   // Tee off — the advance affordance. It's a SIGNAL, not a gate: clickable while
@@ -619,7 +646,9 @@ export default function NewMatchGamePage() {
       utils.games.getById.setData({ tripId, gameId }, { ...cur, scoring_enabled: true } as typeof cur);
     }
     await refreshAfterMatchCountChange();
-    go("overview");
+    // Leave the settings overlay for the live board (derived → overview now that
+    // scoring is enabled). closeConfig pops the pushed history entry too.
+    closeConfig();
   }
 
   // ── Accordion control (one panel open at a time) ──────────────────────────
@@ -770,7 +799,7 @@ export default function NewMatchGamePage() {
         utils.games.listByTrip.invalidate({ tripId });
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
-      // Stay on the Configuration screen (manualScreen === "config" holds).
+      // Stay on the settings page (cfgOpen holds — disable doesn't navigate).
     } catch {
       // surfaced via the global error toast
     }
@@ -900,22 +929,25 @@ export default function NewMatchGamePage() {
   // ── Shell for the setup screens ──
   // A2-ux correction: the scoreboard page in setup mode is a PASS-THROUGH (the
   // placeholder + a way into settings) — the full checklist lives on the settings
-  // page (screen "config"), the ONE home for setup.
+  // overlay (cfgOpen), the ONE home for setup.
   const headerTitle =
-    screen === "new" ? "New game" : screen === "config" ? "Configuration" : screen === "setup" ? "Game Setup" : "Matches";
+    cfgOpen ? "Configuration" : screen === "new" ? "New game" : screen === "setup" ? "Game Setup" : "Matches";
   return (
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
       <SetupHeader
         title={headerTitle}
         subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
-        onBack={goBack}
+        // Settings back routes through history.back() so it's the SAME action as the
+        // browser/OS back — both return to the game page.
+        onBack={cfgOpen ? closeConfig : goBack}
         right={
           // The settings GEAR (A2-ux correction) — owner/delegate access to the ONE
           // settings page, reachable in BOTH modes (the setup-mode pass-through AND
           // the scoring-mode overview). A gear, not a text link: one affordance, no
-          // per-format wording to drift. (Config has its own back arrow → no gear.)
-          (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
-            <button onClick={() => go("config")} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+          // per-format wording to drift. (On the settings page itself → no gear, the
+          // back arrow handles it.)
+          !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
+            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
               <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
             </button>
           ) : null
@@ -923,7 +955,7 @@ export default function NewMatchGamePage() {
       />
 
       <div className="w-full px-4 py-5">
-      {screen === "new" && (
+      {!cfgOpen && screen === "new" && (
         <NewGame
           teeTime={teeTime}
           setTeeTime={setTeeTime}
@@ -946,7 +978,7 @@ export default function NewMatchGamePage() {
         />
       )}
 
-      {screen === "member-wait" && (
+      {!cfgOpen && screen === "member-wait" && (
         <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
       )}
 
@@ -954,7 +986,7 @@ export default function NewMatchGamePage() {
           owner/delegate — the placeholder + a way into the ONE settings page (the
           front "set it up" button here; the corner gear in the header). NO checklist
           and NO toggle on this page (the toggle would self-destruct here). */}
-      {screen === "setup" && (
+      {!cfgOpen && screen === "setup" && (
         <SetupPlaceholder
           gameName={gameQ.data?.name as string | undefined}
           category="golf"
@@ -962,7 +994,7 @@ export default function NewMatchGamePage() {
         >
           <button
             type="button"
-            onClick={() => go("config")}
+            onClick={openConfig}
             data-testid="setup-go-to-settings"
             className="mx-auto flex items-center justify-center gap-2"
             style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
@@ -972,7 +1004,7 @@ export default function NewMatchGamePage() {
         </SetupPlaceholder>
       )}
 
-      {screen === "config" && (() => {
+      {cfgOpen && (() => {
         // The config CHECKLIST — UNIFORM canonical rows; each EXPANDS its editor IN
         // PLACE (the row is the frame; the panel drops down beneath it, sheds all
         // modal chrome). One open at a time (page-owned `openRow`) — which also
@@ -1271,7 +1303,7 @@ export default function NewMatchGamePage() {
         );
       })()}
 
-      {screen === "overview" && (
+      {!cfgOpen && screen === "overview" && (
         <Overview
           groups={groups}
           myId={me?.id}
@@ -1302,7 +1334,7 @@ export default function NewMatchGamePage() {
           // (a match = assigned), not the instant the empty slot is added.
           onAddMatch={async () => {
             await handleAddMatch();
-            go("config");
+            openConfig();
           }}
           onRemoveMatch={handleRemoveMatch}
           mutatingCount={addMatch.isPending || removeMatch.isPending}

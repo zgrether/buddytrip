@@ -104,10 +104,17 @@ function Segment({
   onClick?: () => void;
   disabled?: boolean;
 }) {
-  // Active = pressed indicator (base surface, bordered). Inactive accent action =
-  // teal text/border. Inactive plain action = dim.
+  // Teal = "go / live" in the system, reserved for the LIVE state:
+  //  - Scoring active  → teal FILL, dark text (this game is LIVE / in scoring).
+  //  - Setup active    → a quiet/neutral fill (base surface + primary text) — Setup
+  //    is "in progress, not live", so it must NOT borrow the teal that means live.
+  //  - Scoring as the enable ACTION (setup mode) → teal text/outline (the "go" CTA),
+  //    lock-dimmed until ready.
+  //  - Setup as the disable action (scoring mode) → quiet/dim (not a "go" state).
   const style: React.CSSProperties = active
-    ? { background: "var(--color-bt-base)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }
+    ? accent
+      ? { background: "var(--color-bt-accent)", color: "#0d1f1a", border: "1px solid transparent" }
+      : { background: "var(--color-bt-base)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }
     : accent
       ? {
           background: "transparent",

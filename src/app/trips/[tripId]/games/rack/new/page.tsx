@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -81,7 +81,26 @@ export default function RackNStackPage() {
   const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [showHandicaps, setShowHandicaps] = useState(false);
-  const [showConfig, setShowConfig] = useState(false); // §B 2B.3 Configuration page
+  const [showConfig, setShowConfig] = useState(false); // the ONE settings page
+  // Settings is a browser-history-aware overlay: opening it pushes a history entry
+  // so the in-page back arrow and the OS/mouse back are the SAME action and both
+  // return to the game page (not past it to the leaderboard).
+  function openConfig() {
+    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
+    setShowConfig(true);
+  }
+  function closeConfig() {
+    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
+      window.history.back();
+    } else {
+      setShowConfig(false);
+    }
+  }
+  useEffect(() => {
+    const onPop = () => setShowConfig(false);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
 
@@ -346,7 +365,7 @@ export default function RackNStackPage() {
     try {
       await enableScoring.mutateAsync({ tripId, gameId: gid });
       await refreshGame();
-      setShowConfig(false); // re-Enable from Configuration → back to score entry
+      closeConfig(); // leave settings for the live board (consumes the history entry)
     } catch {
       // surfaced via the global error toast
     }
@@ -452,7 +471,7 @@ export default function RackNStackPage() {
     return (
       <GameConfigurationView
         subtitle="Net stroke play · team rack"
-        onBack={() => setShowConfig(false)}
+        onBack={closeConfig}
         tripId={tripId!}
         competitionId={competitionId ?? null}
         game={gameQ.data as unknown as GameRow}
@@ -538,7 +557,7 @@ export default function RackNStackPage() {
         title="Rack-n-Stack"
         right={
           canEdit ? (
-            <button onClick={() => setShowConfig(true)} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
               <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
             </button>
           ) : undefined
@@ -554,7 +573,7 @@ export default function RackNStackPage() {
           {canEdit && (
             <button
               type="button"
-              onClick={() => setShowConfig(true)}
+              onClick={openConfig}
               data-testid="setup-go-to-settings"
               className="mx-auto flex items-center justify-center gap-2"
               style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
@@ -577,7 +596,7 @@ export default function RackNStackPage() {
       subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}
       right={
         canEdit && !final ? (
-          <button onClick={() => setShowConfig(true)} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+          <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
             <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
         ) : undefined
