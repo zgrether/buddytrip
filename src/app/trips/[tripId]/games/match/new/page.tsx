@@ -10,6 +10,8 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
+import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
+import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
 import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
@@ -961,12 +963,12 @@ export default function NewMatchGamePage() {
         subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
         onBack={goBack}
         right={
-          screen === "overview" && canEdit && status !== "complete" ? (
-            // §B (2B.3): the score-entry hub's top-right opens Configuration (the
-            // post-Enable editing home — Enable/Disable + the field editors live
-            // there now, not inline on the hub).
+          // Settings (GameConfigurationView — Enable/Disable, field editors, Danger
+          // Zone incl. Drop) reachable in BOTH modes (A2-ux): the gear on the
+          // setup-face AND the score-entry hub. One settings home, two doors.
+          (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
             <button onClick={() => go("config")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
-              Configuration
+              Settings
             </button>
           ) : null
         }
@@ -996,7 +998,9 @@ export default function NewMatchGamePage() {
         />
       )}
 
-      {screen === "member-wait" && <MemberNotReady gameName={gameQ.data?.name as string | undefined} />}
+      {screen === "member-wait" && (
+        <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
+      )}
 
       {screen === "setup" && (() => {
         // The config CHECKLIST — UNIFORM canonical rows; each EXPANDS its editor IN
@@ -1082,6 +1086,19 @@ export default function NewMatchGamePage() {
                 competition-scoped (a standalone game has no delegate/config row). */}
             {gameCompId && gameQ.data && (
               <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
+            )}
+
+            {/* A2-ux: the Game-Play toggle — the keystone control on the owner's setup
+                surface. Rendered for any canEdit game (NOT competition-gated, so a
+                standalone match game still enables — it has no GameIdentityHeader).
+                The Scoring segment is the enable (attemptReady → status:'active'),
+                gated by enableReady; it replaces the old bottom "Enable scoring". */}
+            {canEdit && (
+              <GameManagementPanel
+                ready={enableReady}
+                onEnable={attemptReady}
+                pending={savingSetup || enableScoring.isPending}
+              />
             )}
 
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
@@ -1245,18 +1262,12 @@ export default function NewMatchGamePage() {
             {/* Exit (W-EDITMODAL-01): Enable scoring (primary, readiness-gated, the
                 commit-to-play) + Save & exit (secondary, always enabled — the
                 leave-and-resume door; flushes the rules note then navigates). */}
+            {/* A2-ux: the bottom "Enable scoring" button is gone — enabling now lives
+                in the Game-Play toggle at the top (header slot). Only "Save & exit"
+                remains here (the leave-and-resume door). The Enable spine (all matches
+                paired AND points > 0) is unchanged — it's `enableReady`, which now
+                gates the toggle's Scoring segment. */}
             <div className="flex flex-col gap-2 pt-2">
-              {/* Enable spine = all matches paired AND points > 0 (C3). Course is
-                  DELIBERATELY NOT in this gate — ever. A game must be able to start
-                  with no course: an off-API course, dead cell signal, or network
-                  outage are all real, and you only lose course metrics + handicaps,
-                  never the ability to play. Do not "complete the spine" by adding
-                  courseResolved here. */}
-              <PrimaryButton
-                label={enableScoring.isPending ? "Enabling…" : "Enable scoring"}
-                onClick={attemptReady}
-                disabled={savingSetup || enableScoring.isPending || !enableReady}
-              />
               {gameCompId && (
                 <button
                   type="button"

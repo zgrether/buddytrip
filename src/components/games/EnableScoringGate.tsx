@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, PlayCircle } from "lucide-react";
+import { ChevronLeft, PlayCircle, Settings } from "lucide-react";
 
 /**
  * The §B pre-Enable setup surface (Phase 2B.1 → 2B.2). Stroke and rack have no
@@ -25,6 +25,7 @@ export function EnableScoringGate({
   identityHeader,
   rulesNote,
   onSaveExit,
+  onConfig,
 }: {
   title: string;
   subtitle: string;
@@ -41,6 +42,10 @@ export function EnableScoringGate({
   /** "Save & exit" (secondary, always-enabled) — flushes rules + navigates back.
    *  Omitted → only "Enable scoring" + the back arrow (e.g. standalone games). */
   onSaveExit?: () => void;
+  /** A2-ux: opens the game settings page (GameConfigurationView) — the gear in the
+   *  setup-face header, so settings (incl. Drop/Delete) is reachable in BOTH modes
+   *  (the score-entry hub already has its gear). Owner/delegate only; omit to hide. */
+  onConfig?: () => void;
 }) {
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
@@ -51,10 +56,15 @@ export function EnableScoringGate({
         <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
           <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
-        <div className="min-w-0 flex-1 text-center" style={{ marginRight: 36 }}>
+        <div className="min-w-0 flex-1 text-center" style={{ marginRight: onConfig ? 0 : 36 }}>
           <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
           <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
         </div>
+        {onConfig ? (
+          <button onClick={onConfig} aria-label="Game settings" className="flex h-9 w-9 items-center justify-center" data-testid="setup-settings-gear">
+            <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">

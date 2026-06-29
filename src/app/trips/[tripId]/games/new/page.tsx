@@ -10,6 +10,7 @@ import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
+import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -369,6 +370,17 @@ export default function NewGamePage() {
     );
   }
 
+  // A2-ux: stroke's MISSING member-wait branch (Phase 0 item 5 — match has it, rack
+  // has two, stroke had none). A member hitting a setup-mode (not-yet-enabled) stroke
+  // game gets the themed placeholder — never the owner's setup hull or an empty board.
+  if (game && !scoringEnabled && !canEdit) {
+    return (
+      <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
+        <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
+      </div>
+    );
+  }
+
   // ── Enable gate (Phase 2B.1) → §B setup hull (2B.2). A configured game must be
   // enabled before its score screen opens; the gate also hosts the standardized
   // course + Name·Format·Points drill-down rows + (§3) the Handicaps step. ──
@@ -380,6 +392,7 @@ export default function NewGamePage() {
         onEnable={handleEnable}
         onBack={() => router.back()}
         pending={enableScoring.isPending}
+        onConfig={canEdit ? () => setShowConfig(true) : undefined}
         identityHeader={gameCompetitionId && gameQ.data
           ? <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
           : undefined}

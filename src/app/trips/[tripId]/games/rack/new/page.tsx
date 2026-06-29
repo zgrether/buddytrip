@@ -12,7 +12,7 @@ import { TimePicker } from "@/components/TimePicker";
 import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
-import { MemberNotReady } from "@/components/games/MemberNotReady";
+import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
@@ -498,7 +498,7 @@ export default function RackNStackPage() {
     if (!canEdit) {
       return (
         <Shell onBack={() => router.back()} title="Rack-n-Stack">
-          <MemberNotReady gameName={gameQ.data?.name as string | undefined} />
+          <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
         </Shell>
       );
     }
@@ -538,7 +538,7 @@ export default function RackNStackPage() {
     if (!canEdit) {
       return (
         <Shell onBack={() => router.back()} title="Rack-n-Stack">
-          <MemberNotReady gameName={gameQ.data?.name as string | undefined} />
+          <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
         </Shell>
       );
     }
@@ -549,6 +549,7 @@ export default function RackNStackPage() {
         onEnable={handleEnable}
         onBack={() => router.back()}
         pending={enableScoring.isPending}
+        onConfig={canEdit ? () => setShowConfig(true) : undefined}
         identityHeader={competitionId && gameQ.data
           ? <GameIdentityHeader tripId={tripId!} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
           : undefined}
