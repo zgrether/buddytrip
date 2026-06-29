@@ -598,13 +598,9 @@ export default function RackNStackPage() {
     >
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
-      {canEdit && !final && (
-        <div className="px-3">
-          <button onClick={() => setShowHandicaps(true)} style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-accent)" }}>
-            Edit handicaps
-          </button>
-        </div>
-      )}
+      {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
+          (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
+          Handicaps), where mid-game config is deliberate. */}
       <RackBoard
         teamA={teamMeta.A}
         teamB={teamMeta.B}

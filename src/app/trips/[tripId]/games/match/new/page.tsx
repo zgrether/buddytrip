@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, Plus, Minus, Trash2, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -29,8 +29,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
-import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult } from "@/lib/matchPlay";
-import { DangerConfirmModal } from "@/components/DangerZone";
+import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeOrClearMatch } from "@/lib/matchDraft";
@@ -208,11 +207,6 @@ export default function NewMatchGamePage() {
   const enableScoring = trpc.matches.enableScoring.useMutation();
   // Phase 2B.1: Disable scoring — close to the crew, back to setup, scores kept.
   const disableScoring = trpc.games.disableScoring.useMutation();
-  // Dynamic match count (+1 / −1). Each changes the game's configured match
-  // count → the clinch goalpost (value × count) on the competition board, so
-  // both refresh the board after (see refreshAfterMatchCountChange).
-  const addMatch = trpc.matches.addMatch.useMutation();
-  const removeMatch = trpc.matches.removeMatch.useMutation();
   // Modifiers (golf "special rules" — config-only, W-GAMEPAGE-01 §6.5). Persisted
   // via games.update on accordion-collapse; presence-model jsonb (lib/modifiers).
   const updateModifiers = trpc.games.update.useMutation();
@@ -739,24 +733,6 @@ export default function NewMatchGamePage() {
   // Dynamic match count — mid-life +1 / −1 (the explicit "arm with 1, add a 2nd
   // mid-life" path). Each persists incrementally (NOT a bulk re-save, so
   // in-progress matches are untouched) and refreshes the board reactively.
-  async function handleAddMatch() {
-    if (!tripId || !gameId) return;
-    try {
-      await addMatch.mutateAsync({ tripId, gameId });
-      await refreshAfterMatchCountChange();
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
-  async function handleRemoveMatch(matchId: string) {
-    if (!tripId || !gameId) return;
-    try {
-      await removeMatch.mutateAsync({ tripId, gameId, matchId });
-      await refreshAfterMatchCountChange();
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
 
   async function handleFinish() {
     if (!tripId || !gameId) return;
@@ -1335,15 +1311,6 @@ export default function NewMatchGamePage() {
             setView(locked ? "grid" : "entry");
             go("score");
           }}
-          // +1 mid-life: persist an empty match, then land on setup to pick its
-          // players. The board's clinch goalpost moves once the match is PAIRED
-          // (a match = assigned), not the instant the empty slot is added.
-          onAddMatch={async () => {
-            await handleAddMatch();
-            openConfig();
-          }}
-          onRemoveMatch={handleRemoveMatch}
-          mutatingCount={addMatch.isPending || removeMatch.isPending}
         />
       )}
       </div>
@@ -1871,9 +1838,6 @@ function Overview({
   onCorrect,
   correctingPending,
   onOpenMatch,
-  onAddMatch,
-  onRemoveMatch,
-  mutatingCount,
 }: {
   groups: MatchGroupData[];
   myId: string | undefined;
@@ -1895,17 +1859,7 @@ function Overview({
   onCorrect: () => void;
   correctingPending: boolean;
   onOpenMatch: (matchId: string) => void;
-  /** Dynamic match count — mid-life +1 / −1. */
-  onAddMatch: () => void;
-  onRemoveMatch: (matchId: string) => void;
-  mutatingCount: boolean;
 }) {
-  // Destructive-edit guard (W-GAMEPAGE-01 §11): removing a SCORED match clears its
-  // entered scores, so it confirms first via the shared DangerConfirmModal (the one
-  // in-app confirm vocabulary, #433 — replaces the old window.confirm). An UNSCORED
-  // match removes with no friction. Holds the pending match while the modal is open.
-  // (Declared before the early return below — hooks must run every render.)
-  const [pendingRemoval, setPendingRemoval] = useState<{ matchId: string; label: string } | null>(null);
   if (!published) return <MemberNotReady gameName={gameName} />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
@@ -1927,59 +1881,25 @@ function Overview({
         </div>
       )}
 
+      {/* #501 Part 3: the scoring board is read-and-score only — match count is
+          config, so the live +1/−1 affordances are gone. Add/remove matches in Setup
+          mode (toggle back → Matches row), where mid-game config is deliberate. */}
       <div className="flex flex-col gap-2.5">
         {groups.map((g, i) => (
-          <div key={g.matchId} className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <MatchCard
-                a={g.a}
-                b={g.b}
-                results={decideds[i]}
-                label={`Match ${i + 1}`}
-                youId={myId}
-                leftColor={g.leftColor}
-                rightColor={g.rightColor}
-                hideFormat
-                onClick={() => onOpenMatch(g.matchId)}
-              />
-            </div>
-            {/* −1: remove this match (live count). A SCORED match confirms first
-                (the modal below) — never silently drop entry; an unscored one goes
-                straight through. Down to the minimum of 1. */}
-            {canEdit && !complete && groups.length > 1 && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (matchHasScores(decideds[i])) setPendingRemoval({ matchId: g.matchId, label: `Match ${i + 1}` });
-                  else onRemoveMatch(g.matchId);
-                }}
-                disabled={mutatingCount}
-                title="Remove match"
-                aria-label={`Remove match ${i + 1}`}
-                className="flex shrink-0 items-center justify-center disabled:opacity-40"
-                style={{ width: 34, height: 34, borderRadius: 9999, color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger-border)" }}
-              >
-                <Minus size={16} />
-              </button>
-            )}
-          </div>
+          <MatchCard
+            key={g.matchId}
+            a={g.a}
+            b={g.b}
+            results={decideds[i]}
+            label={`Match ${i + 1}`}
+            youId={myId}
+            leftColor={g.leftColor}
+            rightColor={g.rightColor}
+            hideFormat
+            onClick={() => onOpenMatch(g.matchId)}
+          />
         ))}
       </div>
-
-      {/* +1: add another match mid-life (lands on setup to pick its players).
-          The board's "first to XX" moves once the new match is PAIRED. */}
-      {canEdit && !complete && groups.length < MAX_MATCHES && (
-        <button
-          type="button"
-          onClick={onAddMatch}
-          disabled={mutatingCount}
-          className="mt-3 flex w-full items-center justify-center gap-1.5 disabled:opacity-40"
-          style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
-        >
-          <Plus size={16} />
-          Add match
-        </button>
-      )}
 
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
         {complete
@@ -2007,27 +1927,6 @@ function Overview({
         <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
           {finishing ? "Re-locking…" : "Re-lock result"}
         </button>
-      )}
-
-      {/* Scored-match removal confirm (W-GAMEPAGE-01 §11). Cancel preserves the
-          scores; confirm fires removeMatch, which clears the orphaned entries
-          server-side. Copy is honest placeholder — final voice pending Zach. */}
-      {pendingRemoval && (
-        <DangerConfirmModal
-          tone="danger"
-          icon={<Trash2 size={18} />}
-          title={`Remove ${pendingRemoval.label}?`}
-          body={`${pendingRemoval.label} has scores entered — removing it discards them. This can't be undone.`}
-          confirmLabel="Remove & discard"
-          pendingLabel="Removing…"
-          isPending={mutatingCount}
-          testId="confirm-remove-scored-match"
-          onCancel={() => setPendingRemoval(null)}
-          onConfirm={() => {
-            onRemoveMatch(pendingRemoval.matchId);
-            setPendingRemoval(null);
-          }}
-        />
       )}
     </div>
   );
