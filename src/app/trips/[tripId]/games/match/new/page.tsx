@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, Plus, Minus, Trash2, X, Swords, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Plus, Minus, Trash2, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -25,7 +25,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
-import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { GameDangerZone } from "@/components/games/GameDangerZone";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, matchHasScores, type HoleResult } from "@/lib/matchPlay";
@@ -461,7 +461,9 @@ export default function NewMatchGamePage() {
   // (the ref guard, immune to the stale-closure race the length guard alone hits).
   useEffect(() => {
     if (draftTouched.current) return;
-    if (screen !== "setup" || draft.length > 0) return;
+    // The checklist now lives on the settings page (screen "config", A2-ux
+    // correction); seed the draft when we land there with an empty local draft.
+    if (screen !== "config" || draft.length > 0) return;
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
       return;
@@ -526,19 +528,9 @@ export default function NewMatchGamePage() {
     if (!draftTouched.current) {
       setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
     }
-    go("setup");
-  }
-
-  function startSetup() {
-    // Seed the draft from server (or blank cards). Fresh seed entry → clear the
-    // touched lock so the server can re-derive until the user edits again.
-    draftTouched.current = false;
-    if (serverMatches.length > 0) {
-      setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
-    } else if (draft.length === 0) {
-      setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
-    }
-    go("setup");
+    // Land straight on the settings page (the checklist's home) — the owner just
+    // created the game and wants to configure it (A2-ux correction).
+    go("config");
   }
 
   // Tee off — the advance affordance. It's a SIGNAL, not a gate: clickable while
@@ -784,24 +776,6 @@ export default function NewMatchGamePage() {
     }
   }
 
-  // Phase 2B.3: re-Enable from Configuration → back to the score-entry hub. The
-  // pairings are already persisted, so this just flips the flag + publishes.
-  async function handleEnableFromConfig() {
-    if (!tripId || !gameId) return;
-    try {
-      await enableScoring.mutateAsync({ tripId, gameId });
-      await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
-      if (competitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        utils.games.listByTrip.invalidate({ tripId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
-      go("overview");
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
-
   // #7: reopen a posted game for correction, then land on the overview so the
   // editor can tap the match to fix (entry is editable again while correcting).
   async function handleCorrect() {
@@ -923,39 +897,12 @@ export default function NewMatchGamePage() {
     );
   }
 
-  // ── Configuration page (§B 2B.3) — the post-Enable editing home. Full-screen
-  // (own header), reached from the hub's top-right. ──
-  if (screen === "config" && gameQ.data) {
-    return (
-      <GameConfigurationView
-        subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
-        onBack={goBack}
-        tripId={tripId}
-        competitionId={gameCompId}
-        game={gameQ.data as unknown as GameRow}
-        canEdit={canEdit}
-        isOwner={isOwner}
-        onChanged={() => {
-          void gameQ.refetch();
-          if (competitionId) {
-            utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-            utils.competitions.faceBootstrap.invalidate({ tripId });
-            utils.games.listByTrip.invalidate({ tripId });
-          }
-        }}
-        onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        whosPlayingLabel={`${groups.length} ${groups.length === 1 ? "matchup" : "matchups"} · pairings & strokes`}
-        onEditWhosPlaying={startSetup}
-        scoringEnabled={scoringEnabled}
-        onEnable={handleEnableFromConfig}
-        onDisable={handleDisable}
-        busy={disableScoring.isPending || enableScoring.isPending}
-      />
-    );
-  }
-
   // ── Shell for the setup screens ──
-  const headerTitle = screen === "new" ? "New game" : screen === "setup" ? "Game Setup" : "Matches";
+  // A2-ux correction: the scoreboard page in setup mode is a PASS-THROUGH (the
+  // placeholder + a way into settings) — the full checklist lives on the settings
+  // page (screen "config"), the ONE home for setup.
+  const headerTitle =
+    screen === "new" ? "New game" : screen === "config" ? "Configuration" : screen === "setup" ? "Game Setup" : "Matches";
   return (
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
       <SetupHeader
@@ -963,12 +910,13 @@ export default function NewMatchGamePage() {
         subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
         onBack={goBack}
         right={
-          // Settings (GameConfigurationView — Enable/Disable, field editors, Danger
-          // Zone incl. Drop) reachable in BOTH modes (A2-ux): the gear on the
-          // setup-face AND the score-entry hub. One settings home, two doors.
+          // The settings GEAR (A2-ux correction) — owner/delegate access to the ONE
+          // settings page, reachable in BOTH modes (the setup-mode pass-through AND
+          // the scoring-mode overview). A gear, not a text link: one affordance, no
+          // per-format wording to drift. (Config has its own back arrow → no gear.)
           (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
-            <button onClick={() => go("config")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
-              Settings
+            <button onClick={() => go("config")} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
             </button>
           ) : null
         }
@@ -1002,7 +950,29 @@ export default function NewMatchGamePage() {
         <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
       )}
 
-      {screen === "setup" && (() => {
+      {/* A2-ux correction: the setup-mode scoreboard is a PASS-THROUGH for the
+          owner/delegate — the placeholder + a way into the ONE settings page (the
+          front "set it up" button here; the corner gear in the header). NO checklist
+          and NO toggle on this page (the toggle would self-destruct here). */}
+      {screen === "setup" && (
+        <SetupPlaceholder
+          gameName={gameQ.data?.name as string | undefined}
+          category="golf"
+          message="Set the matchups, course, and points on the settings page — the crew can’t see the game until you switch it to scoring."
+        >
+          <button
+            type="button"
+            onClick={() => go("config")}
+            data-testid="setup-go-to-settings"
+            className="mx-auto flex items-center justify-center gap-2"
+            style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+          >
+            <Settings size={17} /> Set up this game
+          </button>
+        </SetupPlaceholder>
+      )}
+
+      {screen === "config" && (() => {
         // The config CHECKLIST — UNIFORM canonical rows; each EXPANDS its editor IN
         // PLACE (the row is the frame; the panel drops down beneath it, sheds all
         // modal chrome). One open at a time (page-owned `openRow`) — which also
@@ -1088,16 +1058,19 @@ export default function NewMatchGamePage() {
               <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
             )}
 
-            {/* A2-ux: the Game-Play toggle — the keystone control on the owner's setup
-                surface. Rendered for any canEdit game (NOT competition-gated, so a
-                standalone match game still enables — it has no GameIdentityHeader).
-                The Scoring segment is the enable (attemptReady → status:'active'),
-                gated by enableReady; it replaces the old bottom "Enable scoring". */}
+            {/* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control,
+                now on the ONE settings page (this checklist's home) in BOTH directions.
+                Setup mode → the Scoring segment enables (attemptReady → status:'active'),
+                gated by enableReady; scoring mode → the Setup segment disables (back to
+                setup, scores kept). Rendered for any canEdit game (NOT competition-gated,
+                so a standalone match game still toggles — it has no GameIdentityHeader). */}
             {canEdit && (
               <GameManagementPanel
+                mode={scoringEnabled ? "scoring" : "setup"}
                 ready={enableReady}
                 onEnable={attemptReady}
-                pending={savingSetup || enableScoring.isPending}
+                onDisable={handleDisable}
+                pending={savingSetup || enableScoring.isPending || disableScoring.isPending}
               />
             )}
 
@@ -1280,6 +1253,20 @@ export default function NewMatchGamePage() {
                 </button>
               )}
             </div>
+
+            {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
+                ONE home, so the per-game danger ladder lives here too: reset scores /
+                reset settings / abandon / delete). */}
+            {isOwner && gameQ.data && (
+              <GameDangerZone
+                tripId={tripId}
+                gameId={gameQ.data.id as string}
+                competitionId={gameCompId}
+                status={gameQ.data.status as string | null | undefined}
+                onChanged={onSetupChanged}
+                onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+              />
+            )}
           </div>
         );
       })()}
@@ -1315,7 +1302,7 @@ export default function NewMatchGamePage() {
           // (a match = assigned), not the instant the empty slot is added.
           onAddMatch={async () => {
             await handleAddMatch();
-            go("setup");
+            go("config");
           }}
           onRemoveMatch={handleRemoveMatch}
           mutatingCount={addMatch.isPending || removeMatch.isPending}

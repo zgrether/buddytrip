@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Users } from "lucide-react";
+import { ChevronLeft, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -13,12 +13,8 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
-import { EnableScoringGate } from "@/components/games/EnableScoringGate";
-import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
-import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -66,7 +62,6 @@ export default function RackNStackPage() {
   const tripId = isId ? param : resolved.data?.id;
 
   const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
-  const rulesRef = useRef<GameRulesNoteHandle>(null);
   const me = useCurrentUser();
   const utils = trpc.useUtils();
 
@@ -466,7 +461,8 @@ export default function RackNStackPage() {
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
         whosPlayingLabel={`${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · auto-grouped · strokes`}
-        onEditWhosPlaying={() => { setShowConfig(false); setShowHandicaps(true); }}
+        // Keep showConfig set so the handicaps drill-down returns to the settings page.
+        onEditWhosPlaying={() => setShowHandicaps(true)}
         scoringEnabled={scoringEnabled}
         onEnable={handleEnable}
         onDisable={handleDisable}
@@ -530,52 +526,44 @@ export default function RackNStackPage() {
     );
   }
 
-  // Phase 2B.1 Enable gate: the groups are set but scoring isn't enabled yet.
-  // The owner enables here (the score saver server-rejects entries until then);
-  // a member sees the warm not-ready message. Complete/correcting games are
-  // already enabled (backfill), so they fall through to the play screen.
+  // A2-ux correction: the groups are set but scoring isn't enabled yet — the
+  // scoreboard page is a PASS-THROUGH. A member sees just the placeholder; the
+  // owner/delegate gets it + the way into the ONE settings page (front button +
+  // corner gear). NO checklist / toggle here — those live on the settings page.
+  // Complete/correcting games are already enabled (backfill) → fall through to play.
   if (!scoringEnabled) {
-    if (!canEdit) {
-      return (
-        <Shell onBack={() => router.back()} title="Rack-n-Stack">
-          <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
-        </Shell>
-      );
-    }
     return (
-      <EnableScoringGate
-        title="Rack-n-Stack"
-        subtitle={`${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · net stroke play`}
-        onEnable={handleEnable}
+      <Shell
         onBack={() => router.back()}
-        pending={enableScoring.isPending}
-        onConfig={canEdit ? () => setShowConfig(true) : undefined}
-        identityHeader={competitionId && gameQ.data
-          ? <GameIdentityHeader tripId={tripId!} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
-          : undefined}
-        rulesNote={competitionId && gameQ.data
-          ? <GameRulesNote ref={rulesRef} tripId={tripId!} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
-          : undefined}
-        onSaveExit={competitionId ? async () => { await rulesRef.current?.flush(); router.back(); } : undefined}
-        setupRows={
-          gameQ.data ? (
-            <GameSetupRows
-              tripId={tripId!}
-              competitionId={competitionId ?? null}
-              game={gameQ.data as unknown as GameRow}
-              canEdit={canEdit}
-              onChanged={() => {
-                void utils.games.getById.invalidate({ tripId: tripId!, gameId: gid! });
-                if (competitionId) {
-                  utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
-                  utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
-                  utils.games.listByTrip.invalidate({ tripId: tripId! });
-                }
-              }}
-            />
-          ) : null
+        title="Rack-n-Stack"
+        right={
+          canEdit ? (
+            <button onClick={() => setShowConfig(true)} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          ) : undefined
         }
-      />
+      >
+        <SetupPlaceholder
+          gameName={gameQ.data?.name as string | undefined}
+          category="golf"
+          message={canEdit
+            ? "Set the course, handicaps, and points on the settings page — the crew can’t see the game until you switch it to scoring."
+            : undefined}
+        >
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setShowConfig(true)}
+              data-testid="setup-go-to-settings"
+              className="mx-auto flex items-center justify-center gap-2"
+              style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+            >
+              <Settings size={17} /> Set up this game
+            </button>
+          )}
+        </SetupPlaceholder>
+      </Shell>
     );
   }
 
@@ -589,8 +577,8 @@ export default function RackNStackPage() {
       subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}
       right={
         canEdit && !final ? (
-          <button onClick={() => setShowConfig(true)} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
-            Configuration
+          <button onClick={() => setShowConfig(true)} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+            <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
         ) : undefined
       }

@@ -3,29 +3,44 @@
 import { Lock, PlayCircle } from "lucide-react";
 
 /**
- * GameManagementPanel (A2-ux) — the owner/delegate Game-Play toggle on the
- * setup-mode scoreboard page (mounted in the shared GameIdentityHeader slot from
- * A2-precursor). The keystone control: it flips the game's MODE.
+ * GameManagementPanel (A2-ux) — the canonical **Setup / Scoring** toggle, the
+ * keystone game-mode control. It lives on the ONE settings page (the correction:
+ * never on the scoreboard pass-through — flipping there would be a self-destroying
+ * control), in BOTH modes, so it's bidirectional:
  *
  *   Game Play:  [ Setup | Scoring ]
  *
- * Here the game is in SETUP (status pending), so Setup is the active segment and
- * the **Scoring** segment is the action: tapping it enables scoring (A2-core's
- * reconciled enable, which sets status:'active' + publishes). It's gated by `ready`
- * (the client mirror of the server readiness guard) — until the minimum
- * requirements are met, Scoring is locked. The reverse (Scoring→Setup) lives on the
- * settings page once the game is live, so this panel is enable-only.
+ *  - **Setup mode** (status pending): Setup is the active segment; the **Scoring**
+ *    segment is the action — tapping it enables scoring (A2-core's reconciled enable,
+ *    status:'active' + publish), gated by `ready` (the client mirror of the server
+ *    readiness guard — locked until the minimum requirements are met).
+ *  - **Scoring mode** (live): Scoring is the active segment; the **Setup** segment is
+ *    the action — tapping it disables scoring (back to setup, scores kept).
+ *
+ * One control, one vocabulary (Setup|Scoring) — it retired the old Enabled|Disabled
+ * segmented control on the settings page.
  */
 export function GameManagementPanel({
+  mode,
   ready,
   onEnable,
+  onDisable,
   pending = false,
 }: {
-  /** Minimum requirements met — the Scoring segment is enabled only when true. */
+  /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
+  mode: "setup" | "scoring";
+  /** Minimum requirements met — the Scoring segment is enabled only when true.
+   *  Formats with no hard readiness gate (stroke/rack) pass `true`. */
   ready: boolean;
   onEnable: () => void;
+  onDisable: () => void;
   pending?: boolean;
 }) {
+  const isScoring = mode === "scoring";
+  const scoringLocked = !isScoring && !ready;
+
+  // A segment is the ACTIVE indicator when it matches the current mode; otherwise
+  // it's the action button that switches TO that mode.
   return (
     <div
       className="rounded-2xl p-4 text-left"
@@ -36,41 +51,83 @@ export function GameManagementPanel({
         Game Play
       </div>
 
-      {/* Segmented [Setup | Scoring] — Setup active (we're in setup mode). */}
       <div className="mt-2 flex gap-1.5 rounded-xl p-1" style={{ background: "var(--color-bt-card-raised)" }}>
-        <div
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold"
-          style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-          data-testid="mode-setup"
-        >
-          Setup
-        </div>
-        <button
-          type="button"
-          onClick={ready && !pending ? onEnable : undefined}
-          disabled={!ready || pending}
-          aria-disabled={!ready || pending}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold disabled:cursor-not-allowed"
-          style={{
-            background: "transparent",
-            color: ready ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-            border: `1px solid ${ready ? "var(--color-bt-accent-border)" : "transparent"}`,
-            opacity: ready ? 1 : 0.6,
-          }}
-          data-testid="mode-scoring"
-        >
-          {!ready && <Lock size={13} />}
-          {pending ? "Switching…" : "Scoring"}
-        </button>
+        {/* Setup segment — active in setup mode; the disable action in scoring mode. */}
+        <Segment
+          testId="mode-setup"
+          label={pending && isScoring ? "Switching…" : "Setup"}
+          active={!isScoring}
+          // In scoring mode this is the action (disable → back to setup).
+          onClick={isScoring && !pending ? onDisable : undefined}
+          disabled={pending}
+        />
+        {/* Scoring segment — active in scoring mode; the enable action in setup mode
+            (gated by `ready`, lock-styled until met). */}
+        <Segment
+          testId="mode-scoring"
+          label={pending && !isScoring ? "Switching…" : "Scoring"}
+          active={isScoring}
+          accent
+          locked={scoringLocked}
+          onClick={!isScoring && ready && !pending ? onEnable : undefined}
+          disabled={scoringLocked || pending}
+        />
       </div>
 
       <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
         <PlayCircle size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
         <span>
-          Players can&rsquo;t access the game while it&rsquo;s being set up. Switch to scoring mode when
-          you&rsquo;ve completed the minimum requirements.
+          {isScoring
+            ? "The game is live and open to the crew. Switch back to setup to close it — any entered scores are kept."
+            : "Players can’t access the game while it’s being set up. Switch to scoring when you’ve completed the minimum requirements."}
         </span>
       </p>
     </div>
+  );
+}
+
+function Segment({
+  testId,
+  label,
+  active,
+  accent = false,
+  locked = false,
+  onClick,
+  disabled,
+}: {
+  testId: string;
+  label: string;
+  active: boolean;
+  /** The accent (Scoring) segment renders teal when it's the live/enable action. */
+  accent?: boolean;
+  locked?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  // Active = pressed indicator (base surface, bordered). Inactive accent action =
+  // teal text/border. Inactive plain action = dim.
+  const style: React.CSSProperties = active
+    ? { background: "var(--color-bt-base)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }
+    : accent
+      ? {
+          background: "transparent",
+          color: locked ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
+          border: `1px solid ${locked ? "transparent" : "var(--color-bt-accent-border)"}`,
+          opacity: locked ? 0.6 : 1,
+        }
+      : { background: "transparent", color: "var(--color-bt-text-dim)", border: "1px solid transparent" };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || !onClick}
+      aria-disabled={disabled || !onClick}
+      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold disabled:cursor-not-allowed"
+      style={style}
+      data-testid={testId}
+    >
+      {locked && <Lock size={13} />}
+      {label}
+    </button>
   );
 }

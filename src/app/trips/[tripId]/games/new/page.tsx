@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -9,15 +9,11 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
-import { EnableScoringGate } from "@/components/games/EnableScoringGate";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
-import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
-import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -53,7 +49,6 @@ export default function NewGamePage() {
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
   const { canEdit, isOwner } = useTripRole(tripId);
-  const rulesRef = useRef<GameRulesNoteHandle>(null);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -370,70 +365,55 @@ export default function NewGamePage() {
     );
   }
 
-  // A2-ux: stroke's MISSING member-wait branch (Phase 0 item 5 — match has it, rack
-  // has two, stroke had none). A member hitting a setup-mode (not-yet-enabled) stroke
-  // game gets the themed placeholder — never the owner's setup hull or an empty board.
-  if (game && !scoringEnabled && !canEdit) {
+  // A2-ux correction: setup-mode scoreboard = PASS-THROUGH. A member gets just the
+  // themed placeholder (the A2-core gate already withheld the data); the owner/delegate
+  // gets the placeholder + the way into the ONE settings page (front button + corner
+  // gear). NO checklist, NO toggle on this page — those live on the settings page.
+  if (game && !scoringEnabled && !showConfig) {
     return (
       <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
-        <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
+        <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+          <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
+          </button>
+          <div className="min-w-0 text-center">
+            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Stroke Play</div>
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}</div>
+          </div>
+          {canEdit ? (
+            <button onClick={() => setShowConfig(true)} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          ) : <div className="h-9 w-9" />}
+        </header>
+        <div className="flex-1">
+          <SetupPlaceholder
+            gameName={gameQ.data?.name as string | undefined}
+            category="golf"
+            message={canEdit
+              ? "Set the players, course, and handicaps on the settings page — the crew can’t see the game until you switch it to scoring."
+              : undefined}
+          >
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setShowConfig(true)}
+                data-testid="setup-go-to-settings"
+                className="mx-auto flex items-center justify-center gap-2"
+                style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+              >
+                <Settings size={17} /> Set up this game
+              </button>
+            )}
+          </SetupPlaceholder>
+        </div>
       </div>
     );
   }
 
-  // ── Enable gate (Phase 2B.1) → §B setup hull (2B.2). A configured game must be
-  // enabled before its score screen opens; the gate also hosts the standardized
-  // course + Name·Format·Points drill-down rows + (§3) the Handicaps step. ──
-  if (game && !scoringEnabled && !showConfig) {
-    return (
-      <EnableScoringGate
-        title="Stroke Play"
-        subtitle={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}
-        onEnable={handleEnable}
-        onBack={() => router.back()}
-        pending={enableScoring.isPending}
-        onConfig={canEdit ? () => setShowConfig(true) : undefined}
-        identityHeader={gameCompetitionId && gameQ.data
-          ? <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
-          : undefined}
-        rulesNote={gameCompetitionId && gameQ.data
-          ? <GameRulesNote ref={rulesRef} tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
-          : undefined}
-        onSaveExit={gameCompetitionId ? async () => { await rulesRef.current?.flush(); router.back(); } : undefined}
-        setupRows={
-          gameQ.data ? (
-            <>
-              <GameSetupRows
-                tripId={tripId}
-                competitionId={gameCompetitionId}
-                game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
-                onChanged={() => {
-                  void gameQ.refetch();
-                  if (gameCompetitionId) {
-                    utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-                    utils.competitions.faceBootstrap.invalidate({ tripId });
-                    utils.games.listByTrip.invalidate({ tripId });
-                  }
-                }}
-              />
-              <HandicapsRow strokesOf={strokesOf} onClick={() => setShowHandicaps(true)} disabled={!canEdit} />
-              {availableModifiers.length > 0 && (
-                <ModifiersRow
-                  count={enabledCount(modifiersDraft, availableModifiers)}
-                  onClick={() => setShowModifiers(true)}
-                  disabled={!canEdit}
-                />
-              )}
-            </>
-          ) : null
-        }
-      />
-    );
-  }
-
-  // ── Configuration page (§B 2B.3) — the post-Enable editing home, reached from
-  // the score-entry hub's top-right gear. ──
+  // ── The ONE settings page — reached via the corner gear in BOTH modes. The full
+  // checklist (course/points/handicaps/modifiers) + the single Setup/Scoring toggle
+  // + the Danger Zone, all here. ──
   if (game && showConfig && gameQ.data && canEdit) {
     return (
       <div className="fixed inset-0 z-50">
@@ -448,7 +428,17 @@ export default function NewGamePage() {
           onChanged={() => void refreshGame()}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
-          onEditWhosPlaying={() => { setShowConfig(false); setShowHandicaps(true); }}
+          // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
+          onEditWhosPlaying={() => setShowHandicaps(true)}
+          extraRows={
+            availableModifiers.length > 0 ? (
+              <ModifiersRow
+                count={enabledCount(modifiersDraft, availableModifiers)}
+                onClick={() => setShowModifiers(true)}
+                disabled={!canEdit}
+              />
+            ) : undefined
+          }
           scoringEnabled={scoringEnabled}
           onEnable={handleEnable}
           onDisable={handleDisable}
@@ -565,32 +555,6 @@ export default function NewGamePage() {
         Start game
       </button>
     </div>
-  );
-}
-
-/** §3 Handicaps drill-down row in the stroke setup hull — opens the per-player
- *  HandicapRoster. Mirrors the GameSetupRows row style; the summary reads how
- *  many players have strokes set (none yet = a neutral "Add strokes" cue). */
-function HandicapsRow({ strokesOf, onClick, disabled }: { strokesOf: Map<string, number>; onClick: () => void; disabled?: boolean }) {
-  const withStrokes = [...strokesOf.values()].filter((n) => n > 0).length;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Handicaps <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· optional</span>
-        </span>
-        <span className="truncate text-sm" style={{ color: withStrokes ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", marginTop: 2 }}>
-          {withStrokes > 0 ? `${withStrokes} player${withStrokes === 1 ? "" : "s"} get strokes` : "Add per-player strokes"}
-        </span>
-      </div>
-      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-    </button>
   );
 }
 
