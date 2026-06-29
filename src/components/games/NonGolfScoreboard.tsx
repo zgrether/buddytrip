@@ -117,7 +117,7 @@ export function NonGolfScoreboard({
           onPick={canEdit ? setResult : () => {}}
         />
       ) : (
-        <ManualPlacementEditor order={order} teams={teams} dist={dist} teamById={teamById} move={canEdit ? move : () => {}} />
+        <ManualPlacementEditor order={order} dist={dist} teamById={teamById} move={canEdit ? move : () => {}} />
       )}
 
       {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
