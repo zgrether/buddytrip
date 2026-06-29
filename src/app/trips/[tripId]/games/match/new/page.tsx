@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Flag, Plus, Minus, Trash2, X, Swords, Slider
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { useTripRole } from "@/hooks/useTripRole";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
@@ -81,7 +81,6 @@ export default function NewMatchGamePage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -104,6 +103,9 @@ export default function NewMatchGamePage() {
   );
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
+  // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
+  // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
+  const { canEdit, isOwner, loading: roleLoading } = useGameEditAccess(tripId, gameId);
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
   // The settings page is an OVERLAY over the game scoreboard, browser-history aware:
   // opening it pushes a history entry, so the in-page back arrow and the OS/mouse
@@ -171,11 +173,6 @@ export default function NewMatchGamePage() {
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
-  // Per-game delegate (§10): a member granted as this game's organizer runs it
-  // like an editor — config, pairings, score, finish. The server gate
-  // (requireGameEdit) admits them; the UI must light up the same way. Trip
-  // Owner/Organizer keep edit on every game; a delegate only on theirs.
-  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
 
   // Format: the resumed game's type is authoritative; a brand-new game (no game
   // yet) reads the `?format=doubles` hint. `sided` switches the whole flow
@@ -200,11 +197,6 @@ export default function NewMatchGamePage() {
   // play_group), so the saver tags writes with participant_type='play_group'.
   const { values, setValues, saveStatus, onChange, onClear, retryCell } =
     useScoreSaver(tripId, gameId, sided ? "play_group" : undefined);
-  const amDelegate = useMemo(
-    () => !!me && (orgQ.data as { user_id: string }[] | undefined ?? []).some((o) => o.user_id === me.id),
-    [orgQ.data, me]
-  );
-  const canEdit = tripCanEdit || amDelegate;
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();

@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
-import { useTripRole } from "@/hooks/useTripRole";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { TimePicker } from "@/components/TimePicker";
@@ -61,7 +61,6 @@ export default function RackNStackPage() {
   const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
   const tripId = isId ? param : resolved.data?.id;
 
-  const { canEdit: tripCanEdit, isOwner, loading: roleLoading } = useTripRole(tripId);
   const me = useCurrentUser();
   const utils = trpc.useUtils();
 
@@ -75,6 +74,9 @@ export default function RackNStackPage() {
     return (g?.id as string | undefined) ?? null;
   }, [gamesList.data]);
   const gid = gameId ?? resumeId;
+  // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
+  // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
+  const { canEdit, isOwner, loading: roleLoading } = useGameEditAccess(tripId, gid);
   const [mode, setMode] = useState<RackMode>("current");
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
@@ -115,14 +117,6 @@ export default function RackNStackPage() {
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
-  // Per-game delegate (§10): this game's delegate runs it like an editor (the
-  // server's requireGameEdit admits them); trip staff keep edit everywhere.
-  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
-  const amDelegate = useMemo(
-    () => !!me && (orgQ.data as { user_id: string }[] | undefined ?? []).some((o) => o.user_id === me.id),
-    [orgQ.data, me]
-  );
-  const canEdit = tripCanEdit || amDelegate;
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();

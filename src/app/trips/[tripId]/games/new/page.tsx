@@ -16,7 +16,7 @@ import { ModifierCards } from "@/components/games/ModifierCards";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
-import { useTripRole } from "@/hooks/useTripRole";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -48,7 +48,9 @@ export default function NewGamePage() {
   );
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
-  const { canEdit, isOwner } = useTripRole(tripId);
+  // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
+  // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
+  const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 

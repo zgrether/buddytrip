@@ -8,7 +8,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
-import { useTripRole } from "@/hooks/useTripRole";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { GAME_TYPES, type ScoringModel } from "@/lib/gameTypes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
@@ -47,7 +47,9 @@ export default function ManualGamePage() {
   );
   const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
-  const { canEdit, isOwner } = useTripRole(tripId);
+  // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
+  // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
+  const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
 
   const gameQ = trpc.games.getById.useQuery(
     { tripId: tripId!, gameId: urlGameId! },
