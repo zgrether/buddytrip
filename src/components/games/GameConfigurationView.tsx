@@ -132,6 +132,7 @@ export function GameConfigurationView({
             tripId={tripId}
             gameId={game.id}
             competitionId={competitionId}
+            status={game.status as string | null | undefined}
             onChanged={onChanged}
             onDeleted={onDeleted}
           />
