@@ -24,14 +24,21 @@ export const MANUAL_ROUTE = "manual";
 export function gameHref(
   tripId: string,
   gameTypeId: string | null,
-  gameId: string
+  gameId: string,
+  /** `settings: true` deep-links to the game's settings (configuration) page
+   *  instead of the scoreboard pass-through — the leaderboard uses this to drop
+   *  an owner/delegate straight into setup for a not-yet-scoring game (the page
+   *  honors `?settings=1` via useGameSettingsOverlay). Members / scoring-mode
+   *  games never get it (decided at the call site). */
+  opts?: { settings?: boolean }
 ): string | null {
   if (!gameTypeId) return null;
+  const suffix = opts?.settings ? "&settings=1" : "";
   const seg = GAME_ROUTES[gameTypeId];
-  if (seg) return `/trips/${tripId}/games/${seg}?game=${gameId}`;
+  if (seg) return `/trips/${tripId}/games/${seg}?game=${gameId}${suffix}`;
   // Non-golf manual games now have a real scoreboard PAGE (promoted from the old
   // post-results modal) — route there instead of opening a modal in place.
-  if (isManualGameType(gameTypeId)) return `/trips/${tripId}/games/${MANUAL_ROUTE}?game=${gameId}`;
+  if (isManualGameType(gameTypeId)) return `/trips/${tripId}/games/${MANUAL_ROUTE}?game=${gameId}${suffix}`;
   return null;
 }
 

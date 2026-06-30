@@ -95,6 +95,7 @@ export function GameRow({
   cells,
   tripId,
   mine,
+  canEdit,
   viewerName,
   viewerAvatarIcon,
   viewerTeamColor,
@@ -105,6 +106,10 @@ export function GameRow({
   cells: Map<string, LBCell> | undefined;
   tripId: string;
   mine: boolean;
+  /** Trip-level edit access (Owner/Organizer). ORed with `mine` (this game's
+   *  delegate) it IS useGameEditAccess/canEditGame — the gate for the deep link
+   *  to a setup-mode game's settings page. */
+  canEdit?: boolean;
   /** The viewer's display name + chosen avatar icon + competition-team color —
    *  rendered as the delegate marker when `mine` (the viewer's avatar in their
    *  team color, §10). Only needed when the viewer delegates this game. */
@@ -113,7 +118,16 @@ export function GameRow({
   viewerTeamColor?: string | null;
   onPrefetch: (gameId: string) => void;
 }) {
-  const href = gameHref(tripId, game.gameTypeId, game.id);
+  // Deep-link to SETTINGS when the viewer can edit this game (Owner/Organizer OR
+  // its delegate — mirrors useGameEditAccess) AND it's still in SETUP (nothing on
+  // the scoreboard yet). Otherwise the normal target (scoreboard / placeholder).
+  // Once scoring is on (live/final), everyone gets the scoreboard. Members never
+  // get the settings link — they hit the server-walled placeholder.
+  const canEditThisGame = !!canEdit || mine;
+  const setupMode = !(game.status === "complete" || game.status === "active" || game.scoringEnabled === true);
+  const href = gameHref(tripId, game.gameTypeId, game.id, {
+    settings: canEditThisGame && setupMode,
+  });
   const hasScores = cells && cells.size > 0;
   // The row's single source of truth — the game's actual lifecycle, not a board
   // context flag. Layout + every §A3 layer key off this one value.

@@ -371,6 +371,7 @@ function GamesSection({
         mineSet={mineSet}
         viewer={viewer}
         onPrefetch={onPrefetch}
+        canEdit={canEdit}
       />
       {addBtn}
     </div>
@@ -629,6 +630,7 @@ function SessionBreakdown({
   mineSet,
   viewer,
   onPrefetch,
+  canEdit,
 }: {
   games: LBGame[];
   teams: LBTeam[];
@@ -638,6 +640,7 @@ function SessionBreakdown({
   mineSet: Set<string>;
   viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
+  canEdit: boolean;
 }) {
   return (
     <div>
@@ -659,6 +662,7 @@ function SessionBreakdown({
             cells={cellsByGame.get(game.id)}
             tripId={tripId}
             mine={mineSet.has(game.id)}
+            canEdit={canEdit}
             viewerName={viewer.name}
             viewerAvatarIcon={viewer.avatarIcon}
             viewerTeamColor={viewer.teamColor}
@@ -757,6 +761,7 @@ function EarlyState({
                 cells={undefined}
                 tripId={tripId}
                 mine={mineSet.has(game.id)}
+                canEdit={canEdit}
                 viewerName={viewer.name}
                 viewerAvatarIcon={viewer.avatarIcon}
                 viewerTeamColor={viewer.teamColor}
