@@ -18,6 +18,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
+import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 
 interface Props {
@@ -1402,6 +1403,9 @@ export function TeamSheet({
         </div>
 
         <div className="space-y-4 p-4">
+          {/* Team name (most of the row) + a narrow short-name box, side by side. */}
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
           <Field label="Team Name" required>
             <input
               value={name}
@@ -1471,8 +1475,9 @@ export function TeamSheet({
               </div>
             )}
           </Field>
-
-          <Field label="Short Name" required helper="Used on scorecards — e.g. USA, EUR, FIRE">
+            </div>
+            <div className="flex-shrink-0" style={{ width: 92 }}>
+          <Field label="Short" required>
             <input
               value={shortName}
               onChange={(e) => {
@@ -1483,7 +1488,7 @@ export function TeamSheet({
               maxLength={4}
               disabled={!identityEditable}
               readOnly={!identityEditable}
-              className="w-full rounded-lg px-3 py-2 text-sm uppercase outline-none disabled:opacity-70"
+              className="w-full rounded-lg px-2 py-2 text-center text-sm uppercase outline-none disabled:opacity-70"
               style={{
                 background: "var(--color-bt-card-raised)",
                 color: "var(--color-bt-text)",
@@ -1491,6 +1496,8 @@ export function TeamSheet({
               }}
             />
           </Field>
+            </div>
+          </div>
 
           {/* Color — a PICKER only when identity is editable (owner / captain).
               A read-only viewer (plain member) sees the team's color as a static
@@ -1816,14 +1823,18 @@ function RosterRow({
       className="flex items-center gap-2 rounded-lg px-2.5 py-2"
       style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
+      {/* Grip — the desktop drag handle. ALWAYS visible (was lg-gated, which made
+          it vanish below 1024px even though the fixed-width modal never resizes). */}
       {canManage && (
         <GripVertical
           size={14}
-          className="hidden flex-shrink-0 cursor-grab lg:block"
+          className="flex-shrink-0 cursor-grab"
           style={{ color: "var(--color-bt-text-dim)" }}
           aria-hidden
         />
       )}
+      {/* Row index — quiet table-number column, like the match pickers. */}
+      <RowNumber number={index + 1} className="flex-shrink-0" style={{ width: 16 }} />
       <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} />
       <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
         {name}
