@@ -1277,6 +1277,23 @@ export function TeamSheet({
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The picked color — used to PREVIEW the roster avatars live (changes the view
+  // immediately); only PERSISTED on Save (handleSave reads the same paletteIdx).
+  const selectedColor = TEAM_COLORS[paletteIdx]?.color ?? team?.color ?? TEAM_COLORS[0].color;
+
+  // Save is enabled only when the IDENTITY actually changed (edit) — name, short
+  // name, or color — or the required fields are present (create). Roster edits
+  // persist on their own action and are NOT part of this dirty-check.
+  const trimmedName = name.trim();
+  const trimmedShort = shortName.trim();
+  const identityDirty =
+    isEdit && team
+      ? trimmedName !== team.name ||
+        trimmedShort.toUpperCase() !== (team.short_name ?? "").toUpperCase() ||
+        selectedColor !== team.color
+      : true;
+  const canSubmit = !!trimmedName && !!trimmedShort && identityDirty;
+
   // Roster section data (edit mode). Deduped against any other observer of the
   // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
   const { data: rosterMembers = [] } = trpc.tripMembers.list.useQuery(
@@ -1544,24 +1561,47 @@ export function TeamSheet({
           )}
 
           {identityEditable && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={create.isPending || update.isPending}
-              className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {isEdit ? "Save Team" : "Add Team"}
-            </button>
+            // Cancel reverts the unsaved identity edits (closing discards the local
+            // state, so the color preview reverts). Save persists — enabled only
+            // when something changed (canSubmit).
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={create.isPending || update.isPending}
+                className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+                style={{
+                  background: "transparent",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+                data-testid="team-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canSubmit || create.isPending || update.isPending}
+                className="flex-[2] rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                data-testid="team-save"
+              >
+                {isEdit ? "Save Team" : "Add Team"}
+              </button>
+            </div>
           )}
 
           {/* Consolidated roster section — the team-management home (edit mode).
-              Owner gets full controls; captain/member see it read-only. */}
+              Owner gets full controls; captain/member see it read-only. The
+              avatars use the PREVIEW color (selectedColor) so a color pick shows
+              immediately, persisting only on Save. */}
           {isEdit && showRoster && team && (
             <TeamSheetRoster
               tripId={tripId}
               competitionId={competitionId}
               team={team}
+              teamColor={selectedColor}
               canManage={isOwner}
               members={rosterMembers as Member[]}
               assignments={rosterAssignments as Assignment[]}
@@ -1586,6 +1626,7 @@ function TeamSheetRoster({
   tripId,
   competitionId,
   team,
+  teamColor,
   canManage,
   members,
   assignments,
@@ -1593,6 +1634,9 @@ function TeamSheetRoster({
   tripId: string;
   competitionId: string;
   team: Team;
+  /** The PREVIEW color (the live color-picker selection) — drives the row avatars
+   *  so a color pick shows immediately; persists only on Save. */
+  teamColor: string;
   /** Owner only — roster mutations (add/remove/reorder/captain) stay owner-scoped. */
   canManage: boolean;
   members: Member[];
@@ -1633,7 +1677,7 @@ function TeamSheetRoster({
     return members.filter((m) => !assignedIds.has(m.user_id ?? m.memberId));
   }, [members, assignments]);
 
-  const [adding, setAdding] = useState(false);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
 
   // Drag-to-reorder — mirrors the match-assignments panel: the GRIP arms the row
   // (so the ★/× inside stay tappable), an accent insertion LINE shows where it
@@ -1724,7 +1768,7 @@ function TeamSheetRoster({
                 key={a.user_id}
                 name={name}
                 avatarIcon={m?.user?.avatar_icon ?? null}
-                teamColor={team.color}
+                teamColor={teamColor}
                 isCaptain={!!a.is_captain}
                 canManage={canManage}
                 index={i}
@@ -1773,50 +1817,34 @@ function TeamSheetRoster({
         </div>
       )}
 
-      {/* Add player (owner) — assign an unassigned crew member to THIS team. */}
+      {/* Add player (owner) — a full-width button (like "add match") that opens a
+          sheet listing the UNASSIGNED pool, mirroring the match-play player
+          selector. Unassigned-pool ONLY (no cross-team reassignment). */}
       {canManage && unassigned.length > 0 && (
-        <div className="mt-2">
-          {!adding ? (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
-              style={{ color: "var(--color-bt-accent)" }}
-              data-testid="teamsheet-add-player"
-            >
-              <Plus size={13} />
-              Add player
-            </button>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Tap a crew member to add
-              </p>
-              {unassigned.map((m) => {
-                const id = m.user_id ?? m.memberId;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => assign.mutate({ tripId, competitionId, userId: id, teamId: team.id })}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      border: "1px solid var(--color-bt-border)",
-                    }}
-                    data-testid={`teamsheet-add-${id}`}
-                  >
-                    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
-                    <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
-                      {m.displayName}
-                    </span>
-                    <Plus size={14} style={{ color: "var(--color-bt-accent)" }} />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setAddSheetOpen(true)}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-semibold"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1.5px dashed var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+          data-testid="teamsheet-add-player"
+        >
+          <Plus size={16} />
+          Add player
+        </button>
+      )}
+
+      {addSheetOpen && (
+        <AddPlayerSheet
+          teamName={team.name}
+          teamColor={teamColor}
+          unassigned={unassigned}
+          onPick={(id) => assign.mutate({ tripId, competitionId, userId: id, teamId: team.id })}
+          onClose={() => setAddSheetOpen(false)}
+        />
       )}
 
       {/* Removal lock is KEPT (owner decision) — say why, so the disabled × reads
@@ -1831,6 +1859,102 @@ function TeamSheetRoster({
         </p>
       )}
     </div>
+  );
+}
+
+// ── AddPlayerSheet ──────────────────────────────────────────────────────────
+// Bottom-sheet player picker for adding to a team, mirroring the match-play
+// PlayerSelector. Lists the UNASSIGNED pool only (no cross-team reassignment).
+// Stays open as you pick so several can be added; the list shrinks as they're
+// assigned (the parent recomputes `unassigned`), then shows the empty state.
+
+function AddPlayerSheet({
+  teamName,
+  teamColor,
+  unassigned,
+  onPick,
+  onClose,
+}: {
+  teamName: string;
+  teamColor: string;
+  unassigned: Member[];
+  onPick: (userId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <ScrollLock>
+      <div
+        className="fixed inset-0 z-[60] flex items-end"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+        data-testid="teamsheet-add-sheet"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="w-full"
+          style={{
+            background: "var(--color-bt-card-float)",
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            padding: "16px 16px 28px",
+            maxHeight: "75vh",
+            overflowY: "auto",
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />
+              Add to {teamName}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-8 w-8 items-center justify-center rounded-lg"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p
+            className="mt-3 text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Unassigned crew
+          </p>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {unassigned.length === 0 ? (
+              <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Everyone&apos;s on a team.
+              </span>
+            ) : (
+              unassigned.map((m) => {
+                const id = m.user_id ?? m.memberId;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onPick(id)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                    data-testid={`teamsheet-add-${id}`}
+                  >
+                    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
+                    <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+                      {m.displayName}
+                    </span>
+                    <Plus size={16} style={{ color: "var(--color-bt-accent)" }} />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    </ScrollLock>
   );
 }
 
