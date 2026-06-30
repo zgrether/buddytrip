@@ -1,4 +1,4 @@
--- 069 — Canonical roster order: team_assignments.sort_order.
+-- 070 — Canonical roster order: team_assignments.sort_order.
 --
 -- Roster order is set ONCE in the Edit Team modal and becomes the canonical
 -- player order every team-roster chooser derives from (match assignment, rack

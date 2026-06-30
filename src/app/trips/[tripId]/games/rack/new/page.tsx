@@ -167,7 +167,7 @@ export default function RackNStackPage() {
   }, [teamsQ.data, teamIds]);
   const colorForUser = (id: string) => (teamOf.get(id) === "A" ? teamMeta.A.color : teamMeta.B.color);
 
-  // Canonical roster order (mig 069): assignQ.data arrives ordered by
+  // Canonical roster order (mig 070): assignQ.data arrives ordered by
   // (team_id, sort_order), so its index IS the canonical order — team A's roster
   // then team B's, each in the order set in the Edit Team modal. The handicap
   // roster derives its display order from this, not from foursome/participant order.

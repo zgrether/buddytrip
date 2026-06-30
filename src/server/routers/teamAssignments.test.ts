@@ -74,7 +74,7 @@ describe("teamAssignments router", () => {
   });
 });
 
-// Canonical roster order (mig 069) — sort_order on assign + the reorder mutation.
+// Canonical roster order (mig 070) — sort_order on assign + the reorder mutation.
 describe("teamAssignments roster order", () => {
   let octx: TestContext;
   let otrip: string;

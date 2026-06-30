@@ -16,7 +16,7 @@ export async function listTeamAssignments(
   ctx: { supabase: SupabaseClient },
   competitionId: string,
 ) {
-  // Canonical roster order (mig 069): order by sort_order WITHIN each team. Every
+  // Canonical roster order (mig 070): order by sort_order WITHIN each team. Every
   // team-roster chooser filters this list by team_id, so the per-team relative
   // order is what carries through — grouping by team_id first keeps the raw list
   // tidy too. This single ordered read is what makes the order canonical.
@@ -82,7 +82,7 @@ export const teamAssignmentsRouter = router({
       const isMove = !!existing && (existing.team_id as string) !== input.teamId;
       if (isMove) await assertRosterUnlocked(ctx.supabase, input.competitionId);
 
-      // sort_order (mig 069): a genuine ADD or a MOVE to a different team lands at
+      // sort_order (mig 070): a genuine ADD or a MOVE to a different team lands at
       // the END of the target team's canonical order. A same-team re-assign is a
       // no-op — leave sort_order untouched so it doesn't jump to the bottom.
       const payload: {

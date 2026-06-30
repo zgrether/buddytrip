@@ -617,7 +617,7 @@ function TeamCard({
 }) {
   const [dragOver, setDragOver] = useState(false);
 
-  // Canonical roster order (mig 069): order this team's rows by sort_order, not
+  // Canonical roster order (mig 070): order this team's rows by sort_order, not
   // the incidental tripMembers (joined_at) order. Map the ordered assignments to
   // their Member rows so the card shows the SAME order as every other chooser.
   const teamMembers = assignments
