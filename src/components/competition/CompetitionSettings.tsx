@@ -44,7 +44,12 @@ export function CompetitionSettings({
     <div className="space-y-6">
       <DetailsSection competition={competition} tripId={tripId} canEdit={canEdit} />
 
-      {isOwner && competition.status === "upcoming" && (
+      {/* Danger zone is the owner's reset/delete hatch — it must be reachable at
+          ALL times, not just pre-live. (Was gated to `status === "upcoming"`,
+          which stranded an active competition with no in-app reset/delete — the
+          live BBMI Cup hit exactly this.) Delete-and-restart is the supported
+          recovery path, so the owner always sees it. */}
+      {isOwner && (
         <DangerSection competition={competition} tripId={tripId} onDeleted={onDeleted} />
       )}
     </div>
