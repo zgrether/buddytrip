@@ -94,28 +94,16 @@ export function CompetitionFace({
   // edit-reopen are retired (the page's gear → settings page is the edit home now,
   // like golf). So this board no longer scores/edits non-golf games inline.
 
-  // Team-identity editing from a leaderboard name tap (PR b2): the standalone
-  // editor needs full team rows; the captain check needs assignments + the viewer.
-  // All member-visible + faceBootstrap-seeded (cache hits) STRUCTURE, so kept.
+  // The leaderboard short-name tap opens the consolidated Edit Team modal for
+  // EVERYONE — the modal self-gates via useCanEditTeam (owner: full; captain:
+  // identity editable, roster read-only; member: all read-only). We only need
+  // the team rows here to resolve the tapped id. faceBootstrap-seeded STRUCTURE
+  // (cache hit).
   const { data: teamsList = [] } = trpc.teams.list.useQuery({ tripId, competitionId: competition.id }, STRUCTURE_QUERY);
-  const { data: teamAssignmentsList = [] } = trpc.teamAssignments.list.useQuery({ tripId, competitionId: competition.id }, STRUCTURE_QUERY);
-  const { data: me } = trpc.users.getMe.useQuery(undefined, STRUCTURE_QUERY);
 
-  const canEditTeamIdentity = (teamId: string) =>
-    isOwner ||
-    (teamAssignmentsList as { user_id: string; team_id: string; is_captain?: boolean }[]).some(
-      (a) => a.user_id === me?.id && a.team_id === teamId && a.is_captain
-    );
-
-  // Owner / captain-of-that-team → standalone identity editor. Otherwise the
-  // graceful read-only path: open the Rosters overlay (see the lineup, no edit).
   const handleEditTeam = (teamId: string) => {
-    if (canEditTeamIdentity(teamId)) {
-      const team = (teamsList as Team[]).find((t) => t.id === teamId);
-      if (team) setEditingTeam(team);
-    } else {
-      setRostersOpen(true);
-    }
+    const team = (teamsList as Team[]).find((t) => t.id === teamId);
+    if (team) setEditingTeam(team);
   };
   // ── Go live / back to setup (visibility switch, NOT a data lock) ───────────
   // Centralized here (not in the header) so going live can also flip the
@@ -239,8 +227,10 @@ export function CompetitionFace({
         tripId={tripId}
         canEdit={canEdit}
         onAddGame={() => setAddingGame(true)}
-        // A hero team-name tap → STANDALONE identity editor (owner / captain of
-        // that team); a non-permitted tap falls to the read-only overlay.
+        // A hero team-short-name tap → the consolidated Edit Team modal (the
+        // team-management home). It self-gates by role: owner edits everything,
+        // captain edits identity (roster read-only), a plain member sees it
+        // read-only.
         onEditTeam={handleEditTeam}
       />
 
@@ -279,9 +269,10 @@ export function CompetitionFace({
         />
       )}
 
-      {/* Standalone team-identity editor — opened by a leaderboard team-name tap
-          for the owner / that team's captain (PR b2). Reuses TeamSheet directly,
-          no overlay. The update is captain-gated server-side. */}
+      {/* Consolidated Edit Team modal — opened by a leaderboard short-name tap.
+          The team-management home: identity + roster, self-gated by role
+          (useCanEditTeam). showRoster defaults true here (the standalone home);
+          the in-overlay per-card pencil passes false. */}
       {editingTeam && (
         <TeamSheet
           tripId={tripId}

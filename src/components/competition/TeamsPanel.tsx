@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react";
 import {
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
   GripVertical,
   Pencil,
   Plus,
@@ -16,6 +18,9 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
+import { RowNumber } from "@/components/games/RowNumber";
+import { DragHandle } from "@/components/games/DragHandle";
+import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 
 interface Props {
   competitionId: string;
@@ -54,6 +59,7 @@ interface Assignment {
   user_id: string;
   team_id: string;
   is_captain?: boolean;
+  sort_order?: number;
 }
 
 interface Member {
@@ -180,6 +186,11 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
       // bootstrap-seeded competitions.leaderboard cache — invalidate it too so
       // the leaderboard reflects the change without a hard refresh.
       utils.competitions.leaderboard.invalidate(queryKey);
+      // faceBootstrap ALSO seeds teamAssignments.list (#10): the consolidated
+      // TeamSheet opens OUTSIDE the LiveFace re-seed path, so re-resolve the
+      // bootstrap or the board reads stale until the 30s poll. (setCaptain already
+      // does this; assign/remove/reorder carry it too for consistency.)
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
 
@@ -203,6 +214,37 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
       // Removing a player changes team sizes → the leaderboard roll-up's
       // per_match points. Refresh the board's seeded cache (see `assign`).
       utils.competitions.leaderboard.invalidate(queryKey);
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+    },
+  });
+
+  // reorder (Part 3) — optimistic: rewrite sort_order for this team per the new
+  // order; other teams untouched. The roster lists derive display order from
+  // sort_order, so the rows resequence instantly. faceBootstrap seeds the list,
+  // so re-resolve it (#10) — the order survives an overlay/modal close + reopen.
+  const reorder = trpc.teamAssignments.reorder.useMutation({
+    onMutate: async (vars) => {
+      await utils.teamAssignments.list.cancel(queryKey);
+      const previous = utils.teamAssignments.list.getData(queryKey);
+      const orderIndex = new Map(vars.orderedUserIds.map((id, i) => [id, i]));
+      utils.teamAssignments.list.setData(queryKey, (old) => {
+        const list = (old as Assignment[] | undefined) ?? [];
+        return list.map((a) =>
+          a.team_id === vars.teamId && orderIndex.has(a.user_id)
+            ? { ...a, sort_order: orderIndex.get(a.user_id)! }
+            : a
+        ) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctxRollback) => {
+      if (ctxRollback?.previous) {
+        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
+      }
+    },
+    onSettled: () => {
+      utils.teamAssignments.list.invalidate(queryKey);
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
 
@@ -235,7 +277,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
     },
   });
 
-  return { assign, remove, setCaptain };
+  return { assign, remove, setCaptain, reorder };
 }
 
 // ── TeamsPanel ──────────────────────────────────────────────────────────────
@@ -289,9 +331,11 @@ export function TeamsPanel({
   // THAT team — gates the per-card pencil/header (PR b2). The leaderboard
   // team-name tap opens a STANDALONE editor instead (CompetitionFace), so the
   // overlay only edits via its own pencil.
-  const isCaptainOf = (teamId: string) =>
-    !!me && assignmentsTyped.some((a) => a.user_id === me.id && a.team_id === teamId && a.is_captain);
-  const canEditIdentity = (teamId: string) => canEdit || isCaptainOf(teamId);
+  // Identity edit = owner (canEdit prop) OR the captain of THAT team. Routes
+  // through the shared isTeamCaptain so the captain rule lives in one place
+  // (Part 1 dedup) — TeamsPanel maps over teams, so it uses the predicate (not
+  // the useCanEditTeam hook, which React forbids calling per row).
+  const canEditIdentity = (teamId: string) => canEdit || isTeamCaptain(assignmentsTyped, me?.id, teamId);
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -460,6 +504,10 @@ export function TeamsPanel({
           competitionId={competitionId}
           team={editingTeam}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
+          // Inside the Rosters overlay the team CARD already owns roster mgmt, so
+          // the per-card pencil opens identity-only. The consolidated roster
+          // section lives on the STANDALONE TeamSheet (leaderboard short-name tap).
+          showRoster={false}
           onClose={() => {
             setCreating(false);
             setEditingTeam(null);
@@ -571,12 +619,15 @@ function TeamCard({
 }) {
   const [dragOver, setDragOver] = useState(false);
 
-  const teamMemberIds = assignments
+  // Canonical roster order (mig 070): order this team's rows by sort_order, not
+  // the incidental tripMembers (joined_at) order. Map the ordered assignments to
+  // their Member rows so the card shows the SAME order as every other chooser.
+  const teamMembers = assignments
     .filter((a) => a.team_id === team.id)
-    .map((a) => a.user_id);
-  const teamMembers = members.filter((m) =>
-    teamMemberIds.includes(m.user_id ?? m.memberId)
-  );
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((a) => members.find((m) => (m.user_id ?? m.memberId) === a.user_id))
+    .filter((m): m is Member => !!m);
 
   // Optimistic — the dropped player needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
@@ -1184,6 +1235,7 @@ export function TeamSheet({
   competitionId,
   team,
   existingTeamNames,
+  showRoster = true,
   onClose,
 }: {
   tripId: string;
@@ -1193,10 +1245,26 @@ export function TeamSheet({
    *  collisions when rolling a name from a theme. The current team's own
    *  name is excluded by the caller in edit mode. */
   existingTeamNames: string[];
+  /** Render the consolidated roster section (edit mode only). Default true —
+   *  the STANDALONE TeamSheet (leaderboard short-name tap) is the full
+   *  team-management home. The in-overlay per-card pencil passes false: the
+   *  team card already owns roster mgmt there. */
+  showRoster?: boolean;
   onClose: () => void;
 }) {
   const isEdit = !!team;
   const utils = trpc.useUtils();
+
+  // Three-tier gating (mirrors the server). IDENTITY (name/short/color) = owner
+  // OR this team's captain; ROSTER (add/remove/reorder/captain) = owner only.
+  // Create mode has no team yet — only the owner can reach it (the opener gates),
+  // so identity is editable there.
+  const { canEdit: canEditIdentity, isOwner } = useCanEditTeam(
+    tripId,
+    competitionId,
+    team?.id ?? null
+  );
+  const identityEditable = isEdit ? canEditIdentity : true;
 
   const [name, setName] = useState(team?.name ?? "");
   const [shortName, setShortName] = useState(team?.short_name ?? "");
@@ -1208,6 +1276,17 @@ export function TeamSheet({
   });
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Roster section data (edit mode). Deduped against any other observer of the
+  // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
+  const { data: rosterMembers = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: isEdit && showRoster }
+  );
+  const { data: rosterAssignments = [] } = trpc.teamAssignments.list.useQuery(
+    { tripId, competitionId },
+    { enabled: isEdit && showRoster && !!competitionId }
+  );
 
   // The leaderboard roll-up (competitions.leaderboard) bakes in each team's
   // color / name / short_name, and the board renders from that bootstrap-seeded
@@ -1325,13 +1404,18 @@ export function TeamSheet({
         </div>
 
         <div className="space-y-4 p-4">
+          {/* Team name (most of the row) + a narrow short-name box, side by side. */}
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
           <Field label="Team Name" required>
             <input
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. Team Hammer"
               maxLength={100}
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+              disabled={!identityEditable}
+              readOnly={!identityEditable}
+              className="w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-70"
               style={{
                 background: "var(--color-bt-card-raised)",
                 color: "var(--color-bt-text)",
@@ -1339,7 +1423,7 @@ export function TeamSheet({
               }}
               data-testid="team-name-input"
             />
-            {!suggesterOpen && !name.trim() && (
+            {identityEditable && !suggesterOpen && !name.trim() && (
               <button
                 type="button"
                 onClick={() => setSuggesterOpen(true)}
@@ -1392,8 +1476,9 @@ export function TeamSheet({
               </div>
             )}
           </Field>
-
-          <Field label="Short Name" required helper="Used on scorecards — e.g. USA, EUR, FIRE">
+            </div>
+            <div className="flex-shrink-0" style={{ width: 92 }}>
+          <Field label="Short" required>
             <input
               value={shortName}
               onChange={(e) => {
@@ -1402,7 +1487,9 @@ export function TeamSheet({
               }}
               placeholder="HAM"
               maxLength={4}
-              className="w-full rounded-lg px-3 py-2 text-sm uppercase outline-none"
+              disabled={!identityEditable}
+              readOnly={!identityEditable}
+              className="w-full rounded-lg px-2 py-2 text-center text-sm uppercase outline-none disabled:opacity-70"
               style={{
                 background: "var(--color-bt-card-raised)",
                 color: "var(--color-bt-text)",
@@ -1410,28 +1497,45 @@ export function TeamSheet({
               }}
             />
           </Field>
-
-          <Field label="Color">
-            <div className="flex flex-wrap gap-2">
-              {TEAM_COLORS.map((c, i) => (
-                <button
-                  key={c.color}
-                  type="button"
-                  onClick={() => setPaletteIdx(i)}
-                  aria-label={`${c.label}${paletteIdx === i ? " (selected)" : ""}`}
-                  className="h-8 w-8 rounded-full transition-transform"
-                  style={{
-                    background: c.color,
-                    transform: paletteIdx === i ? "scale(1.15)" : "scale(1)",
-                    border:
-                      paletteIdx === i
-                        ? "2px solid var(--color-bt-text)"
-                        : "1px solid var(--color-bt-border)",
-                  }}
-                />
-              ))}
             </div>
-          </Field>
+          </div>
+
+          {/* Color — a PICKER only when identity is editable (owner / captain).
+              A read-only viewer (plain member) sees the team's color as a static
+              swatch, never a picker (spec: member = no color picker). */}
+          {identityEditable ? (
+            <Field label="Color">
+              <div className="flex flex-wrap gap-2">
+                {TEAM_COLORS.map((c, i) => (
+                  <button
+                    key={c.color}
+                    type="button"
+                    onClick={() => setPaletteIdx(i)}
+                    aria-label={`${c.label}${paletteIdx === i ? " (selected)" : ""}`}
+                    className="h-8 w-8 rounded-full transition-transform"
+                    style={{
+                      background: c.color,
+                      transform: paletteIdx === i ? "scale(1.15)" : "scale(1)",
+                      border:
+                        paletteIdx === i
+                          ? "2px solid var(--color-bt-text)"
+                          : "1px solid var(--color-bt-border)",
+                    }}
+                  />
+                ))}
+              </div>
+            </Field>
+          ) : (
+            team && (
+              <Field label="Color">
+                <span
+                  className="inline-block h-7 w-7 rounded-full"
+                  style={{ background: team.color, border: "1px solid var(--color-bt-border)" }}
+                  aria-label="Team color"
+                />
+              </Field>
+            )
+          )}
 
           {error && (
             <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
@@ -1439,19 +1543,462 @@ export function TeamSheet({
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={create.isPending || update.isPending}
-            className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {isEdit ? "Save Team" : "Add Team"}
-          </button>
+          {identityEditable && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={create.isPending || update.isPending}
+              className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              {isEdit ? "Save Team" : "Add Team"}
+            </button>
+          )}
+
+          {/* Consolidated roster section — the team-management home (edit mode).
+              Owner gets full controls; captain/member see it read-only. */}
+          {isEdit && showRoster && team && (
+            <TeamSheetRoster
+              tripId={tripId}
+              competitionId={competitionId}
+              team={team}
+              canManage={isOwner}
+              members={rosterMembers as Member[]}
+              assignments={rosterAssignments as Assignment[]}
+            />
+          )}
         </div>
       </div>
     </div>
     </ScrollLock>
+  );
+}
+
+// ── TeamSheetRoster ─────────────────────────────────────────────────────────
+// The consolidated roster section of the STANDALONE Edit Team modal: this team's
+// players in CANONICAL order (sort_order). Owner (canManage) gets add / remove /
+// reorder / captain ★. Captain + plain member see it READ-ONLY (names + the
+// captain ★). Reorder is ↑↓ buttons (mobile-first — they work on touch, which
+// native HTML5 drag does not) PLUS grip-drag on desktop (lg+), mirroring this
+// file's desktop-drag / mobile-fallback pattern.
+
+function TeamSheetRoster({
+  tripId,
+  competitionId,
+  team,
+  canManage,
+  members,
+  assignments,
+}: {
+  tripId: string;
+  competitionId: string;
+  team: Team;
+  /** Owner only — roster mutations (add/remove/reorder/captain) stay owner-scoped. */
+  canManage: boolean;
+  members: Member[];
+  assignments: Assignment[];
+}) {
+  const { assign, remove, setCaptain, reorder } = useTeamAssignmentMutations(
+    tripId,
+    competitionId
+  );
+  // Removals are server-blocked once scoring starts (C1) — disable the × so it
+  // isn't a surprise. Adds + reorder stay live (reorder orphans no one).
+  const { data: removalsLocked = false } = trpc.teamAssignments.rosterLocked.useQuery(
+    { tripId, competitionId },
+    { enabled: !!competitionId }
+  );
+
+  const memberById = useMemo(() => {
+    const map = new Map<string, Member>();
+    for (const m of members) map.set(m.user_id ?? m.memberId, m);
+    return map;
+  }, [members]);
+
+  // This team's roster in canonical order — sorted defensively by sort_order in
+  // case the cache array isn't pre-sorted (optimistic patches mutate sort_order,
+  // not array position).
+  const roster = useMemo(
+    () =>
+      assignments
+        .filter((a) => a.team_id === team.id)
+        .slice()
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    [assignments, team.id]
+  );
+  const orderedIds = roster.map((a) => a.user_id);
+
+  const unassigned = useMemo(() => {
+    const assignedIds = new Set(assignments.map((a) => a.user_id));
+    return members.filter((m) => !assignedIds.has(m.user_id ?? m.memberId));
+  }, [members, assignments]);
+
+  const [adding, setAdding] = useState(false);
+
+  // Drag-to-reorder — mirrors the match-assignments panel: the GRIP arms the row
+  // (so the buttons inside stay tappable), an accent insertion LINE shows where it
+  // will land (`ins` = the 0..length slot), and drop persists via reorder. The ↑↓
+  // buttons stay as the touch fallback (HTML5 drag doesn't fire on touch).
+  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
+  const [armedIdx, setArmedIdx] = useState<number | null>(null);
+
+  function persistOrder(next: string[]) {
+    if (next.every((id, i) => id === orderedIds[i])) return; // no-op
+    reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
+  }
+  // ↑↓ buttons: move one slot.
+  function moveTo(userId: string, toIndex: number) {
+    if (toIndex < 0 || toIndex >= orderedIds.length) return;
+    const without = orderedIds.filter((x) => x !== userId);
+    without.splice(toIndex, 0, userId);
+    persistOrder(without);
+  }
+  // Drag: insert the dragged row at slot `ins` (0..length), accounting for the
+  // removal shift — identical to the match panel's reorderTo.
+  function reorderTo(from: number, ins: number) {
+    if (from < 0 || from >= orderedIds.length) return;
+    if (ins === from || ins === from + 1) return; // own slot — no-op
+    const copy = orderedIds.slice();
+    const [moved] = copy.splice(from, 1);
+    const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
+    copy.splice(target, 0, moved);
+    persistOrder(copy);
+  }
+  function onCardDragOver(i: number, clientY: number, rect: DOMRect) {
+    setDragState((s) => {
+      if (!s) return s;
+      const isTop = clientY < rect.top + rect.height / 2;
+      let ins: number | null = isTop ? i : i + 1;
+      if (ins === s.from || ins === s.from + 1) ins = null; // adjacent = no-op, hide line
+      return s.ins === ins ? s : { ...s, ins };
+    });
+  }
+
+  return (
+    <div
+      data-testid="teamsheet-roster"
+      className="pt-2"
+      style={{ borderTop: "1px solid var(--color-bt-border)" }}
+    >
+      <h4
+        className="mb-2 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Roster · {roster.length}
+      </h4>
+
+      {roster.length === 0 ? (
+        <p
+          className="rounded-lg px-3 py-2 text-[11px] italic"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text-dim)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          No players yet.{canManage ? " Add from the crew below." : ""}
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {roster.map((a, i) => {
+            const m = memberById.get(a.user_id);
+            const name = m?.displayName ?? "Unknown";
+            return (
+              <RosterRow
+                key={a.user_id}
+                name={name}
+                avatarIcon={m?.user?.avatar_icon ?? null}
+                teamColor={team.color}
+                isCaptain={!!a.is_captain}
+                canManage={canManage}
+                index={i}
+                count={orderedIds.length}
+                removeLocked={removalsLocked}
+                onMoveUp={() => moveTo(a.user_id, i - 1)}
+                onMoveDown={() => moveTo(a.user_id, i + 1)}
+                onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
+                onToggleCaptain={() =>
+                  setCaptain.mutate({
+                    tripId,
+                    competitionId,
+                    teamId: team.id,
+                    userId: a.user_id,
+                    isCaptain: !a.is_captain,
+                  })
+                }
+                removeAriaLabel={`Remove ${name} from ${team.name}`}
+                captainAriaLabel={a.is_captain ? `Remove ${name} as captain` : `Make ${name} captain`}
+                armed={armedIdx === i}
+                dragging={dragState?.from === i}
+                dropIndicator={
+                  dragState?.ins === i
+                    ? "top"
+                    : i === orderedIds.length - 1 && dragState?.ins === orderedIds.length
+                      ? "bottom"
+                      : null
+                }
+                onArm={canManage ? () => setArmedIdx(i) : undefined}
+                onDisarm={canManage ? () => setArmedIdx(null) : undefined}
+                onDragStartRow={canManage ? () => setDragState({ from: i, ins: null }) : undefined}
+                onDragOverRow={canManage ? (y, rect) => onCardDragOver(i, y, rect) : undefined}
+                onDropRow={
+                  canManage
+                    ? () => {
+                        if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
+                        setDragState(null);
+                        setArmedIdx(null);
+                      }
+                    : undefined
+                }
+                onDragEndRow={canManage ? () => { setDragState(null); setArmedIdx(null); } : undefined}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add player (owner) — assign an unassigned crew member to THIS team. */}
+      {canManage && unassigned.length > 0 && (
+        <div className="mt-2">
+          {!adding ? (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
+              style={{ color: "var(--color-bt-accent)" }}
+              data-testid="teamsheet-add-player"
+            >
+              <Plus size={13} />
+              Add player
+            </button>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Tap a crew member to add
+              </p>
+              {unassigned.map((m) => {
+                const id = m.user_id ?? m.memberId;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => assign.mutate({ tripId, competitionId, userId: id, teamId: team.id })}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                    data-testid={`teamsheet-add-${id}`}
+                  >
+                    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
+                    <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+                      {m.displayName}
+                    </span>
+                    <Plus size={14} style={{ color: "var(--color-bt-accent)" }} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── RosterRow ───────────────────────────────────────────────────────────────
+// One player row in the TeamSheet roster. Owner sees grip + captain ★ + ↑↓ +
+// remove ×; captain/member see name (+ the captain ★ read-only) only.
+
+function RosterRow({
+  name,
+  avatarIcon,
+  teamColor,
+  isCaptain,
+  canManage,
+  index,
+  count,
+  removeLocked,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  onToggleCaptain,
+  removeAriaLabel,
+  captainAriaLabel,
+  armed = false,
+  dragging = false,
+  dropIndicator = null,
+  onArm,
+  onDisarm,
+  onDragStartRow,
+  onDragOverRow,
+  onDropRow,
+  onDragEndRow,
+}: {
+  name: string;
+  avatarIcon: string | null;
+  teamColor: string;
+  isCaptain: boolean;
+  canManage: boolean;
+  index: number;
+  count: number;
+  removeLocked: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+  onToggleCaptain: () => void;
+  removeAriaLabel: string;
+  captainAriaLabel: string;
+  /** Drag-to-reorder (owner) — mirrors the match-assignments panel. */
+  armed?: boolean;
+  dragging?: boolean;
+  dropIndicator?: "top" | "bottom" | null;
+  onArm?: () => void;
+  onDisarm?: () => void;
+  onDragStartRow?: () => void;
+  onDragOverRow?: (clientY: number, rect: DOMRect) => void;
+  onDropRow?: () => void;
+  onDragEndRow?: () => void;
+}) {
+  return (
+    <div
+      // Draggable only while the grip arms it (so the ★/↑↓/× stay tappable).
+      draggable={armed}
+      onDragStart={
+        onDragStartRow
+          ? (e) => {
+              e.dataTransfer.effectAllowed = "move";
+              onDragStartRow();
+            }
+          : undefined
+      }
+      onDragOver={
+        onDragOverRow
+          ? (e) => {
+              e.preventDefault();
+              onDragOverRow(e.clientY, e.currentTarget.getBoundingClientRect());
+            }
+          : undefined
+      }
+      onDrop={
+        onDropRow
+          ? (e) => {
+              e.preventDefault();
+              onDropRow();
+            }
+          : undefined
+      }
+      onDragEnd={onDragEndRow}
+      className="relative flex items-center gap-2 rounded-lg px-2.5 py-2"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
+        opacity: dragging ? 0.4 : 1,
+      }}
+    >
+      {/* Insertion line — the landing zone, shown once the cursor crosses a
+          neighbour's midpoint (mirrors the match-assignments panel). */}
+      {dropIndicator && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 2,
+            right: 2,
+            [dropIndicator === "top" ? "top" : "bottom"]: -3,
+            height: 2,
+            borderRadius: 2,
+            background: "var(--color-bt-accent)",
+            boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {/* Grip — arms the drag (the row becomes draggable only while held), so the
+          row buttons stay tappable. Always visible. */}
+      {canManage && (
+        <DragHandle
+          onMouseDown={onArm}
+          onMouseUp={onDisarm}
+          className="h-7 w-4 flex-shrink-0"
+        />
+      )}
+      {/* Row index — quiet table-number column, like the match pickers. */}
+      <RowNumber number={index + 1} className="flex-shrink-0" style={{ width: 16 }} />
+      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} />
+      <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+        {name}
+      </span>
+
+      {/* Captain ★ — owner taps to mark/unmark; captain/member see it read-only. */}
+      {canManage ? (
+        <button
+          type="button"
+          onClick={onToggleCaptain}
+          aria-label={captainAriaLabel}
+          aria-pressed={isCaptain}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+          style={{ color: isCaptain ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          data-testid="captain-toggle"
+        >
+          <Star size={15} fill={isCaptain ? "currentColor" : "none"} />
+        </button>
+      ) : (
+        isCaptain && (
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center"
+            style={{ color: "var(--color-bt-accent)" }}
+            aria-label={`${name} is captain`}
+            title="Captain"
+          >
+            <Star size={15} fill="currentColor" />
+          </span>
+        )
+      )}
+
+      {/* Reorder ↑↓ (owner) — the mobile-first canonical-order control. */}
+      {canManage && (
+        <div className="flex flex-shrink-0 items-center">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={index === 0}
+            aria-label={`Move ${name} up`}
+            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="roster-move-up"
+          >
+            <ChevronUp size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={index === count - 1}
+            aria-label={`Move ${name} down`}
+            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="roster-move-down"
+          >
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Remove × (owner) — disabled once scoring locks removals. */}
+      {canManage && (
+        <button
+          type="button"
+          onClick={removeLocked ? undefined : onRemove}
+          disabled={removeLocked}
+          aria-label={removeAriaLabel}
+          title={removeLocked ? "Locked — scoring has started. You can still add players." : undefined}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
   );
 }
 

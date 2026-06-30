@@ -16,10 +16,16 @@ export async function listTeamAssignments(
   ctx: { supabase: SupabaseClient },
   competitionId: string,
 ) {
+  // Canonical roster order (mig 070): order by sort_order WITHIN each team. Every
+  // team-roster chooser filters this list by team_id, so the per-team relative
+  // order is what carries through — grouping by team_id first keeps the raw list
+  // tidy too. This single ordered read is what makes the order canonical.
   const { data, error } = await ctx.supabase
     .from("team_assignments")
     .select("*")
-    .eq("competition_id", competitionId);
+    .eq("competition_id", competitionId)
+    .order("team_id", { ascending: true })
+    .order("sort_order", { ascending: true });
 
   if (error) {
     throw new TRPCError({
@@ -72,19 +78,38 @@ export const teamAssignmentsRouter = router({
         .eq("competition_id", input.competitionId)
         .eq("user_id", input.userId)
         .maybeSingle();
+      const isSameTeam = !!existing && (existing.team_id as string) === input.teamId;
       const isMove = !!existing && (existing.team_id as string) !== input.teamId;
       if (isMove) await assertRosterUnlocked(ctx.supabase, input.competitionId);
 
+      // sort_order (mig 070): a genuine ADD or a MOVE to a different team lands at
+      // the END of the target team's canonical order. A same-team re-assign is a
+      // no-op — leave sort_order untouched so it doesn't jump to the bottom.
+      const payload: {
+        competition_id: string;
+        user_id: string;
+        team_id: string;
+        sort_order?: number;
+      } = {
+        competition_id: input.competitionId,
+        user_id: input.userId,
+        team_id: input.teamId,
+      };
+      if (!isSameTeam) {
+        const { data: maxRow } = await ctx.supabase
+          .from("team_assignments")
+          .select("sort_order")
+          .eq("competition_id", input.competitionId)
+          .eq("team_id", input.teamId)
+          .order("sort_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        payload.sort_order = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
+      }
+
       const { data: inserted, error } = await ctx.supabase
         .from("team_assignments")
-        .upsert(
-          {
-            competition_id: input.competitionId,
-            user_id: input.userId,
-            team_id: input.teamId,
-          },
-          { onConflict: "competition_id,user_id" }
-        )
+        .upsert(payload, { onConflict: "competition_id,user_id" })
         .select()
         .single();
 
@@ -162,6 +187,74 @@ export const teamAssignmentsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to set captain: ${error.message}`,
+        });
+      }
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // reorder — set a team's canonical roster order (Owner only). Persists the
+  // drag-reorder from the Edit Team modal. Pure REORDER, not assign: the input
+  // must be exactly the team's current members (a permutation) — we validate
+  // that so reorder can never sneak a player onto/off the team or change
+  // membership. sort_order = the index in orderedUserIds. Allowed regardless of
+  // the roster-removal lock: reordering orphans no one (it's cosmetic order).
+  // -----------------------------------------------------------------------
+  reorder: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        competitionId: z.string(),
+        teamId: z.string(),
+        orderedUserIds: z.array(z.string()),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: current, error: readErr } = await ctx.supabase
+        .from("team_assignments")
+        .select("user_id")
+        .eq("competition_id", input.competitionId)
+        .eq("team_id", input.teamId);
+      if (readErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to read roster: ${readErr.message}`,
+        });
+      }
+
+      // The input must be a permutation of the team's current roster — same set,
+      // no extras, no omissions. Anything else is a stale/forged order; reject it
+      // rather than silently mutate membership.
+      const currentIds = new Set((current ?? []).map((r) => r.user_id as string));
+      const inputIds = new Set(input.orderedUserIds);
+      const isPermutation =
+        currentIds.size === inputIds.size &&
+        input.orderedUserIds.length === inputIds.size &&
+        [...inputIds].every((id) => currentIds.has(id));
+      if (!isPermutation) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Order must be exactly this team's current roster.",
+        });
+      }
+      if (input.orderedUserIds.length === 0) return { success: true };
+
+      // All rows already exist → the upsert resolves to UPDATE on the (comp,user)
+      // PK conflict, setting only sort_order (is_captain + team_id retained).
+      const rows = input.orderedUserIds.map((userId, i) => ({
+        competition_id: input.competitionId,
+        user_id: userId,
+        team_id: input.teamId,
+        sort_order: i,
+      }));
+      const { error } = await ctx.supabase
+        .from("team_assignments")
+        .upsert(rows, { onConflict: "competition_id,user_id" });
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reorder roster: ${error.message}`,
         });
       }
       return { success: true };
