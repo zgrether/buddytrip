@@ -1804,6 +1804,18 @@ function TeamSheetRoster({
           )}
         </div>
       )}
+
+      {/* Removal lock is KEPT (owner decision) — say why, so the disabled × reads
+          as intentional, not broken. Adds stay enabled. */}
+      {canManage && removalsLocked && (
+        <p
+          className="mt-3 text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          data-testid="teamsheet-locked-note"
+        >
+          Rosters are locked once scoring starts.
+        </p>
+      )}
     </div>
   );
 }
