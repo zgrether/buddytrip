@@ -65,10 +65,8 @@ describe("competitions router", () => {
       tripId,
       competitionId: existing!.id,
       tagline: "If you're not first, you're last",
-      status: "active",
     });
     expect(updated.tagline).toBe("If you're not first, you're last");
-    expect(updated.status).toBe("active");
   });
 
   it("delete — only owner can delete", async () => {

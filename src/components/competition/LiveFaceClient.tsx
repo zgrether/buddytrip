@@ -8,7 +8,6 @@ import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
-import { canAccessCompetition } from "@/lib/competitionAccess";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { TopNav } from "@/components/TopNav";
@@ -38,11 +37,11 @@ import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetup
  * prefetch was skipped (unauthed/early), this falls back to its own fetch +
  * the loading state below.
  *
- * Role gating:
- *   - editor, no competition      → intro → create form
+ * Role gating (option A — no competition-level reveal gate):
+ *   - editor, no competition      → create flow (shape chooser)
  *   - non-editor, no competition  → "not set up yet"
- *   - non-editor, not live        → "not live yet" (go-live reveals the board)
- *   - otherwise                   → the two-state CompetitionFace
+ *   - competition exists          → the CompetitionFace, for EVERY trip member
+ *                                   (editing gated inside by canEdit/isOwner)
  */
 /** The competitions.faceBootstrap output — the server-resolved initial state. */
 export type FaceBootstrap =
@@ -57,8 +56,8 @@ export function LiveFaceClient({
 }) {
   const { tripId } = useParams<{ tripId: string }>();
 
-  // Push competition (Go Live, name, tagline) + membership changes live so the
-  // face re-resolves without a manual refresh.
+  // Push competition (name, tagline, roster setup) + membership changes live so
+  // the face re-resolves without a manual refresh.
   useRealtimeCompetition(tripId);
   useRealtimeMembers(tripId);
 
@@ -112,11 +111,6 @@ export function LiveFaceClient({
   const role = boot?.myCompetitionRole ?? null;
   const canEdit = role === "owner" || role === "co_admin";
   const isOwner = role === "owner";
-  // A delegate is a BUILDER — reaches the competition in both phases to set up
-  // their assigned game (canAccessCompetition admits them). Edit stays scoped to
-  // their game by the edit gate; this is visibility only.
-  const amDelegate = (boot?.myDelegateGameIds.length ?? 0) > 0;
-
   // Seed the child caches from the one bootstrap so the board/guide — and the
   // setup↔leaderboard toggle, and the sub-views — render from cache with NO
   // extra round-trips. Keyed on `boot` so it runs once per resolve, synchronously
@@ -191,14 +185,11 @@ export function LiveFaceClient({
     } else {
       body = <NotSetUpEmptyState />;
     }
-  } else if (
-    !canAccessCompetition({ canEdit, amDelegate, status: competition.status })
-  ) {
-    // Plain members (no delegation) don't see the competition until Go Live.
-    // Builders (owner / organizer / co-admin / delegate) always get the full
-    // face. Same predicate as the "Live" nav entry — they can't disagree.
-    body = <NotLiveEmptyState />;
   } else {
+    // Option A: a competition is visible to the WHOLE crew as soon as it exists
+    // — there is no competition-level reveal gate any more (GO LIVE was removed;
+    // per-game Setup/Scoring handles game-level readiness). Every trip member
+    // gets the full face; editing is gated inside it by canEdit/isOwner.
     body = (
       <CompetitionFace
         tripId={tripId}
@@ -284,15 +275,6 @@ function NotSetUpEmptyState() {
     <EmptyState
       title="Competition hasn't been set up yet"
       body="The owner will set this up before the trip."
-    />
-  );
-}
-
-function NotLiveEmptyState() {
-  return (
-    <EmptyState
-      title="Competition isn't live yet"
-      body="The organizer hasn't flipped this to live. The leaderboard appears here once they hit Go Live."
     />
   );
 }

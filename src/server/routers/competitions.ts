@@ -246,8 +246,14 @@ export const competitionsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit metadata + go-live (owner/co-admin). Go-live is operational,
-  // not destructive, so co-admins can flip it.
+  // update — edit metadata (owner/co-admin).
+  //
+  // The `status` (go-live) write path was REMOVED with the GO LIVE control
+  // (option A): a competition is visible the moment it exists, so there is no
+  // setup↔active toggle to drive. The `competitions.status` column is retained
+  // (no live reader/writer of the distinction remains; a future `completed`
+  // state may reuse it) but is intentionally NOT writable here — do not re-add a
+  // competition-level reveal/go-live mutation.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -256,7 +262,6 @@ export const competitionsRouter = router({
         competitionId: z.string(),
         name: z.string().min(2).max(200).optional(),
         tagline: z.string().max(500).nullable().optional(),
-        status: z.enum(["upcoming", "active", "completed"]).optional(),
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
         // The roster-setup progression (building → saved → dismissed). "Save
         // rosters" advances to saved; dismissing the moved-to-Settings signpost
@@ -270,7 +275,6 @@ export const competitionsRouter = router({
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
       if (input.tagline !== undefined) patch.tagline = input.tagline;
-      if (input.status !== undefined) patch.status = input.status;
       if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
       if (input.rosterSetup !== undefined) patch.roster_setup = input.rosterSetup;
 

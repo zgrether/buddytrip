@@ -61,7 +61,7 @@ afterAll(async () => {
 });
 
 describe("co-admin = owner-minus-destructive (both phases)", () => {
-  it("a trip organizer edits + posts + goes live — pre-live AND post-live", async () => {
+  it("a trip organizer edits + posts — competition metadata + game scoring", async () => {
     const coadmin = ctx.callerAs("planner");
 
     // PRE-LIVE (competition still "upcoming"): configure a game (requireGameEdit).
@@ -82,13 +82,15 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
       })
     ).resolves.toBeTruthy();
 
-    // Go live (competitions.update status — operational, co-admin allowed).
+    // Edit competition metadata (competitions.update — co-admin allowed).
+    // (Was a go-live status flip; GO LIVE was removed, so this exercises the
+    // same co-admin update gate via name.)
     await expect(
-      coadmin.competitions.update({ tripId, competitionId, status: "active" })
+      coadmin.competitions.update({ tripId, competitionId, name: "Renamed Cup" })
     ).resolves.toBeTruthy();
 
-    // POST-LIVE: edit authority is phase-independent — still edits.
-    const g2 = await newManualGame("Post-live game");
+    // Edit authority is phase-independent — still edits after metadata changes.
+    const g2 = await newManualGame("Second game");
     await expect(
       coadmin.games.setStatus({ tripId, gameId: g2, status: "active" })
     ).resolves.toBeTruthy();
@@ -122,7 +124,7 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
 });
 
 describe("members have no co-admin access (either phase)", () => {
-  it("a plain trip member cannot edit, post, or go live", async () => {
+  it("a plain trip member cannot edit or post", async () => {
     const member = ctx.callerAs("member");
     const g = await newManualGame("Member-blocked game");
     await expect(
@@ -136,7 +138,7 @@ describe("members have no co-admin access (either phase)", () => {
       })
     ).rejects.toThrow(/co-admin|organizer|owner|delegate/i);
     await expect(
-      member.competitions.update({ tripId, competitionId, status: "active" })
+      member.competitions.update({ tripId, competitionId, name: "Nope" })
     ).rejects.toThrow(/co-admin|organizer|owner/i);
   });
 });

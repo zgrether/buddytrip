@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Pause, Radio, Settings, Trophy } from "lucide-react";
+import { Settings, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { CSSProperties } from "react";
 
@@ -9,6 +9,8 @@ import type { CSSProperties } from "react";
 // Content-driven, collapses entirely when empty. Priority ladder: games
 // underway now ("On tap: …") → standing glance ("BLU 8½ · RED 7½") → nothing.
 // Quiet, not a live ticker (the live pulse belongs on game pages — deferred).
+// NB this reads per-GAME status ("active" = a game in scoring), NOT a
+// competition-level status (that distinction was retired with GO LIVE).
 interface StripLB {
   teams: { id: string; short_name: string }[];
   games: { name: string; status: string }[];
@@ -39,71 +41,26 @@ interface Competition {
   id: string;
   name: string;
   tagline: string | null;
-  status: "upcoming" | "active" | "completed";
 }
-
-const STATUS_CHIP: Record<
-  Competition["status"],
-  { label: string; bg: string; color: string; border: string }
-> = {
-  upcoming: {
-    label: "Setup",
-    bg: "var(--color-bt-warning-faint)",
-    color: "var(--color-bt-warning)",
-    border: "var(--color-bt-warning-border)",
-  },
-  active: {
-    label: "Active",
-    bg: "var(--color-bt-accent-faint)",
-    color: "var(--color-bt-accent)",
-    border: "var(--color-bt-accent-border)",
-  },
-  completed: {
-    label: "Completed",
-    bg: "var(--color-bt-tag-bg)",
-    color: "var(--color-bt-accent)",
-    border: "var(--color-bt-accent-border)",
-  },
-};
 
 interface Props {
   competition: Competition;
   tripId: string;
-  /**
-   * Chrome-shrink (§3): post-live the header collapses to a compact bar
-   * (smaller glyph, no tagline) so the leaderboard is the hero and doesn't
-   * start halfway down the page.
-   */
-  compact?: boolean;
-  /**
-   * Go-live toggle handler. The mutation is owned by the host
-   * (CompetitionFace) so going live can also flip the default view to the
-   * board. When omitted, a read-only status badge is shown instead of the
-   * toggle (non-owners / completed competitions).
-   */
-  onToggleLive?: () => void;
-  /** True while the go-live mutation is in flight (disables the toggle). */
-  togglePending?: boolean;
   /** Open competition Settings (the consolidated details + rosters + delete
    *  home). Editors only — renders a gear in the header's right cluster. */
   onSettings?: () => void;
 }
 
 /**
- * CompetitionHeader — title strip + go-live toggle + at-a-glance status.
+ * CompetitionHeader — title strip + at-a-glance status.
  *
- * Editing the name/tagline and deleting the competition both moved into the
- * consolidated Settings page (the gear) — the header is now read-only chrome
- * plus the go-live switch.
+ * The GO LIVE / BACK TO SETUP toggle was removed at the root (option A): a
+ * competition is visible to the whole crew the moment it exists, so a
+ * competition-level reveal/status is meaningless. The header is now read-only
+ * chrome — title + the quiet status strip + the Settings gear. Editing the
+ * name/tagline and deleting the competition live in the Settings page (the gear).
  */
-export function CompetitionHeader({
-  competition,
-  tripId,
-  compact = false,
-  onToggleLive,
-  togglePending = false,
-  onSettings,
-}: Props) {
+export function CompetitionHeader({ competition, tripId, onSettings }: Props) {
   // Status strip content (§2). Shares the leaderboard query with the board view
   // (same key → deduped), so it adds no fetch when the board is showing.
   const { data: lb } = trpc.competitions.leaderboard.useQuery(
@@ -115,8 +72,6 @@ export function CompetitionHeader({
     [lb]
   );
 
-  // Chrome-shrink (§3): compact glyph + tighter spacing post-live so the
-  // board is the hero. The tagline is dropped in compact mode.
   const glyphBox: CSSProperties = {
     background: "var(--color-bt-accent-faint)",
     color: "var(--color-bt-accent)",
@@ -125,34 +80,18 @@ export function CompetitionHeader({
   return (
     <div data-testid="competition-header">
       {/* Title row — no outer card, sits directly on the page background */}
-      <div className={`flex items-start gap-3 ${compact ? "pb-2" : "pb-3"}`}>
+      <div className="flex items-start gap-3 pb-3">
         <div
-          className={`flex flex-shrink-0 items-center justify-center rounded-xl ${
-            compact ? "h-8 w-8" : "h-10 w-10"
-          }`}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
           style={glyphBox}
         >
-          <Trophy size={compact ? 16 : 18} />
+          <Trophy size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p
-              className={`font-bold ${compact ? "text-sm" : "text-base"}`}
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              {competition.name}
-            </p>
-            {onToggleLive && competition.status !== "completed" ? (
-              <LiveToggleButton
-                status={competition.status}
-                pending={togglePending}
-                onClick={onToggleLive}
-              />
-            ) : (
-              <StatusBadge status={competition.status} />
-            )}
-          </div>
-          {!compact && competition.tagline && competition.tagline.trim() && (
+          <p className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
+            {competition.name}
+          </p>
+          {competition.tagline && competition.tagline.trim() && (
             <p
               className="mt-0.5 text-xs"
               style={{ color: "var(--color-bt-text-dim)" }}
@@ -179,7 +118,7 @@ export function CompetitionHeader({
       {/* Status strip (§2) — lower region, collapses entirely when empty. */}
       {statusStrip && (
         <p
-          className={compact ? "pb-2" : "pb-3"}
+          className="pb-3"
           style={{ color: "var(--color-bt-text-dim)", fontSize: 12 }}
           data-testid="competition-status-strip"
         >
@@ -187,69 +126,5 @@ export function CompetitionHeader({
         </p>
       )}
     </div>
-  );
-}
-
-// ── StatusBadge ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: Competition["status"] }) {
-  const cfg = STATUS_CHIP[status];
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-      style={{
-        background: cfg.bg,
-        color: cfg.color,
-        border: `1px solid ${cfg.border}`,
-      }}
-      data-testid="competition-status-badge"
-    >
-      {cfg.label}
-    </span>
-  );
-}
-
-// ── LiveToggleButton (owner only) ──────────────────────────────────────────
-//
-// Replaces the SETUP / Active badge for owners with a one-tap toggle.
-// "upcoming" → tap to GO LIVE (activates bottom nav + scoreboard
-// surface for the whole crew). "active" → tap to return to setup
-// (hides nav + scoreboard until ready again).
-
-function LiveToggleButton({
-  status,
-  pending,
-  onClick,
-}: {
-  status: "upcoming" | "active";
-  pending: boolean;
-  onClick: () => void;
-}) {
-  const isLive = status === "active";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={pending}
-      aria-label={isLive ? "Switch back to setup mode" : "Go live for the crew"}
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-opacity disabled:opacity-60"
-      style={
-        isLive
-          ? {
-              background: "transparent",
-              color: "var(--color-bt-text-dim)",
-              border: "1px solid var(--color-bt-border)",
-            }
-          : {
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-              border: "1px solid var(--color-bt-accent)",
-            }
-      }
-      data-testid="competition-live-toggle"
-    >
-      {isLive ? <Pause size={10} strokeWidth={3} /> : <Radio size={10} strokeWidth={3} />}
-      {isLive ? "Back to Setup" : "Go Live"}
-    </button>
   );
 }

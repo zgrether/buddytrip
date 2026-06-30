@@ -10,8 +10,8 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * teams/games/assignments the setup guide + leaderboard read).
  *
  * Matrix:
- *   - Status badge                         → "status badge"
- *   - Delete gated on upcoming             → "delete gating"
+ *   - Header reads metadata                → "header reads name + tagline"
+ *   - Delete reachable for the owner       → "delete gating"
  *   - Contests are `games` now             → "(Teams, Games) all resolve"
  */
 
@@ -35,7 +35,7 @@ describe("CompetitionFace data layer", () => {
     expect(competition).toBeNull();
   });
 
-  it("competition exists — header reads name + tagline + status", async () => {
+  it("competition exists — header reads name + tagline", async () => {
     const caller = ctx.caller();
     const created = await caller.competitions.create({
       tripId,
@@ -47,7 +47,6 @@ describe("CompetitionFace data layer", () => {
     const fetched = await caller.competitions.getByTrip({ tripId });
     expect(fetched?.name).toBe("Header Cup");
     expect(fetched?.tagline).toBe("First Past the Post");
-    expect(fetched?.status).toBe("upcoming"); // status badge → "Setup"
   });
 
   it("competition exists — sibling panels (Teams, Games) all resolve", async () => {
@@ -100,7 +99,7 @@ describe("CompetitionFace data layer", () => {
   // `games` (CompetitionGamesPanel) — see games.d1.test.ts for that coverage,
   // and ScheduleTab for the game↔agenda link.)
 
-  it("delete gating — owner can delete while status is upcoming", async () => {
+  it("delete gating — owner can delete (reachable at any status)", async () => {
     // Fresh competition for this test so we don't break the others above.
     const ownerCaller = ctx.caller();
     const created = await ownerCaller.competitions.create({
@@ -108,7 +107,6 @@ describe("CompetitionFace data layer", () => {
       name: "Delete Cup",
     });
     ctx.trackCompetition(created.id);
-    expect(created.status).toBe("upcoming"); // delete trash icon visible
 
     const result = await ownerCaller.competitions.delete({
       tripId: created.trip_id as string,
