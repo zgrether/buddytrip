@@ -182,6 +182,9 @@ export function CompetitionFace({
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
+        // The board layout is selected by the FROZEN scoring_model, not team
+        // count (PR 2): match_play → Ryder hero, points → standings + matrix.
+        scoringModel={competition.scoring_model ?? "match_play"}
         onAddGame={() => setAddingGame(true)}
         // A hero team-short-name tap → the consolidated Edit Team modal (the
         // team-management home). It self-gates by role: owner edits everything,

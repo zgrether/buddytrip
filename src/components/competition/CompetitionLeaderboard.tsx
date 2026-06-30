@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, fmtPts } from "./GameRow";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -69,6 +70,11 @@ interface LeaderboardData {
 interface Props {
   competitionId: string;
   tripId: string;
+  /** The competition's FROZEN scoring model — selects the board layout (PR 2):
+   *  `match_play` → the Ryder head-to-head hero; `points` → the standings glance
+   *  + collapsible games×teams matrix. NOT team count — a 2-team points cup is
+   *  still a points cup and gets the matrix. Defaults to match_play. */
+  scoringModel?: ScoringModel;
   /** Editor affordances on the board (the setup guide was retired — the board is
    *  the home now). Crew (non-editors) get none of these. */
   canEdit?: boolean;
@@ -78,7 +84,7 @@ interface Props {
   onEditTeam?: (teamId: string) => void;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false, onAddGame, onEditTeam }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "match_play", canEdit = false, onAddGame, onEditTeam }: Props) {
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     {
@@ -191,7 +197,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
   const isEarly = allZero && nothingPlayed && liveGames.length > 0;
   const clincher = teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null;
 
-  if (isEarly) {
+  // The "cup hasn't started" early state is the match_play (Ryder) treatment. A
+  // POINTS cup skips it and renders its real board with zeros — the standings
+  // glance + the empty-but-structured matrix read as intentional, not broken.
+  if (isEarly && scoringModel === "match_play") {
     return (
       <EarlyState
         teams={teams}
@@ -241,7 +250,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
           </p>
         </div>
 
-        {teams.length === 2 ? (
+        {/* Board layout is selected by scoring_model, NOT team count (PR 2): a
+            2-team POINTS cup gets the standings glance + matrix, not the Ryder
+            hero. match_play is structurally 2 teams, so the hero is safe. */}
+        {scoringModel === "match_play" ? (
           <TwoTeamHero
             teams={teams}
             teamTotals={teamTotals}
@@ -484,6 +496,9 @@ function TwoTeamHero({
 }
 
 // ── NTeamRankedList ───────────────────────────────────────────────────────────
+// The POINTS standings glance (PR 2): "are we winning?" at a glance. Ordered by
+// total desc, the leader emphasized (larger total), trailing teams present but
+// quieter. Reached only by points cups now — match_play renders the Ryder hero.
 
 function NTeamRankedList({
   teams,
