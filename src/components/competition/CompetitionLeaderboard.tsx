@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, fmtPts } from "./GameRow";
+import { PointsMatrix } from "./PointsMatrix";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -275,6 +276,13 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
           />
         )}
       </div>
+
+      {/* Points board — the collapsible games×teams matrix BELOW the standings
+          glance. Points cups only; the Ryder hero needs no matrix (one head-to-
+          head number is the whole story). */}
+      {scoringModel === "points" && (
+        <PointsMatrix games={liveGames} teams={teams} cellsByGame={cellsByGame} teamTotals={teamTotals} />
+      )}
 
       {/* Bones copy — the calm setup voice, only while the board is empty and
           editable (nothing's required to start). */}
@@ -594,10 +602,11 @@ function NTeamRankedList({
                 </div>
               </div>
 
-              {/* Points */}
+              {/* Points — the leader's total is emphasized (larger) so "who's
+                  ahead" reads instantly; trailing teams stay quieter. */}
               <span
-                className="shrink-0 text-base font-bold tabular-nums"
-                style={{ color: hasClinched ? team.color : "var(--color-bt-text)" }}
+                className={`shrink-0 font-bold tabular-nums ${idx === 0 ? "text-2xl" : "text-base"}`}
+                style={{ color: idx === 0 || hasClinched ? team.color : "var(--color-bt-text)" }}
               >
                 {fmtPts(total)}
               </span>
