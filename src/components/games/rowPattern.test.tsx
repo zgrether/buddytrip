@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DragHandle } from "./DragHandle";
 import { RowNumber } from "./RowNumber";
@@ -10,11 +10,15 @@ import { PlayerChip } from "./PlayerChip";
 // Rendered via react-dom/server (the test env is node, no RTL).
 
 describe("DragHandle", () => {
-  it("renders the grip and forwards the arm handler (owns no drag state)", () => {
-    const onMouseDown = vi.fn();
-    const el = DragHandle({ onMouseDown }) as React.ReactElement<{ onMouseDown?: () => void }>;
-    expect(el.props.onMouseDown).toBe(onMouseDown); // forwarded, not swallowed
-    const html = renderToStaticMarkup(<DragHandle />);
+  it("renders the grip and forwards arbitrary handle props (the @dnd-kit activator)", () => {
+    // Touch-aware DnD pass: the grip is the dnd-kit drag activator — `useSortableRow`
+    // spreads listeners + a11y attributes onto it. Verify forwarded props (role,
+    // data-*) reach the span, and that the dimmed grip affordance still renders.
+    const html = renderToStaticMarkup(
+      <DragHandle role="button" tabIndex={0} data-testid="grip" />
+    );
+    expect(html).toContain('role="button"'); // forwarded handle attribute
+    expect(html).toContain('data-testid="grip"'); // forwarded handle prop
     expect(html).toContain("Drag to reorder"); // the grip's aria-label/title
     expect(html).toContain("cursor-grab");
   });

@@ -17,6 +17,7 @@ import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { DragHandle } from "@/components/games/DragHandle";
+import { SortableList, useSortableRow } from "@/components/dnd/SortableList";
 import { RowNumber } from "@/components/games/RowNumber";
 import { PlayerChip } from "@/components/games/PlayerChip";
 import { Avatar } from "@/components/Avatar";
@@ -59,11 +60,21 @@ const MAX_MATCHES = 24;
 // doubles — so one code path serves both (singles is the 1-per-side case).
 type SideRef = { type: "user" | "play_group"; id: string } | null;
 interface DraftMatch {
+  // Stable per-row identity for reorder. Positional `matchNumber` can't be the
+  // @dnd-kit sortable id (it renumbers on reorder); this id is minted once per
+  // row and survives the session. Client-only — never persisted.
+  id: string;
   matchNumber: number;
   a: string[]; // member user ids on side A (≤ playersPerSide)
   b: string[]; // member user ids on side B
   handicap: number; // signed: <0 → a gets |n|, >0 → b gets n, 0 → even
 }
+
+// Monotonic draft-row id source — stable across reorders within a setup session,
+// reset-free (a fresh seed mints new ids, which is fine: it only re-seeds an
+// untouched draft). Avoids Math.random so ids are deterministic in tests.
+let _matchRowSeq = 0;
+const nextMatchRowId = () => `m${++_matchRowSeq}`;
 type Screen = "new" | "member-wait" | "setup" | "overview" | "score" | "config";
 
 /**
@@ -1350,7 +1361,7 @@ function serverDraftFrom(
   return (serverMatches as { match_number: number; side_a: SideRef; side_b: SideRef }[]).map((mm, i) => {
     const hcA = mm.side_a?.id ? (handicapOf.get(mm.side_a.id) ?? 0) : 0;
     const hcB = mm.side_b?.id ? (handicapOf.get(mm.side_b.id) ?? 0) : 0;
-    return { matchNumber: mm.match_number ?? i + 1, a: members(mm.side_a), b: members(mm.side_b), handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0 };
+    return { id: nextMatchRowId(), matchNumber: mm.match_number ?? i + 1, a: members(mm.side_a), b: members(mm.side_b), handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0 };
   });
 }
 
@@ -1500,6 +1511,70 @@ function NewGame({
 // The two team columns flex (minmax(0,1fr)); the four structural columns are fixed.
 const MATCH_GRID = "24px 22px minmax(0,1fr) auto minmax(0,1fr) 24px";
 
+// One sortable match row. Extracted so it can call `useSortableRow` (a hook — can't
+// live in the parent's `.map` callback). The grip is the drag activator; dnd-kit
+// shifts neighbours live, so no manual insertion line. The lifted row dims via
+// `isDragging`.
+function SortableMatchRow({
+  id,
+  index,
+  showSeparator,
+  slotA,
+  slotB,
+  onRemove,
+}: {
+  id: string;
+  index: number;
+  showSeparator: boolean;
+  slotA: React.ReactNode;
+  slotB: React.ReactNode;
+  onRemove: () => void;
+}) {
+  const { setNodeRef, style, isDragging, handleProps } = useSortableRow(id);
+  return (
+    <div
+      ref={setNodeRef}
+      // The match is one flat grid ROW (no frame, no "MATCH N" band). The four
+      // structural columns (grab │ # │ vs │ ×) center against the team columns,
+      // which hold one chip (1v1) or two stacked chips (2v2). A hairline separator
+      // above every match but the first delimits them — quiet in 1v1, load-bearing
+      // in 2v2 (it makes the 2-row match read as one unit).
+      className="grid items-center"
+      style={{
+        ...style,
+        gridTemplateColumns: MATCH_GRID,
+        gap: 8,
+        padding: "10px 0",
+        opacity: isDragging ? 0.4 : 1,
+        borderTop: showSeparator ? "1px solid var(--color-bt-border)" : undefined,
+      }}
+    >
+      {/* grab — far left, away from the × (reorder isn't next to remove). */}
+      <DragHandle {...handleProps} />
+      {/* # — the table index column (separate from grab). */}
+      <RowNumber number={index + 1} />
+      {slotA}
+      <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
+      {slotB}
+      {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not red —
+          draft removal is free (no persisted scores) and the open panel must never
+          read as an error. Far right. Always REMOVES the row — 0 matches is now a
+          valid empty state (the table hides, leaving just "Add match"), so the last
+          match is deletable, not floor-clamped. */}
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Remove match"
+        aria-label={`Remove match ${index + 1}`}
+        className="flex items-center justify-center"
+        style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
 function MatchSetup({
   draft,
   setDraft,
@@ -1529,32 +1604,15 @@ function MatchSetup({
   teamForSlot: (slot: "a" | "b") => { name: string; color: string } | undefined;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
 }) {
-  // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
-  // the original array (0..length). The accent line shows only once the cursor
-  // crosses a neighbour's midpoint, and never on the dragged card's own two
-  // adjacent slots (a no-op). Drag is armed only while the grip is held so the
-  // slots/stepper inside the card stay tappable.
-  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
-  const [armedIdx, setArmedIdx] = useState<number | null>(null);
-
-  const reorderTo = (from: number, ins: number) =>
+  // Drag-to-reorder via the shared touch-aware @dnd-kit primitive (app-wide DnD
+  // pass). The grip is the drag activator (so the slots/stepper/× inside the row
+  // stay tappable); dnd-kit shifts neighbours live, and a drop hands back the new
+  // id order. Reorder by id (not index) since rows carry a stable id now.
+  const reorderByIds = (orderedIds: string[]) =>
     setDraft((prev) => {
-      if (from < 0 || from >= prev.length) return prev;
-      if (ins === from || ins === from + 1) return prev; // own slot — no-op
-      const copy = prev.slice();
-      const [moved] = copy.splice(from, 1);
-      const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
-      copy.splice(target, 0, moved);
-      return copy;
-    });
-
-  const onCardDragOver = (i: number, clientY: number, rect: DOMRect) =>
-    setDragState((s) => {
-      if (!s) return s;
-      const isTop = clientY < rect.top + rect.height / 2;
-      let ins: number | null = isTop ? i : i + 1;
-      if (ins === s.from || ins === s.from + 1) ins = null; // adjacent = no-op, hide line
-      return s.ins === ins ? s : { ...s, ins };
+      const byId = new Map(prev.map((m) => [m.id, m]));
+      const next = orderedIds.map((id) => byId.get(id)).filter((m): m is DraftMatch => !!m);
+      return next.length === prev.length ? next : prev;
     });
 
   // One member (a single user) as a Participant — for an individual setup slot.
@@ -1619,88 +1677,21 @@ function MatchSetup({
         <span />
       </div>
 
-      <div className="flex flex-col">
-        {draft.map((d, i) => {
-          const dragging = dragState?.from === i;
-          const dropIndicator: "top" | "bottom" | null =
-            dragState?.ins === i
-              ? "top"
-              : i === draft.length - 1 && dragState?.ins === draft.length
-                ? "bottom"
-                : null;
-          return (
-            <div
-              key={i}
-              draggable={armedIdx === i}
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                setDragState({ from: i, ins: null });
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                onCardDragOver(i, e.clientY, e.currentTarget.getBoundingClientRect());
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
-                setDragState(null);
-                setArmedIdx(null);
-              }}
-              onDragEnd={() => {
-                setDragState(null);
-                setArmedIdx(null);
-              }}
-              // The match is one flat grid ROW (no frame, no "MATCH N" band). The
-              // four structural columns (grab │ # │ vs │ ×) center against the team
-              // columns, which hold one chip (1v1) or two stacked chips (2v2). A
-              // hairline separator above every match but the first delimits them —
-              // quiet in 1v1, load-bearing in 2v2 (it makes the 2-row match read as
-              // one unit).
-              className="grid items-center"
-              style={{ position: "relative", gridTemplateColumns: MATCH_GRID, gap: 8, padding: "10px 0", opacity: dragging ? 0.4 : 1, borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
-            >
-              {dropIndicator && (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    left: 2,
-                    right: 2,
-                    [dropIndicator === "top" ? "top" : "bottom"]: -1,
-                    height: 2,
-                    borderRadius: 2,
-                    background: "var(--color-bt-accent)",
-                    boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-              {/* grab — far left, away from the × (reorder isn't next to remove). */}
-              <DragHandle onMouseDown={() => setArmedIdx(i)} onMouseUp={() => setArmedIdx(null)} />
-              {/* # — the table index column (separate from grab). */}
-              <RowNumber number={i + 1} />
-              {sideSlots(d.a, i, "a")}
-              <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-              {sideSlots(d.b, i, "b")}
-              {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
-                  red — draft removal is free (no persisted scores) and the open panel
-                  must never read as an error. Far right. Always REMOVES the row —
-                  0 matches is now a valid empty state (the table hides, leaving just
-                  "Add match"), so the last match is deletable, not floor-clamped. */}
-              <button
-                type="button"
-                onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
-                title="Remove match"
-                aria-label={`Remove match ${i + 1}`}
-                className="flex items-center justify-center"
-                style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <SortableList ids={draft.map((d) => d.id)} onReorder={reorderByIds}>
+        <div className="flex flex-col">
+          {draft.map((d, i) => (
+            <SortableMatchRow
+              key={d.id}
+              id={d.id}
+              index={i}
+              showSeparator={i > 0}
+              slotA={sideSlots(d.a, i, "a")}
+              slotB={sideSlots(d.b, i, "b")}
+              onRemove={() => setDraft((prev) => removeMatchRow(prev, i))}
+            />
+          ))}
+        </div>
+      </SortableList>
         </>
       )}
 
@@ -1708,7 +1699,7 @@ function MatchSetup({
       {draft.length < MAX_MATCHES && (
         <button
           type="button"
-          onClick={() => setDraft((prev) => [...prev, { matchNumber: prev.length + 1, a: [], b: [], handicap: 0 }])}
+          onClick={() => setDraft((prev) => [...prev, { id: nextMatchRowId(), matchNumber: prev.length + 1, a: [], b: [], handicap: 0 }])}
           className="mt-3 flex w-full items-center justify-center gap-1.5"
           style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
         >
