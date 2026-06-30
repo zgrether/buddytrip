@@ -32,10 +32,11 @@ interface Props {
   creating?: boolean;
   onCreatingChange?: (v: boolean) => void;
   /**
-   * Structure-lock (§9): once the competition is live the team *structure*
-   * freezes — no add-team / remove-team / draft. Rename a team and swap a
-   * player stay available (rename = day-one ritual, swap = admin tweak). It's a
-   * structure lock, not a data lock — same builder, fewer affordances.
+   * Structure-lock: the team *count* is fixed — no add-team / remove-team /
+   * draft. Driven by the frozen scoring_model: head-to-head is exactly two
+   * teams (locked), points is 2–N (open). Rename a team and swap a player stay
+   * available (rename = day-one ritual, swap = admin tweak). It's a structure
+   * lock, not a data lock — same builder, fewer affordances.
    */
   structureLocked?: boolean;
   /**
@@ -311,7 +312,8 @@ export function TeamsPanel({
   );
   // Roster-removal lock: once any game has a score, removals/trades/team-deletes are
   // server-blocked (C1). Disable those controls here so the block isn't a surprise;
-  // ADDS stay enabled. (Distinct from `structureLocked`/go-live.)
+  // ADDS stay enabled. (Distinct from `structureLocked`, the scoring_model
+  // team-count lock.)
   const { data: removalsLocked = false } = trpc.teamAssignments.rosterLocked.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
@@ -404,10 +406,11 @@ export function TeamsPanel({
           </button>
         )}
         {canEdit && structureLocked && (
-          // Live: the team structure is locked. Say so quietly — rename + swap
-          // still work, so this explains the missing +Team rather than nagging.
+          // Head-to-head is exactly two teams, so the team count is fixed (no
+          // add / delete). Say so quietly — rename + swap still work, so this
+          // explains the missing +Team rather than nagging.
           <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Teams locked — live
+            Head-to-head — two teams
           </span>
         )}
       </div>

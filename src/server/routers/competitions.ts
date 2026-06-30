@@ -174,6 +174,15 @@ export const competitionsRouter = router({
 
   // -----------------------------------------------------------------------
   // create — new competition for a trip (canEdit, MVP one-per-trip)
+  //
+  // `scoringModel` is the SHAPE chooser's decision, written at creation and
+  // FROZEN thereafter (no update path writes it — delete-and-restart to change
+  // shape). It is the only source for a distinction team count cannot supply
+  // (a 2-team competition can be points-based):
+  //   match_play — head-to-head (win/halve/lose); locked at 2 teams.
+  //   points     — points-per-finish; 2–N teams (add more after creation).
+  // Both seed 2 placeholder teams; the difference is the post-create add-team
+  // affordance (gated on scoring_model in the UI), not the seed.
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
@@ -181,6 +190,7 @@ export const competitionsRouter = router({
         tripId: z.string(),
         name: z.string().min(2).max(200),
         tagline: z.string().max(500).optional(),
+        scoringModel: z.enum(["match_play", "points"]).default("match_play"),
       })
     )
     .use(requireTripRole("Organizer"))
@@ -208,6 +218,7 @@ export const competitionsRouter = router({
           trip_id: ctx.tripId,
           name: input.name,
           tagline: input.tagline ?? null,
+          scoring_model: input.scoringModel,
         })
         .select("id")
         .single();

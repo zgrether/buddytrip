@@ -218,12 +218,12 @@ export function CompetitionFace({
           tripId={tripId}
           competitionId={competition.id}
           isOwner={isOwner}
-          // The go-live team-structure freeze is retired with GO LIVE. Player
-          // removals / team deletes stay protected by the SCORE-based lock
-          // (teamAssignments.rosterLocked → assertRosterUnlocked), which is
-          // independent of status. Task 3 re-points this at scoring_model
-          // (head-to-head locks the count at 2; points allows 2–N).
-          structureLocked={false}
+          // Team-COUNT lock keys on the frozen scoring_model: head-to-head is
+          // exactly 2 teams (no add / no delete), so structure is locked; points
+          // is 2–N, so adds/deletes stay open. (The go-live freeze this replaced
+          // was retired with GO LIVE; player-removal protection once scoring
+          // starts is a separate SCORE-based lock, teamAssignments.rosterLocked.)
+          structureLocked={(competition.scoring_model ?? "match_play") === "match_play"}
           rosterBuilding={rosterSetup === "building"}
           onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
           onClose={() => setRostersOpen(false)}

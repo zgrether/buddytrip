@@ -34,7 +34,8 @@ export function RostersOverlay({
    *  IDENTITY editing (name/short/color) additionally opens to a team's captain,
    *  resolved inside TeamsPanel (the per-card pencil). */
   isOwner: boolean;
-  /** Live: team STRUCTURE is frozen (no add/delete team) — rename + swap stay. */
+  /** Head-to-head: team COUNT is fixed at 2 (no add/delete team) — rename + swap
+   *  stay. False for points (2–N). */
   structureLocked: boolean;
   /** Roster-build phase: show the one-way "Save rosters" commit (owner only). */
   rosterBuilding: boolean;
