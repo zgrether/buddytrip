@@ -74,7 +74,9 @@ export const matchesRouter = router({
               matchNumber: z.number().int().min(1),
             })
           )
-          .min(1)
+          // 0 matches is a valid empty state (the last match is deletable); the
+          // Enable gate still refuses to score an empty game (assertGameReady).
+          .min(0)
           .max(MAX_MATCHES),
       })
     )
@@ -301,7 +303,8 @@ export const matchesRouter = router({
               matchNumber: z.number().int().min(1),
             })
           )
-          .min(1)
+          // 0 matches is a valid empty state (see setPairings).
+          .min(0)
           .max(MAX_MATCHES),
       })
     )
@@ -519,8 +522,8 @@ export const matchesRouter = router({
   // sides' participants/play_groups, and ANY entered scores + side results for
   // those sides (a player/pair is in exactly one match) — then recomputes the
   // rest. The CLIENT confirms first when the match has scores (don't silently
-  // drop entry); the server still cleans up fully. Refuses to drop below 1 (a
-  // match game always keeps ≥1 configured match).
+  // drop entry); the server still cleans up fully. 0 matches is a valid empty
+  // state, so the last match is deletable (no ≥1 floor).
   removeMatch: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string(), matchId: z.string().min(1) }))
     .use(requireGameEdit())
@@ -533,9 +536,6 @@ export const matchesRouter = router({
         .eq("game_id", input.gameId);
       type Side = { type: string; id: string } | null;
       const rows = (all ?? []) as { id: string; side_a: Side; side_b: Side }[];
-      if (rows.length <= 1) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "A match game must keep at least one match" });
-      }
       const target = rows.find((r) => r.id === input.matchId);
       if (!target) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });

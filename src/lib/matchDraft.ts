@@ -18,17 +18,14 @@ export interface MatchSides {
 }
 
 /**
- * The floor-aware "×" action on the setup draft (Matches panel). With MORE than one
- * match, REMOVE the match at `index`. With exactly ONE match, CLEAR its slots instead
- * — empty both sides + reset the handicap — keeping one empty match rather than
- * deleting it. The server enforces a floor of ≥1 match (`setPairings`/
- * `setDoublesPairings` `.min(1)`, `removeMatch`'s throw), so the last match is
- * cleared, never removed (no zero-match state). Pure — returns a new draft, never
- * mutates; preserves any other fields on the match (e.g. `matchNumber`) via spread.
+ * The "×" action on the setup draft (Matches panel): REMOVE the match at `index`.
+ * 0 matches is now a VALID empty state — the table hides and only "Add match"
+ * shows — so the last match is deletable (no floor-clamp). The server allows an
+ * empty match list (`setPairings`/`setDoublesPairings` `.min(0)`, `removeMatch`
+ * with no ≥1 throw). Pure — returns a new draft, never mutates.
  */
-export function removeOrClearMatch<M extends MatchSides & { handicap: number }>(draft: M[], index: number): M[] {
-  if (draft.length > 1) return draft.filter((_, j) => j !== index);
-  return draft.map((m, j) => (j === index ? { ...m, a: [], b: [], handicap: 0 } : m));
+export function removeMatchRow<M extends MatchSides>(draft: M[], index: number): M[] {
+  return draft.filter((_, j) => j !== index);
 }
 
 /** True when both sides carry exactly `playersPerSide` players. */
