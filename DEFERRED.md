@@ -267,6 +267,18 @@ the header, so it rides along with Stage 4 (roles on the board). The game-page
 **live pulse** remains separately deferred (it's the ticker §2 explicitly
 excludes).
 
+### Dead-hole display on the result summary — points-board fast-follow
+
+*Captured 2026-06-30 during the PR 2 board rewire (scoring_model axis + N-team
+points board). Explicitly scoped OUT of that PR; logged so it isn't lost.*
+
+When **all teams tie a hole** (no team takes it — a "dead hole"), the per-hole
+result summary should say so ("Dead hole") rather than rendering an empty/ambiguous
+cell. Only meaningful once N-team (3+) points play is exercised on real cards — a
+2-team match already reads a tie as a halve. Small display-only change on the
+result summary; no scoring/compute change (the points are already 0-to-each). Pick
+it up when the N-team points board gets real on-course use.
+
 ---
 
 ## v2 / Circle Era
