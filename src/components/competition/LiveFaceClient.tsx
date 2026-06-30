@@ -15,7 +15,6 @@ import { TripBottomNav } from "@/components/BottomNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { CompetitionFace } from "@/components/competition/CompetitionFace";
-import { CompetitionIntroPanel } from "@/components/competition/CompetitionIntroPanel";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 
 /**
@@ -63,9 +62,6 @@ export function LiveFaceClient({
 
   const [chatOpen, setChatOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
-  // Editor has tapped "Enable Competition Mode" — swaps the intro panel for the
-  // create form. Reset when the competition is deleted so the intro reappears.
-  const [unlocked, setUnlocked] = useState(false);
 
   const openChat = () => {
     setNewsOpen(false);
@@ -174,29 +170,25 @@ export function LiveFaceClient({
       </div>
     );
   } else if (!competition) {
-    // No competition row yet. Editors get the create flow (the interim entry
-    // point); everyone else gets a calm placeholder.
-    if (canEdit) {
-      body = unlocked ? (
-        <CompetitionSetupPanel tripId={tripId} />
-      ) : (
-        <CompetitionIntroPanel onEnable={() => setUnlocked(true)} />
-      );
-    } else {
-      body = <NotSetUpEmptyState />;
-    }
+    // No competition row yet. Editors land DIRECTLY on the create form (the
+    // shape chooser + name) — the old "Enable Competition Mode" intro panel was
+    // pure ceremony (a button that only revealed the form) and was removed, so
+    // "Set it up" is one decision: pick a shape, name it, create. Everyone else
+    // gets a calm placeholder.
+    body = canEdit ? <CompetitionSetupPanel tripId={tripId} /> : <NotSetUpEmptyState />;
   } else {
     // Option A: a competition is visible to the WHOLE crew as soon as it exists
     // — there is no competition-level reveal gate any more (GO LIVE was removed;
     // per-game Setup/Scoring handles game-level readiness). Every trip member
     // gets the full face; editing is gated inside it by canEdit/isOwner.
     body = (
+      // On delete, faceBootstrap re-resolves to no-competition and the create
+      // form (shape chooser) reappears for the owner — no local reset needed.
       <CompetitionFace
         tripId={tripId}
         competition={competition}
         canEdit={canEdit}
         isOwner={isOwner}
-        onCompetitionDeleted={() => setUnlocked(false)}
       />
     );
   }
