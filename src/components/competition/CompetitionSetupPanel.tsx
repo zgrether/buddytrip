@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trophy } from "lucide-react";
+import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import type { ScoringModel } from "@/lib/gameTypes";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -22,18 +23,49 @@ interface Props {
   onCancel?: () => void;
 }
 
+// ── Shape chooser ────────────────────────────────────────────────────────────
+// THE creation decision (W-TYPE-01): the competition's scoring model, written at
+// creation and frozen thereafter. It's the one axis team count can't supply (a
+// 2-team competition can be points-based).
+//   head-to-head → scoring_model='match_play', locked at 2 teams.
+//   teams        → scoring_model='points', 2–N teams.
+
+interface ShapeOption {
+  model: ScoringModel;
+  icon: React.ReactNode;
+  title: string;
+  blurb: string;
+}
+
+const SHAPE_OPTIONS: ShapeOption[] = [
+  {
+    model: "match_play",
+    icon: <Swords size={18} />,
+    title: "Head-to-head",
+    blurb: "Two teams, match play — win, halve, or lose each game.",
+  },
+  {
+    model: "points",
+    icon: <Users size={18} />,
+    title: "Teams",
+    blurb: "Two or more teams race for points each game — most points wins.",
+  },
+];
+
 // ── CompetitionSetupPanel ───────────────────────────────────────────────────
 
 /**
- * Create or edit a competition. Form is intentionally minimal — name +
- * tagline. Team count is no longer set here; teams are added directly
- * via TeamsPanel (which auto-expands after creation). competition_type
- * (RYDER_CUP vs NORMAL) is derived at render time from teams.length === 2.
+ * Create or edit a competition. Create mode opens with the SHAPE chooser (the
+ * one meaningful decision — head-to-head vs teams), then name + tagline. The
+ * shape writes `scoring_model` and is frozen after creation. Team count is not
+ * set here — both shapes seed two teams; the Teams shape adds more via the
+ * Rosters surface afterward. Edit mode is name + tagline only (shape is frozen).
  */
 export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel }: Props) {
   const isEdit = !!competition;
   const utils = trpc.useUtils();
 
+  const [scoringModel, setScoringModel] = useState<ScoringModel>("match_play");
   const [name, setName] = useState(competition?.name ?? "");
   const [tagline, setTagline] = useState(competition?.tagline ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +79,8 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       utils.competitions.getByTrip.invalidate({ tripId });
       // The Live face renders from the faceBootstrap snapshot (boot.competition),
       // not getByTrip — re-resolve it so the face swaps the create form for the
-      // setup guide (and seeds the new competition's child caches) without a
-      // hard refresh.
+      // board (and seeds the new competition's child caches) without a hard
+      // refresh.
       utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
@@ -106,6 +138,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       tripId,
       name: trimmedName,
       tagline: tagline.trim() || undefined,
+      scoringModel,
     });
     onSuccess?.();
   }
@@ -135,13 +168,29 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
               Set Up Competition
             </h2>
             <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Name it now, add teams next.
+              Pick a shape, name it, and you&rsquo;re set.
             </p>
           </div>
         </div>
       )}
 
       <div className="space-y-4">
+        {/* Shape chooser — create only (the shape is frozen after creation). */}
+        {!isEdit && (
+          <FieldShell label="Competition Shape" required>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="shape-chooser">
+              {SHAPE_OPTIONS.map((opt) => (
+                <ShapeCard
+                  key={opt.model}
+                  option={opt}
+                  selected={scoringModel === opt.model}
+                  onSelect={() => setScoringModel(opt.model)}
+                />
+              ))}
+            </div>
+          </FieldShell>
+        )}
+
         <FieldShell label="Competition Name" required>
           <input
             value={name}
@@ -154,6 +203,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
               color: "var(--color-bt-text)",
               border: "1px solid var(--color-bt-border)",
             }}
+            data-testid="competition-setup-name"
           />
         </FieldShell>
 
@@ -212,6 +262,46 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
 }
 
 // ── Subcomponents ───────────────────────────────────────────────────────────
+
+function ShapeCard({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: ShapeOption;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className="flex flex-col gap-1.5 rounded-xl p-3 text-left transition-colors"
+      style={{
+        background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+        border: `1px solid ${selected ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+      }}
+      data-testid={`shape-option-${option.model}`}
+    >
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded-lg"
+        style={{
+          background: selected ? "var(--color-bt-accent)" : "var(--color-bt-card)",
+          color: selected ? "var(--color-bt-base)" : "var(--color-bt-accent)",
+        }}
+      >
+        {option.icon}
+      </span>
+      <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        {option.title}
+      </span>
+      <span className="text-xs leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+        {option.blurb}
+      </span>
+    </button>
+  );
+}
 
 function FieldShell({
   label,

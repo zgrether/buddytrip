@@ -22,7 +22,7 @@ describe("competitions router", () => {
     expect(result).toBeNull();
   });
 
-  it("create — owner can create", async () => {
+  it("create — owner can create (scoring_model defaults to head-to-head)", async () => {
     const caller = ctx.caller();
     const comp = await caller.competitions.create({
       tripId,
@@ -32,7 +32,26 @@ describe("competitions router", () => {
     expect(comp.name).toBe("BBMI 2027");
     expect(comp.tagline).toBe("The cup returns");
     expect(comp.status).toBe("upcoming");
+    // Shape chooser omitted → match_play (head-to-head) default.
+    expect(comp.scoring_model).toBe("match_play");
     ctx.trackCompetition(comp.id);
+  });
+
+  it("create — the shape chooser writes scoring_model (points) + seeds 2 teams", async () => {
+    const pointsTripId = await ctx.createTrip("Points-shape cup");
+    const caller = ctx.caller();
+    const comp = await caller.competitions.create({
+      tripId: pointsTripId,
+      name: "Points Cup",
+      scoringModel: "points",
+    });
+    expect(comp.scoring_model).toBe("points");
+    ctx.trackCompetition(comp.id);
+
+    // Both shapes seed exactly two placeholder teams; the Teams shape adds more
+    // afterward via the Rosters surface.
+    const teams = await caller.teams.list({ tripId: pointsTripId, competitionId: comp.id });
+    expect((teams as Array<{ short_name: string }>).map((t) => t.short_name).sort()).toEqual(["A", "B"]);
   });
 
   it("create — member cannot create", async () => {
@@ -65,10 +84,8 @@ describe("competitions router", () => {
       tripId,
       competitionId: existing!.id,
       tagline: "If you're not first, you're last",
-      status: "active",
     });
     expect(updated.tagline).toBe("If you're not first, you're last");
-    expect(updated.status).toBe("active");
   });
 
   it("delete — only owner can delete", async () => {

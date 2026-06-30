@@ -174,6 +174,15 @@ export const competitionsRouter = router({
 
   // -----------------------------------------------------------------------
   // create — new competition for a trip (canEdit, MVP one-per-trip)
+  //
+  // `scoringModel` is the SHAPE chooser's decision, written at creation and
+  // FROZEN thereafter (no update path writes it — delete-and-restart to change
+  // shape). It is the only source for a distinction team count cannot supply
+  // (a 2-team competition can be points-based):
+  //   match_play — head-to-head (win/halve/lose); locked at 2 teams.
+  //   points     — points-per-finish; 2–N teams (add more after creation).
+  // Both seed 2 placeholder teams; the difference is the post-create add-team
+  // affordance (gated on scoring_model in the UI), not the seed.
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
@@ -181,6 +190,7 @@ export const competitionsRouter = router({
         tripId: z.string(),
         name: z.string().min(2).max(200),
         tagline: z.string().max(500).optional(),
+        scoringModel: z.enum(["match_play", "points"]).default("match_play"),
       })
     )
     .use(requireTripRole("Organizer"))
@@ -208,6 +218,7 @@ export const competitionsRouter = router({
           trip_id: ctx.tripId,
           name: input.name,
           tagline: input.tagline ?? null,
+          scoring_model: input.scoringModel,
         })
         .select("id")
         .single();
@@ -246,8 +257,14 @@ export const competitionsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit metadata + go-live (owner/co-admin). Go-live is operational,
-  // not destructive, so co-admins can flip it.
+  // update — edit metadata (owner/co-admin).
+  //
+  // The `status` (go-live) write path was REMOVED with the GO LIVE control
+  // (option A): a competition is visible the moment it exists, so there is no
+  // setup↔active toggle to drive. The `competitions.status` column is retained
+  // (no live reader/writer of the distinction remains; a future `completed`
+  // state may reuse it) but is intentionally NOT writable here — do not re-add a
+  // competition-level reveal/go-live mutation.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -256,7 +273,6 @@ export const competitionsRouter = router({
         competitionId: z.string(),
         name: z.string().min(2).max(200).optional(),
         tagline: z.string().max(500).nullable().optional(),
-        status: z.enum(["upcoming", "active", "completed"]).optional(),
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
         // The roster-setup progression (building → saved → dismissed). "Save
         // rosters" advances to saved; dismissing the moved-to-Settings signpost
@@ -270,7 +286,6 @@ export const competitionsRouter = router({
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
       if (input.tagline !== undefined) patch.tagline = input.tagline;
-      if (input.status !== undefined) patch.status = input.status;
       if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
       if (input.rosterSetup !== undefined) patch.roster_setup = input.rosterSetup;
 

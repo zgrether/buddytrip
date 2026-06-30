@@ -48,18 +48,16 @@ interface Props {
 }
 
 /**
- * CompetitionFace — the Live face's body: the symmetric two-state experience
- * (setup guide ⇄ leaderboard) hosted on the escaped, clean competition chrome
- * (the host page provides Band 1 title bar + bottom nav; this owns Band 2's
- * competition header + the state body).
+ * CompetitionFace — the Live face's body: the board (leaderboard) plus the
+ * consolidated Settings sub-surface, hosted on the escaped, clean competition
+ * chrome (the host page provides Band 1 title bar + bottom nav; this owns
+ * Band 2's competition header + the body).
  *
- * Stage 3 ties three things together:
- *   1. The symmetric toggle — the guide peeks the board ("View leaderboard →"),
- *      the board returns to the guide ("Setup view"). Default flips at go-live.
- *   2. Go-live — the explicit owner switch. It's a VISIBILITY switch, not a
- *      data lock: the owner keeps the toggle (Back to Setup) and can edit
- *      mid-round. Centralized here so going live also flips the default view.
- *   3. Chrome-shrink — the header collapses to a compact bar once live.
+ * The competition is visible to the whole crew the moment it exists (option A —
+ * the GO LIVE / setup↔active reveal was removed at the root; per-game
+ * Setup/Scoring handles game-level readiness). So there is no setup/live toggle
+ * here any more: the board is the home, Settings is a sub-surface reached from
+ * the header gear and returns to it.
  *
  * STANDARD PALETTE ONLY (supersession #2) — no competition accent / tonal shift.
  */
@@ -71,7 +69,6 @@ export function CompetitionFace({
   onCompetitionDeleted,
 }: Props) {
   const utils = trpc.useUtils();
-  const isLive = competition.status === "active";
 
   // The board is the home in every stage now — creation lands here directly
   // (the setup guide was retired); Settings is a sub-surface reached from the
@@ -105,45 +102,11 @@ export function CompetitionFace({
     const team = (teamsList as Team[]).find((t) => t.id === teamId);
     if (team) setEditingTeam(team);
   };
-  // ── Go live / back to setup (visibility switch, NOT a data lock) ───────────
-  // Centralized here (not in the header) so going live can also flip the
-  // default view to the board. Optimistic so the chrome-shrink + toggle update
-  // instantly.
-  const setStatus = trpc.competitions.update.useMutation({
-    onMutate: async (vars) => {
-      await utils.competitions.getByTrip.cancel({ tripId });
-      const previous = utils.competitions.getByTrip.getData({ tripId });
-      if (previous && vars.status) {
-        utils.competitions.getByTrip.setData({ tripId }, {
-          ...previous,
-          status: vars.status,
-        });
-      }
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.previous) {
-        utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
-      }
-    },
-    onSettled: () => {
-      utils.competitions.getByTrip.invalidate({ tripId });
-      // The header reads status from the faceBootstrap snapshot (boot.competition),
-      // not getByTrip — re-resolve it so the chrome-shrink (and the crew's board
-      // reveal at go-live) lands without a hard refresh. Optimism above keeps the
-      // toggle/view switch instant.
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
-  });
-
-  const toggleLive = () => {
-    const next: "upcoming" | "active" = isLive ? "upcoming" : "active";
-    // The board is the home in BOTH stages now (the setup guide was retired), so
-    // go-live / back-to-setup both land there; the optimistic status flip keeps
-    // the chrome in sync.
-    setView("board");
-    setStatus.mutate({ tripId, competitionId: competition.id, status: next });
-  };
+  // GO LIVE / BACK TO SETUP was removed at the root (option A): a competition is
+  // visible to the whole crew the moment it exists, and per-game Setup/Scoring
+  // handles game-level readiness — a competition-level reveal is redundant. The
+  // `competitions.status` setup↔active distinction is retired; do NOT re-add a
+  // competition-level reveal/go-live state.
 
   // Roster-setup progression (building → saved → dismissed). Optimistic so the
   // Team Rosters button → signpost → clean transition is instant; the face reads
@@ -162,13 +125,6 @@ export function CompetitionFace({
     <CompetitionHeader
       competition={competition}
       tripId={tripId}
-      compact={isLive}
-      onToggleLive={
-        // Go-live is operational (owner-minus-destructive) — co-admins flip it
-        // too. canEdit = owner OR co-admin (trip organizer).
-        canEdit && competition.status !== "completed" ? toggleLive : undefined
-      }
-      togglePending={setStatus.isPending}
       onSettings={canEdit ? () => setView("settings") : undefined}
     />
   );
@@ -262,7 +218,12 @@ export function CompetitionFace({
           tripId={tripId}
           competitionId={competition.id}
           isOwner={isOwner}
-          structureLocked={isLive}
+          // Team-COUNT lock keys on the frozen scoring_model: head-to-head is
+          // exactly 2 teams (no add / no delete), so structure is locked; points
+          // is 2–N, so adds/deletes stay open. (The go-live freeze this replaced
+          // was retired with GO LIVE; player-removal protection once scoring
+          // starts is a separate SCORE-based lock, teamAssignments.rosterLocked.)
+          structureLocked={(competition.scoring_model ?? "match_play") === "match_play"}
           rosterBuilding={rosterSetup === "building"}
           onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
           onClose={() => setRostersOpen(false)}

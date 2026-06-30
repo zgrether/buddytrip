@@ -28,7 +28,6 @@ import { LodgingTab } from "./tabs/LodgingTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
-import { canAccessCompetition } from "@/lib/competitionAccess";
 import { DatesSheet } from "./components/DatesSheet";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
@@ -107,16 +106,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   const { data: competition, isLoading: competitionLoading } =
     trpc.competitions.getByTrip.useQuery({ tripId });
 
-  // Drives the "Live" bottom-nav entry's visibility — a game delegate (even a
-  // member-role one) is a builder who can reach the competition pre-live, so the
-  // entry must show for them too. Same predicate as the leaderboard's pre-live
-  // wall (canAccessCompetition) so nav-visibility and wall-visibility can't
-  // disagree.
-  const { data: myDelegateGameIds = [] } = trpc.games.myDelegateGameIds.useQuery(
-    { tripId },
-    { enabled: !!competition }
-  );
-
   // schedule + logistics ARE gated: they feed the home itinerary (ItineraryView
   // / FreshTripGuide query them by tripId) which is the default surface on a
   // trip switch. Gating them makes the spinner cover the re-key window so the
@@ -146,9 +135,10 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     || competitionLoading || datePollLoading || tilesLoading
     || scheduleLoading || logisticsLoading;
 
-  // Push competition row changes (Go Live, scoreboard style, name,
-  // tagline) live to every crew member — without this they'd see
-  // stale data for up to staleTime (60s).
+  // Push competition row changes (existence, scoreboard style, name, tagline)
+  // live to every crew member — without this they'd see stale data for up to
+  // staleTime (60s). The "Live" nav entry appears as soon as a competition
+  // exists, so a freshly-created competition reveals to the crew immediately.
   useRealtimeCompetition(tripId);
   // Push membership changes (role promote/demote, add, remove) live so a
   // member's tab visibility + edit permissions re-resolve immediately —
@@ -549,15 +539,11 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         </div>
       )}
 
-      {/* Bottom nav appears once the owner flips the competition to
-          "active" (Go Live button in CompetitionHeader). Stays hidden
-          during setup so we don't surface an empty leaderboard. */}
-      {competition &&
-        canAccessCompetition({
-          canEdit,
-          amDelegate: (myDelegateGameIds as string[]).length > 0,
-          status: competition.status,
-        }) && <TripBottomNav tripId={tripId} showComp={true} />}
+      {/* Bottom nav's "Live" entry appears as soon as a competition EXISTS
+          (option A — the competition is visible to the whole crew once created;
+          per-game Setup/Scoring handles game-level readiness). The old status
+          gate (visible only once "active") was retired with the GO LIVE control. */}
+      {competition && <TripBottomNav tripId={tripId} showComp={true} />}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
