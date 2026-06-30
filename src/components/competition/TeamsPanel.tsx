@@ -3,8 +3,6 @@
 import { useState, useMemo } from "react";
 import {
   ArrowRight,
-  ChevronDown,
-  ChevronUp,
   GripVertical,
   Pencil,
   Plus,
@@ -1578,9 +1576,8 @@ export function TeamSheet({
 // The consolidated roster section of the STANDALONE Edit Team modal: this team's
 // players in CANONICAL order (sort_order). Owner (canManage) gets add / remove /
 // reorder / captain ★. Captain + plain member see it READ-ONLY (names + the
-// captain ★). Reorder is ↑↓ buttons (mobile-first — they work on touch, which
-// native HTML5 drag does not) PLUS grip-drag on desktop (lg+), mirroring this
-// file's desktop-drag / mobile-fallback pattern.
+// captain ★). Reorder is DRAG-ONLY — the grip (⠿) arms the row, mirroring the
+// match-assignments panel (HTML5 drag is desktop-only; no touch reorder).
 
 function TeamSheetRoster({
   tripId,
@@ -1636,9 +1633,8 @@ function TeamSheetRoster({
   const [adding, setAdding] = useState(false);
 
   // Drag-to-reorder — mirrors the match-assignments panel: the GRIP arms the row
-  // (so the buttons inside stay tappable), an accent insertion LINE shows where it
-  // will land (`ins` = the 0..length slot), and drop persists via reorder. The ↑↓
-  // buttons stay as the touch fallback (HTML5 drag doesn't fire on touch).
+  // (so the ★/× inside stay tappable), an accent insertion LINE shows where it
+  // will land (`ins` = the 0..length slot), and drop persists via reorder.
   const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
   const [armedIdx, setArmedIdx] = useState<number | null>(null);
 
@@ -1646,15 +1642,9 @@ function TeamSheetRoster({
     if (next.every((id, i) => id === orderedIds[i])) return; // no-op
     reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
   }
-  // ↑↓ buttons: move one slot.
-  function moveTo(userId: string, toIndex: number) {
-    if (toIndex < 0 || toIndex >= orderedIds.length) return;
-    const without = orderedIds.filter((x) => x !== userId);
-    without.splice(toIndex, 0, userId);
-    persistOrder(without);
-  }
-  // Drag: insert the dragged row at slot `ins` (0..length), accounting for the
-  // removal shift — identical to the match panel's reorderTo.
+  // Reorder is DRAG-ONLY (the ↑↓ buttons were removed): insert the dragged row at
+  // slot `ins` (0..length), accounting for the removal shift — identical to the
+  // match panel's reorderTo.
   function reorderTo(from: number, ins: number) {
     if (from < 0 || from >= orderedIds.length) return;
     if (ins === from || ins === from + 1) return; // own slot — no-op
@@ -1680,12 +1670,27 @@ function TeamSheetRoster({
       className="pt-2"
       style={{ borderTop: "1px solid var(--color-bt-border)" }}
     >
-      <h4
-        className="mb-2 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Roster · {roster.length}
-      </h4>
+      {/* Header — no count (the numbered rows already convey it). The
+          "Captain = ★" legend is right-justified: the rows are a FLEX layout, so
+          the star column drifts with width — there's no stable column to center
+          over. Legend shows for all viewers (it's a marker key). */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Roster
+        </h4>
+        {roster.length > 0 && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Captain =
+            <Star size={11} fill="currentColor" style={{ color: "var(--color-bt-accent)" }} />
+          </span>
+        )}
+      </div>
 
       {roster.length === 0 ? (
         <p
@@ -1712,10 +1717,7 @@ function TeamSheetRoster({
                 isCaptain={!!a.is_captain}
                 canManage={canManage}
                 index={i}
-                count={orderedIds.length}
                 removeLocked={removalsLocked}
-                onMoveUp={() => moveTo(a.user_id, i - 1)}
-                onMoveDown={() => moveTo(a.user_id, i + 1)}
                 onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
                 onToggleCaptain={() =>
                   setCaptain.mutate({
@@ -1807,8 +1809,8 @@ function TeamSheetRoster({
 }
 
 // ── RosterRow ───────────────────────────────────────────────────────────────
-// One player row in the TeamSheet roster. Owner sees grip + captain ★ + ↑↓ +
-// remove ×; captain/member see name (+ the captain ★ read-only) only.
+// One player row in the TeamSheet roster. Owner sees grip (drag-reorder) +
+// captain ★ + remove ×; captain/member see name (+ the captain ★ read-only) only.
 
 function RosterRow({
   name,
@@ -1817,10 +1819,7 @@ function RosterRow({
   isCaptain,
   canManage,
   index,
-  count,
   removeLocked,
-  onMoveUp,
-  onMoveDown,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
@@ -1841,10 +1840,7 @@ function RosterRow({
   isCaptain: boolean;
   canManage: boolean;
   index: number;
-  count: number;
   removeLocked: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onRemove: () => void;
   onToggleCaptain: () => void;
   removeAriaLabel: string;
@@ -1862,7 +1858,7 @@ function RosterRow({
 }) {
   return (
     <div
-      // Draggable only while the grip arms it (so the ★/↑↓/× stay tappable).
+      // Draggable only while the grip arms it (so the ★/× stay tappable).
       draggable={armed}
       onDragStart={
         onDragStartRow
@@ -1954,34 +1950,6 @@ function RosterRow({
             <Star size={15} fill="currentColor" />
           </span>
         )
-      )}
-
-      {/* Reorder ↑↓ (owner) — the mobile-first canonical-order control. */}
-      {canManage && (
-        <div className="flex flex-shrink-0 items-center">
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={index === 0}
-            aria-label={`Move ${name} up`}
-            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="roster-move-up"
-          >
-            <ChevronUp size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={index === count - 1}
-            aria-label={`Move ${name} down`}
-            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="roster-move-down"
-          >
-            <ChevronDown size={16} />
-          </button>
-        </div>
       )}
 
       {/* Remove × (owner) — disabled once scoring locks removals. */}
