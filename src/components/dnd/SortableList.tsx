@@ -35,6 +35,24 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 /**
+ * Pure reorder math for a drop: given the current id order and the active/over
+ * ids from a drag-end, return the new order — or `null` for a no-op (dropped on
+ * itself, off any target, or an unknown id). Exported so the contract is unit-
+ * testable without simulating dnd-kit pointer events.
+ */
+export function reorderOnDrop(
+  ids: string[],
+  activeId: string,
+  overId: string | null | undefined
+): string[] | null {
+  if (!overId || activeId === overId) return null;
+  const from = ids.indexOf(activeId);
+  const to = ids.indexOf(overId);
+  if (from < 0 || to < 0) return null;
+  return arrayMove(ids, from, to);
+}
+
+/**
  * Shared sensor set for every reorder surface. A small pointer-distance gate
  * means a press that turns into a reorder is distinguished from a tap, so in-row
  * controls (★ / × / steppers / day-pickers) stay tappable and a list that also
@@ -114,11 +132,8 @@ export function SortableList({
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const from = ids.indexOf(String(active.id));
-    const to = ids.indexOf(String(over.id));
-    if (from < 0 || to < 0) return;
-    onReorder(arrayMove(ids, from, to));
+    const next = reorderOnDrop(ids, String(active.id), over ? String(over.id) : null);
+    if (next) onReorder(next);
   }
 
   return (
