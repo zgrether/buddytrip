@@ -19,6 +19,28 @@ describe("gameHref", () => {
     expect(gameHref("trip1", null, "g1")).toBeNull();
     expect(gameHref("trip1", "gtt_not_a_real_type", "g1")).toBeNull();
   });
+
+  it("appends &settings=1 when the settings deep-link is requested (golf + manual)", () => {
+    expect(gameHref("trip1", "gtt_stroke_play", "g1", { settings: true })).toBe(
+      "/trips/trip1/games/new?game=g1&settings=1"
+    );
+    expect(gameHref("trip1", "gtt_match_play_singles", "g1", { settings: true })).toBe(
+      "/trips/trip1/games/match/new?game=g1&settings=1"
+    );
+    expect(gameHref("trip1", "gtt_rack_n_stack", "g1", { settings: true })).toBe(
+      "/trips/trip1/games/rack/new?game=g1&settings=1"
+    );
+    expect(gameHref("trip1", "gtt_generic_card", "g1", { settings: true })).toBe(
+      `/trips/trip1/games/${MANUAL_ROUTE}?game=g1&settings=1`
+    );
+  });
+
+  it("omits the settings param when not requested (default = scoreboard target)", () => {
+    expect(gameHref("trip1", "gtt_stroke_play", "g1", { settings: false })).toBe(
+      "/trips/trip1/games/new?game=g1"
+    );
+    expect(gameHref("trip1", "gtt_stroke_play", "g1")).toBe("/trips/trip1/games/new?game=g1");
+  });
 });
 
 describe("isGolfFormat", () => {

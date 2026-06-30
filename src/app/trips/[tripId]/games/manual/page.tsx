@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -9,6 +9,7 @@ import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { GAME_TYPES, type ScoringModel } from "@/lib/gameTypes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
@@ -97,26 +98,12 @@ export default function ManualGamePage() {
   const enableScoring = trpc.games.enableScoring.useMutation();
   const disableScoring = trpc.games.disableScoring.useMutation();
 
-  // Settings is a browser-history-aware overlay (same pattern as the golf pages):
-  // opening it pushes a history entry so the in-page back arrow and the OS/mouse
-  // back are the SAME action and both return to this page.
-  const [showConfig, setShowConfig] = useState(false);
-  function openConfig() {
-    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
-    setShowConfig(true);
-  }
-  function closeConfig() {
-    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
-      window.history.back();
-    } else {
-      setShowConfig(false);
-    }
-  }
-  useEffect(() => {
-    const onPop = () => setShowConfig(false);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  // The ONE settings overlay — owns open/close/back + the leaderboard deep link
+  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
+  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+    canEdit,
+    deepLink: search.get("settings") === "1",
+  });
 
   async function refreshGame() {
     await gameQ.refetch();

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { TimePicker } from "@/components/TimePicker";
@@ -83,26 +84,12 @@ export default function RackNStackPage() {
   const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [showHandicaps, setShowHandicaps] = useState(false);
-  const [showConfig, setShowConfig] = useState(false); // the ONE settings page
-  // Settings is a browser-history-aware overlay: opening it pushes a history entry
-  // so the in-page back arrow and the OS/mouse back are the SAME action and both
-  // return to the game page (not past it to the leaderboard).
-  function openConfig() {
-    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
-    setShowConfig(true);
-  }
-  function closeConfig() {
-    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
-      window.history.back();
-    } else {
-      setShowConfig(false);
-    }
-  }
-  useEffect(() => {
-    const onPop = () => setShowConfig(false);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  // The ONE settings overlay — owns open/close/back + the leaderboard deep link
+  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
+  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+    canEdit,
+    deepLink: search.get("settings") === "1",
+  });
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
 

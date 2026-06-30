@@ -17,6 +17,7 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -75,30 +76,15 @@ export default function NewGamePage() {
   const [view, setView] = useState<"entry" | "grid" | "final">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
-  const [showConfig, setShowConfig] = useState(false); // the ONE settings page
+  // The ONE settings overlay — owns open/close/back + the leaderboard deep link
+  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
+  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+    canEdit,
+    deepLink: search.get("settings") === "1",
+  });
   const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
   const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
-
-  // Settings is a browser-history-aware overlay: opening it pushes a history entry
-  // so the in-page back arrow and the OS/mouse back are the SAME action and both
-  // return to the game page (not past it to the leaderboard).
-  function openConfig() {
-    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
-    setShowConfig(true);
-  }
-  function closeConfig() {
-    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
-      window.history.back();
-    } else {
-      setShowConfig(false);
-    }
-  }
-  useEffect(() => {
-    const onPop = () => setShowConfig(false);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
