@@ -427,38 +427,40 @@ export default function NewGamePage() {
   // ── The ONE settings page — reached via the corner gear in BOTH modes. The full
   // checklist (course/points/handicaps/modifiers) + the single Setup/Scoring toggle
   // + the Danger Zone, all here. ──
+  // Returned DIRECTLY (not in a `fixed inset-0` wrapper): it's a full-page view
+  // whose own `min-h-screen` root document-scrolls. A `fixed` wrapper pinned it to
+  // the viewport so tall content overflowed past the bottom unscrollably (the same
+  // class of bug reported on the non-golf settings page). Matches the rack page.
   if (game && showConfig && gameQ.data && canEdit) {
     return (
-      <div className="fixed inset-0 z-50">
-        <GameConfigurationView
-          subtitle="Stroke Play"
-          onBack={closeConfig}
-          tripId={tripId}
-          competitionId={gameCompetitionId}
-          game={gameQ.data as unknown as GameRow}
-          canEdit={canEdit}
-          isOwner={isOwner}
-          onChanged={() => void refreshGame()}
-          onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-          whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
-          // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
-          onEditWhosPlaying={() => setShowHandicaps(true)}
-          extraRows={
-            availableModifiers.length > 0 ? (
-              <ModifiersRow
-                count={enabledCount(modifiersDraft, availableModifiers)}
-                onClick={() => setShowModifiers(true)}
-                disabled={!settingsEditable}
-                locked={scoringEnabled}
-              />
-            ) : undefined
-          }
-          scoringEnabled={scoringEnabled}
-          onEnable={handleEnable}
-          onDisable={handleDisable}
-          busy={enableScoring.isPending || disableScoring.isPending}
-        />
-      </div>
+      <GameConfigurationView
+        subtitle="Stroke Play"
+        onBack={closeConfig}
+        tripId={tripId}
+        competitionId={gameCompetitionId}
+        game={gameQ.data as unknown as GameRow}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        onChanged={() => void refreshGame()}
+        onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+        whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
+        // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
+        onEditWhosPlaying={() => setShowHandicaps(true)}
+        extraRows={
+          availableModifiers.length > 0 ? (
+            <ModifiersRow
+              count={enabledCount(modifiersDraft, availableModifiers)}
+              onClick={() => setShowModifiers(true)}
+              disabled={!settingsEditable}
+              locked={scoringEnabled}
+            />
+          ) : undefined
+        }
+        scoringEnabled={scoringEnabled}
+        onEnable={handleEnable}
+        onDisable={handleDisable}
+        busy={enableScoring.isPending || disableScoring.isPending}
+      />
     );
   }
 

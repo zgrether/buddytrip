@@ -155,27 +155,30 @@ export default function ManualGamePage() {
   );
 
   // ── The ONE settings page — reached via the corner gear in BOTH modes. ──
+  // Returned DIRECTLY (not in a `fixed inset-0` wrapper): it's a full-page view,
+  // and its own `min-h-screen` root document-scrolls. Wrapping it in `fixed`
+  // pinned it to the viewport, so tall content (e.g. the points panel + danger
+  // zone) overflowed past the bottom with no way to scroll — the reported bug.
+  // This matches the rack page, which already renders the config view directly.
   if (showConfig && canEdit && competitionId) {
     return (
-      <div className="fixed inset-0 z-50">
-        <NonGolfConfigurationView
-          subtitle={typeName}
-          onBack={closeConfig}
-          tripId={tripId}
-          competitionId={competitionId}
-          game={game}
-          scoringModel={scoringModel}
-          canEdit={canEdit}
-          isOwner={isOwner}
-          onChanged={() => void refreshGame()}
-          onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
-          scoringEnabled={scoringEnabled}
-          ready={ready}
-          onEnable={handleEnable}
-          onDisable={handleDisable}
-          busy={enableScoring.isPending || disableScoring.isPending}
-        />
-      </div>
+      <NonGolfConfigurationView
+        subtitle={typeName}
+        onBack={closeConfig}
+        tripId={tripId}
+        competitionId={competitionId}
+        game={game}
+        scoringModel={scoringModel}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        onChanged={() => void refreshGame()}
+        onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
+        scoringEnabled={scoringEnabled}
+        ready={ready}
+        onEnable={handleEnable}
+        onDisable={handleDisable}
+        busy={enableScoring.isPending || disableScoring.isPending}
+      />
     );
   }
 
