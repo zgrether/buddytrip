@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Trash2, RotateCcw, Eraser } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Lock, Swords, Trash2, RotateCcw, Eraser, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
 
@@ -9,7 +9,8 @@ interface Competition {
   id: string;
   name: string;
   tagline: string | null;
-  status: "upcoming" | "active" | "completed";
+  /** Frozen at creation (the shape chooser). Shown read-only here. */
+  scoring_model?: "match_play" | "points";
 }
 
 interface Props {
@@ -22,14 +23,24 @@ interface Props {
 }
 
 /**
- * CompetitionSettings — competition META + danger zone. Reached from the header
- * gear. Two sections:
- *   1. Details   — name + tagline, inline-edited (was the header pencil modal)
- *   2. Danger    — reset / delete the competition (owner + pre-live)
+ * CompetitionSettings — competition META + danger zone, modeled on the
+ * game-settings page (the sibling pattern):
+ *   1. Scoring model — the frozen shape, a read-only row (never editable; the
+ *      shape is chosen at creation, delete-and-restart to change it).
+ *   2. Details       — name + tagline, AUTO-SAVED on blur (no Save button), the
+ *      always-editable "Rules"-tier exception even once scoring has started.
+ *   3. Danger        — reset / delete (owner). Always reachable: it's the
+ *      recovery hatch, so unlike the per-GAME danger zone (which unlocks by
+ *      toggling back to Setup) it is NEVER disabled — a scored competition with
+ *      no escape would strand the owner.
  *
- * Team management is NO LONGER here — it moved to the member-visible Rosters
- * overlay opened from the leaderboard header (W-TEAMSURFACE-01), where roster
- * editing is live + drag-based rather than form-and-save.
+ * Competition-level lock: once any game is scored (`competitionHasScore` via
+ * teamAssignments.rosterLocked) the STRUCTURAL settings freeze — the shape is
+ * already frozen, team structure locks in the Rosters surface — and a quiet
+ * explainer says so. Name/tagline (and the danger hatch) stay open.
+ *
+ * Team management is NOT here — it lives in the member-visible Rosters overlay
+ * opened from the board (W-TEAMSURFACE-01), where roster editing is live + drag.
  *
  * STANDARD PALETTE ONLY — no competition accent / tonal shift.
  */
@@ -40,15 +51,23 @@ export function CompetitionSettings({
   isOwner,
   onDeleted,
 }: Props) {
+  // Score-based lock — the SAME signal the Rosters surface uses, so the two
+  // can't disagree about whether the competition is "underway".
+  const { data: scored = false } = trpc.teamAssignments.rosterLocked.useQuery(
+    { tripId, competitionId: competition.id },
+    { enabled: !!competition.id }
+  );
+
   return (
     <div className="space-y-6">
+      {scored && <ScoringStartedNote />}
+
+      <ScoringModelSection model={competition.scoring_model ?? "match_play"} scored={scored} />
+
       <DetailsSection competition={competition} tripId={tripId} canEdit={canEdit} />
 
-      {/* Danger zone is the owner's reset/delete hatch — it must be reachable at
-          ALL times, not just pre-live. (Was gated to `status === "upcoming"`,
-          which stranded an active competition with no in-app reset/delete — the
-          live BBMI Cup hit exactly this.) Delete-and-restart is the supported
-          recovery path, so the owner always sees it. */}
+      {/* Danger zone is the owner's reset/delete hatch — reachable at all times
+          (Task 1). Delete-and-restart is the supported recovery path. */}
       {isOwner && (
         <DangerSection competition={competition} tripId={tripId} onDeleted={onDeleted} />
       )}
@@ -56,7 +75,74 @@ export function CompetitionSettings({
   );
 }
 
-// ── Details (name + tagline, inline) ─────────────────────────────────────────
+// ── Scoring-started explainer (top-of-page, mirrors the game lock banner) ─────
+
+function ScoringStartedNote() {
+  return (
+    <p
+      className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] leading-snug"
+      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+      data-testid="comp-scoring-started-note"
+    >
+      <Lock size={14} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }} />
+      <span>
+        Scoring has started — the competition shape and teams are locked. You can
+        still rename it, and the reset / delete hatches stay available below.
+      </span>
+    </p>
+  );
+}
+
+// ── Scoring model (frozen, read-only) ────────────────────────────────────────
+
+const MODEL_DISPLAY: Record<"match_play" | "points", { label: string; shape: string; icon: React.ReactNode }> = {
+  match_play: { label: "Match Play", shape: "Head-to-head", icon: <Swords size={16} /> },
+  points: { label: "Points", shape: "Teams", icon: <Users size={16} /> },
+};
+
+function ScoringModelSection({ model, scored }: { model: "match_play" | "points"; scored: boolean }) {
+  const cfg = MODEL_DISPLAY[model];
+  return (
+    <section className="space-y-3">
+      <SectionLabel>Scoring model</SectionLabel>
+      <div
+        className="rounded-xl p-4"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        data-testid="comp-scoring-model-row"
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+          >
+            {cfg.icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {cfg.label}
+            </p>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {cfg.shape}
+            </p>
+          </div>
+          {/* Frozen at creation — read-only. The lock icon makes that explicit
+              (and reads doubly-locked once scoring has started). */}
+          <Lock
+            size={14}
+            style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
+            aria-label={scored ? "Locked — scoring started" : "Set at creation"}
+          />
+        </div>
+        {/* Reserved for a future scoring-model explainer blurb (W-TYPE-01) — do
+            NOT fill this in yet; the space is held so the row can grow a one-line
+            description without a relayout, mirroring the game-type explainer
+            reservation on the game page. */}
+      </div>
+    </section>
+  );
+}
+
+// ── Details (name + tagline, auto-saved on blur) ─────────────────────────────
 
 function DetailsSection({
   competition,
@@ -71,6 +157,10 @@ function DetailsSection({
   const [name, setName] = useState(competition.name);
   const [tagline, setTagline] = useState(competition.tagline ?? "");
   const [error, setError] = useState<string | null>(null);
+  // Transient "Saved" flash after a successful auto-save.
+  const [savedAt, setSavedAt] = useState(0);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
   const updateComp = trpc.competitions.update.useMutation({
     onMutate: async (vars) => {
@@ -87,7 +177,12 @@ function DetailsSection({
     },
     onError: (e, _vars, ctx) => {
       if (ctx?.previous) utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
-      setError(e.message ?? "Failed to update competition");
+      setError(e.message ?? "Failed to save");
+    },
+    onSuccess: () => {
+      setSavedAt(Date.now());
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSavedAt(0), 1600);
     },
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
@@ -97,13 +192,35 @@ function DetailsSection({
     },
   });
 
-  const trimmedName = name.trim();
-  const dirty = trimmedName !== competition.name || tagline.trim() !== (competition.tagline ?? "");
-  const disabled = !canEdit || updateComp.isPending || trimmedName.length < 2 || !dirty;
+  // Auto-save on blur (the game-settings pattern — no Save button). Name needs
+  // ≥2 chars; an invalid/empty name reverts to the last saved value rather than
+  // persisting junk.
+  const commitName = () => {
+    if (!canEdit) return;
+    const trimmed = name.trim();
+    if (trimmed.length < 2) {
+      setName(competition.name);
+      setError(null);
+      return;
+    }
+    if (trimmed === competition.name) return;
+    setError(null);
+    updateComp.mutate({ tripId, competitionId: competition.id, name: trimmed });
+  };
+  const commitTagline = () => {
+    if (!canEdit) return;
+    const trimmed = tagline.trim();
+    if (trimmed === (competition.tagline ?? "")) return;
+    setError(null);
+    updateComp.mutate({ tripId, competitionId: competition.id, tagline: trimmed || null });
+  };
 
   return (
     <section className="space-y-3">
-      <SectionLabel>Competition details</SectionLabel>
+      <div className="flex items-baseline justify-between px-1">
+        <SectionLabel>Competition details</SectionLabel>
+        <SaveStatus pending={updateComp.isPending} savedAt={savedAt} />
+      </div>
       <div
         className="space-y-4 rounded-xl p-4"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
@@ -115,6 +232,7 @@ function DetailsSection({
           <input
             value={name}
             onChange={(e) => { setName(e.target.value); if (error) setError(null); }}
+            onBlur={commitName}
             readOnly={!canEdit}
             placeholder="e.g. BBMI 2026, The Yert Open"
             maxLength={200}
@@ -131,6 +249,7 @@ function DetailsSection({
           <input
             value={tagline}
             onChange={(e) => { setTagline(e.target.value); if (error) setError(null); }}
+            onBlur={commitTagline}
             readOnly={!canEdit}
             placeholder="e.g. May the best team win"
             maxLength={500}
@@ -141,32 +260,22 @@ function DetailsSection({
         </div>
 
         {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
-
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() =>
-              updateComp.mutate({
-                tripId,
-                competitionId: competition.id,
-                name: trimmedName,
-                tagline: tagline.trim() || null,
-              })
-            }
-            disabled={disabled}
-            className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            data-testid="comp-settings-save"
-          >
-            {updateComp.isPending ? "Saving…" : "Save changes"}
-          </button>
-        )}
       </div>
     </section>
   );
 }
 
-// ── Danger zone (delete) ─────────────────────────────────────────────────────
+function SaveStatus({ pending, savedAt }: { pending: boolean; savedAt: number }) {
+  if (pending) {
+    return <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="comp-save-status">Saving…</span>;
+  }
+  if (savedAt > 0) {
+    return <span className="text-[11px]" style={{ color: "var(--color-bt-accent)" }} data-testid="comp-save-status">Saved</span>;
+  }
+  return null;
+}
+
+// ── Danger zone (reset / delete) ─────────────────────────────────────────────
 
 /** Which danger-zone confirm is open. The escalating ladder, mildest → severest:
  *  reset scoring → reset to skeleton → delete. */
@@ -217,6 +326,9 @@ function DangerSection({
     utils.scores.listByGame.invalidate();
     utils.matches.listByGame.invalidate();
     utils.playGroups.listByGame.invalidate();
+    // The reset clears scores → the roster lock releases; refresh that signal so
+    // the settings + Rosters surfaces unlock without a hard reload.
+    utils.teamAssignments.rosterLocked.invalidate({ tripId, competitionId: competition.id });
   }
 
   const resetScoring = trpc.competitions.resetScoring.useMutation({
@@ -231,7 +343,7 @@ function DangerSection({
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
       // The face renders from the faceBootstrap snapshot — re-resolve so it
-      // returns to the empty/intro state without a hard refresh (#10).
+      // returns to the empty/create state without a hard refresh (#10).
       utils.competitions.faceBootstrap.invalidate({ tripId });
     },
     onSuccess: () => { setConfirm(null); onDeleted?.(); },
@@ -243,11 +355,9 @@ function DangerSection({
   return (
     <section className="space-y-3">
       <SectionLabel danger>Danger zone</SectionLabel>
-      <div
-        className="space-y-3 rounded-xl p-4"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        {/* The escalating ladder: clear scores → strip setup → delete. */}
+      <div className="space-y-2.5">
+        {/* The escalating ladder: clear scores → strip setup → delete. Always
+            available — the recovery hatch is never locked (see component note). */}
         <DangerRow
           icon={<RotateCcw size={14} />}
           tone="warning"
@@ -268,7 +378,7 @@ function DangerSection({
           icon={<Trash2 size={14} />}
           tone="danger"
           label="Delete competition"
-          blurb="Removes the competition and everything in it — teams, rosters, and games. This can't be undone."
+          blurb="Removes the competition, its teams, and rosters. Games detach to the trip (their scores are kept). This can't be undone."
           onClick={() => open("delete")}
           testId="competition-delete-btn"
         />
@@ -308,7 +418,7 @@ function DangerSection({
           tone="danger"
           icon={<Trash2 size={18} />}
           title={`Delete “${competition.name}”?`}
-          body={`This will delete all teams, events, and groups${describeCascade(teamsCount, gamesCount)}. This cannot be undone.`}
+          body={`This removes the competition, its teams, and rosters${describeRemoved(teamsCount)}.${describeDetach(gamesCount)} This cannot be undone.`}
           confirmLabel="Delete Competition"
           pendingLabel="Deleting…"
           isPending={deleteComp.isPending}
@@ -321,10 +431,15 @@ function DangerSection({
   );
 }
 
-function describeCascade(teamAssignments: number, games: number): string {
-  const parts: string[] = [];
-  if (teamAssignments > 0) parts.push(`${teamAssignments} assignment${teamAssignments === 1 ? "" : "s"}`);
-  if (games > 0) parts.push(`${games} game${games === 1 ? "" : "s"}`);
-  if (parts.length === 0) return "";
-  return ` (${parts.join(" and ")})`;
+/** The removed cascade: team rosters (assignments). Games are NOT removed — they
+ *  detach (ON DELETE SET NULL, migration 056), so they're described separately. */
+function describeRemoved(assignments: number): string {
+  if (assignments <= 0) return "";
+  return ` (${assignments} assignment${assignments === 1 ? "" : "s"})`;
+}
+
+/** Games detach to standalone trip games (scores preserved), they are not deleted. */
+function describeDetach(games: number): string {
+  if (games <= 0) return "";
+  return ` Its ${games} game${games === 1 ? "" : "s"} detach to the trip (scores kept).`;
 }
