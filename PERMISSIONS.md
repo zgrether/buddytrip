@@ -140,13 +140,16 @@ who's in, what they're called, what role they hold — is the Owner's.
 | View competition / teams / events / leaderboard | ✓ | ✓ | ✓ | `*.list` / `getByTrip` |
 | Create / edit competition | ✓ | ✓ | — | `competitions.create` / `update` |
 | Delete competition | ✓ | — | — | `competitions.delete` *(Owner)* |
-| Create / edit teams | ✓ | ✓ | — | `teams.create` / `update` |
+| Create a team | ✓ | ✓ | — | `teams.create` *(co-admin)* |
+| **Edit team identity** (name / short / color) | ✓ | **—** | **captain of *that* team** | `teams.update` *(Owner or that team's captain — **not** a plain Organizer; mig 065)* |
 | Delete a team | ✓ | — | — | `teams.delete` *(Owner)* |
 | Create / edit / reorder / delete events | ✓ | ✓ | — | `events.*` |
 | Link event ↔ agenda item | ✓ | ✓ | — | `events.linkToAgendaItem` |
 | Set point distributions / placements (scoring) | ✓ | ✓ | — | `events.setPointDistributions` / `setPlacements` |
 | Assign member to a team | ✓ | ✓ | — | `teamAssignments.assign` |
 | Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
+| Reorder a team's roster (canonical order) | ✓ | — | — | `teamAssignments.reorder` *(Owner)* |
+| Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
 | **Edit / configure a game** (status incl. drop, points distribution, course, participants) | ✓ | ✓ | **game organizer of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
 | **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **game organizer of *that* game** | `games.setManualResults` / `finish` |
 | **RUN: post results / open score correction** | ✓ | **—** | **game organizer of *that* game** | `games.post` / `openCorrection` *(Owner or game-delegate only — **not** a plain Organizer)* |
@@ -165,6 +168,20 @@ who's in, what they're called, what role they hold — is the Owner's.
 > controls with an explanation (the add path stays live). Leaderboard standings are
 > never gated — they stay visible to all roles. Mid-competition trades are parked in
 > DEFERRED (durable per-score attribution); this lock is the BBMI-safe stance.
+
+> **Team captain — an IDENTITY tier, not a roster grant (mig 064/065).** A team's
+> captain (one per team, `team_assignments.is_captain`, even a plain trip Member)
+> may edit **only their own team's IDENTITY** — name, short name, color
+> (`teams.update`, admitted at both tRPC `requireTeamIdentityEdit` and the `teams`
+> UPDATE RLS). This deliberately **drops Organizer** from identity editing and
+> adds the captain. **Roster/structure stays OWNER-ONLY** — add/remove
+> (`teamAssignments.assign`/`remove`), reorder (`reorder`), and appointing the
+> captain itself (`setCaptain`) are not granted to a captain (a captain can't
+> sub-appoint). Captain-led roster management is parked for the future
+> captain's-draft feature. The client mirrors this exactly: `useCanEditTeam`
+> resolves identity edit = Owner OR this-team's-captain; roster controls gate on
+> `isOwner`. The consolidated Edit Team modal surfaces all three tiers — owner
+> (full), captain (identity editable, roster read-only), member (read-only).
 
 > **Per-game organizer delegation (Slice D1 §8).** Game edit/configure/enter-results
 > resolves to **`canEdit || isGameOrganizer(gameId)`** — trip Owner/Organizer, OR a
