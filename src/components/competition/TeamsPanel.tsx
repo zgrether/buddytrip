@@ -19,6 +19,7 @@ import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
+import { DragHandle } from "@/components/games/DragHandle";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 
 interface Props {
@@ -1632,15 +1633,45 @@ function TeamSheetRoster({
     return members.filter((m) => !assignedIds.has(m.user_id ?? m.memberId));
   }, [members, assignments]);
 
-  const [dragId, setDragId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // Drag-to-reorder — mirrors the match-assignments panel: the GRIP arms the row
+  // (so the buttons inside stay tappable), an accent insertion LINE shows where it
+  // will land (`ins` = the 0..length slot), and drop persists via reorder. The ↑↓
+  // buttons stay as the touch fallback (HTML5 drag doesn't fire on touch).
+  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
+  const [armedIdx, setArmedIdx] = useState<number | null>(null);
+
+  function persistOrder(next: string[]) {
+    if (next.every((id, i) => id === orderedIds[i])) return; // no-op
+    reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
+  }
+  // ↑↓ buttons: move one slot.
   function moveTo(userId: string, toIndex: number) {
     if (toIndex < 0 || toIndex >= orderedIds.length) return;
     const without = orderedIds.filter((x) => x !== userId);
     without.splice(toIndex, 0, userId);
-    if (without.every((id, i) => id === orderedIds[i])) return; // no-op
-    reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: without });
+    persistOrder(without);
+  }
+  // Drag: insert the dragged row at slot `ins` (0..length), accounting for the
+  // removal shift — identical to the match panel's reorderTo.
+  function reorderTo(from: number, ins: number) {
+    if (from < 0 || from >= orderedIds.length) return;
+    if (ins === from || ins === from + 1) return; // own slot — no-op
+    const copy = orderedIds.slice();
+    const [moved] = copy.splice(from, 1);
+    const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
+    copy.splice(target, 0, moved);
+    persistOrder(copy);
+  }
+  function onCardDragOver(i: number, clientY: number, rect: DOMRect) {
+    setDragState((s) => {
+      if (!s) return s;
+      const isTop = clientY < rect.top + rect.height / 2;
+      let ins: number | null = isTop ? i : i + 1;
+      if (ins === s.from || ins === s.from + 1) ins = null; // adjacent = no-op, hide line
+      return s.ins === ins ? s : { ...s, ins };
+    });
   }
 
   return (
@@ -1697,15 +1728,29 @@ function TeamSheetRoster({
                 }
                 removeAriaLabel={`Remove ${name} from ${team.name}`}
                 captainAriaLabel={a.is_captain ? `Remove ${name} as captain` : `Make ${name} captain`}
-                onDragStart={canManage ? () => setDragId(a.user_id) : undefined}
+                armed={armedIdx === i}
+                dragging={dragState?.from === i}
+                dropIndicator={
+                  dragState?.ins === i
+                    ? "top"
+                    : i === orderedIds.length - 1 && dragState?.ins === orderedIds.length
+                      ? "bottom"
+                      : null
+                }
+                onArm={canManage ? () => setArmedIdx(i) : undefined}
+                onDisarm={canManage ? () => setArmedIdx(null) : undefined}
+                onDragStartRow={canManage ? () => setDragState({ from: i, ins: null }) : undefined}
+                onDragOverRow={canManage ? (y, rect) => onCardDragOver(i, y, rect) : undefined}
                 onDropRow={
                   canManage
                     ? () => {
-                        if (dragId) moveTo(dragId, i);
-                        setDragId(null);
+                        if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
+                        setDragState(null);
+                        setArmedIdx(null);
                       }
                     : undefined
                 }
+                onDragEndRow={canManage ? () => { setDragState(null); setArmedIdx(null); } : undefined}
               />
             );
           })}
@@ -1780,8 +1825,15 @@ function RosterRow({
   onToggleCaptain,
   removeAriaLabel,
   captainAriaLabel,
-  onDragStart,
+  armed = false,
+  dragging = false,
+  dropIndicator = null,
+  onArm,
+  onDisarm,
+  onDragStartRow,
+  onDragOverRow,
   onDropRow,
+  onDragEndRow,
 }: {
   name: string;
   avatarIcon: string | null;
@@ -1797,21 +1849,37 @@ function RosterRow({
   onToggleCaptain: () => void;
   removeAriaLabel: string;
   captainAriaLabel: string;
-  onDragStart?: () => void;
+  /** Drag-to-reorder (owner) — mirrors the match-assignments panel. */
+  armed?: boolean;
+  dragging?: boolean;
+  dropIndicator?: "top" | "bottom" | null;
+  onArm?: () => void;
+  onDisarm?: () => void;
+  onDragStartRow?: () => void;
+  onDragOverRow?: (clientY: number, rect: DOMRect) => void;
   onDropRow?: () => void;
+  onDragEndRow?: () => void;
 }) {
   return (
     <div
-      draggable={canManage && !!onDragStart}
+      // Draggable only while the grip arms it (so the ★/↑↓/× stay tappable).
+      draggable={armed}
       onDragStart={
-        onDragStart
+        onDragStartRow
           ? (e) => {
               e.dataTransfer.effectAllowed = "move";
-              onDragStart();
+              onDragStartRow();
             }
           : undefined
       }
-      onDragOver={onDropRow ? (e) => e.preventDefault() : undefined}
+      onDragOver={
+        onDragOverRow
+          ? (e) => {
+              e.preventDefault();
+              onDragOverRow(e.clientY, e.currentTarget.getBoundingClientRect());
+            }
+          : undefined
+      }
       onDrop={
         onDropRow
           ? (e) => {
@@ -1820,17 +1888,39 @@ function RosterRow({
             }
           : undefined
       }
-      className="flex items-center gap-2 rounded-lg px-2.5 py-2"
-      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+      onDragEnd={onDragEndRow}
+      className="relative flex items-center gap-2 rounded-lg px-2.5 py-2"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
+        opacity: dragging ? 0.4 : 1,
+      }}
     >
-      {/* Grip — the desktop drag handle. ALWAYS visible (was lg-gated, which made
-          it vanish below 1024px even though the fixed-width modal never resizes). */}
+      {/* Insertion line — the landing zone, shown once the cursor crosses a
+          neighbour's midpoint (mirrors the match-assignments panel). */}
+      {dropIndicator && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 2,
+            right: 2,
+            [dropIndicator === "top" ? "top" : "bottom"]: -3,
+            height: 2,
+            borderRadius: 2,
+            background: "var(--color-bt-accent)",
+            boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {/* Grip — arms the drag (the row becomes draggable only while held), so the
+          row buttons stay tappable. Always visible. */}
       {canManage && (
-        <GripVertical
-          size={14}
-          className="flex-shrink-0 cursor-grab"
-          style={{ color: "var(--color-bt-text-dim)" }}
-          aria-hidden
+        <DragHandle
+          onMouseDown={onArm}
+          onMouseUp={onDisarm}
+          className="h-7 w-4 flex-shrink-0"
         />
       )}
       {/* Row index — quiet table-number column, like the match pickers. */}
