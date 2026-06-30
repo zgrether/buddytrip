@@ -46,7 +46,7 @@ export interface GameRow {
   competition_id: string | null;
   game_type_id: string | null;
   name: string | null;
-  status: "pending" | "active" | "complete" | "dropped";
+  status: "pending" | "active" | "complete";
   points_distribution: PointsDistribution | null;
   points_total: number | null;
   competition_format: string | null;

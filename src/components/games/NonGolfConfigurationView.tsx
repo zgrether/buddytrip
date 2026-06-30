@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
@@ -99,15 +99,16 @@ export function NonGolfConfigurationView({
 
         {/* Competition format — relocated here as its real home, near the top
             (it drives future matchup/bracket dev). Locked in scoring mode. */}
-        <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
+        <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} locked={scoringEnabled} onChanged={onChanged} />
 
-        {/* The points payload, by the competition's scoring model. Locked in scoring. */}
+        {/* The points payload, by the competition's scoring model. Locked in scoring —
+            #512 Option B: dim the read-only panel so it reads as frozen. */}
         {scoringModel === "match_play" ? (
-          <div className="mt-2">
+          <div className="mt-2" style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
             <MatchValueStepper tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
           </div>
         ) : (
-          <div className="mt-2">
+          <div className="mt-2" style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
             <FormatPointsPanel tripId={tripId} game={game} canEdit={settingsEditable} />
           </div>
         )}
@@ -129,14 +130,13 @@ export function NonGolfConfigurationView({
           </div>
         )}
 
-        {/* Per-game danger zone — owner-only (reset / abandon / delete). Disabled
-            wholesale in scoring mode (#501) — switch to Setup to manage the game. */}
+        {/* Per-game danger zone — owner-only (reset scores / reset settings / delete).
+            Disabled wholesale in scoring mode (#501) — switch to Setup to manage it. */}
         {isOwner && (
           <GameDangerZone
             tripId={tripId}
             gameId={game.id}
             competitionId={competitionId}
-            status={game.status as string | null | undefined}
             onChanged={onChanged}
             onDeleted={onDeleted}
             disabled={scoringEnabled}
@@ -151,9 +151,9 @@ export function NonGolfConfigurationView({
  *  modal). Opens the shared `FormatSheet`; persists via `games.update`, optimistic
  *  on the `getById` cache, then re-seeds the Live face (faceBootstrap, #10). */
 function CompetitionFormatRow({
-  tripId, game, canEdit, onChanged,
+  tripId, game, canEdit, locked, onChanged,
 }: {
-  tripId: string; game: GameRow; canEdit: boolean; onChanged: () => void;
+  tripId: string; game: GameRow; canEdit: boolean; locked?: boolean; onChanged: () => void;
 }) {
   const utils = trpc.useUtils();
   const update = trpc.games.update.useMutation();
@@ -180,8 +180,9 @@ function CompetitionFormatRow({
         type="button"
         onClick={() => canEdit && setOpen(true)}
         disabled={!canEdit}
+        // #512 Option B: live-locked → dim + a lock icon in place of the chevron.
         className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: locked ? 0.55 : undefined }}
         data-testid="row-competition-format"
       >
         <div className="flex min-w-0 flex-col">
@@ -192,7 +193,9 @@ function CompetitionFormatRow({
             {label ?? "Choose how it’s played"}
           </span>
         </div>
-        <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        {locked
+          ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+          : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
       </button>
       {open && (
         <FormatSheet current={game.competition_format} onPick={pick} onClose={() => setOpen(false)} />

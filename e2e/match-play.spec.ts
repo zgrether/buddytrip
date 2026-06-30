@@ -196,13 +196,19 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   test.setTimeout(60_000);
   await driveToSetupWithHandicap(page);
 
-  // Switch to Scoring → the overview (A2-ux: the Game-Play toggle's Scoring segment
-  // replaced the bottom Enable button). Gate on it being ENABLED — under the T2 hard
-  // block that's the signal EVERY match is fully paired (the single match here), so
-  // the click can't race an incomplete pairing.
+  // Switch to Scoring (A2-ux: the Game-Play toggle's Scoring segment replaced the
+  // bottom Enable button). Gate on it being ENABLED — under the T2 hard block that's
+  // the signal EVERY match is fully paired (the single match here), so the click
+  // can't race an incomplete pairing.
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 10_000 });
   await scoringSeg.click();
+
+  // #512 correction: enabling now flips the toggle IN PLACE (no auto-navigate) — the
+  // "This game is live" lock banner appearing is the "now live" signal. The settings
+  // back arrow then returns to the game page, which is now in scoring mode → overview.
+  await expect(page.getByTestId("scoring-lock-banner")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Back" }).click();
 
   // 4. Open the single match (the strip card button) → the per-hole entry view.
   const matchCard = page.getByRole("button", { name: /Match 1.*MP Owner/ });

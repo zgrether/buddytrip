@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -198,7 +198,9 @@ export default function NewGamePage() {
     try {
       await enableScoring.mutateAsync({ tripId, gameId: activeGameId });
       await refreshGame();
-      closeConfig(); // leave settings for the live board (consumes the history entry)
+      // #512 correction: STAY on the settings page — the toggle flips in place (the
+      // now-live banner + locked panels render here). The back arrow still returns to
+      // the game page via the openConfig history entry; no closeConfig() here.
     } catch {
       // surfaced via the global error toast
     }
@@ -461,6 +463,7 @@ export default function NewGamePage() {
                 count={enabledCount(modifiersDraft, availableModifiers)}
                 onClick={() => setShowModifiers(true)}
                 disabled={!settingsEditable}
+                locked={scoringEnabled}
               />
             ) : undefined
           }
@@ -587,14 +590,15 @@ export default function NewGamePage() {
  *  was missing; the match page had it). Mirrors HandicapsRow's style; opens the
  *  full-screen ModifierCards overlay. Shown only when the format offers modifiers
  *  (stroke → moving_tees / glorious_holes; a format with none hides the row). */
-function ModifiersRow({ count, onClick, disabled }: { count: number; onClick: () => void; disabled?: boolean }) {
+function ModifiersRow({ count, onClick, disabled, locked }: { count: number; onClick: () => void; disabled?: boolean; locked?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      // #512 Option B: live-locked → dim + a lock icon in place of the chevron.
       className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: locked ? 0.55 : undefined }}
     >
       <div className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -604,7 +608,9 @@ function ModifiersRow({ count, onClick, disabled }: { count: number; onClick: ()
           {count > 0 ? `${count} modifier${count === 1 ? "" : "s"} added` : "Add special rules"}
         </span>
       </div>
-      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+      {locked
+        ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
     </button>
   );
 }

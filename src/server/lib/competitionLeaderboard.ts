@@ -27,9 +27,7 @@ function matchFormat(gameTypeId: string | null): MatchFormat {
  *    SYNTHETIC distribution (sorted actual points) so rollUp's placementPoints
  *    passes the values through directly (direction high_wins).
  *
- * `dropped` games are excluded from the roll-up — which is why
- * dropping/restoring a game recomputes the win number (§4): it is derived here,
- * never stored.
+ * The win number is DERIVED here from the competition's games, never stored.
  */
 export async function computeCompetitionLeaderboard(
   supabase: SupabaseClient,
@@ -48,8 +46,7 @@ export async function computeCompetitionLeaderboard(
       .select("defending_team_id, scoring_model")
       .eq("id", competitionId)
       .maybeSingle(),
-    // Games of this competition. We fetch ALL (incl. dropped) so the grid can
-    // show an "Abandoned" column, but only LIVE ones feed the roll-up.
+    // Games of this competition — all feed the roll-up.
     supabase
       .from("games")
       .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled")
@@ -73,7 +70,6 @@ export async function computeCompetitionLeaderboard(
   // Only manual games get the match-play winner-take-all award; golf untouched.
   const isManualType = (typeId: string | null) => isManualGameType(typeId);
   const allGames = gameRowsRes.data ?? [];
-  const live = allGames.filter((g) => g.status !== "dropped");
   const sizeByTeam = new Map<string, number>();
   for (const a of assignmentsRes.data ?? []) {
     const tid = a.team_id as string;
@@ -81,7 +77,7 @@ export async function computeCompetitionLeaderboard(
   }
   const teamSizes = teamIds.map((id) => sizeByTeam.get(id) ?? 0);
 
-  const gameIds = live.map((g) => g.id as string);
+  const gameIds = allGames.map((g) => g.id as string);
   // game_results (awarded) + the per-game match COUNT (available) + the per-game
   // participant COUNT (the stroke/rack readiness gate). All depend on the live
   // game ids; run them together.
@@ -135,7 +131,7 @@ export async function computeCompetitionLeaderboard(
     standingsByGame.set(r.game_id as string, arr);
   }
 
-  const liveGames: LiveGame[] = live.map((g) => {
+  const liveGames: LiveGame[] = allGames.map((g) => {
     const rawDist = g.points_distribution as PointsDistribution | null;
     const standings = standingsByGame.get(g.id as string) ?? [];
 
@@ -250,7 +246,6 @@ export async function computeCompetitionLeaderboard(
         name: (g.name as string | null) ?? "Game",
         distribution: isPlacement(rawDist) ? rawDist.values : null,
         status: g.status as string,
-        dropped: g.status === "dropped",
         gameTypeId: typeId,
         // "ready to score" = points are configured (a distribution shape or an
         // owner-set total). Kept for the games-panel/test consumers.
@@ -273,8 +268,7 @@ export async function computeCompetitionLeaderboard(
         // color reads (§A4), replacing the Phase-3 derived stub.
         scoringEnabled: g.scoring_enabled === true,
         // Points in play (§A5 outer column). Match-play games carry it here even
-        // though `distribution` is null pre-decision; dropped games (not in the
-        // roll-up) get null and the row never renders them anyway.
+        // though `distribution` is null pre-decision.
         pointsTotal: ptsInPlayByGame.get(gid) ?? null,
       };
     }),

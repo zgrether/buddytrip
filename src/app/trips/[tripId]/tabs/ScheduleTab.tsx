@@ -534,7 +534,7 @@ export function ScheduleTab({
     { enabled: !!competition?.id }
   );
   const compGames = (allGames as GameRow[]).filter(
-    (g) => g.competition_id === competition?.id && g.status !== "dropped"
+    (g) => g.competition_id === competition?.id
   );
   // On Deck shows only games not yet linked to an agenda item.
   const unlinkedCompGames = compGames.filter((g) => !g.schedule_item_id);

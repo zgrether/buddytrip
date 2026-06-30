@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
 /**
@@ -10,7 +11,10 @@ import { ScrollLock } from "@/hooks/useScrollLock";
  * delete) render the SAME escalating shape, one level apart.
  *
  *  - SectionLabel        — the uppercase danger-zone heading.
- *  - DangerRow           — one action: a cost blurb + a tone-colored button.
+ *  - DangerRow           — one action, in the TRIP danger-zone pattern (#512): an
+ *                          icon-square + label + one-line description + chevron that
+ *                          opens a focused confirm. The row→confirm friction IS the
+ *                          point (destructive = deliberate).
  *  - DangerConfirmModal  — the cost-naming confirm (warning = reversible-but-heavy;
  *                          danger = gone).
  *
@@ -28,8 +32,10 @@ export function SectionLabel({ children, danger }: { children: React.ReactNode; 
   );
 }
 
-/** One danger-zone action: a labelled button with a one-line cost blurb above it.
- *  `tone` colors the text/icon (warning = reversible-but-heavy; danger = gone). */
+/** One danger-zone action in the TRIP danger-zone pattern (#512): a row of
+ *  [icon-square · label + one-line description · chevron] that opens a focused
+ *  confirm. `tone` colors the icon-square + label (warning = reversible-but-heavy;
+ *  danger = gone). The chevron signals "leads to a confirm", matching trip settings. */
 export function DangerRow({
   icon, tone, label, blurb, onClick, testId, disabled,
 }: {
@@ -42,23 +48,32 @@ export function DangerRow({
   disabled?: boolean;
 }) {
   const color = tone === "danger" ? "var(--color-bt-danger)" : "var(--color-bt-warning)";
+  const faint = tone === "danger" ? "var(--color-bt-danger-faint)" : "var(--color-bt-warning-faint)";
   return (
-    <div>
-      <p className="mb-1.5 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        {blurb}
-      </p>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
-        style={{ background: "transparent", color, border: "1px solid var(--color-bt-border)" }}
-        data-testid={testId}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3 rounded-[11px] px-3 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-50 disabled:hover:bg-transparent"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      data-testid={testId}
+    >
+      <span
+        className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[9px]"
+        style={{ background: faint, color }}
       >
         {icon}
-        {label}
-      </button>
-    </div>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold" style={{ color }}>
+          {label}
+        </span>
+        <span className="mt-0.5 block text-xs leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          {blurb}
+        </span>
+      </span>
+      <ChevronRight size={17} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+    </button>
   );
 }
 

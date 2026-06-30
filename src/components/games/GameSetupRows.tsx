@@ -38,6 +38,7 @@ export function GameSetupRows({
   slot = "both",
   matchCount,
   configLocked = false,
+  locked = false,
   courseOpen: courseOpenProp,
   configOpen: configOpenProp,
   onOpenCourse,
@@ -63,6 +64,10 @@ export function GameSetupRows({
    *  — points mean nothing before a match). Locked = read-only, no chevron, same as
    *  a gated Handicaps row. Default false (unlocked). */
   configLocked?: boolean;
+  /** #512 Option B: the live-scoring lock — render these rows dimmed + lock-icon
+   *  (read-only because the game is live). Distinct from `configLocked` (the readiness
+   *  gate that holds Points until a match exists). Default false. */
+  locked?: boolean;
   /** Page-owned one-open state (controlled). Omit → self-managed (uncontrolled). */
   courseOpen?: boolean;
   configOpen?: boolean;
@@ -128,6 +133,7 @@ export function GameSetupRows({
           subtitle={courseResolved ? "Handicaps enabled" : "Handicaps disabled"}
           state={courseResolved ? "resolved" : "empty"}
           disabled={!canEdit}
+          locked={locked}
           expanded={courseOpen}
           onToggle={courseOpen ? closeEditor : openCourse}
           testId="row-course"
@@ -158,6 +164,7 @@ export function GameSetupRows({
             // points term satisfied (they can't disagree).
             state={pointsReady(perMatch) ? "resolved" : "empty"}
             disabled={!canEdit}
+            locked={locked}
             testId="row-format-points"
             control={
               <PointsPerMatchControl
@@ -185,6 +192,7 @@ export function GameSetupRows({
             }
             state={perMatch > 0 ? "resolved" : "empty"}
             disabled={!canEdit}
+            locked={locked}
             expanded={configOpen}
             onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
             testId="row-format-points"

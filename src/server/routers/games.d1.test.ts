@@ -113,30 +113,6 @@ describe("manual adapter → universal roll-up (§5)", () => {
   });
 });
 
-describe("dropping recomputes the win number (§4/§6)", () => {
-  it("dropping a game lowers points-available + win number; restoring raises them", async () => {
-    const comp3 = await ctx.createCompetition(tripId, "Drop Comp", { scoringModel: "points" });
-    await ctx.createTeam(comp3, "A");
-    await ctx.createTeam(comp3, "B");
-    const g1 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G1", competitionId: comp3, pointsDistribution: DIST_96 })) as { id: string };
-    const g2 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G2", competitionId: comp3, pointsDistribution: DIST_96 })) as { id: string };
-    gameIds.push(g1.id, g2.id);
-
-    let lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp3 });
-    expect(lb.pointsAvailable).toBe(30);
-    expect(lb.winNumber).toBe(15.5);
-
-    await ctx.caller().games.setStatus({ tripId, gameId: g2.id, status: "dropped" });
-    lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp3 });
-    expect(lb.pointsAvailable).toBe(15); // dropped game excluded
-    expect(lb.winNumber).toBe(8); // the win number MOVED
-
-    await ctx.caller().games.setStatus({ tripId, gameId: g2.id, status: "pending" });
-    lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp3 });
-    expect(lb.pointsAvailable).toBe(30); // restored
-  });
-});
-
 describe("per-game organizer delegation (§8)", () => {
   it("a delegated organizer can edit THEIR game but not another; non-members blocked", async () => {
     const mine = await newGame(DIST_96, "Pickem-BJ");

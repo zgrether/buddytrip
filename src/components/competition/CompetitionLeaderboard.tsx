@@ -20,7 +20,6 @@ export interface LBGame {
   name: string;
   distribution: number[] | null;
   status: string;
-  dropped: boolean;
   gameTypeId: string | null;
   /** Points configured (scoring-ready). Kept for the games-panel/test consumers. */
   ready?: boolean;
@@ -126,7 +125,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, canEdit = false,
   }, [me, assignments, data?.teams]);
 
   const liveGames = useMemo(
-    () => (data?.games ?? []).filter((g) => !g.dropped),
+    () => data?.games ?? [],
     [data]
   );
 

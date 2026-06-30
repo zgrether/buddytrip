@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
@@ -106,6 +106,7 @@ export function GameConfigurationView({
           competitionId={competitionId}
           game={game}
           canEdit={settingsEditable}
+          locked={scoringEnabled}
           onChanged={onChanged}
         />
         {onEditWhosPlaying && (
@@ -113,8 +114,9 @@ export function GameConfigurationView({
             type="button"
             onClick={onEditWhosPlaying}
             disabled={!settingsEditable}
+            // #512 Option B: when live-locked, dim + swap the chevron for a lock icon.
             className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: scoringEnabled ? 0.55 : undefined }}
           >
             <div className="flex min-w-0 flex-col">
               <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -122,7 +124,9 @@ export function GameConfigurationView({
               </span>
               <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
             </div>
-            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+            {scoringEnabled
+              ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+              : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
           </button>
         )}
 
@@ -154,7 +158,6 @@ export function GameConfigurationView({
             tripId={tripId}
             gameId={game.id}
             competitionId={competitionId}
-            status={game.status as string | null | undefined}
             onChanged={onChanged}
             onDeleted={onDeleted}
             disabled={scoringEnabled}
