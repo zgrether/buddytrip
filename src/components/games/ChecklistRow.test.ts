@@ -30,10 +30,13 @@ describe("checklistRowVisuals", () => {
     expect(v.badge).toBe("x");
   });
 
-  it("open (editing) → raised surface, solid border, NO badge regardless of state", () => {
+  it("open (editing) → card surface (continuous with collapsed-resolved), solid border, NO badge", () => {
     expect(checklistRowVisuals("resolved", true).badge).toBeNull();
     expect(checklistRowVisuals("invalid", true).badge).toBeNull();
-    expect(checklistRowVisuals("empty", true).surface).toBe("var(--color-bt-card-raised)");
+    // The panel is ONE continuous surface open or closed — open shares the
+    // resolved card surface (no card-raised jump that read flat/base-like).
+    expect(checklistRowVisuals("empty", true).surface).toBe("var(--color-bt-card)");
+    expect(checklistRowVisuals("resolved", true).surface).toBe("var(--color-bt-card)");
     // An open empty row is no longer dashed (it's the active editor frame).
     expect(checklistRowVisuals("empty", true).border).toBe("1px solid var(--color-bt-border)");
   });

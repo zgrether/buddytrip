@@ -53,7 +53,13 @@ export function checklistRowVisuals(state: ChecklistRowState, isOpen: boolean): 
   const invalid = state === "invalid" && !isOpen;
   const active = resolved || isOpen;
   return {
-    surface: isOpen ? "var(--color-bt-card-raised)" : resolved ? "var(--color-bt-card)" : "transparent",
+    // The panel is ONE continuous surface open or closed — the body shares the
+    // header's token, and an open panel reads identically to a collapsed-resolved
+    // one (only the chevron + body presence change). `--color-bt-card` is the
+    // panel surface (STYLE_GUIDE Level 1); the inner editor cards sit ON it at
+    // card-raised. (Was `card-raised` when open — a tonal jump that made the body
+    // read flat/base-like against its own raised inner cards.)
+    surface: isOpen || resolved ? "var(--color-bt-card)" : "transparent",
     border: invalid
       ? "1.5px solid var(--color-bt-danger)"
       : state === "empty" && !isOpen
@@ -120,11 +126,13 @@ export function ChecklistRow({
   // floating dot. (Badge only shows collapsed, so the surface is card/transparent.)
   const ringColor = state === "resolved" ? "var(--color-bt-card)" : "var(--color-bt-base)";
 
-  // Auto-scroll: when the panel opens, lift the row's top to the top of the screen
-  // so the dropped-down editor has full vertical room.
+  // Auto-scroll: reveal-don't-relocate. Only scroll if the (now-expanded) panel
+  // would otherwise be partly off-screen, and only enough to bring it into view —
+  // `block: "nearest"` is a no-op when the panel already fits, and scrolls the
+  // minimum otherwise (never a slam-to-top).
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (isOpen) rowRef.current?.scrollIntoView({ block: "start" });
+    if (isOpen) rowRef.current?.scrollIntoView({ block: "nearest" });
   }, [isOpen]);
 
   const iconBlock = (
@@ -207,7 +215,9 @@ export function ChecklistRow({
           {headerInner}
         </button>
         {isOpen && (
-          <div className="px-3.5 pb-3.5 pt-1" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+          // No under-header divider — the body is the SAME surface as the header,
+          // so there's no seam to mark; an abrupt border read as a defect.
+          <div className="px-3.5 pb-3.5 pt-1">
             {children}
           </div>
         )}

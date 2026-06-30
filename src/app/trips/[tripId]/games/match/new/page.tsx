@@ -24,7 +24,7 @@ import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
-import { GameRulesNote, type GameRulesNoteHandle } from "@/components/games/GameRulesNote";
+import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -32,7 +32,7 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeOrClearMatch } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow } from "@/lib/matchDraft";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
@@ -148,10 +148,6 @@ export default function NewMatchGamePage() {
   // from the game's modifiers whenever the row is CLOSED (never mid-edit — see
   // the seed effect below).
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
-  // Zone-3 rules note (W-EDITMODAL-01) — "Save & exit" flushes any typed-but-
-  // unsaved rules through this handle before navigating (the one field with no
-  // collapse event of its own).
-  const rulesRef = useRef<GameRulesNoteHandle>(null);
   // Back-stack: forward transitions push the screen they left; Back pops to it.
   // Empty stack means we arrived directly (derived screen) → leave to trip home.
   const [navStack, setNavStack] = useState<Screen[]>([]);
@@ -464,14 +460,6 @@ export default function NewMatchGamePage() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-  // "Save & exit" (W-EDITMODAL-01): flush the Zone-3 rules note (its only commit
-  // event) then leave. Checklist rows already persisted on collapse; this just
-  // guarantees the rules textarea isn't lost. Always available — leaving is too.
-  async function handleSaveExit() {
-    await rulesRef.current?.flush();
-    goBack();
-  }
-
   // Seed the editable draft from the server when we land on setup for an
   // existing game (e.g. owner opens a pending game, or taps Edit) and the local
   // draft is empty. Create + Edit also seed via their handlers; this covers a
@@ -486,10 +474,10 @@ export default function NewMatchGamePage() {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
       return;
     }
-    // Resume-into-empty: a competition game tapped from the leaderboard arrives
-    // with no game_matches → seed ONE empty match (build-as-you-go; no pre-seeded
-    // count — W-GAMEPAGE-01 §6.1). "+ Add match" grows it from there.
-    setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
+    // Resume-into-empty: a game with no game_matches starts at ZERO matches — a
+    // valid empty state (the table hides; only "Add match" shows). "+ Add match"
+    // grows it from there (build-as-you-go — W-GAMEPAGE-01 §6.1).
+    setDraft([]);
   }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided]);
 
   // Seed the modifiers draft from the server — but ONLY while the row is closed,
@@ -533,18 +521,14 @@ export default function NewMatchGamePage() {
         // Non-fatal: the game still works on the template default par/index.
       }
     }
-    // Persist ONE empty match row so the game has a configured match from
-    // creation (build-as-you-go — W-GAMEPAGE-01 §6.1; "+ Add match" grows it).
-    const emptyMatches = [{ sideA: null, sideB: null, matchNumber: 1 }];
-    if (sided) await setDoublesPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
-    else await setPairings.mutateAsync({ tripId, gameId: g.id, matches: emptyMatches });
+    // A new game starts at ZERO matches (the valid empty state) — no seed row is
+    // persisted. "+ Add match" builds the first one (build-as-you-go), persisting
+    // on collapse.
     await refreshAfterMatchCountChange();
-    // The DERIVED screen flips to "setup" the instant setGameId ran (above), so the
-    // checklist is already interactive — and the user may have started pairing while
-    // this create flow finished its awaits. Only seed the blank card if they
-    // HAVEN'T (the seed effect already seeded otherwise); never clobber a touched draft.
+    // The checklist is interactive the instant setGameId ran (above); leave the
+    // draft empty unless the user already started adding (never clobber a touched draft).
     if (!draftTouched.current) {
-      setDraft([{ matchNumber: 1, a: [], b: [], handicap: 0 }]);
+      setDraft([]);
     }
     // Land straight on the settings page (the checklist's home) — the owner just
     // created the game and wants to configure it (A2-ux correction).
@@ -651,15 +635,15 @@ export default function NewMatchGamePage() {
   // failure the draft is KEPT (never discard edits) and an inline retry surfaces.
   async function persistDraftOnCollapse() {
     if (filledDraft.length === 0) {
-      // Clear-to-empty: the floor-of-one × emptied the last match's slots, so the
-      // draft has its row(s) but nothing filled. Persist them as EMPTY matches (null
-      // sides — the shape creation seeds) so the clear SURVIVES reload; otherwise
-      // saveSetup's filled-only write skips it and the server keeps the old players
-      // (the revert-on-reload bug). Scoped to a draft that is ALL-empty (every slot
-      // empty) — the deliberate post-clear state — so a transient half-filled slot is
-      // left unpersisted (existing behavior), never wiped. saveSetup itself stays
-      // filled-only: it's also the Enable gate's "ready" signal, which empty is not.
-      const allEmpty = draft.length > 0 && draft.every((m) => m.a.length === 0 && m.b.length === 0);
+      // Nothing filled — persist the EMPTY shape so it SURVIVES reload (saveSetup's
+      // filled-only write would skip it and the server would keep the old players —
+      // the revert-on-reload bug). Two sub-cases, both handled here:
+      //   • draft === []  → 0 matches (deleted the last one); persist [].
+      //   • all rows empty → persist the null-sided rows.
+      // `every` is true on an empty array, so this covers both. A transient
+      // half-filled slot is left unpersisted (existing behavior), never wiped.
+      // saveSetup stays filled-only: it's also the Enable gate's "ready" signal.
+      const allEmpty = draft.every((m) => m.a.length === 0 && m.b.length === 0);
       if (!allEmpty || !tripId || !gameId) return;
       try {
         const empty = draft.map((_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
@@ -1021,14 +1005,15 @@ export default function NewMatchGamePage() {
         // while any slot is empty (§4/§6.1 hard-block) — never plain dashed-empty,
         // since the seeded match always has a slot to fill until paired.
         const matchesTitle = sided ? "2v2 Matches" : "1-on-1 Matches";
-        const matchesSubtitle = filledDraft.length === 0
-          ? "0 matches assigned"
+        const matchesSubtitle = draft.length === 0
+          ? "No matches yet — add one to start"
           : `${filledDraft.length} of ${draft.length} matches assigned`;
-        // Resolved only when slots are filled AND every paired side is rostered;
-        // a dropped-after-paired side flips it to the invalid (red) verdict, surfaced
-        // the same way as the slot-filled hard-block (P2/P2b collapse-boundary timing
-        // unchanged — this only adds a reason a match is invalid).
-        const matchesState: ChecklistRowState = allFilled && allRosterValid ? "resolved" : "invalid";
+        // Three-way: 0 matches is a VALID EMPTY state (neutral, not red — a brand-new
+        // game shouldn't open in error); a draft with any unfilled/under-rostered slot
+        // is invalid (red); all filled + rostered is resolved. (P2/P2b collapse-boundary
+        // timing unchanged — this only adds the empty state ahead of the invalid one.)
+        const matchesState: ChecklistRowState =
+          draft.length === 0 ? "empty" : allFilled && allRosterValid ? "resolved" : "invalid";
         // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
         // stroke allocation needs the course's stroke-index table, so a complete
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
@@ -1062,6 +1047,15 @@ export default function NewMatchGamePage() {
                 competition-scoped (a standalone game has no delegate/config row). */}
             {gameCompId && gameQ.data && (
               <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
+            )}
+
+            {/* RULES OF THE DAY — at the TOP (out of the awkward middle zone that
+                disables in scoring mode). Always editable (incl. scoring mode) per
+                the carved-out exception (plain canEdit). Saves on blur — the back
+                arrow blurs the field, so there's no Save&exit to flush. (A game-type
+                explainer block will pair ABOVE this later — future add, not here.) */}
+            {gameCompId && gameQ.data && (
+              <GameRulesNote tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
             )}
 
             {/* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control,
@@ -1244,10 +1238,6 @@ export default function NewMatchGamePage() {
 
             {/* Rules of the Day — freeform note (W-EDITMODAL-01). Saves on blur;
                 "Save & exit" flushes it via rulesRef. Competition games only. */}
-            {gameCompId && gameQ.data && (
-              <GameRulesNote ref={rulesRef} tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
-            )}
-
             {collapseError && (
               <button
                 type="button"
@@ -1259,27 +1249,10 @@ export default function NewMatchGamePage() {
               </button>
             )}
 
-            {/* Exit (W-EDITMODAL-01): Enable scoring (primary, readiness-gated, the
-                commit-to-play) + Save & exit (secondary, always enabled — the
-                leave-and-resume door; flushes the rules note then navigates). */}
-            {/* A2-ux: the bottom "Enable scoring" button is gone — enabling now lives
-                in the Game-Play toggle at the top (header slot). Only "Save & exit"
-                remains here (the leave-and-resume door). The Enable spine (all matches
-                paired AND points > 0) is unchanged — it's `enableReady`, which now
-                gates the toggle's Scoring segment. */}
-            <div className="flex flex-col gap-2 pt-2">
-              {gameCompId && (
-                <button
-                  type="button"
-                  onClick={handleSaveExit}
-                  className="w-full"
-                  style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}
-                  data-testid="match-save-exit"
-                >
-                  Save &amp; exit
-                </button>
-              )}
-            </div>
+            {/* Auto-save (W-EDITMODAL-01): the whole page persists on change — the
+                checklist rows on collapse, Rules on blur — so there's no page-level
+                Save & exit (removed). The back arrow leaves cleanly; the back tap
+                blurs the Rules field, committing any unsaved text. */}
 
             {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
                 ONE home, so the per-game danger ladder lives here too: reset scores /
@@ -1626,10 +1599,11 @@ function MatchSetup({
 
   return (
     <div data-testid="match-pairings">
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
-        Tap a slot to pick a player · drag to reorder.
-      </p>
-
+      {/* The table (team-name header + match rows) appears only once there's at
+          least one match — a brand-new game shows just "Add match". 0 matches is a
+          valid empty state, not an error. */}
+      {draft.length > 0 && (
+        <>
       {/* Shared branded column header (BOTH formats): team names centered +
           team-colored in their columns, "vs" centered in its; grab/#/× columns
           empty. Same MATCH_GRID template as the rows below → the columns line up. */}
@@ -1710,19 +1684,14 @@ function MatchSetup({
               {sideSlots(d.b, i, "b")}
               {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
                   red — draft removal is free (no persisted scores) and the open panel
-                  must never read as an error. Far right. The runtime-overview remove
-                  (a scored, destructive match) keeps its danger color; this one does
-                  not. ALWAYS present, floor-aware: with >1 match it REMOVES the row;
-                  on the LAST match it CLEARS the slots (empties both sides back to the
-                  dashed "+ add player" state) rather than deleting it — the server
-                  enforces a floor of ≥1 match (setPairings .min(1) / removeMatch's
-                  throw), so the last match is cleared, never removed. One glyph, both
-                  meanings (no room for a label). */}
+                  must never read as an error. Far right. Always REMOVES the row —
+                  0 matches is now a valid empty state (the table hides, leaving just
+                  "Add match"), so the last match is deletable, not floor-clamped. */}
               <button
                 type="button"
-                onClick={() => setDraft((prev) => removeOrClearMatch(prev, i))}
-                title={draft.length > 1 ? "Remove match" : "Clear players"}
-                aria-label={draft.length > 1 ? `Remove match ${i + 1}` : `Clear match ${i + 1}`}
+                onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
+                title="Remove match"
+                aria-label={`Remove match ${i + 1}`}
                 className="flex items-center justify-center"
                 style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
               >
@@ -1732,6 +1701,8 @@ function MatchSetup({
           );
         })}
       </div>
+        </>
+      )}
 
       {/* Add another match — dynamic count grows one at a time (up to the cap). */}
       {draft.length < MAX_MATCHES && (

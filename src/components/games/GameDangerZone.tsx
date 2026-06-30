@@ -82,12 +82,12 @@ export function GameDangerZone({
 
   return (
     <section className="mt-8 space-y-3">
-      <SectionLabel danger>Danger zone</SectionLabel>
-      {disabled && (
-        <p className="px-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }} data-testid="danger-zone-locked">
-          Locked while the game is live — switch back to Setup to reset or remove it.
-        </p>
-      )}
+      {/* In scoring mode the header dims to match its already-locked rows (it was
+          the lone un-dimmed element). The per-section "locked" descriptor is dropped
+          — the top-of-page explainer already states the lock. */}
+      <div style={{ opacity: disabled ? 0.55 : undefined }}>
+        <SectionLabel danger>Danger zone</SectionLabel>
+      </div>
       <div className="space-y-2.5">
         <DangerRow
           icon={<RotateCcw size={16} />}
