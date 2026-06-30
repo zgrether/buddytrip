@@ -507,6 +507,7 @@ export function TeamsPanel({
           competitionId={competitionId}
           team={editingTeam}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
+          existingColors={teamsTyped.map((t) => t.color)}
           // Inside the Rosters overlay the team CARD already owns roster mgmt, so
           // the per-card pencil opens identity-only. The consolidated roster
           // section lives on the STANDALONE TeamSheet (leaderboard short-name tap).
@@ -1238,6 +1239,7 @@ export function TeamSheet({
   competitionId,
   team,
   existingTeamNames,
+  existingColors = [],
   showRoster = true,
   onClose,
 }: {
@@ -1248,6 +1250,10 @@ export function TeamSheet({
    *  collisions when rolling a name from a theme. The current team's own
    *  name is excluded by the caller in edit mode. */
   existingTeamNames: string[];
+  /** Colors already taken by other teams — used in CREATE mode to default the
+   *  swatch to the first UNUSED palette color, so adding a 3rd/4th team doesn't
+   *  silently collide on Blue (the old index-0 default). N-team legibility. */
+  existingColors?: string[];
   /** Render the consolidated roster section (edit mode only). Default true —
    *  the STANDALONE TeamSheet (leaderboard short-name tap) is the full
    *  team-management home. The in-overlay per-card pencil passes false: the
@@ -1273,9 +1279,17 @@ export function TeamSheet({
   const [shortName, setShortName] = useState(team?.short_name ?? "");
   const [shortNameDirty, setShortNameDirty] = useState(isEdit);
   const [paletteIdx, setPaletteIdx] = useState(() => {
-    if (!team) return 0;
-    const idx = TEAM_COLORS.findIndex((c) => c.color === team.color);
-    return idx >= 0 ? idx : 0;
+    if (team) {
+      const idx = TEAM_COLORS.findIndex((c) => c.color === team.color);
+      return idx >= 0 ? idx : 0;
+    }
+    // CREATE: default to the first palette color not already used by another
+    // team, so each added team gets a distinct color (no Blue-on-Blue). If every
+    // palette color is taken (8+ teams), fall back to index 0 — the swatch picker
+    // still lets the owner choose.
+    const used = new Set(existingColors);
+    const firstFree = TEAM_COLORS.findIndex((c) => !used.has(c.color));
+    return firstFree >= 0 ? firstFree : 0;
   });
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
