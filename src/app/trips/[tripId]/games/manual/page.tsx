@@ -131,7 +131,8 @@ export default function ManualGamePage() {
     try {
       await enableScoring.mutateAsync({ tripId, gameId: urlGameId });
       await refreshGame();
-      closeConfig(); // leave settings for the live board (consumes the history entry)
+      // #512 correction: STAY on the settings page — the toggle flips in place. The
+      // back arrow still returns to the game page via the openConfig history entry.
     } catch {
       // surfaced via the global error toast
     }

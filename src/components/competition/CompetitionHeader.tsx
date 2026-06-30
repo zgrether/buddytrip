@@ -11,7 +11,7 @@ import type { CSSProperties } from "react";
 // Quiet, not a live ticker (the live pulse belongs on game pages — deferred).
 interface StripLB {
   teams: { id: string; short_name: string }[];
-  games: { name: string; status: string; dropped: boolean }[];
+  games: { name: string; status: string }[];
   teamTotals: Record<string, number>;
 }
 function fmtHalf(n: number): string {
@@ -22,8 +22,7 @@ function fmtHalf(n: number): string {
 }
 function buildStatusStrip(lb: StripLB | undefined): string | null {
   if (!lb) return null;
-  const live = (lb.games ?? []).filter((g) => !g.dropped);
-  const active = live.filter((g) => g.status === "active");
+  const active = (lb.games ?? []).filter((g) => g.status === "active");
   if (active.length > 0) return `On tap: ${active.map((g) => g.name).join(", ")}`;
   const teams = lb.teams ?? [];
   const totals = lb.teamTotals ?? {};

@@ -593,16 +593,15 @@ export const gamesRouter = router({
       return { success: true };
     }),
 
-  // setStatus — game-edit gate. A game pulled for time is `dropped`, NOT deleted
-  // (§4): reversible, kept, and excluded from the leaderboard roll-up (which reads
-  // only live games). The win number is DERIVED from the live set, so dropping /
-  // restoring moves it automatically — there is no stored win number to update.
+  // setStatus — game-edit-gated status setter over the lifecycle states (pending /
+  // active / complete). (No `dropped`: the abandon/drop concept was removed at the
+  // source — #512 §6a — and must not be re-added.)
   setStatus: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        status: z.enum(["pending", "active", "complete", "dropped"]),
+        status: z.enum(["pending", "active", "complete"]),
       })
     )
     .use(requireGameEdit())
@@ -691,8 +690,7 @@ export const gamesRouter = router({
 
   // delete — Owner/Organizer. HARD-delete a game; all dependent rows
   // (participants, matches, play_groups, results, score_entries, organizers)
-  // cascade via ON DELETE CASCADE. Distinct from setStatus('dropped')
-  // ("Abandoned"), which is a reversible archive — this is a true removal (L3-b).
+  // cascade via ON DELETE CASCADE. A true removal (L3-b) — the danger-zone Delete.
   // requireTripRole("Organizer") gates it to trip staff (not a game-delegate).
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))

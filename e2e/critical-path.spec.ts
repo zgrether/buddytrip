@@ -98,15 +98,17 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   //    PASS-THROUGH (A2-ux correction): open the ONE settings page via the "set it
   //    up" button, then flip the Setup/Scoring toggle's Scoring segment. Enabling
   //    fires enableScoring AND refetches the game (two sequential remote round-trips)
-  //    before scoring_enabled flips; only then does the settings page unmount and the
-  //    keypad mount. The first keypad tap used to race that settle (#454), so wait for
-  //    the FULL transition: the Scoring toggle disappearing is the precise
-  //    "settings→play transition complete" signal.
+  //    before scoring_enabled flips. #512 correction: enabling now flips the toggle
+  //    IN PLACE (it no longer auto-navigates) — the "This game is live" lock banner
+  //    appearing is the precise "now live, transition complete" signal (it can't show
+  //    until scoring_enabled has flipped). Then the settings back arrow returns to the
+  //    game page, which is now in scoring mode → the keypad mounts.
   await page.getByTestId("setup-go-to-settings").click();
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 20_000 });
   await scoringSeg.click();
-  await expect(scoringSeg).toBeHidden({ timeout: 20_000 });
+  await expect(page.getByTestId("scoring-lock-banner")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Back" }).click();
 
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
   //    Distinct values so the assertion can't pass on par/coincidence. Wait for

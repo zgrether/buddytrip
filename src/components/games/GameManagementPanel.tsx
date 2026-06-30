@@ -26,6 +26,7 @@ export function GameManagementPanel({
   onEnable,
   onDisable,
   pending = false,
+  hideLabel = false,
 }: {
   /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
   mode: "setup" | "scoring";
@@ -35,6 +36,11 @@ export function GameManagementPanel({
   onEnable: () => void;
   onDisable: () => void;
   pending?: boolean;
+  /** #512: the match settings page renders a peer `GAME MANAGEMENT` section header
+   *  (ZoneHeader) above the panel, so suppress the internal caption there to avoid a
+   *  double label. Other hosts (stroke/rack/non-golf) have no section headers — they
+   *  keep the internal caption as the panel's only label. */
+  hideLabel?: boolean;
 }) {
   const isScoring = mode === "scoring";
   const scoringLocked = !isScoring && !ready;
@@ -47,11 +53,13 @@ export function GameManagementPanel({
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       data-testid="game-management-panel"
     >
-      <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Game Play
-      </div>
+      {!hideLabel && (
+        <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Game Play
+        </div>
+      )}
 
-      <div className="mt-2 flex gap-1.5 rounded-xl p-1" style={{ background: "var(--color-bt-card-raised)" }}>
+      <div className={`${hideLabel ? "" : "mt-2 "}flex gap-1.5 rounded-xl p-1`} style={{ background: "var(--color-bt-card-raised)" }}>
         {/* Setup segment — active in setup mode; the disable action in scoring mode. */}
         <Segment
           testId="mode-setup"
@@ -104,25 +112,19 @@ function Segment({
   onClick?: () => void;
   disabled?: boolean;
 }) {
-  // Teal = "go / live" in the system, reserved for the LIVE state:
+  // One signal, never two (#512 correction): teal = "go / live" and appears ONLY on
+  // the ACTIVE segment in scoring mode. The inactive segment is ALWAYS plain muted
+  // grey — never teal — so setup mode can't read as "scoring active".
   //  - Scoring active  → teal FILL, dark text (this game is LIVE / in scoring).
   //  - Setup active    → a quiet/neutral fill (base surface + primary text) — Setup
   //    is "in progress, not live", so it must NOT borrow the teal that means live.
-  //  - Scoring as the enable ACTION (setup mode) → teal text/outline (the "go" CTA),
-  //    lock-dimmed until ready.
-  //  - Setup as the disable action (scoring mode) → quiet/dim (not a "go" state).
+  //  - Either segment inactive → muted grey, transparent (the enable/disable action is
+  //    the SAME quiet treatment in both directions; lock icon + dim when not ready).
   const style: React.CSSProperties = active
     ? accent
       ? { background: "var(--color-bt-accent)", color: "#0d1f1a", border: "1px solid transparent" }
       : { background: "var(--color-bt-base)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }
-    : accent
-      ? {
-          background: "transparent",
-          color: locked ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
-          border: `1px solid ${locked ? "transparent" : "var(--color-bt-accent-border)"}`,
-          opacity: locked ? 0.6 : 1,
-        }
-      : { background: "transparent", color: "var(--color-bt-text-dim)", border: "1px solid transparent" };
+    : { background: "transparent", color: "var(--color-bt-text-dim)", border: "1px solid transparent", opacity: locked ? 0.6 : 1 };
   return (
     <button
       type="button"

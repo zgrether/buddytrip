@@ -44,21 +44,34 @@ export const GameRulesNote = forwardRef<GameRulesNoteHandle, {
 
   return (
     <div className="mt-6">
-      <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Rules of the day
-      </label>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => void commit()}
-        readOnly={!canEdit}
-        rows={3}
-        maxLength={2000}
-        placeholder="Tap out the rules of the day — formats, gimmes, mulligans, tiebreakers…"
-        className="mt-2 w-full resize-none rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", opacity: canEdit ? 1 : 0.7 }}
-        data-testid="game-rules-note"
-      />
+      {/* #512 §5: label + divider rule, matching the SETTINGS / OPTIONS section
+          headers (which had a divider; Rules previously had a bare label). */}
+      <div className="flex items-center gap-2 pt-2">
+        <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Rules of the day
+        </label>
+        <span className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+      </div>
+      {/* #512 §8: a bordered card PANEL containing the textarea (surface + border +
+          padding) so it reads as a peer of the Matches/Course/Points card-rows, not a
+          loose field. The textarea itself is transparent — it's the panel's interior. */}
+      <div
+        className="mt-2 rounded-xl px-3.5 py-3"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      >
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => void commit()}
+          readOnly={!canEdit}
+          rows={3}
+          maxLength={2000}
+          placeholder="Tap out the rules of the day — formats, gimmes, mulligans, tiebreakers…"
+          className="w-full resize-none bg-transparent text-sm outline-none"
+          style={{ color: "var(--color-bt-text)", opacity: canEdit ? 1 : 0.7 }}
+          data-testid="game-rules-note"
+        />
+      </div>
     </div>
   );
 });

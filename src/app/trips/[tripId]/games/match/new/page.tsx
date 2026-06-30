@@ -621,12 +621,13 @@ export default function NewMatchGamePage() {
   // draft editor persists it via persistDraftOnCollapse, so leaving the checklist
   // with rows collapsed has already saved everything.)
 
-  // Enable scoring = save THEN enable, land on the overview. The save carries the
-  // full config; enabling is the separate, readiness-gated step. The board refresh
-  // runs AFTER enableScoring so matchesQ.published is true on the overview (the
-  // refetch in saveSetup would otherwise predate the publish). Optimistically flip
-  // scoring_enabled in the game cache so the overview transition doesn't wait on a
-  // refetch (#459).
+  // Enable scoring = save THEN enable, then STAY on the settings page in place
+  // (#512 correction: flipping the toggle changes the mode here, it does NOT
+  // navigate — the user reads the now-live banner + locked panels and uses the back
+  // arrow to return when ready). The save carries the full config; enabling is the
+  // separate, readiness-gated step. Optimistically flip scoring_enabled in the game
+  // cache so the banner + lock appear without waiting on a refetch (#459); the
+  // board refresh runs AFTER enableScoring so the leaderboard/overview reflect it.
   async function commitReady() {
     if (!tripId || !gameId) return;
     const ok = await saveSetup();
@@ -637,9 +638,9 @@ export default function NewMatchGamePage() {
       utils.games.getById.setData({ tripId, gameId }, { ...cur, scoring_enabled: true } as typeof cur);
     }
     await refreshAfterMatchCountChange();
-    // Leave the settings overlay for the live board (derived → overview now that
-    // scoring is enabled). closeConfig pops the pushed history entry too.
-    closeConfig();
+    // No closeConfig() — the overlay stays open so the toggle flips in place. The
+    // back arrow (closeConfig → history.back) still pops the openConfig entry → game
+    // page, so the user is never stranded.
   }
 
   // ── Accordion control (one panel open at a time) ──────────────────────────
@@ -1070,13 +1071,20 @@ export default function NewMatchGamePage() {
                 setup, scores kept). Rendered for any canEdit game (NOT competition-gated,
                 so a standalone match game still toggles — it has no GameIdentityHeader). */}
             {canEdit && (
-              <GameManagementPanel
-                mode={scoringEnabled ? "scoring" : "setup"}
-                ready={enableReady}
-                onEnable={attemptReady}
-                onDisable={handleDisable}
-                pending={savingSetup || enableScoring.isPending || disableScoring.isPending}
-              />
+              <>
+                {/* #512 §4: GAME MANAGEMENT is a peer section — a labeled divider above
+                    the toggle matching SETTINGS / OPTIONS (the panel's own caption is
+                    suppressed via hideLabel so it isn't double-labeled). */}
+                <ZoneHeader>Game Management</ZoneHeader>
+                <GameManagementPanel
+                  mode={scoringEnabled ? "scoring" : "setup"}
+                  ready={enableReady}
+                  onEnable={attemptReady}
+                  onDisable={handleDisable}
+                  pending={savingSetup || enableScoring.isPending || disableScoring.isPending}
+                  hideLabel
+                />
+              </>
             )}
 
             {/* #501: live-game lock — the settings below freeze until the owner/
@@ -1121,6 +1129,8 @@ export default function NewMatchGamePage() {
               state={matchesState}
               // #501: non-expandable AND force-collapsed in scoring mode (MatchSetup
               // has no read-only mode, so it must not render interactively when live).
+              // #512: locked → dim + lock icon (it reads as frozen, not just chevron-less).
+              locked={scoringEnabled}
               expanded={openRow === "matches" && settingsEditable}
               onToggle={settingsEditable ? () => toggleRow("matches") : undefined}
               testId="row-matches"
@@ -1150,6 +1160,7 @@ export default function NewMatchGamePage() {
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
                 canEdit={settingsEditable}
+                locked={scoringEnabled}
                 courseOpen={openRow === "course"}
                 onOpenCourse={() => changeOpenRow("course")}
                 onCloseEditor={() => changeOpenRow(null)}
@@ -1165,6 +1176,7 @@ export default function NewMatchGamePage() {
                 competitionId={gameCompId}
                 game={gameQ.data as unknown as GameRow}
                 canEdit={settingsEditable}
+                locked={scoringEnabled}
                 matchCount={filledDraft.length}
                 configLocked={!matchesExist}
                 configOpen={openRow === "config"}
@@ -1186,7 +1198,8 @@ export default function NewMatchGamePage() {
               subtitle={handicapsSubtitle}
               state={handicapsState}
               // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
-              // has no read-only mode).
+              // has no read-only mode). #512: locked → dim + lock icon.
+              locked={scoringEnabled}
               expanded={openRow === "handicaps" && settingsEditable}
               onToggle={handicapsReady && settingsEditable ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
@@ -1215,6 +1228,7 @@ export default function NewMatchGamePage() {
                 title="Game Modifiers"
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
+                locked={scoringEnabled}
                 expanded={openRow === "modifiers"}
                 onToggle={matchesExist && settingsEditable ? () => toggleRow("modifiers") : undefined}
                 testId="row-modifiers"
@@ -1269,13 +1283,12 @@ export default function NewMatchGamePage() {
 
             {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
                 ONE home, so the per-game danger ladder lives here too: reset scores /
-                reset settings / abandon / delete). */}
+                reset settings / delete). */}
             {isOwner && gameQ.data && (
               <GameDangerZone
                 tripId={tripId}
                 gameId={gameQ.data.id as string}
                 competitionId={gameCompId}
-                status={gameQ.data.status as string | null | undefined}
                 onChanged={onSetupChanged}
                 onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
                 disabled={scoringEnabled}

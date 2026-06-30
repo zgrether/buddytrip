@@ -87,7 +87,6 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
     // Game is present in the response
     const game = lb.games.find((g: { id: string }) => g.id === gameId);
     expect(game).toBeDefined();
-    expect(game!.dropped).toBe(false);
   });
 
   it("in-progress: scores entered, teamTotals and pointsToClinch update", async () => {
@@ -224,46 +223,6 @@ describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
   });
 });
 
-describe("D2 §6 — dropped game excluded from totals and winNumber", () => {
-  it("dropping a game moves the winNumber and removes it from cells", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 Drop Comp", { scoringModel: "points" });
-    const ta = await ctx.createTeam(comp, "Blue", { shortName: "BLU" });
-    const tb = await ctx.createTeam(comp, "Red", { shortName: "RED" });
-
-    const g1r = await ctx.caller().games.create({
-      tripId, gameTypeId: MANUAL, name: "Live", competitionId: comp,
-      pointsDistribution: { type: "placement", values: [9, 6] },
-    }) as { id: string };
-    const g1 = g1r.id;
-    gameIds.push(g1);
-    const g2r = await ctx.caller().games.create({
-      tripId, gameTypeId: MANUAL, name: "To Drop", competitionId: comp,
-      pointsDistribution: { type: "placement", values: [9, 6] },
-    }) as { id: string };
-    const g2 = g2r.id;
-    gameIds.push(g2);
-
-    await ctx.caller().games.setManualResults({ tripId, gameId: g1, placements: [{ entityId: ta, position: 1 }, { entityId: tb, position: 2 }] });
-    await ctx.caller().games.setManualResults({ tripId, gameId: g2, placements: [{ entityId: ta, position: 1 }, { entityId: tb, position: 2 }] });
-
-    const before = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(before.pointsAvailable).toBe(30); // 15+15
-    expect(before.teamTotals[ta]).toBe(18); // 9+9
-
-    await ctx.caller().games.setStatus({ tripId, gameId: g2, status: "dropped" });
-
-    const after = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    // Dropped game excluded from roll-up
-    expect(after.pointsAvailable).toBe(15);
-    expect(after.teamTotals[ta]).toBe(9);
-    // Dropped game still present in games[] but with dropped:true
-    const droppedGame = after.games.find((g: { id: string }) => g.id === g2);
-    expect(droppedGame?.dropped).toBe(true);
-    // No cells for dropped game
-    expect(after.cells.filter((c: { gameId: string }) => c.gameId === g2)).toHaveLength(0);
-  });
-});
-
 describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () => {
   it("manual game with no results contributes to pointsAvailable but has no cells", async () => {
     const comp = await ctx.createCompetition(tripId, "D2 NoEntry Comp", { scoringModel: "points" });
@@ -281,7 +240,6 @@ describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () =
     // Game is present (honest, not hidden)
     const game = lb.games.find((g2: { id: string }) => g2.id === g.id);
     expect(game).toBeDefined();
-    expect(game!.dropped).toBe(false);
     // Points-available counts it (8 in play)
     expect(lb.pointsAvailable).toBe(8);
     // No cells (no results entered)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ChevronRight, ChevronDown, Check, X, type LucideIcon } from "lucide-react";
+import { ChevronRight, ChevronDown, Check, X, Lock, type LucideIcon } from "lucide-react";
 
 /**
  * ChecklistRow — the ONE canonical config-checklist row (W-GAMEPAGE visual pass
@@ -76,6 +76,7 @@ export function ChecklistRow({
   children,
   control,
   disabled,
+  locked,
   testId,
 }: {
   /** The row's semantic type-icon (lucide). Persists in every state. */
@@ -100,10 +101,15 @@ export function ChecklistRow({
    *  accordion/overlay; the control owns its own taps. */
   control?: React.ReactNode;
   disabled?: boolean;
+  /** #512 Option B: the row is frozen by the live-scoring lock — dim it and swap the
+   *  expand chevron for a LOCK icon (kills the false "expandable" affordance and names
+   *  the state). Non-interactive (no accordion / overlay). The toggle back to Setup
+   *  is the way out; Rules of the Day is never passed `locked` (the editable carve-out). */
+  locked?: boolean;
   testId?: string;
 }) {
-  const accordion = !!onToggle && !disabled;
-  const overlay = !!onClick && !disabled && !accordion;
+  const accordion = !!onToggle && !disabled && !locked;
+  const overlay = !!onClick && !disabled && !locked && !accordion;
   // A control row carries an inline control and never toggles (no accordion/overlay).
   const controlRow = !!control && !accordion && !overlay;
   const isOpen = accordion && !!expanded;
@@ -161,7 +167,13 @@ export function ChecklistRow({
     </div>
   );
 
-  const trailing = controlRow ? (
+  const trailing = locked ? (
+    // #512 Option B: a lock icon REPLACES the chevron — names the frozen state and
+    // kills the false expand affordance. (Lower opacity comes from the dimmed container.)
+    <span className="flex shrink-0 items-center">
+      <Lock size={15} style={{ color: "var(--color-bt-text-dim)" }} />
+    </span>
+  ) : controlRow ? (
     // The inline control sits where the chevron would — it owns its own taps.
     <span className="flex shrink-0 items-center">{control}</span>
   ) : (
@@ -182,7 +194,9 @@ export function ChecklistRow({
     </>
   );
   const headerClass = "flex w-full items-center gap-3 px-3.5 py-3 text-left disabled:opacity-60";
-  const containerStyle = { background: surface, border } as React.CSSProperties;
+  // #512 Option B: a live-locked row reads dimmed (reduced emphasis) so it clearly
+  // looks frozen, not merely chevron-less.
+  const containerStyle = { background: surface, border, opacity: locked ? 0.55 : undefined } as React.CSSProperties;
 
   // Accordion: a header button toggling an in-place panel below (same bordered
   // frame — the row IS the frame; the panel sheds all modal chrome).
