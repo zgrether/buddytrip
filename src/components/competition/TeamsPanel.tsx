@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react";
 import {
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
   GripVertical,
   Pencil,
   Plus,
@@ -1576,8 +1578,9 @@ export function TeamSheet({
 // The consolidated roster section of the STANDALONE Edit Team modal: this team's
 // players in CANONICAL order (sort_order). Owner (canManage) gets add / remove /
 // reorder / captain ★. Captain + plain member see it READ-ONLY (names + the
-// captain ★). Reorder is DRAG-ONLY — the grip (⠿) arms the row, mirroring the
-// match-assignments panel (HTML5 drag is desktop-only; no touch reorder).
+// captain ★). Reorder has TWO controls: ↑↓ buttons (the touch fallback) + grip
+// drag with an insertion line (desktop, mirrors the match-assignments panel) —
+// HTML5 drag doesn't fire on touch, so the arrows are how mobile reorders.
 
 function TeamSheetRoster({
   tripId,
@@ -1642,9 +1645,17 @@ function TeamSheetRoster({
     if (next.every((id, i) => id === orderedIds[i])) return; // no-op
     reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
   }
-  // Reorder is DRAG-ONLY (the ↑↓ buttons were removed): insert the dragged row at
-  // slot `ins` (0..length), accounting for the removal shift — identical to the
-  // match panel's reorderTo.
+  // ↑↓ buttons: move one slot. The touch fallback — native HTML5 drag (below)
+  // doesn't fire on touch, so the arrows are how mobile reorders. (A proper
+  // cross-platform drag is deferred to the app-wide drag-n-drop audit.)
+  function moveTo(userId: string, toIndex: number) {
+    if (toIndex < 0 || toIndex >= orderedIds.length) return;
+    const without = orderedIds.filter((x) => x !== userId);
+    without.splice(toIndex, 0, userId);
+    persistOrder(without);
+  }
+  // Drag: insert the dragged row at slot `ins` (0..length), accounting for the
+  // removal shift — identical to the match panel's reorderTo.
   function reorderTo(from: number, ins: number) {
     if (from < 0 || from >= orderedIds.length) return;
     if (ins === from || ins === from + 1) return; // own slot — no-op
@@ -1717,7 +1728,10 @@ function TeamSheetRoster({
                 isCaptain={!!a.is_captain}
                 canManage={canManage}
                 index={i}
+                count={orderedIds.length}
                 removeLocked={removalsLocked}
+                onMoveUp={() => moveTo(a.user_id, i - 1)}
+                onMoveDown={() => moveTo(a.user_id, i + 1)}
                 onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
                 onToggleCaptain={() =>
                   setCaptain.mutate({
@@ -1822,7 +1836,8 @@ function TeamSheetRoster({
 
 // ── RosterRow ───────────────────────────────────────────────────────────────
 // One player row in the TeamSheet roster. Owner sees grip (drag-reorder) +
-// captain ★ + remove ×; captain/member see name (+ the captain ★ read-only) only.
+// captain ★ + ↑↓ (touch-fallback reorder) + remove ×; captain/member see name
+// (+ the captain ★ read-only) only.
 
 function RosterRow({
   name,
@@ -1831,7 +1846,10 @@ function RosterRow({
   isCaptain,
   canManage,
   index,
+  count,
   removeLocked,
+  onMoveUp,
+  onMoveDown,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
@@ -1852,7 +1870,10 @@ function RosterRow({
   isCaptain: boolean;
   canManage: boolean;
   index: number;
+  count: number;
   removeLocked: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onRemove: () => void;
   onToggleCaptain: () => void;
   removeAriaLabel: string;
@@ -1870,7 +1891,7 @@ function RosterRow({
 }) {
   return (
     <div
-      // Draggable only while the grip arms it (so the ★/× stay tappable).
+      // Draggable only while the grip arms it (so the ★/↑↓/× stay tappable).
       draggable={armed}
       onDragStart={
         onDragStartRow
@@ -1962,6 +1983,35 @@ function RosterRow({
             <Star size={15} fill="currentColor" />
           </span>
         )
+      )}
+
+      {/* Reorder ↑↓ (owner) — the touch fallback (native drag below doesn't fire
+          on touch). Disabled only at the ends. */}
+      {canManage && (
+        <div className="flex flex-shrink-0 items-center">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={index === 0}
+            aria-label={`Move ${name} up`}
+            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="roster-move-up"
+          >
+            <ChevronUp size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={index === count - 1}
+            aria-label={`Move ${name} down`}
+            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="roster-move-down"
+          >
+            <ChevronDown size={16} />
+          </button>
+        </div>
       )}
 
       {/* Remove × (owner) — disabled once scoring locks removals. */}
