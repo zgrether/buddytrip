@@ -3,8 +3,6 @@
 import { useState, useMemo } from "react";
 import {
   ArrowRight,
-  ChevronDown,
-  ChevronUp,
   GripVertical,
   Pencil,
   Plus,
@@ -20,6 +18,7 @@ import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { DragHandle } from "@/components/games/DragHandle";
+import { SortableList, useSortableRow } from "@/components/dnd/SortableList";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 
 interface Props {
@@ -1679,44 +1678,14 @@ function TeamSheetRoster({
 
   const [addSheetOpen, setAddSheetOpen] = useState(false);
 
-  // Drag-to-reorder — mirrors the match-assignments panel: the GRIP arms the row
-  // (so the ★/× inside stay tappable), an accent insertion LINE shows where it
-  // will land (`ins` = the 0..length slot), and drop persists via reorder.
-  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
-  const [armedIdx, setArmedIdx] = useState<number | null>(null);
-
+  // Drag-to-reorder via the shared touch-aware @dnd-kit primitive (app-wide DnD
+  // pass). The grip is the drag activator (so the ★/× inside the row stay
+  // tappable); a drop hands back the new id order, which we persist. This replaces
+  // BOTH the old native-HTML5 grip-arm drag (no touch support) AND the ↑↓ arrows
+  // that bridged the touch gap — the arrows retire now that drag works everywhere.
   function persistOrder(next: string[]) {
     if (next.every((id, i) => id === orderedIds[i])) return; // no-op
     reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
-  }
-  // ↑↓ buttons: move one slot. The touch fallback — native HTML5 drag (below)
-  // doesn't fire on touch, so the arrows are how mobile reorders. (A proper
-  // cross-platform drag is deferred to the app-wide drag-n-drop audit.)
-  function moveTo(userId: string, toIndex: number) {
-    if (toIndex < 0 || toIndex >= orderedIds.length) return;
-    const without = orderedIds.filter((x) => x !== userId);
-    without.splice(toIndex, 0, userId);
-    persistOrder(without);
-  }
-  // Drag: insert the dragged row at slot `ins` (0..length), accounting for the
-  // removal shift — identical to the match panel's reorderTo.
-  function reorderTo(from: number, ins: number) {
-    if (from < 0 || from >= orderedIds.length) return;
-    if (ins === from || ins === from + 1) return; // own slot — no-op
-    const copy = orderedIds.slice();
-    const [moved] = copy.splice(from, 1);
-    const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
-    copy.splice(target, 0, moved);
-    persistOrder(copy);
-  }
-  function onCardDragOver(i: number, clientY: number, rect: DOMRect) {
-    setDragState((s) => {
-      if (!s) return s;
-      const isTop = clientY < rect.top + rect.height / 2;
-      let ins: number | null = isTop ? i : i + 1;
-      if (ins === s.from || ins === s.from + 1) ins = null; // adjacent = no-op, hide line
-      return s.ins === ins ? s : { ...s, ins };
-    });
   }
 
   return (
@@ -1759,62 +1728,39 @@ function TeamSheetRoster({
           No players yet.{canManage ? " Add from the crew below." : ""}
         </p>
       ) : (
-        <div className="space-y-1.5">
-          {roster.map((a, i) => {
-            const m = memberById.get(a.user_id);
-            const name = m?.displayName ?? "Unknown";
-            return (
-              <RosterRow
-                key={a.user_id}
-                name={name}
-                avatarIcon={m?.user?.avatar_icon ?? null}
-                teamColor={teamColor}
-                isCaptain={!!a.is_captain}
-                canManage={canManage}
-                index={i}
-                count={orderedIds.length}
-                removeLocked={removalsLocked}
-                onMoveUp={() => moveTo(a.user_id, i - 1)}
-                onMoveDown={() => moveTo(a.user_id, i + 1)}
-                onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
-                onToggleCaptain={() =>
-                  setCaptain.mutate({
-                    tripId,
-                    competitionId,
-                    teamId: team.id,
-                    userId: a.user_id,
-                    isCaptain: !a.is_captain,
-                  })
-                }
-                removeAriaLabel={`Remove ${name} from ${team.name}`}
-                captainAriaLabel={a.is_captain ? `Remove ${name} as captain` : `Make ${name} captain`}
-                armed={armedIdx === i}
-                dragging={dragState?.from === i}
-                dropIndicator={
-                  dragState?.ins === i
-                    ? "top"
-                    : i === orderedIds.length - 1 && dragState?.ins === orderedIds.length
-                      ? "bottom"
-                      : null
-                }
-                onArm={canManage ? () => setArmedIdx(i) : undefined}
-                onDisarm={canManage ? () => setArmedIdx(null) : undefined}
-                onDragStartRow={canManage ? () => setDragState({ from: i, ins: null }) : undefined}
-                onDragOverRow={canManage ? (y, rect) => onCardDragOver(i, y, rect) : undefined}
-                onDropRow={
-                  canManage
-                    ? () => {
-                        if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
-                        setDragState(null);
-                        setArmedIdx(null);
-                      }
-                    : undefined
-                }
-                onDragEndRow={canManage ? () => { setDragState(null); setArmedIdx(null); } : undefined}
-              />
-            );
-          })}
-        </div>
+        <SortableList ids={orderedIds} onReorder={persistOrder} disabled={!canManage}>
+          <div className="space-y-1.5">
+            {roster.map((a, i) => {
+              const m = memberById.get(a.user_id);
+              const name = m?.displayName ?? "Unknown";
+              return (
+                <RosterRow
+                  key={a.user_id}
+                  id={a.user_id}
+                  name={name}
+                  avatarIcon={m?.user?.avatar_icon ?? null}
+                  teamColor={teamColor}
+                  isCaptain={!!a.is_captain}
+                  canManage={canManage}
+                  index={i}
+                  removeLocked={removalsLocked}
+                  onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
+                  onToggleCaptain={() =>
+                    setCaptain.mutate({
+                      tripId,
+                      competitionId,
+                      teamId: team.id,
+                      userId: a.user_id,
+                      isCaptain: !a.is_captain,
+                    })
+                  }
+                  removeAriaLabel={`Remove ${name} from ${team.name}`}
+                  captainAriaLabel={a.is_captain ? `Remove ${name} as captain` : `Make ${name} captain`}
+                />
+              );
+            })}
+          </div>
+        </SortableList>
       )}
 
       {/* Add player (owner) — a full-width button (like "add match") that opens a
@@ -1959,122 +1905,56 @@ function AddPlayerSheet({
 }
 
 // ── RosterRow ───────────────────────────────────────────────────────────────
-// One player row in the TeamSheet roster. Owner sees grip (drag-reorder) +
-// captain ★ + ↑↓ (touch-fallback reorder) + remove ×; captain/member see name
-// (+ the captain ★ read-only) only.
+// One player row in the TeamSheet roster. Owner sees grip (touch-aware drag-
+// reorder via @dnd-kit) + captain ★ + remove ×; captain/member see name (+ the
+// captain ★ read-only) only. The ↑↓ touch-fallback arrows are gone — the shared
+// dnd-kit grip reorders on touch and pointer alike, so the bridge they provided
+// is no longer needed.
 
 function RosterRow({
+  id,
   name,
   avatarIcon,
   teamColor,
   isCaptain,
   canManage,
   index,
-  count,
   removeLocked,
-  onMoveUp,
-  onMoveDown,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
   captainAriaLabel,
-  armed = false,
-  dragging = false,
-  dropIndicator = null,
-  onArm,
-  onDisarm,
-  onDragStartRow,
-  onDragOverRow,
-  onDropRow,
-  onDragEndRow,
 }: {
+  /** Sortable id — the player's user_id (stable per roster). */
+  id: string;
   name: string;
   avatarIcon: string | null;
   teamColor: string;
   isCaptain: boolean;
   canManage: boolean;
   index: number;
-  count: number;
   removeLocked: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onRemove: () => void;
   onToggleCaptain: () => void;
   removeAriaLabel: string;
   captainAriaLabel: string;
-  /** Drag-to-reorder (owner) — mirrors the match-assignments panel. */
-  armed?: boolean;
-  dragging?: boolean;
-  dropIndicator?: "top" | "bottom" | null;
-  onArm?: () => void;
-  onDisarm?: () => void;
-  onDragStartRow?: () => void;
-  onDragOverRow?: (clientY: number, rect: DOMRect) => void;
-  onDropRow?: () => void;
-  onDragEndRow?: () => void;
 }) {
+  const { setNodeRef, style, isDragging, handleProps } = useSortableRow(id);
   return (
     <div
-      // Draggable only while the grip arms it (so the ★/↑↓/× stay tappable).
-      draggable={armed}
-      onDragStart={
-        onDragStartRow
-          ? (e) => {
-              e.dataTransfer.effectAllowed = "move";
-              onDragStartRow();
-            }
-          : undefined
-      }
-      onDragOver={
-        onDragOverRow
-          ? (e) => {
-              e.preventDefault();
-              onDragOverRow(e.clientY, e.currentTarget.getBoundingClientRect());
-            }
-          : undefined
-      }
-      onDrop={
-        onDropRow
-          ? (e) => {
-              e.preventDefault();
-              onDropRow();
-            }
-          : undefined
-      }
-      onDragEnd={onDragEndRow}
+      ref={setNodeRef}
       className="relative flex items-center gap-2 rounded-lg px-2.5 py-2"
       style={{
+        ...style,
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
-        opacity: dragging ? 0.4 : 1,
+        opacity: isDragging ? 0.4 : 1,
       }}
     >
-      {/* Insertion line — the landing zone, shown once the cursor crosses a
-          neighbour's midpoint (mirrors the match-assignments panel). */}
-      {dropIndicator && (
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: 2,
-            right: 2,
-            [dropIndicator === "top" ? "top" : "bottom"]: -3,
-            height: 2,
-            borderRadius: 2,
-            background: "var(--color-bt-accent)",
-            boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      {/* Grip — arms the drag (the row becomes draggable only while held), so the
-          row buttons stay tappable. Always visible. */}
+      {/* Grip — the dnd-kit drag activator (so the ★/× stay tappable). Owner only;
+          dnd-kit shifts neighbours live, so no manual insertion line. */}
       {canManage && (
-        <DragHandle
-          onMouseDown={onArm}
-          onMouseUp={onDisarm}
-          className="h-7 w-4 flex-shrink-0"
-        />
+        <DragHandle {...handleProps} className="h-7 w-4 flex-shrink-0" />
       )}
       {/* Row index — quiet table-number column, like the match pickers. */}
       <RowNumber number={index + 1} className="flex-shrink-0" style={{ width: 16 }} />
@@ -2107,35 +1987,6 @@ function RosterRow({
             <Star size={15} fill="currentColor" />
           </span>
         )
-      )}
-
-      {/* Reorder ↑↓ (owner) — the touch fallback (native drag below doesn't fire
-          on touch). Disabled only at the ends. */}
-      {canManage && (
-        <div className="flex flex-shrink-0 items-center">
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={index === 0}
-            aria-label={`Move ${name} up`}
-            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="roster-move-up"
-          >
-            <ChevronUp size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={index === count - 1}
-            aria-label={`Move ${name} down`}
-            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="roster-move-down"
-          >
-            <ChevronDown size={16} />
-          </button>
-        </div>
       )}
 
       {/* Remove × (owner) — disabled once scoring locks removals. */}
