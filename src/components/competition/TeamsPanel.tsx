@@ -1277,6 +1277,23 @@ export function TeamSheet({
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The picked color — used to PREVIEW the roster avatars live (changes the view
+  // immediately); only PERSISTED on Save (handleSave reads the same paletteIdx).
+  const selectedColor = TEAM_COLORS[paletteIdx]?.color ?? team?.color ?? TEAM_COLORS[0].color;
+
+  // Save is enabled only when the IDENTITY actually changed (edit) — name, short
+  // name, or color — or the required fields are present (create). Roster edits
+  // persist on their own action and are NOT part of this dirty-check.
+  const trimmedName = name.trim();
+  const trimmedShort = shortName.trim();
+  const identityDirty =
+    isEdit && team
+      ? trimmedName !== team.name ||
+        trimmedShort.toUpperCase() !== (team.short_name ?? "").toUpperCase() ||
+        selectedColor !== team.color
+      : true;
+  const canSubmit = !!trimmedName && !!trimmedShort && identityDirty;
+
   // Roster section data (edit mode). Deduped against any other observer of the
   // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
   const { data: rosterMembers = [] } = trpc.tripMembers.list.useQuery(
@@ -1544,24 +1561,47 @@ export function TeamSheet({
           )}
 
           {identityEditable && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={create.isPending || update.isPending}
-              className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {isEdit ? "Save Team" : "Add Team"}
-            </button>
+            // Cancel reverts the unsaved identity edits (closing discards the local
+            // state, so the color preview reverts). Save persists — enabled only
+            // when something changed (canSubmit).
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={create.isPending || update.isPending}
+                className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+                style={{
+                  background: "transparent",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+                data-testid="team-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canSubmit || create.isPending || update.isPending}
+                className="flex-[2] rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                data-testid="team-save"
+              >
+                {isEdit ? "Save Team" : "Add Team"}
+              </button>
+            </div>
           )}
 
           {/* Consolidated roster section — the team-management home (edit mode).
-              Owner gets full controls; captain/member see it read-only. */}
+              Owner gets full controls; captain/member see it read-only. The
+              avatars use the PREVIEW color (selectedColor) so a color pick shows
+              immediately, persisting only on Save. */}
           {isEdit && showRoster && team && (
             <TeamSheetRoster
               tripId={tripId}
               competitionId={competitionId}
               team={team}
+              teamColor={selectedColor}
               canManage={isOwner}
               members={rosterMembers as Member[]}
               assignments={rosterAssignments as Assignment[]}
@@ -1578,14 +1618,15 @@ export function TeamSheet({
 // The consolidated roster section of the STANDALONE Edit Team modal: this team's
 // players in CANONICAL order (sort_order). Owner (canManage) gets add / remove /
 // reorder / captain ★. Captain + plain member see it READ-ONLY (names + the
-// captain ★). Reorder is ↑↓ buttons (mobile-first — they work on touch, which
-// native HTML5 drag does not) PLUS grip-drag on desktop (lg+), mirroring this
-// file's desktop-drag / mobile-fallback pattern.
+// captain ★). Reorder has TWO controls: ↑↓ buttons (the touch fallback) + grip
+// drag with an insertion line (desktop, mirrors the match-assignments panel) —
+// HTML5 drag doesn't fire on touch, so the arrows are how mobile reorders.
 
 function TeamSheetRoster({
   tripId,
   competitionId,
   team,
+  teamColor,
   canManage,
   members,
   assignments,
@@ -1593,6 +1634,9 @@ function TeamSheetRoster({
   tripId: string;
   competitionId: string;
   team: Team;
+  /** The PREVIEW color (the live color-picker selection) — drives the row avatars
+   *  so a color pick shows immediately; persists only on Save. */
+  teamColor: string;
   /** Owner only — roster mutations (add/remove/reorder/captain) stay owner-scoped. */
   canManage: boolean;
   members: Member[];
@@ -1633,12 +1677,11 @@ function TeamSheetRoster({
     return members.filter((m) => !assignedIds.has(m.user_id ?? m.memberId));
   }, [members, assignments]);
 
-  const [adding, setAdding] = useState(false);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
 
   // Drag-to-reorder — mirrors the match-assignments panel: the GRIP arms the row
-  // (so the buttons inside stay tappable), an accent insertion LINE shows where it
-  // will land (`ins` = the 0..length slot), and drop persists via reorder. The ↑↓
-  // buttons stay as the touch fallback (HTML5 drag doesn't fire on touch).
+  // (so the ★/× inside stay tappable), an accent insertion LINE shows where it
+  // will land (`ins` = the 0..length slot), and drop persists via reorder.
   const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
   const [armedIdx, setArmedIdx] = useState<number | null>(null);
 
@@ -1646,7 +1689,9 @@ function TeamSheetRoster({
     if (next.every((id, i) => id === orderedIds[i])) return; // no-op
     reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
   }
-  // ↑↓ buttons: move one slot.
+  // ↑↓ buttons: move one slot. The touch fallback — native HTML5 drag (below)
+  // doesn't fire on touch, so the arrows are how mobile reorders. (A proper
+  // cross-platform drag is deferred to the app-wide drag-n-drop audit.)
   function moveTo(userId: string, toIndex: number) {
     if (toIndex < 0 || toIndex >= orderedIds.length) return;
     const without = orderedIds.filter((x) => x !== userId);
@@ -1680,12 +1725,27 @@ function TeamSheetRoster({
       className="pt-2"
       style={{ borderTop: "1px solid var(--color-bt-border)" }}
     >
-      <h4
-        className="mb-2 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Roster · {roster.length}
-      </h4>
+      {/* Header — no count (the numbered rows already convey it). The
+          "Captain = ★" legend is right-justified: the rows are a FLEX layout, so
+          the star column drifts with width — there's no stable column to center
+          over. Legend shows for all viewers (it's a marker key). */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Roster
+        </h4>
+        {roster.length > 0 && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Captain =
+            <Star size={11} fill="currentColor" style={{ color: "var(--color-bt-accent)" }} />
+          </span>
+        )}
+      </div>
 
       {roster.length === 0 ? (
         <p
@@ -1708,7 +1768,7 @@ function TeamSheetRoster({
                 key={a.user_id}
                 name={name}
                 avatarIcon={m?.user?.avatar_icon ?? null}
-                teamColor={team.color}
+                teamColor={teamColor}
                 isCaptain={!!a.is_captain}
                 canManage={canManage}
                 index={i}
@@ -1757,33 +1817,125 @@ function TeamSheetRoster({
         </div>
       )}
 
-      {/* Add player (owner) — assign an unassigned crew member to THIS team. */}
+      {/* Add player (owner) — a full-width button (like "add match") that opens a
+          sheet listing the UNASSIGNED pool, mirroring the match-play player
+          selector. Unassigned-pool ONLY (no cross-team reassignment). */}
       {canManage && unassigned.length > 0 && (
-        <div className="mt-2">
-          {!adding ? (
+        <button
+          type="button"
+          onClick={() => setAddSheetOpen(true)}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-semibold"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1.5px dashed var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+          data-testid="teamsheet-add-player"
+        >
+          <Plus size={16} />
+          Add player
+        </button>
+      )}
+
+      {addSheetOpen && (
+        <AddPlayerSheet
+          teamName={team.name}
+          teamColor={teamColor}
+          unassigned={unassigned}
+          onPick={(id) => assign.mutate({ tripId, competitionId, userId: id, teamId: team.id })}
+          onClose={() => setAddSheetOpen(false)}
+        />
+      )}
+
+      {/* Removal lock is KEPT (owner decision) — say why, so the disabled × reads
+          as intentional, not broken. Adds stay enabled. */}
+      {canManage && removalsLocked && (
+        <p
+          className="mt-3 text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          data-testid="teamsheet-locked-note"
+        >
+          Rosters are locked once scoring starts.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── AddPlayerSheet ──────────────────────────────────────────────────────────
+// Bottom-sheet player picker for adding to a team, mirroring the match-play
+// PlayerSelector. Lists the UNASSIGNED pool only (no cross-team reassignment).
+// Stays open as you pick so several can be added; the list shrinks as they're
+// assigned (the parent recomputes `unassigned`), then shows the empty state.
+
+function AddPlayerSheet({
+  teamName,
+  teamColor,
+  unassigned,
+  onPick,
+  onClose,
+}: {
+  teamName: string;
+  teamColor: string;
+  unassigned: Member[];
+  onPick: (userId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <ScrollLock>
+      <div
+        className="fixed inset-0 z-[60] flex items-end"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+        data-testid="teamsheet-add-sheet"
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="w-full"
+          style={{
+            background: "var(--color-bt-card-float)",
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            padding: "16px 16px 28px",
+            maxHeight: "75vh",
+            overflowY: "auto",
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />
+              Add to {teamName}
+            </div>
             <button
               type="button"
-              onClick={() => setAdding(true)}
-              className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
-              style={{ color: "var(--color-bt-accent)" }}
-              data-testid="teamsheet-add-player"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-8 w-8 items-center justify-center rounded-lg"
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
-              <Plus size={13} />
-              Add player
+              <X size={16} />
             </button>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Tap a crew member to add
-              </p>
-              {unassigned.map((m) => {
+          </div>
+          <p
+            className="mt-3 text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Unassigned crew
+          </p>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {unassigned.length === 0 ? (
+              <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Everyone&apos;s on a team.
+              </span>
+            ) : (
+              unassigned.map((m) => {
                 const id = m.user_id ?? m.memberId;
                 return (
                   <button
                     key={id}
                     type="button"
-                    onClick={() => assign.mutate({ tripId, competitionId, userId: id, teamId: team.id })}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left"
+                    onClick={() => onPick(id)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left"
                     style={{
                       background: "var(--color-bt-card-raised)",
                       border: "1px solid var(--color-bt-border)",
@@ -1794,21 +1946,22 @@ function TeamSheetRoster({
                     <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
                       {m.displayName}
                     </span>
-                    <Plus size={14} style={{ color: "var(--color-bt-accent)" }} />
+                    <Plus size={16} style={{ color: "var(--color-bt-accent)" }} />
                   </button>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+    </ScrollLock>
   );
 }
 
 // ── RosterRow ───────────────────────────────────────────────────────────────
-// One player row in the TeamSheet roster. Owner sees grip + captain ★ + ↑↓ +
-// remove ×; captain/member see name (+ the captain ★ read-only) only.
+// One player row in the TeamSheet roster. Owner sees grip (drag-reorder) +
+// captain ★ + ↑↓ (touch-fallback reorder) + remove ×; captain/member see name
+// (+ the captain ★ read-only) only.
 
 function RosterRow({
   name,
@@ -1956,7 +2109,8 @@ function RosterRow({
         )
       )}
 
-      {/* Reorder ↑↓ (owner) — the mobile-first canonical-order control. */}
+      {/* Reorder ↑↓ (owner) — the touch fallback (native drag below doesn't fire
+          on touch). Disabled only at the ends. */}
       {canManage && (
         <div className="flex flex-shrink-0 items-center">
           <button
