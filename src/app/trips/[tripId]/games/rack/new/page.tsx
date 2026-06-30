@@ -167,6 +167,16 @@ export default function RackNStackPage() {
   }, [teamsQ.data, teamIds]);
   const colorForUser = (id: string) => (teamOf.get(id) === "A" ? teamMeta.A.color : teamMeta.B.color);
 
+  // Canonical roster order (mig 069): assignQ.data arrives ordered by
+  // (team_id, sort_order), so its index IS the canonical order — team A's roster
+  // then team B's, each in the order set in the Edit Team modal. The handicap
+  // roster derives its display order from this, not from foursome/participant order.
+  const rosterOrder = useMemo(() => {
+    const m = new Map<string, number>();
+    (assignQ.data ?? []).forEach((a, i) => m.set(a.user_id as string, i));
+    return m;
+  }, [assignQ.data]);
+
   const hasCompetition = !!competitionId && teamIds.length >= 2;
 
   // ── Scorecard + live values ──────────────────────────────────────────
@@ -228,18 +238,21 @@ export default function RackNStackPage() {
 
   const handicapPlayers: HandicapPlayer[] = useMemo(
     () =>
-      participants.map((p) => {
-        const id = p.user_id as string;
-        return {
-          id,
-          name: nameOf.get(id) ?? "Player",
-          avatarIcon: avatarOf.get(id) ?? null,
-          teamColor: teamOf.get(id) ? colorForUser(id) : null,
-          strokes: handicapOf.get(id) ?? 0,
-        };
-      }),
+      participants
+        .map((p) => {
+          const id = p.user_id as string;
+          return {
+            id,
+            name: nameOf.get(id) ?? "Player",
+            avatarIcon: avatarOf.get(id) ?? null,
+            teamColor: teamOf.get(id) ? colorForUser(id) : null,
+            strokes: handicapOf.get(id) ?? 0,
+          };
+        })
+        // Canonical roster order — not the foursome/participant order they arrive in.
+        .sort((x, y) => (rosterOrder.get(x.id) ?? Infinity) - (rosterOrder.get(y.id) ?? Infinity)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [participants, nameOf, avatarOf, teamOf, teamMeta, handicapOf]
+    [participants, nameOf, avatarOf, teamOf, teamMeta, handicapOf, rosterOrder]
   );
 
   // ── Handlers ─────────────────────────────────────────────────────────

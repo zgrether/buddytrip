@@ -617,12 +617,15 @@ function TeamCard({
 }) {
   const [dragOver, setDragOver] = useState(false);
 
-  const teamMemberIds = assignments
+  // Canonical roster order (mig 069): order this team's rows by sort_order, not
+  // the incidental tripMembers (joined_at) order. Map the ordered assignments to
+  // their Member rows so the card shows the SAME order as every other chooser.
+  const teamMembers = assignments
     .filter((a) => a.team_id === team.id)
-    .map((a) => a.user_id);
-  const teamMembers = members.filter((m) =>
-    teamMemberIds.includes(m.user_id ?? m.memberId)
-  );
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((a) => members.find((m) => (m.user_id ?? m.memberId) === a.user_id))
+    .filter((m): m is Member => !!m);
 
   // Optimistic — the dropped player needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
