@@ -9,6 +9,7 @@ import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettings } from "./CompetitionSettings";
 import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 
@@ -101,11 +102,11 @@ export function CompetitionFace({
   const { data: teamAssignmentsList = [] } = trpc.teamAssignments.list.useQuery({ tripId, competitionId: competition.id }, STRUCTURE_QUERY);
   const { data: me } = trpc.users.getMe.useQuery(undefined, STRUCTURE_QUERY);
 
+  // Identity-edit gate = owner OR the captain of THAT team. Shares the single
+  // captain-resolution (isTeamCaptain) with TeamSheet + TeamsPanel so the rule
+  // can't drift per-surface (Part 1 dedup).
   const canEditTeamIdentity = (teamId: string) =>
-    isOwner ||
-    (teamAssignmentsList as { user_id: string; team_id: string; is_captain?: boolean }[]).some(
-      (a) => a.user_id === me?.id && a.team_id === teamId && a.is_captain
-    );
+    isOwner || isTeamCaptain(teamAssignmentsList as { user_id: string; team_id: string; is_captain?: boolean }[], me?.id, teamId);
 
   // Owner / captain-of-that-team → standalone identity editor. Otherwise the
   // graceful read-only path: open the Rosters overlay (see the lineup, no edit).

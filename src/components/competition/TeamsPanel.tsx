@@ -16,6 +16,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
 
 interface Props {
   competitionId: string;
@@ -289,9 +290,11 @@ export function TeamsPanel({
   // THAT team — gates the per-card pencil/header (PR b2). The leaderboard
   // team-name tap opens a STANDALONE editor instead (CompetitionFace), so the
   // overlay only edits via its own pencil.
-  const isCaptainOf = (teamId: string) =>
-    !!me && assignmentsTyped.some((a) => a.user_id === me.id && a.team_id === teamId && a.is_captain);
-  const canEditIdentity = (teamId: string) => canEdit || isCaptainOf(teamId);
+  // Identity edit = owner (canEdit prop) OR the captain of THAT team. Routes
+  // through the shared isTeamCaptain so the captain rule lives in one place
+  // (Part 1 dedup) — TeamsPanel maps over teams, so it uses the predicate (not
+  // the useCanEditTeam hook, which React forbids calling per row).
+  const canEditIdentity = (teamId: string) => canEdit || isTeamCaptain(assignmentsTyped, me?.id, teamId);
 
   const statusText = !teamsExist
     ? "Not set up"
