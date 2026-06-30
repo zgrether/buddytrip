@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
@@ -107,12 +108,16 @@ export default function NewMatchGamePage() {
   // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
   const { canEdit, isOwner, loading: roleLoading } = useGameEditAccess(tripId, gameId);
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
-  // The settings page is an OVERLAY over the game scoreboard, browser-history aware:
-  // opening it pushes a history entry, so the in-page back arrow and the OS/mouse
-  // back are the SAME action and both return to the game page (not past it to the
-  // leaderboard). popstate (real back) closes it; closeConfig() routes the arrow
-  // through history.back() so they can't diverge.
-  const [cfgOpen, setCfgOpen] = useState(false);
+  // The settings overlay — owns open/close/back + the leaderboard deep link
+  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game,
+  // back → leaderboard). The gear path pushes a history entry so the arrow and the
+  // OS/mouse back are the SAME action; the deep-link path routes back through the
+  // router to the leaderboard. (Aliased to `cfgOpen` — the rest of the page is
+  // unchanged.)
+  const { open: cfgOpen, openConfig, closeConfig } = useGameSettingsOverlay({
+    canEdit,
+    deepLink: search.get("settings") === "1",
+  });
 
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // Setup editing state
@@ -440,26 +445,6 @@ export default function NewMatchGamePage() {
     setNavStack((s) => s.slice(0, -1));
   };
 
-  // Open the settings overlay + push a browser history entry (same URL) so a back —
-  // by the in-page arrow OR the browser/OS button — returns to the game page.
-  function openConfig() {
-    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
-    setCfgOpen(true);
-  }
-  // Close via history.back() when our entry is on top, so the arrow takes the exact
-  // same path as the browser back (popstate → setCfgOpen(false)); else close direct.
-  function closeConfig() {
-    if (typeof window !== "undefined" && (window.history.state as { btCfg?: boolean } | null)?.btCfg) {
-      window.history.back();
-    } else {
-      setCfgOpen(false);
-    }
-  }
-  useEffect(() => {
-    const onPop = () => setCfgOpen(false);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
   // Seed the editable draft from the server when we land on setup for an
   // existing game (e.g. owner opens a pending game, or taps Edit) and the local
   // draft is empty. Create + Edit also seed via their handlers; this covers a
