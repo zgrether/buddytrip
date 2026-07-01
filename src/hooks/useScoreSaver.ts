@@ -177,9 +177,15 @@ export function useScoreSaver(
     if (!tripId || !gameId) return;
     if (recoveredForGame.current === gameId) return;
     recoveredForGame.current = gameId;
-    for (const e of outboxEntries(gameId)) {
-      onChange(e.participantId, e.unitLabel, e.value);
-    }
+    const pending = outboxEntries(gameId);
+    if (pending.length === 0) return;
+    // Defer the re-send out of the effect body (each onChange setStates; a
+    // microtask keeps it off the synchronous effect path). One tick's delay is
+    // immaterial for recovering already-unconfirmed writes.
+    const t = setTimeout(() => {
+      for (const e of pending) onChange(e.participantId, e.unitLabel, e.value);
+    }, 0);
+    return () => clearTimeout(t);
   }, [tripId, gameId, onChange]);
 
   const errorCount = Object.values(saveStatus).filter(
