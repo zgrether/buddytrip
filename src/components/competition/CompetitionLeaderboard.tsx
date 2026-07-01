@@ -5,7 +5,7 @@ import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { GameRow, fmtPts } from "./GameRow";
+import { GameRow, CompletedRow, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { PointsMatrix } from "./PointsMatrix";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -195,7 +195,6 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
     return <NoTeamsState />;
   }
 
-  const sessionsDone = liveGames.filter((g) => g.status === "complete").length;
   const allZero = teams.every((t) => (teamTotals[t.id] ?? 0) === 0);
   const nothingPlayed = liveGames.every((g) => g.status === "pending");
   const isEarly = allZero && nothingPlayed && liveGames.length > 0;
@@ -300,7 +299,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
         games={liveGames}
         teams={teams}
         cellsByGame={cellsByGame}
-        sessionsDone={sessionsDone}
+        scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -317,12 +316,12 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, teams, cellsByGame, sessionsDone, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
+  games, teams, cellsByGame, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
-  sessionsDone: number;
+  scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
@@ -369,7 +368,7 @@ function GamesSection({
         games={games}
         teams={teams}
         cellsByGame={cellsByGame}
-        sessionsDone={sessionsDone}
+        scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -624,11 +623,21 @@ function NTeamRankedList({
 
 // ── SessionBreakdown ─────────────────────────────────────────────────────────
 
+// Section order + labels (Task 4). The Completed section renders compressed
+// single-line rows; the rest use the full GameRow.
+const SECTION_ORDER: { key: GameSection; label: string }[] = [
+  { key: "completed", label: "Completed" },
+  { key: "on-tap", label: "On Tap" },
+  { key: "ready", label: "Ready for Play" },
+  { key: "preparing", label: "Preparing for Gameplay" },
+  { key: "skeleton", label: "Skeleton" },
+];
+
 function SessionBreakdown({
   games,
   teams,
   cellsByGame,
-  sessionsDone,
+  scoringModel,
   tripId,
   mineSet,
   viewer,
@@ -638,41 +647,73 @@ function SessionBreakdown({
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
-  sessionsDone: number;
+  scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
 }) {
+  // Group games by board section (single source: sectionOf) — every game lands
+  // in exactly one bucket (R1 clean partition). Server order (created_at asc) is
+  // preserved within each section.
+  const bySection = useMemo(() => {
+    const m = new Map<GameSection, LBGame[]>();
+    for (const g of games) {
+      const s = sectionOf(g);
+      const arr = m.get(s);
+      if (arr) arr.push(g);
+      else m.set(s, [g]);
+    }
+    return m;
+  }, [games]);
+
   return (
-    <div>
-      <p
-        className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Sessions{" "}
-        <span style={{ color: "var(--color-bt-text)" }}>
-          · {sessionsDone} of {games.length} done
-        </span>
-      </p>
-      <div className="flex flex-col gap-2">
-        {games.map((game) => (
-          <GameRow
-            key={game.id}
-            game={game}
-            teams={teams}
-            cells={cellsByGame.get(game.id)}
-            tripId={tripId}
-            mine={mineSet.has(game.id)}
-            canEdit={canEdit}
-            viewerName={viewer.name}
-            viewerAvatarIcon={viewer.avatarIcon}
-            viewerTeamColor={viewer.teamColor}
-            onPrefetch={onPrefetch}
-          />
-        ))}
-      </div>
+    <div className="flex flex-col gap-4">
+      {SECTION_ORDER.map(({ key, label }) => {
+        const sectionGames = bySection.get(key);
+        if (!sectionGames || sectionGames.length === 0) return null; // empty sections hidden
+        return (
+          <div key={key} data-testid={`games-section-${key}`}>
+            <p
+              className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {label}{" "}
+              <span style={{ color: "var(--color-bt-text)" }}>· {sectionGames.length}</span>
+            </p>
+            <div className="flex flex-col gap-2">
+              {sectionGames.map((game) =>
+                key === "completed" ? (
+                  <CompletedRow
+                    key={game.id}
+                    game={game}
+                    teams={teams}
+                    cells={cellsByGame.get(game.id)}
+                    scoringModel={scoringModel}
+                    tripId={tripId}
+                    onPrefetch={onPrefetch}
+                  />
+                ) : (
+                  <GameRow
+                    key={game.id}
+                    game={game}
+                    teams={teams}
+                    cells={cellsByGame.get(game.id)}
+                    tripId={tripId}
+                    mine={mineSet.has(game.id)}
+                    canEdit={canEdit}
+                    viewerName={viewer.name}
+                    viewerAvatarIcon={viewer.avatarIcon}
+                    viewerTeamColor={viewer.teamColor}
+                    onPrefetch={onPrefetch}
+                  />
+                )
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
