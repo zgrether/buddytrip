@@ -270,7 +270,7 @@ export function StickyCollapseHero({
  * N>2 (points cups) → an evenly-spaced row of N name/score blocks with the target
  * on its own line below (short names there to fit). Never 2-team-hardcoded.
  */
-function CollapsedHero({
+export function CollapsedHero({
   teams,
   teamTotals,
   winNumber,

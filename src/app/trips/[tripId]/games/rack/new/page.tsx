@@ -18,6 +18,7 @@ import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
+import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
@@ -601,6 +602,10 @@ export default function RackNStackPage() {
         ) : undefined
       }
     >
+      {/* Standard game header — row 1 (the collapsed cup hero), sticky over the
+          scoreboard. Competition games only. RsDayScore below is rack's own live
+          projected points (its row-2 equivalent). */}
+      <GamePageHeader tripId={tripId} competitionId={competitionId} />
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
