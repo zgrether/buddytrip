@@ -168,40 +168,49 @@ export function CompetitionFace({
   }
 
   // ── Board (the home, setup + live) ──────────────────────────────────────────
+  // The merged hero (identity + gear + scores) lives INSIDE the leaderboard now,
+  // so the old CompetitionHeader is gone from the board — it survives only on the
+  // Settings sub-surface above.
+  const scoringModel = competition.scoring_model ?? "match_play";
   return (
     <div className="space-y-4">
-      {header}
-
-      {/* Rosters entry point (W-TEAMSURFACE-01) — board-level so it shows in EVERY
-          standings state (empty / setup / live / final), which is precisely when
-          you need it. Member-visible. This (and the in-overlay pencil) are the
-          ONLY ways the overlay opens; a hero team-name tap goes to the standalone
-          identity editor instead. */}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setRostersOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold"
-          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)" }}
-          data-testid="open-rosters"
-        >
-          <Users size={14} style={{ color: "var(--color-bt-accent)" }} />
-          Rosters
-        </button>
-      </div>
+      {/* Rosters entry point (W-TEAMSURFACE-01), gated on scoring_model (R3): a
+          match_play cup is locked at 2 teams — add/delete-team is hidden and
+          per-team roster editing lives in the Edit Team modal (tap a team name),
+          so the button is redundant and removed. POINTS cups (2–N) KEEP it: it's
+          still the only path to add/delete a team (relocating that into
+          competition settings is deferred to Phase B — a known temporary). */}
+      {scoringModel === "points" && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setRostersOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)" }}
+            data-testid="open-rosters"
+          >
+            <Users size={14} style={{ color: "var(--color-bt-accent)" }} />
+            Rosters
+          </button>
+        </div>
+      )}
 
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
+        // Identity + gear for the merged hero (Task 1); the gear opens settings via
+        // the #522 history-back overlay — same handler, so back-nav is unchanged.
+        cupName={competition.name}
+        tagline={competition.tagline}
+        onSettings={canEdit ? openSettings : undefined}
         canEdit={canEdit}
         // The board layout is selected by the FROZEN scoring_model, not team
         // count (PR 2): match_play → Ryder hero, points → standings + matrix.
-        scoringModel={competition.scoring_model ?? "match_play"}
+        scoringModel={scoringModel}
         onAddGame={() => setAddingGame(true)}
-        // A hero team-short-name tap → the consolidated Edit Team modal (the
-        // team-management home). It self-gates by role: owner edits everything,
-        // captain edits identity (roster read-only), a plain member sees it
-        // read-only.
+        // A hero team-name tap → the consolidated Edit Team modal (the team-
+        // management home). It self-gates by role: owner edits everything, captain
+        // edits identity (roster read-only), a plain member sees it read-only.
         onEditTeam={handleEditTeam}
       />
 
@@ -217,7 +226,7 @@ export function CompetitionFace({
           competitionId={competition.id}
           types={gameTypes}
           canEdit={canEdit}
-          scoringModel={competition.scoring_model ?? "match_play"}
+          scoringModel={scoringModel}
           onClose={() => {
             setAddingGame(false);
             utils.competitions.faceBootstrap.invalidate({ tripId });
@@ -238,7 +247,7 @@ export function CompetitionFace({
           // is 2–N, so adds/deletes stay open. (The go-live freeze this replaced
           // was retired with GO LIVE; player-removal protection once scoring
           // starts is a separate SCORE-based lock, teamAssignments.rosterLocked.)
-          structureLocked={(competition.scoring_model ?? "match_play") === "match_play"}
+          structureLocked={scoringModel === "match_play"}
           rosterBuilding={rosterSetup === "building"}
           onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
           onClose={() => setRostersOpen(false)}
