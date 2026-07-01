@@ -78,6 +78,27 @@ export function allMatchesFilled(draft: MatchSides[], playersPerSide: number): b
   return matchPlayReady(filledMatches(draft, playersPerSide).length, draft.length);
 }
 
+/** A server match side: one user (1v1), one play_group (2v2), or an empty slot. */
+export type ServerSide = { type: "user" | "play_group"; id: string } | null;
+
+/**
+ * The member user-ids on a server match side, resolved from the side's OWN `type`
+ * — NOT an ambient singles/doubles flag. A `user` side is that one user; a
+ * `play_group` side (2v2) expands to its members via the play_group→members map.
+ *
+ * Keying on the side's type keeps the setup re-seed correct even in the window
+ * before the game row (which carries the format) has loaded: `matches.listByGame`
+ * and `games.getById` are separate queries, so on a fresh reopen matches can land
+ * first, when the page's `sided` flag is still its pre-load fallback (false). The
+ * old `sided ? members : [id]` rebuilt a doubles side as a lone "user" whose id was
+ * actually the play_group id — the match then read as unfilled and silently
+ * vanished on reopen. The side already tells us what it is; trust it.
+ */
+export function sideMemberIds(side: ServerSide, membersOfSide: Map<string, string[]>): string[] {
+  if (!side?.id) return [];
+  return side.type === "play_group" ? (membersOfSide.get(side.id) ?? []) : [side.id];
+}
+
 /**
  * Which accordion row is expanded on the settings overlay (page-owned). The two
  * "draft editor" rows (matches/handicaps) persist their client draft on collapse;
