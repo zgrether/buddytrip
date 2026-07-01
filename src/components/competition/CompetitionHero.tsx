@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Trophy, Settings, Users } from "lucide-react";
 import { fmtPts } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
@@ -40,6 +41,7 @@ export function CompetitionHero({
   canEdit,
   onSettings,
   onEditTeam,
+  variant = "expanded",
 }: {
   cupName: string;
   tagline: string | null;
@@ -55,11 +57,28 @@ export function CompetitionHero({
   onSettings?: () => void;
   /** Tap a team name → that team's identity editor (owner / its captain). */
   onEditTeam?: (teamId: string) => void;
+  /** `collapsed` (Spec: standard game header) — a compact score bar: team
+   *  name OVER score + "first to X" centered, NEUTRAL chrome, NO trophy / tagline
+   *  / gear / roster. Same DATA as expanded (a restyle, not new data). Used as the
+   *  leaderboard's sticky bar and row 1 of the game-page header. */
+  variant?: "expanded" | "collapsed";
 }) {
   // The two-score + trophy treatment is the match_play hero; points keeps its own
   // standings body below (untouched), so the hero there is identity + gear only.
   const showScores = scoringModel === "match_play" && teams.length >= 2;
   const [a, b] = teams;
+
+  if (variant === "collapsed") {
+    return (
+      <CollapsedHero
+        teams={teams}
+        teamTotals={teamTotals}
+        winNumber={winNumber}
+        pointsAvailable={pointsAvailable}
+        clincher={clincher}
+      />
+    );
+  }
 
   const aTotal = a ? teamTotals[a.id] ?? 0 : 0;
   const bTotal = b ? teamTotals[b.id] ?? 0 : 0;
@@ -196,6 +215,144 @@ export function CompetitionHero({
             </p>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * StickyCollapseHero — the leaderboard's expanded→collapsed swap (Spec Piece 1),
+ * PURE `position: sticky` (no scroll-listener, no size-interpolation): the collapsed
+ * bar is pinned (`sticky; top`) BEHIND the expanded hero, which sits OVER it (a
+ * negative margin equal to the collapsed bar's measured height) with its opaque
+ * gradient. Scrolling the expanded hero away REVEALS the pinned collapsed bar; no
+ * layout shift (the negative margin absorbs the collapsed bar's height). The height
+ * is measured (ResizeObserver) so it works for the 2-team bar AND the taller N-team
+ * (points-cup) bar without a magic number.
+ *
+ * `stickyTop` offsets the pin below any fixed nav (the leaderboard's TopNav is 56px).
+ */
+export function StickyCollapseHero({
+  stickyTop = 0,
+  ...hero
+}: React.ComponentProps<typeof CompetitionHero> & { stickyTop?: number }) {
+  const collapsedRef = useRef<HTMLDivElement>(null);
+  const [collapsedH, setCollapsedH] = useState(64); // sensible seed → no first-paint jump
+  useEffect(() => {
+    const el = collapsedRef.current;
+    if (!el) return;
+    const measure = () => setCollapsedH(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div style={{ position: "relative" }}>
+      <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
+        <CompetitionHero {...hero} variant="collapsed" />
+      </div>
+      <div style={{ position: "relative", zIndex: 20, marginTop: -collapsedH }}>
+        <CompetitionHero {...hero} variant="expanded" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * CollapsedHero — the compact score bar (Spec: standard game header, mock state
+ * B/C). Team name OVER score, "first to X" centered, NEUTRAL chrome (the same hero
+ * gradient art, no team wash), NO trophy / tagline / gear / roster. Same data as
+ * the expanded hero — a restyle. Used as the leaderboard's sticky bar and row 1 of
+ * the game-page header (ONE component, one home).
+ *
+ * N-team-aware: exactly-two → the mock's name/score flanking a centered target;
+ * N>2 (points cups) → an evenly-spaced row of N name/score blocks with the target
+ * on its own line below (short names there to fit). Never 2-team-hardcoded.
+ */
+function CollapsedHero({
+  teams,
+  teamTotals,
+  winNumber,
+  pointsAvailable,
+  clincher,
+}: {
+  teams: LBTeam[];
+  teamTotals: Record<string, number>;
+  winNumber: number;
+  pointsAvailable: number;
+  clincher: LBTeam | null;
+}) {
+  const targetLabel = clincher
+    ? `${clincher.short_name ?? clincher.name} wins`
+    : pointsAvailable > 0
+      ? `First to ${fmtPts(winNumber)}`
+      : "No points yet";
+  const card: React.CSSProperties = {
+    borderRadius: 12,
+    // NEUTRAL chrome — the same hero gradient art as expanded (STYLE_GUIDE hero
+    // carve-out), NO team-color wash. Team color lives on the scores/names only.
+    border: "1px solid var(--color-bt-border)",
+    background: "linear-gradient(158deg,#212c40 0%,#1a2231 100%)",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+    padding: "11px 18px",
+  };
+  const target = (
+    <span
+      className="uppercase"
+      style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".04em", color: "var(--color-bt-text-dim)" }}
+    >
+      {targetLabel}
+    </span>
+  );
+
+  // Two teams (match-play cup) → the mock: name/score flanking a centered target.
+  if (teams.length <= 2) {
+    const [a, b] = teams;
+    return (
+      <div style={card} data-testid="competition-hero-collapsed">
+        <div className="flex items-center justify-between gap-2">
+          <CollapsedTeam team={a} points={a ? teamTotals[a.id] ?? 0 : 0} name={a?.name} align="left" />
+          <div className="flex-1 text-center">{target}</div>
+          <CollapsedTeam team={b} points={b ? teamTotals[b.id] ?? 0 : 0} name={b?.name} align="right" />
+        </div>
+      </div>
+    );
+  }
+
+  // N teams (points cup) → an evenly-spaced row + the target on its own line.
+  return (
+    <div style={card} data-testid="competition-hero-collapsed">
+      <div className="flex items-stretch justify-between gap-2.5">
+        {teams.map((t) => (
+          <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" />
+        ))}
+      </div>
+      <div className="mt-1.5 text-center">{target}</div>
+    </div>
+  );
+}
+
+/** One team's name-over-score block in the collapsed bar (team-colored data). */
+function CollapsedTeam({
+  team,
+  points,
+  name,
+  align,
+}: {
+  team: LBTeam | undefined;
+  points: number;
+  name: string | undefined;
+  align: "left" | "right";
+}) {
+  if (!team) return <div style={{ minWidth: 100 }} />;
+  return (
+    <div className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 96 }}>
+      <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: team.color, lineHeight: 1.1 }}>
+        {name ?? team.name}
+      </div>
+      <div className="tabular-nums" style={{ fontSize: 26, fontWeight: 800, color: team.color, lineHeight: 1, marginTop: 1 }}>
+        {fmtPts(points)}
       </div>
     </div>
   );

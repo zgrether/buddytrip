@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, CompletedRow, sectionOf, fmtPts, type GameSection } from "./GameRow";
-import { CompetitionHero } from "./CompetitionHero";
+import { StickyCollapseHero } from "./CompetitionHero";
 import { PointsMatrix } from "./PointsMatrix";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -218,10 +218,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
       )}
 
       {/* The merged hero (Task 1) — identity + gear + (match_play) team names,
-          scores, clinch bar, win target. Replaces the old CompetitionHeader +
-          TwoTeamHero AND the "cup hasn't started" EarlyState (the hero renders
-          the 0–0 setup state fine, so it's the header in every stage). */}
-      <CompetitionHero
+          scores, clinch bar, win target. Now with the sticky-collapse swap (Spec
+          Piece 1): the expanded hero scrolls away and the compact score bar pins
+          just below the TopNav (56px). Same data, a restyle. */}
+      <StickyCollapseHero
+        stickyTop={56}
         cupName={cupName}
         tagline={tagline}
         teams={teams}
