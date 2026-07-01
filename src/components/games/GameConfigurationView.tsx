@@ -8,6 +8,7 @@ import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
+import { ZoneHeader } from "@/components/games/ZoneHeader";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -91,17 +92,63 @@ export function GameConfigurationView({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
-        {/* Zone 1 — IDENTITY (W-EDITMODAL-01): name (tap-to-edit) + assigned-to. */}
+        {/* Stroke + rack now follow the canonical cleaned ORDER (Spec 7 — same
+            family as the match/non-golf settings): identity → explainer → Rules
+            (top) → Game Management → grouped Settings / Options → Danger Zone. Each
+            format keeps its real rows (stroke's teamless net-total; rack's
+            HandicapRoster + course); only the ordering + ZoneHeader grouping change.
+            Section grouping reuses the shared ZoneHeader (Spec 6). */}
+
+        {/* IDENTITY (W-EDITMODAL-01): name (tap-to-edit) + assigned-to. */}
         {competitionId && (
           <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
         )}
 
-        {/* #501: live-game lock banner — the settings below are frozen until the
-            owner/delegate toggles back to Setup. */}
+        {/* Format explainer — the compact "how you compete" block that pairs
+            directly ABOVE Rules (the slot reserved for it). */}
+        {competitionId && (
+          <div className="mt-6">
+            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+          </div>
+        )}
+
+        {/* RULES OF THE DAY — at the TOP (matching canonical). Saves on blur (no
+            Save&exit — the back arrow navigates; the blur commit is the flush); the
+            carved-out exception keeps it editable in scoring mode (plain canEdit). */}
+        {competitionId && <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />}
+
+        {/* GAME MANAGEMENT — a labeled peer section + the single Setup/Scoring toggle
+            (owner/delegate only). The ZoneHeader supplies the caption, so the panel's
+            own caption is suppressed (hideLabel) — matching canonical. */}
+        {canEdit && (
+          <>
+            <div className="mt-6">
+              <ZoneHeader>Game Management</ZoneHeader>
+            </div>
+            <div className="mt-2.5">
+              <GameManagementPanel
+                mode={scoringEnabled ? "scoring" : "setup"}
+                ready={ready}
+                onEnable={onEnable}
+                onDisable={onDisable}
+                pending={busy}
+                hideLabel
+              />
+            </div>
+          </>
+        )}
+
+        {/* #501: live-game lock banner — the settings below freeze until the owner/
+            delegate flips the toggle above back to Setup (after the toggle, canonical). */}
         {scoringEnabled && canEdit && <ScoringLockBanner />}
 
-        {/* Same editors as the setup hull — reused, never rebuilt. Locked in
-            scoring mode via settingsEditable. */}
+        {/* SETTINGS — the required spine: Course + Format·Points (GameSetupRows).
+            Same editors as the setup hull, reused (never rebuilt); the accordion
+            drill-downs inherit the continuous-panel / no-under-header-divider /
+            scroll-into-view treatment from the shared ChecklistRow. */}
+        <div className="mt-6">
+          <ZoneHeader>Settings</ZoneHeader>
+        </div>
         <GameSetupRows
           tripId={tripId}
           competitionId={competitionId}
@@ -110,67 +157,53 @@ export function GameConfigurationView({
           locked={scoringEnabled}
           onChanged={onChanged}
         />
-        {onEditWhosPlaying && (
-          <button
-            type="button"
-            onClick={onEditWhosPlaying}
-            disabled={!settingsEditable}
-            // #512 Option B: when live-locked, dim + swap the chevron for a lock icon.
-            className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: scoringEnabled ? 0.55 : undefined }}
-          >
-            <div className="flex min-w-0 flex-col">
-              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Who&rsquo;s playing · Handicaps
-              </span>
-              <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
+
+        {/* OPTIONS — the optional layer: Who's playing · Handicaps (stroke's
+            per-player strokes / rack's HandicapRoster) + any extra rows (stroke's
+            Modifiers). Rendered only when the format supplies one of them. */}
+        {(onEditWhosPlaying || extraRows) && (
+          <>
+            <div className="mt-6">
+              <ZoneHeader>Options</ZoneHeader>
             </div>
-            {scoringEnabled
-              ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-              : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
-          </button>
-        )}
-
-        {/* Optional extra drill-down rows (e.g. stroke's Modifiers). */}
-        {extraRows}
-
-        {/* Format explainer — compact "how you compete" block, pairs directly
-            above Rules (orients the owner on the format they're configuring). */}
-        {competitionId && (
-          <div className="mt-6">
-            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-          </div>
-        )}
-
-        {/* Zone 3 — RULES note (W-EDITMODAL-01): saves on blur (no Save&exit here —
-            the back arrow navigates; the blur commit is the flush). */}
-        {competitionId && <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />}
-
-        {/* The single Setup / Scoring toggle — the one game-mode control (it retired
-            the old Enabled/Disabled segmented control). Owner/delegate only. */}
-        {canEdit && (
-          <div className="mt-6">
-            <GameManagementPanel
-              mode={scoringEnabled ? "scoring" : "setup"}
-              ready={ready}
-              onEnable={onEnable}
-              onDisable={onDisable}
-              pending={busy}
-            />
-          </div>
+            {onEditWhosPlaying && (
+              <button
+                type="button"
+                onClick={onEditWhosPlaying}
+                disabled={!settingsEditable}
+                // #512 Option B: when live-locked, dim + swap the chevron for a lock icon.
+                className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: scoringEnabled ? 0.55 : undefined }}
+              >
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Who&rsquo;s playing · Handicaps
+                  </span>
+                  <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
+                </div>
+                {scoringEnabled
+                  ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+                  : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
+              </button>
+            )}
+            {extraRows}
+          </>
         )}
 
         {/* Per-game danger zone — owner-only (reset scores → reset settings →
-            delete), reusing the shared confirm vocabulary + the Phase A resets. */}
+            delete), reusing the shared confirm vocabulary + the Phase A resets.
+            Dimmed-header + disabled wholesale in scoring mode (shared treatment). */}
         {isOwner && (
-          <GameDangerZone
-            tripId={tripId}
-            gameId={game.id}
-            competitionId={competitionId}
-            onChanged={onChanged}
-            onDeleted={onDeleted}
-            disabled={scoringEnabled}
-          />
+          <div className="mt-6">
+            <GameDangerZone
+              tripId={tripId}
+              gameId={game.id}
+              competitionId={competitionId}
+              onChanged={onChanged}
+              onDeleted={onDeleted}
+              disabled={scoringEnabled}
+            />
+          </div>
         )}
       </div>
     </div>
