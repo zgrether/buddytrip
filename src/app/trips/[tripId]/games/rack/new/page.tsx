@@ -724,10 +724,12 @@ export default function RackNStackPage() {
   const final = gameQ.data?.status === "complete";
   const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
   return (
-    // Slim nav (back + gear) only — the GamePageHeader below is the game header, so
-    // no redundant "Rack-n-Stack" title bar on the play screen.
+    // Title-bar (back + name/status + gear) then the GamePageHeader below — the same
+    // header pattern the match/stroke game pages use.
     <Shell
       onBack={() => router.back()}
+      title="Rack-n-Stack"
+      subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}
       right={
         canEdit && !final ? (
           <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
@@ -794,18 +796,15 @@ export default function RackNStackPage() {
   );
 }
 
-function Shell({ title, subtitle, onBack, right, children }: { title?: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode }) {
+function Shell({ title, subtitle, onBack, right, children }: { title: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
-      {/* Slim nav bar — back + optional title + right slot. On the scoring/play
-          screen the title is omitted so the GamePageHeader below is THE header
-          (no redundant game-title bar). */}
       <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
         <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
           <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
         <div className="min-w-0 text-center">
-          {title && <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>}
+          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
           {subtitle && <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>}
         </div>
         <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
