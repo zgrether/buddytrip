@@ -67,7 +67,6 @@ export function CompetitionHero({
   // the relative-lead point so the bar reads as a live race (tied → centered).
   const aWidth = pointsAvailable > 0 ? Math.min(100, (aTotal / pointsAvailable) * 100) : 0;
   const bWidth = pointsAvailable > 0 ? Math.min(100, (bTotal / pointsAvailable) * 100) : 0;
-  const leadPct = aTotal + bTotal > 0 ? (aTotal / (aTotal + bTotal)) * 100 : 50;
 
   return (
     <div
@@ -173,10 +172,12 @@ export function CompetitionHero({
                 className="ml-auto h-full rounded-r-full transition-all duration-500"
                 style={{ width: `${bWidth}%`, background: b.color }}
               />
-              {/* Lead marker — slides toward whoever's ahead (centered when tied). */}
+              {/* Center divider — a FIXED halfway reference. Each team's fill
+                  grows from its own end toward it, so a fill crossing the center
+                  is what shows the lead (the marker itself never moves). */}
               <div
-                className="absolute top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full transition-all duration-500"
-                style={{ left: `calc(${leadPct}% - 1px)`, background: "var(--color-bt-text)" }}
+                className="absolute left-1/2 top-1/2 h-full w-0.5 -translate-x-1/2 -translate-y-1/2"
+                style={{ background: "var(--color-bt-text)" }}
               />
             </div>
 
