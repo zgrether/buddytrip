@@ -34,6 +34,7 @@ import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
+import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds } from "@/lib/matchDraft";
@@ -861,6 +862,29 @@ export default function NewMatchGamePage() {
     [groups, selectedMatchId]
   );
   const entryParticipants = selectedGroup ? [selectedGroup.a, selectedGroup.b] : [];
+
+  // #533 header projection (row 2) — a presentation rollup of the match strips
+  // ALREADY on this page: "if the game ended now, what does each team get?" Each
+  // match's CURRENT standing (up → its team wins the match's points; all-square
+  // but started → halved; not started → nothing) summed per team. No engine call,
+  // no fetch — the same matchState the strips render, keyed by team via teamOfSide.
+  const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
+  const projectionPerTeam = useMemo(() => {
+    const projMatches: ProjMatch[] = groups.map((g) => {
+      const st = matchState(decidedFor(g), scUnits.length);
+      return {
+        aTeamId: teamOfSide(g.a.id)?.id ?? null,
+        bTeamId: teamOfSide(g.b.id)?.id ?? null,
+        leader: st.leader,
+        started: st.thru > 0,
+      };
+    });
+    return rollupMatchPlay(projMatches, pointsPerMatch);
+    // decidedFor/teamOfSide are per-render closures; we depend on the DATA they
+    // read (scores via loadedValues/values, handicaps, roster→team, scorecard).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, loadedValues, values, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch]);
+
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
     if (selectedGroup) {
@@ -961,10 +985,19 @@ export default function NewMatchGamePage() {
         }
       />
 
-      {/* Standard game header — row 1 (the collapsed cup hero), sticky while the
-          match list scrolls under it. Competition games only (null otherwise). */}
+      {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
+          game's projected/final per-team contribution), sticky while the match
+          list scrolls under it. Competition games only (null otherwise). */}
       {!cfgOpen && screen === "overview" && (
-        <GamePageHeader tripId={tripId} competitionId={competitionId} />
+        <GamePageHeader
+          tripId={tripId}
+          competitionId={competitionId}
+          projection={{
+            perTeam: projectionPerTeam,
+            gameName: (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "Singles Match Play"),
+            final: status === "complete",
+          }}
+        />
       )}
 
       <div className="w-full px-4 py-5">
