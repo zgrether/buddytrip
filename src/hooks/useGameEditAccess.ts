@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useTripRole } from "./useTripRole";
 import { useCurrentUser } from "./useCurrentUser";
 
@@ -29,9 +28,18 @@ export function useGameEditAccess(
 ) {
   const { canEdit: tripCanEdit, isOwner, loading } = useTripRole(tripId);
   const me = useCurrentUser();
+  // This is the ACCESS query — deliberately NOT on STRUCTURE_QUERY's staleTime:
+  // Infinity (Spec 1, Task 2). If it were kept forever, a delegate whose grant is
+  // REVOKED would keep rendering edit affordances until a hard refresh (their
+  // actions already fail server-side — the server re-checks canEditGame live every
+  // request — but the stale UI lingers). `staleTime: 0` + an explicit
+  // `refetchOnWindowFocus` (the global default is false) re-checks access on the
+  // delegate's next mount / tab-refocus, so the affordances drop without a manual
+  // refresh. Scoped to THIS observer — the GameIdentityHeader usage keeps its own
+  // options. It's a tiny query; refetch-on-focus is negligible.
   const orgQ = trpc.games.listOrganizers.useQuery(
     { tripId: tripId!, gameId: gameId! },
-    { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId }
+    { enabled: !!tripId && !!gameId, staleTime: 0, refetchOnWindowFocus: true }
   );
   const amDelegate = useMemo(
     () =>

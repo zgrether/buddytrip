@@ -688,13 +688,16 @@ export const gamesRouter = router({
       return { success: true };
     }),
 
-  // delete — Owner/Organizer. HARD-delete a game; all dependent rows
-  // (participants, matches, play_groups, results, score_entries, organizers)
-  // cascade via ON DELETE CASCADE. A true removal (L3-b) — the danger-zone Delete.
-  // requireTripRole("Organizer") gates it to trip staff (not a game-delegate).
+  // delete — Owner-only. HARD-delete a game; all dependent rows (participants,
+  // matches, play_groups, results, score_entries, organizers) cascade via ON
+  // DELETE CASCADE. A true removal (L3-b) — the danger-zone Delete. OWNER-ONLY
+  // (Spec 1): the most destructive per-game action must match its sibling
+  // danger-zone actions (resetScoring / resetToSkeleton are requireTripRole
+  // ("Owner")) — an Organizer/co-admin no longer deletes, a game-delegate never
+  // could. The client danger zone is already isOwner-gated in all three hulls.
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireTripRole("Organizer"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games").select("id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
