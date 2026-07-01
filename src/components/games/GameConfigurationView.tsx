@@ -35,6 +35,7 @@ export function GameConfigurationView({
   onDeleted,
   whosPlayingLabel,
   onEditWhosPlaying,
+  leadingSettingsRows,
   extraRows,
   scoringEnabled,
   ready = true,
@@ -59,6 +60,10 @@ export function GameConfigurationView({
    *  post-create roster editor (stroke today — its handicaps step lands in §3). */
   whosPlayingLabel?: string;
   onEditWhosPlaying?: () => void;
+  /** Format-specific rows rendered at the TOP of the Settings section, before
+   *  Course/Points (rack's GROUPINGS + Handicaps checklist rows). Additive — every
+   *  other format omits it. */
+  leadingSettingsRows?: React.ReactNode;
   /** Extra setup rows below the who's-playing drill-down (e.g. the stroke
    *  Modifiers row). The match page renders its full checklist inline, so this is
    *  only for the GameSetupRows-based formats that need one more drill-down. */
@@ -149,6 +154,9 @@ export function GameConfigurationView({
         <div className="mt-6">
           <ZoneHeader>Settings</ZoneHeader>
         </div>
+        {/* Format-specific leading rows (rack's GROUPINGS + Handicaps) sit ABOVE the
+            shared Course/Points spine as the first Settings items. */}
+        {leadingSettingsRows && <div className="mt-2 mb-2.5 flex flex-col gap-2.5">{leadingSettingsRows}</div>}
         <GameSetupRows
           tripId={tripId}
           competitionId={competitionId}
