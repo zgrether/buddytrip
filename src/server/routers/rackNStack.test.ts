@@ -181,3 +181,41 @@ describe("rack-n-stack — per-match points (Stage 3)", () => {
     expect(lb.teamTotals[tb]).toBe(0);
   });
 });
+
+describe("rack-n-stack — scoring is blocked until playing groups are assigned", () => {
+  it("enableScoring refuses a rack with no groups, then allows once groups exist", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Gate", competitionId });
+    const gameId = game.id as string;
+
+    // No groups yet → the enable guard refuses (manual grouping is required).
+    await expect(
+      ctx.callerAs("planner").games.enableScoring({ tripId, gameId })
+    ).rejects.toThrow(/setting up/i);
+
+    // Build one group → now ready.
+    await ctx.callerAs("planner").playGroups.setFoursomes({
+      tripId,
+      gameId,
+      groups: [{ name: "G1", userIds: [owner, member] }],
+    });
+    await expect(ctx.callerAs("planner").games.enableScoring({ tripId, gameId })).resolves.toBeTruthy();
+  });
+
+  it("clearing all groups makes the leaderboard read Setting-up again (grouped-count gate)", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Clear", competitionId });
+    const gameId = game.id as string;
+    await ctx.callerAs("planner").playGroups.setFoursomes({
+      tripId,
+      gameId,
+      groups: [{ name: "G1", userIds: [owner, member] }],
+    });
+    const before = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    expect(before.games.find((g) => g.id === gameId)!.configured).toBe(true);
+
+    // Clear the groups — participants may linger with a null play_group_id, but the
+    // readiness signal counts GROUPED players, so it flips back to not-configured.
+    await ctx.callerAs("planner").playGroups.setFoursomes({ tripId, gameId, groups: [] });
+    const after = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    expect(after.games.find((g) => g.id === gameId)!.configured).toBe(false);
+  });
+});

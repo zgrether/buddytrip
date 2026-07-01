@@ -5,7 +5,7 @@ import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { isManualGameType } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
-import { isConfigured, MATCH_PLAY_TYPES } from "@/server/lib/gameReadiness";
+import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 
 /** Singles vs doubles head-to-head sizing for the team-size-derived formats
  *  (rack-n-stack). Match play itself counts its configured rows instead. */
@@ -94,8 +94,8 @@ export async function computeCompetitionLeaderboard(
       ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[] }),
     gameIds.length
-      ? supabase.from("game_participants").select("game_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string }[] }),
+      ? supabase.from("game_participants").select("game_id, play_group_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null }[] }),
     // Any score entered yet? The §A "started" signal (R1): an `active` game with
     // ≥1 score entry is genuinely underway (On Tap); an `active` game with none is
     // enabled/pairings-up but not started (Ready for Play). Manual games score on
@@ -111,10 +111,17 @@ export async function computeCompetitionLeaderboard(
   for (const r of (scoreEntryRowsRes.data ?? []) as { game_id: string }[]) {
     startedByGame.add(r.game_id);
   }
-  // Participant rows per game — "field picked" (stroke) / "auto-grouped" (rack).
+  // Participant rows per game — "field picked" (stroke). For rack we track the
+  // GROUPED count separately: rack readiness needs players assigned to a playing
+  // group (the manual builder), so a bare roster with no groups isn't Ready — the
+  // same bar the server enable guard uses, so the two can't disagree.
   const participantCountByGame = new Map<string, number>();
-  for (const r of (participantRowsRes.data ?? []) as { game_id: string }[]) {
+  const groupedParticipantCountByGame = new Map<string, number>();
+  for (const r of (participantRowsRes.data ?? []) as { game_id: string; play_group_id: string | null }[]) {
     participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
+    if (r.play_group_id != null) {
+      groupedParticipantCountByGame.set(r.game_id, (groupedParticipantCountByGame.get(r.game_id) ?? 0) + 1);
+    }
   }
   // A match game's available points = value × the number of ASSIGNED matches
   // (both sides paired). "A match = assigned, everywhere" (round-3.1 addendum):
@@ -271,7 +278,8 @@ export async function computeCompetitionLeaderboard(
           typeId,
           matchCountByGame.get(gid) ?? 0,
           totalMatchRowsByGame.get(gid) ?? 0,
-          participantCountByGame.get(gid) ?? 0,
+          // Rack gates on GROUPED players (manual builder); stroke on all participants.
+          (typeId === RACK_TYPE ? groupedParticipantCountByGame : participantCountByGame).get(gid) ?? 0,
           hasPoints
         ),
         // Course presence (§ scorecard three-way) — surfaced so the row's
