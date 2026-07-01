@@ -13,6 +13,8 @@ import { golfWord, golfResult, GOLF_STYLE } from "./golfScore";
 import {
   parseScoreCellKey,
   scoreCellKey,
+  unconfirmedOnHole,
+  unconfirmedCount,
   type ScoreUnit,
   type Participant,
   type ScoreValues,
@@ -169,6 +171,22 @@ export function ScoreEntryView({
       onRetryCell?.(participantId, unitLabel);
     }
   };
+
+  // ── Confirmation gate (Spec 1a — honest advance) ──────────────────────────
+  // Never advance past / finish over scores that aren't CONFIRMED on the server.
+  const participantIds = participants.map((p) => p.id);
+  const holeGate = unconfirmedOnHole(saveStatus, participantIds, label);
+  const gameGate = unconfirmedCount(saveStatus);
+  const advanceReason = holeGate.errored > 0
+    ? `${holeGate.errored} score${holeGate.errored > 1 ? "s" : ""} didn’t save — retry above`
+    : holeGate.saving > 0
+      ? "Saving scores…"
+      : undefined;
+  const finishReason = gameGate.errored > 0
+    ? `${gameGate.errored} score${gameGate.errored > 1 ? "s" : ""} didn’t save — retry before finishing`
+    : gameGate.saving > 0
+      ? "Saving scores…"
+      : undefined;
 
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--color-bt-base)" }}>
@@ -394,9 +412,20 @@ export function ScoreEntryView({
           onConfirm={confirmAdvance}
         />
       ) : allComplete ? (
-        <BottomCTA label="Finish" icon onClick={() => onFinish?.()} subtext="Saves results · shows final standings" />
+        <BottomCTA
+          label="Finish"
+          icon
+          onClick={() => onFinish?.()}
+          disabled={gameGate.total > 0}
+          subtext={finishReason ?? "Saves results · shows final standings"}
+        />
       ) : currentComplete && hole < units.length ? (
-        <BottomCTA label={`Hole ${units[hole]?.label ?? hole + 1} ›`} onClick={() => goHole(hole + 1)} />
+        <BottomCTA
+          label={`Hole ${units[hole]?.label ?? hole + 1} ›`}
+          onClick={() => goHole(hole + 1)}
+          disabled={holeGate.blocked}
+          subtext={advanceReason}
+        />
       ) : null}
     </div>
   );

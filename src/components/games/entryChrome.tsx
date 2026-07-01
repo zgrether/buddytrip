@@ -90,11 +90,15 @@ export function BottomCTA({
   onClick,
   subtext,
   icon,
+  disabled,
 }: {
   label: string;
   onClick: () => void;
   subtext?: string;
   icon?: boolean;
+  /** Spec 1a — honest advance: the CTA is held (dimmed, non-interactive) while
+   *  the current hole's scores aren't CONFIRMED saved. `subtext` names the reason. */
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -105,18 +109,20 @@ export function BottomCTA({
       }}
     >
       <button
-        onClick={onClick}
-        className="flex w-full items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        className="flex w-full items-center justify-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-default"
         style={{
           height: 54,
           borderRadius: 12,
-          background: "var(--color-bt-accent)",
-          color: "#0d1f1a",
+          background: disabled ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+          color: disabled ? "var(--color-bt-text-dim)" : "#0d1f1a",
           fontSize: 17,
           fontWeight: 600,
+          opacity: disabled ? 0.75 : 1,
         }}
       >
-        {icon && <Check size={20} strokeWidth={2.2} />}
+        {icon && !disabled && <Check size={20} strokeWidth={2.2} />}
         {label}
       </button>
       {subtext && (

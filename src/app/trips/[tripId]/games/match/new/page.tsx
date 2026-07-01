@@ -43,7 +43,8 @@ import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
-import type { Participant, ScoreValues } from "@/components/games/types";
+import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
+import { showToast } from "@/lib/toast";
 
 /** "07:40" → "7:40 AM". Empty/invalid → "". */
 function formatTee(t: string | null | undefined): string {
@@ -782,6 +783,17 @@ export default function NewMatchGamePage() {
 
   async function handleFinish() {
     if (!tripId || !gameId) return;
+    // Spec 1a: never finalize over unconfirmed scores — finish computes from
+    // server rows, so an unsaved cell would be silently omitted from standings.
+    const gate = unconfirmedCount(saveStatus);
+    if (gate.total > 0) {
+      showToast(
+        gate.errored > 0
+          ? `${gate.errored} score${gate.errored > 1 ? "s" : ""} didn’t save — retry before finishing`
+          : "Still saving scores — try again in a moment",
+      );
+      return;
+    }
     try {
       await finishGame.mutateAsync({ tripId, gameId });
       await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
