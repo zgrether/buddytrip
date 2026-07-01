@@ -29,10 +29,19 @@ export function gameHref(
    *  instead of the scoreboard pass-through — the leaderboard uses this to drop
    *  an owner/delegate straight into setup for a not-yet-scoring game (the page
    *  honors `?settings=1` via useGameSettingsOverlay). Members / scoring-mode
-   *  games never get it (decided at the call site). */
-  opts?: { settings?: boolean }
+   *  games never get it (decided at the call site).
+   *
+   *  `scorecard: true` → the standalone EMPTY scorecard preview (Spec 5a): the
+   *  course structure (par/yardage/stroke-index, front+back) read from the game's
+   *  PERSISTED snapshot, no scores. Format-agnostic (one page for every golf
+   *  format — it only needs the schema), so it's a single route, not per-format.
+   *  Golf-only; a non-golf game (no course) returns null → no scorecard link. */
+  opts?: { settings?: boolean; scorecard?: boolean }
 ): string | null {
   if (!gameTypeId) return null;
+  if (opts?.scorecard) {
+    return isGolfFormat(gameTypeId) ? `/trips/${tripId}/games/scorecard?game=${gameId}` : null;
+  }
   const suffix = opts?.settings ? "&settings=1" : "";
   const seg = GAME_ROUTES[gameTypeId];
   if (seg) return `/trips/${tripId}/games/${seg}?game=${gameId}${suffix}`;
