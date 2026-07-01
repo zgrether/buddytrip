@@ -19,6 +19,7 @@ import { GAME_TYPES } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useScreenHistory } from "@/hooks/useScreenHistory";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -77,6 +78,9 @@ export default function NewGamePage() {
   // adding players to a competition game we opened with ?game).
   const [createdGame, setCreatedGame] = useState<{ id: string; participants: Participant[] } | null>(null);
   const [view, setView] = useState<"entry" | "grid" | "final">("entry");
+  // Browser/OS back steps out of the scorecard grid back to entry (not the
+  // leaderboard). The grid is the one history-tracked sub-screen over entry.
+  const backFromGrid = useScreenHistory(view === "grid" ? 1 : 0, () => setView("entry"));
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
@@ -483,7 +487,7 @@ export default function NewGamePage() {
         ) : view === "grid" ? (
           <div className="flex h-full flex-col">
             <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              <button onClick={() => setView("entry")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+              <button onClick={backFromGrid} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
             </div>
             <div className="min-h-0 flex-1">
@@ -498,7 +502,7 @@ export default function NewGamePage() {
                 saveStatus={saveStatus}
                 onCellTap={(label) => {
                   setCurrentHole(Number(label) || 1);
-                  setView("entry");
+                  backFromGrid();
                 }}
               />
             </div>

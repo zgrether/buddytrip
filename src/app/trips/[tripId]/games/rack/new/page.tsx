@@ -22,6 +22,7 @@ import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -428,6 +429,16 @@ export default function RackNStackPage() {
   const locked = gameQ.data?.status === "complete" && !correctionsOpen;
   const correcting = gameQ.data?.status === "complete" && correctionsOpen;
 
+  // Browser/OS back steps through the score-entry sub-screens (group entry → grid)
+  // instead of jumping to the leaderboard. Depth: 0 = play screen, 1 = a group's
+  // card, 2 = its grid view (only when not locked — a locked group shows the grid
+  // directly, one level). `back()` is the one path every breadcrumb/finish uses.
+  const entryDepth = entryGroupId ? (!locked && entryView === "grid" ? 2 : 1) : 0;
+  const back = useScreenHistory(entryDepth, () => {
+    if (!locked && entryView === "grid") setEntryView("entry");
+    else setEntryGroupId(null);
+  });
+
   // A resumed competition game (gid set from ?game=) may have NO foursomes yet
   // (created as a bare games row by add-game). Route it to the setup step instead
   // of the empty play screen — startRack seeds onto the existing game.
@@ -519,7 +530,7 @@ export default function RackNStackPage() {
       return (
         <div className="flex flex-col" style={{ height: "100vh" }}>
           <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-            <button onClick={() => (locked ? setEntryGroupId(null) : setEntryView("entry"))} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+            <button onClick={back} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{(groupName ?? "Group")}{locked ? " · Final" : " · Scorecard"}</span>
           </div>
           <div className="min-h-0 flex-1">
@@ -531,7 +542,7 @@ export default function RackNStackPage() {
               values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
               direction="low_wins"
               pips={groupPips}
-              onCellTap={locked ? undefined : (label) => { setCurrentHole(Number(label) || 1); setEntryView("entry"); }}
+              onCellTap={locked ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
             />
           </div>
         </div>
@@ -549,9 +560,9 @@ export default function RackNStackPage() {
           onHoleChange={setCurrentHole}
           onChange={handleChange}
           onClear={handleClear}
-          onBack={() => setEntryGroupId(null)}
+          onBack={back}
           onOpenGrid={() => setEntryView("grid")}
-          onFinish={() => setEntryGroupId(null)}
+          onFinish={back}
           pips={groupPips}
         />
       </div>
