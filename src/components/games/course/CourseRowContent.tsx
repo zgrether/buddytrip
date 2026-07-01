@@ -1,7 +1,9 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check, X, ClipboardList, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
+import { gameHref } from "@/lib/gameRoutes";
 import { CourseSearchPanel } from "./CourseSearchPanel";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
@@ -30,6 +32,11 @@ export function CourseRowContent({
   onChanged: () => void;
 }) {
   const gameId = game.id;
+  const router = useRouter();
+  // Scorecard preview (Spec 5a) — the empty par/yardage/stroke-index card, read from
+  // persisted state, so the owner can confirm the course is set up right. A simple
+  // button inside this panel, under the chosen course(s). Golf-only (null → hidden).
+  const scorecardHref = gameHref(tripId, game.game_type_id, gameId, { scorecard: true });
   const utils = trpc.useUtils();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const setBackNine = trpc.games.setBackNine.useMutation();
@@ -86,6 +93,7 @@ export function CourseRowContent({
     return (
       <div className="flex flex-col gap-3" data-testid="course-needs-back">
         <NineSummary label="Front nine" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
+        {scorecardHref && <ScorecardPreviewButton onClick={() => router.push(scorecardHref)} />}
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>Add the back nine</span>
           <p className="mb-2 mt-0.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>A 9-hole course needs a back nine to make a full 18.</p>
@@ -117,7 +125,26 @@ export function CourseRowContent({
       ) : (
         <NineSummary label="Course" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
       )}
+      {scorecardHref && <ScorecardPreviewButton onClick={() => router.push(scorecardHref)} />}
     </div>
+  );
+}
+
+/** A simple button under the chosen course(s) that opens the empty scorecard
+ *  (par / yardage / stroke index) to verify the course setup. */
+function ScorecardPreviewButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid="course-preview-scorecard"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
+      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <ClipboardList size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+      <span className="flex-1 text-sm" style={{ color: "var(--color-bt-text)" }}>Preview scorecard</span>
+      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
+    </button>
   );
 }
 
