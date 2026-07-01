@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outboxPut, outboxClear, outboxEntries } from "@/lib/scoreOutbox";
+import { showToast } from "@/lib/toast";
 import {
   scoreCellKey,
   type CellSaveState,
@@ -184,6 +185,11 @@ export function useScoreSaver(
     // immaterial for recovering already-unconfirmed writes.
     const t = setTimeout(() => {
       for (const e of pending) onChange(e.participantId, e.unitLabel, e.value);
+      // Honest UI: tell the user their scores survived and are being re-sent.
+      showToast(
+        `Recovered ${pending.length} unsaved score${pending.length > 1 ? "s" : ""} — retrying`,
+        "info",
+      );
     }, 0);
     return () => clearTimeout(t);
   }, [tripId, gameId, onChange]);
