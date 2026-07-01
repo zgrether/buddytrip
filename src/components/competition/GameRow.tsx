@@ -2,6 +2,7 @@
 
 import { createElement } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
@@ -129,10 +130,15 @@ export function GameRow({
   // Once scoring is on (live/final), everyone gets the scoreboard. Members never
   // get the settings link — they hit the server-walled placeholder.
   const canEditThisGame = !!canEdit || mine;
+  const router = useRouter();
   const setupMode = !(game.status === "complete" || game.status === "active" || game.scoringEnabled === true);
   const href = gameHref(tripId, game.gameTypeId, game.id, {
     settings: canEditThisGame && setupMode,
   });
+  // The scorecard icon opens the EMPTY scorecard PREVIEW (Spec 5a) — its own
+  // destination, distinct from the row's game link. Golf-with-course only (null
+  // for non-golf, which never shows the icon anyway).
+  const scorecardHref = gameHref(tripId, game.gameTypeId, game.id, { scorecard: true });
   const hasScores = cells && cells.size > 0;
   // The row's single source of truth — the game's board SECTION (shared with the
   // section grouping so row + header always agree). Layout + every §A3 layer key
@@ -254,18 +260,29 @@ export function GameRow({
 
       {/* Scorecard column (golf-only, dropped at Final) — inboard of the outer
           column so the right edge holds when it vanishes. Course set → a real
-          button that opens the scorecard (via the row link to the score-entry
-          route); no course → a muted, inert status icon (no nav, not an error). */}
+          button that opens the EMPTY SCORECARD PREVIEW (Spec 5a — its own route,
+          NOT the game): the span intercepts the tap (preventDefault +
+          stopPropagation so the row's game link doesn't also fire) and navigates
+          to the scorecard. No course → a muted, inert status icon. */}
       {showScorecard &&
-        (scorecardOpens ? (
+        (scorecardOpens && scorecardHref ? (
           <span
-            className="flex shrink-0 items-center justify-center rounded-lg"
+            role="button"
+            tabIndex={0}
+            aria-label="View scorecard"
+            title="View scorecard"
+            className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg"
             style={{
               width: 30,
               height: 30,
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
               color: "var(--color-bt-text)",
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              router.push(scorecardHref);
             }}
           >
             <ClipboardList size={15} />
