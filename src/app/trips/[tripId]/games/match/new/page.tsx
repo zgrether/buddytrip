@@ -30,6 +30,7 @@ import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
+import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
@@ -450,6 +451,17 @@ export default function NewMatchGamePage() {
     setManualScreen(navStack[navStack.length - 1]);
     setNavStack((s) => s.slice(0, -1));
   };
+
+  // Browser/OS back steps through the score-entry sub-screens instead of jumping to
+  // the leaderboard. Depth: 0 on the hub/overview, 1 in a match's score screen, 2 in
+  // its grid (only when not locked — a locked match opens the grid directly, one
+  // level). `matchBack()` is the one path the score-entry breadcrumbs use.
+  const inGrid = screen === "score" && !locked && view === "grid";
+  const matchEntryDepth = (screen === "score" ? 1 : 0) + (inGrid ? 1 : 0);
+  const matchBack = useScreenHistory(matchEntryDepth, () => {
+    if (inGrid) setView("entry");
+    else if (screen === "score") goBack();
+  });
 
   // Seed the editable draft from the server when we land on setup for an
   // existing game (e.g. owner opens a pending game, or taps Edit) and the local
@@ -912,7 +924,7 @@ export default function NewMatchGamePage() {
             <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
               {/* When locked, the grid is the read-only result — back returns to
                   the hub and cells don't open editable entry (#7). */}
-              <button onClick={() => (locked ? go("overview") : setView("entry"))} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+              <button onClick={matchBack} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{locked ? "Scorecard · Final" : "Scorecard"}</span>
             </div>
             <div className="min-h-0 flex-1">
@@ -927,7 +939,7 @@ export default function NewMatchGamePage() {
                 saveStatus={saveStatus}
                 onCellTap={locked ? undefined : (label) => {
                   setCurrentHole(Number(label) || 1);
-                  setView("entry");
+                  matchBack();
                 }}
               />
             </div>
@@ -945,9 +957,9 @@ export default function NewMatchGamePage() {
             onClear={onClear}
             saveStatus={saveStatus}
             onRetryCell={retryCell}
-            onBack={goBack}
+            onBack={matchBack}
             onOpenGrid={() => setView("grid")}
-            onFinish={goBack}
+            onFinish={matchBack}
             finishLabel="Back to matches"
             finishSubtext="Scores save as you enter"
             meId={me?.id}

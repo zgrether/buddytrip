@@ -20,8 +20,9 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
-import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
+import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -66,11 +67,13 @@ export default function RackNStackPage() {
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
-  // Rack settings: GROUPINGS is an inline accordion (the rack equivalent of the 2v2
-  // Matches builder); HANDICAPS drills down to the stroke-play per-player roster.
-  // `groupingsOpen` drives the accordion; `groupDraft` = one user-id array per group.
-  const [groupingsOpen, setGroupingsOpen] = useState(false);
-  const [showHandicaps, setShowHandicaps] = useState(false);
+  // The tapped group's scorecard: "entry" (score keypad) vs "grid" (the read grid,
+  // opened by the top-right scorecard icon).
+  const [entryView, setEntryView] = useState<"entry" | "grid">("entry");
+  // Rack settings: both GROUPINGS and HANDICAPS are inline accordions (the rack
+  // equivalents of the 2v2 Matches/Handicaps rows), single-open. `groupDraft` = one
+  // user-id array per group.
+  const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | null>(null);
   const [groupDraft, setGroupDraft] = useState<string[][]>([]);
   // Has the user actually edited the group draft this open? Only a TOUCHED draft is
   // persisted on leave — an untouched open (just seeded from the server) never
@@ -293,7 +296,7 @@ export default function RackNStackPage() {
     setGroupDraft([]); // start empty — the owner builds the groups
     groupingsTouched.current = false;
     // Land in the settings page with GROUPINGS expanded (the first Settings item).
-    setGroupingsOpen(true);
+    setOpenAccordion("groupings");
     openConfig();
   }
 
@@ -315,13 +318,24 @@ export default function RackNStackPage() {
   // draft from what's persisted; collapsing persists it (persist-on-collapse, like
   // the 2v2 match builder), so building groups then collapsing the row saves them.
   function toggleGroupings() {
-    if (groupingsOpen) {
-      setGroupingsOpen(false);
+    if (openAccordion === "groupings") {
+      setOpenAccordion(null);
       if (groupingsTouched.current) void saveGroups();
     } else {
       setGroupDraft(currentGroupDraft());
       groupingsTouched.current = false;
-      setGroupingsOpen(true);
+      setOpenAccordion("groupings");
+    }
+  }
+
+  // Toggle the HANDICAPS accordion (inline per-player strokes). Single-open —
+  // opening it collapses Groupings, persisting any in-progress group edits first.
+  function toggleHandicaps() {
+    if (openAccordion === "handicaps") {
+      setOpenAccordion(null);
+    } else {
+      if (openAccordion === "groupings" && groupingsTouched.current) void saveGroups();
+      setOpenAccordion("handicaps");
     }
   }
 
@@ -334,7 +348,7 @@ export default function RackNStackPage() {
   // close never rewrites and a live game is never written.
   const flushGroupings = () => {
     if (scoringEnabled) return;
-    if (groupingsOpen && groupingsTouched.current) void saveGroups();
+    if (openAccordion === "groupings" && groupingsTouched.current) void saveGroups();
   };
   const flushRef = useRef(flushGroupings);
   flushRef.current = flushGroupings;
@@ -344,11 +358,11 @@ export default function RackNStackPage() {
     prevShowConfig.current = showConfig;
     if (!wasOpen || showConfig) return; // only the true→false transition
     flushGroupings();
-    if (groupingsOpen) setGroupingsOpen(false);
+    if (openAccordion !== null) setOpenAccordion(null);
     // flushGroupings is a per-render closure; we react to the overlay-close
     // transition only, so it stays out of the dep list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showConfig, groupingsOpen]);
+  }, [showConfig, openAccordion]);
   // Unmount flush — the deep-link/navigate-away teardown the transition effect
   // can't see (no committed showConfig=false render).
   useEffect(() => () => flushRef.current(), []);
@@ -414,6 +428,16 @@ export default function RackNStackPage() {
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
   const locked = gameQ.data?.status === "complete" && !correctionsOpen;
   const correcting = gameQ.data?.status === "complete" && correctionsOpen;
+
+  // Browser/OS back steps through the score-entry sub-screens (group entry → grid)
+  // instead of jumping to the leaderboard. Depth: 0 = play screen, 1 = a group's
+  // card, 2 = its grid view (only when not locked — a locked group shows the grid
+  // directly, one level). `back()` is the one path every breadcrumb/finish uses.
+  const entryDepth = entryGroupId ? (!locked && entryView === "grid" ? 2 : 1) : 0;
+  const back = useScreenHistory(entryDepth, () => {
+    if (!locked && entryView === "grid") setEntryView("entry");
+    else setEntryGroupId(null);
+  });
 
   // A resumed competition game (gid set from ?game=) may have NO foursomes yet
   // (created as a bare games row by add-game). Route it to the setup step instead
@@ -499,14 +523,15 @@ export default function RackNStackPage() {
     for (const p of ps) {
       groupPips[p.id] = new Set([...strokeHoles(handicapOf.get(p.id) ?? 0, scIndex)].map(String));
     }
-    // Locked (posted) → the read-only scorecard grid (#7); otherwise the
-    // editable entry. Correcting re-opens editing (locked=false).
-    if (locked) {
+    // Locked (posted) → the read-only scorecard grid (#7). Otherwise the editable
+    // entry, with a grid view toggled by the top-right scorecard icon (onOpenGrid).
+    // Correcting re-opens editing (locked=false).
+    if (locked || entryView === "grid") {
       return (
         <div className="flex flex-col" style={{ height: "100vh" }}>
           <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-            <button onClick={() => setEntryGroupId(null)} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
-            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{(groupName ?? "Group")} · Final</span>
+            <button onClick={back} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{(groupName ?? "Group")}{locked ? " · Final" : " · Scorecard"}</span>
           </div>
           <div className="min-h-0 flex-1">
             <StandardGrid
@@ -517,6 +542,7 @@ export default function RackNStackPage() {
               values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
               direction="low_wins"
               pips={groupPips}
+              onCellTap={locked ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
             />
           </div>
         </div>
@@ -534,27 +560,10 @@ export default function RackNStackPage() {
           onHoleChange={setCurrentHole}
           onChange={handleChange}
           onClear={handleClear}
-          onBack={() => setEntryGroupId(null)}
-          onFinish={() => setEntryGroupId(null)}
+          onBack={back}
+          onOpenGrid={() => setEntryView("grid")}
+          onFinish={back}
           pips={groupPips}
-        />
-      </div>
-    );
-  }
-
-  // Handicaps — the stroke-play per-player roster (the SAME interface stroke uses),
-  // reached by the Handicaps drill-down in settings. Returns to the settings page
-  // (showConfig stays set) on Done/Back.
-  if (showHandicaps && gid) {
-    return (
-      <div className="flex flex-col" style={{ height: "100vh" }}>
-        <HandicapRoster
-          players={handicapPlayers}
-          holeCount={scUnits.length}
-          strokeIndex={scIndex}
-          onSetStrokes={onSetStrokes}
-          onDone={() => setShowHandicaps(false)}
-          onBack={() => setShowHandicaps(false)}
         />
       </div>
     );
@@ -568,9 +577,9 @@ export default function RackNStackPage() {
     const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
     const groupCount = groupsQ.data?.groups?.length ?? 0;
     const anyHandicap = handicapPlayers.some((p) => p.strokes > 0);
-    // GROUPINGS (the rack "Matches" builder) is an inline accordion — the first
-    // Settings item. HANDICAPS drills down to the stroke-play per-player roster
-    // (the same interface stroke uses), gated until groups exist.
+    // GROUPINGS (the rack "Matches" builder) + HANDICAPS (the stroke-play per-player
+    // strokes) are both inline accordions — the first Settings items, single-open.
+    // Handicaps is gated until groups exist.
     const rackSettingsRows = (
       <>
         <ChecklistRow
@@ -579,7 +588,7 @@ export default function RackNStackPage() {
           subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
           state={groupsAssigned ? "resolved" : "empty"}
           locked={scoringEnabled}
-          expanded={groupingsOpen && !scoringEnabled}
+          expanded={openAccordion === "groupings" && !scoringEnabled}
           onToggle={!scoringEnabled ? toggleGroupings : undefined}
           testId="row-groupings"
         >
@@ -596,11 +605,17 @@ export default function RackNStackPage() {
           state={anyHandicap ? "resolved" : "empty"}
           locked={scoringEnabled}
           // Gated until groups exist (the ChecklistRow "not available yet" dim); when
-          // ready, it DRILLS DOWN to the stroke-play HandicapRoster (per-player strokes).
+          // ready, it opens INLINE — the same per-player strokes UI stroke play uses.
           disabled={!groupsAssigned}
-          onClick={groupsAssigned && !scoringEnabled ? () => { if (groupingsOpen) { setGroupingsOpen(false); if (groupingsTouched.current) void saveGroups(); } setShowHandicaps(true); } : undefined}
+          expanded={openAccordion === "handicaps" && groupsAssigned && !scoringEnabled}
+          onToggle={groupsAssigned && !scoringEnabled ? toggleHandicaps : undefined}
           testId="row-handicaps"
-        />
+        >
+          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+            Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
+          </p>
+          <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
+        </ChecklistRow>
       </>
     );
     return (
@@ -709,6 +724,8 @@ export default function RackNStackPage() {
   const final = gameQ.data?.status === "complete";
   const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
   return (
+    // Title-bar (back + name/status + gear) then the GamePageHeader below — the same
+    // header pattern the match/stroke game pages use.
     <Shell
       onBack={() => router.back()}
       title="Rack-n-Stack"
@@ -739,7 +756,7 @@ export default function RackNStackPage() {
         }
       />
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
-      <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
+      <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); setEntryView("entry"); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
           Handicaps), where mid-game config is deliberate. */}

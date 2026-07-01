@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Flag, Hash, ClipboardList, ChevronRight } from "lucide-react";
+import { Flag, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { Stepper } from "@/components/games/Stepper";
 import { pointsReady } from "@/lib/matchDraft";
@@ -97,12 +95,6 @@ export function GameSetupRows({
   const backId = (game.back_course_id as string | null) ?? null;
   const count = ((game.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0;
   const courseResolved = !!frontId && count === 18;
-  // Preview-scorecard validator (Spec 5a): reachable whenever a course is APPLIED
-  // — including a lone 9-hole front (count 9), so the preview can reveal a missing
-  // back nine. Distinct from `courseResolved` (the stricter 18-hole handicaps gate).
-  const router = useRouter();
-  const courseApplied = !!frontId;
-  const scorecardHref = gameHref(tripId, game.game_type_id, game.id, { scorecard: true });
   // §5a (P-F0c): the RESOLVED Course title is the course NAME (the subtitle stays the
   // handicaps gate). Lift the two-ID name fetch (front + back) to the collapsed row —
   // CourseRowContent fetches the same names in its expanded body. Gated on
@@ -152,37 +144,6 @@ export function GameSetupRows({
         </ChecklistRow>
       )}
 
-      {/* Preview scorecard (Spec 5a) — a course-setup VALIDATOR right under the
-          course row: opens the EMPTY scorecard (par/yardage/stroke index, front +
-          back) read from PERSISTED state, so the owner can confirm the course is
-          set up right. Golf-only; visibly disabled (dimmed, Danger-Zone pattern)
-          until a course is applied, consistent with the handicaps-disabled row. */}
-      {slot !== "config" && isGolfFormat(game.game_type_id) && scorecardHref && (
-        <button
-          type="button"
-          data-testid="row-preview-scorecard"
-          disabled={!courseApplied}
-          onClick={() => router.push(scorecardHref)}
-          className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-            opacity: courseApplied ? undefined : 0.55,
-            cursor: courseApplied ? "pointer" : "not-allowed",
-          }}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--color-bt-card-raised)" }}>
-            <ClipboardList size={16} style={{ color: "var(--color-bt-text)" }} />
-          </span>
-          <span className="flex min-w-0 flex-col">
-            <span style={{ fontSize: 15, color: "var(--color-bt-text)" }}>Preview scorecard</span>
-            <span className="truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
-              {courseApplied ? "Check the course setup — par, yardage, stroke index" : "Set a course to preview"}
-            </span>
-          </span>
-          {courseApplied && <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", marginLeft: "auto" }} />}
-        </button>
-      )}
       {slot !== "course" && competitionId && (
         isMatchPlay ? (
           // Points row INLINE (Phase C §7): the row carries a right-justified
