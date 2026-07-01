@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Users, Settings } from "lucide-react";
+import { ChevronLeft, Users, Settings, SlidersHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
@@ -21,6 +21,7 @@ import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/Ra
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
+import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -65,10 +66,11 @@ export default function RackNStackPage() {
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
+  // Rack settings: GROUPINGS is an inline accordion (the rack equivalent of the 2v2
+  // Matches builder); HANDICAPS drills down to the stroke-play per-player roster.
+  // `groupingsOpen` drives the accordion; `groupDraft` = one user-id array per group.
+  const [groupingsOpen, setGroupingsOpen] = useState(false);
   const [showHandicaps, setShowHandicaps] = useState(false);
-  // Manual playing-group builder (replaces auto-assign): its own screen, seeded from
-  // the persisted groups on open. `groupDraft` = one array of user ids per group.
-  const [showGroups, setShowGroups] = useState(false);
   const [groupDraft, setGroupDraft] = useState<string[][]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
@@ -279,14 +281,9 @@ export default function RackNStackPage() {
     await utils.playGroups.listByGame.invalidate({ tripId, gameId });
     setGameId(gameId);
     setGroupDraft([]); // start empty — the owner builds the groups
-    setShowGroups(true);
-  }
-
-  // Open the builder to edit existing groups (from the settings "who's playing"
-  // drill-down), seeded from what's persisted.
-  function openGroupBuilder() {
-    setGroupDraft(currentGroupDraft());
-    setShowGroups(true);
+    // Land in the settings page with GROUPINGS expanded (the first Settings item).
+    setGroupingsOpen(true);
+    openConfig();
   }
 
   // Persist the built groups. Empty groups (an unfinished "add group") are dropped;
@@ -300,6 +297,19 @@ export default function RackNStackPage() {
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       utils.competitions.faceBootstrap.invalidate({ tripId });
       utils.games.listByTrip.invalidate({ tripId });
+    }
+  }
+
+  // Toggle the GROUPINGS accordion (the rack "Matches" builder). Opening seeds the
+  // draft from what's persisted; collapsing persists it (persist-on-collapse, like
+  // the 2v2 match builder), so building groups then collapsing the row saves them.
+  function toggleGroupings() {
+    if (groupingsOpen) {
+      setGroupingsOpen(false);
+      void saveGroups();
+    } else {
+      setGroupDraft(currentGroupDraft());
+      setGroupingsOpen(true);
     }
   }
 
@@ -411,8 +421,9 @@ export default function RackNStackPage() {
   if (!tripId || roleLoading || crew.isLoading || competition.isLoading) {
     return <Center>Loading…</Center>;
   }
-  // gid set but groups still loading → wait, don't flash an empty play screen.
-  if (gid && groupsQ.isLoading) {
+  // gid set but the game row / groups still loading → wait, don't flash an empty
+  // play screen (or, right after create, the setup form before config opens).
+  if (gid && (gameQ.isLoading || groupsQ.isLoading)) {
     return <Center>Loading…</Center>;
   }
 
@@ -491,71 +502,9 @@ export default function RackNStackPage() {
     );
   }
 
-  // §B 2B.3 Configuration page — the post-Enable editing home, reached from the
-  // play hub's top-right. Reused editors + the Enabled/Disabled control; Disable
-  // keeps scores and stays here (not a hub reverse-transform).
-  if (showConfig && gid && gameQ.data && canEdit) {
-    return (
-      <GameConfigurationView
-        subtitle="Net stroke play · team rack"
-        onBack={closeConfig}
-        tripId={tripId!}
-        competitionId={competitionId ?? null}
-        game={gameQ.data as unknown as GameRow}
-        canEdit={canEdit}
-        isOwner={isOwner}
-        onChanged={() => void refreshGame()}
-        onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        whosPlayingLabel={
-          groupsAssigned
-            ? `${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · strokes`
-            : "No groups yet — build the carts"
-        }
-        // Keep showConfig set so the builder/handicaps drill-downs return here.
-        onEditWhosPlaying={openGroupBuilder}
-        scoringEnabled={scoringEnabled}
-        // Task 2: gate the Setup→Scoring toggle on groups being assigned.
-        ready={groupsAssigned}
-        onEnable={handleEnable}
-        onDisable={handleDisable}
-        busy={enableScoring.isPending || disableScoring.isPending}
-      />
-    );
-  }
-
-  // Manual playing-group builder (owner/delegate) — the replacement for auto-assign.
-  // Reached from "Start the rack" (new game) and the settings "who's playing"
-  // drill-down. Persists on leave; "Save & set handicaps" continues to the roster.
-  if (showGroups && gid) {
-    const teamA: GroupBuilderTeam = { id: teamIds[0] ?? "A", name: teamMeta.A.name, color: teamMeta.A.color, players: teamRosters.A };
-    const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
-    const anyAssigned = groupDraft.some((g) => g.length > 0);
-    const leave = async () => { await saveGroups(); setShowGroups(false); };
-    const toHandicaps = async () => { await saveGroups(); setShowGroups(false); setShowHandicaps(true); };
-    return (
-      <Shell onBack={() => void leave()} title="Playing groups" subtitle="Build the carts — any mix of 1–4">
-        <div className="w-full px-4 py-5">
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
-            Add a group for each cart, then pick its players from either team. Anyone left out sits this round out.
-          </p>
-          <RackGroupBuilder groups={groupDraft} onChange={setGroupDraft} teamA={teamA} teamB={teamB} />
-          {anyAssigned && (
-            <button
-              onClick={() => void toHandicaps()}
-              disabled={setFoursomes.isPending}
-              className="mt-5 w-full disabled:opacity-40"
-              style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
-            >
-              {setFoursomes.isPending ? "Saving…" : "Save & set handicaps"}
-            </button>
-          )}
-        </div>
-      </Shell>
-    );
-  }
-
-  // Handicaps setup step (after pairings; before play). Reached only via the
-  // canEdit-gated start/edit affordances; the mutation is server-canEdit-gated.
+  // Handicaps — the stroke-play per-player roster (the SAME interface stroke uses),
+  // reached by the Handicaps drill-down in settings. Returns to the settings page
+  // (showConfig stays set) on Done/Back.
   if (showHandicaps && gid) {
     return (
       <div className="flex flex-col" style={{ height: "100vh" }}>
@@ -568,6 +517,71 @@ export default function RackNStackPage() {
           onBack={() => setShowHandicaps(false)}
         />
       </div>
+    );
+  }
+
+  // §B 2B.3 Configuration page — the post-Enable editing home, reached from the
+  // play hub's top-right. Reused editors + the Enabled/Disabled control; Disable
+  // keeps scores and stays here (not a hub reverse-transform).
+  if (showConfig && gid && gameQ.data && canEdit) {
+    const teamA: GroupBuilderTeam = { id: teamIds[0] ?? "A", name: teamMeta.A.name, color: teamMeta.A.color, players: teamRosters.A };
+    const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
+    const groupCount = groupsQ.data?.groups?.length ?? 0;
+    const anyHandicap = handicapPlayers.some((p) => p.strokes > 0);
+    // GROUPINGS (the rack "Matches" builder) is an inline accordion — the first
+    // Settings item. HANDICAPS drills down to the stroke-play per-player roster
+    // (the same interface stroke uses), gated until groups exist.
+    const rackSettingsRows = (
+      <>
+        <ChecklistRow
+          icon={Users}
+          title="Groupings"
+          subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+          state={groupsAssigned ? "resolved" : "empty"}
+          locked={scoringEnabled}
+          expanded={groupingsOpen && !scoringEnabled}
+          onToggle={!scoringEnabled ? toggleGroupings : undefined}
+          testId="row-groupings"
+        >
+          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+            Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
+          </p>
+          <RackGroupBuilder groups={groupDraft} onChange={setGroupDraft} teamA={teamA} teamB={teamB} />
+        </ChecklistRow>
+
+        <ChecklistRow
+          icon={SlidersHorizontal}
+          title="Handicaps"
+          subtitle={groupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
+          state={anyHandicap ? "resolved" : "empty"}
+          locked={scoringEnabled}
+          // Gated until groups exist (the ChecklistRow "not available yet" dim); when
+          // ready, it DRILLS DOWN to the stroke-play HandicapRoster (per-player strokes).
+          disabled={!groupsAssigned}
+          onClick={groupsAssigned && !scoringEnabled ? () => { if (groupingsOpen) { setGroupingsOpen(false); void saveGroups(); } setShowHandicaps(true); } : undefined}
+          testId="row-handicaps"
+        />
+      </>
+    );
+    return (
+      <GameConfigurationView
+        subtitle="Net stroke play · team rack"
+        onBack={() => { if (groupingsOpen) { setGroupingsOpen(false); void saveGroups(); } closeConfig(); }}
+        tripId={tripId!}
+        competitionId={competitionId ?? null}
+        game={gameQ.data as unknown as GameRow}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        onChanged={() => void refreshGame()}
+        onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+        leadingSettingsRows={rackSettingsRows}
+        scoringEnabled={scoringEnabled}
+        // Task 2: gate the Setup→Scoring toggle on groups being assigned.
+        ready={groupsAssigned}
+        onEnable={handleEnable}
+        onDisable={handleDisable}
+        busy={enableScoring.isPending || disableScoring.isPending}
+      />
     );
   }
 
