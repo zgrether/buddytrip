@@ -30,6 +30,7 @@ beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("D Add-Game Trip");
   await ctx.addTripMember(tripId, "member", "Member"); // delegate target (plain Member)
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // co-admin — deletes now denied (Spec 1)
   memberId = ctx.getUser("member").id;
 });
 
@@ -158,11 +159,14 @@ describe("Stage 3 — the delegation boundary", () => {
   });
 });
 
-describe("delete — hard removal, Organizer-gated (L3-b)", () => {
-  it("owner deletes a game and it's gone; a plain Member cannot", async () => {
+describe("delete — hard removal, OWNER-gated (L3-b, Spec 1)", () => {
+  it("owner deletes a game and it's gone; Organizer/co-admin and Member cannot", async () => {
     const g = await newGame(8, "To delete");
-    // Organizer-gated: a plain Member (even a would-be delegate) cannot delete.
+    // OWNER-ONLY (Spec 1): delete now matches its sibling danger-zone resets. A
+    // plain Member (would-be delegate) cannot — and neither can an Organizer/
+    // co-admin, the tightening (previously Organizer-gated).
     await expect(ctx.callerAs("member").games.delete({ tripId, gameId: g.id })).rejects.toThrow();
+    await expect(ctx.callerAs("planner").games.delete({ tripId, gameId: g.id })).rejects.toThrow(/Owner/i);
     // Owner hard-deletes → the game is gone.
     await expect(ctx.caller().games.delete({ tripId, gameId: g.id })).resolves.toBeTruthy();
     await expect(ctx.caller().games.getById({ tripId, gameId: g.id })).rejects.toThrow(/not found/i);
