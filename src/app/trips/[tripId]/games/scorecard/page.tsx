@@ -8,6 +8,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { isGolfFormat } from "@/lib/gameRoutes";
+import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -49,6 +50,8 @@ export default function ScorecardPreviewPage() {
     () => teeFromSchema(schema as Parameters<typeof teeFromSchema>[0]),
     [schema]
   );
+  // Multi-tee yardage rows (Spec 5b) — reads the persisted course record(s).
+  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
   const gameTypeId = gameQ.data?.game_type_id as string | undefined;
   // A course is applied ⟺ course_id is set (a 9-hole front counts — the preview
   // honestly shows a lone front nine so "I forgot the back" is visible).
@@ -106,7 +109,7 @@ export default function ScorecardPreviewPage() {
     <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
       {header("Scorecard", (gameQ.data.name as string | undefined) ?? undefined)}
       <div className="min-h-0 flex-1">
-        <StandardGrid units={units} tee={tee} participants={[]} values={{}} direction="low_wins" />
+        <StandardGrid units={units} tee={tee} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} />
       </div>
     </div>
   );
