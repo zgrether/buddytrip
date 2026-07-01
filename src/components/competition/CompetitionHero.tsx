@@ -134,8 +134,10 @@ export function CompetitionHero({
               type="button"
               onClick={onSettings}
               aria-label="Competition settings"
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-              style={{ background: "transparent", color: "var(--color-bt-text-dim)" }}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+              // Semi-transparent white pill, matching the trip header's gear on its
+              // gradient (rgba over the hero art — same treatment, same values).
+              style={{ background: "rgba(255,255,255,0.08)", color: "rgba(241,245,249,0.6)" }}
               data-testid="competition-settings-btn"
             >
               <Settings size={16} />
