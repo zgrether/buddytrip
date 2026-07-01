@@ -577,27 +577,29 @@ export default function RackNStackPage() {
     const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
     const groupCount = groupsQ.data?.groups?.length ?? 0;
     const anyHandicap = handicapPlayers.some((p) => p.strokes > 0);
-    // GROUPINGS (the rack "Matches" builder) + HANDICAPS (the stroke-play per-player
-    // strokes) are both inline accordions — the first Settings items, single-open.
-    // Handicaps is gated until groups exist.
-    const rackSettingsRows = (
-      <>
-        <ChecklistRow
-          icon={Users}
-          title="Groupings"
-          subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
-          state={groupsAssigned ? "resolved" : "empty"}
-          locked={scoringEnabled}
-          expanded={openAccordion === "groupings" && !scoringEnabled}
-          onToggle={!scoringEnabled ? toggleGroupings : undefined}
-          testId="row-groupings"
-        >
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
-            Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
-          </p>
-          <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
-        </ChecklistRow>
-
+    // GROUPINGS (the rack "Matches" builder) is the first Settings item; HANDICAPS
+    // (the stroke-play per-player strokes) lives under the OPTIONS heading between
+    // Points and the Danger Zone, matching 1v1 match. Both are inline accordions,
+    // single-open; Handicaps is gated until groups exist.
+    const groupingsRow = (
+      <ChecklistRow
+        icon={Users}
+        title="Groupings"
+        subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+        state={groupsAssigned ? "resolved" : "empty"}
+        locked={scoringEnabled}
+        expanded={openAccordion === "groupings" && !scoringEnabled}
+        onToggle={!scoringEnabled ? toggleGroupings : undefined}
+        testId="row-groupings"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
+        </p>
+        <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
+      </ChecklistRow>
+    );
+    const handicapsRow = (
+      <div className="mt-2">
         <ChecklistRow
           icon={SlidersHorizontal}
           title="Handicaps"
@@ -616,7 +618,7 @@ export default function RackNStackPage() {
           </p>
           <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
         </ChecklistRow>
-      </>
+      </div>
     );
     return (
       <GameConfigurationView
@@ -631,7 +633,8 @@ export default function RackNStackPage() {
         isOwner={isOwner}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        leadingSettingsRows={rackSettingsRows}
+        leadingSettingsRows={groupingsRow}
+        extraRows={handicapsRow}
         scoringEnabled={scoringEnabled}
         // Task 2: gate the Setup→Scoring toggle on groups being assigned.
         ready={groupsAssigned}
