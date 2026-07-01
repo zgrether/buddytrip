@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users, Settings, SlidersHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -72,6 +72,16 @@ export default function RackNStackPage() {
   const [groupingsOpen, setGroupingsOpen] = useState(false);
   const [showHandicaps, setShowHandicaps] = useState(false);
   const [groupDraft, setGroupDraft] = useState<string[][]>([]);
+  // Has the user actually edited the group draft this open? Only a TOUCHED draft is
+  // persisted on leave — an untouched open (just seeded from the server) never
+  // rewrites, so a seed race can't wipe the persisted groups.
+  const groupingsTouched = useRef(false);
+  // Every builder edit goes through this (marks touched, then updates) — raw
+  // setGroupDraft is only for SEEDING (open / new game), which must not set touched.
+  const editGroupDraft = (next: string[][]) => {
+    groupingsTouched.current = true;
+    setGroupDraft(next);
+  };
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
   const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
@@ -281,6 +291,7 @@ export default function RackNStackPage() {
     await utils.playGroups.listByGame.invalidate({ tripId, gameId });
     setGameId(gameId);
     setGroupDraft([]); // start empty — the owner builds the groups
+    groupingsTouched.current = false;
     // Land in the settings page with GROUPINGS expanded (the first Settings item).
     setGroupingsOpen(true);
     openConfig();
@@ -306,12 +317,41 @@ export default function RackNStackPage() {
   function toggleGroupings() {
     if (groupingsOpen) {
       setGroupingsOpen(false);
-      void saveGroups();
+      if (groupingsTouched.current) void saveGroups();
     } else {
       setGroupDraft(currentGroupDraft());
+      groupingsTouched.current = false;
       setGroupingsOpen(true);
     }
   }
+
+  // Persist the groupings whenever the settings overlay CLOSES by ANY path — the
+  // config Back arrow, the OS/browser back (popstate, page stays mounted), or a
+  // deep-link nav that unmounts the page. Without this, groups built in the
+  // accordion but not explicitly collapsed were lost on leaving settings (the
+  // Back-arrow onBack saved, but an OS back-gesture bypasses it). Mirrors the match
+  // page's close-flush. Guarded on touched (+ !scoringEnabled) so an untouched
+  // close never rewrites and a live game is never written.
+  const flushGroupings = () => {
+    if (scoringEnabled) return;
+    if (groupingsOpen && groupingsTouched.current) void saveGroups();
+  };
+  const flushRef = useRef(flushGroupings);
+  flushRef.current = flushGroupings;
+  const prevShowConfig = useRef(showConfig);
+  useEffect(() => {
+    const wasOpen = prevShowConfig.current;
+    prevShowConfig.current = showConfig;
+    if (!wasOpen || showConfig) return; // only the true→false transition
+    flushGroupings();
+    if (groupingsOpen) setGroupingsOpen(false);
+    // flushGroupings is a per-render closure; we react to the overlay-close
+    // transition only, so it stays out of the dep list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showConfig, groupingsOpen]);
+  // Unmount flush — the deep-link/navigate-away teardown the transition effect
+  // can't see (no committed showConfig=false render).
+  useEffect(() => () => flushRef.current(), []);
 
   const onSetStrokes = (userId: string, strokes: number) =>
     setStrokes
@@ -546,7 +586,7 @@ export default function RackNStackPage() {
           <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
             Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
           </p>
-          <RackGroupBuilder groups={groupDraft} onChange={setGroupDraft} teamA={teamA} teamB={teamB} />
+          <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
         </ChecklistRow>
 
         <ChecklistRow
@@ -558,7 +598,7 @@ export default function RackNStackPage() {
           // Gated until groups exist (the ChecklistRow "not available yet" dim); when
           // ready, it DRILLS DOWN to the stroke-play HandicapRoster (per-player strokes).
           disabled={!groupsAssigned}
-          onClick={groupsAssigned && !scoringEnabled ? () => { if (groupingsOpen) { setGroupingsOpen(false); void saveGroups(); } setShowHandicaps(true); } : undefined}
+          onClick={groupsAssigned && !scoringEnabled ? () => { if (groupingsOpen) { setGroupingsOpen(false); if (groupingsTouched.current) void saveGroups(); } setShowHandicaps(true); } : undefined}
           testId="row-handicaps"
         />
       </>
@@ -566,7 +606,9 @@ export default function RackNStackPage() {
     return (
       <GameConfigurationView
         subtitle="Net stroke play · team rack"
-        onBack={() => { if (groupingsOpen) { setGroupingsOpen(false); void saveGroups(); } closeConfig(); }}
+        // The close-flush effect persists the groupings on ANY overlay close (incl.
+        // OS back), so Back just closes — no inline save needed here.
+        onBack={closeConfig}
         tripId={tripId!}
         competitionId={competitionId ?? null}
         game={gameQ.data as unknown as GameRow}
