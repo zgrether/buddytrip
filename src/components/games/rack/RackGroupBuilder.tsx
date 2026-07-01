@@ -59,15 +59,21 @@ export function RackGroupBuilder({
   const addPlayer = (gi: number, uid: string) => onChange(assignPlayer(groups, gi, uid));
 
   return (
-    <div className="flex flex-col gap-3" data-testid="rack-group-builder">
+    <div className="flex flex-col" data-testid="rack-group-builder">
       {groups.map((g, i) => (
+        // Hairline-separated group sections (the 2v2 match-builder pattern) — no
+        // nested filled card, so player chips (card-raised) sit cleanly on whatever
+        // surface hosts the builder (the settings accordion panel).
         <div
           key={i}
-          className="rounded-xl"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", padding: 12 }}
+          style={{
+            paddingTop: i === 0 ? 0 : 12,
+            marginTop: i === 0 ? 0 : 12,
+            borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)",
+          }}
         >
-          <div className="flex items-center justify-between" style={{ marginBottom: g.length ? 10 : 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-bt-text)" }}>Group {i + 1}</span>
+          <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: "var(--color-bt-text-dim)" }}>GROUP {i + 1}</span>
             <button
               type="button"
               onClick={() => removeGroup(i)}
@@ -122,7 +128,7 @@ export function RackGroupBuilder({
           type="button"
           onClick={addGroup}
           className="flex w-full items-center justify-center gap-1.5"
-          style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+          style={{ marginTop: groups.length ? 14 : 0, height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
         >
           <Plus size={16} /> Add group
         </button>
