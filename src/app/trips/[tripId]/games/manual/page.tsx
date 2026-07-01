@@ -72,11 +72,19 @@ export default function ManualGamePage() {
   );
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);
   const gameCells = useMemo(
-    () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number }[])
+    () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number; points: number }[])
       .filter((c) => c.gameId === urlGameId)
       .sort((a, b) => a.place - b.place),
     [lbQ.data, urlGameId]
   );
+  // #533 projection (non-golf) — a presentation rollup of the results already on
+  // the page: the posted per-team points for THIS game (the leaderboard cells).
+  // Nothing declared → an empty map → the row shows 0s. No engine call.
+  const projectionPerTeam = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const c of gameCells) out[c.teamId] = (out[c.teamId] ?? 0) + c.points;
+    return out;
+  }, [gameCells]);
   const initialOrder = useMemo(
     () => (gameCells.length ? gameCells.map((c) => c.teamId) : teams.map((t) => t.id)),
     [gameCells, teams]
@@ -218,9 +226,18 @@ export default function ManualGamePage() {
   return (
     <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
       {header(gameName)}
-      {/* Standard game header — row 1 (the collapsed cup hero), sticky over the
+      {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
+          game's projected/final per-team contribution), sticky over the
           scoreboard. Competition games only. */}
-      <GamePageHeader tripId={tripId} competitionId={competitionId} />
+      <GamePageHeader
+        tripId={tripId}
+        competitionId={competitionId}
+        projection={{
+          perTeam: projectionPerTeam,
+          gameName,
+          final: game.status === "complete",
+        }}
+      />
       {competitionId && (
         <NonGolfScoreboard
           tripId={tripId}

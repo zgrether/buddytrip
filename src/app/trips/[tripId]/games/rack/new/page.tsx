@@ -196,7 +196,7 @@ export default function RackNStackPage() {
     return m;
   }, [participants]);
 
-  const rack = useMemo(() => {
+  const rackPlayers = useMemo(() => {
     const players: RackPlayer[] = [];
     for (const p of participants) {
       const uid = p.user_id as string;
@@ -204,9 +204,13 @@ export default function RackNStackPage() {
       if (!team) continue;
       players.push({ id: uid, team, stats: playerStats(mergedFor(uid), handicapOf.get(uid) ?? 0, scUnits.map((u) => u.par ?? 0), scIndex) });
     }
-    return computeRack(players, mode, coursePar);
+    return players;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participants, teamOf, handicapOf, scUnits, scIndex, coursePar, mode, loadedValues, values]);
+  }, [participants, teamOf, handicapOf, scUnits, scIndex, coursePar, loadedValues, values]);
+  const rack = useMemo(() => computeRack(rackPlayers, mode, coursePar), [rackPlayers, mode, coursePar]);
+  // #533 projection (rack) — REUSE the existing rack projection ("if it ended now"
+  // = computeRack in "projected" mode), NOT a rebuild. Map A/B → the two team ids.
+  const projectedPoints = useMemo(() => computeRack(rackPlayers, "projected", coursePar).points, [rackPlayers, coursePar]);
 
   // ── Foursome views ───────────────────────────────────────────────────
   const groupViews: FoursomeGroupView[] = useMemo(() => {
@@ -602,10 +606,23 @@ export default function RackNStackPage() {
         ) : undefined
       }
     >
-      {/* Standard game header — row 1 (the collapsed cup hero), sticky over the
-          scoreboard. Competition games only. RsDayScore below is rack's own live
-          projected points (its row-2 equivalent). */}
-      <GamePageHeader tripId={tripId} competitionId={competitionId} />
+      {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
+          game's projected/final per-team contribution), sticky over the
+          scoreboard. Competition games only. RsDayScore below stays as rack's own
+          in-context day-score readout. */}
+      <GamePageHeader
+        tripId={tripId}
+        competitionId={competitionId}
+        projection={
+          teamIds.length >= 2
+            ? {
+                perTeam: { [teamIds[0]]: projectedPoints.A, [teamIds[1]]: projectedPoints.B },
+                gameName: (gameQ.data?.name as string | undefined)?.trim() || "Rack-n-Stack",
+                final,
+              }
+            : undefined
+        }
+      />
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
