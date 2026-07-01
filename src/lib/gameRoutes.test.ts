@@ -41,6 +41,18 @@ describe("gameHref", () => {
     );
     expect(gameHref("trip1", "gtt_stroke_play", "g1")).toBe("/trips/trip1/games/new?game=g1");
   });
+
+  it("scorecard → the single format-agnostic empty-preview route, golf only", () => {
+    // Every golf format shares ONE scorecard route (it only needs the schema).
+    for (const t of ["gtt_stroke_play", "gtt_match_play_singles", "gtt_match_play_doubles", "gtt_rack_n_stack"]) {
+      expect(gameHref("trip1", t, "g1", { scorecard: true })).toBe("/trips/trip1/games/scorecard?game=g1");
+    }
+    // Non-golf has no course → no scorecard link.
+    for (const t of ["gtt_manual", "gtt_generic_card", "gtt_generic_yard", "gtt_generic_bar"]) {
+      expect(gameHref("trip1", t, "g1", { scorecard: true })).toBeNull();
+    }
+    expect(gameHref("trip1", null, "g1", { scorecard: true })).toBeNull();
+  });
 });
 
 describe("isGolfFormat", () => {
