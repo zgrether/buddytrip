@@ -106,6 +106,11 @@ export function ChecklistRow({
    *  accordion** (W-GAMEPAGE Phase C: the Points row). Mutually exclusive with
    *  accordion/overlay; the control owns its own taps. */
   control?: React.ReactNode;
+  /** Dependency not yet met — the row would be an accordion, but its prerequisite
+   *  isn't satisfied (e.g. Handicaps before a course is chosen). Renders VISIBLY
+   *  disabled (dimmed, non-interactive — the Danger-Zone dimming pattern) instead
+   *  of silently inert, so it reads as "not available yet", not "broken". Distinct
+   *  from `locked` (the live-scoring freeze, which also shows a lock icon). */
   disabled?: boolean;
   /** #512 Option B: the row is frozen by the live-scoring lock — dim it and swap the
    *  expand chevron for a LOCK icon (kills the false "expandable" affordance and names
@@ -203,8 +208,10 @@ export function ChecklistRow({
   );
   const headerClass = "flex w-full items-center gap-3 px-3.5 py-3 text-left disabled:opacity-60";
   // #512 Option B: a live-locked row reads dimmed (reduced emphasis) so it clearly
-  // looks frozen, not merely chevron-less.
-  const containerStyle = { background: surface, border, opacity: locked ? 0.55 : undefined } as React.CSSProperties;
+  // looks frozen, not merely chevron-less. A `disabled` (dependency-unmet) row dims
+  // the SAME way — the Danger-Zone dimming pattern — so it reads "not available
+  // yet", never silently inert. (locked also gets a lock icon; disabled does not.)
+  const containerStyle = { background: surface, border, opacity: locked || disabled ? 0.55 : undefined } as React.CSSProperties;
 
   // Accordion: a header button toggling an in-place panel below (same bordered
   // frame — the row IS the frame; the panel sheds all modal chrome).

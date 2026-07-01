@@ -1035,9 +1035,10 @@ export default function NewMatchGamePage() {
         const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
         const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(pointsPerMatch));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
-        // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points,
-        // Handicaps, and Modifiers stay LOCKED until a match exists (they mean nothing
-        // before there's a match to apply them to). One named predicate, shared.
+        // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
+        // and Handicaps stay LOCKED until a match exists (they attach to a matchup).
+        // Modifiers are NO LONGER gated on this (Task 3b — they're an early format
+        // decision, decidable before matchups are set). One named predicate, shared.
         const matchesExist = hasValidMatch(draft, playersPerSide);
         const savingSetup =
           setPairings.isPending || setHandicap.isPending ||
@@ -1045,6 +1046,22 @@ export default function NewMatchGamePage() {
         // Standalone-only readout now (T4 hides this row for competitions), so the
         // count is just the trip crew — no roster branch.
         const availableCount = crew.data?.length ?? 0;
+        // Task 3a: cap the "add match" affordance for 1v1 ONLY, at the number of
+        // players per team (each player gets one match). In a 2-team cup that's
+        // min(team sizes) — each 1v1 match pairs one player from each team;
+        // standalone pairs any two of the crew (floor(crew/2)). Cap only when the
+        // roster has actually loaded (>0) so a not-yet-loaded roster never hides
+        // "add match".
+        //
+        // DELIBERATELY NOT capping 2v2: a rigid doubles cap assumes perfectly even,
+        // perfectly paired teams — but injury/illness can force a 1v2 or an odd
+        // pairing, and a hard cap would BLOCK a legitimate real-world lineup. Cap
+        // only where the maximum is genuinely fixed (1v1); leave 2v2 open (the 24
+        // ceiling only) so it flexes to reality.
+        const singlesCap = twoTeams
+          ? Math.min(rosterOfTeam(teams[0].id).length, rosterOfTeam(teams[1].id).length)
+          : Math.floor(availableCount / 2);
+        const maxMatchesForAdd = !sided && singlesCap > 0 ? Math.min(MAX_MATCHES, singlesCap) : MAX_MATCHES;
         // §5 row copy (visual-pass P-A). Matches title is the format name; the
         // subtitle is a status line ("x of y matches assigned"), not a value dump
         // (team names live in the expanded editor). Matches uses the INVALID state
@@ -1069,7 +1086,16 @@ export default function NewMatchGamePage() {
           (((gameQ.data?.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
         const handicapsReady = matchesExist && courseResolved;
         const handicapsState: ChecklistRowState = anyHandicap ? "resolved" : "empty";
-        const handicapsSubtitle = anyHandicap ? "Handicaps assigned" : "No handicaps assigned";
+        // When the row is disabled (course/matches not yet resolved) the subtitle
+        // NAMES the missing prerequisite, so the dimmed row reads "not available
+        // yet" (Task 2c) rather than an unexplained inert control.
+        const handicapsSubtitle = !matchesExist
+          ? "Set the matchups first"
+          : !courseResolved
+            ? "Choose a course first"
+            : anyHandicap
+              ? "Handicaps assigned"
+              : "No handicaps assigned";
         // Modifiers (W-GAMEPAGE-01 §6.5) — applicability is data-driven from the
         // format's gameTypes.ts compatibleModifiers (NOT the deprecated DB column).
         // Empty → the row is hidden entirely.
@@ -1195,6 +1221,7 @@ export default function NewMatchGamePage() {
                 teamColorOf={teamColorOf}
                 avatarIconOf={avatarIconOf}
                 teamForSlot={teamForSlot}
+                maxMatches={maxMatchesForAdd}
                 openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
               />
             </ChecklistRow>
@@ -1250,8 +1277,12 @@ export default function NewMatchGamePage() {
               // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
               // has no read-only mode). #512: locked → dim + lock icon.
               locked={scoringEnabled}
+              // Task 2c: when the prerequisites aren't met (no course / no matches)
+              // the row is VISIBLY disabled (dimmed), not silently unclickable — pass
+              // the real toggle but mark it disabled so it reads "not available yet".
+              disabled={!handicapsReady}
               expanded={openRow === "handicaps" && settingsEditable}
-              onToggle={handicapsReady && settingsEditable ? () => toggleRow("handicaps") : undefined}
+              onToggle={settingsEditable ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
             >
               <HandicapsSection
@@ -1280,7 +1311,11 @@ export default function NewMatchGamePage() {
                 state={modifiersState}
                 locked={scoringEnabled}
                 expanded={openRow === "modifiers"}
-                onToggle={matchesExist && settingsEditable ? () => toggleRow("modifiers") : undefined}
+                // Task 3b: modifiers are an EARLY format decision (carry-over, moving
+                // tees); matches (who plays whom) is often decided the day before.
+                // Don't gate early-decidable config on late-decided data — no
+                // matchesExist dependency here (settingsEditable only).
+                onToggle={settingsEditable ? () => toggleRow("modifiers") : undefined}
                 testId="row-modifiers"
               >
                 <ModifierCards
@@ -1566,6 +1601,7 @@ function MatchSetup({
   teamColorOf,
   avatarIconOf,
   teamForSlot,
+  maxMatches,
   openSelector,
 }: {
   tripId: string;
@@ -1584,6 +1620,10 @@ function MatchSetup({
    *  the shared branded column header. Undefined in a standalone (non-2-team) game,
    *  where the header falls back to a neutral "Side A / Side B". */
   teamForSlot: (slot: "a" | "b") => { name: string; color: string } | undefined;
+  /** Ceiling on the number of matches — "add match" hides once reached. For 1v1
+   *  this is the players-per-team cap (Task 3a); for 2v2 it's the generous 24
+   *  ceiling (no team cap — see the call site's reasoning). */
+  maxMatches: number;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
 }) {
   // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
@@ -1761,8 +1801,10 @@ function MatchSetup({
         </>
       )}
 
-      {/* Add another match — dynamic count grows one at a time (up to the cap). */}
-      {draft.length < MAX_MATCHES && (
+      {/* Add another match — dynamic count grows one at a time, up to `maxMatches`
+          (the 1v1 players-per-team cap, or the 24 ceiling for 2v2 — Task 3a). Once
+          at the cap the affordance is hidden: every player already has a match. */}
+      {draft.length < maxMatches && (
         <button
           type="button"
           onClick={() => setDraft((prev) => [...prev, { matchNumber: prev.length + 1, a: [], b: [], handicap: 0 }])}
