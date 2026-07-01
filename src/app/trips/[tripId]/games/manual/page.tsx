@@ -8,6 +8,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
+import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { GAME_TYPES, type ScoringModel } from "@/lib/gameTypes";
@@ -217,6 +218,9 @@ export default function ManualGamePage() {
   return (
     <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
       {header(gameName)}
+      {/* Standard game header — row 1 (the collapsed cup hero), sticky over the
+          scoreboard. Competition games only. */}
+      <GamePageHeader tripId={tripId} competitionId={competitionId} />
       {competitionId && (
         <NonGolfScoreboard
           tripId={tripId}

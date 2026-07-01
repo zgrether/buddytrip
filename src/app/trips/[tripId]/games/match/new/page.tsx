@@ -29,6 +29,7 @@ import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
+import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
@@ -959,6 +960,12 @@ export default function NewMatchGamePage() {
           ) : null
         }
       />
+
+      {/* Standard game header — row 1 (the collapsed cup hero), sticky while the
+          match list scrolls under it. Competition games only (null otherwise). */}
+      {!cfgOpen && screen === "overview" && (
+        <GamePageHeader tripId={tripId} competitionId={competitionId} />
+      )}
 
       <div className="w-full px-4 py-5">
       {!cfgOpen && screen === "new" && (
