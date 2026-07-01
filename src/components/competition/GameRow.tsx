@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, Fragment } from "react";
+import { createElement } from "react";
 import Link from "next/link";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -435,22 +435,19 @@ export function CompletedRow({
   );
 }
 
-/** match_play completed result — each team's points, team-colored, in the SAME
- *  left-right order as the hero (the `teams` array order). No winner emphasis. */
+/** match_play completed result — each team's points as a team-color dot + the
+ *  number in white, in the SAME left-right order as the hero (the `teams` array
+ *  order). No winner emphasis. */
 function CompletedScores({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
   return (
-    <div className="flex shrink-0 items-center gap-1.5 tabular-nums">
-      {teams.map((t, i) => (
-        <Fragment key={t.id}>
-          {i > 0 && (
-            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              –
-            </span>
-          )}
-          <span className="text-sm font-semibold" style={{ color: t.color }}>
+    <div className="flex shrink-0 items-center gap-3 tabular-nums">
+      {teams.map((t) => (
+        <span key={t.id} className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: t.color }} />
+          <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
             {fmtPts(cells?.get(t.id)?.points ?? 0)}
           </span>
-        </Fragment>
+        </span>
       ))}
     </div>
   );
