@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
+import type { TeeRow } from "@/lib/teeRows";
 import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
 import {
@@ -53,6 +55,15 @@ interface StandardGridProps {
    * yardage rides on `units[].yardage` instead.
    */
   tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null;
+  /**
+   * Multi-tee yardage rows (Spec 5b) — DISPLAY ONLY (scoring/structure/handicaps
+   * are unchanged; these are reference rows). When present + non-empty, the grid
+   * shows one yardage row per tee (with a checkbox legend to hide/reveal tees)
+   * INSTEAD of the single snapshot `Yards` row. Omit/empty → the single-tee row
+   * (today's behavior) is kept. The rows arrive pre-assembled (order, default
+   * visibility, chosen flag, color) from `useScorecardTeeRows`.
+   */
+  teeRows?: TeeRow[];
 }
 
 const NAME_W = 124;
@@ -60,11 +71,22 @@ const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;
 
-export function StandardGrid({ units, participants, values, onCellTap, pips, saveStatus, tee }: StandardGridProps) {
+export function StandardGrid({ units, participants, values, onCellTap, pips, saveStatus, tee, teeRows = [] }: StandardGridProps) {
   const front = units.filter((u) => u.section === "front");
   const back = units.filter((u) => u.section === "back");
   const hasSections = front.length > 0 && back.length > 0;
   const firstBackLabel = back[0]?.label;
+
+  // Multi-tee rows (Spec 5b): user overrides on top of each row's default
+  // visibility; the CHOSEN tee is always shown (non-hidable — it's in play).
+  const multiTee = teeRows.length > 0;
+  const [teeOverrides, setTeeOverrides] = useState<Record<string, boolean>>({});
+  const teeVisible = (row: TeeRow) => row.isChosen || (teeOverrides[row.name] ?? row.defaultVisible);
+  const toggleTee = (row: TeeRow) =>
+    setTeeOverrides((o) => ({ ...o, [row.name]: !(o[row.name] ?? row.defaultVisible) }));
+  // A tee's front/back/total yardage — its yards align with `units` by index.
+  const teeSum = (ys: (number | null)[], from: number, to: number) =>
+    ys.slice(from, to).reduce((a: number, y) => a + (y ?? 0), 0);
 
   const valOf = (pid: string, l: string) => values[pid]?.[l];
   const sumOf = (pid: string, list: ScoreUnit[]) =>
@@ -138,14 +160,42 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
 
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
-      {tee && (
+      {/* Multi-tee checkbox legend (Spec 5b) — reveal/hide each tee's yardage row.
+          The chosen tee is checked + disabled (in play, never hidable). Replaces the
+          single-tee header when tee rows are present. */}
+      {multiTee ? (
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-1.5"
+          style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+          data-testid="tee-legend"
+        >
+          {teeRows.map((row) => {
+            const on = teeVisible(row);
+            return (
+              <label key={row.name} className="flex items-center gap-1.5" style={{ cursor: row.isChosen ? "default" : "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={row.isChosen}
+                  onChange={() => toggleTee(row)}
+                  style={{ accentColor: "var(--color-bt-accent)" }}
+                />
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: row.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: row.isChosen ? 700 : 500, color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
+                  {row.name}{row.isChosen ? " · in play" : ""}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ) : tee ? (
         <div className="flex items-center gap-2" style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)" }}>{tee.name} tees</span>
           {teeRatings && (
             <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>· {teeRatings}</span>
           )}
         </div>
-      )}
+      ) : null}
       <div className="relative">
         <div className="no-scrollbar overflow-x-auto">
           <div style={{ minWidth: "max-content" }}>
@@ -177,24 +227,62 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
             <HeaderSub label="Total" wide />
           </div>
 
-          {/* Yards row (configured tee) — informational; sits on base like Index. */}
-          {hasYards && (
-            <div className="flex" style={{ height: 26, background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-base)", padding: "0 10px" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
-                  Yards
-                </span>
-              </div>
-              {units.map((u) => (
-                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
-                  <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.yardage ?? "—"}</span>
+          {/* Yardage — DISPLAY ONLY. Multi-tee (Spec 5b): one row per VISIBLE tee,
+              zebra-striped, the chosen tee brighter (accent-faint fill + an accent
+              rail). Falls back to the single snapshot Yards row when no tee rows are
+              supplied. Sits on base like Index; informational only. */}
+          {multiTee
+            ? teeRows.filter(teeVisible).map((row, ti) => {
+                const zebraBg = row.isChosen
+                  ? "var(--color-bt-accent-faint)"
+                  : ti % 2 === 0
+                    ? "var(--color-bt-card-raised)"
+                    : "var(--color-bt-base)";
+                const valColor = row.isChosen ? "var(--color-bt-text)" : "var(--color-bt-text-dim)";
+                // The chosen row gets a left accent rail on the sticky name cell
+                // (inset shadow — no layout shift), so it's unmistakable at a glance.
+                const nameStyle = {
+                  ...nameCell,
+                  background: zebraBg,
+                  padding: "0 10px",
+                  ...(row.isChosen ? { boxShadow: "inset 3px 0 0 var(--color-bt-accent)" } : {}),
+                } as React.CSSProperties;
+                return (
+                  <div key={row.name} className="flex" style={{ height: 26, background: zebraBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }} data-testid={`tee-row-${row.name}`}>
+                    <div className="flex items-center gap-1.5" style={nameStyle}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+                      <span className="truncate" style={{ fontSize: 11, fontWeight: row.isChosen ? 700 : 600, letterSpacing: "0.02em", color: valColor }}>
+                        {row.name}
+                      </span>
+                    </div>
+                    {units.map((u, i) => (
+                      <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                        <span style={{ fontSize: 11, color: valColor, opacity: row.isChosen ? 1 : 0.75, fontVariantNumeric: "tabular-nums" }}>{row.yards[i] ?? "—"}</span>
+                      </div>
+                    ))}
+                    {hasSections && <ParSub value={teeSum(row.yards, 0, front.length)} />}
+                    {hasSections && <ParSub value={teeSum(row.yards, front.length, units.length)} />}
+                    <ParSub value={teeSum(row.yards, 0, units.length)} wide />
+                  </div>
+                );
+              })
+            : hasYards && (
+                <div className="flex" style={{ height: 26, background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+                  <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-base)", padding: "0 10px" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
+                      Yards
+                    </span>
+                  </div>
+                  {units.map((u) => (
+                    <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                      <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.yardage ?? "—"}</span>
+                    </div>
+                  ))}
+                  {hasSections && <ParSub value={yardSum(front)} />}
+                  {hasSections && <ParSub value={yardSum(back)} />}
+                  <ParSub value={yardSum(units)} wide />
                 </div>
-              ))}
-              {hasSections && <ParSub value={yardSum(front)} />}
-              {hasSections && <ParSub value={yardSum(back)} />}
-              <ParSub value={yardSum(units)} wide />
-            </div>
-          )}
+              )}
 
           {/* Par row — same surface as the Hole header. */}
           {hasPar && (
