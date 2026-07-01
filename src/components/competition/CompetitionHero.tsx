@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Trophy, Settings, Users } from "lucide-react";
 import { fmtPts } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
+
+// Measure before paint on the client; a plain effect on the server (useLayoutEffect
+// warns during SSR). Standard SSR-safe isomorphic layout effect.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
  * CompetitionHero — the merged competition header (Task 1). ONE elevated gradient
@@ -248,7 +252,11 @@ export function StickyCollapseHero({
 }: React.ComponentProps<typeof CompetitionHero> & { stickyTop?: number }) {
   const collapsedRef = useRef<HTMLDivElement>(null);
   const [collapsedH, setCollapsedH] = useState(64); // sensible seed → no first-paint jump
-  useEffect(() => {
+  // Measure BEFORE paint (layout effect on the client) so the overlap uses the real
+  // height on the very first frame — a post-paint measure left the expanded hero
+  // pulled up by the stale seed, so it didn't fully cover the collapsed bar and its
+  // top edge PEEKED above the hero. SSR-safe: falls back to useEffect on the server.
+  useIsoLayoutEffect(() => {
     const el = collapsedRef.current;
     if (!el) return;
     const measure = () => setCollapsedH(el.offsetHeight);
@@ -262,7 +270,10 @@ export function StickyCollapseHero({
       <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
         <CompetitionHero {...hero} variant="collapsed" />
       </div>
-      <div style={{ position: "relative", zIndex: 20, marginTop: -collapsedH }}>
+      {/* +1px so the expanded hero always fully covers the collapsed bar's top edge
+          (defeats sub-pixel/border rounding) — no peek. The over-pull is on a ~180px
+          hero, so it's imperceptible. */}
+      <div style={{ position: "relative", zIndex: 20, marginTop: -(collapsedH + 1) }}>
         <CompetitionHero {...hero} variant="expanded" />
       </div>
     </>
@@ -296,7 +307,7 @@ export function CollapsedHero({
   const targetLabel = clincher
     ? `${clincher.short_name ?? clincher.name} wins`
     : pointsAvailable > 0
-      ? `First to ${fmtPts(winNumber)}`
+      ? `First to ${fmtPts(winNumber)} wins` // "wins" to match the expanded hero's target line
       : "No points yet";
   const card: React.CSSProperties = {
     borderRadius: 12,

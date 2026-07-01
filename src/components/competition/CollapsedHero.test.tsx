@@ -25,7 +25,7 @@ describe("CollapsedHero — two-team (match-play) bar", () => {
     expect(html).toContain("Whack");
     expect(html).toContain(">5<");
     expect(html).toContain(">12<");
-    expect(html).toContain("First to 78");
+    expect(html).toContain("First to 78 wins"); // matches the expanded hero's target line
   });
 
   it("uses team colors on the names/scores (data, not chrome)", () => {
