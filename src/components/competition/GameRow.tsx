@@ -6,6 +6,7 @@ import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-rea
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { gameHref, isGolfFormat } from "@/lib/gameRoutes";
+import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
 export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
@@ -35,34 +36,38 @@ export function formatIcon(gameTypeId: string | null): LucideIcon {
 }
 
 /**
- * The §A lifecycle state the row reads — replaces the old 4-value RowState.
- * DERIVED from the game's actual status + readiness; it is the row's single
- * source of truth, not a layout flag (§A2). The two gravy sub-states are carried
- * as data ON TOP of these four, not as extra enum values: "configuring" is a
- * partial "setting-up", and "armed vs not-armed" lives inside "ready" (carried
- * by the format-icon color, §A4 — wired to this derived value, never a literal
- * board/layout string).
+ * The board SECTION a game belongs to — the SINGLE source of truth for both the
+ * section grouping (CompetitionLeaderboard) and this row's presentation, so a row
+ * can never render a treatment that disagrees with its section header.
  *
- * Ready must be EARNED, not assumed: a game is Setting up until the format's
- * required roster is assigned (`configured`, derived server-side from pairing /
- * participant counts). "Exists and not live/final" is NOT Ready — that was the
- * bug where an unconfigured match game rendered Ready while its points read `—`.
- * Course/handicaps never gate this (locked, readiness model). Same `configured`
- * signal feeds the outer `N PTS`/`—` column, so the two can't disagree.
+ * A2-core (#500) made enable ≡ active (`enableScoring` sets scoring_enabled AND
+ * status='active' in one write), so `status` alone gives only four reachable
+ * states; the fifth section (On Tap ↔ Ready for Play) splits `active` on
+ * `started` (≥1 score entry, R1):
+ *   complete              → completed   (done)
+ *   active  &  started    → on-tap      (scores flowing — genuinely underway)
+ *   active  & !started    → ready       (Ready for Play — enabled/pairings up, unscored)
+ *   pending &  configured → preparing   (Preparing for Gameplay — roster set, not enabled)
+ *   pending & !configured → skeleton    (barely configured)
+ * Total + disjoint = a clean 5-way partition (every game in exactly one section).
+ *
+ * `configured` (roster earned, server-derived) gates preparing↔skeleton; it also
+ * feeds the outer `N PTS`/`—` column so the two can't disagree. Course/handicaps
+ * never gate this (locked, readiness model).
  */
-export type LifecycleState = "setting-up" | "ready" | "live" | "final";
-export function lifecycleOf(game: LBGame): LifecycleState {
-  if (game.status === "complete") return "final";
-  if (game.status === "active") return "live";
-  return game.configured ? "ready" : "setting-up";
+export type GameSection = "completed" | "on-tap" | "ready" | "preparing" | "skeleton";
+export function sectionOf(game: LBGame): GameSection {
+  if (game.status === "complete") return "completed";
+  if (game.status === "active") return game.started === true ? "on-tap" : "ready";
+  return game.configured ? "preparing" : "skeleton";
 }
 
 /**
  * §A4 arm signal: the format-icon shows full color once scoring is ENABLED,
- * muted before. Phase 2B.1 wired this to the real `scoring_enabled` field
- * (replacing the Phase-3 derived stub `lifecycle !== "setting-up"`), so the two
- * §A signals finally diverge on a real state: a Ready-but-not-enabled game reads
- * full name (structure done) + muted icon (not enabled) until the owner enables.
+ * muted before. Phase 2B.1 wired this to the real `scoring_enabled` field, so the
+ * two §A signals diverge on a real state: a Preparing game (configured, not
+ * enabled) reads full name (structure done) + muted icon (not enabled) until the
+ * owner enables. On Tap / Ready for Play (both `active`) read armed.
  */
 export function iconArmed(game: LBGame): boolean {
   return game.scoringEnabled === true;
@@ -129,10 +134,11 @@ export function GameRow({
     settings: canEditThisGame && setupMode,
   });
   const hasScores = cells && cells.size > 0;
-  // The row's single source of truth — the game's actual lifecycle, not a board
-  // context flag. Layout + every §A3 layer key off this one value.
-  const lifecycle = lifecycleOf(game);
-  const isFinal = lifecycle === "final";
+  // The row's single source of truth — the game's board SECTION (shared with the
+  // section grouping so row + header always agree). Layout + every §A3 layer key
+  // off this one value.
+  const section = sectionOf(game);
+  const isFinal = section === "completed";
 
   // Final sheds the operational layer (scorecard + delegate), keeps the result
   // (round-3.1 §A2). The scorecard column is golf-only and present everywhere
@@ -151,54 +157,56 @@ export function GameRow({
   const armed = iconArmed(game);
   const armedIcon = armed && !isFinal;
 
-  // Subtitle / running state (§A3), all keyed off the one derived lifecycle:
-  //  - live   → running state (the real "Blue 2 up · thru 13" is deferred).
-  //  - ready  → SPLIT by the arm tell: armed = good to go; not-armed = the one
-  //             remaining step is ENABLING scoring (the roster IS assigned — that's
-  //             what `configured` means — and handicaps are optional/never gate, so
-  //             the old "Assign players + handicaps" was wrong; readiness rework P1a).
-  //  - setting-up → a tap-to-continue CTA, but only when the row is tappable;
-  //             an inert crew row leans on the dashed outline alone (§A3).
-  //  - final  → none; the recessed tile + outer result speak for it.
+  // Subtitle / running state (§A3), all keyed off the one derived section:
+  //  - on-tap    → running state (the real "Blue 2 up · thru 13" is deferred).
+  //  - ready     → Ready for Play: enabled + pairings up, waiting on the first score.
+  //  - preparing → the one remaining step is ENABLING scoring (the roster IS
+  //                assigned — that's what `configured` means — handicaps never gate,
+  //                readiness rework P1a). (The old `ready && armed → "Ready to play"`
+  //                branch was dead under A2-core — a pending game can't be armed —
+  //                and is gone; "Ready to play" now lives on the `ready` section.)
+  //  - skeleton  → a tap-to-continue CTA, but only when the row is tappable; an
+  //                inert crew row leans on the dashed outline alone (§A3).
+  //  - completed → none; the compressed row + outer result speak for it.
   const subtitle =
-    lifecycle === "live"
+    section === "on-tap"
       ? "Underway · scoring"
-      : lifecycle === "ready"
-      ? armed
-        ? "Ready to play"
-        : "Ready — enable scoring"
-      : lifecycle === "setting-up"
+      : section === "ready"
+      ? "Ready to play"
+      : section === "preparing"
+      ? "Ready — enable scoring"
+      : section === "skeleton"
       ? tappable
         ? "Tap to keep setting up"
         : null
       : null;
 
   // Panel surface — each game is its own standalone card (not a row inside a
-  // shared panel). Only the ACTIVE states carry a fill: Ready (a solid card,
-  // "built + waiting") and Live (the one reserved accent-faint "act now" fill,
-  // §A2). Setting-up and Final get NO fill — setting-up is an outline-only dashed
-  // shell ("not built yet"), Final a recessed, dimmed record. The border lives on
+  // shared panel). On Tap carries the one reserved accent-faint "act now" fill
+  // (§A2); Ready for Play + Preparing are solid cards ("built + waiting");
+  // Skeleton and Completed get NO fill — skeleton is an outline-only dashed shell
+  // ("not built yet"), completed a recessed, dimmed record. The border lives on
   // the panel so the inner content never shifts.
   const panelStyle: React.CSSProperties = {
     background:
-      lifecycle === "ready"
+      section === "ready" || section === "preparing"
         ? "var(--color-bt-card)"
-        : lifecycle === "live"
+        : section === "on-tap"
         ? "var(--color-bt-accent-faint)"
-        : undefined, // setting-up + final: no fill
+        : undefined, // skeleton + completed: no fill
     border:
-      lifecycle === "setting-up"
+      section === "skeleton"
         ? "1.5px dashed var(--color-bt-border)"
         : "1px solid var(--color-bt-border)",
   };
   const rowStyle: React.CSSProperties = {
-    // Final is a quiet record — recess the whole tile (§A3 "recessed").
+    // Completed is a quiet record — recess the whole tile (§A3 "recessed").
     opacity: isFinal ? 0.72 : 1,
   };
-  // Name-text strength = "is the structure done?" — dim while setting up, full
-  // the moment it's Ready (§A3). Final keeps the name full but the tile recedes.
+  // Name-text strength = "is the structure done?" — dim only while Skeleton, full
+  // the moment it's built (§A3). Completed keeps the name full but the tile recedes.
   const nameColor =
-    lifecycle === "setting-up" ? "var(--color-bt-text-dim)" : "var(--color-bt-text)";
+    section === "skeleton" ? "var(--color-bt-text-dim)" : "var(--color-bt-text)";
 
   const inner = (
     <div className="flex items-center gap-3 px-4 py-3" style={rowStyle}>
@@ -235,7 +243,7 @@ export function GameRow({
               className="shrink-0"
             />
           )}
-          {lifecycle === "live" && <LiveBadge />}
+          {section === "on-tap" && <LiveBadge />}
         </div>
         {subtitle && (
           <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -352,6 +360,127 @@ function OuterColumn({
     <span className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
       —
     </span>
+  );
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+/**
+ * CompletedRow (Task 5) — a finished game compressed to ONE line: format icon +
+ * name (left), result (right). Recessed like the old Final tile but far shorter
+ * (the old Final `GameRow` stacked the team results vertically in the outer
+ * column). The result shape keys on scoring_model:
+ *   match_play → each team's points, team-colored, in HERO left-right order
+ *                (the `teams` array order the hero uses) so they scan against the
+ *                hero. NO winner emphasis — both read at the same weight.
+ *   points     → a horizontal placement podium (1st/2nd/3rd…) in the shared
+ *                `--color-bt-place-*` tokens (R2 — a small inline podium, not the
+ *                games-side FinalStandings screen, which doesn't fit a board row).
+ */
+export function CompletedRow({
+  game,
+  teams,
+  cells,
+  scoringModel,
+  tripId,
+  onPrefetch,
+}: {
+  game: LBGame;
+  teams: LBTeam[];
+  cells: Map<string, LBCell> | undefined;
+  scoringModel: ScoringModel;
+  tripId: string;
+  onPrefetch: (gameId: string) => void;
+}) {
+  const href = gameHref(tripId, game.gameTypeId, game.id);
+  const inner = (
+    <div className="flex items-center gap-3 px-4 py-2.5" style={{ opacity: 0.75 }}>
+      {createElement(formatIcon(game.gameTypeId), {
+        size: 16,
+        className: "shrink-0",
+        style: { color: "var(--color-bt-text-dim)" },
+      })}
+      <span
+        className="min-w-0 flex-1 truncate text-[13px] font-medium"
+        style={{ color: "var(--color-bt-text)" }}
+      >
+        {game.name}
+      </span>
+      {scoringModel === "points" ? (
+        <CompletedPodium teams={teams} cells={cells} />
+      ) : (
+        <CompletedScores teams={teams} cells={cells} />
+      )}
+    </div>
+  );
+  const panelStyle: React.CSSProperties = { border: "1px solid var(--color-bt-border)" };
+  return href ? (
+    <Link
+      href={href}
+      className="block rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
+      style={panelStyle}
+      onPointerEnter={() => onPrefetch(game.id)}
+      onPointerDown={() => onPrefetch(game.id)}
+    >
+      {inner}
+    </Link>
+  ) : (
+    <div className="rounded-xl overflow-hidden" style={panelStyle}>
+      {inner}
+    </div>
+  );
+}
+
+/** match_play completed result — each team's points as a team-color dot + the
+ *  number in white, in the SAME left-right order as the hero (the `teams` array
+ *  order). No winner emphasis. */
+function CompletedScores({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3 tabular-nums">
+      {teams.map((t) => (
+        <span key={t.id} className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: t.color }} />
+          <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {fmtPts(cells?.get(t.id)?.points ?? 0)}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** points completed result — a horizontal placement podium (1st/2nd/3rd…) in the
+ *  shared place tokens; each pill = place chip (gold/silver/bronze bg) + team
+ *  color dot + short name. Only teams with a resolved place are shown. */
+function CompletedPodium({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+  const ranked = teams
+    .map((t) => ({ team: t, place: cells?.get(t.id)?.place }))
+    .filter((x): x is { team: LBTeam; place: number } => x.place != null)
+    .sort((a, b) => a.place - b.place);
+  if (ranked.length === 0) return null;
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {ranked.map(({ team, place }) => {
+        const p = Math.min(Math.max(place, 1), 4);
+        return (
+          <span
+            key={team.id}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
+            style={{
+              background: `var(--color-bt-place-${p}-bg)`,
+              color: `var(--color-bt-place-${p}-text)`,
+            }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
+            {ordinal(place)} {team.short_name}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

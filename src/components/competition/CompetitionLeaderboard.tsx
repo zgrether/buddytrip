@@ -5,7 +5,8 @@ import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { GameRow, fmtPts } from "./GameRow";
+import { GameRow, CompletedRow, sectionOf, fmtPts, type GameSection } from "./GameRow";
+import { CompetitionHero } from "./CompetitionHero";
 import { PointsMatrix } from "./PointsMatrix";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -35,6 +36,9 @@ export interface LBGame {
   /** Scoring is enabled (Phase 2B.1) — the real arming signal the format-icon
    *  color reads (§A4). False until the owner enables; first score → Live. */
   scoringEnabled?: boolean;
+  /** ≥1 score entry exists (R1) — splits `active` into On Tap (started) vs Ready
+   *  for Play (enabled, not started) for the board's game sections. */
+  started?: boolean;
   /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
    *  the match-play total too (whose `distribution` is null pre-decision). */
   pointsTotal?: number | null;
@@ -71,6 +75,13 @@ interface LeaderboardData {
 interface Props {
   competitionId: string;
   tripId: string;
+  /** Cup identity for the merged hero (Task 1) — the hero replaced the separate
+   *  CompetitionHeader, so identity + gear are threaded in here. */
+  cupName: string;
+  tagline: string | null;
+  /** Opens competition settings (the #522 history-back overlay). Gear shows only
+   *  for editors; passing it keeps the SAME handler so back-nav is unchanged. */
+  onSettings?: () => void;
   /** The competition's FROZEN scoring model — selects the board layout (PR 2):
    *  `match_play` → the Ryder head-to-head hero; `points` → the standings glance
    *  + collapsible games×teams matrix. NOT team count — a 2-team points cup is
@@ -85,7 +96,7 @@ interface Props {
   onEditTeam?: (teamId: string) => void;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "match_play", canEdit = false, onAddGame, onEditTeam }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, onAddGame, onEditTeam }: Props) {
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     {
@@ -192,30 +203,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
     return <NoTeamsState />;
   }
 
-  const sessionsDone = liveGames.filter((g) => g.status === "complete").length;
-  const allZero = teams.every((t) => (teamTotals[t.id] ?? 0) === 0);
-  const nothingPlayed = liveGames.every((g) => g.status === "pending");
-  const isEarly = allZero && nothingPlayed && liveGames.length > 0;
   const clincher = teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null;
-
-  // The "cup hasn't started" early state is the match_play (Ryder) treatment. A
-  // POINTS cup skips it and renders its real board with zeros — the standings
-  // glance + the empty-but-structured matrix read as intentional, not broken.
-  if (isEarly && scoringModel === "match_play") {
-    return (
-      <EarlyState
-        teams={teams}
-        liveGames={liveGames}
-        winNumber={winNumber}
-        tripId={tripId}
-        mineSet={mineSet}
-        viewer={viewer}
-        onPrefetch={prefetchGame}
-        canEdit={canEdit}
-        onAddGame={onAddGame}
-      />
-    );
-  }
 
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
@@ -229,59 +217,60 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
         />
       )}
 
-      {/* Main standings panel */}
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {/* Magic-number subtitle */}
-        <div className="px-4 pt-3 pb-2">
-          <p
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {clincher
-              ? "Final"
-              : pointsAvailable > 0
-              ? `First to ${fmtPts(winNumber)} wins`
-              : "Competition standings"}
-          </p>
-        </div>
+      {/* The merged hero (Task 1) — identity + gear + (match_play) team names,
+          scores, clinch bar, win target. Replaces the old CompetitionHeader +
+          TwoTeamHero AND the "cup hasn't started" EarlyState (the hero renders
+          the 0–0 setup state fine, so it's the header in every stage). */}
+      <CompetitionHero
+        cupName={cupName}
+        tagline={tagline}
+        teams={teams}
+        teamTotals={teamTotals}
+        pointsAvailable={pointsAvailable}
+        winNumber={winNumber}
+        clincher={clincher}
+        scoringModel={scoringModel}
+        canEdit={canEdit}
+        onSettings={onSettings}
+        onEditTeam={onEditTeam}
+      />
 
-        {/* Board layout is selected by scoring_model, NOT team count (PR 2): a
-            2-team POINTS cup gets the standings glance + matrix, not the Ryder
-            hero. match_play is structurally 2 teams, so the hero is safe. */}
-        {scoringModel === "match_play" ? (
-          <TwoTeamHero
-            teams={teams}
-            teamTotals={teamTotals}
-            pointsAvailable={pointsAvailable}
-            winNumber={winNumber}
-            pointsToClinch={pointsToClinch}
-            clincher={clincher}
-            onEditTeam={onEditTeam}
-          />
-        ) : (
-          <NTeamRankedList
-            teams={teams}
-            teamTotals={teamTotals}
-            pointsAvailable={pointsAvailable}
-            winNumber={winNumber}
-            pointsToClinch={pointsToClinch}
-            clincher={clincher}
-            onEditTeam={onEditTeam}
-          />
-        )}
-      </div>
-
-      {/* Points board — the collapsible games×teams matrix BELOW the standings
-          glance. Points cups only; the Ryder hero needs no matrix (one head-to-
-          head number is the whole story). */}
+      {/* POINTS body (board-body branching, left untouched): the standings glance
+          + the collapsible games×teams matrix, below the identity hero. match_play
+          needs neither — the hero's two-score head-to-head is the whole story. */}
       {scoringModel === "points" && (
-        <PointsMatrix games={liveGames} teams={teams} cellsByGame={cellsByGame} teamTotals={teamTotals} />
+        <>
+          <div
+            className="overflow-hidden rounded-xl"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <div className="px-4 pt-3 pb-2">
+              <p
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {clincher
+                  ? "Final"
+                  : pointsAvailable > 0
+                  ? `First to ${fmtPts(winNumber)} wins`
+                  : "Competition standings"}
+              </p>
+            </div>
+            <NTeamRankedList
+              teams={teams}
+              teamTotals={teamTotals}
+              pointsAvailable={pointsAvailable}
+              winNumber={winNumber}
+              pointsToClinch={pointsToClinch}
+              clincher={clincher}
+              onEditTeam={onEditTeam}
+            />
+          </div>
+          <PointsMatrix games={liveGames} teams={teams} cellsByGame={cellsByGame} teamTotals={teamTotals} />
+        </>
       )}
 
       {/* Bones copy — the calm setup voice, only while the board is empty and
@@ -297,7 +286,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
         games={liveGames}
         teams={teams}
         cellsByGame={cellsByGame}
-        sessionsDone={sessionsDone}
+        scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -314,12 +303,12 @@ export function CompetitionLeaderboard({ competitionId, tripId, scoringModel = "
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, teams, cellsByGame, sessionsDone, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
+  games, teams, cellsByGame, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
-  sessionsDone: number;
+  scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
@@ -366,7 +355,7 @@ function GamesSection({
         games={games}
         teams={teams}
         cellsByGame={cellsByGame}
-        sessionsDone={sessionsDone}
+        scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -374,132 +363,6 @@ function GamesSection({
         canEdit={canEdit}
       />
       {addBtn}
-    </div>
-  );
-}
-
-// ── TwoTeamHero ──────────────────────────────────────────────────────────────
-
-function TwoTeamHero({
-  teams,
-  teamTotals,
-  pointsAvailable,
-  winNumber,
-  pointsToClinch,
-  clincher,
-  onEditTeam,
-}: {
-  teams: LBTeam[];
-  teamTotals: Record<string, number>;
-  pointsAvailable: number;
-  winNumber: number;
-  pointsToClinch: Record<string, number>;
-  clincher: LBTeam | null;
-  /** Tap a team name → that team's identity editor (owner / its captain). */
-  onEditTeam?: (teamId: string) => void;
-}) {
-  const [a, b] = teams;
-  const aTotal = teamTotals[a.id] ?? 0;
-  const bTotal = teamTotals[b.id] ?? 0;
-  const aToGo = pointsToClinch[a.id] ?? winNumber;
-  const bToGo = pointsToClinch[b.id] ?? winNumber;
-
-  // Progress bar proportions — each team's share of pointsAvailable.
-  const aWidth = pointsAvailable > 0 ? Math.min(100, (aTotal / pointsAvailable) * 100) : 0;
-  const bWidth = pointsAvailable > 0 ? Math.min(100, (bTotal / pointsAvailable) * 100) : 0;
-
-  return (
-    <div className="px-4 pb-4">
-      {/* Team name row — tap a name → Rosters focused on that team (its identity
-          editor opens for the owner / that team's captain; read-only otherwise). */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => onEditTeam?.(a.id)}
-          disabled={!onEditTeam}
-          className="text-[11px] font-bold uppercase tracking-widest disabled:cursor-default"
-          style={{ color: a.color }}
-          data-testid="comp-team-name-a"
-        >
-          {a.short_name}
-        </button>
-        <button
-          type="button"
-          onClick={() => onEditTeam?.(b.id)}
-          disabled={!onEditTeam}
-          className="text-[11px] font-bold uppercase tracking-widest disabled:cursor-default"
-          style={{ color: b.color }}
-          data-testid="comp-team-name-b"
-        >
-          {b.short_name}
-        </button>
-      </div>
-
-      {/* Big totals */}
-      <div className="flex items-baseline justify-between">
-        <span
-          className="text-5xl font-black tabular-nums leading-none"
-          style={{ color: a.color }}
-        >
-          {fmtPts(aTotal)}
-        </span>
-        <span
-          className="mx-3 text-2xl font-light"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          –
-        </span>
-        <span
-          className="text-5xl font-black tabular-nums leading-none"
-          style={{ color: b.color }}
-        >
-          {fmtPts(bTotal)}
-        </span>
-      </div>
-
-      {/* "X to clinch" sub-labels */}
-      {!clincher && (
-        <div className="mt-1 flex items-start justify-between">
-          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {aToGo > 0 ? `${fmtPts(aToGo)} to clinch` : "Clinched"}
-          </p>
-          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {bToGo > 0 ? `${fmtPts(bToGo)} to clinch` : "Clinched"}
-          </p>
-        </div>
-      )}
-
-      {/* Progress bar */}
-      <div
-        className="mt-3 flex h-2 w-full overflow-hidden rounded-full"
-        style={{ background: "var(--color-bt-card-raised)" }}
-      >
-        <div
-          className="h-full rounded-l-full transition-all duration-500"
-          style={{ width: `${aWidth}%`, background: a.color }}
-        />
-        <div
-          className="h-full rounded-r-full transition-all duration-500 ml-auto"
-          style={{ width: `${bWidth}%`, background: b.color }}
-        />
-      </div>
-
-      {/* Footer row */}
-      <div className="mt-1.5 flex items-center justify-between">
-        <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {pointsAvailable > 0 ? `${fmtPts(pointsAvailable)} pts in play` : "No pts yet"}
-        </p>
-        {!clincher && pointsAvailable > 0 && (
-          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            clinch {fmtPts(winNumber)}
-          </p>
-        )}
-        {clincher && (
-          <p className="text-[11px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-            Final
-          </p>
-        )}
-      </div>
     </div>
   );
 }
@@ -621,11 +484,21 @@ function NTeamRankedList({
 
 // ── SessionBreakdown ─────────────────────────────────────────────────────────
 
+// Section order + labels (Task 4). The Completed section renders compressed
+// single-line rows; the rest use the full GameRow.
+const SECTION_ORDER: { key: GameSection; label: string }[] = [
+  { key: "completed", label: "Completed" },
+  { key: "on-tap", label: "On Tap" },
+  { key: "ready", label: "Ready for Play" },
+  { key: "preparing", label: "Preparing for Gameplay" },
+  { key: "skeleton", label: "Skeleton" },
+];
+
 function SessionBreakdown({
   games,
   teams,
   cellsByGame,
-  sessionsDone,
+  scoringModel,
   tripId,
   mineSet,
   viewer,
@@ -635,157 +508,73 @@ function SessionBreakdown({
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
-  sessionsDone: number;
+  scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
 }) {
-  return (
-    <div>
-      <p
-        className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Sessions{" "}
-        <span style={{ color: "var(--color-bt-text)" }}>
-          · {sessionsDone} of {games.length} done
-        </span>
-      </p>
-      <div className="flex flex-col gap-2">
-        {games.map((game) => (
-          <GameRow
-            key={game.id}
-            game={game}
-            teams={teams}
-            cells={cellsByGame.get(game.id)}
-            tripId={tripId}
-            mine={mineSet.has(game.id)}
-            canEdit={canEdit}
-            viewerName={viewer.name}
-            viewerAvatarIcon={viewer.avatarIcon}
-            viewerTeamColor={viewer.teamColor}
-            onPrefetch={onPrefetch}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+  // Group games by board section (single source: sectionOf) — every game lands
+  // in exactly one bucket (R1 clean partition). Server order (created_at asc) is
+  // preserved within each section.
+  const bySection = useMemo(() => {
+    const m = new Map<GameSection, LBGame[]>();
+    for (const g of games) {
+      const s = sectionOf(g);
+      const arr = m.get(s);
+      if (arr) arr.push(g);
+      else m.set(s, [g]);
+    }
+    return m;
+  }, [games]);
 
-// ── EarlyState ────────────────────────────────────────────────────────────────
-
-function EarlyState({
-  teams,
-  liveGames,
-  winNumber,
-  tripId,
-  mineSet,
-  viewer,
-  onPrefetch,
-  canEdit,
-  onAddGame,
-}: {
-  teams: LBTeam[];
-  liveGames: LBGame[];
-  winNumber: number;
-  tripId: string;
-  mineSet: Set<string>;
-  viewer: LBViewer;
-  onPrefetch: (gameId: string) => void;
-  canEdit: boolean;
-  onAddGame?: () => void;
-}) {
   return (
-    <div className="space-y-3" data-testid="competition-leaderboard">
-      {/* Team dots row */}
-      <div
-        className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-4"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {teams.map((team) => (
-          <div key={team.id} className="flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-full"
-              style={{ background: team.color }}
-            />
-            <span
-              className="text-sm font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
+    <div className="flex flex-col gap-4">
+      {SECTION_ORDER.map(({ key, label }) => {
+        const sectionGames = bySection.get(key);
+        if (!sectionGames || sectionGames.length === 0) return null; // empty sections hidden
+        return (
+          <div key={key} data-testid={`games-section-${key}`}>
+            <p
+              className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
-              {team.name}
-            </span>
+              {label}{" "}
+              <span style={{ color: "var(--color-bt-text)" }}>· {sectionGames.length}</span>
+            </p>
+            <div className="flex flex-col gap-2">
+              {sectionGames.map((game) =>
+                key === "completed" ? (
+                  <CompletedRow
+                    key={game.id}
+                    game={game}
+                    teams={teams}
+                    cells={cellsByGame.get(game.id)}
+                    scoringModel={scoringModel}
+                    tripId={tripId}
+                    onPrefetch={onPrefetch}
+                  />
+                ) : (
+                  <GameRow
+                    key={game.id}
+                    game={game}
+                    teams={teams}
+                    cells={cellsByGame.get(game.id)}
+                    tripId={tripId}
+                    mine={mineSet.has(game.id)}
+                    canEdit={canEdit}
+                    viewerName={viewer.name}
+                    viewerAvatarIcon={viewer.avatarIcon}
+                    viewerTeamColor={viewer.teamColor}
+                    onPrefetch={onPrefetch}
+                  />
+                )
+              )}
+            </div>
           </div>
-        ))}
-
-        <div
-          className="mt-3 w-full"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        />
-        <div className="w-full pt-1">
-          <p
-            className="text-sm font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            The cup hasn&rsquo;t started
-          </p>
-          <p
-            className="mt-1 text-[12px] leading-relaxed"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {liveGames.length} session{liveGames.length !== 1 ? "s" : ""} ·{" "}
-            first to {fmtPts(winNumber)} wins. Standings appear as games finish.
-          </p>
-        </div>
-      </div>
-
-      {/* Schedule */}
-      {liveGames.length > 0 && (
-        <div>
-          <p
-            className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            The Schedule
-          </p>
-          <div className="flex flex-col gap-2">
-            {liveGames.map((game) => (
-              <GameRow
-                key={game.id}
-                game={game}
-                teams={teams}
-                cells={undefined}
-                tripId={tripId}
-                mine={mineSet.has(game.id)}
-                canEdit={canEdit}
-                viewerName={viewer.name}
-                viewerAvatarIcon={viewer.avatarIcon}
-                viewerTeamColor={viewer.teamColor}
-                onPrefetch={onPrefetch}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Keep "Add a game" reachable in the setup/early phase — this is the
-          prime time to build the schedule, and it's the board's sole entry to
-          the add-game modal now that the aggregate panel is retired. */}
-      {canEdit && onAddGame && (
-        <button
-          type="button"
-          onClick={onAddGame}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-3"
-          style={{ background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
-          data-testid="comp-add-game"
-        >
-          <Plus size={16} /> Add a game
-        </button>
-      )}
+        );
+      })}
     </div>
   );
 }
