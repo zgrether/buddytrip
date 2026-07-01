@@ -79,6 +79,44 @@ export function allMatchesFilled(draft: MatchSides[], playersPerSide: number): b
 }
 
 /**
+ * Which accordion row is expanded on the settings overlay (page-owned). The two
+ * "draft editor" rows (matches/handicaps) persist their client draft on collapse;
+ * the rest either persist another way (modifiers) or need no flush.
+ */
+export type SettingsRow =
+  | "matches"
+  | "handicaps"
+  | "players"
+  | "course"
+  | "config"
+  | "modifiers"
+  | null;
+
+/** The persist to run when the settings overlay CLOSES with a row still open. */
+export type CloseFlush = "draft" | "modifiers" | null;
+
+/**
+ * Persist-on-CLOSE decision (companion to the accordion's persist-on-collapse).
+ * The accordion only commits a draft editor when the OPEN ROW changes; closing
+ * the whole settings overlay with a row still expanded — the common "assign the
+ * matches → tap Back" path — bypassed that commit, so the just-entered pairings
+ * were dropped and reopening the game showed no matches. This is the pure core of
+ * the close handler: given the open row and whether the draft was actually edited,
+ * say which persist (if any) the overlay-close must fire.
+ *
+ * - matches/handicaps → "draft" (the pairings/handicaps write) — but ONLY when the
+ *   draft was touched, so an opened-but-untouched row closing writes nothing (a
+ *   `setPairings` clean-replace would needlessly churn match rows otherwise).
+ * - modifiers → "modifiers" (a single idempotent `games.update`).
+ * - everything else (course/config/players, or no open row) → null.
+ */
+export function flushOnOverlayClose(openRow: SettingsRow, draftTouched: boolean): CloseFlush {
+  if ((openRow === "matches" || openRow === "handicaps") && draftTouched) return "draft";
+  if (openRow === "modifiers") return "modifiers";
+  return null;
+}
+
+/**
  * The POINTS term of the Enable gate (W-GAMEPAGE Phase C / P-C). A match game can't
  * Enable scoring at 0 points-per-match — there's nothing to award — so points > 0
  * joins all-matches-paired in the gate. This is the SAME truth the Points row reads

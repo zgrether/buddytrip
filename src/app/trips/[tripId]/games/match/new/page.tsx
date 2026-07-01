@@ -34,7 +34,7 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose } from "@/lib/matchDraft";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
@@ -700,6 +700,53 @@ export default function NewMatchGamePage() {
   }
   // Accordion header tap: toggle this row (collapsing whatever else was open).
   const toggleRow = (row: typeof openRow) => changeOpenRow(openRow === row ? null : row);
+
+  // Persist-on-CLOSE (companion to persist-on-collapse). The accordion only
+  // commits a draft editor when the OPEN ROW changes (changeOpenRow). Closing the
+  // whole settings overlay with a row still expanded — the common "assign the
+  // matches → tap Back" path — never routed through changeOpenRow, so the
+  // just-entered pairings/handicaps were dropped (they looked saved via the
+  // optimistic draft, but nothing hit the server; reopening the game showed no
+  // matches). Two distinct teardown paths, so we cover BOTH:
+  //   • Gear path — closeConfig/OS-back → popstate → the page STAYS mounted and
+  //     cfgOpen flips true→false. The effect below catches that transition.
+  //   • Deep-link path (?settings=1) — closeConfig → router.back() UNMOUNTS the
+  //     whole page (no cfgOpen transition ever commits). The unmount cleanup
+  //     catches that. (mutateAsync's network write runs to completion even after
+  //     unmount — React Query doesn't abort mutations — so the pairings persist.)
+  // The pure decision (flushOnOverlayClose) picks which write, gating
+  // matches/handicaps on draftTouched so an untouched row closing writes nothing.
+  const runCloseFlush = () => {
+    // Setup-mode only. Draft writes (setPairings clean-replaces game_matches) must
+    // never fire against a live/scoring game — enabling always clears openRow, so
+    // this is belt-and-suspenders against a stray unmount mid-transition.
+    if (scoringEnabled) return;
+    const flush = flushOnOverlayClose(openRow, draftTouched.current);
+    if (flush === "draft") void persistDraftOnCollapse();
+    else if (flush === "modifiers") void persistModifiersOnCollapse();
+  };
+  // Latest-ref so the unmount handler (empty deps) reads current draft/openRow.
+  const closeFlushRef = useRef(runCloseFlush);
+  closeFlushRef.current = runCloseFlush;
+
+  const prevCfgOpen = useRef(cfgOpen);
+  useEffect(() => {
+    const wasOpen = prevCfgOpen.current;
+    prevCfgOpen.current = cfgOpen;
+    if (!wasOpen || cfgOpen) return; // only the true→false transition (stays mounted)
+    runCloseFlush();
+    if (openRow !== null) setOpenRow(null);
+    // persistDraftOnCollapse/persistModifiersOnCollapse are per-render closures
+    // (not memoized); we intentionally react to the cfgOpen/openRow transition
+    // only, not to their identity, so they stay out of the dep list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfgOpen, openRow]);
+
+  // Unmount flush — the deep-link/navigate-away teardown the cfgOpen effect can't
+  // see (the component leaves without a committed cfgOpen=false render).
+  useEffect(() => {
+    return () => closeFlushRef.current();
+  }, []);
 
   // Dynamic match count — mid-life +1 / −1 (the explicit "arm with 1, add a 2nd
   // mid-life" path). Each persists incrementally (NOT a bulk re-save, so
