@@ -388,6 +388,15 @@ from title, backfill, accept slug or ID in route. *(In flight.)*
 
 ## UX Polish (logged, not urgent)
 
+- **Member setup-surface consolidation (`SetupPlaceholder` vs `MemberNotReady`)** —
+  two components render the same member-facing "game is being set up" surface: the
+  golf match page uses `MemberNotReady`, everything else uses `SetupPlaceholder`'s
+  member path. The game-format-explainer work (2026-07) made both render the same
+  shared `MemberSetupView`, so the split is now a thin-wrapper duplication with no
+  behavioral difference. Collapse to one entry component (or route the match page
+  through `SetupPlaceholder`) and delete the redundant one. Deferred out of the
+  explainer PR deliberately (drop-into-both was the pragmatic move; this is the
+  cleanup).
 - **Field Mode (outdoor scoring)** — larger tap targets + bumped fonts for
   bright sunlight. Relevant once scorecards exist; pairs naturally with Slice C.
 - **Trip slug hex suffix** — the slug is `slugify(title)-<6hex>` (e.g.
