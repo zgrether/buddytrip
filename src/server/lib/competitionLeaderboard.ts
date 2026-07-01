@@ -79,9 +79,10 @@ export async function computeCompetitionLeaderboard(
 
   const gameIds = allGames.map((g) => g.id as string);
   // game_results (awarded) + the per-game match COUNT (available) + the per-game
-  // participant COUNT (the stroke/rack readiness gate). All depend on the live
-  // game ids; run them together.
-  const [resultsRes, matchRowsRes, participantRowsRes] = await Promise.all([
+  // participant COUNT (the stroke/rack readiness gate) + the per-game SCORE-entry
+  // presence (the On-Tap↔Ready-for-Play split). All depend on the live game ids;
+  // run them together.
+  const [resultsRes, matchRowsRes, participantRowsRes, scoreEntryRowsRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
@@ -95,8 +96,21 @@ export async function computeCompetitionLeaderboard(
     gameIds.length
       ? supabase.from("game_participants").select("game_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[] }),
+    // Any score entered yet? The §A "started" signal (R1): an `active` game with
+    // ≥1 score entry is genuinely underway (On Tap); an `active` game with none is
+    // enabled/pairings-up but not started (Ready for Play). Manual games score on
+    // post (→complete) so they never carry entries — correctly staying out of On
+    // Tap until they finish.
+    gameIds.length
+      ? supabase.from("score_entries").select("game_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string }[] }),
   ]);
   const results = resultsRes.data;
+  // Games with at least one score entry — drives `started` on each game below.
+  const startedByGame = new Set<string>();
+  for (const r of (scoreEntryRowsRes.data ?? []) as { game_id: string }[]) {
+    startedByGame.add(r.game_id);
+  }
   // Participant rows per game — "field picked" (stroke) / "auto-grouped" (rack).
   const participantCountByGame = new Map<string, number>();
   for (const r of (participantRowsRes.data ?? []) as { game_id: string }[]) {
@@ -267,6 +281,9 @@ export async function computeCompetitionLeaderboard(
         // Scoring enabled (Phase 2B.1) — the real arming signal the format-icon
         // color reads (§A4), replacing the Phase-3 derived stub.
         scoringEnabled: g.scoring_enabled === true,
+        // Has ≥1 score entry (R1) — splits `active` into On Tap (started) vs
+        // Ready for Play (enabled/pairings up, not started) for the board sections.
+        started: startedByGame.has(gid),
         // Points in play (§A5 outer column). Match-play games carry it here even
         // though `distribution` is null pre-decision.
         pointsTotal: ptsInPlayByGame.get(gid) ?? null,

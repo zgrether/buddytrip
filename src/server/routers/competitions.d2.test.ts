@@ -426,3 +426,38 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     expect(lb.pointsAvailable).toBe(roll.pointsAvailable);
   });
 });
+
+describe("D2 R1 — `started` (On Tap ↔ Ready for Play split)", () => {
+  it("started is false with no score entries, true once one exists", async () => {
+    const comp = await ctx.createCompetition(tripId, "D2 Started Comp", { scoringModel: "points" });
+    const g = await ctx.caller().games.create({
+      tripId, gameTypeId: MANUAL, name: "Startable", competitionId: comp,
+      pointsDistribution: { type: "placement", values: [9, 6] },
+    }) as { id: string };
+    gameIds.push(g.id);
+
+    // No entries yet → not started. An `active` game in this state is Ready for
+    // Play (enabled/pairings up, nothing scored); once scored it's On Tap.
+    let lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    let game = lb.games.find((x: { id: string }) => x.id === g.id) as { started: boolean };
+    expect(game.started).toBe(false);
+
+    // One score entry → started flips true (the On Tap discriminator, R1).
+    await ctx.admin.from("score_entries").insert({
+      id: `${g.id}:${ctx.getUser("owner").id}:1`,
+      game_id: g.id,
+      participant_id: ctx.getUser("owner").id,
+      participant_type: "user",
+      unit_label: "1",
+      value: 4,
+      submitted_by: ctx.getUser("owner").id,
+      submitted_at: new Date().toISOString(),
+    });
+
+    lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    game = lb.games.find((x: { id: string }) => x.id === g.id) as { started: boolean };
+    expect(game.started).toBe(true);
+
+    await ctx.admin.from("score_entries").delete().eq("game_id", g.id);
+  });
+});

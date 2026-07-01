@@ -35,6 +35,9 @@ export interface LBGame {
   /** Scoring is enabled (Phase 2B.1) — the real arming signal the format-icon
    *  color reads (§A4). False until the owner enables; first score → Live. */
   scoringEnabled?: boolean;
+  /** ≥1 score entry exists (R1) — splits `active` into On Tap (started) vs Ready
+   *  for Play (enabled, not started) for the board's game sections. */
+  started?: boolean;
   /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
    *  the match-play total too (whose `distribution` is null pre-decision). */
   pointsTotal?: number | null;
