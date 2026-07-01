@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StandardGrid } from "./StandardGrid";
 import type { ScoreUnit } from "./types";
+import type { TeeRow } from "@/lib/teeRows";
 
 // Empty scorecard PREVIEW (Spec 5a): the grid renders the course STRUCTURE
 // (par / yardage / stroke-index rows + front/back sections) independently of
@@ -42,5 +43,43 @@ describe("StandardGrid — empty (scores-off) preview", () => {
 
   it("shows the configured tee header (single tee — 5b adds multi-tee)", () => {
     expect(html).toContain("Blue tees");
+  });
+});
+
+// Spec 5b — multi-tee yardage rows. When teeRows is supplied, the grid renders a
+// checkbox legend + one yardage row per VISIBLE tee (default = chosen + neighbors),
+// replacing the single snapshot Yards row; the chosen tee is highlighted + in play.
+describe("StandardGrid — multi-tee yardage rows (5b)", () => {
+  const teeRows: TeeRow[] = [
+    { name: "Blue", color: "#3b82f6", yards: [410, 165, 540, 430], total: 1545, isChosen: false, defaultVisible: true },
+    { name: "White", color: "#e5e7eb", yards: [380, 150, 505, 400], total: 1435, isChosen: true, defaultVisible: true },
+    { name: "Red", color: "#ef4444", yards: [300, 120, 430, 340], total: 1190, isChosen: false, defaultVisible: false },
+  ];
+  const html = renderToStaticMarkup(
+    <StandardGrid units={units} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} />
+  );
+
+  it("renders the checkbox legend listing every tee (even hidden ones)", () => {
+    expect(html).toContain("tee-legend");
+    expect(html).toContain("Blue");
+    expect(html).toContain("White");
+    expect(html).toContain("Red"); // in the legend even though its row is hidden by default
+  });
+
+  it("renders a yardage row for each DEFAULT-VISIBLE tee, and hides the rest", () => {
+    expect(html).toContain("tee-row-Blue");
+    expect(html).toContain("tee-row-White");
+    expect(html).not.toContain("tee-row-Red"); // default-hidden → no row (only the legend entry)
+  });
+
+  it("marks the chosen tee in play and highlights it (accent-faint token)", () => {
+    expect(html).toContain("· in play");
+    expect(html).toContain("var(--color-bt-accent-faint)"); // the chosen row's brighter fill
+    expect(html).toContain("var(--color-bt-accent)"); // the chosen row's left accent rail
+  });
+
+  it("shows per-tee yardage values (a display-only reference row)", () => {
+    expect(html).toContain("410"); // Blue hole 1
+    expect(html).toContain("380"); // White (chosen) hole 1
   });
 });

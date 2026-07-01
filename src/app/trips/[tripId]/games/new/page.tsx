@@ -8,6 +8,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
+import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
@@ -64,6 +65,8 @@ export default function NewGamePage() {
     { tripId: tripId!, gameId: urlGameId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId }
   );
+  // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record.
+  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
   const scoresQ = trpc.scores.listByGame.useQuery(
     { tripId: tripId!, gameId: urlGameId! },
     { enabled: !!tripId && !!urlGameId }
@@ -487,6 +490,7 @@ export default function NewGamePage() {
               <StandardGrid
                 units={scUnits}
                 tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+                teeRows={teeRows}
                 participants={game.participants}
                 values={values}
                 direction="low_wins"

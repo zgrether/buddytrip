@@ -16,6 +16,7 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
 import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
+import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { DragHandle } from "@/components/games/DragHandle";
 import { RowNumber } from "@/components/games/RowNumber";
@@ -173,6 +174,8 @@ export default function NewMatchGamePage() {
   // it — not on the fast score cadence — so it caches as structure too). Only the
   // raw scores stay short, so a reopen refreshes them while the rest is instant.
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
+  // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
+  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
 
@@ -891,6 +894,7 @@ export default function NewMatchGamePage() {
               <StandardGrid
                 units={scUnits}
                 tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+                teeRows={teeRows}
                 participants={entryParticipants}
                 values={values}
                 direction="low_wins"

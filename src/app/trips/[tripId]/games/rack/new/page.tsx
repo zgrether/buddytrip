@@ -13,6 +13,7 @@ import { TimePicker } from "@/components/TimePicker";
 import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
+import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -102,6 +103,8 @@ export default function RackNStackPage() {
   // game config + foursomes are STRUCTURE (kept); only the raw scores stay short
   // (STATE) so a reopen is instant while the scores re-fetch.
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
+  // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
+  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
 
@@ -430,6 +433,7 @@ export default function RackNStackPage() {
             <StandardGrid
               units={scUnits}
               tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+              teeRows={teeRows}
               participants={ps}
               values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
               direction="low_wins"
