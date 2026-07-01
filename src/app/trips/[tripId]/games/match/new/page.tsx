@@ -34,7 +34,7 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds } from "@/lib/matchDraft";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
@@ -456,15 +456,26 @@ export default function NewMatchGamePage() {
     // The checklist lives on the settings overlay; seed the draft when it opens
     // with an empty local draft.
     if (!cfgOpen || draft.length > 0) return;
+    // WAIT for the game row before seeding. `sided` (→ playersPerSide) is derived
+    // from gameQ.data.game_type_id; matches.listByGame and games.getById are
+    // separate queries, and on a fresh reopen the leaderboard deep-links to
+    // `?game=X&settings=1` (no `format` hint), so matches can land BEFORE the game
+    // does. Seeding in that window uses the fallback `sided=false` and rebuilds a
+    // DOUBLES game as singles — each side's play_group id gets read as a user id —
+    // then the `draft.length > 0` guard freezes that wrong seed even after gameQ
+    // loads and sided flips true. (Singles is unaffected: sided=false is already
+    // correct, which is why 1v1 worked and 2v2 lost its matches on reopen.) Gate on
+    // the loaded row so the one seed we take uses the authoritative format.
+    if (gameId && !gameQ.data) return;
     if (serverMatches.length > 0) {
-      setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide, sided));
+      setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide));
       return;
     }
     // Resume-into-empty: a game with no game_matches starts at ZERO matches — a
     // valid empty state (the table hides; only "Add match" shows). "+ Add match"
     // grows it from there (build-as-you-go — W-GAMEPAGE-01 §6.1).
     setDraft([]);
-  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided]);
+  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data]);
 
   // Seed the modifiers draft from the server — but ONLY while the row is closed,
   // so an in-progress edit is never clobbered. On collapse the row persists +
@@ -1384,19 +1395,15 @@ export default function NewMatchGamePage() {
 function serverDraftFrom(
   serverMatches: unknown[],
   handicapOf: Map<string, number>,
-  membersOfSide: Map<string, string[]>,
-  sided: boolean
+  membersOfSide: Map<string, string[]>
 ): DraftMatch[] {
-  // A server side → its member user ids. Singles: the user is the side. Doubles:
-  // the play_group's members (looked up by side id).
-  const members = (side: SideRef): string[] => {
-    if (!side?.id) return [];
-    return sided ? (membersOfSide.get(side.id) ?? []) : [side.id];
-  };
+  // A server side → its member user ids, resolved from the side's OWN type
+  // (sideMemberIds) so the reconstruction can't be corrupted by a not-yet-loaded
+  // `sided` flag — the 2v2-matches-vanish-on-reopen race.
   return (serverMatches as { match_number: number; side_a: SideRef; side_b: SideRef }[]).map((mm, i) => {
     const hcA = mm.side_a?.id ? (handicapOf.get(mm.side_a.id) ?? 0) : 0;
     const hcB = mm.side_b?.id ? (handicapOf.get(mm.side_b.id) ?? 0) : 0;
-    return { matchNumber: mm.match_number ?? i + 1, a: members(mm.side_a), b: members(mm.side_b), handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0 };
+    return { matchNumber: mm.match_number ?? i + 1, a: sideMemberIds(mm.side_a, membersOfSide), b: sideMemberIds(mm.side_b, membersOfSide), handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0 };
   });
 }
 

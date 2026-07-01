@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, type MatchSides } from "./matchDraft";
+import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds, type MatchSides, type ServerSide } from "./matchDraft";
 
 // Readiness rework P1b — the ONE match-play readiness threshold, shared by the
 // setup-page Enable gate and the server `isConfigured` so they can't drift.
@@ -110,6 +110,42 @@ describe("allMatchesFilled (the Enable-scoring gate)", () => {
   it("2v2: every side must be at full strength", () => {
     expect(allMatchesFilled([singles(["a", "b"], ["c", "d"])], 2)).toBe(true);
     expect(allMatchesFilled([singles(["a", "b"], ["c"])], 2)).toBe(false);
+  });
+});
+
+// Setup re-seed: a server side resolves to its member ids by the side's OWN type,
+// NOT an ambient sided flag. This is what keeps a 2v2 match from vanishing on
+// reopen when matches.listByGame lands before games.getById (so the page's `sided`
+// is still its pre-load fallback) — the play_group side must still expand to its
+// pair, and a user side must still be itself.
+describe("sideMemberIds (type-driven side → member ids)", () => {
+  const members = new Map<string, string[]>([
+    ["pgA", ["alice", "bob"]],
+    ["pgB", ["carol", "dave"]],
+  ]);
+
+  it("a user side (1v1) resolves to that single user, regardless of the map", () => {
+    const side: ServerSide = { type: "user", id: "alice" };
+    expect(sideMemberIds(side, members)).toEqual(["alice"]);
+    expect(sideMemberIds(side, new Map())).toEqual(["alice"]); // no play_group lookup needed
+  });
+
+  it("a play_group side (2v2) expands to its two members via the map", () => {
+    expect(sideMemberIds({ type: "play_group", id: "pgA" }, members)).toEqual(["alice", "bob"]);
+    expect(sideMemberIds({ type: "play_group", id: "pgB" }, members)).toEqual(["carol", "dave"]);
+  });
+
+  it("an empty slot (null) or unknown play_group resolves to []", () => {
+    expect(sideMemberIds(null, members)).toEqual([]);
+    // A play_group whose participants haven't loaded yet → empty, never the id itself
+    // (the bug: a doubles side was rebuilt as [play_group_id] and read as a user).
+    expect(sideMemberIds({ type: "play_group", id: "pgMissing" }, members)).toEqual([]);
+  });
+
+  it("a filled 2v2 match reconstructs as two 2-member sides (both fully paired)", () => {
+    const a = sideMemberIds({ type: "play_group", id: "pgA" }, members);
+    const b = sideMemberIds({ type: "play_group", id: "pgB" }, members);
+    expect(isMatchFilled({ a, b }, 2)).toBe(true); // survives the reopen as a real match
   });
 });
 
