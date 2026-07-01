@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Check, RefreshCw, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CourseSearchPanel } from "./CourseSearchPanel";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -13,12 +12,14 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  *    resolves the row as today; a 9-hole course lands as the FRONT nine.
  *  - 9-hole front, no back → "needs a back nine": shows the front + a BACK picker
  *    (9-hole courses only). The row is NOT resolved until the back is composed.
- *  - Composed/18 → the resolved view: a real 18 shows the course; a two-nines 18
- *    shows Front + Back with a "Swap back nine" (clears the back, keeps the front)
- *    and "Change course" (clears all → re-pick).
+ *  - Composed/18 → the resolved view: ×-to-remove throughout (matching removable
+ *    items elsewhere). A real 18 shows the course with one × (clears → re-pick); a
+ *    two-nines 18 shows Front + Back, each with its own × — front × clears the
+ *    course, back × drops just the back (→ "needs a back nine", re-pick from there).
  *
- * All course mutations live here (applyCourse = front, setBackNine = back/swap,
- * clearCourse). They're live — the accordion collapse just recedes.
+ * All course mutations live here (applyCourse = front / also used to drop the back
+ * by re-applying the front alone, setBackNine = back, clearCourse). They're live —
+ * the accordion collapse just recedes.
  */
 export function CourseRowContent({
   tripId, game, canEdit, onChanged,
@@ -56,17 +57,24 @@ export function CourseRowContent({
     !!backId && !!appliedTeeName && backTees.length > 0 &&
     !backTees.some((t) => (t.name ?? "").trim() === appliedTeeName);
 
-  // Swap/change sub-views (only meaningful in the resolved state).
-  const [view, setView] = useState<"default" | "swapBack">("default");
-
   function refresh(courseId?: string) {
     if (courseId) utils.courses.getById.invalidate({ courseId });
     onChanged();
   }
   const onPickFront = ({ id, teeName }: { id: string; teeName?: string }) =>
-    applyCourse.mutate({ tripId, gameId, courseId: id, teeSetName: teeName }, { onSuccess: () => { setView("default"); refresh(id); } });
+    applyCourse.mutate({ tripId, gameId, courseId: id, teeSetName: teeName }, { onSuccess: () => refresh(id) });
   const onPickBack = ({ id, teeName }: { id: string; teeName?: string }) =>
-    setBackNine.mutate({ tripId, gameId, backCourseId: id, backTeeSetName: teeName }, { onSuccess: () => { setView("default"); refresh(id); } });
+    setBackNine.mutate({ tripId, gameId, backCourseId: id, backTeeSetName: teeName }, { onSuccess: () => refresh(id) });
+  // Remove the back nine (per-nine × — Task 2b): re-apply the FRONT alone, which
+  // resets back_course_id and shrinks the schema back to 9 → the "needs a back
+  // nine" state (re-pick from there). Reuses applyCourse — no new server machinery
+  // (the composed tee name is the front's, so it round-trips the front's tee).
+  const onRemoveBack = () =>
+    applyCourse.mutate(
+      { tripId, gameId, courseId: frontId!, teeSetName: appliedTeeName || undefined },
+      { onSuccess: () => refresh(frontId!) }
+    );
+  const onClearCourse = () => clearCourse.mutate({ tripId, gameId }, { onSuccess: () => refresh() });
 
   // ── No course → front picker ──────────────────────────────────────────────
   if (!frontId) {
@@ -77,7 +85,7 @@ export function CourseRowContent({
   if (needsBack) {
     return (
       <div className="flex flex-col gap-3" data-testid="course-needs-back">
-        <NineSummary label="Front nine" name={frontName} onClear={canEdit ? () => clearCourse.mutate({ tripId, gameId }, { onSuccess: () => refresh() }) : undefined} />
+        <NineSummary label="Front nine" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>Add the back nine</span>
           <p className="mb-2 mt-0.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>A 9-hole course needs a back nine to make a full 18.</p>
@@ -87,25 +95,19 @@ export function CourseRowContent({
     );
   }
 
-  // ── Resolved (18) — swap sub-view ─────────────────────────────────────────
-  if (view === "swapBack") {
-    return (
-      <div className="flex flex-col gap-2" data-testid="course-swap-back">
-        <button onClick={() => setView("default")} className="self-start text-[13px]" style={{ color: "var(--color-bt-accent)" }}>‹ Cancel</button>
-        <p className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>Pick the new back nine. Front nine + its scores stay; back-nine scores are cleared.</p>
-        <CourseSearchPanel tripId={tripId} gameId={gameId} mode="back" onApply={onPickBack} />
-      </div>
-    );
-  }
-
   // ── Resolved (18) — default view ──────────────────────────────────────────
+  // ×-to-remove throughout (Task 2a/2b), matching how removable items work
+  // elsewhere: a single 18 gets ONE × (clears the course → re-pick); a two-nines
+  // 18 gets a per-nine × (front × clears the course; back × drops just the back →
+  // "needs a back nine"). The old "Swap back nine" / "Change course" buttons are
+  // gone — the × on each item is the affordance.
   const twoNines = !!backId;
   return (
     <div className="flex flex-col gap-3" data-testid="course-resolved">
       {twoNines ? (
         <div className="flex flex-col gap-2">
-          <NineSummary label="Front nine" name={frontName} />
-          <NineSummary label="Back nine" name={backName} />
+          <NineSummary label="Front nine" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
+          <NineSummary label="Back nine" name={backName} onClear={canEdit ? onRemoveBack : undefined} />
           {backTeeFallback && (
             <p className="px-1 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }} data-testid="back-tee-fallback">
               {backName} has no {appliedTeeName} tee — its first tee’s yardages are used for the back nine.
@@ -113,28 +115,7 @@ export function CourseRowContent({
           )}
         </div>
       ) : (
-        <NineSummary label="Course" name={frontName} />
-      )}
-      {canEdit && (
-        <div className="flex flex-wrap gap-2">
-          {twoNines && (
-            <button
-              onClick={() => setView("swapBack")}
-              data-testid="course-swap-back-btn"
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <RefreshCw size={13} style={{ color: "var(--color-bt-accent)" }} /> Swap back nine
-            </button>
-          )}
-          <button
-            onClick={() => clearCourse.mutate({ tripId, gameId }, { onSuccess: () => refresh() })}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold"
-            style={{ background: "transparent", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <X size={13} /> Change course
-          </button>
-        </div>
+        <NineSummary label="Course" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
       )}
     </div>
   );
