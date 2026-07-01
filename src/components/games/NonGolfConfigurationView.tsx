@@ -10,6 +10,7 @@ import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
+import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   PointStepper,
   FormatSheet,
@@ -22,10 +23,11 @@ import type { ScoringModel } from "@/lib/gameTypes";
 /**
  * NonGolfConfigurationView (W-NONGOLF lifecycle surface) — the non-golf twin of
  * golf's `GameConfigurationView`: the ONE settings home, reached by the corner
- * gear, carrying the mode toggle + Danger Zone. It mirrors golf's STRUCTURE
- * (identity → settings → rules → toggle → danger zone) but ships a **LEAN
- * payload** — only what non-golf needs, no golf cruft (no Matches / Course /
- * Handicaps / Modifiers):
+ * gear, carrying the mode toggle + Danger Zone. It mirrors the cleaned golf ORDER
+ * (Spec 6): identity → explainer → **Rules (top)** → **Game Management** →
+ * **Settings** → Danger Zone — same grouping + treatment, but a **LEAN payload**:
+ * only what non-golf needs, no golf cruft (no Matches / Course / Handicaps /
+ * Modifiers):
  *
  *  - **competition_format** (its real home now — drives future matchup/bracket dev),
  *  - by the competition's `scoring_model`:
@@ -91,17 +93,59 @@ export function NonGolfConfigurationView({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        {/* Non-golf now mirrors the cleaned golf ORDER (Spec 6): identity → explainer
+            → Rules (top) → Game Management → Settings → Danger Zone. Non-golf's rows
+            differ (no course/handicaps/matches; it HAS Competition Format + Game
+            Value), but the grouping + treatment match golf so they read as one page
+            family. Shared primitives (identity, Rules, toggle, Danger Zone, explainer,
+            ZoneHeader) inherit the golf treatment — nothing re-implemented. */}
+
         {/* Identity — name (tap-to-edit) + assigned-to (same as golf). */}
         <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
 
-        {/* #501: live-game lock banner — settings below are frozen until toggled
-            back to Setup. */}
+        {/* Format explainer — the compact "how you compete" block that pairs directly
+            ABOVE Rules (this is the slot reserved for it). */}
+        <div className="mt-6">
+          <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+        </div>
+
+        {/* RULES OF THE DAY — at the TOP (matching golf). Saves on blur; the
+            carved-out exception stays editable in scoring mode (notes, not
+            game-altering) — so it keeps plain canEdit. */}
+        <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />
+
+        {/* GAME MANAGEMENT — a labeled peer section + the single Setup/Scoring toggle
+            (owner/delegate only). ZoneHeader supplies the caption, so the panel's own
+            caption is suppressed (hideLabel) to avoid a double label — matching golf. */}
+        {canEdit && (
+          <>
+            <div className="mt-6">
+              <ZoneHeader>Game Management</ZoneHeader>
+            </div>
+            <div className="mt-2.5">
+              <GameManagementPanel
+                mode={scoringEnabled ? "scoring" : "setup"}
+                ready={ready}
+                onEnable={onEnable}
+                onDisable={onDisable}
+                pending={busy}
+                hideLabel
+              />
+            </div>
+          </>
+        )}
+
+        {/* #501: live-game lock banner — the settings below are frozen until the
+            owner/delegate flips the toggle above back to Setup (after the toggle,
+            matching golf). */}
         {scoringEnabled && canEdit && <ScoringLockBanner />}
 
-        {/* Competition format — relocated here as its real home, near the top
-            (it drives future matchup/bracket dev). Locked in scoring mode. */}
+        {/* SETTINGS — non-golf's real, different content: Competition Format ("how
+            it's played") + Game Value (points-for-the-match). Locked in scoring mode. */}
+        <div className="mt-6">
+          <ZoneHeader>Settings</ZoneHeader>
+        </div>
         <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} locked={scoringEnabled} onChanged={onChanged} />
-
         {/* The points payload, by the competition's scoring model. Locked in scoring —
             #512 Option B: dim the read-only panel so it reads as frozen. */}
         {scoringModel === "match_play" ? (
@@ -114,40 +158,20 @@ export function NonGolfConfigurationView({
           </div>
         )}
 
-        {/* Format explainer — compact "how you compete" block, pairs directly
-            above Rules (orients the owner on the format they're configuring). */}
-        <div className="mt-6">
-          <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-        </div>
-
-        {/* Rules of the Day — saves on blur (same as golf). The carved-out exception:
-            stays editable in scoring mode (notes, not game-altering). */}
-        <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />
-
-        {/* The single Setup / Scoring toggle — owner/delegate only. */}
-        {canEdit && (
+        {/* Per-game danger zone — owner-only (reset scores / reset settings / delete).
+            Dimmed-header + disabled wholesale in scoring mode (#501, shared treatment)
+            — switch to Setup to manage it. */}
+        {isOwner && (
           <div className="mt-6">
-            <GameManagementPanel
-              mode={scoringEnabled ? "scoring" : "setup"}
-              ready={ready}
-              onEnable={onEnable}
-              onDisable={onDisable}
-              pending={busy}
+            <GameDangerZone
+              tripId={tripId}
+              gameId={game.id}
+              competitionId={competitionId}
+              onChanged={onChanged}
+              onDeleted={onDeleted}
+              disabled={scoringEnabled}
             />
           </div>
-        )}
-
-        {/* Per-game danger zone — owner-only (reset scores / reset settings / delete).
-            Disabled wholesale in scoring mode (#501) — switch to Setup to manage it. */}
-        {isOwner && (
-          <GameDangerZone
-            tripId={tripId}
-            gameId={game.id}
-            competitionId={competitionId}
-            onChanged={onChanged}
-            onDeleted={onDeleted}
-            disabled={scoringEnabled}
-          />
         )}
       </div>
     </div>
