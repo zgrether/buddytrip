@@ -13,16 +13,21 @@ import { matchPlayReady } from "@/lib/matchDraft";
  */
 
 export const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
-// Roster-gated golf formats: a stroke field / rack auto-grouping is "configured"
-// once it has participants (match play instead needs pairing rows — see below).
-export const ROSTER_TYPES = new Set(["gtt_stroke_play", "gtt_rack_n_stack"]);
+export const RACK_TYPE = "gtt_rack_n_stack";
+// Roster-gated golf formats: a stroke field is "configured" once it has
+// participants; rack additionally requires those participants to be GROUPED into
+// playing groups (the manual group builder) — see the grouped-count branch below.
+export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE]);
 
 /**
  * Is the game configured enough to be Ready (vs still Setting up)?
  *  - match play → ALL pairings assigned (`matchPlayReady`: paired === total, ≥1) —
  *    the SAME threshold the setup-page Enable gate uses, so list-ready ⟺
  *    setup-can-enable (readiness rework P1b).
- *  - stroke / rack → participants assigned (game_participants rows)
+ *  - stroke → participants assigned (game_participants rows)
+ *  - rack → participants assigned to a PLAYING GROUP (the manual group builder);
+ *    the caller passes the GROUPED participant count, so ungrouped players
+ *    (e.g. groups later cleared) don't read as ready
  *  - manual / side events → points configured (no roster to assign)
  */
 export function isConfigured(
@@ -66,10 +71,14 @@ export async function assertGameReady(supabase: SupabaseClient, gameId: string):
     matchTotal = matches.length;
     matchPaired = matches.filter((m) => m.side_a?.id && m.side_b?.id).length;
   } else if (typeId && ROSTER_TYPES.has(typeId)) {
-    const { count } = await supabase
+    let query = supabase
       .from("game_participants")
       .select("user_id", { count: "exact", head: true })
       .eq("game_id", gameId);
+    // Rack requires players actually GROUPED (the manual group builder) — a bare
+    // roster with no playing groups isn't ready. Stroke counts all participants.
+    if (typeId === RACK_TYPE) query = query.not("play_group_id", "is", null);
+    const { count } = await query;
     participantCount = count ?? 0;
   }
 
