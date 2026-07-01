@@ -11,6 +11,7 @@ import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
+import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 
 interface Competition {
   id: string;
@@ -31,12 +32,16 @@ interface Competition {
  * were both retired — creation lands directly on the bones board):
  *   board    — the leaderboard (the main view for everyone, setup + live)
  *   settings — the consolidated Settings page (competition details + Team Rosters
- *              + delete) — reached from the header gear and the pre-save Team
- *              Rosters button
+ *              + delete) — reached from the header gear
+ * Settings is a history-pushed overlay (the shared `useGameSettingsOverlay`, the
+ * SAME contract the per-game settings pages use): opening it pushes a history
+ * entry so the in-page "Board" back arrow AND the OS/browser back button both
+ * dismiss it and return to the leaderboard — never past it to the trip home.
+ * (Gear-only here — no `?settings=1` deep link; competition settings is reached
+ * solely from the gear, so `deepLink: false`.)
  * "Add a game" no longer routes to a panel — it opens the GameSheet modal
  * directly over the board; existing games are managed on their per-game pages.
  */
-type FaceView = "settings" | "board";
 
 interface Props {
   tripId: string;
@@ -71,9 +76,14 @@ export function CompetitionFace({
   const utils = trpc.useUtils();
 
   // The board is the home in every stage now — creation lands here directly
-  // (the setup guide was retired); Settings is a sub-surface reached from the
-  // board and returns to it. "Add a game" opens a modal over the board.
-  const [view, setView] = useState<FaceView>("board");
+  // (the setup guide was retired). Settings is a history-pushed overlay over the
+  // board: opening pushes a history entry so back (in-page arrow OR OS/browser
+  // button) returns to the leaderboard, not the trip home. Reuses the shared
+  // game-settings overlay hook (one home for the behavior); gear-only, so
+  // deepLink is false — competition settings has no `?settings=1` deep link.
+  // "Add a game" opens a modal over the board.
+  const { open: settingsOpen, openConfig: openSettings, closeConfig: closeSettings } =
+    useGameSettingsOverlay({ canEdit, deepLink: false });
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
@@ -125,18 +135,20 @@ export function CompetitionFace({
     <CompetitionHeader
       competition={competition}
       tripId={tripId}
-      onSettings={canEdit ? () => setView("settings") : undefined}
+      onSettings={canEdit ? openSettings : undefined}
     />
   );
 
-  // ── Sub-surface: the consolidated Settings page — reached from the board ─────
-  if (view === "settings") {
+  // ── Sub-surface: the consolidated Settings page — a history-pushed overlay ───
+  // over the board. Back (in-page arrow OR OS/browser button) returns to the
+  // leaderboard via useGameSettingsOverlay, never past it to the trip home.
+  if (settingsOpen) {
     return (
       <div className="space-y-4">
         {header}
         <button
           type="button"
-          onClick={() => setView("board")}
+          onClick={closeSettings}
           className="inline-flex items-center gap-1 text-[13px] font-semibold"
           style={{ color: "var(--color-bt-accent)" }}
           data-testid="comp-back-to-board"
