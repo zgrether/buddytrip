@@ -508,7 +508,7 @@ export default function RackNStackPage() {
     if (!canEdit) {
       return (
         <Shell onBack={() => router.back()} title="Rack-n-Stack">
-          <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
+          <SetupPlaceholder tripId={tripId} game={gameQ.data as unknown as GameRow | undefined} />
         </Shell>
       );
     }
@@ -559,8 +559,8 @@ export default function RackNStackPage() {
         }
       >
         <SetupPlaceholder
-          gameName={gameQ.data?.name as string | undefined}
-          category="golf"
+          tripId={tripId}
+          game={gameQ.data as unknown as GameRow | undefined}
           message={canEdit
             ? "Set the course, handicaps, and points on the settings page — the crew can’t see the game until you switch it to scoring."
             : undefined}

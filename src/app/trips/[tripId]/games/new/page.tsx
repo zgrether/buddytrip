@@ -401,8 +401,8 @@ export default function NewGamePage() {
         </header>
         <div className="flex-1">
           <SetupPlaceholder
-            gameName={gameQ.data?.name as string | undefined}
-            category="golf"
+            tripId={tripId}
+            game={gameQ.data as unknown as GameRow | undefined}
             message={canEdit
               ? "Set the players, course, and handicaps on the settings page — the crew can’t see the game until you switch it to scoring."
               : undefined}

@@ -26,6 +26,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
+import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -900,6 +901,8 @@ export default function NewMatchGamePage() {
       <div className="w-full px-4 py-5">
       {!cfgOpen && screen === "new" && (
         <NewGame
+          tripId={tripId}
+          game={gameQ.data as unknown as GameRow | undefined}
           teeTime={teeTime}
           setTeeTime={setTeeTime}
           courseName={courseName}
@@ -922,7 +925,7 @@ export default function NewMatchGamePage() {
       )}
 
       {!cfgOpen && screen === "member-wait" && (
-        <SetupPlaceholder gameName={gameQ.data?.name as string | undefined} category="golf" />
+        <SetupPlaceholder tripId={tripId} game={gameQ.data as unknown as GameRow | undefined} />
       )}
 
       {/* A2-ux correction: the setup-mode scoreboard is a PASS-THROUGH for the
@@ -931,8 +934,8 @@ export default function NewMatchGamePage() {
           and NO toggle on this page (the toggle would self-destruct here). */}
       {!cfgOpen && screen === "setup" && (
         <SetupPlaceholder
-          gameName={gameQ.data?.name as string | undefined}
-          category="golf"
+          tripId={tripId}
+          game={gameQ.data as unknown as GameRow | undefined}
           message="Set the matchups, course, and points on the settings page — the crew can’t see the game until you switch it to scoring."
         >
           <button
@@ -1034,11 +1037,21 @@ export default function NewMatchGamePage() {
               <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
             )}
 
+            {/* Format explainer — the compact "how you compete" block that pairs
+                directly ABOVE Rules (this is the slot reserved for it). */}
+            {gameCompId && gameQ.data && (
+              <div className="mt-6">
+                <GameFormatExplainer
+                  gameTypeId={(gameQ.data as unknown as GameRow).game_type_id}
+                  variant="settings"
+                />
+              </div>
+            )}
+
             {/* RULES OF THE DAY — at the TOP (out of the awkward middle zone that
                 disables in scoring mode). Always editable (incl. scoring mode) per
                 the carved-out exception (plain canEdit). Saves on blur — the back
-                arrow blurs the field, so there's no Save&exit to flush. (A game-type
-                explainer block will pair ABOVE this later — future add, not here.) */}
+                arrow blurs the field, so there's no Save&exit to flush. */}
             {gameCompId && gameQ.data && (
               <GameRulesNote tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
             )}
@@ -1258,12 +1271,13 @@ export default function NewMatchGamePage() {
 
       {!cfgOpen && screen === "overview" && (
         <Overview
+          tripId={tripId}
+          game={gameQ.data as unknown as GameRow | undefined}
           groups={groups}
           myId={me?.id}
           published={published}
           complete={status === "complete"}
           teeLabel={formatTee(gameQ.data?.tee_time as string | null | undefined)}
-          gameName={gameQ.data?.name as string | undefined}
           canEdit={canEdit}
           decidedFor={decidedFor}
           holeCount={scUnits.length}
@@ -1433,6 +1447,8 @@ function SetupHeader({
 }
 
 function NewGame({
+  tripId,
+  game,
   teeTime,
   setTeeTime,
   courseName,
@@ -1441,6 +1457,8 @@ function NewGame({
   pending,
   canEdit,
 }: {
+  tripId: string;
+  game: GameRow | null | undefined;
   teeTime: string;
   setTeeTime: (t: string) => void;
   courseName: string | null;
@@ -1449,7 +1467,7 @@ function NewGame({
   pending: boolean;
   canEdit: boolean;
 }) {
-  if (!canEdit) return <MemberNotReady />;
+  if (!canEdit) return <MemberNotReady tripId={tripId} game={game} />;
   // Build-as-you-go (W-GAMEPAGE-01 §6.1): creating the game seeds exactly ONE
   // empty match — no up-front count. Matches are added one at a time on the setup
   // face, so there's no stepper here.
@@ -1791,12 +1809,13 @@ function HandicapsSection({
  * finish the round.
  */
 function Overview({
+  tripId,
+  game,
   groups,
   myId,
   published,
   complete,
   teeLabel,
-  gameName,
   canEdit,
   decidedFor,
   holeCount,
@@ -1808,12 +1827,13 @@ function Overview({
   correctingPending,
   onOpenMatch,
 }: {
+  tripId: string;
+  game: GameRow | null | undefined;
   groups: MatchGroupData[];
   myId: string | undefined;
   published: boolean;
   complete: boolean;
   teeLabel: string;
-  gameName?: string;
   canEdit: boolean;
   decidedFor: (g: MatchGroupData) => HoleResult[];
   /** The round's hole count (from the scorecard schema) — feeds matchState so
@@ -1829,7 +1849,7 @@ function Overview({
   correctingPending: boolean;
   onOpenMatch: (matchId: string) => void;
 }) {
-  if (!published) return <MemberNotReady gameName={gameName} />;
+  if (!published) return <MemberNotReady tripId={tripId} game={game} />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
   const underway = decideds.some((d) => d.length > 0);
