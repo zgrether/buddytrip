@@ -29,20 +29,25 @@ export interface HandicapPlayer {
 
 const DEBOUNCE_MS = 400;
 
-export function HandicapRoster({
+/**
+ * HandicapList — the per-player stepper cards + their optimistic/debounced persist,
+ * lifted out of HandicapRoster so the SAME cards render inline in a settings-panel
+ * (rack's Handicaps accordion) as well as full-screen (stroke's roster). `raised`
+ * lifts each card to `card-raised` when it sits ON a card surface (an accordion
+ * panel); the default `card` is for a base-background full-screen roster.
+ */
+export function HandicapList({
   players,
   holeCount,
   strokeIndex,
   onSetStrokes,
-  onDone,
-  onBack,
+  raised = false,
 }: {
   players: HandicapPlayer[];
   holeCount: number;
   strokeIndex: number[] | null;
   onSetStrokes: (userId: string, strokes: number) => Promise<unknown>;
-  onDone: () => void;
-  onBack: () => void;
+  raised?: boolean;
 }) {
   // `local` holds only EDITED rows; an unedited row reads the prop value. So a
   // background refetch (after persist) flows through props without an effect.
@@ -68,8 +73,8 @@ export function HandicapRoster({
     });
   };
 
-  // On unmount (Done / Back / nav-away) FLUSH any pending debounced edit so the
-  // value survives leaving without tapping Done — never silently drop it.
+  // On unmount (Done / Back / nav-away / accordion collapse) FLUSH any pending
+  // debounced edit so the value survives leaving — never silently drop it.
   useEffect(() => {
     const t = timers.current;
     const p = pending.current;
@@ -91,7 +96,54 @@ export function HandicapRoster({
     timers.current[id] = setTimeout(() => persist(id, next), DEBOUNCE_MS);
   };
 
-  const allScratch = players.every((p) => strokesOf(p) === 0);
+  return (
+    <div className="flex flex-col gap-2">
+      {players.map((p) => {
+        const strokes = strokesOf(p);
+        const hint = strokeHint(strokes, holeCount, strokeIndex);
+        return (
+          <div key={p.id} className="flex items-center gap-3 rounded-xl border px-3" style={{ minHeight: 60, padding: "8px 12px", background: raised ? "var(--color-bt-card-raised)" : "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
+            <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.teamColor} sizePx={34} />
+            <div className="min-w-0 flex-1">
+              {/* The avatar carries the team color now (solid disc) — no
+                  separate team dot needed. */}
+              <span className="truncate block" style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
+              {hint && <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1 }}>{hint}</span>}
+            </div>
+            {/* Delta callbacks (not onChange) so bump's pending-ref rapid-tap
+                handling is preserved; formatValue keeps "SCR" at 0 (P-B). */}
+            <Stepper
+              size="full"
+              value={strokes}
+              min={0}
+              max={MAX_STROKES}
+              onDecrement={() => bump(p.id, strokes, -1)}
+              onIncrement={() => bump(p.id, strokes, 1)}
+              formatValue={(n) => (n === 0 ? "SCR" : String(n))}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function HandicapRoster({
+  players,
+  holeCount,
+  strokeIndex,
+  onSetStrokes,
+  onDone,
+  onBack,
+}: {
+  players: HandicapPlayer[];
+  holeCount: number;
+  strokeIndex: number[] | null;
+  onSetStrokes: (userId: string, strokes: number) => Promise<unknown>;
+  onDone: () => void;
+  onBack: () => void;
+}) {
+  const allScratch = players.every((p) => p.strokes === 0);
 
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--color-bt-base)" }}>
@@ -120,33 +172,8 @@ export function HandicapRoster({
           </p>
         )}
 
-        <div className="mt-4 flex flex-col gap-2">
-          {players.map((p) => {
-            const strokes = strokesOf(p);
-            const hint = strokeHint(strokes, holeCount, strokeIndex);
-            return (
-              <div key={p.id} className="flex items-center gap-3 rounded-xl border px-3" style={{ minHeight: 60, padding: "8px 12px", background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
-                <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.teamColor} sizePx={34} />
-                <div className="min-w-0 flex-1">
-                  {/* The avatar carries the team color now (solid disc) — no
-                      separate team dot needed. */}
-                  <span className="truncate block" style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
-                  {hint && <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1 }}>{hint}</span>}
-                </div>
-                {/* Delta callbacks (not onChange) so bump's pending-ref rapid-tap
-                    handling is preserved; formatValue keeps "SCR" at 0 (P-B). */}
-                <Stepper
-                  size="full"
-                  value={strokes}
-                  min={0}
-                  max={MAX_STROKES}
-                  onDecrement={() => bump(p.id, strokes, -1)}
-                  onIncrement={() => bump(p.id, strokes, 1)}
-                  formatValue={(n) => (n === 0 ? "SCR" : String(n))}
-                />
-              </div>
-            );
-          })}
+        <div className="mt-4">
+          <HandicapList players={players} holeCount={holeCount} strokeIndex={strokeIndex} onSetStrokes={onSetStrokes} />
         </div>
       </div>
 
