@@ -9,8 +9,8 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
-import { TimePicker } from "@/components/TimePicker";
-import { parseTime, toTime24 } from "@/lib/time";
+import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
+import { toPersist as groupsToPersist } from "@/lib/rackGroupDraft";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
@@ -37,25 +37,6 @@ function teeLabel(t: string | null | undefined): string | null {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${String(m).padStart(2, "0")}`;
 }
-/** Add minutes to "HH:MM" 24h (wraps within a day). */
-function addMinutes(t: string, mins: number): string {
-  const [h, m] = t.split(":").map(Number);
-  const total = (h * 60 + m + mins) % (24 * 60);
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
-/** Chunk into groups of `size`, interleaving the two teams so groups are mixed. */
-function autoFoursomes(teamA: string[], teamB: string[], size = 4): string[][] {
-  const woven: string[] = [];
-  for (let i = 0; i < Math.max(teamA.length, teamB.length); i++) {
-    if (teamA[i]) woven.push(teamA[i]);
-    if (teamB[i]) woven.push(teamB[i]);
-  }
-  const out: string[][] = [];
-  for (let i = 0; i < woven.length; i += size) out.push(woven.slice(i, i + size));
-  return out;
-}
-
 export default function RackNStackPage() {
   const { tripId: param } = useParams<{ tripId: string }>();
   const router = useRouter();
@@ -83,9 +64,12 @@ export default function RackNStackPage() {
   const [mode, setMode] = useState<RackMode>("current");
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
-  const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [showHandicaps, setShowHandicaps] = useState(false);
+  // Manual playing-group builder (replaces auto-assign): its own screen, seeded from
+  // the persisted groups on open. `groupDraft` = one array of user ids per group.
+  const [showGroups, setShowGroups] = useState(false);
+  const [groupDraft, setGroupDraft] = useState<string[][]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
   const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
@@ -167,6 +151,21 @@ export default function RackNStackPage() {
     (assignQ.data ?? []).forEach((a, i) => m.set(a.user_id as string, i));
     return m;
   }, [assignQ.data]);
+
+  // Each team's roster in canonical sort_order (assignQ arrives ordered by
+  // team_id, sort_order) — the combined pool the group builder picks from. Picking
+  // top-to-bottom therefore follows the captain's order (handicap order if set).
+  const teamRosters = useMemo(() => {
+    const A: GroupBuilderTeam["players"] = [];
+    const B: GroupBuilderTeam["players"] = [];
+    for (const a of assignQ.data ?? []) {
+      const uid = a.user_id as string;
+      const entry = { id: uid, name: nameOf.get(uid) ?? "Player", avatarIcon: avatarOf.get(uid) ?? null };
+      if (teamOf.get(uid) === "A") A.push(entry);
+      else if (teamOf.get(uid) === "B") B.push(entry);
+    }
+    return { A, B };
+  }, [assignQ.data, teamOf, nameOf, avatarOf]);
 
   const hasCompetition = !!competitionId && teamIds.length >= 2;
 
@@ -251,10 +250,16 @@ export default function RackNStackPage() {
   );
 
   // ── Handlers ─────────────────────────────────────────────────────────
-  // Seed the rack's structure from the competition roster. Two entry points,
-  // ONE path: a brand-new game (no gid → create it first), or an existing
-  // competition game tapped from the leaderboard that has no foursomes yet
-  // (gid set, groups empty → seed onto it, don't mint a new game).
+  // The current persisted groups as a builder draft (one user-id array per group,
+  // in group order) — seeds the builder when editing an existing game's groups.
+  const currentGroupDraft = (): string[][] => {
+    const gs = groupsQ.data?.groups ?? [];
+    return gs.map((grp) => participants.filter((p) => p.play_group_id === grp.id).map((p) => p.user_id as string));
+  };
+
+  // Start a rack: create the game (if new) + apply the course, then open the MANUAL
+  // group builder. No auto-assignment — deliberate grouping is the point of this
+  // round (see spec), so the owner builds the carts from an empty state.
   async function startRack() {
     if (!tripId || !competitionId) return;
     let gameId: string;
@@ -271,17 +276,31 @@ export default function RackNStackPage() {
         /* template default par/index still applies */
       }
     }
-    const aIds = [...teamOf.entries()].filter(([, t]) => t === "A").map(([id]) => id);
-    const bIds = [...teamOf.entries()].filter(([, t]) => t === "B").map(([id]) => id);
-    const groups = autoFoursomes(aIds, bIds).map((userIds, i) => ({
-      name: `Group ${i + 1}`,
-      userIds,
-      teeTime: firstTee ? addMinutes(firstTee, i * 10) : null,
-    }));
-    await setFoursomes.mutateAsync({ tripId, gameId, groups });
     await utils.playGroups.listByGame.invalidate({ tripId, gameId });
     setGameId(gameId);
-    setShowHandicaps(true); // Pairings ✓ → Handicaps step
+    setGroupDraft([]); // start empty — the owner builds the groups
+    setShowGroups(true);
+  }
+
+  // Open the builder to edit existing groups (from the settings "who's playing"
+  // drill-down), seeded from what's persisted.
+  function openGroupBuilder() {
+    setGroupDraft(currentGroupDraft());
+    setShowGroups(true);
+  }
+
+  // Persist the built groups. Empty groups (an unfinished "add group") are dropped;
+  // the survivors renumber Group 1..N. Clean-replaces via setFoursomes, then
+  // refreshes the board (incl. faceBootstrap, CLAUDE.md #10).
+  async function saveGroups() {
+    if (!tripId || !gid) return;
+    await setFoursomes.mutateAsync({ tripId, gameId: gid, groups: groupsToPersist(groupDraft) });
+    await utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
   }
 
   const onSetStrokes = (userId: string, strokes: number) =>
@@ -350,6 +369,10 @@ export default function RackNStackPage() {
   // (created as a bare games row by add-game). Route it to the setup step instead
   // of the empty play screen — startRack seeds onto the existing game.
   const needsSetup = !!gid && groupsQ.isSuccess && (groupsQ.data?.groups?.length ?? 0) === 0;
+  // Task 2 readiness: rack can't switch to scoring until at least one playing group
+  // exists (players assigned). Mirrors the server enable guard (grouped participants
+  // > 0) so the client toggle and the server refuse agree.
+  const groupsAssigned = (groupsQ.data?.groups?.length ?? 0) > 0;
   // Phase 2B.1: a rack with its groups set must be Enabled before the play screen
   // opens (the score saver server-rejects entries until then).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
@@ -483,14 +506,51 @@ export default function RackNStackPage() {
         isOwner={isOwner}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        whosPlayingLabel={`${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · auto-grouped · strokes`}
-        // Keep showConfig set so the handicaps drill-down returns to the settings page.
-        onEditWhosPlaying={() => setShowHandicaps(true)}
+        whosPlayingLabel={
+          groupsAssigned
+            ? `${groupsQ.data?.groups?.length ?? 0} group${(groupsQ.data?.groups?.length ?? 0) === 1 ? "" : "s"} · strokes`
+            : "No groups yet — build the carts"
+        }
+        // Keep showConfig set so the builder/handicaps drill-downs return here.
+        onEditWhosPlaying={openGroupBuilder}
         scoringEnabled={scoringEnabled}
+        // Task 2: gate the Setup→Scoring toggle on groups being assigned.
+        ready={groupsAssigned}
         onEnable={handleEnable}
         onDisable={handleDisable}
         busy={enableScoring.isPending || disableScoring.isPending}
       />
+    );
+  }
+
+  // Manual playing-group builder (owner/delegate) — the replacement for auto-assign.
+  // Reached from "Start the rack" (new game) and the settings "who's playing"
+  // drill-down. Persists on leave; "Save & set handicaps" continues to the roster.
+  if (showGroups && gid) {
+    const teamA: GroupBuilderTeam = { id: teamIds[0] ?? "A", name: teamMeta.A.name, color: teamMeta.A.color, players: teamRosters.A };
+    const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
+    const anyAssigned = groupDraft.some((g) => g.length > 0);
+    const leave = async () => { await saveGroups(); setShowGroups(false); };
+    const toHandicaps = async () => { await saveGroups(); setShowGroups(false); setShowHandicaps(true); };
+    return (
+      <Shell onBack={() => void leave()} title="Playing groups" subtitle="Build the carts — any mix of 1–4">
+        <div className="w-full px-4 py-5">
+          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
+            Add a group for each cart, then pick its players from either team. Anyone left out sits this round out.
+          </p>
+          <RackGroupBuilder groups={groupDraft} onChange={setGroupDraft} teamA={teamA} teamB={teamB} />
+          {anyAssigned && (
+            <button
+              onClick={() => void toHandicaps()}
+              disabled={setFoursomes.isPending}
+              className="mt-5 w-full disabled:opacity-40"
+              style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+            >
+              {setFoursomes.isPending ? "Saving…" : "Save & set handicaps"}
+            </button>
+          )}
+        </div>
+      </Shell>
     );
   }
 
@@ -531,13 +591,12 @@ export default function RackNStackPage() {
                 <span style={{ color: pendingCourse ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>{pendingCourse?.name ?? "Select a course (optional)"}</span>
               </button>
             </div>
-            <TimePicker label="First tee time" presets="tee" value={parseTime(firstTee)} onChange={(v) => setFirstTee(toTime24(v))} />
             <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)" }}>
-              {assignQ.data?.length ?? 0} players across {teamMeta.A.name} &amp; {teamMeta.B.name} — they&apos;ll be auto-grouped into foursomes (tee times stagger by 10 min) you can regroup later.
+              {assignQ.data?.length ?? 0} players across {teamMeta.A.name} &amp; {teamMeta.B.name} — you&apos;ll build them into playing groups (carts) yourself, any mix of 1–4 per group.
             </p>
             {canEdit && (
-              <button onClick={startRack} disabled={createGame.isPending || setFoursomes.isPending} className="mt-2 w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
-                Start the rack
+              <button onClick={startRack} disabled={createGame.isPending || applyCourse.isPending} className="mt-2 w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
+                Set up playing groups
               </button>
             )}
           </div>
