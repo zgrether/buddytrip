@@ -1,21 +1,24 @@
 "use client";
 
 import { Flag, Spade, Target, Beer, Dices } from "lucide-react";
+import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { MemberSetupView } from "./MemberSetupView";
+import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
  * SetupPlaceholder (A2-ux) — the setup-mode scoreboard surface. A game-tap always
  * lands on the scoreboard page; while the game is in SETUP mode it renders this
  * instead of a live board:
- *  - **Member:** just the themed "still being set up" message (no game data — the
- *    A2-core gate already withheld it; conceal-the-machinery voice).
- *  - **Owner/delegate:** the same surface + `children` (the Game Management toggle +
- *    "keep setting it up" button).
+ *  - **Member** (no `children`): the redesigned `MemberSetupView` — identity +
+ *    calm status pill + the per-format explainer + read-only Rules (if written).
+ *    The member is still walled from the roster server-side; only the static
+ *    explainer + Rules are added (both already in the member's payload).
+ *  - **Owner/delegate** (`children` = the Game Management controls): the setup
+ *    pass-through — a faint watermark + the tailored `message` + the controls.
+ *    Unchanged.
  *
- * The motif is **watermark-recessive** ("flashy but fades"): the game-type lucide
- * icon enlarged to fill the space, faint via the state-silhouette token family
- * (`--color-bt-state-*`, the LocationHero pattern) so it's atmosphere, not
- * information — the foreground (message + controls) never competes. Richer per-type
- * motifs are a follow-on that drops into this same slot; this ships the default.
+ * Member vs owner is keyed on the presence of `children` (owner controls), which
+ * is exactly how the callers already differentiate the two.
  */
 
 const CATEGORY_ICON: Record<string, typeof Flag> = {
@@ -27,21 +30,28 @@ const CATEGORY_ICON: Record<string, typeof Flag> = {
 };
 
 export function SetupPlaceholder({
-  gameName,
-  category,
+  tripId,
+  game,
   message,
   children,
 }: {
-  gameName?: string | null;
-  /** golf | card | yard | bar | other — keys the watermark icon. */
-  category?: string | null;
-  /** Override the default sub-message (e.g. the owner's tailored line). */
+  tripId: string;
+  game: GameRow | null | undefined;
+  /** Owner's tailored sub-message (owner path only). */
   message?: string;
-  /** Owner/delegate controls (the Game Management panel + "keep setting it up"). */
+  /** Owner/delegate controls (the Game Management panel + "keep setting it up").
+   *  When present, this is the owner pass-through; when absent, the member view. */
   children?: React.ReactNode;
 }) {
-  const Icon = CATEGORY_ICON[category ?? "other"] ?? Dices;
-  const name = gameName?.trim() || "This game";
+  // Member path — no controls → the redesigned member surface.
+  if (!children) {
+    return <MemberSetupView tripId={tripId} game={game} />;
+  }
+
+  // Owner/delegate pass-through — unchanged watermark-recessive treatment.
+  const category = getGameTypeDefinition(game?.game_type_id)?.category ?? "other";
+  const Icon = CATEGORY_ICON[category] ?? Dices;
+  const name = game?.name?.trim() || "This game";
   return (
     <div className="relative mx-auto flex w-full max-w-md flex-col items-center px-5" style={{ paddingTop: 72, paddingBottom: 40, minHeight: "60vh" }}>
       {/* Watermark motif — large, faint, fills-but-recedes (aria-hidden, no hit area). */}
@@ -61,7 +71,7 @@ export function SetupPlaceholder({
         <p className="mt-1.5" style={{ fontSize: 13, lineHeight: 1.5, color: "var(--color-bt-text-dim)", maxWidth: 320 }}>
           {message ?? "Hang tight — the crew can't see it yet. It opens once it's switched to scoring."}
         </p>
-        {children && <div className="mt-5 w-full">{children}</div>}
+        <div className="mt-5 w-full">{children}</div>
       </div>
     </div>
   );

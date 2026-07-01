@@ -7,6 +7,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
+import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import {
@@ -112,6 +113,12 @@ export function NonGolfConfigurationView({
             <FormatPointsPanel tripId={tripId} game={game} canEdit={settingsEditable} />
           </div>
         )}
+
+        {/* Format explainer — compact "how you compete" block, pairs directly
+            above Rules (orients the owner on the format they're configuring). */}
+        <div className="mt-6">
+          <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+        </div>
 
         {/* Rules of the Day — saves on blur (same as golf). The carved-out exception:
             stays editable in scoring mode (notes, not game-altering). */}

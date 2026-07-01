@@ -93,7 +93,6 @@ export default function ManualGamePage() {
   const ready = !!game && (game.points_total != null || game.points_distribution != null);
   const typeDef = GAME_TYPES.find((t) => t.id === game?.game_type_id);
   const typeName = typeDef?.name ?? "Game";
-  const category = typeDef?.category ?? "other";
 
   const enableScoring = trpc.games.enableScoring.useMutation();
   const disableScoring = trpc.games.disableScoring.useMutation();
@@ -191,8 +190,8 @@ export default function ManualGamePage() {
         {header(gameName)}
         <div className="flex-1">
           <SetupPlaceholder
-            gameName={game.name}
-            category={category}
+            tripId={tripId}
+            game={game}
             message={canEdit
               ? "Set the format, points, and rules on the settings page — the crew can’t see the game until you switch it to scoring."
               : undefined}

@@ -6,6 +6,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
+import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
@@ -132,6 +133,14 @@ export function GameConfigurationView({
 
         {/* Optional extra drill-down rows (e.g. stroke's Modifiers). */}
         {extraRows}
+
+        {/* Format explainer — compact "how you compete" block, pairs directly
+            above Rules (orients the owner on the format they're configuring). */}
+        {competitionId && (
+          <div className="mt-6">
+            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+          </div>
+        )}
 
         {/* Zone 3 — RULES note (W-EDITMODAL-01): saves on blur (no Save&exit here —
             the back arrow navigates; the blur commit is the flush). */}
