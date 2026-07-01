@@ -230,6 +230,16 @@ export function CompetitionHero({
  * is measured (ResizeObserver) so it works for the 2-team bar AND the taller N-team
  * (points-cup) bar without a magic number.
  *
+ * ⚠ Renders as a FRAGMENT, NOT a wrapping element — deliberately. A `position:
+ * sticky` element can only pin WITHIN its containing block (its parent's box); it
+ * can't outlive it. An earlier wrapping `<div>` was only as tall as the expanded
+ * hero (the negative margin collapsed the wrapper's height to the hero's), so the
+ * whole wrapper scrolled off the top and took the sticky child with it — the bar
+ * never pinned (the shipped bug). By spreading these two nodes straight into the
+ * leaderboard's LONG scrolling column (which also holds the games list), the sticky
+ * bar's containing block is that tall column, so it pins at `top` and stays while
+ * the games scroll under it. Keep this a fragment; do not re-wrap it.
+ *
  * `stickyTop` offsets the pin below any fixed nav (the leaderboard's TopNav is 56px).
  */
 export function StickyCollapseHero({
@@ -248,14 +258,14 @@ export function StickyCollapseHero({
     return () => ro.disconnect();
   }, []);
   return (
-    <div style={{ position: "relative" }}>
+    <>
       <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
         <CompetitionHero {...hero} variant="collapsed" />
       </div>
       <div style={{ position: "relative", zIndex: 20, marginTop: -collapsedH }}>
         <CompetitionHero {...hero} variant="expanded" />
       </div>
-    </div>
+    </>
   );
 }
 
