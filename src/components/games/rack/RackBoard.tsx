@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingUp } from "lucide-react";
-import { fmtToPar, fmtPoints, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
+import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -10,9 +10,9 @@ import { fmtToPar, fmtPoints, type RackMode, type RackSlot, type RackSlotPlayer 
  * margin. Reuses the match-board's outer-edge layout but is a readout, not a
  * control — tapping a slot does nothing.
  *
- * Composed onto the rack page below the team header (`RsDayScore`) and the
- * Groups entry; the board itself is just the toggle + rack + sit-out so it can
- * be reused as the competition leaderboard later.
+ * Composed onto the rack page below the game header and the Groups entry; the
+ * board itself is just the toggle + rack + sit-out so it can be reused as the
+ * competition leaderboard later.
  */
 
 export interface RackTeam {
@@ -31,58 +31,6 @@ interface RackBoardProps {
   nameOf: (id: string) => string;
   variant?: "carded" | "stacked";
   final?: boolean;
-}
-
-// ── Team-score header (RsDayScore) — pinned above Groups ─────────────────────
-export function RsDayScore({
-  teamA,
-  teamB,
-  pointsA,
-  pointsB,
-  final,
-  projected,
-}: {
-  teamA: RackTeam;
-  teamB: RackTeam;
-  pointsA: number;
-  pointsB: number;
-  final?: boolean;
-  projected?: boolean;
-}) {
-  return (
-    <div
-      className="flex items-stretch"
-      style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)", padding: "14px 16px" }}
-    >
-      <TeamTotal team={teamA} points={pointsA} align="left" />
-      <div className="flex flex-col items-center justify-center" style={{ padding: "0 14px" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "var(--color-bt-text-dim)" }}>
-          {final ? "FINAL" : "RACK"}
-        </span>
-        <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-          matches won{projected && !final ? " · proj" : ""}
-        </span>
-      </div>
-      <TeamTotal team={teamB} points={pointsB} align="right" />
-    </div>
-  );
-}
-
-function TeamTotal({ team, points, align }: { team: RackTeam; points: number; align: "left" | "right" }) {
-  return (
-    <div className="flex flex-1 flex-col" style={{ alignItems: align === "left" ? "flex-start" : "flex-end" }}>
-      <span className="flex items-center gap-1.5">
-        {align === "left" && <Dot color={team.color} />}
-        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
-          {team.name}
-        </span>
-        {align === "right" && <Dot color={team.color} />}
-      </span>
-      <span style={{ fontSize: 34, fontWeight: 800, color: "var(--color-bt-text)", lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>
-        {fmtPoints(points)}
-      </span>
-    </div>
-  );
 }
 
 // ── The board (toggle + rack + sit-out) ──────────────────────────────────────

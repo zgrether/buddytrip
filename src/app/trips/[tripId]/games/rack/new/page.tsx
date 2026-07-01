@@ -744,7 +744,7 @@ export default function RackNStackPage() {
       {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
           game's projected/final per-team contribution), sticky over the
           scoreboard. Competition games only. This IS the team-score readout — the
-          old RsDayScore strip was redundant with row 2, so it's gone. */}
+          old day-score strip was redundant with row 2, so it's gone. */}
       <GamePageHeader
         tripId={tripId}
         competitionId={competitionId}
