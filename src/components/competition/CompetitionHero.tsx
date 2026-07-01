@@ -297,13 +297,23 @@ export function CollapsedHero({
   winNumber,
   pointsAvailable,
   clincher,
+  footer,
 }: {
   teams: LBTeam[];
   teamTotals: Record<string, number>;
   winNumber: number;
   pointsAvailable: number;
   clincher: LBTeam | null;
+  /** Optional second row INSIDE the same card, below a divider — the game-page
+   *  header's projection row (#533). Omitted on the leaderboard's sticky bar. */
+  footer?: React.ReactNode;
 }) {
+  const footerBlock = footer ? (
+    <>
+      <div style={{ height: 1, background: "var(--color-bt-subtle-border)", margin: "10px 0 9px" }} />
+      {footer}
+    </>
+  ) : null;
   const targetLabel = clincher
     ? `${clincher.short_name ?? clincher.name} wins`
     : pointsAvailable > 0
@@ -337,6 +347,7 @@ export function CollapsedHero({
           <div className="flex-1 text-center">{target}</div>
           <CollapsedTeam team={b} points={b ? teamTotals[b.id] ?? 0 : 0} name={b?.name} align="right" />
         </div>
+        {footerBlock}
       </div>
     );
   }
@@ -350,6 +361,72 @@ export function CollapsedHero({
         ))}
       </div>
       <div className="mt-1.5 text-center">{target}</div>
+      {footerBlock}
+    </div>
+  );
+}
+
+/**
+ * ProjectionRow — the game-page header's ROW 2 (#533): each team's PROJECTED
+ * contribution to the cup if this game ended now (a presentation rollup of the
+ * scoreboard's on-page results — see gameProjection.ts). Provisional styling:
+ * DESATURATED team tone (the team color at reduced opacity — recognizably the
+ * team, clearly not final) while live, SOLID (full color, no "projected") once
+ * the game is complete. One tight line: contributions flank a centered game name +
+ * "projected". N-team-aware. Neutral chrome (color on the numbers only).
+ */
+export function ProjectionRow({
+  teams,
+  perTeam,
+  gameName,
+  final,
+}: {
+  teams: LBTeam[];
+  perTeam: Record<string, number>;
+  gameName: string;
+  final: boolean;
+}) {
+  const contrib = (t: LBTeam | undefined, align: "left" | "right", key?: string) => {
+    if (!t) return <div key={key} style={{ minWidth: 88 }} />;
+    const p = perTeam[t.id] ?? 0;
+    return (
+      <div key={key} className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 88 }}>
+        <span
+          className="tabular-nums"
+          // Team color = data; reduced opacity = "provisional / not final" (no new
+          // hex — the desaturation is opacity over the team's identity color).
+          style={{ fontSize: 18, fontWeight: 600, color: t.color, opacity: final ? 1 : 0.5, lineHeight: 1 }}
+        >
+          {p > 0 ? `+${fmtPts(p)}` : fmtPts(p)}
+        </span>
+      </div>
+    );
+  };
+  const center = (
+    <div className="flex-1 text-center">
+      <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)", lineHeight: 1.2 }}>{gameName}</div>
+      {!final && (
+        <div style={{ fontSize: 10, fontStyle: "italic", color: "var(--color-bt-text-dim)", marginTop: 1 }}>projected</div>
+      )}
+    </div>
+  );
+
+  if (teams.length <= 2) {
+    const [a, b] = teams;
+    return (
+      <div className="flex items-center justify-between gap-2" data-testid="header-projection">
+        {contrib(a, "left")}
+        {center}
+        {contrib(b, "right")}
+      </div>
+    );
+  }
+  return (
+    <div data-testid="header-projection">
+      <div className="flex items-stretch justify-between gap-2.5">
+        {teams.map((t) => contrib(t, "left", t.id))}
+      </div>
+      <div className="mt-1 text-center">{center}</div>
     </div>
   );
 }
