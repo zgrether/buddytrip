@@ -99,8 +99,11 @@ export function CompetitionHero({
           hero_trophy_reference.html, group opacity 0.17, centered + cropped. */}
       {showScores && <HeroTrophy />}
 
-      {/* CONTENT — sharp, in front of the art. */}
-      <div style={{ position: "relative", padding: "20px 24px 22px" }}>
+      {/* CONTENT — sharp, in front of the art. Horizontal padding matches the
+          trip-header card (16px) rather than the mockup's standalone 24px, since
+          the Live-face main already insets the card — keeps content off the edges
+          without the doubled gap. */}
+      <div style={{ position: "relative", padding: "18px 16px 20px" }}>
         {/* Top row: identity (left) + gear (right). */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">

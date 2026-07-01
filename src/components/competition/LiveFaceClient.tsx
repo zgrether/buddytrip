@@ -211,7 +211,7 @@ export function LiveFaceClient({
         }}
       />
 
-      <main className="mx-auto max-w-[1024px] px-4 pt-4 pb-32">{body}</main>
+      <main className="mx-auto max-w-[1024px] px-3 pt-4 pb-32">{body}</main>
 
       {/* Bottom nav persists on the face so you can always cross back to the
           trip (§11). Live is the current destination. */}
