@@ -3,7 +3,7 @@
 *Only genuinely open items. Ordered by when they need to happen.*
 *Competition/gaming design detail lives in `COMPETITION_ENGINE.md` — this file
 is the build backlog that points to it.*
-*Last updated: 2026-06-26*
+*Last updated: 2026-07-01*
 
 > Beta is effectively launched (bbmi.app live, wired up, not yet announced).
 > Real users for the next ~3 months are the golf crew + occasional testers
@@ -378,6 +378,42 @@ no client round-trip for first paint. The game page is part of the same
 engagement surface (on the course, on a phone); it deserves the same treatment.
 Mirror `leaderboard/page.tsx` + `LiveFaceClient` (SSR helpers + `initialData` +
 child-cache seeding).
+
+### Leaderboard double-compute — collapse via the seed, not the invalidations
+
+*Logged 2026-07-01 as the Phase-0 finding of "Spec 1b" (the invalidation/poll
+right-sizing from the data-layer diagnosis). Both tasks were **deferred by
+decision** after Phase 0, because the "easy win" premise didn't hold.* The ~15
+sites that mutate competition data invalidate BOTH `competitions.faceBootstrap`
+AND `competitions.leaderboard`. On a board mount after such a mutation, that's
+`computeCompetitionLeaderboard` run **twice** on the server (faceBootstrap
+includes it; the standalone `leaderboard` query IS it) for identical data.
+
+**Do NOT "fix" this by dropping the standalone `leaderboard.invalidate`.** The
+two invalidations are **not** client-redundant — they feed different consumers:
+faceBootstrap → the face *structure* (games/teams/assignments/header); the
+standalone `leaderboard` query → the board (`CompetitionLeaderboard`, 30s poll),
+`CompetitionHeader`, `GamePageHeader`. The board reads the standalone query, and
+`LiveFaceClient` seeds it from `boot.leaderboard` **only-if-absent** (deliberate,
+so a warm remount can't clobber fresher poll data). So faceBootstrap invalidation
+alone does **not** refresh the board → dropping the leaderboard invalidate
+**under-invalidates** (board stale until the 30s poll). This directly extends
+CLAUDE.md pattern #10.
+
+**The correct "compute once":** change the *seed* (one home) — re-seed the
+board's `competitions.leaderboard` cache from `boot.leaderboard` whenever
+faceBootstrap *genuinely refetched* (gate on `dataUpdatedAt` advancing so pure
+remounts still don't clobber the poll), then drop the standalone
+`leaderboard.invalidate` at the sites (keep faceBootstrap). Touches the
+load-bearing structure/state seed seam — a stale-board risk during the event if
+mis-done, which is why it's deferred, not shipped. Revisit only if the
+double-compute is measurably slow at real event volume (today: 8 cheap queries
+on a near-empty DB).
+
+*Poll (the other half of Spec 1b) needs nothing:* `refetchIntervalInBackground`
+defaults false (poll pauses on a hidden tab), Settings early-returns (board
+unmounts), and game entry is a separate route (board unmounts). The only residual
+is the poll running under the add-game/rosters overlays — negligible, left as-is.
 
 ### Human-friendly trip URL slugs
 
