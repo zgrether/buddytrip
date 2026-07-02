@@ -6,11 +6,23 @@ import { useRouter, usePathname } from "next/navigation";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
-import { gameHref, isGolfFormat, isMatchPlayFormat } from "@/lib/gameRoutes";
+import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
 export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
+
+/**
+ * Open a panel-capable game as a layered panel over the persistent board (Spec 2):
+ * set `?game=<id>` on the CURRENT url via the History API — Next syncs it to
+ * `useSearchParams` with NO server round-trip, so the board stays mounted + warm
+ * and CompetitionFace's derived-open host renders the game's view. Shared by the
+ * live GameRow and the compressed CompletedRow so both open the panel identically.
+ */
+function openGamePanel(pathname: string, gameId: string, settings: boolean) {
+  const q = `?game=${gameId}${settings ? "&settings=1" : ""}`;
+  window.history.pushState(null, "", `${pathname}${q}`);
+}
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
 
@@ -136,18 +148,16 @@ export function GameRow({
   const href = gameHref(tripId, game.gameTypeId, game.id, {
     settings: canEditThisGame && setupMode,
   });
-  // Spec 2 Phase 1: match-play games open as a PANEL over the persistent board
-  // (no route teardown), driven by `?game=` on the CURRENT url via the History
-  // API — which Next syncs to `useSearchParams` with no server round-trip, so the
-  // board stays mounted + warm underneath. The same `settings=1` marker the route
-  // href carries rides along, so an owner opening a setup-mode game still lands in
-  // its settings (CompetitionFace hosts the panel; back pops this entry). Every
-  // other format still navigates via `href` below (panel is match-play-first).
-  const matchPanel = isMatchPlayFormat(game.gameTypeId);
-  const openMatchPanel = () => {
-    const q = `?game=${game.id}${canEditThisGame && setupMode ? "&settings=1" : ""}`;
-    window.history.pushState(null, "", `${pathname}${q}`);
-  };
+  // Spec 2: panel-capable games (match play + rack + non-golf — Phase 1 & 2) open
+  // as a PANEL over the persistent board (no route teardown), driven by `?game=`
+  // on the CURRENT url via the History API — which Next syncs to `useSearchParams`
+  // with no server round-trip, so the board stays mounted + warm underneath. The
+  // same `settings=1` marker the route href carries rides along, so an owner
+  // opening a setup-mode game still lands in its settings (CompetitionFace hosts
+  // the panel; back pops this entry). STROKE still navigates via `href` below (its
+  // full-screen-overlay re-host is a separate phase).
+  const panelFormat = opensAsPanel(game.gameTypeId);
+  const openPanel = () => openGamePanel(pathname, game.id, canEditThisGame && setupMode);
   // The scorecard icon opens the EMPTY scorecard PREVIEW (Spec 5a) — its own
   // destination, distinct from the row's game link. Golf-with-course only (null
   // for non-golf, which never shows the icon anyway).
@@ -323,14 +333,14 @@ export function GameRow({
     </div>
   );
 
-  // Match play → open the layered panel over the board (Spec 2 Phase 1); the
-  // pointer-intent prefetch still warms the game's cold data (matches/scores) so
-  // the panel paints instantly. Every other format keeps the route <Link>.
-  if (matchPanel) {
+  // Panel-capable (match play + rack + non-golf) → open the layered panel over the
+  // board (Spec 2); the pointer-intent prefetch still warms the game's cold data so
+  // the panel paints instantly. Stroke keeps the route <Link> below.
+  if (panelFormat) {
     return (
       <button
         type="button"
-        onClick={openMatchPanel}
+        onClick={openPanel}
         onPointerEnter={() => onPrefetch(game.id)}
         onPointerDown={() => onPrefetch(game.id)}
         className="block w-full rounded-xl overflow-hidden text-left hover:opacity-80 transition-opacity"
@@ -445,7 +455,12 @@ export function CompletedRow({
   tripId: string;
   onPrefetch: (gameId: string) => void;
 }) {
+  const pathname = usePathname();
   const href = gameHref(tripId, game.gameTypeId, game.id);
+  // A completed panel-capable game (match/rack/non-golf) opens its final scoreboard
+  // as the SAME panel a live game does (Spec 2) — no full-page nav to view results.
+  // Complete → never setup, so no `?settings=1`. Stroke keeps the route <Link>.
+  const panelFormat = opensAsPanel(game.gameTypeId);
   const inner = (
     <div className="flex items-center gap-3 px-4 py-2.5" style={{ opacity: 0.75 }}>
       {createElement(formatIcon(game.gameTypeId), {
@@ -467,6 +482,21 @@ export function CompletedRow({
     </div>
   );
   const panelStyle: React.CSSProperties = { border: "1px solid var(--color-bt-border)" };
+  if (panelFormat) {
+    return (
+      <button
+        type="button"
+        onClick={() => openGamePanel(pathname, game.id, false)}
+        onPointerEnter={() => onPrefetch(game.id)}
+        onPointerDown={() => onPrefetch(game.id)}
+        className="block w-full rounded-xl overflow-hidden text-left hover:opacity-80 transition-opacity"
+        style={panelStyle}
+        data-testid="open-game-panel"
+      >
+        {inner}
+      </button>
+    );
+  }
   return href ? (
     <Link
       href={href}
