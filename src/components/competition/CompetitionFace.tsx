@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -11,6 +12,8 @@ import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
+import { isMatchPlayFormat } from "@/lib/gameRoutes";
+import { MatchGameView } from "@/components/games/MatchGameView";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 
 interface Competition {
@@ -94,6 +97,40 @@ export function CompetitionFace({
   // CODE (W-PERF-01) — read synchronously, no fetch — so the modal's top half is
   // present the instant it opens, even on the bad signal organizers hit on-site.
   const gameTypes = GAME_TYPES;
+
+  // ── Game panel (Spec 2 Phase 1) — the persistent-board game layer ───────────
+  // A tapped MATCH-PLAY game opens as a slide-in panel OVER this still-mounted
+  // board (no route teardown), driven by `?game=<id>` in the URL. Open state is
+  // DERIVED from the searchParam (like the settings deep-link) — the game view's
+  // own inner history (settings/score) pushes entries ABOVE `?game=`, so those pop
+  // first and only a back at the root pops `?game=` → the panel closes. The board
+  // already holds games.listByTrip (faceBootstrap-seeded), so a game's format is
+  // known synchronously — no fetch just to decide whether to panel.
+  const search = useSearchParams();
+  const openGameId = search.get("game");
+  const gamesForPanel = trpc.games.listByTrip.useQuery({ tripId }, STRUCTURE_QUERY).data ?? [];
+  const openGame = openGameId
+    ? (gamesForPanel as { id: string; game_type_id: string | null }[]).find((g) => g.id === openGameId)
+    : undefined;
+  const matchPanelOpen = !!openGame && isMatchPlayFormat(openGame.game_type_id);
+
+  // Warm-cache seed (Task 3) — so the panel renders INSTANTLY instead of
+  // spinner-gating on a cold getById. Seed getById from the warm list row (its
+  // EXACT shape: the game row + empty participants — match play reads its
+  // participants from matches.listByGame, never from getById), only-if-absent so a
+  // real getById is never clobbered. Then head-start the genuinely-cold
+  // matches/scores (this also covers a cold deep-link load, where no pointer
+  // prefetch ran). Keyed on the game id only (the list identity churns).
+  useEffect(() => {
+    if (!openGame) return;
+    const gameId = openGame.id;
+    if (utils.games.getById.getData({ tripId, gameId }) === undefined) {
+      utils.games.getById.setData({ tripId, gameId }, { ...openGame, participants: [] } as never);
+    }
+    void utils.matches.listByGame.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
+    void utils.scores.listByGame.prefetch({ tripId, gameId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openGame?.id, tripId]);
 
   // Non-golf (manual) games now have their own scoreboard PAGE (the W-NONGOLF
   // lifecycle surface) — an editor taps the row and NAVIGATES there (the GameRow
@@ -268,6 +305,21 @@ export function CompetitionFace({
             .map((t) => t.name.toLowerCase())}
           onClose={() => setEditingTeam(null)}
         />
+      )}
+
+      {/* Game panel (Spec 2 Phase 1) — the match-play scoreboard as a slide-in
+          layer over the persistent board. MatchGameView reads its own tripId +
+          `?game=`, so it needs no props; the board stays MOUNTED underneath (warm
+          cache, no route teardown). Its own back arrow (goBack → router.back) pops
+          the `?game=` history entry, closing the panel and revealing the board. */}
+      {matchPanelOpen && (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto game-panel-in"
+          style={{ background: "var(--color-bt-base)" }}
+          data-testid="game-panel"
+        >
+          <MatchGameView />
+        </div>
       )}
     </div>
   );

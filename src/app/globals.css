@@ -262,6 +262,19 @@ summary,
   .ts-slide-right, .ts-slide-left { animation: none; }
 }
 
+/* Game panel (Spec 2 Phase 1) — the match-play scoreboard slides in as a full
+   layer OVER the persistent leaderboard (its own scroll axis matches the card's
+   left-to-right scroll). Mirrors the trip-side slide cohesion; reduced-motion
+   drops to an instant appearance. */
+@keyframes game-panel-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.game-panel-in { animation: game-panel-in 0.28s cubic-bezier(0.4, 0.1, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .game-panel-in { animation: none; }
+}
+
 /* GolfCard eagle/birdie celebration (Slice C §3) — a halo ring pulses outward
    from the chip + a brief pop. One-shot on commit; reduced-motion disables it. */
 @keyframes golfHalo {

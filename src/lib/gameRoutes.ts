@@ -57,3 +57,11 @@ export function gameHref(
 export function isGolfFormat(gameTypeId: string | null): boolean {
   return !!gameTypeId && gameTypeId in GAME_ROUTES;
 }
+
+/** Match-play formats (singles + doubles) — the ONLY formats that open as a
+ *  layered PANEL over the persistent leaderboard (Spec 2 Phase 1). Every other
+ *  format still navigates to its route via {@link gameHref}; the panel is proven
+ *  on match play first, then extended. */
+export function isMatchPlayFormat(gameTypeId: string | null): boolean {
+  return gameTypeId === "gtt_match_play_singles" || gameTypeId === "gtt_match_play_doubles";
+}
