@@ -24,7 +24,8 @@ import type { StrokeStanding } from "@/lib/strokePlay";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
-import type { Participant, ScoreValues } from "@/components/games/types";
+import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
+import { showToast } from "@/lib/toast";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STROKE_PLAY = "gtt_stroke_play";
@@ -321,6 +322,17 @@ export default function NewGamePage() {
 
   async function handleFinish() {
     if (!tripId || !game) return;
+    // Spec 1a: never finish over unconfirmed scores — finish computes from server
+    // rows, so an unsaved cell would be silently omitted. Block + say why.
+    const gate = unconfirmedCount(saveStatus);
+    if (gate.total > 0) {
+      showToast(
+        gate.errored > 0
+          ? `${gate.errored} score${gate.errored > 1 ? "s" : ""} didn’t save — retry before finishing`
+          : "Still saving scores — try again in a moment",
+      );
+      return;
+    }
     try {
       const res = await finishGame.mutateAsync({ tripId, gameId: game.id });
       setStandings(res.standings);

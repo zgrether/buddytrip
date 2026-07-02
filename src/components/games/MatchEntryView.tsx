@@ -15,6 +15,8 @@ import { strokeIndexOf } from "@/lib/strokePlayConfig";
 import {
   parseScoreCellKey,
   scoreCellKey,
+  unconfirmedOnHole,
+  unconfirmedCount,
   type ScoreUnit,
   type Participant,
   type ScoreValues,
@@ -168,6 +170,21 @@ export function MatchEntryView({
       onRetryCell?.(participantId, unitLabel);
     }
   };
+
+  // ── Confirmation gate (Spec 1a — honest advance) ──────────────────────────
+  // Gate on the cells that must be scored THIS hole (interactive, non-dead ones).
+  const holeGate = unconfirmedOnHole(saveStatus, interactiveHere.map((p) => p.id), label);
+  const gameGate = unconfirmedCount(saveStatus);
+  const advanceReason = holeGate.errored > 0
+    ? `${holeGate.errored} score${holeGate.errored > 1 ? "s" : ""} didn’t save — retry above`
+    : holeGate.saving > 0
+      ? "Saving scores…"
+      : undefined;
+  const finishReason = gameGate.errored > 0
+    ? `${gameGate.errored} score${gameGate.errored > 1 ? "s" : ""} didn’t save — retry before finishing`
+    : gameGate.saving > 0
+      ? "Saving scores…"
+      : undefined;
 
   // The board reflects a hole only once it's confirmed: while the keypad is open
   // on the current hole (activePid set), exclude that hole from the match-state
@@ -388,9 +405,20 @@ export function MatchEntryView({
           onConfirm={confirmAdvance}
         />
       ) : canFinish ? (
-        <BottomCTA label={finishLabel} icon onClick={() => onFinish?.()} subtext={finishSubtext} />
+        <BottomCTA
+          label={finishLabel}
+          icon
+          onClick={() => onFinish?.()}
+          disabled={gameGate.total > 0}
+          subtext={finishReason ?? finishSubtext}
+        />
       ) : currentComplete && hole < units.length ? (
-        <BottomCTA label={`Hole ${units[hole]?.label ?? hole + 1} ›`} onClick={() => goHole(hole + 1)} />
+        <BottomCTA
+          label={`Hole ${units[hole]?.label ?? hole + 1} ›`}
+          onClick={() => goHole(hole + 1)}
+          disabled={holeGate.blocked}
+          subtext={advanceReason}
+        />
       ) : null}
     </div>
   );

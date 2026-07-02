@@ -64,3 +64,45 @@ export function parseScoreCellKey(key: string): {
   const i = key.indexOf(":");
   return { participantId: key.slice(0, i), unitLabel: key.slice(i + 1) };
 }
+
+/**
+ * Confirmation gate (Spec 1a — honest advance). A hole is safe to advance/finish
+ * PAST only when none of its cells is mid-save (`saving`) or failed (`error`) —
+ * i.e. every entered value is CONFIRMED on the server, not merely optimistic in
+ * local state. A cell with NO status entry is a server-loaded / already-confirmed
+ * value (seeded via `setValues` without a status), so it does NOT block — only
+ * `saving` and `error` block. Pure + unit-tested; both entry views gate on it.
+ */
+export function unconfirmedOnHole(
+  saveStatus: SaveStatusMap,
+  participantIds: string[],
+  unitLabel: string,
+): { blocked: boolean; saving: number; errored: number } {
+  let saving = 0;
+  let errored = 0;
+  for (const pid of participantIds) {
+    const s = saveStatus[scoreCellKey(pid, unitLabel)];
+    if (s === "saving") saving++;
+    else if (s === "error") errored++;
+  }
+  return { blocked: saving > 0 || errored > 0, saving, errored };
+}
+
+/**
+ * Game-wide unconfirmed tally (Spec 1a) — the pre-Finish gate. `finish` computes
+ * results from server `score_entries`, so ANY cell still `saving`/`error` would be
+ * silently omitted from standings — block Finish until all are confirmed.
+ */
+export function unconfirmedCount(saveStatus: SaveStatusMap): {
+  saving: number;
+  errored: number;
+  total: number;
+} {
+  let saving = 0;
+  let errored = 0;
+  for (const s of Object.values(saveStatus)) {
+    if (s === "saving") saving++;
+    else if (s === "error") errored++;
+  }
+  return { saving, errored, total: saving + errored };
+}

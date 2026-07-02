@@ -8,6 +8,8 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { toPersist as groupsToPersist } from "@/lib/rackGroupDraft";
@@ -27,7 +29,7 @@ import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import type { Participant, ScoreValues } from "@/components/games/types";
+import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RACK = "gtt_rack_n_stack";
@@ -92,7 +94,11 @@ export default function RackNStackPage() {
     deepLink: search.get("settings") === "1",
   });
   const [currentHole, setCurrentHole] = useState(1);
-  const [values, setValues] = useState<ScoreValues>({});
+  // Rack scores now go through the durable, confirmation-tracked saver (Spec 1a) —
+  // same idempotent upsert + retry + outbox + per-cell status as stroke/match
+  // (was a raw fire-and-forget mutate with no retry/status). Per-user entries, so
+  // no participantType. `values` is seeded once from the server below.
+  const { values, setValues, saveStatus, onChange, onClear, retryCell } = useScoreSaver(tripId, gid);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
@@ -115,8 +121,6 @@ export default function RackNStackPage() {
   const enableScoring = trpc.games.enableScoring.useMutation();
   const disableScoring = trpc.games.disableScoring.useMutation();
   const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
-  const upsertEntry = trpc.scores.upsertEntry.useMutation();
-  const deleteEntry = trpc.scores.deleteEntry.useMutation();
   const finishGame = trpc.games.finish.useMutation();
   // #7 correction path (owner/co-admin/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
@@ -200,7 +204,16 @@ export default function RackNStackPage() {
     }
     return v;
   }, [scoresQ.data]);
-  const mergedFor = (pid: string) => ({ ...(loadedValues[pid] ?? {}), ...(values[pid] ?? {}) });
+  // Seed the saver's values from the server ONCE on resume (mirrors stroke) — the
+  // saver's `values` is then the single source (server seed + live edits), so a
+  // clear removes from it cleanly and the outbox recovery re-populates it.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !gid || !scoresQ.data) return;
+    setValues((v) => (Object.keys(v).length ? v : loadedValues));
+    seededRef.current = true;
+  }, [gid, scoresQ.data, loadedValues, setValues]);
+  const mergedFor = (pid: string) => values[pid] ?? {};
 
   // ── Rack read-model (the spec's novelty) ─────────────────────────────
   const participants = useMemo(() => groupsQ.data?.participants ?? [], [groupsQ.data]);
@@ -372,29 +385,19 @@ export default function RackNStackPage() {
       .mutateAsync({ tripId: tripId!, gameId: gid!, userId, strokes })
       .then(() => utils.playGroups.listByGame.invalidate({ tripId: tripId!, gameId: gid! }));
 
-  const handleChange = (pid: string, unit: string, value: number) => {
-    setValues((v) => ({ ...v, [pid]: { ...(v[pid] ?? {}), [unit]: value } }));
-    if (!tripId || !gid) return;
-    upsertEntry.mutate(
-      { tripId, gameId: gid, participantId: pid, unitLabel: unit, value },
-      { onSettled: () => utils.scores.listByGame.invalidate({ tripId, gameId: gid }) }
-    );
-  };
-  const handleClear = (pid: string, unit: string) => {
-    setValues((v) => {
-      const next = { ...(v[pid] ?? {}) };
-      delete next[unit];
-      return { ...v, [pid]: next };
-    });
-    if (!tripId || !gid) return;
-    deleteEntry.mutate(
-      { tripId, gameId: gid, participantId: pid, unitLabel: unit },
-      { onSettled: () => utils.scores.listByGame.invalidate({ tripId, gameId: gid }) }
-    );
-  };
-
   async function finish() {
     if (!tripId || !gid) return;
+    // Spec 1a: block finalize over unconfirmed scores (finish computes from server
+    // rows — an unsaved cell would be silently omitted from standings).
+    const gate = unconfirmedCount(saveStatus);
+    if (gate.total > 0) {
+      showToast(
+        gate.errored > 0
+          ? `${gate.errored} score${gate.errored > 1 ? "s" : ""} didn’t save — retry before finishing`
+          : "Still saving scores — try again in a moment",
+      );
+      return;
+    }
     await finishGame.mutateAsync({ tripId, gameId: gid });
     await utils.games.getById.invalidate({ tripId, gameId: gid });
     // #6: finalize changes the leaderboard — invalidate it so the board reflects
@@ -558,8 +561,10 @@ export default function RackNStackPage() {
           direction="low_wins"
           currentHole={currentHole}
           onHoleChange={setCurrentHole}
-          onChange={handleChange}
-          onClear={handleClear}
+          onChange={onChange}
+          onClear={onClear}
+          saveStatus={saveStatus}
+          onRetryCell={retryCell}
           onBack={back}
           onOpenGrid={() => setEntryView("grid")}
           onFinish={back}

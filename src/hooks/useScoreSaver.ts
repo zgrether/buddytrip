@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
+import { outboxPut, outboxClear, outboxEntries } from "@/lib/scoreOutbox";
+import { showToast } from "@/lib/toast";
 import {
   scoreCellKey,
   type CellSaveState,
@@ -34,9 +36,13 @@ import {
  * agnostic scorecard components — they receive `values` + `saveStatus` as props
  * and emit through `onChange`/`onClear`/`onRetryCell`.
  *
- * This is Layer 1 (visibility + retry). It deliberately does NOT persist the
- * mutation across an app-kill or flush a queue on reconnect — that is Layer 2
- * (the persisted write-queue), a separate follow-on.
+ * Layer 2 (Spec 1a — durability): every entry is ALSO written to a small
+ * localStorage `scoreOutbox` (keyed by the SAME idempotent id) BEFORE the write
+ * settles, and cleared ONLY when the server confirms it (`saved`). So a nav /
+ * reload / app-kill between "typed" and "confirmed" can't drop the score: on the
+ * next mount `outboxEntries` is re-sent through this same idempotent path and
+ * reflected in the UI as recovering. Scores only, cleared-on-confirm — not a
+ * long-running offline queue.
  */
 
 const MAX_RETRIES = 4;
@@ -89,6 +95,9 @@ export function useScoreSaver(
         [participantId]: { ...(v[participantId] ?? {}), [unitLabel]: value },
       }));
       mark(key, "saving");
+      // Layer 2: persist to the durable outbox BEFORE the write settles, so a
+      // nav/reload/kill in the gap can't lose it. Cleared on confirmation below.
+      outboxPut(gameId, participantId, unitLabel, value);
       // mutateAsync — NOT mutate. Concurrent saves share ONE mutation observer,
       // and the inline mutate() callbacks fire only for the observer's CURRENT
       // (latest) mutation: a rapid foursome left every cell but the last
@@ -100,8 +109,13 @@ export function useScoreSaver(
       // STATUS only.
       upsertEntry
         .mutateAsync({ tripId, gameId, participantId, unitLabel, value, participantType })
-        .then(() => mark(key, "saved"))
-        // KEEP the optimistic value on failure — flag it, never roll back.
+        // Confirmed on the server → safe to drop the durable copy.
+        .then(() => {
+          mark(key, "saved");
+          outboxClear(gameId, participantId, unitLabel);
+        })
+        // KEEP the optimistic value AND the outbox entry on failure — flag it,
+        // never roll back; the outbox re-sends it on the next mount.
         .catch(() => mark(key, "error"));
     },
     [tripId, gameId, upsertEntry, mark, participantType],
@@ -119,6 +133,8 @@ export function useScoreSaver(
         return { ...v, [participantId]: row };
       });
       mark(key, null);
+      // A cleared cell has no pending upsert to recover — drop any outbox entry.
+      outboxClear(gameId, participantId, unitLabel);
       // mutateAsync per call (see onChange): concurrent clears must each resolve
       // their own outcome, never be orphaned by a later one on the shared observer.
       deleteEntry
@@ -150,6 +166,33 @@ export function useScoreSaver(
     },
     [values, onChange],
   );
+
+  // Recover-on-mount (Layer 2): any entries still in the outbox are unconfirmed
+  // (a prior nav/reload/kill left them un-acked). Re-send each through the same
+  // idempotent path — which re-marks it `saving`, re-optimistically shows the
+  // value, and clears the outbox on confirmation. Runs ONCE per game (the ref
+  // guards against re-runs when onChange's identity churns). This is what makes a
+  // dropped-on-the-course score come BACK on return instead of vanishing.
+  const recoveredForGame = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tripId || !gameId) return;
+    if (recoveredForGame.current === gameId) return;
+    recoveredForGame.current = gameId;
+    const pending = outboxEntries(gameId);
+    if (pending.length === 0) return;
+    // Defer the re-send out of the effect body (each onChange setStates; a
+    // microtask keeps it off the synchronous effect path). One tick's delay is
+    // immaterial for recovering already-unconfirmed writes.
+    const t = setTimeout(() => {
+      for (const e of pending) onChange(e.participantId, e.unitLabel, e.value);
+      // Honest UI: tell the user their scores survived and are being re-sent.
+      showToast(
+        `Recovered ${pending.length} unsaved score${pending.length > 1 ? "s" : ""} — retrying`,
+        "info",
+      );
+    }, 0);
+    return () => clearTimeout(t);
+  }, [tripId, gameId, onChange]);
 
   const errorCount = Object.values(saveStatus).filter(
     (s) => s === "error",
