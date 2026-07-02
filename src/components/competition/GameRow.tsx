@@ -2,11 +2,11 @@
 
 import { createElement } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
-import { gameHref, isGolfFormat } from "@/lib/gameRoutes";
+import { gameHref, isGolfFormat, isMatchPlayFormat } from "@/lib/gameRoutes";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
@@ -131,10 +131,23 @@ export function GameRow({
   // get the settings link — they hit the server-walled placeholder.
   const canEditThisGame = !!canEdit || mine;
   const router = useRouter();
+  const pathname = usePathname();
   const setupMode = !(game.status === "complete" || game.status === "active" || game.scoringEnabled === true);
   const href = gameHref(tripId, game.gameTypeId, game.id, {
     settings: canEditThisGame && setupMode,
   });
+  // Spec 2 Phase 1: match-play games open as a PANEL over the persistent board
+  // (no route teardown), driven by `?game=` on the CURRENT url via the History
+  // API — which Next syncs to `useSearchParams` with no server round-trip, so the
+  // board stays mounted + warm underneath. The same `settings=1` marker the route
+  // href carries rides along, so an owner opening a setup-mode game still lands in
+  // its settings (CompetitionFace hosts the panel; back pops this entry). Every
+  // other format still navigates via `href` below (panel is match-play-first).
+  const matchPanel = isMatchPlayFormat(game.gameTypeId);
+  const openMatchPanel = () => {
+    const q = `?game=${game.id}${canEditThisGame && setupMode ? "&settings=1" : ""}`;
+    window.history.pushState(null, "", `${pathname}${q}`);
+  };
   // The scorecard icon opens the EMPTY scorecard PREVIEW (Spec 5a) — its own
   // destination, distinct from the row's game link. Golf-with-course only (null
   // for non-golf, which never shows the icon anyway).
@@ -309,6 +322,25 @@ export function GameRow({
       </div>
     </div>
   );
+
+  // Match play → open the layered panel over the board (Spec 2 Phase 1); the
+  // pointer-intent prefetch still warms the game's cold data (matches/scores) so
+  // the panel paints instantly. Every other format keeps the route <Link>.
+  if (matchPanel) {
+    return (
+      <button
+        type="button"
+        onClick={openMatchPanel}
+        onPointerEnter={() => onPrefetch(game.id)}
+        onPointerDown={() => onPrefetch(game.id)}
+        className="block w-full rounded-xl overflow-hidden text-left hover:opacity-80 transition-opacity"
+        style={panelStyle}
+        data-testid="open-game-panel"
+      >
+        {inner}
+      </button>
+    );
+  }
 
   if (href) {
     return (
