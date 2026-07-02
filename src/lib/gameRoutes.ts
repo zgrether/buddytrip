@@ -69,12 +69,24 @@ export function isRackFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_rack_n_stack";
 }
 
+/** Stroke play. Opens as a panel (Spec 2 Phase 3) — the last format to join, so
+ *  now EVERY format panels. Its scoring view is a focused full-screen entry layer
+ *  (like match's score sub-screen), which is appropriate, not a blocker. */
+export function isStrokeFormat(gameTypeId: string | null): boolean {
+  return gameTypeId === "gtt_stroke_play";
+}
+
 /** Formats that open as a layered PANEL over the persistent leaderboard (Spec 2)
- *  rather than navigating to their route: match play + rack + non-golf (manual).
- *  STROKE is deliberately excluded — its scoreboard is a full-screen overlay,
- *  structurally different, and re-hosting it is a separate effort (Phase 3). The
+ *  rather than navigating to their route: match play + rack + non-golf + stroke.
+ *  As of Phase 3 that's every known format — but kept as an explicit union (not
+ *  `!!id`) so an unknown/future type doesn't silently panel without a view. The
  *  ONE predicate GameRow (button vs <Link>) and CompetitionFace (the panel host)
  *  branch on, so they can never disagree about which formats panel. */
 export function opensAsPanel(gameTypeId: string | null): boolean {
-  return isMatchPlayFormat(gameTypeId) || isRackFormat(gameTypeId) || isManualGameType(gameTypeId);
+  return (
+    isMatchPlayFormat(gameTypeId) ||
+    isRackFormat(gameTypeId) ||
+    isStrokeFormat(gameTypeId) ||
+    isManualGameType(gameTypeId)
+  );
 }
