@@ -58,10 +58,23 @@ export function isGolfFormat(gameTypeId: string | null): boolean {
   return !!gameTypeId && gameTypeId in GAME_ROUTES;
 }
 
-/** Match-play formats (singles + doubles) — the ONLY formats that open as a
- *  layered PANEL over the persistent leaderboard (Spec 2 Phase 1). Every other
- *  format still navigates to its route via {@link gameHref}; the panel is proven
- *  on match play first, then extended. */
+/** Match-play formats (singles + doubles). Match play was the FIRST format to
+ *  open as a layered panel (Spec 2 Phase 1). */
 export function isMatchPlayFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_match_play_singles" || gameTypeId === "gtt_match_play_doubles";
+}
+
+/** Rack-n-stack. Opens as a panel (Spec 2 Phase 2). */
+export function isRackFormat(gameTypeId: string | null): boolean {
+  return gameTypeId === "gtt_rack_n_stack";
+}
+
+/** Formats that open as a layered PANEL over the persistent leaderboard (Spec 2)
+ *  rather than navigating to their route: match play + rack + non-golf (manual).
+ *  STROKE is deliberately excluded — its scoreboard is a full-screen overlay,
+ *  structurally different, and re-hosting it is a separate effort (Phase 3). The
+ *  ONE predicate GameRow (button vs <Link>) and CompetitionFace (the panel host)
+ *  branch on, so they can never disagree about which formats panel. */
+export function opensAsPanel(gameTypeId: string | null): boolean {
+  return isMatchPlayFormat(gameTypeId) || isRackFormat(gameTypeId) || isManualGameType(gameTypeId);
 }
