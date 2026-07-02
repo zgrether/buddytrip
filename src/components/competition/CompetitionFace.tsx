@@ -12,10 +12,11 @@ import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
-import { isMatchPlayFormat, isRackFormat, opensAsPanel } from "@/lib/gameRoutes";
+import { isMatchPlayFormat, isRackFormat, isStrokeFormat, opensAsPanel } from "@/lib/gameRoutes";
 import { MatchGameView } from "@/components/games/MatchGameView";
 import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
+import { StrokeGameView } from "@/components/games/StrokeGameView";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 
 interface Competition {
@@ -118,28 +119,37 @@ export function CompetitionFace({
   const openType = openGame?.game_type_id ?? null;
   const panelOpen = !!openGame && opensAsPanel(openType);
   // Pick the format's view — each reads its own tripId + `?game=`, so the host just
-  // selects which component to mount (stroke is excluded from opensAsPanel).
+  // selects which component to mount. Explicit per format (non-golf is the only
+  // fall-through, and only after opensAsPanel already vetted the type).
   const panelView = !panelOpen
     ? null
     : isMatchPlayFormat(openType)
       ? <MatchGameView />
       : isRackFormat(openType)
         ? <RackGameView />
-        : <NonGolfGameView />;
+        : isStrokeFormat(openType)
+          ? <StrokeGameView />
+          : <NonGolfGameView />;
 
   // Warm-cache seed (Task 4) — so the panel renders INSTANTLY instead of
-  // spinner-gating on a cold getById. Seed getById from the warm list row (its
-  // EXACT shape: the game row + empty participants — the views read their real
-  // participants from matches/playGroups, never from getById), only-if-absent so a
-  // real getById is never clobbered. Then head-start each format's genuinely-cold
-  // child (match → matches, rack → playGroups; non-golf reads only getById + the
-  // already-warm leaderboard) + scores. Also covers a cold deep-link load, where
-  // no pointer prefetch ran. Keyed on the game id only (the list identity churns).
+  // spinner-gating on a cold getById. For match/rack/non-golf, seed getById from
+  // the warm list row (its EXACT shape: game row + empty participants — those views
+  // read their real participants from matches/playGroups, never from getById),
+  // only-if-absent so a real getById is never clobbered. STROKE is the exception:
+  // it reads its ROSTER from getById.participants, so an empty-participants seed
+  // would flash the pick-players screen — prefetch the real row instead (already
+  // warm from the pointer-intent prefetch; this covers a cold deep-link too). Then
+  // head-start each format's genuinely-cold child (match → matches, rack →
+  // playGroups; non-golf/stroke read only getById + already-warm data) + scores.
   useEffect(() => {
     if (!openGame) return;
     const gameId = openGame.id;
     if (utils.games.getById.getData({ tripId, gameId }) === undefined) {
-      utils.games.getById.setData({ tripId, gameId }, { ...openGame, participants: [] } as never);
+      if (isStrokeFormat(openType)) {
+        void utils.games.getById.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
+      } else {
+        utils.games.getById.setData({ tripId, gameId }, { ...openGame, participants: [] } as never);
+      }
     }
     void utils.scores.listByGame.prefetch({ tripId, gameId });
     if (isMatchPlayFormat(openType)) {

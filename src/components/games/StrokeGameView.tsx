@@ -1,0 +1,631 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Lock, Settings } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { ScoreEntryView } from "@/components/games/ScoreEntryView";
+import { StandardGrid } from "@/components/games/StandardGrid";
+import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
+import { FinalStandings } from "@/components/games/FinalStandings";
+import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
+import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
+import { ModifierCards } from "@/components/games/ModifierCards";
+import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { GAME_TYPES } from "@/lib/gameTypes";
+import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
+import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useScreenHistory } from "@/hooks/useScreenHistory";
+import type { StrokeStanding } from "@/lib/strokePlay";
+import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
+import { effectiveStrokes } from "@/lib/handicap";
+import { strokeHoles } from "@/lib/matchPlay";
+import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
+import { showToast } from "@/lib/toast";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STROKE_PLAY = "gtt_stroke_play";
+
+/**
+ * StrokeGameView — the stroke-play game surface. Pick 2–4 crew → create game +
+ * participants → hole-by-hole entry → Finish/Final + review grid.
+ *
+ * Spec 2 Phase 3: a persistence-BOUND composed view, re-HOSTED by both its route
+ * wrapper AND the leaderboard's game PANEL (CompetitionFace) — same recipe as
+ * MatchGameView/RackGameView/NonGolfGameView. Reads its OWN tripId (useParams) +
+ * gameId (?game=); the back arrow (router.back) pops the ?game= entry and closes
+ * the panel. Its scoring "Play" view is a `fixed inset-0` overlay (like match's
+ * score sub-screen) — appropriate for focused entry; the setup/settings screens
+ * are normal-flow panels.
+ */
+export function StrokeGameView() {
+  const { tripId: param } = useParams<{ tripId: string }>();
+  const router = useRouter();
+  const search = useSearchParams();
+  // Resume an existing game when the leaderboard (or a refresh) lands here with
+  // ?game=<id>. Without reading this, the page always fell back to pick-players
+  // and created a NEW game every time — the picked roster + scores never came
+  // back, because they live on the original game id this page never loaded.
+  const urlGameId = search.get("game");
+
+  const isId = UUID_RE.test(param);
+  const resolved = trpc.trips.resolveSlug.useQuery(
+    { slugOrId: param },
+    { ...STRUCTURE_QUERY, enabled: !isId, retry: false }
+  );
+  const tripId = isId ? param : resolved.data?.id;
+  const utils = trpc.useUtils();
+  // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
+  // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
+  const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
+
+  const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
+
+  // The game-to-resume (its roster) + its saved scores. Enabled only when we
+  // arrived with ?game — the standalone "new game" flow leaves these idle.
+  // The game (config/roster) is STRUCTURE — kept; the scores are STATE — they
+  // keep the default short staleTime so a reopen refreshes them (the cut: reopen
+  // a game and the structure is instant, only the scores re-fetch).
+  const gameQ = trpc.games.getById.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId }
+  );
+  // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record.
+  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  const scoresQ = trpc.scores.listByGame.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { enabled: !!tripId && !!urlGameId }
+  );
+
+  const [selected, setSelected] = useState<string[]>([]);
+  // A game created or joined in THIS session (the standalone new flow, or after
+  // adding players to a competition game we opened with ?game).
+  const [createdGame, setCreatedGame] = useState<{ id: string; participants: Participant[] } | null>(null);
+  const [view, setView] = useState<"entry" | "grid" | "final">("entry");
+  // Browser/OS back steps out of the scorecard grid back to entry (not the
+  // leaderboard). The grid is the one history-tracked sub-screen over entry.
+  const backFromGrid = useScreenHistory(view === "grid" ? 1 : 0, () => setView("entry"));
+  const [currentHole, setCurrentHole] = useState(1);
+  const [standings, setStandings] = useState<StrokeStanding[]>([]);
+  // The ONE settings overlay — owns open/close/back + the leaderboard deep link
+  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
+  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+    canEdit,
+    deepLink: search.get("settings") === "1",
+  });
+  const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
+  const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
+
+  const createGame = trpc.games.create.useMutation();
+  const addParticipants = trpc.games.addParticipants.useMutation();
+  // §3: per-player handicap strokes (the same general mutation rack uses — it
+  // sets game_participants.handicap_strokes by user_id; for stroke it no-ops the
+  // re-derive since stroke persists results only at Finish).
+  const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
+  // Phase 2B.1: scoring must be enabled before entries land (universal gate).
+  const enableScoring = trpc.games.enableScoring.useMutation();
+  const disableScoring = trpc.games.disableScoring.useMutation();
+
+  const memberById = useMemo(() => {
+    const m = new Map<string, { id: string; name: string }>();
+    for (const c of crew.data ?? []) m.set(c.user_id, { id: c.user_id, name: c.displayName ?? c.user?.name ?? "Player" });
+    return m;
+  }, [crew.data]);
+
+  const toParticipants = (userIds: string[]): Participant[] =>
+    userIds.map((uid, i) => {
+      const name = memberById.get(uid)?.name ?? "Player";
+      return { id: uid, name, color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
+    });
+
+  // The roster already saved on the resumed game (empty until players are added).
+  const resumeRoster = useMemo(
+    () => ((gameQ.data?.participants ?? []) as { user_id: string }[]).map((p) => p.user_id),
+    [gameQ.data]
+  );
+
+  // The game we're actually scoring: one created/joined this session, or the
+  // ?game we opened once it has a roster. Null → show the pick-players screen.
+  const game = useMemo<{ id: string; participants: Participant[] } | null>(() => {
+    if (createdGame) return createdGame;
+    if (urlGameId && resumeRoster.length > 0) {
+      const participants = resumeRoster.map((uid, i) => {
+        const name = memberById.get(uid)?.name ?? "Player";
+        return { id: uid, name, color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
+      });
+      return { id: urlGameId, participants };
+    }
+    return null;
+  }, [createdGame, urlGameId, resumeRoster, memberById]);
+
+  // §3: the COURSE-aware scorecard — par + stroke index from the applied course
+  // snapshot (falls back to the 18-hole template default when no course). The
+  // live strip MUST use this same index the server final (computeStrokePlayResults)
+  // nets against, so net can't diverge (CLAUDE.md #8).
+  const scUnits = useMemo(
+    () => unitsFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof unitsFromSchema>[0]),
+    [gameQ.data]
+  );
+  const scIndex = useMemo(() => strokeIndexOf(scUnits), [scUnits]);
+  // Per-player handicap strokes (read from game_participants), and the stroked
+  // holes each one allocates against the course index — drives the pips + net.
+  const strokesOf = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of (gameQ.data?.participants ?? []) as { user_id: string; handicap_strokes: number | null }[]) {
+      m.set(p.user_id, effectiveStrokes(p));
+    }
+    return m;
+  }, [gameQ.data]);
+  const entryPips = useMemo(() => {
+    const m: Record<string, Set<string>> = {};
+    for (const [uid, n] of strokesOf) m[uid] = new Set([...strokeHoles(n, scIndex)].map(String));
+    return m;
+  }, [strokesOf, scIndex]);
+  const handicapPlayers: HandicapPlayer[] = useMemo(
+    () =>
+      (game?.participants ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatarIcon: null,
+        teamColor: null,
+        strokes: strokesOf.get(p.id) ?? 0,
+      })),
+    [game, strokesOf]
+  );
+
+  // The id the saver writes to: the resumed game, else the one created here.
+  const activeGameId = urlGameId ?? createdGame?.id;
+  // Phase 2B.1: a configured game must be Enabled before its score screen opens.
+  const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  // #501: game-altering settings freeze in scoring mode (the page-level Handicaps +
+  // Modifiers drill-downs; GameConfigurationView locks its own rows internally).
+  const settingsEditable = canEdit && !scoringEnabled;
+  const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
+  async function refreshGame() {
+    await gameQ.refetch();
+    if (gameCompetitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
+  }
+  async function handleEnable() {
+    if (!tripId || !activeGameId) return;
+    try {
+      await enableScoring.mutateAsync({ tripId, gameId: activeGameId });
+      await refreshGame();
+      // #512 correction: STAY on the settings page — the toggle flips in place (the
+      // now-live banner + locked panels render here). The back arrow still returns to
+      // the game page via the openConfig history entry; no closeConfig() here.
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+  // §B 2B.3: Disable from Configuration — keep scores, STAY in Configuration.
+  async function handleDisable() {
+    if (!tripId || !activeGameId) return;
+    try {
+      await disableScoring.mutateAsync({ tripId, gameId: activeGameId });
+      await refreshGame();
+    } catch {
+      // surfaced via the global error toast
+    }
+  }
+  // §3: persist one player's handicap strokes, then refetch so the pips + the
+  // handicap roster reflect it (the live strip nets off the same scIndex).
+  const onSetStrokes = (userId: string, strokes: number) =>
+    setStrokes
+      .mutateAsync({ tripId: tripId!, gameId: activeGameId!, userId, strokes })
+      .then((r) => { void gameQ.refetch(); return r; });
+
+  // A1 P0 — Game Modifiers, the home stroke play was missing (the match page had
+  // it; stroke didn't, yet stroke has functional modifiers — moving_tees /
+  // glorious_holes). Same component + same games.modifiers wiring as the match
+  // page; persisted on-change (the stroke page's idiom — like onSetStrokes —
+  // rather than the match accordion's persist-on-collapse). Seed the draft once
+  // from the saved game, then own it locally.
+  const availableModifiers = GAME_TYPES.find(
+    (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
+  )?.compatibleModifiers ?? [];
+  const modifiersSeededRef = useRef(false);
+  useEffect(() => {
+    if (modifiersSeededRef.current || !gameQ.data) return;
+    setModifiersDraft(((gameQ.data as { modifiers?: ModifiersMap | null }).modifiers) ?? {});
+    modifiersSeededRef.current = true;
+  }, [gameQ.data]);
+  const updateModifiers = trpc.games.update.useMutation();
+  function persistModifiers(next: ModifiersMap) {
+    if (!tripId || !activeGameId) return;
+    setModifiersDraft(next);
+    const cur = utils.games.getById.getData({ tripId, gameId: activeGameId });
+    if (cur) utils.games.getById.setData({ tripId, gameId: activeGameId }, { ...cur, modifiers: next } as typeof cur);
+    updateModifiers.mutate(
+      { tripId, gameId: activeGameId, modifiers: next },
+      {
+        onSuccess: () => {
+          if (gameCompetitionId) {
+            utils.competitions.faceBootstrap.invalidate({ tripId });
+            utils.games.listByTrip.invalidate({ tripId });
+          }
+        },
+      }
+    );
+  }
+  // Score writes go through the connectivity-resilient saver: optimistic value,
+  // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
+  // back) on failure. Owns `values` + `saveStatus` for this game.
+  const { values, setValues, saveStatus, onChange, onClear, retryCell } =
+    useScoreSaver(tripId, activeGameId);
+  // Finishing also retries (idempotent — recomputes from the same scores); a
+  // failure stays on the entry view and surfaces via the global error toast,
+  // so it's loud + retryable instead of a silent stall.
+  const finishGame = trpc.games.finish.useMutation({
+    retry: 4,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
+  });
+
+  // Seed the saved scores into the entry view ONCE on resume — never clobber an
+  // edit already made in this session (mirrors the match page).
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !urlGameId || !scoresQ.data) return;
+    const loaded: ScoreValues = {};
+    for (const e of scoresQ.data as { participant_id: string; unit_label: string; value: number | null }[]) {
+      if (e.value == null) continue;
+      (loaded[e.participant_id] ??= {})[e.unit_label] = e.value;
+    }
+    setValues((v) => (Object.keys(v).length ? v : loaded));
+    seededRef.current = true;
+  }, [urlGameId, scoresQ.data, setValues]);
+
+  function toggle(userId: string) {
+    setSelected((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : prev.length >= 4
+          ? prev
+          : [...prev, userId]
+    );
+  }
+
+  async function start() {
+    if (!tripId || selected.length < 2) return;
+    // Resume target: add players to the game we opened (?game). Only create a
+    // brand-new standalone game when we arrived WITHOUT one.
+    const gameId =
+      urlGameId ?? (await createGame.mutateAsync({ tripId, gameTypeId: STROKE_PLAY })).id;
+    await addParticipants.mutateAsync({ tripId, gameId, userIds: selected });
+    setCreatedGame({ id: gameId, participants: toParticipants(selected) });
+    if (urlGameId) {
+      void utils.games.getById.invalidate({ tripId, gameId });
+    } else {
+      // Stamp the new id into the URL so a refresh / re-entry resumes it.
+      router.replace(`/trips/${param}/games/new?game=${gameId}`);
+    }
+  }
+
+  if (!tripId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-bt-base)" }}>
+        <div className="h-8 w-8 animate-spin rounded-full border-2" style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }} />
+      </div>
+    );
+  }
+
+  // Resuming from ?game — wait for the roster before choosing pick-vs-score, so
+  // we never flash the "pick players" screen over a game that already has them.
+  if (urlGameId && !createdGame && gameQ.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-bt-base)" }}>
+        <div className="h-8 w-8 animate-spin rounded-full border-2" style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }} />
+      </div>
+    );
+  }
+
+  async function handleFinish() {
+    if (!tripId || !game) return;
+    // Spec 1a: never finish over unconfirmed scores — finish computes from server
+    // rows, so an unsaved cell would be silently omitted. Block + say why.
+    const gate = unconfirmedCount(saveStatus);
+    if (gate.total > 0) {
+      showToast(
+        gate.errored > 0
+          ? `${gate.errored} score${gate.errored > 1 ? "s" : ""} didn’t save — retry before finishing`
+          : "Still saving scores — try again in a moment",
+      );
+      return;
+    }
+    try {
+      const res = await finishGame.mutateAsync({ tripId, gameId: game.id });
+      setStandings(res.standings);
+      setView("final");
+    } catch {
+      // Stay on the entry view (no silent advance). The global error toast
+      // surfaces the failure; the Finish CTA stays tappable to retry (the
+      // recompute is idempotent).
+    }
+  }
+
+  function playAgain() {
+    setCreatedGame(null);
+    setValues({});
+    setStandings([]);
+    setSelected([]);
+    setCurrentHole(1);
+    setView("entry");
+    seededRef.current = false;
+    // Drop ?game so "Play again" starts a fresh game instead of resuming this one.
+    if (urlGameId) router.replace(`/trips/${param}/games/new`);
+  }
+
+  // ── §3 Handicaps step — per-player ABSOLUTE strokes (stroke is per-player, not
+  // per-matchup). Reached from the setup hull's Handicaps row AND Configuration.
+  // Drives `netStrokeEntries`/`strokeHoles`: the input Phase 1 deferred. ──
+  if (game && showHandicaps && settingsEditable) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh" }}>
+        <HandicapRoster
+          players={handicapPlayers}
+          holeCount={scUnits.length}
+          strokeIndex={scIndex}
+          onSetStrokes={onSetStrokes}
+          onDone={() => setShowHandicaps(false)}
+          onBack={() => setShowHandicaps(false)}
+        />
+      </div>
+    );
+  }
+
+  // A1 P0 — Game Modifiers drill-down (mirrors the Handicaps overlay above): the
+  // SAME ModifierCards the match setup page uses, persisted on-change.
+  if (game && showModifiers && settingsEditable) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh", background: "var(--color-bt-base)" }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+          <button
+            type="button"
+            onClick={() => setShowModifiers(false)}
+            className="flex items-center gap-1 text-sm font-semibold"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} /> Back
+          </button>
+          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={!settingsEditable} />
+        </div>
+      </div>
+    );
+  }
+
+  // A2-ux correction: setup-mode scoreboard = PASS-THROUGH. A member gets just the
+  // themed placeholder (the A2-core gate already withheld the data); the owner/delegate
+  // gets the placeholder + the way into the ONE settings page (front button + corner
+  // gear). NO checklist, NO toggle on this page — those live on the settings page.
+  if (game && !scoringEnabled && !showConfig) {
+    return (
+      <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
+        <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+          <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
+          </button>
+          <div className="min-w-0 text-center">
+            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Stroke Play</div>
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}</div>
+          </div>
+          {canEdit ? (
+            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          ) : <div className="h-9 w-9" />}
+        </header>
+        <div className="flex-1">
+          <SetupPlaceholder
+            tripId={tripId}
+            game={gameQ.data as unknown as GameRow | undefined}
+            message={canEdit
+              ? "Set the players, course, and handicaps on the settings page — the crew can’t see the game until you switch it to scoring."
+              : undefined}
+          >
+            {canEdit && (
+              <button
+                type="button"
+                onClick={openConfig}
+                data-testid="setup-go-to-settings"
+                className="mx-auto flex items-center justify-center gap-2"
+                style={{ height: 48, padding: "0 22px", borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+              >
+                <Settings size={17} /> Set up this game
+              </button>
+            )}
+          </SetupPlaceholder>
+        </div>
+      </div>
+    );
+  }
+
+  // ── The ONE settings page — reached via the corner gear in BOTH modes. The full
+  // checklist (course/points/handicaps/modifiers) + the single Setup/Scoring toggle
+  // + the Danger Zone, all here. ──
+  // Returned DIRECTLY (not in a `fixed inset-0` wrapper): it's a full-page view
+  // whose own `min-h-screen` root document-scrolls. A `fixed` wrapper pinned it to
+  // the viewport so tall content overflowed past the bottom unscrollably (the same
+  // class of bug reported on the non-golf settings page). Matches the rack page.
+  if (game && showConfig && gameQ.data && canEdit) {
+    return (
+      <GameConfigurationView
+        subtitle="Stroke Play"
+        onBack={closeConfig}
+        tripId={tripId}
+        competitionId={gameCompetitionId}
+        game={gameQ.data as unknown as GameRow}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        onChanged={() => void refreshGame()}
+        onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+        whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
+        // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
+        onEditWhosPlaying={() => setShowHandicaps(true)}
+        extraRows={
+          availableModifiers.length > 0 ? (
+            <ModifiersRow
+              count={enabledCount(modifiersDraft, availableModifiers)}
+              onClick={() => setShowModifiers(true)}
+              disabled={!settingsEditable}
+              locked={scoringEnabled}
+            />
+          ) : undefined
+        }
+        scoringEnabled={scoringEnabled}
+        onEnable={handleEnable}
+        onDisable={handleDisable}
+        busy={enableScoring.isPending || disableScoring.isPending}
+      />
+    );
+  }
+
+  // ── Play ──
+  if (game) {
+    return (
+      <div className="fixed inset-0 z-50">
+        {view === "final" ? (
+          <FinalStandings
+            participants={game.participants}
+            standings={standings}
+            unitCount={scUnits.length}
+            dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            onScorecard={() => setView("grid")}
+            onPlayAgain={playAgain}
+          />
+        ) : view === "grid" ? (
+          <div className="flex h-full flex-col">
+            <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <button onClick={backFromGrid} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
+            </div>
+            <div className="min-h-0 flex-1">
+              <StandardGrid
+                units={scUnits}
+                tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+                teeRows={teeRows}
+                participants={game.participants}
+                values={values}
+                direction="low_wins"
+                pips={entryPips}
+                saveStatus={saveStatus}
+                onCellTap={(label) => {
+                  setCurrentHole(Number(label) || 1);
+                  backFromGrid();
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <ScoreEntryView
+            gameName="Stroke Play"
+            units={scUnits}
+            participants={game.participants}
+            values={values}
+            direction="low_wins"
+            currentHole={currentHole}
+            onHoleChange={setCurrentHole}
+            onChange={onChange}
+            onClear={onClear}
+            saveStatus={saveStatus}
+            onRetryCell={retryCell}
+            pips={entryPips}
+            onBack={() => router.back()}
+            onOpenGrid={() => setView("grid")}
+            onConfig={canEdit ? openConfig : undefined}
+            onFinish={handleFinish}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Pick players ──
+  const members = (crew.data ?? []).filter((c) => memberById.has(c.user_id));
+  return (
+    <div className="mx-auto max-w-md px-4 py-6" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
+      <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>New stroke-play game</h1>
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Pick 2–4 players.</p>
+
+      <div className="mt-4 flex flex-col gap-2">
+        {members.map((c) => {
+          const on = selected.includes(c.user_id);
+          const name = memberById.get(c.user_id)?.name ?? "Player";
+          return (
+            <button
+              key={c.user_id}
+              onClick={() => toggle(c.user_id)}
+              className="flex items-center justify-between text-left"
+              style={{
+                padding: "12px 14px",
+                borderRadius: 12,
+                background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+                border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+                color: "var(--color-bt-text)",
+                fontSize: 15,
+              }}
+            >
+              {name}
+              {on && <span style={{ color: "var(--color-bt-accent)", fontWeight: 700 }}>✓</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={start}
+        disabled={selected.length < 2 || createGame.isPending || addParticipants.isPending}
+        className="mt-5 w-full disabled:opacity-40"
+        style={{
+          height: 50,
+          borderRadius: 12,
+          background: "var(--color-bt-accent)",
+          color: "#0d1f1a",
+          fontSize: 16,
+          fontWeight: 600,
+        }}
+      >
+        Start game
+      </button>
+    </div>
+  );
+}
+
+/** A1 P0 — Game Modifiers drill-down row in the stroke setup hull (the home stroke
+ *  was missing; the match page had it). Mirrors HandicapsRow's style; opens the
+ *  full-screen ModifierCards overlay. Shown only when the format offers modifiers
+ *  (stroke → moving_tees / glorious_holes; a format with none hides the row). */
+function ModifiersRow({ count, onClick, disabled, locked }: { count: number; onClick: () => void; disabled?: boolean; locked?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      // #512 Option B: live-locked → dim + a lock icon in place of the chevron.
+      className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: locked ? 0.55 : undefined }}
+    >
+      <div className="flex min-w-0 flex-col">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Game Modifiers <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>· optional</span>
+        </span>
+        <span className="truncate text-sm" style={{ color: count > 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", marginTop: 2 }}>
+          {count > 0 ? `${count} modifier${count === 1 ? "" : "s"} added` : "Add special rules"}
+        </span>
+      </div>
+      {locked
+        ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
+    </button>
+  );
+}
