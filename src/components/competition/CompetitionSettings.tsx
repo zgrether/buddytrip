@@ -8,6 +8,8 @@ import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/Danger
 interface Competition {
   id: string;
   name: string;
+  /** Short label for the bottom-nav tab; falls back to `name` when unset. */
+  short_name?: string | null;
   tagline: string | null;
   /** Frozen at creation (the shape chooser). Shown read-only here. */
   scoring_model?: "match_play" | "points";
@@ -155,6 +157,7 @@ function DetailsSection({
 }) {
   const utils = trpc.useUtils();
   const [name, setName] = useState(competition.name);
+  const [shortName, setShortName] = useState(competition.short_name ?? "");
   const [tagline, setTagline] = useState(competition.tagline ?? "");
   const [error, setError] = useState<string | null>(null);
   // Transient "Saved" flash after a successful auto-save.
@@ -170,6 +173,7 @@ function DetailsSection({
         utils.competitions.getByTrip.setData({ tripId }, {
           ...previous,
           name: vars.name ?? previous.name,
+          short_name: vars.shortName !== undefined ? vars.shortName : previous.short_name,
           tagline: vars.tagline ?? previous.tagline,
         });
       }
@@ -207,6 +211,14 @@ function DetailsSection({
     setError(null);
     updateComp.mutate({ tripId, competitionId: competition.id, name: trimmed });
   };
+  const commitShortName = () => {
+    if (!canEdit) return;
+    const trimmed = shortName.trim();
+    if (trimmed === (competition.short_name ?? "")) return;
+    setError(null);
+    // Empty clears it (→ null) so the nav falls back to the full name.
+    updateComp.mutate({ tripId, competitionId: competition.id, shortName: trimmed || null });
+  };
   const commitTagline = () => {
     if (!canEdit) return;
     const trimmed = tagline.trim();
@@ -240,6 +252,26 @@ function DetailsSection({
             style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", opacity: canEdit ? 1 : 0.7 }}
             data-testid="comp-settings-name"
           />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Short name <span className="normal-case font-normal">shown in the bottom navigation bar</span>
+          </label>
+          <input
+            value={shortName}
+            onChange={(e) => { setShortName(e.target.value); if (error) setError(null); }}
+            onBlur={commitShortName}
+            readOnly={!canEdit}
+            placeholder="e.g. BBMI — keep it short to fit the nav tab"
+            maxLength={40}
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", opacity: canEdit ? 1 : 0.7 }}
+            data-testid="comp-settings-short-name"
+          />
+          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            The full name won&apos;t fit the &ldquo;Live&rdquo; tab — set a short label here. Leave blank to fall back to the full name.
+          </p>
         </div>
 
         <div>

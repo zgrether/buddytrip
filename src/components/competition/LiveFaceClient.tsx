@@ -215,7 +215,11 @@ export function LiveFaceClient({
 
       {/* Bottom nav persists on the face so you can always cross back to the
           trip (§11). Live is the current destination. */}
-      <TripBottomNav tripId={tripId} showComp={true} />
+      <TripBottomNav
+        tripId={tripId}
+        showComp={true}
+        liveLabel={competition?.short_name ?? competition?.name ?? null}
+      />
 
       {/* Chat / News overlay any surface (§11). */}
       <FloatingChatPanel

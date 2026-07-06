@@ -88,6 +88,28 @@ describe("competitions router", () => {
     expect(updated.tagline).toBe("If you're not first, you're last");
   });
 
+  it("update — short_name persists and clears back to null", async () => {
+    const ownerCaller = ctx.caller();
+    const existing = await ownerCaller.competitions.getByTrip({ tripId });
+    expect(existing).not.toBeNull();
+
+    // Set a short label (the bottom-nav tab uses this).
+    const set = await ownerCaller.competitions.update({
+      tripId,
+      competitionId: existing!.id,
+      shortName: "BBMI",
+    });
+    expect(set.short_name).toBe("BBMI");
+
+    // Empty clears it → null (nav falls back to the full name).
+    const cleared = await ownerCaller.competitions.update({
+      tripId,
+      competitionId: existing!.id,
+      shortName: null,
+    });
+    expect(cleared.short_name).toBeNull();
+  });
+
   it("delete — only owner can delete", async () => {
     const ownerCaller = ctx.caller();
     const existing = await ownerCaller.competitions.getByTrip({ tripId });

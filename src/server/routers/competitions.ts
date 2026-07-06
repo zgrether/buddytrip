@@ -272,6 +272,8 @@ export const competitionsRouter = router({
         tripId: z.string(),
         competitionId: z.string(),
         name: z.string().min(2).max(200).optional(),
+        // Short label for the bottom-nav tab (empty string clears it → null).
+        shortName: z.string().max(40).nullable().optional(),
         tagline: z.string().max(500).nullable().optional(),
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
         // The roster-setup progression (building → saved → dismissed). "Save
@@ -285,6 +287,7 @@ export const competitionsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
+      if (input.shortName !== undefined) patch.short_name = input.shortName;
       if (input.tagline !== undefined) patch.tagline = input.tagline;
       if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
       if (input.rosterSetup !== undefined) patch.roster_setup = input.rosterSetup;
