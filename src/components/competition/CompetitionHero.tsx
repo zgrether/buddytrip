@@ -251,18 +251,34 @@ export function StickyCollapseHero({
   ...hero
 }: React.ComponentProps<typeof CompetitionHero> & { stickyTop?: number }) {
   const collapsedRef = useRef<HTMLDivElement>(null);
-  const [collapsedH, setCollapsedH] = useState(64); // sensible seed → no first-paint jump
-  // Measure BEFORE paint (layout effect on the client) so the overlap uses the real
-  // height on the very first frame — a post-paint measure left the expanded hero
-  // pulled up by the stale seed, so it didn't fully cover the collapsed bar and its
-  // top edge PEEKED above the hero. SSR-safe: falls back to useEffect on the server.
+  const expandedRef = useRef<HTMLDivElement>(null);
+  const [pull, setPull] = useState(64); // sensible seed → no first-paint jump
+  // Pull the expanded hero UP over the pinned collapsed bar. The earlier version
+  // pulled by exactly the collapsed bar's own height (`-(collapsedH + 1)`) on the
+  // assumption the two fragment nodes are flush — but they render into the
+  // leaderboard's spacing column, which inserts ~12px of vertical rhythm between
+  // them, so the pull fell short and the collapsed bar PEEKED ~11px above the hero
+  // at rest. Instead of guessing that offset, MEASURE the rendered gap between the
+  // hero's top and the collapsed bar's top and close it — robust to whatever
+  // ambient spacing sits between them, and to the taller N-team bar. Converges in
+  // one step (moving the margin by X moves the hero's top by X) to a 1px
+  // over-cover (no peek), and re-corrects if the collapsed bar's height changes
+  // (ResizeObserver). Layout effect on the client so the correction lands before
+  // paint; SSR-safe (useEffect fallback).
   useIsoLayoutEffect(() => {
-    const el = collapsedRef.current;
-    if (!el) return;
-    const measure = () => setCollapsedH(el.offsetHeight);
+    const c = collapsedRef.current;
+    const e = expandedRef.current;
+    if (!c || !e) return;
+    const measure = () => {
+      // gap > 0 → the collapsed bar's top peeks above the hero; target a 1px
+      // over-cover (gap = -1) so sub-pixel rounding never leaves a sliver.
+      const gap = e.getBoundingClientRect().top - c.getBoundingClientRect().top;
+      if (Math.abs(gap + 1) > 1) setPull((p) => p + gap + 1);
+    };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    ro.observe(c);
+    ro.observe(e);
     return () => ro.disconnect();
   }, []);
   return (
@@ -270,10 +286,7 @@ export function StickyCollapseHero({
       <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
         <CompetitionHero {...hero} variant="collapsed" />
       </div>
-      {/* +1px so the expanded hero always fully covers the collapsed bar's top edge
-          (defeats sub-pixel/border rounding) — no peek. The over-pull is on a ~180px
-          hero, so it's imperceptible. */}
-      <div style={{ position: "relative", zIndex: 20, marginTop: -(collapsedH + 1) }}>
+      <div ref={expandedRef} style={{ position: "relative", zIndex: 20, marginTop: -pull }}>
         <CompetitionHero {...hero} variant="expanded" />
       </div>
     </>
