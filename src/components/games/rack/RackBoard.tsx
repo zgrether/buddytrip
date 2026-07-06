@@ -101,12 +101,15 @@ export function RackBoard({
   const colorOf = (t: "A" | "B") => (t === "A" ? teamA.color : teamB.color);
   return (
     <div style={{ padding: "12px 12px 20px" }}>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Standings · the rack
-        </span>
-        {showProjectedToggle && !final && <RsToggle mode={mode} onMode={onMode} />}
-      </div>
+      {/* Standard structure: hero → groupings → the rack. The old
+          "Standings · the rack" section header was pre-standardization chrome —
+          removed so the rack presents as content, like the other formats. Only
+          the Current/Projected toggle (a live control the user needs) stays. */}
+      {showProjectedToggle && !final && (
+        <div className="mb-2 flex justify-end">
+          <RsToggle mode={mode} onMode={onMode} />
+        </div>
+      )}
 
       {final && (
         <div className="mb-2 flex items-center justify-center rounded-lg" style={{ height: 30, background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}>

@@ -543,7 +543,13 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           (option A — the competition is visible to the whole crew once created;
           per-game Setup/Scoring handles game-level readiness). The old status
           gate (visible only once "active") was retired with the GO LIVE control. */}
-      {competition && <TripBottomNav tripId={tripId} showComp={true} />}
+      {competition && (
+        <TripBottomNav
+          tripId={tripId}
+          showComp={true}
+          liveLabel={competition.short_name ?? competition.name ?? null}
+        />
+      )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
