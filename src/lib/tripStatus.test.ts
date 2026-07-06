@@ -1,14 +1,36 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { getEffectiveStatus, countdownLabel } from "./tripStatus";
 
-// Helper: ISO date string N days from today.
+/**
+ * Pin "today" to a fixed LOCAL-noon instant so the countdown/status math is
+ * deterministic regardless of when — or in which timezone — the suite runs.
+ * Without this freeze these tests flake: `dayOffset` builds its fixtures from
+ * the UTC calendar date (`toISOString`) while the code-under-test derives
+ * "today" from the LOCAL calendar date (`new Date()` + `setHours(0,0,0,0)` and
+ * `parseLocalDate`'s noon-local parsing). Late in the day in a western timezone
+ * the two disagree by a day, flipping "Tomorrow" → "2 days to go" and crossing
+ * the 3-day now/upcoming boundary. Freezing at local noon keeps the UTC and
+ * local calendar dates aligned (mirrors tripCountdown.test.ts).
+ */
+const FIXED_TODAY = new Date(2026, 3, 26, 12, 0, 0); // April 26, 2026, local noon (month 0-indexed)
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(FIXED_TODAY);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+// Helper: ISO date string N days from the (frozen) today.
 function dayOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().split("T")[0];
 }
 
-const LOCKED = new Date().toISOString();
+const LOCKED = new Date(2026, 3, 26, 12, 0, 0).toISOString();
 
 describe("getEffectiveStatus", () => {
   it("returns 'idea' when no destination is locked", () => {
