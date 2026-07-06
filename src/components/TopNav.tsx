@@ -53,6 +53,10 @@ interface TopNavProps {
   /** Hide the News tool (e.g. on the profile page, where the global
    *  broadcast surface isn't relevant). */
   hideNews?: boolean;
+  /** In competition context, the current user's TEAM color — passed to the
+   *  account avatar so it reads in the user's team identity instead of teal.
+   *  Undefined off competition pages (avatar stays teal). */
+  avatarTeamColor?: string | null;
 }
 
 // Minimal shape we read off trips.list for the breadcrumb.
@@ -73,6 +77,7 @@ export const TopNav: FC<TopNavProps> = ({
   onDismissPanels,
   hideTripSwitcher = false,
   hideNews = false,
+  avatarTeamColor,
 }) => {
   const router = useRouter();
   const params = useParams<{ tripId?: string }>();
@@ -287,6 +292,7 @@ export const TopNav: FC<TopNavProps> = ({
         <UserMenu
           onOpen={onDismissPanels}
           onOpenFeedback={() => setFeedbackOpen(true)}
+          teamColor={avatarTeamColor}
         />
       </div>
 

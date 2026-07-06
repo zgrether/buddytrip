@@ -105,6 +105,22 @@ export function LiveFaceClient({
   const competition = boot?.competition ?? null;
   // Competition role (owner / co_admin / member), live-derived server-side.
   const role = boot?.myCompetitionRole ?? null;
+
+  // The current user's TEAM color, for the app-bar avatar (Task 2 — reinforces
+  // team identity in competition context). Resolved from the same faceBootstrap
+  // snapshot the board uses: my assignment → team → color. Undefined when I'm
+  // teamless/unresolvable → the avatar falls back to the teal accent.
+  const { data: me } = trpc.users.getMe.useQuery();
+  const myTeamColor = useMemo(() => {
+    if (!boot || !me) return null;
+    const myTeamId = (boot.assignments as { user_id: string; team_id: string }[] | undefined)
+      ?.find((a) => a.user_id === me.id)?.team_id;
+    if (!myTeamId) return null;
+    return (
+      (boot.teams as { id: string; color: string | null }[] | undefined)
+        ?.find((t) => t.id === myTeamId)?.color ?? null
+    );
+  }, [boot, me]);
   const canEdit = role === "owner" || role === "co_admin";
   const isOwner = role === "owner";
   // Seed the child caches from the one bootstrap so the board/guide — and the
@@ -205,6 +221,7 @@ export function LiveFaceClient({
         chatOpen={chatOpen}
         onOpenNews={openNews}
         newsOpen={newsOpen}
+        avatarTeamColor={myTeamColor}
         onDismissPanels={() => {
           setChatOpen(false);
           setNewsOpen(false);

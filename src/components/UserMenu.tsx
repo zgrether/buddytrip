@@ -34,9 +34,14 @@ interface UserMenuProps {
   /** Fired when the account menu opens. The page uses it to close the
    *  News/Chat rail so the dropdown isn't trapped behind the mobile sheet. */
   onOpen?: () => void;
+  /** In competition context, the current user's TEAM color — paints the
+   *  avatar in their team identity (green = Manhattans, etc.) instead of the
+   *  default teal. Null/undefined (no team, or off a competition page) falls
+   *  back to the teal accent avatar. */
+  teamColor?: string | null;
 }
 
-export function UserMenu({ onOpenFeedback, onOpen }: UserMenuProps = {}) {
+export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = {}) {
   const { data: me } = trpc.users.getMe.useQuery();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -121,6 +126,9 @@ export function UserMenu({ onOpenFeedback, onOpen }: UserMenuProps = {}) {
           name={me?.name ?? me?.email ?? "?"}
           avatarIcon={me?.avatar_icon ?? null}
           sizePx={32}
+          // teamColor wins over accent inside Avatar (competition mode); when
+          // absent, the avatar stays the default teal accent.
+          teamColor={teamColor ?? undefined}
           accent
         />
       </button>
