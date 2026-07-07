@@ -25,6 +25,7 @@ import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { SettingsColumn } from "@/components/games/SettingsColumn";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
@@ -1191,7 +1192,7 @@ export function MatchGameView() {
           }
         };
         return (
-          <div className="flex flex-col gap-2.5 pb-4">
+          <SettingsColumn className="pb-4">
             {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
                 "Assigned to" frame. Display-first, above the checklist. Competition
                 games only — it re-homes the modal's name/delegate, which were
@@ -1437,7 +1438,7 @@ export function MatchGameView() {
                 disabled={scoringEnabled}
               />
             )}
-          </div>
+          </SettingsColumn>
         );
       })()}
 
