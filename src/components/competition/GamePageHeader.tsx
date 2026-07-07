@@ -65,6 +65,7 @@ export function GamePageHeader({
           projection ? (
             <ProjectionRow
               teams={d.teams}
+              teamTotals={d.teamTotals}
               perTeam={projection.perTeam}
               gameName={projection.gameName}
               final={projection.final}

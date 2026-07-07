@@ -209,8 +209,9 @@ export function CompetitionHero({
               />
             </div>
 
-            {/* Below the bar: ONLY the win target (Task 2). */}
-            <p className="mt-2 text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
+            {/* Below the bar: ONLY the win target. Sized as a peer of the
+                mini-bar's labels (13/600), not a tiny afterthought. */}
+            <p className="mt-2 text-center" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
               {clincher
                 ? `Final · ${clincher.name} wins`
                 : pointsAvailable > 0
@@ -342,9 +343,10 @@ export function CollapsedHero({
     padding: "11px 18px",
   };
   const target = (
+    // Normal-case (Task 2 — no all-caps) + bumped to 13/600 so it reads as a
+    // peer of the team-name labels, matching the expanded hero's target line.
     <span
-      className="uppercase"
-      style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".04em", color: "var(--color-bt-text-dim)" }}
+      style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
     >
       {targetLabel}
     </span>
@@ -390,11 +392,16 @@ export function CollapsedHero({
  */
 export function ProjectionRow({
   teams,
+  teamTotals,
   perTeam,
   gameName,
   final,
 }: {
   teams: LBTeam[];
+  /** Current realized cup totals per team — the projected TOTAL = this + the
+   *  game's projected delta (perTeam). In-progress games aren't yet in the
+   *  totals, so total = realized + projected reads correctly. */
+  teamTotals: Record<string, number>;
   perTeam: Record<string, number>;
   gameName: string;
   final: boolean;
@@ -402,15 +409,20 @@ export function ProjectionRow({
   const contrib = (t: LBTeam | undefined, align: "left" | "right", key?: string) => {
     if (!t) return <div key={key} style={{ minWidth: 88 }} />;
     const p = perTeam[t.id] ?? 0;
+    // Projected TOTAL = current realized total + this game's projected delta.
+    // Only while live: once final, the game's points are ALREADY in teamTotals
+    // (adding would double-count), so keep the final display as the solid delta.
+    const projectedTotal = (teamTotals[t.id] ?? 0) + p;
     return (
       <div key={key} className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 88 }}>
         <span
           className="tabular-nums"
-          // Team color = data; reduced opacity = "provisional / not final" (no new
-          // hex — the desaturation is opacity over the team's identity color).
-          style={{ fontSize: 18, fontWeight: 600, color: t.color, opacity: final ? 1 : 0.5, lineHeight: 1 }}
+          // A distinguishable SUB-header under the official score: SAME size as
+          // the mini-bar's official scores (26), but NON-BOLD (600 vs 800) and
+          // FAINT (team color at 0.5 while live) so it doesn't compete with it.
+          style={{ fontSize: 26, fontWeight: 600, color: t.color, opacity: final ? 1 : 0.5, lineHeight: 1 }}
         >
-          {p > 0 ? `+${fmtPts(p)}` : fmtPts(p)}
+          {final ? (p > 0 ? `+${fmtPts(p)}` : fmtPts(p)) : `${fmtPts(projectedTotal)} (+${fmtPts(p)})`}
         </span>
       </div>
     );
@@ -419,7 +431,9 @@ export function ProjectionRow({
     <div className="flex-1 text-center">
       <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)", lineHeight: 1.2 }}>{gameName}</div>
       {!final && (
-        <div style={{ fontSize: 10, fontStyle: "italic", color: "var(--color-bt-text-dim)", marginTop: 1 }}>projected</div>
+        // Matches the "First to X wins" target size/style (13, dim) — a peer,
+        // not a tiny afterthought (Task 4).
+        <div style={{ fontSize: 13, fontStyle: "italic", color: "var(--color-bt-text-dim)", marginTop: 1 }}>projected</div>
       )}
     </div>
   );
