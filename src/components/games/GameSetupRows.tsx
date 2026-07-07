@@ -37,6 +37,7 @@ export function GameSetupRows({
   onChanged,
   slot = "both",
   matchCount,
+  pointsTitle,
   configLocked = false,
   locked = false,
   courseOpen: courseOpenProp,
@@ -60,6 +61,10 @@ export function GameSetupRows({
    *  (W-GAMEPAGE-01 §6.2). Derived live by the page — omit on surfaces that don't
    *  build matches (no Total shown). */
   matchCount?: number;
+  /** Display-only override for the inline points row title. Rack passes
+   *  "Points per Slot" (a rack slot isn't obviously a "match" to the user); the
+   *  underlying `per_match` data model is UNCHANGED. Defaults to "Points Per Match". */
+  pointsTitle?: string;
   /** Lock the Points (config) row until ≥1 valid match exists (readiness rework P3
    *  — points mean nothing before a match). Locked = read-only, no chevron, same as
    *  a gated Handicaps row. Default false (unlocked). */
@@ -154,7 +159,9 @@ export function GameSetupRows({
           // stays live so `+` lifts it out of empty; `−` disabled at 0 (Stepper floor).
           <ChecklistRow
             icon={Hash}
-            title="Points Per Match"
+            // Display-only label (rack → "Points per Slot"); the `per_match`
+            // field/data model is unchanged. Defaults to "Points Per Match".
+            title={pointsTitle ?? "Points Per Match"}
             subtitle={
               <>
                 Total Points Available:{" "}

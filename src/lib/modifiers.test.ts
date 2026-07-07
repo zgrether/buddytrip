@@ -51,8 +51,13 @@ describe("render-branch matrix (gameTypes.ts → registry)", () => {
   const controlsFor = (id: string) =>
     (GAME_TYPES.find((t) => t.id === id)?.compatibleModifiers ?? []).map((k) => modifierDef(k).controlType);
 
-  it("rack_n_stack → [] (HIDE branch — golf format with none)", () => {
-    expect(controlsFor("gtt_rack_n_stack")).toEqual([]);
+  it("gtt_manual → [] (HIDE branch — a format with no modifiers)", () => {
+    // Rack (net stroke play) now carries the stroke modifier set, so the
+    // HIDE-the-row branch is exercised by a modifier-less format instead.
+    expect(controlsFor("gtt_manual")).toEqual([]);
+  });
+  it("rack_n_stack → [checkbox, checkbox+stepper] (BOTH branch — net stroke play, like stroke)", () => {
+    expect(controlsFor("gtt_rack_n_stack")).toEqual(["checkbox", "checkbox+stepper"]);
   });
   it("match_play_singles → [checkbox] (CHECKBOX-only branch)", () => {
     expect(controlsFor("gtt_match_play_singles")).toEqual(["checkbox"]);

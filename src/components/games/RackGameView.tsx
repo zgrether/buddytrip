@@ -24,6 +24,10 @@ import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { ModifierCards } from "@/components/games/ModifierCards";
+import { ModifiersRow } from "@/components/games/ModifiersRow";
+import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
+import { GAME_TYPES } from "@/lib/gameTypes";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
@@ -84,6 +88,10 @@ export function RackGameView() {
   // user-id array per group.
   const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | null>(null);
   const [groupDraft, setGroupDraft] = useState<string[][]>([]);
+  // Game Modifiers (Task 4) — rack was missing the section other formats have.
+  // Same ModifierCards + games.modifiers wiring as stroke; persisted on-change.
+  const [showModifiers, setShowModifiers] = useState(false);
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
   // Has the user actually edited the group draft this open? Only a TOUCHED draft is
   // persisted on leave — an untouched open (just seeded from the server) never
   // rewrites, so a seed race can't wipe the persisted groups.
@@ -251,6 +259,55 @@ export function RackGameView() {
   // #533 projection (rack) — REUSE the existing rack projection ("if it ended now"
   // = computeRack in "projected" mode), NOT a rebuild. Map A/B → the two team ids.
   const projectedPoints = useMemo(() => computeRack(rackPlayers, "projected", coursePar).points, [rackPlayers, coursePar]);
+
+  // Rack SLOT count = the number of rank-paired 1v1s = min(grouped-A, grouped-B),
+  // mirroring computeRack's `n = min(A.length, B.length)`. Derived from the
+  // GROUPED participants so it grows as the owner builds groups (a 2v2 group → 2
+  // slots) — NOT gated on a full roster and NOT on scores existing (computeRack's
+  // slots need thru>0, so it's 0 during setup). Feeds the settings "Total Points
+  // Available" (points × slots) so it stops reading 0 (Task 3).
+  const rackSlotCount = useMemo(() => {
+    let a = 0;
+    let b = 0;
+    for (const p of participants) {
+      const t = teamOf.get(p.user_id as string);
+      if (t === "A") a += 1;
+      else if (t === "B") b += 1;
+    }
+    return Math.min(a, b);
+  }, [participants, teamOf]);
+
+  // ── Game Modifiers (Task 4) ────────────────────────────────────────────
+  // Rack was missing the Game Modifiers section every other format has. Reuse
+  // the SAME ModifierCards + games.modifiers wiring as stroke: seed the draft
+  // once from the saved game, own it locally, persist on-change.
+  const availableModifiers = GAME_TYPES.find(
+    (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
+  )?.compatibleModifiers ?? [];
+  const modifiersSeededRef = useRef(false);
+  useEffect(() => {
+    if (modifiersSeededRef.current || !gameQ.data) return;
+    setModifiersDraft(((gameQ.data as { modifiers?: ModifiersMap | null }).modifiers) ?? {});
+    modifiersSeededRef.current = true;
+  }, [gameQ.data]);
+  const updateModifiers = trpc.games.update.useMutation();
+  function persistModifiers(next: ModifiersMap) {
+    if (!tripId || !gid) return;
+    setModifiersDraft(next);
+    const cur = utils.games.getById.getData({ tripId, gameId: gid });
+    if (cur) utils.games.getById.setData({ tripId, gameId: gid }, { ...cur, modifiers: next } as typeof cur);
+    updateModifiers.mutate(
+      { tripId, gameId: gid, modifiers: next },
+      {
+        onSuccess: () => {
+          if (competitionId) {
+            utils.competitions.faceBootstrap.invalidate({ tripId });
+            utils.games.listByTrip.invalidate({ tripId });
+          }
+        },
+      }
+    );
+  }
 
   // ── Foursome views ───────────────────────────────────────────────────
   const groupViews: FoursomeGroupView[] = useMemo(() => {
@@ -590,32 +647,59 @@ export function RackGameView() {
   // §B 2B.3 Configuration page — the post-Enable editing home, reached from the
   // play hub's top-right. Reused editors + the Enabled/Disabled control; Disable
   // keeps scores and stays here (not a hub reverse-transform).
+  // Game Modifiers drill-down (Task 4) — the SAME full-screen ModifierCards the
+  // stroke/match pages use, opened from the config Options row. Stacks OVER the
+  // config page (showConfig stays true), so Back returns there.
+  if (showModifiers && gid && gameQ.data && canEdit && !scoringEnabled) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh", background: "var(--color-bt-base)" }}>
+        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+          <button
+            type="button"
+            onClick={() => setShowModifiers(false)}
+            className="flex items-center gap-1 text-sm font-semibold"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            <ChevronLeft size={16} /> Back
+          </button>
+          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={scoringEnabled} />
+        </div>
+      </div>
+    );
+  }
+
   if (showConfig && gid && gameQ.data && canEdit) {
     const teamA: GroupBuilderTeam = { id: teamIds[0] ?? "A", name: teamMeta.A.name, color: teamMeta.A.color, players: teamRosters.A };
     const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
     const groupCount = groupsQ.data?.groups?.length ?? 0;
     const anyHandicap = handicapPlayers.some((p) => p.strokes > 0);
-    // GROUPINGS (the rack "Matches" builder) + HANDICAPS (the stroke-play per-player
-    // strokes) are both inline accordions — the first Settings items, single-open.
-    // Handicaps is gated until groups exist.
-    const rackSettingsRows = (
+    // Settings order (Task 4): GROUPINGS (leading, above Course/Points) → then the
+    // shared Course + "Points per Slot" spine → then the OPTIONS section
+    // { Handicaps, Game Modifiers } via extraRows. GROUPINGS is the rack "Matches"
+    // builder; both accordions stay single-open.
+    const groupingsRow = (
+      <ChecklistRow
+        icon={Users}
+        title="Groupings"
+        subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+        state={groupsAssigned ? "resolved" : "empty"}
+        locked={scoringEnabled}
+        expanded={openAccordion === "groupings" && !scoringEnabled}
+        onToggle={!scoringEnabled ? toggleGroupings : undefined}
+        testId="row-groupings"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
+        </p>
+        <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
+      </ChecklistRow>
+    );
+    // OPTIONS section (extraRows): Handicaps → Game Modifiers.
+    const optionRows = (
       <>
-        <ChecklistRow
-          icon={Users}
-          title="Groupings"
-          subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
-          state={groupsAssigned ? "resolved" : "empty"}
-          locked={scoringEnabled}
-          expanded={openAccordion === "groupings" && !scoringEnabled}
-          onToggle={!scoringEnabled ? toggleGroupings : undefined}
-          testId="row-groupings"
-        >
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
-            Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
-          </p>
-          <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
-        </ChecklistRow>
-
         <ChecklistRow
           icon={SlidersHorizontal}
           title="Handicaps"
@@ -634,6 +718,18 @@ export function RackGameView() {
           </p>
           <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
         </ChecklistRow>
+
+        {/* Game Modifiers — reuses the shared ModifiersRow + ModifierCards (Task 4;
+            rack was the only competition format missing it). Hidden if the format
+            offers no modifiers. */}
+        {availableModifiers.length > 0 && (
+          <ModifiersRow
+            count={enabledCount(modifiersDraft, availableModifiers)}
+            onClick={() => setShowModifiers(true)}
+            disabled={scoringEnabled}
+            locked={scoringEnabled}
+          />
+        )}
       </>
     );
     return (
@@ -649,7 +745,13 @@ export function RackGameView() {
         isOwner={isOwner}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        leadingSettingsRows={rackSettingsRows}
+        leadingSettingsRows={groupingsRow}
+        extraRows={optionRows}
+        // Task 3: feed the slot count so "Total Points Available" (points × slots)
+        // isn't stuck at 0. Task 4: rack labels the field "Points per Slot"
+        // (display only — the per_match data model is unchanged).
+        matchCount={rackSlotCount}
+        pointsRowTitle="Points per Slot"
         scoringEnabled={scoringEnabled}
         // Task 2: gate the Setup→Scoring toggle on groups being assigned.
         ready={groupsAssigned}
