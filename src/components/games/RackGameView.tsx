@@ -19,7 +19,7 @@ import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
+import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -750,10 +750,12 @@ export function RackGameView() {
         ) : undefined
       }
     >
-      {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
-          game's projected/final per-team contribution), sticky over the
-          scoreboard. Competition games only. RsDayScore below stays as rack's own
-          in-context day-score readout. */}
+      {/* Standard game header — row 1 (the collapsed cup hero, team names +
+          cup totals) + row 2 (this game's projected/final per-team
+          contribution), sticky over the scoreboard. Competition games only.
+          The team standing comes ONLY from this hero now — the old RsDayScore
+          team-totals band ("CENTURIONS 4 · matches won · MANHATTANS 2") was a
+          redundant restatement of the hero + projection row, so it's gone. */}
       <GamePageHeader
         tripId={tripId}
         competitionId={competitionId}
@@ -767,7 +769,6 @@ export function RackGameView() {
             : undefined
         }
       />
-      <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); setEntryView("entry"); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·

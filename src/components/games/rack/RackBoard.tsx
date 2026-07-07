@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingUp } from "lucide-react";
-import { fmtToPar, fmtPoints, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
+import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -10,9 +10,11 @@ import { fmtToPar, fmtPoints, type RackMode, type RackSlot, type RackSlotPlayer 
  * margin. Reuses the match-board's outer-edge layout but is a readout, not a
  * control — tapping a slot does nothing.
  *
- * Composed onto the rack page below the team header (`RsDayScore`) and the
- * Groups entry; the board itself is just the toggle + rack + sit-out so it can
- * be reused as the competition leaderboard later.
+ * Composed onto the rack page below the Groups entry; the board itself is the
+ * "Standings · the rack" label + toggle + rack + sit-out, so it can be reused
+ * as the competition leaderboard later. (The old `RsDayScore` team-totals band
+ * was removed — the persistent leaderboard hero is the single source of the
+ * team standing; the rack body no longer restates it.)
  */
 
 export interface RackTeam {
@@ -33,59 +35,7 @@ interface RackBoardProps {
   final?: boolean;
 }
 
-// ── Team-score header (RsDayScore) — pinned above Groups ─────────────────────
-export function RsDayScore({
-  teamA,
-  teamB,
-  pointsA,
-  pointsB,
-  final,
-  projected,
-}: {
-  teamA: RackTeam;
-  teamB: RackTeam;
-  pointsA: number;
-  pointsB: number;
-  final?: boolean;
-  projected?: boolean;
-}) {
-  return (
-    <div
-      className="flex items-stretch"
-      style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)", padding: "14px 16px" }}
-    >
-      <TeamTotal team={teamA} points={pointsA} align="left" />
-      <div className="flex flex-col items-center justify-center" style={{ padding: "0 14px" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "var(--color-bt-text-dim)" }}>
-          {final ? "FINAL" : "RACK"}
-        </span>
-        <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-          matches won{projected && !final ? " · proj" : ""}
-        </span>
-      </div>
-      <TeamTotal team={teamB} points={pointsB} align="right" />
-    </div>
-  );
-}
-
-function TeamTotal({ team, points, align }: { team: RackTeam; points: number; align: "left" | "right" }) {
-  return (
-    <div className="flex flex-1 flex-col" style={{ alignItems: align === "left" ? "flex-start" : "flex-end" }}>
-      <span className="flex items-center gap-1.5">
-        {align === "left" && <Dot color={team.color} />}
-        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
-          {team.name}
-        </span>
-        {align === "right" && <Dot color={team.color} />}
-      </span>
-      <span style={{ fontSize: 34, fontWeight: 800, color: "var(--color-bt-text)", lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>
-        {fmtPoints(points)}
-      </span>
-    </div>
-  );
-}
-
-// ── The board (toggle + rack + sit-out) ──────────────────────────────────────
+// ── The board (label + toggle + rack + sit-out) ──────────────────────────────
 export function RackBoard({
   teamA,
   teamB,
@@ -101,15 +51,17 @@ export function RackBoard({
   const colorOf = (t: "A" | "B") => (t === "A" ? teamA.color : teamB.color);
   return (
     <div style={{ padding: "12px 12px 20px" }}>
-      {/* Standard structure: hero → groupings → the rack. The old
-          "Standings · the rack" section header was pre-standardization chrome —
-          removed so the rack presents as content, like the other formats. Only
-          the Current/Projected toggle (a live control the user needs) stays. */}
-      {showProjectedToggle && !final && (
-        <div className="mb-2 flex justify-end">
-          <RsToggle mode={mode} onMode={onMode} />
-        </div>
-      )}
+      {/* Rack uniquely has two body sub-sections — the Groups entry above and
+          this standings ladder — so the ladder keeps its own section label to
+          orient it against the groups (the redundant element was the team-totals
+          band, now removed, not this label). The Current/Projected toggle sits
+          on the same row. */}
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Standings · the rack
+        </span>
+        {showProjectedToggle && !final && <RsToggle mode={mode} onMode={onMode} />}
+      </div>
 
       {final && (
         <div className="mb-2 flex items-center justify-center rounded-lg" style={{ height: 30, background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}>
