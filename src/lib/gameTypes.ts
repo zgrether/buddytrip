@@ -211,12 +211,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "rack_n_stack",
     scorecardSchema: rackSchema,
-    // Rack is net stroke play, so it carries the SAME modifiers as stroke play
-    // (the Game Modifiers section was missing from rack settings — added). Still
-    // TESTABILITY-provisional like the others (real applicability deferred, see
-    // the gtt_stroke_play note); the HIDE-the-row render branch is now exercised
-    // by a modifier-less format (gtt_manual) in modifiers.test.ts.
-    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    compatibleModifiers: [], // ⚠ test-matrix value (HIDE-the-row branch: a golf format with none) — see note on gtt_stroke_play
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,

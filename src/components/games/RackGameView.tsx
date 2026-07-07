@@ -24,10 +24,6 @@ import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
-import { ModifierCards } from "@/components/games/ModifierCards";
-import { ModifiersRow } from "@/components/games/ModifiersRow";
-import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
-import { GAME_TYPES } from "@/lib/gameTypes";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
@@ -88,10 +84,6 @@ export function RackGameView() {
   // user-id array per group.
   const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | null>(null);
   const [groupDraft, setGroupDraft] = useState<string[][]>([]);
-  // Game Modifiers (Task 4) — rack was missing the section other formats have.
-  // Same ModifierCards + games.modifiers wiring as stroke; persisted on-change.
-  const [showModifiers, setShowModifiers] = useState(false);
-  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
   // Has the user actually edited the group draft this open? Only a TOUCHED draft is
   // persisted on leave — an untouched open (just seeded from the server) never
   // rewrites, so a seed race can't wipe the persisted groups.
@@ -276,38 +268,6 @@ export function RackGameView() {
     }
     return Math.min(a, b);
   }, [participants, teamOf]);
-
-  // ── Game Modifiers (Task 4) ────────────────────────────────────────────
-  // Rack was missing the Game Modifiers section every other format has. Reuse
-  // the SAME ModifierCards + games.modifiers wiring as stroke: seed the draft
-  // once from the saved game, own it locally, persist on-change.
-  const availableModifiers = GAME_TYPES.find(
-    (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
-  )?.compatibleModifiers ?? [];
-  const modifiersSeededRef = useRef(false);
-  useEffect(() => {
-    if (modifiersSeededRef.current || !gameQ.data) return;
-    setModifiersDraft(((gameQ.data as { modifiers?: ModifiersMap | null }).modifiers) ?? {});
-    modifiersSeededRef.current = true;
-  }, [gameQ.data]);
-  const updateModifiers = trpc.games.update.useMutation();
-  function persistModifiers(next: ModifiersMap) {
-    if (!tripId || !gid) return;
-    setModifiersDraft(next);
-    const cur = utils.games.getById.getData({ tripId, gameId: gid });
-    if (cur) utils.games.getById.setData({ tripId, gameId: gid }, { ...cur, modifiers: next } as typeof cur);
-    updateModifiers.mutate(
-      { tripId, gameId: gid, modifiers: next },
-      {
-        onSuccess: () => {
-          if (competitionId) {
-            utils.competitions.faceBootstrap.invalidate({ tripId });
-            utils.games.listByTrip.invalidate({ tripId });
-          }
-        },
-      }
-    );
-  }
 
   // ── Foursome views ───────────────────────────────────────────────────
   const groupViews: FoursomeGroupView[] = useMemo(() => {
@@ -647,30 +607,6 @@ export function RackGameView() {
   // §B 2B.3 Configuration page — the post-Enable editing home, reached from the
   // play hub's top-right. Reused editors + the Enabled/Disabled control; Disable
   // keeps scores and stays here (not a hub reverse-transform).
-  // Game Modifiers drill-down (Task 4) — the SAME full-screen ModifierCards the
-  // stroke/match pages use, opened from the config Options row. Stacks OVER the
-  // config page (showConfig stays true), so Back returns there.
-  if (showModifiers && gid && gameQ.data && canEdit && !scoringEnabled) {
-    return (
-      <div className="flex flex-col" style={{ height: "100vh", background: "var(--color-bt-base)" }}>
-        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
-          <button
-            type="button"
-            onClick={() => setShowModifiers(false)}
-            className="flex items-center gap-1 text-sm font-semibold"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            <ChevronLeft size={16} /> Back
-          </button>
-          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={scoringEnabled} />
-        </div>
-      </div>
-    );
-  }
-
   if (showConfig && gid && gameQ.data && canEdit) {
     const teamA: GroupBuilderTeam = { id: teamIds[0] ?? "A", name: teamMeta.A.name, color: teamMeta.A.color, players: teamRosters.A };
     const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
@@ -697,40 +633,28 @@ export function RackGameView() {
         <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
       </ChecklistRow>
     );
-    // OPTIONS section (extraRows): Handicaps → Game Modifiers.
+    // OPTIONS section (extraRows): Handicaps. (Rack has no Game Modifiers — its
+    // format offers none, so that row is correctly absent, like any modifier-less
+    // format.)
     const optionRows = (
-      <>
-        <ChecklistRow
-          icon={SlidersHorizontal}
-          title="Handicaps"
-          subtitle={groupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
-          state={anyHandicap ? "resolved" : "empty"}
-          locked={scoringEnabled}
-          // Gated until groups exist (the ChecklistRow "not available yet" dim); when
-          // ready, it opens INLINE — the same per-player strokes UI stroke play uses.
-          disabled={!groupsAssigned}
-          expanded={openAccordion === "handicaps" && groupsAssigned && !scoringEnabled}
-          onToggle={groupsAssigned && !scoringEnabled ? toggleHandicaps : undefined}
-          testId="row-handicaps"
-        >
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
-            Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
-          </p>
-          <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
-        </ChecklistRow>
-
-        {/* Game Modifiers — reuses the shared ModifiersRow + ModifierCards (Task 4;
-            rack was the only competition format missing it). Hidden if the format
-            offers no modifiers. */}
-        {availableModifiers.length > 0 && (
-          <ModifiersRow
-            count={enabledCount(modifiersDraft, availableModifiers)}
-            onClick={() => setShowModifiers(true)}
-            disabled={scoringEnabled}
-            locked={scoringEnabled}
-          />
-        )}
-      </>
+      <ChecklistRow
+        icon={SlidersHorizontal}
+        title="Handicaps"
+        subtitle={groupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
+        state={anyHandicap ? "resolved" : "empty"}
+        locked={scoringEnabled}
+        // Gated until groups exist (the ChecklistRow "not available yet" dim); when
+        // ready, it opens INLINE — the same per-player strokes UI stroke play uses.
+        disabled={!groupsAssigned}
+        expanded={openAccordion === "handicaps" && groupsAssigned && !scoringEnabled}
+        onToggle={groupsAssigned && !scoringEnabled ? toggleHandicaps : undefined}
+        testId="row-handicaps"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
+        </p>
+        <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
+      </ChecklistRow>
     );
     return (
       <GameConfigurationView
