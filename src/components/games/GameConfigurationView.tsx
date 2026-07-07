@@ -37,6 +37,8 @@ export function GameConfigurationView({
   onEditWhosPlaying,
   leadingSettingsRows,
   extraRows,
+  matchCount,
+  pointsRowTitle,
   scoringEnabled,
   ready = true,
   onEnable,
@@ -68,6 +70,14 @@ export function GameConfigurationView({
    *  Modifiers row). The match page renders its full checklist inline, so this is
    *  only for the GameSetupRows-based formats that need one more drill-down. */
   extraRows?: React.ReactNode;
+  /** Valid unit count for the Points row's "Total Points Available" readout
+   *  (points × count). Rack passes its slot count so the total isn't stuck at 0;
+   *  omitted by formats that don't build units (stroke → no Total shown). */
+  matchCount?: number;
+  /** Display-only override for the Points row title (rack shows "Points per Slot"
+   *  since a rack slot isn't obviously a "match"). The underlying `per_match`
+   *  field is UNCHANGED — label only. Defaults to "Points Per Match". */
+  pointsRowTitle?: string;
   scoringEnabled: boolean;
   /** Minimum requirements met — gates the toggle's Scoring segment. Formats with
    *  no hard readiness gate (stroke/rack) leave it at the default `true`. */
@@ -164,6 +174,8 @@ export function GameConfigurationView({
           canEdit={settingsEditable}
           locked={scoringEnabled}
           onChanged={onChanged}
+          matchCount={matchCount}
+          pointsTitle={pointsRowTitle}
         />
 
         {/* OPTIONS — the optional layer: Who's playing · Handicaps (stroke's

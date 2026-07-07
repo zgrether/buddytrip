@@ -16,9 +16,6 @@
 
 import { strokeHoles } from "./matchPlay";
 
-/** Projection is unstable on a handful of holes — suppress it below this thru. */
-export const MIN_PROJECT_THRU = 4;
-
 export type RackMode = "current" | "projected";
 export type Team = "A" | "B";
 
@@ -57,10 +54,12 @@ export function playerStats(
   return { netToPar, netStrokes, gross, thru };
 }
 
-/** Pace-normalized net-to-par: (net ÷ holes) × 18 − course par. null below the
- *  thru threshold (division too unstable to show) or when nothing's played. */
+/** Pace-normalized net-to-par: (net ÷ holes) × 18 − course par. Projects from
+ *  the first hole played — it's a projection, and the user can toggle it off if
+ *  the early-round values swing too much (Zach). null only when nothing's played
+ *  yet (thru 0: no basis to project, and avoids ÷0). */
 export function projectedNetToPar(netStrokes: number, thru: number, coursePar: number): number | null {
-  if (thru < MIN_PROJECT_THRU || thru === 0) return null;
+  if (thru === 0) return null;
   return (netStrokes / thru) * 18 - coursePar;
 }
 

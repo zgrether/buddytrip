@@ -145,11 +145,17 @@ export function RackGameView() {
     return m;
   }, [crew.data]);
 
-  // The two competing teams (sorted by id → A/B, matching the server).
-  const teamIds = useMemo(() => {
-    const ids = [...new Set((assignQ.data ?? []).map((a) => a.team_id as string))].sort();
-    return ids;
-  }, [assignQ.data]);
+  // The two competing teams → A (left) / B (right). Order MUST match the
+  // leaderboard hero so the rack ladder isn't flipped relative to it: the hero
+  // orders teams by created_at (competitions.leaderboard / teams.list), so we
+  // read the SAME created_at-ordered teams.list here (teamsQ) rather than
+  // sorting the assignment team_ids (a random text id → arbitrary order, the
+  // flip this fixes). A/B is display-only — the server rack finish keys results
+  // by team_id and computeRack is symmetric, so side order can't change scoring.
+  const teamIds = useMemo(
+    () => (teamsQ.data ?? []).map((t) => t.id as string),
+    [teamsQ.data]
+  );
   const teamOf = useMemo(() => {
     const m = new Map<string, "A" | "B">();
     for (const a of assignQ.data ?? []) {
@@ -245,6 +251,23 @@ export function RackGameView() {
   // #533 projection (rack) — REUSE the existing rack projection ("if it ended now"
   // = computeRack in "projected" mode), NOT a rebuild. Map A/B → the two team ids.
   const projectedPoints = useMemo(() => computeRack(rackPlayers, "projected", coursePar).points, [rackPlayers, coursePar]);
+
+  // Rack SLOT count = the number of rank-paired 1v1s = min(grouped-A, grouped-B),
+  // mirroring computeRack's `n = min(A.length, B.length)`. Derived from the
+  // GROUPED participants so it grows as the owner builds groups (a 2v2 group → 2
+  // slots) — NOT gated on a full roster and NOT on scores existing (computeRack's
+  // slots need thru>0, so it's 0 during setup). Feeds the settings "Total Points
+  // Available" (points × slots) so it stops reading 0 (Task 3).
+  const rackSlotCount = useMemo(() => {
+    let a = 0;
+    let b = 0;
+    for (const p of participants) {
+      const t = teamOf.get(p.user_id as string);
+      if (t === "A") a += 1;
+      else if (t === "B") b += 1;
+    }
+    return Math.min(a, b);
+  }, [participants, teamOf]);
 
   // ── Foursome views ───────────────────────────────────────────────────
   const groupViews: FoursomeGroupView[] = useMemo(() => {
@@ -589,46 +612,49 @@ export function RackGameView() {
     const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
     const groupCount = groupsQ.data?.groups?.length ?? 0;
     const anyHandicap = handicapPlayers.some((p) => p.strokes > 0);
-    // GROUPINGS (the rack "Matches" builder) + HANDICAPS (the stroke-play per-player
-    // strokes) are both inline accordions — the first Settings items, single-open.
-    // Handicaps is gated until groups exist.
-    const rackSettingsRows = (
-      <>
-        <ChecklistRow
-          icon={Users}
-          title="Groupings"
-          subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
-          state={groupsAssigned ? "resolved" : "empty"}
-          locked={scoringEnabled}
-          expanded={openAccordion === "groupings" && !scoringEnabled}
-          onToggle={!scoringEnabled ? toggleGroupings : undefined}
-          testId="row-groupings"
-        >
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
-            Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
-          </p>
-          <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
-        </ChecklistRow>
-
-        <ChecklistRow
-          icon={SlidersHorizontal}
-          title="Handicaps"
-          subtitle={groupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
-          state={anyHandicap ? "resolved" : "empty"}
-          locked={scoringEnabled}
-          // Gated until groups exist (the ChecklistRow "not available yet" dim); when
-          // ready, it opens INLINE — the same per-player strokes UI stroke play uses.
-          disabled={!groupsAssigned}
-          expanded={openAccordion === "handicaps" && groupsAssigned && !scoringEnabled}
-          onToggle={groupsAssigned && !scoringEnabled ? toggleHandicaps : undefined}
-          testId="row-handicaps"
-        >
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
-            Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
-          </p>
-          <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
-        </ChecklistRow>
-      </>
+    // Settings order (Task 4): GROUPINGS (leading, above Course/Points) → then the
+    // shared Course + "Points per Slot" spine → then the OPTIONS section
+    // { Handicaps, Game Modifiers } via extraRows. GROUPINGS is the rack "Matches"
+    // builder; both accordions stay single-open.
+    const groupingsRow = (
+      <ChecklistRow
+        icon={Users}
+        title="Groupings"
+        subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+        state={groupsAssigned ? "resolved" : "empty"}
+        locked={scoringEnabled}
+        expanded={openAccordion === "groupings" && !scoringEnabled}
+        onToggle={!scoringEnabled ? toggleGroupings : undefined}
+        testId="row-groupings"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
+        </p>
+        <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
+      </ChecklistRow>
+    );
+    // OPTIONS section (extraRows): Handicaps. (Rack has no Game Modifiers — its
+    // format offers none, so that row is correctly absent, like any modifier-less
+    // format.)
+    const optionRows = (
+      <ChecklistRow
+        icon={SlidersHorizontal}
+        title="Handicaps"
+        subtitle={groupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
+        state={anyHandicap ? "resolved" : "empty"}
+        locked={scoringEnabled}
+        // Gated until groups exist (the ChecklistRow "not available yet" dim); when
+        // ready, it opens INLINE — the same per-player strokes UI stroke play uses.
+        disabled={!groupsAssigned}
+        expanded={openAccordion === "handicaps" && groupsAssigned && !scoringEnabled}
+        onToggle={groupsAssigned && !scoringEnabled ? toggleHandicaps : undefined}
+        testId="row-handicaps"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
+        </p>
+        <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
+      </ChecklistRow>
     );
     return (
       <GameConfigurationView
@@ -643,7 +669,13 @@ export function RackGameView() {
         isOwner={isOwner}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        leadingSettingsRows={rackSettingsRows}
+        leadingSettingsRows={groupingsRow}
+        extraRows={optionRows}
+        // Task 3: feed the slot count so "Total Points Available" (points × slots)
+        // isn't stuck at 0. Task 4: rack labels the field "Points per Slot"
+        // (display only — the per_match data model is unchanged).
+        matchCount={rackSlotCount}
+        pointsRowTitle="Points per Slot"
         scoringEnabled={scoringEnabled}
         // Task 2: gate the Setup→Scoring toggle on groups being assigned.
         ready={groupsAssigned}
