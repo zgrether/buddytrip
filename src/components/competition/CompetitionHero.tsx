@@ -209,8 +209,9 @@ export function CompetitionHero({
               />
             </div>
 
-            {/* Below the bar: ONLY the win target (Task 2). */}
-            <p className="mt-2 text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
+            {/* Below the bar: ONLY the win target. Sized as a peer of the
+                mini-bar's labels (13/600), not a tiny afterthought. */}
+            <p className="mt-2 text-center" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
               {clincher
                 ? `Final · ${clincher.name} wins`
                 : pointsAvailable > 0
@@ -342,9 +343,10 @@ export function CollapsedHero({
     padding: "11px 18px",
   };
   const target = (
+    // Normal-case (Task 2 — no all-caps) + bumped to 13/600 so it reads as a
+    // peer of the team-name labels, matching the expanded hero's target line.
     <span
-      className="uppercase"
-      style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".04em", color: "var(--color-bt-text-dim)" }}
+      style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
     >
       {targetLabel}
     </span>
