@@ -145,11 +145,17 @@ export function RackGameView() {
     return m;
   }, [crew.data]);
 
-  // The two competing teams (sorted by id → A/B, matching the server).
-  const teamIds = useMemo(() => {
-    const ids = [...new Set((assignQ.data ?? []).map((a) => a.team_id as string))].sort();
-    return ids;
-  }, [assignQ.data]);
+  // The two competing teams → A (left) / B (right). Order MUST match the
+  // leaderboard hero so the rack ladder isn't flipped relative to it: the hero
+  // orders teams by created_at (competitions.leaderboard / teams.list), so we
+  // read the SAME created_at-ordered teams.list here (teamsQ) rather than
+  // sorting the assignment team_ids (a random text id → arbitrary order, the
+  // flip this fixes). A/B is display-only — the server rack finish keys results
+  // by team_id and computeRack is symmetric, so side order can't change scoring.
+  const teamIds = useMemo(
+    () => (teamsQ.data ?? []).map((t) => t.id as string),
+    [teamsQ.data]
+  );
   const teamOf = useMemo(() => {
     const m = new Map<string, "A" | "B">();
     for (const a of assignQ.data ?? []) {
