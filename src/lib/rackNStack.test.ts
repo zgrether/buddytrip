@@ -33,10 +33,16 @@ describe("playerStats", () => {
 });
 
 describe("projectedNetToPar", () => {
-  it("is null below the thru threshold", () => {
-    expect(projectedNetToPar(12, 3, COURSE_PAR)).toBeNull();
+  it("is null only when nothing is played yet (thru 0)", () => {
+    expect(projectedNetToPar(10, 0, COURSE_PAR)).toBeNull();
   });
-  it("pace-normalizes to 18 once thru ≥ 4", () => {
+  it("projects from the first hole — no minimum thru (Zach: it's a projection)", () => {
+    // 3 holes at 4 net each (12 net) → (12/3)×18 = 72 net = even to par (COURSE_PAR 72).
+    expect(projectedNetToPar(12, 3, COURSE_PAR)).toBeCloseTo(0, 5);
+    // a single hole projects too: net 5 on hole 1 → 5×18 = 90 → +18 to par.
+    expect(projectedNetToPar(5, 1, COURSE_PAR)).toBeCloseTo(90 - COURSE_PAR, 5);
+  });
+  it("pace-normalizes net to 18 holes", () => {
     // even par through 4 (16 net on par-16 front) → projects to even (0).
     const through4Par = PAR.slice(0, 4).reduce((a, p) => a + p, 0); // 16
     expect(projectedNetToPar(through4Par, 4, COURSE_PAR)).toBeCloseTo(0, 5);
@@ -91,8 +97,9 @@ describe("computeRack — current mode", () => {
 });
 
 describe("computeRack — projected mode reorders by pace", () => {
-  it("ranks by projected net-to-par when thru ≥ threshold", () => {
-    // A1: +1 thru 9 → projects ~+2; A2: -1 thru 2 → projection null → falls back to current -1.
+  it("ranks by projected net-to-par (projects from any thru ≥ 1)", () => {
+    // a1: +1 thru 9 → projects (37/9)×18−72 = +2. a2: −1 thru 2 → now projects
+    // (8/2)×18−72 = 0 (no threshold anymore). So projected a2(0) < a1(+2) → a2 first.
     const players: RackPlayer[] = [
       { id: "a1", team: "A", stats: { netToPar: 1, netStrokes: 37, gross: 37, thru: 9 } },
       { id: "a2", team: "A", stats: { netToPar: -1, netStrokes: 8, gross: 8, thru: 2 } },
@@ -100,13 +107,14 @@ describe("computeRack — projected mode reorders by pace", () => {
       { id: "b2", team: "B", stats: { netToPar: 0, netStrokes: 36, gross: 36, thru: 9 } },
     ];
     const cur = computeRack(players, "current", COURSE_PAR);
-    // current: A sorted [-1 (a2), +1 (a1)]
+    // current: A sorted by net-to-par [-1 (a2), +1 (a1)]
     expect(cur.slots[0].a.id).toBe("a2");
     const proj = computeRack(players, "projected", COURSE_PAR);
-    // projected: a2 has no projection (thru 2 → fallback -1); a1 projects ~+2.
-    // a2's value (-1) < a1's (~+2) so a2 still first here — assert it's a valid permutation, no crash.
+    // projected values: a2 = 0, a1 = +2 → a2 still first, but now by its PROJECTION.
     expect(proj.slots).toHaveLength(2);
-    expect(new Set([proj.slots[0].a.id, proj.slots[1].a.id])).toEqual(new Set(["a1", "a2"]));
+    expect(proj.slots[0].a.id).toBe("a2");
+    expect(proj.slots[0].a.value).toBeCloseTo(0, 5);
+    expect(proj.slots[1].a.value).toBeCloseTo(2, 5);
   });
 });
 
