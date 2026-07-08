@@ -46,9 +46,10 @@ describe("StandardGrid — empty (scores-off) preview", () => {
   });
 });
 
-// Spec 5b — multi-tee yardage rows. When teeRows is supplied, the grid renders a
-// checkbox legend + one yardage row per VISIBLE tee (default = chosen + neighbors),
-// replacing the single snapshot Yards row; the chosen tee is highlighted + in play.
+// Spec 5b — multi-tee yardage rows. When teeRows is supplied, the grid renders one
+// yardage row per VISIBLE tee (default = chosen + neighbors), replacing the single
+// snapshot Yards row; the chosen tee is highlighted + in play. The tee SELECTION
+// controls live behind a collapsed-by-default disclosure (tee-display pass).
 describe("StandardGrid — multi-tee yardage rows (5b)", () => {
   const teeRows: TeeRow[] = [
     { name: "Blue", color: "#3b82f6", yards: [410, 165, 540, 430], total: 1545, isChosen: false, defaultVisible: true },
@@ -59,11 +60,14 @@ describe("StandardGrid — multi-tee yardage rows (5b)", () => {
     <StandardGrid units={units} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} />
   );
 
-  it("renders the checkbox legend listing every tee (even hidden ones)", () => {
-    expect(html).toContain("tee-legend");
-    expect(html).toContain("Blue");
-    expect(html).toContain("White");
-    expect(html).toContain("Red"); // in the legend even though its row is hidden by default
+  it("collapses the tee selector behind a disclosure, summarizing the chosen tee", () => {
+    expect(html).toContain("tee-legend-toggle"); // the disclosure trigger (collapsed by default)
+    expect(html).toContain("Tees"); // the trigger label
+    expect(html).toContain("White · in play"); // chosen tee shown in the trigger summary
+    // The full per-tee selection is behind the collapsed disclosure — a tee that is
+    // neither chosen nor rendered in the grid (Red, default-hidden) is absent from
+    // the initial static markup until the disclosure is expanded.
+    expect(html).not.toContain("Red");
   });
 
   it("renders a yardage row for each DEFAULT-VISIBLE tee, and hides the rest", () => {
