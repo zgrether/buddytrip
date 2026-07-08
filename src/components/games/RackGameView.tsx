@@ -543,6 +543,11 @@ export function RackGameView() {
   // Entry: the tapped foursome's stroke-play card.
   if (entryGroupId && gid) {
     const members = participants.filter((p) => p.play_group_id === entryGroupId);
+    // Score-entry access (Task 2 — reflect the server rule): owner/delegate score
+    // any cart; a member scores only THEIR OWN cart. Tapping a cart you can't
+    // score lands on the read-only scorecard (like a locked/posted card), never a
+    // dead entry screen. The SERVER (canWriteScore + RLS) is the real gate.
+    const canScoreGroup = canEdit || (!!me && members.some((m) => (m.user_id as string) === me.id));
     const groupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
     const ps: Participant[] = members.map((p) => {
       const id = p.user_id as string;
@@ -559,7 +564,10 @@ export function RackGameView() {
     // Locked (posted) → the read-only scorecard grid (#7). Otherwise the editable
     // entry, with a grid view toggled by the top-right scorecard icon (onOpenGrid).
     // Correcting re-opens editing (locked=false).
-    if (locked || entryView === "grid") {
+    // Read-only scorecard when the card is locked/posted, the grid is toggled on,
+    // OR the viewer can't score this cart (Task 2) — no tap-to-edit in any of those.
+    const readOnly = locked || !canScoreGroup;
+    if (readOnly || entryView === "grid") {
       return (
         <div className="flex flex-col" style={{ height: "100vh" }}>
           <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
@@ -575,7 +583,7 @@ export function RackGameView() {
               values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
               direction="low_wins"
               pips={groupPips}
-              onCellTap={locked ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
+              onCellTap={readOnly ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
             />
           </div>
         </div>

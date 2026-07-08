@@ -2,15 +2,21 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, canEditGame } from "../middleware";
+import { canWriteScore } from "../lib/scoreAccess";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 /**
  * scores — per-unit score entry for a game (Slice A: per-hole strokes).
  *
- * ANY trip member may enter a score for ANY participant — anyone in the group
- * can keep the card; we don't force everyone phones-out (engine decision #7).
- * `submitted_by` records who typed it for audit only — it is NEVER a permission
- * gate. So this is `requireTripMember`, not Organizer+.
+ * SCOPED score-entry permissions (mig 072 — SERVER-enforced, RLS-backed):
+ *   Owner / Organizer (co-admin) / delegate-of-this-game → any unit.
+ *   Member → only the match/group they participate in (per-format `canWriteScore`
+ *            → `memberCanScoreUnit`).
+ *   Non-participant member → nothing.
+ * Hiding the entry button isn't enough (anyone can call this mutation directly),
+ * so the guard lives here AND in the score_entries RLS. `submitted_by` records who
+ * typed it for audit only. `requireTripMember` gates trip membership; `canWriteScore`
+ * gates the unit.
  */
 export const scoresRouter = router({
   // upsertEntry — set one cell (game × participant × unit). Idempotent on the
@@ -58,6 +64,26 @@ export const scoresRouter = router({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Enable scoring before entering scores.",
+        });
+      }
+
+      // Score-entry permissions (SERVER — the real gate; the UI only reflects it).
+      // Owner / co-admin / delegate-of-this-game → any unit; a plain member → only
+      // the match/group they participate in (per-format, `memberCanScoreUnit`).
+      // Anyone else (incl. a non-participant of the game) is rejected — hiding the
+      // button isn't enough, this rejects the raw mutation too.
+      if (
+        !(await canWriteScore(
+          ctx,
+          ctx.tripId!,
+          input.gameId,
+          input.participantId,
+          input.participantType ?? "user",
+        ))
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only enter scores for your own match or group.",
         });
       }
 
@@ -126,6 +152,9 @@ export const scoresRouter = router({
         gameId: z.string(),
         participantId: z.string().min(1),
         unitLabel: z.string().min(1).max(16),
+        // Same scoring unit as upsertEntry — needed to resolve unit membership for
+        // the permission check. Defaults to 'user' (singles/stroke/rack).
+        participantType: z.enum(["user", "play_group"]).optional(),
       })
     )
     .use(requireTripMember)
@@ -138,6 +167,23 @@ export const scoresRouter = router({
         .maybeSingle();
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+
+      // Same scoped gate as upsertEntry — clearing a cell is a score write too, so
+      // a member can only clear scores in their own unit (owner/delegate anywhere).
+      if (
+        !(await canWriteScore(
+          ctx,
+          ctx.tripId!,
+          input.gameId,
+          input.participantId,
+          input.participantType ?? "user",
+        ))
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only clear scores for your own match or group.",
+        });
       }
 
       const { error } = await ctx.supabase

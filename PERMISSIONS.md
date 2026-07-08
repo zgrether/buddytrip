@@ -153,9 +153,33 @@ who's in, what they're called, what role they hold — is the Owner's.
 | **Edit / configure a game** (status incl. drop, points distribution, course, participants) | ✓ | ✓ | **game organizer of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
 | **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **game organizer of *that* game** | `games.setManualResults` / `finish` |
 | **RUN: post results / open score correction** | ✓ | **—** | **game organizer of *that* game** | `games.post` / `openCorrection` *(Owner or game-delegate only — **not** a plain Organizer)* |
-| Enter a per-hole score (until posted) | ✓ | ✓ | ✓ | `scores.upsertEntry` / `deleteEntry` *(any member; **blocked** once the game is posted & not in correction)* |
+| Enter a per-hole score (until posted) | ✓ (any unit) | ✓ (any unit) | ✓ (any unit in *their* game) | `scores.upsertEntry` / `deleteEntry` — **scoped** (see below); **blocked** once the game is posted & not in correction |
+| ↳ a plain **Member** | their own **unit** only | — | — | member scores only the match/group they play in; a non-participant scores nothing |
 | Delegate / revoke a game organizer | ✓ | ✓ | — | `games.addOrganizer` / `removeOrganizer` *(trip staff only — a delegate can't sub-delegate)* |
 | View who runs a game | ✓ | ✓ | ✓ | `games.listOrganizers` |
+
+> **Score-entry is SCOPED (mig 072 — this SUPERSEDES the old "any member" rule).**
+> Entering/clearing a per-hole score (`scores.upsertEntry`/`deleteEntry`) is gated
+> to a three-tier model, enforced **server-side** (the tRPC guard `canWriteScore`
+> **and** the `score_entries` write RLS via `can_score_unit()` — hiding the button
+> is not enough, anyone can call the API directly):
+> - **Owner / Organizer (comp owner/co-admin)** → any unit, any game (`canEditGame`).
+> - **Delegate of *that* game** → any unit in that game (game-isolated).
+> - **Member** → only the **unit they participate in**; a **non-participant** member
+>   scores nothing.
+>
+> The "unit" is resolved per format from `game_matches` + `game_participants`
+> (`src/lib/scoreUnit.ts::memberCanScoreUnit`, mirrored by the SQL `can_score_unit`):
+> **stroke** = the individual player (own row only) · **1v1 match** = the match's
+> two players · **rack** = the play_group (cart) · **2v2 match** = the match's two
+> side groups. The UI reflects this: a unit you can't score taps through to the
+> read-only **scorecard**, not a dead entry screen (owner/delegate keep entry).
+>
+> **Deferred (needs a data link that doesn't exist):** singles (1v1) matches imply
+> a foursome (~2 matches per cart), but there's no `match ↔ foursome` link, so we
+> can't yet let one cart-mate keep BOTH matches' cards. For now a 1v1 member scores
+> **only their own match**. Building it needs a "which matches form a foursome"
+> link; the unit check is already the clean boundary to widen.
 
 > **Roster-removal lock once scoring starts (team-identity).** Once a competition
 > has **any entered score** (`score_entries` exists for any of its games), its team
@@ -203,9 +227,11 @@ who's in, what they're called, what role they hold — is the Owner's.
 > return FORBIDDEN) until the owner/delegate opens correction; results stay
 > visible to everyone throughout.
 
-> **Scoring is Organizer+ today** (`setPlacements`). There is no member-facing
-> "enter your own score" path yet — the intent (see Resolved notes) is for any
-> member to score games they're in, once the scoring engine is rebuilt.
+> **Per-hole scoring is member-facing and SCOPED** (`scores.upsertEntry`/
+> `deleteEntry`, mig 072): a member enters scores for the match/group they play
+> in; owner/organizer/delegate score more broadly. See the scoped-model note under
+> the competition table above. (Non-golf placement scoring — `games.post` /
+> `setManualResults` — stays owner/organizer/delegate.)
 
 ### News / trip board — `news`
 
@@ -288,11 +314,13 @@ only listed view + add).
   planned. `trip_members.status` stays purely as Owner-managed membership state
   (in / invited / out); the only "RSVP" left in the code is comments noting its
   removal. No action.
-- **Score entry — intent: any member.** A member should be able to enter/edit
-  the score of any game they're in. This is **not built yet** — there's no
-  scores router; today's only scoring path is `events.setPlacements`
-  (Organizer+). Captured here as the target permission for the scoring engine
-  when it ships (member-scoped to games they belong to).
+- **Score entry — SHIPPED and scoped (mig 072).** The `scores` router
+  (`upsertEntry`/`deleteEntry`) is live and SERVER-scoped: owner/organizer/
+  delegate score broadly; a member scores only the match/group they play in; a
+  non-participant scores nothing. This SUPERSEDED the earlier "intent: any member"
+  target (which was intentionally tightened — anyone-scores-anything was a score-
+  integrity risk at the real event). See the scoped-model note under the
+  competition table.
 - **Add expense — any member.** Confirmed; matches `expenses.create`
   (`requireTripMember`).
 
