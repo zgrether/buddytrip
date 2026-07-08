@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronDown, Flag } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { Avatar } from "@/components/Avatar";
+import { Checkbox } from "./Checkbox";
 import { GolfChip } from "./GolfChip";
 import {
   scoreCellKey,
@@ -80,8 +82,12 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
   // Multi-tee rows (Spec 5b): user overrides on top of each row's default
   // visibility; the CHOSEN tee is always shown (non-hidable — it's in play).
   const multiTee = teeRows.length > 0;
+  // The tee selector is collapsed by default (it's setup busy-ness, not scoring);
+  // the chosen tee still shows in the trigger summary and in the grid below.
+  const [teePanelOpen, setTeePanelOpen] = useState(false);
   const [teeOverrides, setTeeOverrides] = useState<Record<string, boolean>>({});
   const teeVisible = (row: TeeRow) => row.isChosen || (teeOverrides[row.name] ?? row.defaultVisible);
+  const chosenTee = teeRows.find((r) => r.isChosen);
   const toggleTee = (row: TeeRow) =>
     setTeeOverrides((o) => ({ ...o, [row.name]: !(o[row.name] ?? row.defaultVisible) }));
   // A tee's front/back/total yardage — its yards align with `units` by index.
@@ -160,33 +166,64 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
 
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
-      {/* Multi-tee checkbox legend (Spec 5b) — reveal/hide each tee's yardage row.
-          The chosen tee is checked + disabled (in play, never hidable). Replaces the
-          single-tee header when tee rows are present. */}
+      {/* Multi-tee selector (Spec 5b) — reveal/hide each tee's yardage row.
+          Collapsed behind a disclosure (mirrors the leaderboard's "Game by game"
+          PointsMatrix toggle) so the selection controls aren't always taking up
+          space; the chosen tee shows in the trigger and always renders in the grid.
+          The chosen tee is checked + disabled (in play, never hidable). */}
       {multiTee ? (
-        <div
-          className="flex flex-wrap items-center gap-x-3 gap-y-1.5"
-          style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-          data-testid="tee-legend"
-        >
-          {teeRows.map((row) => {
-            const on = teeVisible(row);
-            return (
-              <label key={row.name} className="flex items-center gap-1.5" style={{ cursor: row.isChosen ? "default" : "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={on}
-                  disabled={row.isChosen}
-                  onChange={() => toggleTee(row)}
-                  style={{ accentColor: "var(--color-bt-accent)" }}
-                />
-                <span style={{ width: 9, height: 9, borderRadius: "50%", background: row.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
-                <span style={{ fontSize: 12, fontWeight: row.isChosen ? 700 : 500, color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
-                  {row.name}{row.isChosen ? " · in play" : ""}
+        <div style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+          <button
+            type="button"
+            onClick={() => setTeePanelOpen((o) => !o)}
+            aria-expanded={teePanelOpen}
+            className="flex w-full items-center gap-2"
+            style={{ padding: "8px 12px" }}
+            data-testid="tee-legend-toggle"
+          >
+            <Flag size={13} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Tees
+            </span>
+            {chosenTee && (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: chosenTee.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+                <span className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)" }}>
+                  {chosenTee.name} · in play
                 </span>
-              </label>
-            );
-          })}
+              </span>
+            )}
+            <ChevronDown
+              size={16}
+              className="ml-auto transition-transform"
+              style={{ color: "var(--color-bt-text-dim)", transform: teePanelOpen ? "rotate(180deg)" : undefined, flexShrink: 0 }}
+            />
+          </button>
+          {teePanelOpen && (
+            <div
+              className="flex flex-wrap items-center gap-x-4 gap-y-2.5"
+              style={{ padding: "2px 12px 10px" }}
+              data-testid="tee-legend"
+            >
+              {teeRows.map((row) => {
+                const on = teeVisible(row);
+                return (
+                  <div key={row.name} className="flex items-center gap-1.5">
+                    <Checkbox
+                      on={on}
+                      disabled={row.isChosen}
+                      onClick={() => toggleTee(row)}
+                      label={`Show ${row.name} tee yardages`}
+                    />
+                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: row.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: row.isChosen ? 700 : 500, color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
+                      {row.name}{row.isChosen ? " · in play" : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : tee ? (
         <div className="flex items-center gap-2" style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
