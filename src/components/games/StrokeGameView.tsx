@@ -18,6 +18,7 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import type { StrokeStanding } from "@/lib/strokePlay";
@@ -62,6 +63,7 @@ export function StrokeGameView() {
   // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
   // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
   const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
+  const me = useCurrentUser();
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
@@ -142,6 +144,14 @@ export function StrokeGameView() {
     }
     return null;
   }, [createdGame, urlGameId, resumeRoster, memberById]);
+
+  // Score-entry access (Task 2 — reflect the server rule). Stroke's unit is the
+  // individual player, so a plain member scores only if they're a participant
+  // (their own row); owner/delegate score everyone. A non-participant lands on the
+  // read-only scorecard, never a dead entry screen. The SERVER (canWriteScore +
+  // RLS) is the real gate; this is UX. (Finer per-row gating so a member can't tap
+  // a co-player's cell in the shared card is a follow-up — the server rejects it.)
+  const canScoreStroke = canEdit || (!!me && resumeRoster.includes(me.id));
 
   // §3: the COURSE-aware scorecard — par + stroke index from the applied course
   // snapshot (falls back to the 18-hole template default when no course). The
@@ -503,10 +513,13 @@ export function StrokeGameView() {
             onScorecard={() => setView("grid")}
             onPlayAgain={playAgain}
           />
-        ) : view === "grid" ? (
+        ) : view === "grid" || !canScoreStroke ? (
+          // Read-only scorecard when the grid is toggled on OR the viewer can't
+          // score this game (Task 2 — a non-participant, non-owner/delegate member
+          // lands here instead of a dead entry screen; the SERVER is the real gate).
           <div className="flex h-full flex-col">
             <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              <button onClick={backFromGrid} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+              <button onClick={canScoreStroke ? backFromGrid : () => router.back()} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
             </div>
             <div className="min-h-0 flex-1">
@@ -519,10 +532,10 @@ export function StrokeGameView() {
                 direction="low_wins"
                 pips={entryPips}
                 saveStatus={saveStatus}
-                onCellTap={(label) => {
+                onCellTap={canScoreStroke ? (label) => {
                   setCurrentHole(Number(label) || 1);
                   backFromGrid();
-                }}
+                } : undefined}
               />
             </div>
           </div>

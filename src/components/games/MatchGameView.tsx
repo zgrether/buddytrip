@@ -941,13 +941,24 @@ export function MatchGameView() {
 
   // ── Single-match scoring (one match at a time) ──
   if (screen === "score" && selectedGroup) {
+    // Score-entry access (Task 2 — reflect the server rule): owner/delegate score
+    // any match; a member scores only THEIR OWN match (both players/sides).
+    // Tapping a match you can't score lands on the read-only scorecard (like a
+    // locked/posted match), never a dead entry screen. SERVER is the real gate.
+    const meId = me?.id;
+    const inThisMatch = !!meId && (sided
+      ? (membersOfSide.get(selectedGroup.a.id) ?? []).includes(meId) ||
+        (membersOfSide.get(selectedGroup.b.id) ?? []).includes(meId)
+      : selectedGroup.a.id === meId || selectedGroup.b.id === meId);
+    const canScoreMatch = canEdit || inThisMatch;
+    const readOnly = locked || !canScoreMatch;
     return (
       <div className="fixed inset-0 z-50">
-        {view === "grid" ? (
+        {view === "grid" || readOnly ? (
           <div className="flex h-full flex-col">
             <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              {/* When locked, the grid is the read-only result — back returns to
-                  the hub and cells don't open editable entry (#7). */}
+              {/* Read-only when locked OR the viewer can't score this match — back
+                  returns to the hub and cells don't open editable entry (#7). */}
               <button onClick={matchBack} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{locked ? "Scorecard · Final" : "Scorecard"}</span>
             </div>
@@ -961,7 +972,7 @@ export function MatchGameView() {
                 direction="low_wins"
                 pips={entryPips}
                 saveStatus={saveStatus}
-                onCellTap={locked ? undefined : (label) => {
+                onCellTap={readOnly ? undefined : (label) => {
                   setCurrentHole(Number(label) || 1);
                   matchBack();
                 }}
