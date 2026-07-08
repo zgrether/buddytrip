@@ -11,6 +11,7 @@ import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
+import { SettingsColumn } from "@/components/games/SettingsColumn";
 import {
   PointStepper,
   FormatSheet,
@@ -98,31 +99,33 @@ export function NonGolfConfigurationView({
             differ (no course/handicaps/matches; it HAS Competition Format + Game
             Value), but the grouping + treatment match golf so they read as one page
             family. Shared primitives (identity, Rules, toggle, Danger Zone, explainer,
-            ZoneHeader) inherit the golf treatment — nothing re-implemented. */}
+            ZoneHeader) inherit the golf treatment — nothing re-implemented.
 
-        {/* Identity — name (tap-to-edit) + assigned-to (same as golf). */}
-        <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
+            Spacing is owned by SettingsColumn (one home) — the SAME uniform-gap rule
+            golf + match use, so no format's settings look different. Rows carry NO
+            margin of their own. */}
+        <SettingsColumn>
+          {/* Identity — name (tap-to-edit) + assigned-to (same as golf). */}
+          <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
 
-        {/* Format explainer — the compact "how you compete" block that pairs directly
-            ABOVE Rules (this is the slot reserved for it). */}
-        <div className="mt-6">
-          <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-        </div>
+          {/* Format explainer — the compact "how you compete" block that pairs directly
+              ABOVE Rules (this is the slot reserved for it). Extra mt-6 for a larger
+              break under the identity header (matches golf + match). */}
+          <div className="mt-6">
+            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+          </div>
 
-        {/* RULES OF THE DAY — at the TOP (matching golf). Saves on blur; the
-            carved-out exception stays editable in scoring mode (notes, not
-            game-altering) — so it keeps plain canEdit. */}
-        <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />
+          {/* RULES OF THE DAY — at the TOP (matching golf). Saves on blur; the
+              carved-out exception stays editable in scoring mode (notes, not
+              game-altering) — so it keeps plain canEdit. */}
+          <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />
 
-        {/* GAME MANAGEMENT — a labeled peer section + the single Setup/Scoring toggle
-            (owner/delegate only). ZoneHeader supplies the caption, so the panel's own
-            caption is suppressed (hideLabel) to avoid a double label — matching golf. */}
-        {canEdit && (
-          <>
-            <div className="mt-6">
+          {/* GAME MANAGEMENT — a labeled peer section + the single Setup/Scoring toggle
+              (owner/delegate only). ZoneHeader supplies the caption, so the panel's own
+              caption is suppressed (hideLabel) to avoid a double label — matching golf. */}
+          {canEdit && (
+            <>
               <ZoneHeader>Game Management</ZoneHeader>
-            </div>
-            <div className="mt-2.5">
               <GameManagementPanel
                 mode={scoringEnabled ? "scoring" : "setup"}
                 ready={ready}
@@ -131,38 +134,34 @@ export function NonGolfConfigurationView({
                 pending={busy}
                 hideLabel
               />
-            </div>
-          </>
-        )}
+            </>
+          )}
 
-        {/* #501: live-game lock banner — the settings below are frozen until the
-            owner/delegate flips the toggle above back to Setup (after the toggle,
-            matching golf). */}
-        {scoringEnabled && canEdit && <ScoringLockBanner />}
+          {/* #501: live-game lock banner — the settings below are frozen until the
+              owner/delegate flips the toggle above back to Setup (after the toggle,
+              matching golf). */}
+          {scoringEnabled && canEdit && <ScoringLockBanner />}
 
-        {/* SETTINGS — non-golf's real, different content: Competition Format ("how
-            it's played") + Game Value (points-for-the-match). Locked in scoring mode. */}
-        <div className="mt-6">
+          {/* SETTINGS — non-golf's real, different content: Competition Format ("how
+              it's played") + Game Value (points-for-the-match). Locked in scoring mode. */}
           <ZoneHeader>Settings</ZoneHeader>
-        </div>
-        <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} locked={scoringEnabled} onChanged={onChanged} />
-        {/* The points payload, by the competition's scoring model. Locked in scoring —
-            #512 Option B: dim the read-only panel so it reads as frozen. */}
-        {scoringModel === "match_play" ? (
-          <div className="mt-2" style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
-            <MatchValueStepper tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
-          </div>
-        ) : (
-          <div className="mt-2" style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
-            <FormatPointsPanel tripId={tripId} game={game} canEdit={settingsEditable} />
-          </div>
-        )}
+          <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} locked={scoringEnabled} onChanged={onChanged} />
+          {/* The points payload, by the competition's scoring model. Locked in scoring —
+              #512 Option B: dim the read-only panel so it reads as frozen. */}
+          {scoringModel === "match_play" ? (
+            <div style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
+              <MatchValueStepper tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
+            </div>
+          ) : (
+            <div style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
+              <FormatPointsPanel tripId={tripId} game={game} canEdit={settingsEditable} />
+            </div>
+          )}
 
-        {/* Per-game danger zone — owner-only (reset scores / reset settings / delete).
-            Dimmed-header + disabled wholesale in scoring mode (#501, shared treatment)
-            — switch to Setup to manage it. */}
-        {isOwner && (
-          <div className="mt-6">
+          {/* Per-game danger zone — owner-only (reset scores / reset settings / delete).
+              Dimmed-header + disabled wholesale in scoring mode (#501, shared treatment)
+              — switch to Setup to manage it. */}
+          {isOwner && (
             <GameDangerZone
               tripId={tripId}
               gameId={game.id}
@@ -171,8 +170,8 @@ export function NonGolfConfigurationView({
               onDeleted={onDeleted}
               disabled={scoringEnabled}
             />
-          </div>
-        )}
+          )}
+        </SettingsColumn>
       </div>
     </div>
   );
@@ -212,7 +211,7 @@ function CompetitionFormatRow({
         onClick={() => canEdit && setOpen(true)}
         disabled={!canEdit}
         // #512 Option B: live-locked → dim + a lock icon in place of the chevron.
-        className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+        className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: locked ? 0.55 : undefined }}
         data-testid="row-competition-format"
       >
