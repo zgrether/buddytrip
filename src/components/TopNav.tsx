@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Pin, MessageCircle, Megaphone, ChevronDown, Zap } from "lucide-react";
+import { Pin, MessageCircle, Megaphone, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
@@ -240,20 +240,9 @@ export const TopNav: FC<TopNavProps> = ({
           />
         )}
 
-        {/* Quick Game ⚡ — context-free stroke-play, fire from anywhere.
-            Global (no trip needed); local-storage backed (Slice A2). */}
-        <ToolButton
-          icon={Zap}
-          label="Quick Game"
-          count={0}
-          badgeBg="var(--color-bt-accent)"
-          onClick={() => {
-            onDismissPanels?.();
-            router.push("/quick-game");
-          }}
-          ariaLabel="Quick game"
-          testId="quick-game-button"
-        />
+        {/* Quick Game moved OUT of the app header (trip/competition-scoped chrome)
+            to the user's dashboard, where a scratch game belongs — it's a
+            user-level action, not trip context. See the dashboard strip. */}
 
         {/* Feedback — beta-only outbound channel. Slight teal resting bg
             so it reads as a distinct CTA in the tool cluster without
