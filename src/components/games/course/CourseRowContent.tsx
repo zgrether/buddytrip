@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X, ClipboardList, ChevronRight } from "lucide-react";
+import { Check, X, Table2, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { gameHref } from "@/lib/gameRoutes";
@@ -141,7 +141,7 @@ function ScorecardPreviewButton({ onClick }: { onClick: () => void }) {
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left"
       style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
-      <ClipboardList size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+      <Table2 size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
       <span className="flex-1 text-sm" style={{ color: "var(--color-bt-text)" }}>Preview scorecard</span>
       <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
     </button>

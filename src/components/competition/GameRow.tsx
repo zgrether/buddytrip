@@ -3,7 +3,7 @@
 import { createElement } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Radio, Flag, Swords, Layers, Gamepad2, ClipboardList } from "lucide-react";
+import { Radio, Flag, Swords, Layers, Gamepad2, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
@@ -308,7 +308,7 @@ export function GameRow({
               router.push(scorecardHref);
             }}
           >
-            <ClipboardList size={15} />
+            <Table2 size={15} />
           </span>
         ) : (
           <span
@@ -322,7 +322,7 @@ export function GameRow({
             }}
             title="No course set"
           >
-            <ClipboardList size={15} />
+            <Table2 size={15} />
           </span>
         ))}
 
