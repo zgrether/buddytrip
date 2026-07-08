@@ -13,6 +13,17 @@ import { buildScorecardSchema, composeTwoNines, validateStrokeIndex, type Snapsh
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { assertGameReady } from "../lib/gameReadiness";
+import { computeConfigHash } from "@/lib/configHash";
+
+/**
+ * The game-row columns that constitute CONFIG (fingerprinted by `configHash`).
+ * Deliberately EXCLUDES `created_at` (immutable) and anything score-derived, so
+ * entering a score never churns the hash. Groupings/matchups/handicaps live in
+ * child tables (game_participants / play_groups / matches) and are folded in
+ * alongside these — see `configHash` below.
+ */
+const GAME_CONFIG_COLS =
+  "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -184,6 +195,66 @@ export const gamesRouter = router({
           ).data ?? [];
 
       return { ...game, participants };
+    }),
+
+  // configHash — any trip member. A CHEAP change-signal for game-state sync: a
+  // deterministic fingerprint of the game's CONFIG (modifiers/rules/settings/
+  // course/status + groupings + matchups + handicaps), read on the score-poll
+  // tick so a remote device can tell "did the config change?" without refetching
+  // the whole config every poll. It refetches the full config (getById + matches/
+  // playGroups) ONLY when this hash differs from the one it holds — the efficiency
+  // win. Returns just the short hash string (the heavy config is never shipped
+  // here). See src/lib/configHash.ts for why a hash beats a manual version bump.
+  //
+  // The child-table config lives in game_participants (roster + play_group_id +
+  // handicap_strokes), play_groups (2v2 side containers + handicaps), and matches
+  // (matchup structure). Score-DERIVED fields — score_entries, matches.result/
+  // margin/status — are excluded on purpose so entering scores never churns the
+  // config hash (that would defeat the "refetch only when config changed" goal).
+  // All reads run under the caller's RLS context, so the fingerprint reflects
+  // exactly the config that getById would return to THIS member.
+  configHash: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const [gameRes, partsRes, groupsRes, matchesRes] = await Promise.all([
+        ctx.supabase
+          .from("games")
+          .select(GAME_CONFIG_COLS)
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        ctx.supabase
+          .from("game_participants")
+          .select("user_id, play_group_id, team_id, handicap_strokes")
+          .eq("game_id", input.gameId)
+          .order("user_id", { ascending: true }),
+        ctx.supabase
+          .from("play_groups")
+          .select("id, display_name, handicap_strokes")
+          .eq("game_id", input.gameId)
+          .order("id", { ascending: true }),
+        ctx.supabase
+          .from("matches")
+          .select("id, play_group_id, match_number, display_order, side_a, side_b")
+          .eq("game_id", input.gameId)
+          .order("id", { ascending: true }),
+      ]);
+      if (gameRes.error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${gameRes.error.message}` });
+      }
+      if (!gameRes.data) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      // Ordered arrays (by id/user_id) + canonical (sorted-key) hashing make the
+      // fingerprint stable regardless of DB row-return order.
+      const hash = computeConfigHash({
+        game: gameRes.data,
+        participants: partsRes.data ?? [],
+        groups: groupsRes.data ?? [],
+        matches: matchesRes.data ?? [],
+      });
+      return { hash };
     }),
 
   // addParticipants — Owner/Organizer. 2–4 users, individual (no side/team).

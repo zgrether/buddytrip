@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -184,7 +185,25 @@ export function MatchGameView() {
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
   const teeRows = useScorecardTeeRows(tripId, gameQ.data);
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
-  const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  // Scores are STATE — poll (~20s, paused when tab hidden) so remote entries
+  // reflect on this open board (game-state sync). `loadedValues` is a memo of
+  // this query merged UNDER the local `values` (mergedFor), so the poll refreshes
+  // others' scores while the active enterer's local edits still win.
+  const scoresQ = trpc.scores.listByGame.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
+
+  // Config sync: on a config change from another device (matchups reassigned,
+  // side handicaps, modifiers/rules, course, go-live, finish), silently refetch
+  // this game's config so members converge. Match config spans the game row +
+  // the matches table → invalidate both.
+  const onConfigChanged = useCallback(() => {
+    if (!tripId || !gameId) return;
+    void utils.games.getById.invalidate({ tripId, gameId });
+    void utils.matches.listByGame.invalidate({ tripId, gameId });
+  }, [utils, tripId, gameId]);
+  useConfigSync(tripId, gameId, !!gameId, onConfigChanged);
 
   // Format: the resumed game's type is authoritative; a brand-new game (no game
   // yet) reads the `?format=doubles` hint. `sided` switches the whole flow
