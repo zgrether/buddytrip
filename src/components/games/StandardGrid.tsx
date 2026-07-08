@@ -241,11 +241,22 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                 const valColor = row.isChosen ? "var(--color-bt-text)" : "var(--color-bt-text-dim)";
                 // The chosen row gets a left accent rail on the sticky name cell
                 // (inset shadow — no layout shift), so it's unmistakable at a glance.
+                // Its fill (accent-faint) is TRANSLUCENT, so the sticky column must
+                // composite it over an OPAQUE surface — otherwise the yardage cells
+                // scrolling underneath bleed through the frozen tee-name cell. Layer
+                // the tint over base (matches the row, which sits on base) so it
+                // masks cleanly at every scroll position.
                 const nameStyle = {
                   ...nameCell,
                   background: zebraBg,
                   padding: "0 10px",
-                  ...(row.isChosen ? { boxShadow: "inset 3px 0 0 var(--color-bt-accent)" } : {}),
+                  ...(row.isChosen
+                    ? {
+                        background:
+                          "linear-gradient(var(--color-bt-accent-faint), var(--color-bt-accent-faint)), var(--color-bt-base)",
+                        boxShadow: "inset 3px 0 0 var(--color-bt-accent)",
+                      }
+                    : {}),
                 } as React.CSSProperties;
                 return (
                   <div key={row.name} className="flex" style={{ height: 26, background: zebraBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }} data-testid={`tee-row-${row.name}`}>
