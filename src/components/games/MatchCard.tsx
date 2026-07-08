@@ -1,6 +1,7 @@
 "use client";
 
 import { matchState, type HoleResult } from "@/lib/matchPlay";
+import { teamTextColor } from "@/lib/teamTextColor";
 import type { Participant } from "./types";
 
 /**
@@ -128,7 +129,7 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
   return (
     <div className="flex items-center justify-center" style={{ width: 56, flexShrink: 0, background: active ? color : "transparent" }}>
       {(active || square) && (
-        <span style={{ fontSize: closed && active ? 14 : 15, fontWeight: 800, color: active ? "#fff" : NEU_HALF, whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
           {text}
         </span>
       )}

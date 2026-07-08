@@ -3,6 +3,7 @@
 import { Mail } from "lucide-react";
 import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
 import { initialsFor } from "@/lib/initials";
+import { teamTextColor } from "@/lib/teamTextColor";
 
 /**
  * Avatar — renders a user's chosen Tabler icon (if `avatarIcon` is set)
@@ -99,9 +100,10 @@ export function Avatar({
     : SIZE_MAP[size];
   const isResponsive = size === "sm" && fixedPx === null;
 
-  // Competition context (team color set) → white foreground on team-color bg.
-  // Accent ("filled") → dark foreground on a solid teal circle.
-  // Default → teal (or muted grey) foreground on a neutral raised surface.
+  // Competition context (team color set) → readable foreground computed for the
+  // team color (dark on light team colors, light on dark — teamTextColor is the
+  // one shared contrast helper). Accent ("filled") → dark foreground on a solid
+  // teal circle. Default → teal (or muted grey) foreground on a neutral raised surface.
   const competitionMode = !!teamColor;
   const background = competitionMode
     ? (teamColor as string)
@@ -109,7 +111,7 @@ export function Avatar({
       ? "var(--color-bt-accent)"
       : "var(--color-bt-card-raised)";
   const foreground = competitionMode
-    ? "#ffffff"
+    ? teamTextColor(teamColor)
     : accent
       ? "#0d1f1a"
       : muted

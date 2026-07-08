@@ -2,6 +2,7 @@
 
 import { TrendingUp } from "lucide-react";
 import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
+import { teamTextColor } from "@/lib/teamTextColor";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -166,12 +167,14 @@ function ScoreBlock({ value, thru, lead, color }: { value: number; thru: number;
   return (
     <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: lead ? "#fff" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
           {fmtToPar(value)}
         </span>
       </div>
       <div className="flex items-center justify-center" style={{ height: SECONDARY }}>
-        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? "rgba(255,255,255,0.85)" : "var(--color-bt-text-dim)" }}>
+        {/* Secondary label on the leader's team color — same computed contrast
+            color, slightly muted so it reads as a sub-label (not full-strength). */}
+        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? teamTextColor(color) : "var(--color-bt-text-dim)", opacity: lead ? 0.85 : undefined }}>
           THRU {thru}
         </span>
       </div>
