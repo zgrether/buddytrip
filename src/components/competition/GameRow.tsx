@@ -2,7 +2,7 @@
 
 import { createElement } from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Radio, Flag, Swords, Layers, Gamepad2, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
@@ -22,6 +22,18 @@ export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 function openGamePanel(pathname: string, gameId: string, settings: boolean) {
   const q = `?game=${gameId}${settings ? "&settings=1" : ""}`;
   window.history.pushState(null, "", `${pathname}${q}`);
+}
+
+/**
+ * Open the scorecard as an OVERLAY over the board (not a route navigation): push
+ * `?scorecard=<id>` onto the current url via the History API — Next syncs it to
+ * `useSearchParams` with no round-trip, so the board stays warm underneath and
+ * CompetitionFace renders the scorecard Sheet on top. Back pops this entry.
+ * (Mirrors `openGamePanel`; the standalone `/games/scorecard` route stays as the
+ * cold deep-link fallback.)
+ */
+function openScorecardOverlay(pathname: string, gameId: string) {
+  window.history.pushState(null, "", `${pathname}?scorecard=${gameId}`);
 }
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
@@ -142,7 +154,6 @@ export function GameRow({
   // Once scoring is on (live/final), everyone gets the scoreboard. Members never
   // get the settings link — they hit the server-walled placeholder.
   const canEditThisGame = !!canEdit || mine;
-  const router = useRouter();
   const pathname = usePathname();
   const setupMode = !(game.status === "complete" || game.status === "active" || game.scoringEnabled === true);
   const href = gameHref(tripId, game.gameTypeId, game.id, {
@@ -305,7 +316,7 @@ export function GameRow({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              router.push(scorecardHref);
+              openScorecardOverlay(pathname, game.id);
             }}
           >
             <Table2 size={15} />
