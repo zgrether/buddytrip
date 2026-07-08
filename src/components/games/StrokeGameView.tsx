@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Lock, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
@@ -78,9 +79,17 @@ export function StrokeGameView() {
   );
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record.
   const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  // Scores are STATE — poll them (~20s) so a remote device's entries reflect on
+  // this open board (game-state sync). refetchIntervalInBackground:false pauses
+  // the poll when the tab is hidden. The reconcile below merges fresh server
+  // scores in without clobbering the active enterer.
   const scoresQ = trpc.scores.listByGame.useQuery(
     { tripId: tripId!, gameId: urlGameId! },
-    { enabled: !!tripId && !!urlGameId }
+    {
+      enabled: !!tripId && !!urlGameId,
+      refetchInterval: GAME_SYNC_INTERVAL_MS,
+      refetchIntervalInBackground: false,
+    }
   );
 
   const [selected, setSelected] = useState<string[]>([]);
@@ -269,7 +278,7 @@ export function StrokeGameView() {
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
-  const { values, setValues, saveStatus, onChange, onClear, retryCell } =
+  const { values, setValues, saveStatus, onChange, onClear, retryCell, reconcile } =
     useScoreSaver(tripId, activeGameId);
   // Finishing also retries (idempotent — recomputes from the same scores); a
   // failure stays on the entry view and surfaces via the global error toast,
@@ -279,19 +288,30 @@ export function StrokeGameView() {
     retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
   });
 
-  // Seed the saved scores into the entry view ONCE on resume — never clobber an
-  // edit already made in this session (mirrors the match page).
-  const seededRef = useRef(false);
+  // Reflect scores from OTHER devices: reconcile server truth into the view each
+  // time the poll returns changed data, merged so the active enterer's unsaved
+  // cells win (game-state sync). This also handles the initial load — an empty
+  // local view simply takes the server's scores — so no separate seed-once is
+  // needed. (Structural sharing means this only fires when scores actually
+  // change.)
   useEffect(() => {
-    if (seededRef.current || !urlGameId || !scoresQ.data) return;
+    if (!urlGameId || !scoresQ.data) return;
     const loaded: ScoreValues = {};
     for (const e of scoresQ.data as { participant_id: string; unit_label: string; value: number | null }[]) {
       if (e.value == null) continue;
       (loaded[e.participant_id] ??= {})[e.unit_label] = e.value;
     }
-    setValues((v) => (Object.keys(v).length ? v : loaded));
-    seededRef.current = true;
-  }, [urlGameId, scoresQ.data, setValues]);
+    reconcile(loaded);
+  }, [urlGameId, scoresQ.data, reconcile]);
+
+  // Config sync: poll the cheap config hash on the same tick (batched with the
+  // score poll) and, when it changes on another device, silently refetch THIS
+  // game's config so groupings/modifiers/rules/course/status converge. Stroke's
+  // config lives entirely on the game row → invalidate getById.
+  const onConfigChanged = useCallback(() => {
+    if (tripId && activeGameId) void utils.games.getById.invalidate({ tripId, gameId: activeGameId });
+  }, [utils, tripId, activeGameId]);
+  useConfigSync(tripId, activeGameId, !!activeGameId, onConfigChanged);
 
   function toggle(userId: string) {
     setSelected((prev) =>
@@ -368,7 +388,6 @@ export function StrokeGameView() {
     setSelected([]);
     setCurrentHole(1);
     setView("entry");
-    seededRef.current = false;
     // Drop ?game so "Play again" starts a fresh game instead of resuming this one.
     if (urlGameId) router.replace(`/trips/${param}/games/new`);
   }

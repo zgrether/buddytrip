@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -11,6 +11,7 @@ import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useConfigSync } from "@/hooks/useConfigSync";
 import { GAME_TYPES, type ScoringModel } from "@/lib/gameTypes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
@@ -75,6 +76,17 @@ export function NonGolfGameView() {
     { tripId: tripId!, competitionId: competitionId! },
     { enabled: !!tripId && !!competitionId }
   );
+
+  // Config sync: on a config change from another device (modifiers/rules, run
+  // config, name, go-live, finish) silently refetch this game's config so members
+  // converge. Non-golf "scores" are posted RESULTS (score-derived, not in the
+  // config hash) — those already reflect via the board's shared leaderboard poll,
+  // so here we invalidate the config (getById) + the leaderboard read.
+  const onConfigChanged = useCallback(() => {
+    if (tripId && urlGameId) void utils.games.getById.invalidate({ tripId, gameId: urlGameId });
+    if (tripId && competitionId) void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+  }, [utils, tripId, urlGameId, competitionId]);
+  useConfigSync(tripId, urlGameId, !!urlGameId, onConfigChanged);
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);
   const gameCells = useMemo(
     () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number; points: number }[])

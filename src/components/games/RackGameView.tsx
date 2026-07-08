@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Users, Settings, SlidersHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -9,6 +9,7 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -105,7 +106,7 @@ export function RackGameView() {
   // same idempotent upsert + retry + outbox + per-cell status as stroke/match
   // (was a raw fire-and-forget mutate with no retry/status). Per-user entries, so
   // no participantType. `values` is seeded once from the server below.
-  const { values, setValues, saveStatus, onChange, onClear, retryCell } = useScoreSaver(tripId, gid);
+  const { values, saveStatus, onChange, onClear, retryCell, reconcile } = useScoreSaver(tripId, gid);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
@@ -119,7 +120,13 @@ export function RackGameView() {
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
   const teeRows = useScorecardTeeRows(tripId, gameQ.data);
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
-  const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  // Scores are STATE — poll (~20s, paused when tab hidden) so remote entries
+  // reflect on this open board (game-state sync); reconcile below merges them in
+  // without clobbering the active enterer.
+  const scoresQ = trpc.scores.listByGame.useQuery(
+    { tripId: tripId!, gameId: gid! },
+    { enabled: !!tripId && !!gid, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
@@ -217,16 +224,28 @@ export function RackGameView() {
     }
     return v;
   }, [scoresQ.data]);
-  // Seed the saver's values from the server ONCE on resume (mirrors stroke) — the
-  // saver's `values` is then the single source (server seed + live edits), so a
-  // clear removes from it cleanly and the outbox recovery re-populates it.
-  const seededRef = useRef(false);
+  // Reflect scores from OTHER devices: reconcile server truth into the saver each
+  // time the poll returns changed data, merged so the active enterer's unsaved
+  // cells win (game-state sync). The saver's `values` stays the single source
+  // (server-reconciled + live edits), so a clear removes from it cleanly and the
+  // outbox recovery re-populates it. Handles the initial load too (empty local →
+  // takes the server scores), so no separate seed-once is needed.
   useEffect(() => {
-    if (seededRef.current || !gid || !scoresQ.data) return;
-    setValues((v) => (Object.keys(v).length ? v : loadedValues));
-    seededRef.current = true;
-  }, [gid, scoresQ.data, loadedValues, setValues]);
+    if (!gid || !scoresQ.data) return;
+    reconcile(loadedValues);
+  }, [gid, scoresQ.data, loadedValues, reconcile]);
   const mergedFor = (pid: string) => values[pid] ?? {};
+
+  // Config sync: on a config change from another device (foursomes reshuffled,
+  // participant handicaps, modifiers/rules, course, go-live, finish), silently
+  // refetch this game's config so members converge. Rack config spans the game
+  // row + the play_groups/participants → invalidate both.
+  const onConfigChanged = useCallback(() => {
+    if (!tripId || !gid) return;
+    void utils.games.getById.invalidate({ tripId, gameId: gid });
+    void utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
+  }, [utils, tripId, gid]);
+  useConfigSync(tripId, gid, !!gid, onConfigChanged);
 
   // ── Rack read-model (the spec's novelty) ─────────────────────────────
   const participants = useMemo(() => groupsQ.data?.participants ?? [], [groupsQ.data]);
