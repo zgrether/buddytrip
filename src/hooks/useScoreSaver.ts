@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outboxPut, outboxClear, outboxEntries } from "@/lib/scoreOutbox";
+import { reconcileScores } from "@/lib/scoreReconcile";
 import { showToast } from "@/lib/toast";
 import {
   scoreCellKey,
@@ -58,6 +59,15 @@ export function useScoreSaver(
 ) {
   const [values, setValues] = useState<ScoreValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
+  // A live mirror of saveStatus so `reconcile` can read the latest without being
+  // recreated on every status change (it must stay identity-stable — a view polls
+  // scores and calls it in an effect keyed on the fetched data, not on this hook).
+  // reconcile always runs from a post-commit effect, so the committed value is
+  // current by then.
+  const saveStatusRef = useRef(saveStatus);
+  useEffect(() => {
+    saveStatusRef.current = saveStatus;
+  }, [saveStatus]);
 
   // suppressErrorToast: these own per-cell save UI (badge + banner), so the
   // global connectivity toast would double-signal — opt out of it.
@@ -157,6 +167,47 @@ export function useScoreSaver(
     [tripId, gameId, values, deleteEntry, mark, participantType],
   );
 
+  /**
+   * Reconcile incoming SERVER score truth into the local view so a remote
+   * device's entries reflect here (game-state sync), WITHOUT ever clobbering the
+   * person actively entering (the #543 durable-outbox writes win locally).
+   *
+   * Semantics: keep every local cell, then OVERLAY the server's value for each
+   * cell the server has — EXCEPT cells with an unconfirmed local write (flagged
+   * `saving`/`error`, or still in the durable outbox), which keep their local
+   * value. So a teammate's new/corrected score appears; a value the enterer just
+   * saved is never overwritten by a poll that raced the save (a server response
+   * lacking that cell can't drop it — overlay only SETS server-present cells).
+   *
+   * Deliberate gap: a score DELETED on another device isn't removed here (its
+   * cell is simply absent from the server payload, and we never drop a local
+   * cell). Reflecting adds/edits is the requirement; never-clobber-the-enterer is
+   * the hard rule, and full drop-to-server-truth couldn't guarantee both. Remote
+   * clears are rare and self-correct on the next real edit or a reopen.
+   *
+   * Idempotent + safe every poll tick; with TanStack's structural sharing the
+   * caller's effect only fires when the fetched scores actually change.
+   */
+  const reconcile = useCallback(
+    (server: ScoreValues) => {
+      setValues((cur) => {
+        // Protect cells with an unconfirmed local write — flagged saving/error, or
+        // still in the durable outbox (#543) — so the active enterer always wins.
+        const protectedKeys = new Set<string>();
+        for (const [k, st] of Object.entries(saveStatusRef.current)) {
+          if (st === "saving" || st === "error") protectedKeys.add(k);
+        }
+        if (gameId) {
+          for (const e of outboxEntries(gameId)) {
+            protectedKeys.add(scoreCellKey(e.participantId, e.unitLabel));
+          }
+        }
+        return reconcileScores(cur, server, protectedKeys);
+      });
+    },
+    [gameId],
+  );
+
   /** Re-fire the save for a flagged cell using its current value. */
   const retryCell = useCallback(
     (participantId: string, unitLabel: string) => {
@@ -206,5 +257,6 @@ export function useScoreSaver(
     onChange,
     onClear,
     retryCell,
+    reconcile,
   };
 }
