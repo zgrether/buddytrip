@@ -9,6 +9,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
+import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
@@ -96,10 +97,14 @@ export function StrokeGameView() {
   // A game created or joined in THIS session (the standalone new flow, or after
   // adding players to a competition game we opened with ?game).
   const [createdGame, setCreatedGame] = useState<{ id: string; participants: Participant[] } | null>(null);
-  const [view, setView] = useState<"entry" | "grid" | "final">("entry");
+  const [view, setView] = useState<"entry" | "final">("entry");
+  // The scorecard is an OVERLAY over the current view (entry or final), not a
+  // third base view — so the caller stays mounted underneath and dismiss returns
+  // to it with score state intact (#543).
+  const [gridOpen, setGridOpen] = useState(false);
   // Browser/OS back steps out of the scorecard grid back to entry (not the
   // leaderboard). The grid is the one history-tracked sub-screen over entry.
-  const backFromGrid = useScreenHistory(view === "grid" ? 1 : 0, () => setView("entry"));
+  const backFromGrid = useScreenHistory(gridOpen ? 1 : 0, () => setGridOpen(false));
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
@@ -388,6 +393,7 @@ export function StrokeGameView() {
     setSelected([]);
     setCurrentHole(1);
     setView("entry");
+    setGridOpen(false);
     // Drop ?game so "Play again" starts a fresh game instead of resuming this one.
     if (urlGameId) router.replace(`/trips/${param}/games/new`);
   }
@@ -521,62 +527,66 @@ export function StrokeGameView() {
 
   // ── Play ──
   if (game) {
+    // The read-only scorecard grid — shared by a non-scorer's landing surface and
+    // the scorer's overlay. onCellTap (jump to a hole's entry) is scorer-only.
+    const scorecardGrid = (
+      <StandardGrid
+        units={scUnits}
+        tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+        teeRows={teeRows}
+        participants={game.participants}
+        values={values}
+        direction="low_wins"
+        pips={entryPips}
+        saveStatus={saveStatus}
+        onCellTap={canScoreStroke ? (label) => {
+          setCurrentHole(Number(label) || 1);
+          backFromGrid();
+        } : undefined}
+      />
+    );
     return (
       <div className="fixed inset-0 z-50">
-        {view === "final" ? (
-          <FinalStandings
-            participants={game.participants}
-            standings={standings}
-            unitCount={scUnits.length}
-            dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-            onScorecard={() => setView("grid")}
-            onPlayAgain={playAgain}
-          />
-        ) : view === "grid" || !canScoreStroke ? (
-          // Read-only scorecard when the grid is toggled on OR the viewer can't
-          // score this game (Task 2 — a non-participant, non-owner/delegate member
-          // lands here instead of a dead entry screen; the SERVER is the real gate).
-          <div className="flex h-full flex-col">
-            <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              <button onClick={canScoreStroke ? backFromGrid : () => router.back()} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
-              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
-            </div>
-            <div className="min-h-0 flex-1">
-              <StandardGrid
+        {!canScoreStroke ? (
+          // #557: a viewer who can't score this game lands on the read-only
+          // scorecard — now as an overlay; dismissing leaves the game (back to the
+          // board), consistent with the "scorecard floats" model.
+          <ScorecardSheet onClose={() => router.back()}>{scorecardGrid}</ScorecardSheet>
+        ) : (
+          <>
+            {view === "final" ? (
+              <FinalStandings
+                participants={game.participants}
+                standings={standings}
+                unitCount={scUnits.length}
+                dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                onScorecard={() => setGridOpen(true)}
+                onPlayAgain={playAgain}
+              />
+            ) : (
+              <ScoreEntryView
+                gameName="Stroke Play"
                 units={scUnits}
-                tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
-                teeRows={teeRows}
                 participants={game.participants}
                 values={values}
                 direction="low_wins"
-                pips={entryPips}
+                currentHole={currentHole}
+                onHoleChange={setCurrentHole}
+                onChange={onChange}
+                onClear={onClear}
                 saveStatus={saveStatus}
-                onCellTap={canScoreStroke ? (label) => {
-                  setCurrentHole(Number(label) || 1);
-                  backFromGrid();
-                } : undefined}
+                onRetryCell={retryCell}
+                pips={entryPips}
+                onBack={() => router.back()}
+                onOpenGrid={() => setGridOpen(true)}
+                onConfig={canEdit ? openConfig : undefined}
+                onFinish={handleFinish}
               />
-            </div>
-          </div>
-        ) : (
-          <ScoreEntryView
-            gameName="Stroke Play"
-            units={scUnits}
-            participants={game.participants}
-            values={values}
-            direction="low_wins"
-            currentHole={currentHole}
-            onHoleChange={setCurrentHole}
-            onChange={onChange}
-            onClear={onClear}
-            saveStatus={saveStatus}
-            onRetryCell={retryCell}
-            pips={entryPips}
-            onBack={() => router.back()}
-            onOpenGrid={() => setView("grid")}
-            onConfig={canEdit ? openConfig : undefined}
-            onFinish={handleFinish}
-          />
+            )}
+            {/* Scorecard OVERLAY over entry/final — the base stays mounted so
+                dismiss returns with in-progress entry intact (#543). */}
+            {gridOpen && <ScorecardSheet onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
+          </>
         )}
       </div>
     );
