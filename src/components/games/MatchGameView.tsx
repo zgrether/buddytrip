@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -46,15 +46,6 @@ import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
-
-/** "07:40" → "7:40 AM". Empty/invalid → "". */
-function formatTee(t: string | null | undefined): string {
-  if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return "";
-  const [h, m] = t.split(":").map(Number);
-  const ampm = h < 12 ? "AM" : "PM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MATCH_PLAY = "gtt_match_play_singles";
@@ -1461,7 +1452,6 @@ export function MatchGameView() {
           myId={me?.id}
           published={published}
           complete={status === "complete"}
-          teeLabel={formatTee(gameQ.data?.tee_time as string | null | undefined)}
           canEdit={canEdit}
           decidedFor={decidedFor}
           holeCount={scUnits.length}
@@ -2002,7 +1992,6 @@ function Overview({
   myId,
   published,
   complete,
-  teeLabel,
   canEdit,
   decidedFor,
   holeCount,
@@ -2020,7 +2009,6 @@ function Overview({
   myId: string | undefined;
   published: boolean;
   complete: boolean;
-  teeLabel: string;
   canEdit: boolean;
   decidedFor: (g: MatchGroupData) => HoleResult[];
   /** The round's hole count (from the scorecard schema) — feeds matchState so
@@ -2039,23 +2027,22 @@ function Overview({
   if (!published) return <MemberNotReady tripId={tripId} game={game} />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
-  const underway = decideds.some((d) => d.length > 0);
+  const matchWord = groups.length === 1 ? "Match" : "Matches";
   return (
     <div>
-      {/* Pre-round banner — disappears once the first match starts. Edit lives in
-          the title bar; round-complete keeps its banner. */}
-      {(complete || !underway) && (
-        <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 10 }}>
-          <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-            {complete
-              ? correcting
-                ? "Correcting — edit a score, then re-lock"
-                : "Final · locked"
-              : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
-          </span>
-        </div>
-      )}
+      {/* Section header — mirrors Rack's "GROUPS · TAP TO ENTER SCORES" above-list
+          label (one shared header pattern across formats). The banner is gone; the
+          suffix carries state — scorable states nudge "tap to enter scores", a
+          posted round reads "· final", and a re-opened one "· correcting". */}
+      <div className="mb-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          {complete
+            ? correcting
+              ? `${matchWord} · correcting`
+              : `${matchWord} · final`
+            : `${matchWord} · tap to enter scores`}
+        </span>
+      </div>
 
       {/* #501 Part 3: the scoring board is read-and-score only — match count is
           config, so the live +1/−1 affordances are gone. Add/remove matches in Setup
@@ -2076,16 +2063,6 @@ function Overview({
           />
         ))}
       </div>
-
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
-        {complete
-          ? correcting
-            ? "Tap a match to fix a score."
-            : "Tap a match to view the scorecard."
-          : underway
-            ? `${groups.length} ${groups.length === 1 ? "match" : "matches"} · tap one to keep scoring.`
-            : `${groups.length} ${groups.length === 1 ? "match" : "matches"} · tap one to enter scores — the round starts on your first score.`}
-      </p>
 
       {canEdit && !complete && allOver && (
         <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
