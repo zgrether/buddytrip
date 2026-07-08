@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import Link from "next/link";
 import { HelperCards } from "@/components/HelperCards";
 import { FeaturesSection } from "@/components/marketing/FeaturesSection";
@@ -96,7 +96,7 @@ export default function DashboardClient() {
       <TopNav title="BuddyTrip" hideNews />
 
       <main
-        className={`mx-auto max-w-[896px] px-4 pb-24 ${hasAnyTrips ? "pt-4" : ""}`}
+        className="mx-auto max-w-[896px] px-4 pb-24 pt-4"
       >
         {/* ── Header — hidden when the user has no trips. The empty
             state has its own centered "New trip" CTA, so the welcome
@@ -120,6 +120,33 @@ export default function DashboardClient() {
             </button>
           </div>
         )}
+
+        {/* Quick Game — a user-level scratch game, relocated here from the app
+            header (which is trip/competition-scoped). Always available on the
+            dashboard, regardless of trip context. Opens the local stroke-play
+            Quick Game; a format picker is deferred to the standalone-game work. */}
+        <button
+          onClick={() => router.push("/quick-game")}
+          data-testid="quick-game-strip"
+          className="mb-6 flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-opacity hover:opacity-90"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <span
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+            style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+          >
+            <Zap size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Quick Game
+            </div>
+            <div className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Keep score right now — no trip needed
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        </button>
 
         {!hasAnyTrips ? (
           /* ── Empty state ─────────────────────────────────────────────────
