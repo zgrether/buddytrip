@@ -25,6 +25,7 @@ export function Sheet({
   footer,
   testId,
   maxWidthClass = "max-w-lg",
+  bodyClassName = "p-4",
 }: {
   title: string;
   subtitle?: string;
@@ -35,6 +36,10 @@ export function Sheet({
   testId?: string;
   /** Panel max width (Tailwind class). Default max-w-lg; rosters wants max-w-3xl. */
   maxWidthClass?: string;
+  /** Body padding/utility classes. Default `p-4`; a full-bleed body (e.g. the
+   *  scorecard grid, which manages its own horizontal scroll + sticky column)
+   *  passes `p-0`. Always keeps `flex-1 overflow-y-auto`. */
+  bodyClassName?: string;
 }) {
   return (
     <ScrollLock>
@@ -76,7 +81,7 @@ export function Sheet({
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto p-4">{children}</div>
+          <div className={`flex-1 overflow-y-auto ${bodyClassName}`}>{children}</div>
 
           {/* Footer (optional) */}
           {footer && (
