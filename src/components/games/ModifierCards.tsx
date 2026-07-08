@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Checkbox } from "@/components/games/Checkbox";
 import { Stepper } from "@/components/games/Stepper";
 import {
   modifierDef,
@@ -57,6 +57,7 @@ export function ModifierCards({
                 disabled={readOnly}
                 onClick={() => onChange(setModifierEnabled(modifiers, key, !on))}
                 label={def.label}
+                className="mt-0.5"
               />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{def.label}</p>
@@ -100,25 +101,3 @@ function HoleStepper({ value, onChange, disabled }: { value: number; onChange: (
   );
 }
 
-/** The on/off CHECKBOX (§10): teal fill + dark check glyph when on, transparent +
- *  bordered when off. Toggles the modifier's presence in the jsonb exactly as the
- *  old Switch did — appearance change only. */
-function Checkbox({ on, onClick, label, disabled }: { on: boolean; onClick: () => void; label: string; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={on}
-      aria-label={label}
-      onClick={onClick}
-      disabled={disabled}
-      className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40"
-      style={{
-        background: on ? "var(--color-bt-accent)" : "transparent",
-        border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-      }}
-    >
-      {on && <Check size={13} strokeWidth={3} style={{ color: "var(--color-bt-on-accent)" }} />}
-    </button>
-  );
-}
