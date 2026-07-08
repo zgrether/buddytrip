@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, Grid3x3 } from "lucide-react";
+import { ChevronLeft, Table2 } from "lucide-react";
 import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
@@ -245,7 +245,7 @@ export function MatchEntryView({
           </div>
         </div>
         <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-          <Grid3x3 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+          <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
         </button>
       </header>
 

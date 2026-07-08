@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, Grid3x3, Settings } from "lucide-react";
+import { ChevronLeft, Table2, Settings } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import { Avatar } from "@/components/Avatar";
 import { StrokeKeypad } from "./StrokeKeypad";
@@ -217,7 +217,7 @@ export function ScoreEntryView({
             </button>
           )}
           <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-            <Grid3x3 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+            <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
         </div>
       </header>
