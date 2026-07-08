@@ -138,7 +138,7 @@ export function useScoreSaver(
       // mutateAsync per call (see onChange): concurrent clears must each resolve
       // their own outcome, never be orphaned by a later one on the shared observer.
       deleteEntry
-        .mutateAsync({ tripId, gameId, participantId, unitLabel })
+        .mutateAsync({ tripId, gameId, participantId, unitLabel, participantType })
         // A failed delete means the value is still on the server — restore it
         // (accurate) and flag it so the user knows the clear didn't take.
         .catch(() => {
@@ -154,7 +154,7 @@ export function useScoreSaver(
           }
         });
     },
-    [tripId, gameId, values, deleteEntry, mark],
+    [tripId, gameId, values, deleteEntry, mark, participantType],
   );
 
   /** Re-fire the save for a flagged cell using its current value. */

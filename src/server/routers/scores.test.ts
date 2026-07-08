@@ -29,22 +29,25 @@ describe("scores router (Slice A — per-hole entry)", () => {
     await ctx.cleanup();
   });
 
-  it("any member can enter a score for any participant; submitted_by is recorded", async () => {
-    // The MEMBER enters a score for the OWNER's card — allowed (engine #7).
+  it("a member enters their OWN score; submitted_by is recorded", async () => {
+    // Scoped model (mig 072): a stroke member scores only their own row. The
+    // exhaustive owner/delegate/member/non-participant matrix is in
+    // scores.permissions.test.ts + scoreUnit.test.ts.
     const entry = await ctx
       .callerAs("member")
-      .scores.upsertEntry({ tripId, gameId, participantId: ownerId, unitLabel: "1", value: 4 });
+      .scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "1", value: 4 });
     expect(entry.value).toBe(4);
     expect(entry.participant_type).toBe("user");
     expect(entry.submitted_by).toBe(memberId); // audit only — not a gate
   });
 
   it("upsert updates the same cell in place (no duplicate row)", async () => {
+    // The owner may write anyone's card (elevated) — used here for the in-place check.
     await ctx
-      .callerAs("member")
+      .caller()
       .scores.upsertEntry({ tripId, gameId, participantId: ownerId, unitLabel: "1", value: 5 });
     const updated = await ctx
-      .callerAs("member")
+      .caller()
       .scores.upsertEntry({ tripId, gameId, participantId: ownerId, unitLabel: "1", value: 6 });
     expect(updated.value).toBe(6);
 
@@ -113,8 +116,8 @@ describe("scores router (Slice A — per-hole entry)", () => {
     expect(before.data?.status).toBe("active");
 
     // The scores.ts first-score flip is now a documented no-op fallback: scoring
-    // still works and status stays active.
-    await ctx.callerAs("member").scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 4 });
+    // still works and status stays active. (Member scores their OWN row.)
+    await ctx.callerAs("member").scores.upsertEntry({ tripId, gameId: g.id, participantId: memberId, unitLabel: "1", value: 4 });
     const after = await ctx.admin.from("games").select("status").eq("id", g.id).single();
     expect(after.data?.status).toBe("active");
   });
