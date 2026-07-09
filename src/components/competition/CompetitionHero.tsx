@@ -318,20 +318,15 @@ export function CollapsedHero({
   winNumber: number;
   pointsAvailable: number;
   clincher: LBTeam | null;
-  /** Optional second row INSIDE the same card, below a divider — the game-page
-   *  header's projection row (#533). Omitted on the leaderboard's sticky bar. */
+  /** Optional projected tier INSIDE the same card, as a flush card-raised row —
+   *  the game-page header's projection (#533). Omitted on the leaderboard's sticky
+   *  bar. */
   footer?: React.ReactNode;
 }) {
-  const footerBlock = footer ? (
-    <>
-      <div style={{ height: 1, background: "var(--color-bt-subtle-border)", margin: "10px 0 9px" }} />
-      {footer}
-    </>
-  ) : null;
   const targetLabel = clincher
     ? `${clincher.short_name ?? clincher.name} wins`
     : pointsAvailable > 0
-      ? `First to ${fmtPts(winNumber)} wins` // "wins" to match the expanded hero's target line
+      ? `First to ${fmtPts(winNumber)} wins`
       : "No points yet";
   const card: React.CSSProperties = {
     borderRadius: 12,
@@ -340,43 +335,115 @@ export function CollapsedHero({
     border: "1px solid var(--color-bt-border)",
     background: "linear-gradient(158deg,#212c40 0%,#1a2231 100%)",
     boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
-    padding: "11px 18px",
+    overflow: "hidden", // clip the flush projected-tier row to the card radius
   };
-  const target = (
-    // Normal-case (Task 2 — no all-caps) + bumped to 13/600 so it reads as a
-    // peer of the team-name labels, matching the expanded hero's target line.
-    <span
-      style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
+  // The projected tier is its OWN flush row (card-raised fill + top hairline), not
+  // a plain divider — so it reads as a distinct tier of the same card.
+  const footerBlock = footer ? (
+    <div
+      style={{
+        background: "var(--color-bt-card-raised)",
+        borderTop: "1px solid var(--color-bt-subtle-border)",
+        padding: "9px 14px",
+      }}
     >
-      {targetLabel}
-    </span>
-  );
+      {footer}
+    </div>
+  ) : null;
 
-  // Two teams (match-play cup) → the mock: name/score flanking a centered target.
+  // Two teams (match-play cup) → the tweaked bar: names on their own row (wrap
+  // toward center), then the two scores flanking the target + an INLINE progress
+  // bar (the bar rides between the scores here, not on its own row — that's what
+  // keeps the collapsed bar short).
   if (teams.length <= 2) {
     const [a, b] = teams;
+    const aTotal = a ? teamTotals[a.id] ?? 0 : 0;
+    const bTotal = b ? teamTotals[b.id] ?? 0 : 0;
+    const aWidth = pointsAvailable > 0 ? Math.min(100, (aTotal / pointsAvailable) * 100) : 0;
+    const bWidth = pointsAvailable > 0 ? Math.min(100, (bTotal / pointsAvailable) * 100) : 0;
     return (
       <div style={card} data-testid="competition-hero-collapsed">
-        <div className="flex items-center justify-between gap-2">
-          <CollapsedTeam team={a} points={a ? teamTotals[a.id] ?? 0 : 0} name={a?.name} align="left" />
-          <div className="flex-1 text-center">{target}</div>
-          <CollapsedTeam team={b} points={b ? teamTotals[b.id] ?? 0 : 0} name={b?.name} align="right" />
+        <div style={{ padding: "11px 14px 12px" }}>
+          {/* Names — own row, wrap toward center, team-colored, group icon. */}
+          <div className="flex items-start justify-between gap-3.5">
+            <MiniName team={a} align="left" />
+            <MiniName team={b} align="right" />
+          </div>
+          {/* Scores flank the target + inline bar. */}
+          <div className="flex items-center gap-3.5" style={{ marginTop: 5 }}>
+            <MiniScore team={a} points={aTotal} />
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-center"
+                style={{ fontSize: 11, fontWeight: 500, lineHeight: 1, color: "var(--color-bt-text-dim)" }}
+              >
+                {targetLabel}
+              </div>
+              {pointsAvailable > 0 && a && b && (
+                <div
+                  className="relative mt-[7px] flex h-1 w-full overflow-hidden rounded-full"
+                  style={{ background: "rgba(148,163,184,0.18)" }}
+                >
+                  <div className="h-full rounded-l-full transition-all duration-500" style={{ width: `${aWidth}%`, background: a.color }} />
+                  <div className="ml-auto h-full rounded-r-full transition-all duration-500" style={{ width: `${bWidth}%`, background: b.color }} />
+                  <div
+                    className="absolute left-1/2 top-1/2 h-full w-0.5 -translate-x-1/2 -translate-y-1/2"
+                    style={{ background: "var(--color-bt-text)", opacity: 0.45 }}
+                  />
+                </div>
+              )}
+            </div>
+            <MiniScore team={b} points={bTotal} />
+          </div>
         </div>
         {footerBlock}
       </div>
     );
   }
 
-  // N teams (points cup) → an evenly-spaced row + the target on its own line.
+  // N teams (points cup) → an evenly-spaced name-over-score row + target below.
   return (
     <div style={card} data-testid="competition-hero-collapsed">
-      <div className="flex items-stretch justify-between gap-2.5">
-        {teams.map((t) => (
-          <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" />
-        ))}
+      <div style={{ padding: "11px 14px 12px" }}>
+        <div className="flex items-stretch justify-between gap-2.5">
+          {teams.map((t) => (
+            <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" />
+          ))}
+        </div>
+        <div className="mt-1.5 text-center">
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{targetLabel}</span>
+        </div>
       </div>
-      <div className="mt-1.5 text-center">{target}</div>
       {footerBlock}
+    </div>
+  );
+}
+
+/** One team's big score in the collapsed bar's scores row (team-colored). */
+function MiniScore({ team, points }: { team: LBTeam | undefined; points: number }) {
+  if (!team) return <span style={{ width: 1 }} />;
+  return (
+    <span
+      className="tabular-nums"
+      style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: team.color }}
+    >
+      {fmtPts(points)}
+    </span>
+  );
+}
+
+/** A team name on its side of the collapsed bar — team-colored, group icon,
+ *  wraps toward center (no truncate), capped so it never crowds the scores. */
+function MiniName({ team, align }: { team: LBTeam | undefined; align: "left" | "right" }) {
+  if (!team) return <div style={{ maxWidth: "38%" }} />;
+  return (
+    <div
+      className={`flex min-w-0 items-center gap-1.5 ${align === "right" ? "justify-end text-right" : ""}`}
+      style={{ maxWidth: "38%" }}
+    >
+      {align === "left" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
+      <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.25, color: team.color }}>{team.name}</span>
+      {align === "right" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
     </div>
   );
 }
@@ -394,7 +461,6 @@ export function ProjectionRow({
   teams,
   teamTotals,
   perTeam,
-  gameName,
   final,
 }: {
   teams: LBTeam[];
@@ -403,58 +469,103 @@ export function ProjectionRow({
    *  totals, so total = realized + projected reads correctly. */
   teamTotals: Record<string, number>;
   perTeam: Record<string, number>;
-  gameName: string;
   final: boolean;
+  // gameName dropped: the app bar (#550) now carries the game title, so repeating
+  // it here was redundant. Kept off the projected tier per the tweaked design.
 }) {
-  const contrib = (t: LBTeam | undefined, align: "left" | "right", key?: string) => {
-    if (!t) return <div key={key} style={{ minWidth: 88 }} />;
-    const p = perTeam[t.id] ?? 0;
-    // Projected TOTAL = current realized total + this game's projected delta.
-    // Only while live: once final, the game's points are ALREADY in teamTotals
-    // (adding would double-count), so keep the final display as the solid delta.
-    const projectedTotal = (teamTotals[t.id] ?? 0) + p;
-    return (
-      <div key={key} className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 88 }}>
-        <span
-          className="tabular-nums"
-          // A distinguishable SUB-header under the official score: SAME size as
-          // the mini-bar's official scores (26), but NON-BOLD (600 vs 800) and
-          // FAINT (team color at 0.5 while live) so it doesn't compete with it.
-          style={{ fontSize: 26, fontWeight: 600, color: t.color, opacity: final ? 1 : 0.5, lineHeight: 1 }}
-        >
-          {final ? (p > 0 ? `+${fmtPts(p)}` : fmtPts(p)) : `${fmtPts(projectedTotal)} (+${fmtPts(p)})`}
-        </span>
+  const label = (
+    <div className="flex-shrink-0 text-center">
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "var(--color-bt-text-dim)", lineHeight: 1 }}>
+        {final ? "FINAL" : "PROJECTED"}
       </div>
-    );
-  };
-  const center = (
-    <div className="flex-1 text-center">
-      <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)", lineHeight: 1.2 }}>{gameName}</div>
-      {!final && (
-        // Matches the "First to X wins" target size/style (13, dim) — a peer,
-        // not a tiny afterthought (Task 4).
-        <div style={{ fontSize: 13, fontStyle: "italic", color: "var(--color-bt-text-dim)", marginTop: 1 }}>projected</div>
-      )}
+      <div style={{ fontSize: 11, fontWeight: 400, color: "var(--color-bt-text-dim)", lineHeight: 1.2, marginTop: 3 }}>
+        {final ? "this game" : "if today holds"}
+      </div>
     </div>
   );
 
   if (teams.length <= 2) {
     const [a, b] = teams;
     return (
-      <div className="flex items-center justify-between gap-2" data-testid="header-projection">
-        {contrib(a, "left")}
-        {center}
-        {contrib(b, "right")}
+      <div className="flex items-center justify-between gap-3" data-testid="header-projection">
+        <ProjTeam team={a} perTeam={perTeam} teamTotals={teamTotals} final={final} align="left" />
+        {label}
+        <ProjTeam team={b} perTeam={perTeam} teamTotals={teamTotals} final={final} align="right" />
       </div>
     );
   }
   return (
     <div data-testid="header-projection">
       <div className="flex items-stretch justify-between gap-2.5">
-        {teams.map((t) => contrib(t, "left", t.id))}
+        {teams.map((t) => (
+          <ProjTeam key={t.id} team={t} perTeam={perTeam} teamTotals={teamTotals} final={final} align="left" />
+        ))}
       </div>
-      <div className="mt-1 text-center">{center}</div>
+      <div className="mt-1.5">{label}</div>
     </div>
+  );
+}
+
+/** One team's projected tier block: the projected TOTAL (team-colored) + a delta
+ *  chip for this game's contribution. While live the total = realized + projected
+ *  delta; once final the game's points are already in the realized total, so the
+ *  total is realized and the chip shows what this game added. */
+function ProjTeam({
+  team,
+  perTeam,
+  teamTotals,
+  final,
+  align,
+}: {
+  team: LBTeam | undefined;
+  perTeam: Record<string, number>;
+  teamTotals: Record<string, number>;
+  final: boolean;
+  align: "left" | "right";
+}) {
+  if (!team) return <div style={{ minWidth: 80 }} />;
+  const p = perTeam[team.id] ?? 0;
+  const total = final ? teamTotals[team.id] ?? 0 : (teamTotals[team.id] ?? 0) + p;
+  const num = (
+    <span
+      className="tabular-nums"
+      style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: team.color }}
+    >
+      {fmtPts(total)}
+    </span>
+  );
+  const chip = <DeltaChip color={team.color} delta={p} />;
+  return (
+    <div
+      className={`flex min-w-0 items-baseline gap-2 ${align === "right" ? "justify-end" : ""}`}
+      style={{ minWidth: 80 }}
+    >
+      {align === "left" ? (<>{num}{chip}</>) : (<>{chip}{num}</>)}
+    </div>
+  );
+}
+
+/** Delta chip — this game's point contribution, as a team-tinted pill (team color
+ *  on a 16%-alpha team fill). ▲ for a positive contribution; a plain 0 when the
+ *  game hasn't moved the team yet (match-play contributions are never negative). */
+function DeltaChip({ color, delta }: { color: string; delta: number }) {
+  return (
+    <span
+      className="inline-flex items-center tabular-nums"
+      style={{
+        gap: 2,
+        padding: "2px 8px",
+        borderRadius: 9999,
+        fontSize: 11.5,
+        fontWeight: 700,
+        lineHeight: 1,
+        background: `color-mix(in srgb, ${color} 16%, transparent)`,
+        color,
+      }}
+    >
+      {delta > 0 && <span style={{ fontSize: 8 }}>&#9650;</span>}
+      {fmtPts(delta)}
+    </span>
   );
 }
 
