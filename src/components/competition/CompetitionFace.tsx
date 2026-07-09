@@ -126,6 +126,19 @@ export function CompetitionFace({
     : undefined;
   const openType = openGame?.game_type_id ?? null;
   const panelOpen = !!openGame && opensAsPanel(openType);
+  // Lock the PAGE scroll while a panel is open: the panel is `fixed` with its own
+  // `overflow-y-auto`, so without this the board behind it keeps its own window
+  // scrollbar → two vertical scrollbars (Zach's QA). The panel owns the only
+  // scroll while it's up; restored on close.
+  useEffect(() => {
+    if (!panelOpen) return;
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, [panelOpen]);
   // Pick the format's view — each reads its own tripId + `?game=`, so the host just
   // selects which component to mount. Explicit per format (non-golf is the only
   // fall-through, and only after opensAsPanel already vetted the type).
@@ -343,14 +356,15 @@ export function CompetitionFace({
         />
       )}
 
-      {/* Game panel (Spec 2) — the format's scoreboard as a slide-in layer over the
-          persistent board. Each view reads its own tripId + `?game=`, so the host
-          just mounts the right one; the board stays MOUNTED underneath (warm cache,
-          no route teardown). The view's own back arrow (→ router.back) pops the
-          `?game=` history entry, closing the panel and revealing the board. */}
+      {/* Game panel (Spec 2 + #550) — the format's scoreboard as a slide-in layer.
+          Positioned BELOW the 56px app bar (`top-14 z-30`, under the bar's z-40) so
+          TopNav stays visible + interactive — chat/news/avatar reachable, and the
+          bar carries the game's back/title/gear (GameChrome). The board stays
+          MOUNTED underneath. A game view's inner surfaces fill this wrapper (they
+          switch off `fixed inset-0` in panel mode via useInGamePanel). */}
       {panelOpen && (
         <div
-          className="fixed inset-0 z-50 overflow-y-auto game-panel-in"
+          className="fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto game-panel-in"
           style={{ background: "var(--color-bt-base)" }}
           data-testid="game-panel"
         >
