@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Pin, MessageCircle, Megaphone, ChevronDown } from "lucide-react";
+import { Pin, MessageCircle, Megaphone, ChevronDown, ChevronLeft, Settings, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
@@ -11,6 +11,7 @@ import { FeedbackModal } from "./FeedbackModal";
 import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { useNewsUnreadCount } from "./NewsPanel";
+import { useGameChrome } from "./games/GameChrome";
 
 /**
  * App title bar — two zones:
@@ -106,6 +107,14 @@ export const TopNav: FC<TopNavProps> = ({
     ) ?? null;
   const showSwitcher = !hideTripSwitcher && currentTrip != null;
 
+  // Game context (#550): when a game panel is open, a game view publishes its
+  // chrome here and the bar SWAPS its left zone to a back affordance + single-
+  // line game title (and adds the scorecard/settings actions on the right). Chat,
+  // news, feedback, and the team avatar persist in BOTH modes — the whole point
+  // is that chat stays reachable from inside a game. Back is history.back(): the
+  // game views' own popstate listeners make it correct at every level.
+  const gameChrome = useGameChrome();
+
   return (
     <header
       className="@container sticky top-0 z-40 flex h-14 items-center justify-between"
@@ -117,7 +126,27 @@ export const TopNav: FC<TopNavProps> = ({
         padding: "0 16px",
       }}
     >
-      {/* ── LEFT: identity / scope ─────────────────────────────────────── */}
+      {/* ── LEFT: identity / scope — OR game back + title (#550) ─────────── */}
+      {gameChrome ? (
+        <div className="flex min-w-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            aria-label="Back"
+            data-testid="game-back"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] transition-colors hover:bg-[var(--color-bt-hover)]"
+          >
+            <ChevronLeft size={22} style={{ color: "var(--color-bt-text)" }} />
+          </button>
+          <span
+            className="truncate"
+            style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}
+            data-testid="game-title"
+          >
+            {gameChrome.title}
+          </span>
+        </div>
+      ) : (
       <div className="flex min-w-0 items-center">
         {/* Home anchor — flag + wordmark navigate to the dashboard. */}
         <button
@@ -223,9 +252,34 @@ export const TopNav: FC<TopNavProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* ── RIGHT: global tools + me ───────────────────────────────────── */}
       <div className="flex flex-shrink-0 items-center gap-1">
+        {/* Game-context actions (#550) — scorecard + owner/delegate settings gear,
+            ahead of the persistent chat/news/feedback/avatar cluster. */}
+        {gameChrome?.onScorecard && (
+          <button
+            type="button"
+            onClick={gameChrome.onScorecard}
+            aria-label="Scorecard"
+            data-testid="game-scorecard"
+            className="flex h-9 w-9 items-center justify-center rounded-[9px] transition-colors hover:bg-[var(--color-bt-hover)]"
+          >
+            <Table2 size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        )}
+        {gameChrome?.onSettings && (
+          <button
+            type="button"
+            onClick={gameChrome.onSettings}
+            aria-label="Settings"
+            data-testid="game-settings-gear"
+            className="flex h-9 w-9 items-center justify-center rounded-[9px] transition-colors hover:bg-[var(--color-bt-hover)]"
+          >
+            <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        )}
         {/* News — owner/organizer announcements. Trip-scoped, same as Chat:
             only renders when a trip is in scope and the page wires onOpenNews. */}
         {!hideNews && tripId && onOpenNews && (

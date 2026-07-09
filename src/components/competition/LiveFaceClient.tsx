@@ -16,6 +16,7 @@ import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { CompetitionFace } from "@/components/competition/CompetitionFace";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
+import { GameChromeProvider, useGameChrome } from "@/components/games/GameChrome";
 
 /**
  * The Live face — the competition face's client root (the "Live" bottom-nav
@@ -210,6 +211,7 @@ export function LiveFaceClient({
   }
 
   return (
+    <GameChromeProvider>
     <div
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
@@ -230,11 +232,11 @@ export function LiveFaceClient({
 
       <main className="mx-auto max-w-[1024px] px-3 pt-4 pb-32">{body}</main>
 
-      {/* Bottom nav persists on the face so you can always cross back to the
-          trip (§11). Live is the current destination. */}
-      <TripBottomNav
+      {/* Bottom nav persists on the face so you can always cross back to the trip
+          (§11) — EXCEPT on the focused score-entry surface (#550 Task 5), where a
+          game view publishes hideBottomNav. Live is the current destination. */}
+      <FaceBottomNav
         tripId={tripId}
-        showComp={true}
         liveLabel={competition?.short_name ?? competition?.name ?? null}
       />
 
@@ -278,7 +280,17 @@ export function LiveFaceClient({
         )}
       />
     </div>
+    </GameChromeProvider>
   );
+}
+
+// ── Bottom nav (game-aware) ──────────────────────────────────────────────────
+// A consumer INSIDE the provider so it can read the published chrome; the score-
+// entry surface hides it (Task 5). Kept on the scoreboard + everywhere else.
+function FaceBottomNav({ tripId, liveLabel }: { tripId: string; liveLabel: string | null }) {
+  const chrome = useGameChrome();
+  if (chrome?.hideBottomNav) return null;
+  return <TripBottomNav tripId={tripId} showComp={true} liveLabel={liveLabel} />;
 }
 
 // ── Empty states ────────────────────────────────────────────────────────────
