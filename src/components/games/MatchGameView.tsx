@@ -17,6 +17,7 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
 import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
+import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { DragHandle } from "@/components/games/DragHandle";
@@ -166,7 +167,9 @@ export function MatchGameView() {
   // Back-stack: forward transitions push the screen they left; Back pops to it.
   // Empty stack means we arrived directly (derived screen) → leave to trip home.
   const [navStack, setNavStack] = useState<Screen[]>([]);
-  const [view, setView] = useState<"entry" | "grid">("entry");
+  // The scorecard is an OVERLAY over the match entry view (not a third screen), so
+  // the entry stays mounted underneath and dismiss returns with score state intact.
+  const [gridOpen, setGridOpen] = useState(false);
   const [currentHole, setCurrentHole] = useState(1);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   // Collapse-on-advance: when teeing off with some slots still unfilled, confirm
@@ -479,10 +482,10 @@ export function MatchGameView() {
   // the leaderboard. Depth: 0 on the hub/overview, 1 in a match's score screen, 2 in
   // its grid (only when not locked — a locked match opens the grid directly, one
   // level). `matchBack()` is the one path the score-entry breadcrumbs use.
-  const inGrid = screen === "score" && !locked && view === "grid";
+  const inGrid = screen === "score" && !locked && gridOpen;
   const matchEntryDepth = (screen === "score" ? 1 : 0) + (inGrid ? 1 : 0);
   const matchBack = useScreenHistory(matchEntryDepth, () => {
-    if (inGrid) setView("entry");
+    if (inGrid) setGridOpen(false);
     else if (screen === "score") goBack();
   });
 
@@ -962,53 +965,59 @@ export function MatchGameView() {
       : selectedGroup.a.id === meId || selectedGroup.b.id === meId);
     const canScoreMatch = canEdit || inThisMatch;
     const readOnly = locked || !canScoreMatch;
+    // The read-only scorecard grid — shared by a read-only/locked viewer's landing
+    // surface and the scorer's overlay. onCellTap (jump to a hole's entry) is
+    // editable-only; back returns to the matches hub (#7).
+    const scorecardGrid = (
+      <StandardGrid
+        units={scUnits}
+        tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+        teeRows={teeRows}
+        participants={entryParticipants}
+        values={values}
+        direction="low_wins"
+        pips={entryPips}
+        saveStatus={saveStatus}
+        onCellTap={readOnly ? undefined : (label) => {
+          setCurrentHole(Number(label) || 1);
+          matchBack();
+        }}
+      />
+    );
     return (
       <div className="fixed inset-0 z-50">
-        {view === "grid" || readOnly ? (
-          <div className="flex h-full flex-col">
-            <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              {/* Read-only when locked OR the viewer can't score this match — back
-                  returns to the hub and cells don't open editable entry (#7). */}
-              <button onClick={matchBack} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
-              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{locked ? "Scorecard · Final" : "Scorecard"}</span>
-            </div>
-            <div className="min-h-0 flex-1">
-              <StandardGrid
-                units={scUnits}
-                tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
-                teeRows={teeRows}
-                participants={entryParticipants}
-                values={values}
-                direction="low_wins"
-                pips={entryPips}
-                saveStatus={saveStatus}
-                onCellTap={readOnly ? undefined : (label) => {
-                  setCurrentHole(Number(label) || 1);
-                  matchBack();
-                }}
-              />
-            </div>
-          </div>
+        {readOnly ? (
+          // Read-only when locked OR the viewer can't score this match — the
+          // scorecard IS the surface, now an overlay; dismiss returns to the hub.
+          <ScorecardSheet title={locked ? "Scorecard · Final" : "Scorecard"} onClose={matchBack}>
+            {scorecardGrid}
+          </ScorecardSheet>
         ) : (
-          <MatchEntryView
-            gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
-            subtitle={sided ? "Doubles match · 2v2" : "Singles match · 1v1"}
-            units={scUnits}
-            matches={[selectedGroup]}
-            values={values}
-            currentHole={currentHole}
-            onHoleChange={setCurrentHole}
-            onChange={onChange}
-            onClear={onClear}
-            saveStatus={saveStatus}
-            onRetryCell={retryCell}
-            onBack={matchBack}
-            onOpenGrid={() => setView("grid")}
-            onFinish={matchBack}
-            finishLabel="Back to matches"
-            finishSubtext="Scores save as you enter"
-            meId={me?.id}
-          />
+          <>
+            <MatchEntryView
+              gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
+              subtitle={sided ? "Doubles match · 2v2" : "Singles match · 1v1"}
+              units={scUnits}
+              matches={[selectedGroup]}
+              values={values}
+              currentHole={currentHole}
+              onHoleChange={setCurrentHole}
+              onChange={onChange}
+              onClear={onClear}
+              saveStatus={saveStatus}
+              onRetryCell={retryCell}
+              onBack={matchBack}
+              onOpenGrid={() => setGridOpen(true)}
+              onFinish={matchBack}
+              finishLabel="Back to matches"
+              finishSubtext="Scores save as you enter"
+              meId={me?.id}
+            />
+            {/* Scorecard OVERLAY over entry — entry stays mounted (#543 intact). */}
+            {gridOpen && (
+              <ScorecardSheet title="Scorecard" onClose={matchBack}>{scorecardGrid}</ScorecardSheet>
+            )}
+          </>
         )}
       </div>
     );
@@ -1485,8 +1494,9 @@ export function MatchGameView() {
             if (g) setCurrentHole(currentHoleFor(g));
             setSelectedMatchId(matchId);
             setValues((v) => (Object.keys(v).length ? v : loadedValues));
-            // Locked → open the read-only scorecard grid; otherwise editable entry.
-            setView(locked ? "grid" : "entry");
+            // Locked → land on the read-only scorecard overlay; otherwise editable
+            // entry (a non-scorer still resolves to read-only in the score screen).
+            setGridOpen(locked);
             go("score");
           }}
         />

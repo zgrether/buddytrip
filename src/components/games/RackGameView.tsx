@@ -16,6 +16,7 @@ import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack
 import { toPersist as groupsToPersist } from "@/lib/rackGroupDraft";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
+import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
@@ -79,7 +80,9 @@ export function RackGameView() {
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   // The tapped group's scorecard: "entry" (score keypad) vs "grid" (the read grid,
   // opened by the top-right scorecard icon).
-  const [entryView, setEntryView] = useState<"entry" | "grid">("entry");
+  // The scorecard is an OVERLAY over a group's entry view (not a third screen), so
+  // the entry stays mounted underneath and dismiss returns with score state intact.
+  const [gridOpen, setGridOpen] = useState(false);
   // Rack settings: both GROUPINGS and HANDICAPS are inline accordions (the rack
   // equivalents of the 2v2 Matches/Handicaps rows), single-open. `groupDraft` = one
   // user-id array per group.
@@ -485,9 +488,9 @@ export function RackGameView() {
   // instead of jumping to the leaderboard. Depth: 0 = play screen, 1 = a group's
   // card, 2 = its grid view (only when not locked — a locked group shows the grid
   // directly, one level). `back()` is the one path every breadcrumb/finish uses.
-  const entryDepth = entryGroupId ? (!locked && entryView === "grid" ? 2 : 1) : 0;
+  const entryDepth = entryGroupId ? (!locked && gridOpen ? 2 : 1) : 0;
   const back = useScreenHistory(entryDepth, () => {
-    if (!locked && entryView === "grid") setEntryView("entry");
+    if (!locked && gridOpen) setGridOpen(false);
     else setEntryGroupId(null);
   });
 
@@ -586,47 +589,54 @@ export function RackGameView() {
     // Read-only scorecard when the card is locked/posted, the grid is toggled on,
     // OR the viewer can't score this cart (Task 2) — no tap-to-edit in any of those.
     const readOnly = locked || !canScoreGroup;
-    if (readOnly || entryView === "grid") {
+    // The read-only scorecard grid — shared by a locked/read-only viewer's landing
+    // surface and the scorer's overlay. onCellTap (jump to a hole's entry) is
+    // editable-only.
+    const scorecardGrid = (
+      <StandardGrid
+        units={scUnits}
+        tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+        teeRows={teeRows}
+        participants={ps}
+        values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
+        direction="low_wins"
+        pips={groupPips}
+        onCellTap={readOnly ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
+      />
+    );
+    const scorecardTitle = `${groupName ?? "Group"}${locked ? " · Final" : " · Scorecard"}`;
+    if (readOnly) {
+      // Locked/posted OR a viewer who can't score this cart lands on the read-only
+      // scorecard — now an overlay; dismiss returns to the rack hub (#7).
       return (
-        <div className="flex flex-col" style={{ height: "100vh" }}>
-          <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-            <button onClick={back} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
-            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{(groupName ?? "Group")}{locked ? " · Final" : " · Scorecard"}</span>
-          </div>
-          <div className="min-h-0 flex-1">
-            <StandardGrid
-              units={scUnits}
-              tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
-              teeRows={teeRows}
-              participants={ps}
-              values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
-              direction="low_wins"
-              pips={groupPips}
-              onCellTap={readOnly ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
-            />
-          </div>
+        <div className="fixed inset-0 z-50">
+          <ScorecardSheet title={scorecardTitle} onClose={back}>{scorecardGrid}</ScorecardSheet>
         </div>
       );
     }
     return (
-      <div className="flex flex-col" style={{ height: "100vh" }}>
-        <ScoreEntryView
-          gameName={groupName ?? "Group"}
-          units={scUnits}
-          participants={ps}
-          values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
-          direction="low_wins"
-          currentHole={currentHole}
-          onHoleChange={setCurrentHole}
-          onChange={onChange}
-          onClear={onClear}
-          saveStatus={saveStatus}
-          onRetryCell={retryCell}
-          onBack={back}
-          onOpenGrid={() => setEntryView("grid")}
-          onFinish={back}
-          pips={groupPips}
-        />
+      <div className="fixed inset-0 z-50">
+        <div className="flex flex-col" style={{ height: "100vh" }}>
+          <ScoreEntryView
+            gameName={groupName ?? "Group"}
+            units={scUnits}
+            participants={ps}
+            values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
+            direction="low_wins"
+            currentHole={currentHole}
+            onHoleChange={setCurrentHole}
+            onChange={onChange}
+            onClear={onClear}
+            saveStatus={saveStatus}
+            onRetryCell={retryCell}
+            onBack={back}
+            onOpenGrid={() => setGridOpen(true)}
+            onFinish={back}
+            pips={groupPips}
+          />
+        </div>
+        {/* Scorecard OVERLAY over entry — entry stays mounted (#543 intact). */}
+        {gridOpen && <ScorecardSheet title={scorecardTitle} onClose={back}>{scorecardGrid}</ScorecardSheet>}
       </div>
     );
   }
@@ -828,7 +838,7 @@ export function RackGameView() {
             : undefined
         }
       />
-      <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); setEntryView("entry"); }} />
+      <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); setGridOpen(false); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
           Handicaps), where mid-game config is deliberate. */}

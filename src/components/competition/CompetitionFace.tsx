@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ChevronLeft, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -18,6 +18,7 @@ import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
 
 interface Competition {
   id: string;
@@ -111,7 +112,14 @@ export function CompetitionFace({
   // (faceBootstrap-seeded), so a game's format is known synchronously — no fetch
   // just to decide whether (and which view) to panel. ONE host for all formats.
   const search = useSearchParams();
+  const router = useRouter();
   const openGameId = search.get("game");
+  // The scorecard OVERLAY over the board (leaderboard caller): a golf game's
+  // scorecard icon pushes `?scorecard=<id>` (GameRow), and we float the scorecard
+  // Sheet over the still-mounted board. Dismiss (scrim/✕/back) → router.back()
+  // pops the entry. Distinct from the in-game scorecard, which each game view
+  // hosts itself so it can show live scores/save-state.
+  const scorecardGameId = search.get("scorecard");
   const gamesForPanel = trpc.games.listByTrip.useQuery({ tripId }, STRUCTURE_QUERY).data ?? [];
   const openGame = openGameId
     ? (gamesForPanel as { id: string; game_type_id: string | null }[]).find((g) => g.id === openGameId)
@@ -348,6 +356,13 @@ export function CompetitionFace({
         >
           {panelView}
         </div>
+      )}
+
+      {/* Scorecard overlay (leaderboard caller) — floats over the board via
+          `?scorecard=<id>`. Only reachable when no game panel is open (the icon
+          lives on the board), so no panel/scorecard z-fight. */}
+      {scorecardGameId && (
+        <ScorecardPreviewSheet tripId={tripId} gameId={scorecardGameId} onClose={() => router.back()} />
       )}
     </div>
   );
