@@ -1,5 +1,6 @@
 "use client";
 
+import { Table2 } from "lucide-react";
 import { matchState, type HoleResult } from "@/lib/matchPlay";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { Participant } from "./types";
@@ -38,6 +39,10 @@ interface MatchCardProps {
   youId?: string;
   /** Hide the "· 1v1" suffix in the header (entry page shows just "MATCH #"). */
   hideFormat?: boolean;
+  /** Opens this match's scorecard — renders a compact button on the RIGHT of the
+   *  header row (the MATCH # · THRU/FINAL row). Only pass when the card itself is
+   *  NOT a tap target (no `onClick`) — nesting a button in a button is invalid. */
+  onScorecard?: () => void;
 }
 
 export function MatchCard({
@@ -51,6 +56,7 @@ export function MatchCard({
   onClick,
   youId,
   hideFormat,
+  onScorecard,
 }: MatchCardProps) {
   const st = matchState(results, holeCount);
   const teams = !!(leftColor && rightColor);
@@ -88,7 +94,20 @@ export function MatchCard({
         >
           {headerWord}
         </span>
-        <span className="flex-1" />
+        {/* Scorecard affordance — right of the header row (moved off the app bar). */}
+        <span className="flex flex-1 items-center justify-end">
+          {onScorecard && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onScorecard(); }}
+              aria-label="Scorecard"
+              data-testid="match-scorecard"
+              className="flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+            >
+              <Table2 size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          )}
+        </span>
       </div>
 
       {/* 2 · Row */}

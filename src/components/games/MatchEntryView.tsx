@@ -280,6 +280,7 @@ export function MatchEntryView({
                 leftColor={m.leftColor}
                 rightColor={m.rightColor}
                 hideFormat
+                onScorecard={onOpenGrid}
               />
 
               {/* Closed-out result banner (§4) */}

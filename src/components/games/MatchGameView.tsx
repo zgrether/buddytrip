@@ -933,7 +933,8 @@ export function MatchGameView() {
             !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete"
               ? openConfig
               : undefined,
-          onScorecard: screen === "score" ? () => setGridOpen(true) : undefined,
+          // Scorecard affordance now lives ON the match card's header row (Zach's
+          // QA), not the app bar — so no onScorecard published here.
           // Focused score-entry surface → hide the trip bottom nav (Task 5).
           hideBottomNav: screen === "score",
         }
@@ -1061,7 +1062,7 @@ export function MatchGameView() {
   const headerTitle =
     cfgOpen ? "Configuration" : screen === "new" ? "New game" : screen === "setup" ? "Game Setup" : "Matches";
   return (
-    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
+    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: inPanel ? "100%" : "100vh" }}>
       {/* #550: as a panel the app bar carries back/title/gear (published above), so
           the view's own header is suppressed. Standalone route (no bar) keeps it. */}
       {!inPanel && (

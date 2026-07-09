@@ -126,6 +126,19 @@ export function CompetitionFace({
     : undefined;
   const openType = openGame?.game_type_id ?? null;
   const panelOpen = !!openGame && opensAsPanel(openType);
+  // Lock the PAGE scroll while a panel is open: the panel is `fixed` with its own
+  // `overflow-y-auto`, so without this the board behind it keeps its own window
+  // scrollbar → two vertical scrollbars (Zach's QA). The panel owns the only
+  // scroll while it's up; restored on close.
+  useEffect(() => {
+    if (!panelOpen) return;
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, [panelOpen]);
   // Pick the format's view — each reads its own tripId + `?game=`, so the host just
   // selects which component to mount. Explicit per format (non-golf is the only
   // fall-through, and only after opensAsPanel already vetted the type).
