@@ -60,6 +60,10 @@ interface ScoreEntryViewProps {
    *  with no handicap (stroke play / Quick Game). Net = gross − 1 on a stroked
    *  hole. */
   pips?: Record<string, Set<string>>;
+  /** #550: hide the view's own header — as a panel the app bar carries
+   *  back/title (+ the config gear). The scorecard affordance relocates to the
+   *  right of the "Scores" strip (mirrors match's card-header placement). */
+  hideHeader?: boolean;
 }
 
 export function ScoreEntryView({
@@ -78,6 +82,7 @@ export function ScoreEntryView({
   saveStatus = {},
   onRetryCell,
   pips,
+  hideHeader = false,
 }: ScoreEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -190,44 +195,49 @@ export function ScoreEntryView({
 
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--color-bt-base)" }}>
-      {/* ── App bar ── */}
-      <header
-        className="flex shrink-0 items-center justify-between"
-        style={{
-          height: 52,
-          padding: "0 12px",
-          background: "var(--color-bt-nav-bg)",
-          backdropFilter: "blur(14px)",
-          borderBottom: "1px solid var(--color-bt-subtle-border)",
-        }}
-      >
-        <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-          <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-        </button>
-        <div className="text-center">
-          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
-          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-            Hole {hole} of {units.length}
-          </div>
-        </div>
-        <div className="flex items-center">
-          {onConfig && (
-            <button onClick={onConfig} aria-label="Configuration" className="flex h-9 w-9 items-center justify-center">
-              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-          )}
-          <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-            <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+      {/* ── App bar — suppressed as a panel (#550): the shared TopNav carries
+          back/title (+ the config gear published by the parent). Kept for
+          standalone routes (no bar). ── */}
+      {!hideHeader && (
+        <header
+          className="flex shrink-0 items-center justify-between"
+          style={{
+            height: 52,
+            padding: "0 12px",
+            background: "var(--color-bt-nav-bg)",
+            backdropFilter: "blur(14px)",
+            borderBottom: "1px solid var(--color-bt-subtle-border)",
+          }}
+        >
+          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
           </button>
-        </div>
-      </header>
+          <div className="text-center">
+            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+              Hole {hole} of {units.length}
+            </div>
+          </div>
+          <div className="flex items-center">
+            {onConfig && (
+              <button onClick={onConfig} aria-label="Configuration" className="flex h-9 w-9 items-center justify-center">
+                <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+            )}
+            <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
+              <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          </div>
+        </header>
+      )}
 
       {/* ── Unsaved-scores safety net (Connectivity Layer 1) ── */}
       <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
 
-      {/* ── Standings strip ── */}
+      {/* ── Standings strip (+ the scorecard affordance on the right when the
+          header is hidden — mirrors match's card-header placement) ── */}
       <div
-        className="flex shrink-0 items-center gap-2 overflow-x-auto"
+        className="flex shrink-0 items-center"
         style={{
           minHeight: 42,
           padding: "0 14px",
@@ -235,6 +245,7 @@ export function ScoreEntryView({
           borderBottom: "1px solid var(--color-bt-border)",
         }}
       >
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
         <span
           style={{
             fontSize: 12,
@@ -278,6 +289,18 @@ export function ScoreEntryView({
                 </span>
               );
             })
+        )}
+        </div>
+        {hideHeader && onOpenGrid && (
+          <button
+            type="button"
+            onClick={onOpenGrid}
+            aria-label="Scorecard"
+            data-testid="entry-scorecard"
+            className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+          >
+            <Table2 size={17} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
         )}
       </div>
 
