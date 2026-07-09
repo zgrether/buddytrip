@@ -11,6 +11,7 @@ import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useConfigSync } from "@/hooks/useConfigSync";
 import { GAME_TYPES, type ScoringModel } from "@/lib/gameTypes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
@@ -159,10 +160,25 @@ export function NonGolfGameView() {
     }
   }
 
+  // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear)
+  // instead of a second header. Non-golf has no focused entry surface (posted
+  // results), so the bottom nav stays. Standalone route keeps its own header.
+  const inPanel = useInGamePanel();
+  usePublishGameChrome(
+    inPanel
+      ? {
+          title: (game?.name as string | undefined)?.trim() || typeName,
+          onSettings: game && !showConfig && canEdit ? openConfig : undefined,
+        }
+      : null,
+  );
+
   if (!tripId || !urlGameId) return <Spinner />;
   if (gameQ.isLoading || !game) return <Spinner />;
 
-  const header = (title: string) => (
+  // As a panel the app bar carries back/title/gear (published above) → no own
+  // header. Standalone route (no bar) keeps it.
+  const header = (title: string) => inPanel ? null : (
     <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
       <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
         <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
@@ -188,6 +204,7 @@ export function NonGolfGameView() {
   if (showConfig && canEdit && competitionId) {
     return (
       <NonGolfConfigurationView
+        hideHeader={inPanel}
         subtitle={typeName}
         onBack={closeConfig}
         tripId={tripId}
@@ -212,7 +229,7 @@ export function NonGolfGameView() {
   // ── Setup mode (pending) — member placeholder / owner pass-through. ──
   if (!scoringEnabled) {
     return (
-      <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
+      <div className="flex flex-col" style={{ minHeight: inPanel ? "100%" : "100vh", background: "var(--color-bt-base)" }}>
         {header(gameName)}
         <div className="flex-1">
           <SetupPlaceholder
@@ -241,7 +258,7 @@ export function NonGolfGameView() {
 
   // ── Scoring mode (active/complete) — the scoreboard. ──
   return (
-    <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
+    <div className="flex flex-col" style={{ minHeight: inPanel ? "100%" : "100vh", background: "var(--color-bt-base)" }}>
       {header(gameName)}
       {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
           game's projected/final per-team contribution), sticky over the
