@@ -19,6 +19,7 @@ import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
+import { useGameChrome } from "@/components/games/GameChrome";
 
 interface Competition {
   id: string;
@@ -126,6 +127,13 @@ export function CompetitionFace({
     : undefined;
   const openType = openGame?.game_type_id ?? null;
   const panelOpen = !!openGame && opensAsPanel(openType);
+  // The bottom nav (z-40, fixed) overlays the panel's bottom (z-30). On surfaces
+  // that KEEP the nav (scoreboards — not the nav-hiding score-entry surfaces), pad
+  // the panel's scroll by the nav height so its last content clears the nav
+  // instead of hiding behind it. Read from the published chrome so it tracks each
+  // format's hideBottomNav automatically.
+  const chrome = useGameChrome();
+  const navUnderPanel = panelOpen && !chrome?.hideBottomNav;
   // Lock the PAGE scroll while a panel is open: the panel is `fixed` with its own
   // `overflow-y-auto`, so without this the board behind it keeps its own window
   // scrollbar → two vertical scrollbars (Zach's QA). The panel owns the only
@@ -365,7 +373,12 @@ export function CompetitionFace({
       {panelOpen && (
         <div
           className="fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto game-panel-in"
-          style={{ background: "var(--color-bt-base)" }}
+          style={{
+            background: "var(--color-bt-base)",
+            // Clear the bottom nav (58px) + safe area when it's showing; none on the
+            // nav-hidden entry surfaces (their CTA anchors to the viewport bottom).
+            paddingBottom: navUnderPanel ? "calc(64px + env(safe-area-inset-bottom))" : undefined,
+          }}
           data-testid="game-panel"
         >
           {panelView}

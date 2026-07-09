@@ -10,6 +10,7 @@ import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
+import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
@@ -344,6 +345,21 @@ export function StrokeGameView() {
     }
   }
 
+  // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear)
+  // instead of a second header. The handicaps/modifiers drill-downs keep their own
+  // header + local back (they cover the bar). Standalone route keeps its headers.
+  const inPanel = useInGamePanel();
+  const onDrilldown = !!game && (showHandicaps || showModifiers) && settingsEditable;
+  usePublishGameChrome(
+    inPanel
+      ? {
+          title: (gameQ.data?.name as string | undefined)?.trim() || "Stroke Play",
+          onSettings: !!game && canEdit && !showConfig && !onDrilldown && view !== "final" ? openConfig : undefined,
+          hideBottomNav: !!game && scoringEnabled && !showConfig && !onDrilldown && view === "entry" && canScoreStroke,
+        }
+      : null,
+  );
+
   if (!tripId) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-bt-base)" }}>
@@ -403,7 +419,10 @@ export function StrokeGameView() {
   // Drives `netStrokeEntries`/`strokeHoles`: the input Phase 1 deferred. ──
   if (game && showHandicaps && settingsEditable) {
     return (
-      <div className="flex flex-col" style={{ height: "100vh" }}>
+      // Drill-down keeps its own header + LOCAL back (setShowHandicaps) — as a panel
+      // it covers the bar (fixed) so there's no double-decker and the bar's
+      // history-back can't hijack the local back.
+      <div className={`flex flex-col ${inPanel ? "fixed inset-0 z-50" : ""}`} style={{ height: "100vh", background: "var(--color-bt-base)" }}>
         <HandicapRoster
           players={handicapPlayers}
           holeCount={scUnits.length}
@@ -420,7 +439,8 @@ export function StrokeGameView() {
   // SAME ModifierCards the match setup page uses, persisted on-change.
   if (game && showModifiers && settingsEditable) {
     return (
-      <div className="flex flex-col" style={{ height: "100vh", background: "var(--color-bt-base)" }}>
+      // Drill-down: own header + local back → covers the bar as a panel (see above).
+      <div className={`flex flex-col ${inPanel ? "fixed inset-0 z-50" : ""}`} style={{ height: "100vh", background: "var(--color-bt-base)" }}>
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
           <button
             type="button"
@@ -445,21 +465,24 @@ export function StrokeGameView() {
   // gear). NO checklist, NO toggle on this page — those live on the settings page.
   if (game && !scoringEnabled && !showConfig) {
     return (
-      <div className="flex flex-col" style={{ minHeight: "100vh", background: "var(--color-bt-base)" }}>
-        <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-          <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-          </button>
-          <div className="min-w-0 text-center">
-            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Stroke Play</div>
-            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}</div>
-          </div>
-          {canEdit ? (
-            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+      <div className="flex flex-col" style={{ minHeight: inPanel ? "100%" : "100vh", background: "var(--color-bt-base)" }}>
+        {/* #550: as a panel the app bar carries back/title/gear. Standalone keeps it. */}
+        {!inPanel && (
+          <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+            <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+              <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
             </button>
-          ) : <div className="h-9 w-9" />}
-        </header>
+            <div className="min-w-0 text-center">
+              <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Stroke Play</div>
+              <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}</div>
+            </div>
+            {canEdit ? (
+              <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+                <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+            ) : <div className="h-9 w-9" />}
+          </header>
+        )}
         <div className="flex-1">
           <SetupPlaceholder
             tripId={tripId}
@@ -495,6 +518,7 @@ export function StrokeGameView() {
   if (game && showConfig && gameQ.data && canEdit) {
     return (
       <GameConfigurationView
+        hideHeader={inPanel}
         subtitle="Stroke Play"
         onBack={closeConfig}
         tripId={tripId}
@@ -546,7 +570,8 @@ export function StrokeGameView() {
       />
     );
     return (
-      <div className="fixed inset-0 z-50">
+      // As a panel: fill BELOW the app bar; standalone: full-screen.
+      <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
         {!canScoreStroke ? (
           // #557: a viewer who can't score this game lands on the read-only
           // scorecard — now as an overlay; dismissing leaves the game (back to the
@@ -565,6 +590,7 @@ export function StrokeGameView() {
               />
             ) : (
               <ScoreEntryView
+                hideHeader={inPanel}
                 gameName="Stroke Play"
                 units={scUnits}
                 participants={game.participants}

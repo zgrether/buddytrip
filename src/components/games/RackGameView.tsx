@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
@@ -536,6 +537,27 @@ export function RackGameView() {
     }
   }
 
+  // #550: as a PANEL, publish this screen's chrome to the app bar (back/title +
+  // owner gear) instead of a second header. Standalone route (no provider) keeps
+  // its own Shell/ScoreEntryView headers below.
+  const inPanel = useInGamePanel();
+  const rackGroupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
+  const rackFinal = gameQ.data?.status === "complete";
+  usePublishGameChrome(
+    inPanel
+      ? {
+          title: entryGroupId
+            ? rackGroupName ?? "Group"
+            : (gameQ.data?.name as string | undefined)?.trim() || "Rack-n-Stack",
+          // Gear on the scoreboard screens only (owner/delegate, not final) — not
+          // on the entry, the config page, or the pre-setup steps.
+          onSettings:
+            gid && !entryGroupId && !showConfig && !needsSetup && canEdit && !rackFinal ? openConfig : undefined,
+          hideBottomNav: !!entryGroupId,
+        }
+      : null,
+  );
+
   // ── Render ───────────────────────────────────────────────────────────
   if (!tripId || roleLoading || crew.isLoading || competition.isLoading) {
     return <Center>Loading…</Center>;
@@ -548,7 +570,7 @@ export function RackGameView() {
 
   if (!hasCompetition) {
     return (
-      <Shell onBack={() => router.back()} title="Rack-n-Stack">
+      <Shell hideHeader={inPanel} onBack={() => router.back()} title="Rack-n-Stack">
         <div className="flex flex-col items-center text-center" style={{ paddingTop: 72 }}>
           <div className="flex items-center justify-center" style={{ width: 56, height: 56, borderRadius: 16, background: "var(--color-bt-card-raised)", marginBottom: 16 }}>
             <Users size={24} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -609,15 +631,17 @@ export function RackGameView() {
       // Locked/posted OR a viewer who can't score this cart lands on the read-only
       // scorecard — now an overlay; dismiss returns to the rack hub (#7).
       return (
-        <div className="fixed inset-0 z-50">
+        <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
           <ScorecardSheet title={scorecardTitle} onClose={back}>{scorecardGrid}</ScorecardSheet>
         </div>
       );
     }
     return (
-      <div className="fixed inset-0 z-50">
-        <div className="flex flex-col" style={{ height: "100vh" }}>
+      // As a panel: fill BELOW the app bar; standalone: full-screen.
+      <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
+        <div className="flex flex-col" style={{ height: inPanel ? "100%" : "100vh" }}>
           <ScoreEntryView
+            hideHeader={inPanel}
             gameName={groupName ?? "Group"}
             units={scUnits}
             participants={ps}
@@ -695,6 +719,7 @@ export function RackGameView() {
     );
     return (
       <GameConfigurationView
+        hideHeader={inPanel}
         subtitle="Net stroke play · team rack"
         // The close-flush effect persists the groupings on ANY overlay close (incl.
         // OS back), so Back just closes — no inline save needed here.
@@ -728,13 +753,13 @@ export function RackGameView() {
   if (!gid || needsSetup) {
     if (!canEdit) {
       return (
-        <Shell onBack={() => router.back()} title="Rack-n-Stack">
+        <Shell hideHeader={inPanel} onBack={() => router.back()} title="Rack-n-Stack">
           <SetupPlaceholder tripId={tripId} game={gameQ.data as unknown as GameRow | undefined} />
         </Shell>
       );
     }
     return (
-      <Shell onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
+      <Shell hideHeader={inPanel} onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
         <div className="w-full px-4 py-5">
           <div className="flex flex-col gap-3.5">
             <div>
@@ -768,6 +793,7 @@ export function RackGameView() {
   if (!scoringEnabled) {
     return (
       <Shell
+        hideHeader={inPanel}
         onBack={() => router.back()}
         title="Rack-n-Stack"
         right={
@@ -808,6 +834,7 @@ export function RackGameView() {
     // Title-bar (back + name/status + gear) then the GamePageHeader below — the same
     // header pattern the match/stroke game pages use.
     <Shell
+      hideHeader={inPanel}
       onBack={() => router.back()}
       title="Rack-n-Stack"
       subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}
@@ -878,19 +905,27 @@ export function RackGameView() {
   );
 }
 
-function Shell({ title, subtitle, onBack, right, children }: { title: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode }) {
+// #550: as a panel the app bar carries back/title/gear, so the header is
+// suppressed and the shell fills the panel height (no forced 100vh). Standalone
+// route (no bar) keeps the header.
+function Shell({ title, subtitle, onBack, right, children, hideHeader = false }: { title: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode; hideHeader?: boolean }) {
   return (
-    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
-      <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-        <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-          <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-        </button>
-        <div className="min-w-0 text-center">
-          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>}
-        </div>
-        <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
-      </header>
+    // min-height (not h-full): the scoreboard content isn't in its own scroll
+    // container, so it must GROW and let the panel scroll (h-full capped it and
+    // clipped the bottom rows). Fills the panel when short; grows when tall.
+    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: hideHeader ? "100%" : "100vh" }}>
+      {!hideHeader && (
+        <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
+          </button>
+          <div className="min-w-0 text-center">
+            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>}
+          </div>
+          <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
+        </header>
+      )}
       <div className="flex-1">{children}</div>
     </div>
   );

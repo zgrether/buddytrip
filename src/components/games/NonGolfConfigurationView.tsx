@@ -55,6 +55,7 @@ export function NonGolfConfigurationView({
   onEnable,
   onDisable,
   busy,
+  hideHeader = false,
 }: {
   subtitle: string;
   onBack: () => void;
@@ -73,25 +74,30 @@ export function NonGolfConfigurationView({
   onEnable: () => void;
   onDisable: () => void;
   busy: boolean;
+  /** #550: hide the view's own header (the app bar carries back/title as a panel);
+   *  fills the panel height instead of forcing 100vh. Standalone keeps it. */
+  hideHeader?: boolean;
 }) {
   // #501: in scoring mode game-altering settings freeze (competition_format +
   // points). Rules keeps plain canEdit (the exception), the toggle stays active
   // (the path back to Setup), and the Danger Zone disables wholesale.
   const settingsEditable = canEdit && !scoringEnabled;
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
-      <header
-        className="flex shrink-0 items-center"
-        style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-      >
-        <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-          <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-        </button>
-        <div className="min-w-0 flex-1 text-center" style={{ marginRight: 36 }}>
-          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Configuration</div>
-          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
-        </div>
-      </header>
+    <div className={`flex flex-col ${hideHeader ? "h-full" : "min-h-screen"}`} style={{ background: "var(--color-bt-base)" }}>
+      {!hideHeader && (
+        <header
+          className="flex shrink-0 items-center"
+          style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+        >
+          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
+          </button>
+          <div className="min-w-0 flex-1 text-center" style={{ marginRight: 36 }}>
+            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Configuration</div>
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
+          </div>
+        </header>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
         {/* Non-golf now mirrors the cleaned golf ORDER (Spec 6): identity → explainer
