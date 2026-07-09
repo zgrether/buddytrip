@@ -74,6 +74,9 @@ interface MatchEntryViewProps {
   saveStatus?: SaveStatusMap;
   /** Re-fire the save for a flagged cell. */
   onRetryCell?: (participantId: string, unitLabel: string) => void;
+  /** #550: hide the view's own header — as a panel the app bar carries
+   *  back/title + the scorecard action, so this second header is dropped. */
+  hideHeader?: boolean;
 }
 
 export function MatchEntryView({
@@ -94,6 +97,7 @@ export function MatchEntryView({
   meId,
   saveStatus = {},
   onRetryCell,
+  hideHeader = false,
 }: MatchEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -224,30 +228,33 @@ export function MatchEntryView({
 
   return (
     <div className="flex h-full flex-col" style={{ background: "var(--color-bt-base)" }}>
-      {/* App bar */}
-      <header
-        className="flex shrink-0 items-center justify-between"
-        style={{
-          height: 52,
-          padding: "0 12px",
-          background: "var(--color-bt-nav-bg)",
-          backdropFilter: "blur(14px)",
-          borderBottom: "1px solid var(--color-bt-subtle-border)",
-        }}
-      >
-        <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-          <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-        </button>
-        <div className="text-center">
-          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
-          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-            {subtitle ?? `Hole ${hole} of ${units.length}`}
+      {/* App bar — suppressed as a panel (#550): the shared TopNav carries
+          back/title + the scorecard action. Kept for standalone routes (no bar). */}
+      {!hideHeader && (
+        <header
+          className="flex shrink-0 items-center justify-between"
+          style={{
+            height: 52,
+            padding: "0 12px",
+            background: "var(--color-bt-nav-bg)",
+            backdropFilter: "blur(14px)",
+            borderBottom: "1px solid var(--color-bt-subtle-border)",
+          }}
+        >
+          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
+          </button>
+          <div className="text-center">
+            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+              {subtitle ?? `Hole ${hole} of ${units.length}`}
+            </div>
           </div>
-        </div>
-        <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-          <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-      </header>
+          <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
+            <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        </header>
+      )}
 
       {/* Unsaved-scores safety net (Connectivity Layer 1) */}
       <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />

@@ -9,6 +9,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
@@ -834,7 +835,11 @@ export function MatchGameView() {
         // too, or a re-locked correction reads stale until the 30s poll.
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
-      go("overview");
+      // #550 Task 4: Finish is tapped ON the overview (the "Finish round" /
+      // "Re-lock" CTAs). The old `go("overview")` PUSHED another overview onto the
+      // nav stack — the two-backs-to-leave bug the unified app-bar back would
+      // inherit. We're already on the overview; the refetch above re-renders it as
+      // Final · locked. No navigation — stay put (pop-not-push).
     } catch {
       // Stay put (no silent advance). The global error toast surfaces the
       // failure; Finish stays tappable to retry (the recompute is idempotent).
@@ -912,6 +917,29 @@ export function MatchGameView() {
   );
   const entryParticipants = selectedGroup ? [selectedGroup.a, selectedGroup.b] : [];
 
+  // #550: as a PANEL, publish this screen's chrome to the app bar (back/title +
+  // owner gear + scorecard) instead of rendering our own header. On a standalone
+  // route (no provider) `inPanel` is false → we keep our own headers below.
+  const inPanel = useInGamePanel();
+  const chromeTitle =
+    screen === "score" && selectedGroup
+      ? `${selectedGroup.a.name} v ${selectedGroup.b.name}`
+      : (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
+  usePublishGameChrome(
+    inPanel
+      ? {
+          title: chromeTitle,
+          onSettings:
+            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete"
+              ? openConfig
+              : undefined,
+          onScorecard: screen === "score" ? () => setGridOpen(true) : undefined,
+          // Focused score-entry surface → hide the trip bottom nav (Task 5).
+          hideBottomNav: screen === "score",
+        }
+      : null,
+  );
+
   // #533 header projection (row 2) — a presentation rollup of the match strips
   // ALREADY on this page: "if the game ended now, what does each team get?" Each
   // match's CURRENT standing (up → its team wins the match's points; all-square
@@ -985,7 +1013,9 @@ export function MatchGameView() {
       />
     );
     return (
-      <div className="fixed inset-0 z-50">
+      // As a panel: fill BELOW the app bar (absolute inset-0 of the top-14 panel),
+      // not fixed inset-0 (which would cover the bar). Standalone: full-screen.
+      <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
         {readOnly ? (
           // Read-only when locked OR the viewer can't score this match — the
           // scorecard IS the surface, now an overlay; dismiss returns to the hub.
@@ -995,6 +1025,7 @@ export function MatchGameView() {
         ) : (
           <>
             <MatchEntryView
+              hideHeader={inPanel}
               gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
               subtitle={sided ? "Doubles match · 2v2" : "Singles match · 1v1"}
               units={scUnits}
@@ -1031,25 +1062,24 @@ export function MatchGameView() {
     cfgOpen ? "Configuration" : screen === "new" ? "New game" : screen === "setup" ? "Game Setup" : "Matches";
   return (
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
-      <SetupHeader
-        title={headerTitle}
-        subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
-        // Settings back routes through history.back() so it's the SAME action as the
-        // browser/OS back — both return to the game page.
-        onBack={cfgOpen ? closeConfig : goBack}
-        right={
-          // The settings GEAR (A2-ux correction) — owner/delegate access to the ONE
-          // settings page, reachable in BOTH modes (the setup-mode pass-through AND
-          // the scoring-mode overview). A gear, not a text link: one affordance, no
-          // per-format wording to drift. (On the settings page itself → no gear, the
-          // back arrow handles it.)
-          !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
-            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-          ) : null
-        }
-      />
+      {/* #550: as a panel the app bar carries back/title/gear (published above), so
+          the view's own header is suppressed. Standalone route (no bar) keeps it. */}
+      {!inPanel && (
+        <SetupHeader
+          title={headerTitle}
+          subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
+          // Settings back routes through history.back() so it's the SAME action as the
+          // browser/OS back — both return to the game page.
+          onBack={cfgOpen ? closeConfig : goBack}
+          right={
+            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
+              <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
+                <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+            ) : null
+          }
+        />
+      )}
 
       {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
           game's projected/final per-team contribution), sticky while the match
