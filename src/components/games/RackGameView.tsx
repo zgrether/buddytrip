@@ -910,7 +910,10 @@ export function RackGameView() {
 // route (no bar) keeps the header.
 function Shell({ title, subtitle, onBack, right, children, hideHeader = false }: { title: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode; hideHeader?: boolean }) {
   return (
-    <div className={`flex flex-col ${hideHeader ? "h-full" : ""}`} style={{ background: "var(--color-bt-base)", minHeight: hideHeader ? undefined : "100vh" }}>
+    // min-height (not h-full): the scoreboard content isn't in its own scroll
+    // container, so it must GROW and let the panel scroll (h-full capped it and
+    // clipped the bottom rows). Fills the panel when short; grows when tall.
+    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: hideHeader ? "100%" : "100vh" }}>
       {!hideHeader && (
         <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
           <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
