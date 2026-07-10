@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Trophy, Settings, Users } from "lucide-react";
+import { Settings, Users } from "lucide-react";
 import { fmtPts } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -9,6 +9,26 @@ import type { ScoringModel } from "@/lib/gameTypes";
 // Measure before paint on the client; a plain effect on the server (useLayoutEffect
 // warns during SSR). Standard SSR-safe isomorphic layout effect.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+// The neutral fallback card (no two teams to tint from — a points cup's identity
+// hero, or a half-built 2-team cup).
+const NEUTRAL_CARD = "linear-gradient(158deg,#222e44 0%,#1a2231 100%)";
+
+/**
+ * teamGlow — the hero/mini-bar background: a faint two-color TEAM glow (team A from
+ * the top-left, team B from the bottom-right, low alpha) over the card. The one
+ * intentional hero gradient (STYLE_GUIDE hero carve-out). `color-mix` derives the
+ * low-alpha tint from each team's assigned color, so it's extensible to ANY team
+ * colors (not the prototype's hardcoded green/orange) — e.g. green + orange render
+ * `rgba(34,197,94,0.13)` / `rgba(249,115,22,0.11)` over `--color-bt-card`.
+ */
+function teamGlow(a: LBTeam, b: LBTeam): string {
+  return [
+    `radial-gradient(135% 135% at 0% 0%, color-mix(in srgb, ${a.color} 13%, transparent), transparent 56%)`,
+    `radial-gradient(135% 135% at 100% 100%, color-mix(in srgb, ${b.color} 11%, transparent), transparent 56%)`,
+    "var(--color-bt-card)",
+  ].join(", ");
+}
 
 /**
  * CompetitionHero — the merged competition header (Task 1). ONE elevated gradient
@@ -95,12 +115,14 @@ export function CompetitionHero({
   return (
     <div
       style={{
-        // ART: gradient card + soft float shadow (raw hex per the hero carve-out).
+        // ART: the two-color TEAM glow (team A top-left, team B bottom-right) over
+        // the card + a soft float shadow. Falls back to the neutral card for a
+        // points cup / half-built cup (no two teams to tint from).
         position: "relative",
-        overflow: "hidden", // crops the trophy so it bleeds top/bottom
+        overflow: "hidden", // clip the gradient to the card radius
         borderRadius: 16,
         border: "1px solid var(--color-bt-border)",
-        background: "linear-gradient(158deg,#222e44 0%,#1a2231 100%)",
+        background: showScores && a && b ? teamGlow(a, b) : NEUTRAL_CARD,
         boxShadow: "0 10px 28px rgba(0,0,0,0.40)",
       }}
       data-testid="competition-hero"
@@ -128,30 +150,18 @@ export function CompetitionHero({
           the Live-face main already insets the card — keeps content off the edges
           without the doubled gap. */}
       <div style={{ position: "relative", padding: "18px 16px 20px" }}>
-        {/* Top row: identity (left) + gear (right). */}
+        {/* Top row: identity (left) + gear (right). The inline trophy TILE next to
+            the cup name is dropped (the hero already carries the big trophy). */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <span
-              className="flex flex-shrink-0 items-center justify-center rounded-xl"
-              style={{
-                width: 36,
-                height: 36,
-                background: "var(--color-bt-accent-faint)",
-                color: "var(--color-bt-accent)",
-              }}
-            >
-              <Trophy size={18} />
-            </span>
-            <div className="min-w-0">
-              <p style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1, color: "var(--color-bt-text)" }}>
-                {cupName}
+          <div className="min-w-0">
+            <p style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1, color: "var(--color-bt-text)" }}>
+              {cupName}
+            </p>
+            {tagline && tagline.trim() && (
+              <p className="mt-0.5" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+                {tagline}
               </p>
-              {tagline && tagline.trim() && (
-                <p className="mt-0.5" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-                  {tagline}
-                </p>
-              )}
-            </div>
+            )}
           </div>
           {onSettings && canEdit && (
             <button
@@ -336,10 +346,10 @@ export function CollapsedHero({
       : "No points yet";
   const card: React.CSSProperties = {
     borderRadius: 12,
-    // NEUTRAL chrome — the same hero gradient art as expanded (STYLE_GUIDE hero
-    // carve-out), NO team-color wash. Team color lives on the scores/names only.
+    // Same two-color TEAM glow as the expanded hero (2-team cup) so the two
+    // surfaces read as one system; neutral fallback for a points cup.
     border: "1px solid var(--color-bt-border)",
-    background: "linear-gradient(158deg,#212c40 0%,#1a2231 100%)",
+    background: teams.length <= 2 && teams[0] && teams[1] ? teamGlow(teams[0], teams[1]) : NEUTRAL_CARD,
     boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
     overflow: "hidden", // clip the flush projected-tier row to the card radius
   };
@@ -712,3 +722,4 @@ function HeroTrophy() {
     </svg>
   );
 }
+
