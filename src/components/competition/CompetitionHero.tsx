@@ -80,6 +80,7 @@ export function CompetitionHero({
         winNumber={winNumber}
         pointsAvailable={pointsAvailable}
         clincher={clincher}
+        onEditTeam={onEditTeam}
       />
     );
   }
@@ -312,6 +313,7 @@ export function CollapsedHero({
   pointsAvailable,
   clincher,
   footer,
+  onEditTeam,
 }: {
   teams: LBTeam[];
   teamTotals: Record<string, number>;
@@ -322,6 +324,10 @@ export function CollapsedHero({
    *  the game-page header's projection (#533). Omitted on the leaderboard's sticky
    *  bar. */
   footer?: React.ReactNode;
+  /** Tap a team name → that team's identity editor (owner / its captain), same as
+   *  the expanded hero. Omitted where team editing isn't wired (the game page) →
+   *  the names render non-interactive. */
+  onEditTeam?: (teamId: string) => void;
 }) {
   const targetLabel = clincher
     ? `${clincher.short_name ?? clincher.name} wins`
@@ -364,10 +370,11 @@ export function CollapsedHero({
     return (
       <div style={card} data-testid="competition-hero-collapsed">
         <div style={{ padding: "11px 14px 12px" }}>
-          {/* Names — own row, wrap toward center, team-colored, group icon. */}
+          {/* Names — own row, wrap toward center, team-colored, group icon,
+              tappable → that team's editor (same as the expanded hero). */}
           <div className="flex items-start justify-between gap-3.5">
-            <MiniName team={a} align="left" />
-            <MiniName team={b} align="right" />
+            <MiniName team={a} align="left" onEditTeam={onEditTeam} />
+            <MiniName team={b} align="right" onEditTeam={onEditTeam} />
           </div>
           {/* Scores flank the target + inline bar. */}
           <div className="flex items-center gap-3.5" style={{ marginTop: 5 }}>
@@ -407,7 +414,7 @@ export function CollapsedHero({
       <div style={{ padding: "11px 14px 12px" }}>
         <div className="flex items-stretch justify-between gap-2.5">
           {teams.map((t) => (
-            <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" />
+            <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" onEditTeam={onEditTeam} />
           ))}
         </div>
         <div className="mt-1.5 text-center">
@@ -433,18 +440,31 @@ function MiniScore({ team, points }: { team: LBTeam | undefined; points: number 
 }
 
 /** A team name on its side of the collapsed bar — team-colored, group icon,
- *  wraps toward center (no truncate), capped so it never crowds the scores. */
-function MiniName({ team, align }: { team: LBTeam | undefined; align: "left" | "right" }) {
+ *  wraps toward center (no truncate), capped so it never crowds the scores.
+ *  Tappable → that team's editor (disabled/inert where onEditTeam is omitted). */
+function MiniName({
+  team,
+  align,
+  onEditTeam,
+}: {
+  team: LBTeam | undefined;
+  align: "left" | "right";
+  onEditTeam?: (teamId: string) => void;
+}) {
   if (!team) return <div style={{ maxWidth: "38%" }} />;
   return (
-    <div
-      className={`flex min-w-0 items-center gap-1.5 ${align === "right" ? "justify-end text-right" : ""}`}
+    <button
+      type="button"
+      onClick={() => onEditTeam?.(team.id)}
+      disabled={!onEditTeam}
+      className={`flex min-w-0 items-center gap-1.5 disabled:cursor-default ${align === "right" ? "justify-end text-right" : ""}`}
       style={{ maxWidth: "38%" }}
+      data-testid={`comp-team-name-collapsed-${align === "left" ? "a" : "b"}`}
     >
       {align === "left" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
       <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.25, color: team.color }}>{team.name}</span>
       {align === "right" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
-    </div>
+    </button>
   );
 }
 
@@ -569,28 +589,38 @@ function DeltaChip({ color, delta }: { color: string; delta: number }) {
   );
 }
 
-/** One team's name-over-score block in the collapsed bar (team-colored data). */
+/** One team's name-over-score block in the collapsed bar (team-colored data).
+ *  Tappable → that team's editor (inert where onEditTeam is omitted). */
 function CollapsedTeam({
   team,
   points,
   name,
   align,
+  onEditTeam,
 }: {
   team: LBTeam | undefined;
   points: number;
   name: string | undefined;
   align: "left" | "right";
+  onEditTeam?: (teamId: string) => void;
 }) {
   if (!team) return <div style={{ minWidth: 100 }} />;
   return (
-    <div className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 96 }}>
+    <button
+      type="button"
+      onClick={() => onEditTeam?.(team.id)}
+      disabled={!onEditTeam}
+      className="min-w-0 flex-1 disabled:cursor-default"
+      style={{ textAlign: align, minWidth: 96 }}
+      data-testid={`comp-team-name-collapsed-${team.id}`}
+    >
       <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: team.color, lineHeight: 1.1 }}>
         {name ?? team.name}
       </div>
       <div className="tabular-nums" style={{ fontSize: 26, fontWeight: 800, color: team.color, lineHeight: 1, marginTop: 1 }}>
         {fmtPts(points)}
       </div>
-    </div>
+    </button>
   );
 }
 
