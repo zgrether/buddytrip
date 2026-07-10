@@ -15,7 +15,7 @@ const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : use
 const NEUTRAL_CARD = "linear-gradient(158deg,#222e44 0%,#1a2231 100%)";
 
 /**
- * teamGlow — the hero/mini-bar background: a faint two-color TEAM glow (team A from
+ * teamGlow — the hero background: a faint two-color TEAM glow (team A from
  * the top-left, team B from the bottom-right, low alpha) over the card. The one
  * intentional hero gradient (STYLE_GUIDE hero carve-out). `color-mix` derives the
  * low-alpha tint from each team's assigned color, so it's extensible to ANY team
@@ -26,6 +26,22 @@ function teamGlow(a: LBTeam, b: LBTeam): string {
   return [
     `radial-gradient(135% 135% at 0% 0%, color-mix(in srgb, ${a.color} 13%, transparent), transparent 56%)`,
     `radial-gradient(135% 135% at 100% 100%, color-mix(in srgb, ${b.color} 11%, transparent), transparent 56%)`,
+    "var(--color-bt-card)",
+  ].join(", ");
+}
+
+/**
+ * teamGlowCollapsed — the mini-bar background: a faint two-color TEAM glow (team A from
+ * the top-left, team B from the bottom-right, low alpha) over the card. The one
+ * intentional hero gradient (STYLE_GUIDE hero carve-out). `color-mix` derives the
+ * low-alpha tint from each team's assigned color, so it's extensible to ANY team
+ * colors (not the prototype's hardcoded green/orange) — e.g. green + orange render
+ * `rgba(34,197,94,0.13)` / `rgba(249,115,22,0.11)` over `--color-bt-card`.
+ */
+function teamGlowCollapsed(a: LBTeam, b: LBTeam): string {
+  return [
+    `radial-gradient(90% 150% at 0% 0%, color-mix(in srgb, ${a.color} 13%, transparent), transparent 60%)`,
+    `radial-gradient(85% 150% at 100% 100%, color-mix(in srgb, ${b.color} 11%, transparent), transparent 62%)`,
     "var(--color-bt-card)",
   ].join(", ");
 }
@@ -277,6 +293,17 @@ export function StickyCollapseHero({
   // over-cover (no peek), and re-corrects if the collapsed bar's height changes
   // (ResizeObserver). Layout effect on the client so the correction lands before
   // paint; SSR-safe (useEffect fallback).
+  //
+  // ⚠ Measure with `offsetTop` (layout position vs the shared offsetParent), NOT
+  // `getBoundingClientRect().top` (viewport-relative). The two nodes are adjacent
+  // siblings in the same column → same offsetParent → their offsetTop difference is
+  // the pure layout gap, INVARIANT under scroll and under the collapsed bar's
+  // sticky pinning. `rect.top` is not: once the bar is pinned and the hero has
+  // scrolled (or on a soft-nav that restores a scrolled position), rect.top reads a
+  // huge bogus gap, and any re-measure that fires there (a ResizeObserver tick)
+  // corrupts `pull` into a large value that shoves the hero — and all content below
+  // it — way down the page (only a hard refresh, which resets scroll to 0, healed
+  // it). offsetTop can't drift that way.
   useIsoLayoutEffect(() => {
     const c = collapsedRef.current;
     const e = expandedRef.current;
@@ -284,7 +311,7 @@ export function StickyCollapseHero({
     const measure = () => {
       // gap > 0 → the collapsed bar's top peeks above the hero; target a 1px
       // over-cover (gap = -1) so sub-pixel rounding never leaves a sliver.
-      const gap = e.getBoundingClientRect().top - c.getBoundingClientRect().top;
+      const gap = e.offsetTop - c.offsetTop;
       if (Math.abs(gap + 1) > 1) setPull((p) => p + gap + 1);
     };
     measure();
@@ -349,7 +376,7 @@ export function CollapsedHero({
     // Same two-color TEAM glow as the expanded hero (2-team cup) so the two
     // surfaces read as one system; neutral fallback for a points cup.
     border: "1px solid var(--color-bt-border)",
-    background: teams.length <= 2 && teams[0] && teams[1] ? teamGlow(teams[0], teams[1]) : NEUTRAL_CARD,
+    background: teams.length <= 2 && teams[0] && teams[1] ? teamGlowCollapsed(teams[0], teams[1]) : NEUTRAL_CARD,
     boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
     overflow: "hidden", // clip the flush projected-tier row to the card radius
   };
