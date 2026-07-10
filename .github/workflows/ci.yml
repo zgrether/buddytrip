@@ -4,6 +4,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+# A new commit on the same ref supersedes the in-flight run — cancel it instead of
+# letting both compete for (sometimes scarce) hosted runners. Keyed by ref so PR
+# branches and main are independent; a canceled run just re-runs on the new SHA.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
