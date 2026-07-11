@@ -3,10 +3,11 @@
 import { createElement } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Radio, Flag, Swords, Layers, Gamepad2, Table2 } from "lucide-react";
+import { Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
+import { categoryIcon } from "@/lib/gameCategoryIcon";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
@@ -48,16 +49,15 @@ export function fmtPts(n: number): string {
 
 /** §A1 format icon — the leading glyph that names the game's format, glanceable
  *  down the board. Its COLOR carries the arming tell (§A4, applied in Commit 3);
- *  the glyph itself just identifies the format. Unknown types fall back to a
- *  generic game glyph rather than going blank. */
-const FORMAT_ICONS: Record<string, LucideIcon> = {
-  gtt_stroke_play: Flag,
-  gtt_match_play_singles: Swords,
-  gtt_match_play_doubles: Swords,
-  gtt_rack_n_stack: Layers,
-};
+ *  the glyph itself identifies the game's CATEGORY (golf/card/yard/bar/other),
+ *  not its scoring format — sourced from the same shared map the add-game
+ *  picker uses (`gameCategoryIcon.ts`), so the two surfaces can't drift. All
+ *  golf formats (stroke/singles/doubles/rack) share the flag; format-specific
+ *  glyphs (swords/layers) read as "combat/stack" on a board that's half
+ *  non-golf, which this fixes. Unknown types fall back to a generic game glyph
+ *  rather than going blank. */
 export function formatIcon(gameTypeId: string | null): LucideIcon {
-  return (gameTypeId && FORMAT_ICONS[gameTypeId]) || Gamepad2;
+  return categoryIcon(gameTypeId);
 }
 
 /**
@@ -112,8 +112,9 @@ export function iconArmed(game: LBGame): boolean {
  * - `scorecard btn` sits just inboard of it — golf-only, and dropped at Final —
  *   so the column that vanishes is the inner one and the outer edge holds steady.
  * - the format icon's color is the arming tell (§A4); the name never gets
- *   crowded out (§A6). The full §A3 layer table (outline / name strength / the
- *   one Live background / LIVE badge) lands in Commit 3.
+ *   crowded out (§A6). The §A3 layer table is outline / name strength / the one
+ *   Live background — no per-row LIVE badge (the teal LIVE section header now
+ *   carries that signal once, at the section level; leaderboard-grid pass).
  *
  * Subtitle and name+delegate stack vertically inside the name column (mobile —
  * keeps the name uncrowded); the delegate chip travels with the name (§A1) and
@@ -283,7 +284,6 @@ export function GameRow({
               className="shrink-0"
             />
           )}
-          {section === "on-tap" && <LiveBadge />}
         </div>
         {subtitle && (
           <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -439,17 +439,63 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
 }
 
+/** Fixed column width shared between `GridColumnHeader` and each completed
+ *  row's grid cells (match_play only) — the two can never misalign since both
+ *  read the same constant. Sized for a short-name (≤5 char) column. */
+const GRID_COLW = 56;
+
 /**
- * CompletedRow (Task 5) — a finished game compressed to ONE line: format icon +
- * name (left), result (right). Recessed like the old Final tile but far shorter
- * (the old Final `GameRow` stacked the team results vertically in the outer
- * column). The result shape keys on scoring_model:
- *   match_play → each team's points, team-colored, in HERO left-right order
- *                (the `teams` array order the hero uses) so they scan against the
- *                hero. NO winner emphasis — both read at the same weight.
- *   points     → a horizontal placement podium (1st/2nd/3rd…) in the shared
- *                `--color-bt-place-*` tokens (R2 — a small inline podium, not the
- *                games-side FinalStandings screen, which doesn't fit a board row).
+ * GridColumnHeader — team short-name column labels (team-colored, small caps,
+ * an underline tab), sitting directly above the COMPLETED block ONLY. Not
+ * top-pinned across sections: the sections below (Live/Ready/Configuring/New)
+ * either don't award team points yet or are still being set up, so there's no
+ * team-column meaning to label there — header lives where team-vs-team scoring
+ * lives. match_play only (points cups get their own team-column header inside
+ * `PointsMatrix`'s game-by-game table — no duplicate header here).
+ */
+export function GridColumnHeader({ teams }: { teams: LBTeam[] }) {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 pb-2"
+      style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+    >
+      <span
+        className="min-w-0 flex-1 text-[10px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Game
+      </span>
+      {teams.map((t) => (
+        <span
+          key={t.id}
+          className="relative shrink-0 pb-1 text-center text-[11px] font-extrabold uppercase tracking-wide"
+          style={{ width: GRID_COLW, color: t.color }}
+        >
+          {t.short_name}
+          <span
+            className="absolute bottom-0 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-full"
+            style={{ background: "currentColor", opacity: 0.9 }}
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * CompletedRow — a finished game compressed to ONE flat, single-line row: no
+ * card background, no border box, no icon tile, no status subtitle (leaderboard-
+ * grid pass §1.1). A faint hairline sits BETWEEN completed rows (suppressed on
+ * the last) so the flat list stays scannable. The result shape keys on
+ * scoring_model:
+ *   match_play → CompletedGridCells — each team's points as a bare, bold,
+ *                team-colored number in a column that aligns to
+ *                `GridColumnHeader` above. Winner gets a faint team-tinted
+ *                chip; loser is dimmed; a tie gives both equal weight (no chip).
+ *   points     → the existing horizontal placement podium (1st/2nd/3rd…) — left
+ *                as-is; `PointsMatrix` (the collapsible games×teams audit table)
+ *                already gives points cups the full per-game team-column grid,
+ *                so this compact row isn't duplicating that.
  */
 export function CompletedRow({
   game,
@@ -457,6 +503,7 @@ export function CompletedRow({
   cells,
   scoringModel,
   tripId,
+  isLast,
   onPrefetch,
 }: {
   game: LBGame;
@@ -464,6 +511,8 @@ export function CompletedRow({
   cells: Map<string, LBCell> | undefined;
   scoringModel: ScoringModel;
   tripId: string;
+  /** Suppresses the between-rows hairline on the last completed row. */
+  isLast?: boolean;
   onPrefetch: (gameId: string) => void;
 }) {
   const pathname = usePathname();
@@ -473,9 +522,12 @@ export function CompletedRow({
   // Complete → never setup, so no `?settings=1`. Stroke keeps the route <Link>.
   const panelFormat = opensAsPanel(game.gameTypeId);
   const inner = (
-    <div className="flex items-center gap-3 px-4 py-2.5" style={{ opacity: 0.75 }}>
+    <div
+      className="flex items-center gap-3 px-4 py-2"
+      style={{ borderBottom: isLast ? undefined : "1px solid var(--color-bt-border)" }}
+    >
       {createElement(formatIcon(game.gameTypeId), {
-        size: 16,
+        size: 15,
         className: "shrink-0",
         style: { color: "var(--color-bt-text-dim)" },
       })}
@@ -488,11 +540,10 @@ export function CompletedRow({
       {scoringModel === "points" ? (
         <CompletedPodium teams={teams} cells={cells} />
       ) : (
-        <CompletedScores teams={teams} cells={cells} />
+        <CompletedGridCells teams={teams} cells={cells} />
       )}
     </div>
   );
-  const panelStyle: React.CSSProperties = { border: "1px solid var(--color-bt-border)" };
   if (panelFormat) {
     return (
       <button
@@ -500,8 +551,7 @@ export function CompletedRow({
         onClick={() => openGamePanel(pathname, game.id, false)}
         onPointerEnter={() => onPrefetch(game.id)}
         onPointerDown={() => onPrefetch(game.id)}
-        className="block w-full rounded-xl overflow-hidden text-left hover:opacity-80 transition-opacity"
-        style={panelStyle}
+        className="block w-full text-left hover:opacity-80 transition-opacity"
         data-testid="open-game-panel"
       >
         {inner}
@@ -511,35 +561,56 @@ export function CompletedRow({
   return href ? (
     <Link
       href={href}
-      className="block rounded-xl overflow-hidden hover:opacity-80 transition-opacity"
-      style={panelStyle}
+      className="block hover:opacity-80 transition-opacity"
       onPointerEnter={() => onPrefetch(game.id)}
       onPointerDown={() => onPrefetch(game.id)}
     >
       {inner}
     </Link>
   ) : (
-    <div className="rounded-xl overflow-hidden" style={panelStyle}>
-      {inner}
-    </div>
+    <div>{inner}</div>
   );
 }
 
-/** match_play completed result — each team's points as a team-color dot + the
- *  number in white, in the SAME left-right order as the hero (the `teams` array
- *  order). No winner emphasis. */
-function CompletedScores({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+/** match_play completed grid cells — each team's points as a bare, bold,
+ *  team-colored number in a fixed-width column aligned to `GridColumnHeader`.
+ *  The winner's cell carries a faint team-tinted chip (fill + 1px team
+ *  border); the loser's number is team-colored at reduced opacity; a tie gives
+ *  both equal weight (no chip) — the colorblind-safe distinction is the chip's
+ *  FILL, not a hue. */
+function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+  const values = teams.map((t) => cells?.get(t.id)?.points ?? null);
+  const numeric = values.filter((v): v is number => v != null);
+  const max = numeric.length ? Math.max(...numeric) : null;
+  const isTie = max != null && numeric.filter((v) => v === max).length > 1;
   return (
-    <div className="flex shrink-0 items-center gap-3 tabular-nums">
-      {teams.map((t) => (
-        <span key={t.id} className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: t.color }} />
-          <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            {fmtPts(cells?.get(t.id)?.points ?? 0)}
+    <>
+      {teams.map((t, i) => {
+        const v = values[i];
+        const isWinner = !isTie && v != null && max != null && v === max;
+        const isLoser = v != null && max != null && v !== max;
+        return (
+          <span
+            key={t.id}
+            className="shrink-0 rounded-lg text-center text-[15px] font-extrabold tabular-nums"
+            style={{
+              width: GRID_COLW,
+              padding: "3px 0",
+              color: t.color,
+              opacity: isLoser ? 0.62 : 1,
+              background: isWinner
+                ? `color-mix(in srgb, ${t.color} 14%, transparent)`
+                : undefined,
+              boxShadow: isWinner
+                ? `inset 0 0 0 1px color-mix(in srgb, ${t.color} 45%, transparent)`
+                : undefined,
+            }}
+          >
+            {v != null ? fmtPts(v) : "–"}
           </span>
-        </span>
-      ))}
-    </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -571,24 +642,6 @@ function CompletedPodium({ teams, cells }: { teams: LBTeam[]; cells: Map<string,
         );
       })}
     </div>
-  );
-}
-
-/** §A2 — LIVE is the one surviving word-badge (the OPEN badge is removed; arming
- *  is carried by the format-icon color, §A4). */
-export function LiveBadge() {
-  return (
-    <span
-      className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-      style={{
-        background: "var(--color-bt-accent-faint)",
-        color: "var(--color-bt-accent)",
-        border: "1px solid var(--color-bt-accent-border)",
-      }}
-    >
-      <Radio size={9} />
-      Live
-    </span>
   );
 }
 

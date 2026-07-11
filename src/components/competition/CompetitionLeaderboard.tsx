@@ -5,7 +5,7 @@ import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { GameRow, CompletedRow, sectionOf, fmtPts, type GameSection } from "./GameRow";
+import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
 import { PointsMatrix } from "./PointsMatrix";
 
@@ -485,14 +485,17 @@ function NTeamRankedList({
 
 // ── SessionBreakdown ─────────────────────────────────────────────────────────
 
-// Section order + labels (Task 4). The Completed section renders compressed
-// single-line rows; the rest use the full GameRow.
+// Section order + labels (leaderboard-grid pass §1.3): single-word lifecycle
+// names. Render order stays Completed-first, descending to New (unchanged from
+// before this pass) — only the label strings + LIVE's teal treatment changed.
+// The Completed section renders compressed single-line rows; the rest use the
+// full GameRow.
 const SECTION_ORDER: { key: GameSection; label: string }[] = [
   { key: "completed", label: "Completed" },
-  { key: "on-tap", label: "On Tap" },
-  { key: "ready", label: "Ready for Play" },
-  { key: "preparing", label: "Preparing for Gameplay" },
-  { key: "skeleton", label: "Skeleton" },
+  { key: "on-tap", label: "Live" },
+  { key: "ready", label: "Ready" },
+  { key: "preparing", label: "Configuring" },
+  { key: "skeleton", label: "New" },
 ];
 
 function SessionBreakdown({
@@ -535,17 +538,34 @@ function SessionBreakdown({
       {SECTION_ORDER.map(({ key, label }) => {
         const sectionGames = bySection.get(key);
         if (!sectionGames || sectionGames.length === 0) return null; // empty sections hidden
+        // LIVE (on-tap) is the one section that carries the liveness signal —
+        // teal label + dot (§1.3/§1.4). The per-row LIVE badge was removed in
+        // favor of this single section-level tell.
+        const isLive = key === "on-tap";
+        const labelColor = isLive ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
         return (
           <div key={key} data-testid={`games-section-${key}`}>
             <p
-              className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
+              className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: labelColor }}
             >
+              {isLive && (
+                <span
+                  className="inline-block h-1 w-1 rounded-full"
+                  style={{ background: "currentColor", boxShadow: "0 0 0 3px var(--color-bt-accent-faint)" }}
+                />
+              )}
               {label}{" "}
               <span style={{ color: "var(--color-bt-text)" }}>· {sectionGames.length}</span>
             </p>
-            <div className="flex flex-col gap-2">
-              {sectionGames.map((game) =>
+            {/* Team short-name column header — sits directly above COMPLETED
+                only (§1.2), match_play only (points cups get their own
+                team-column header inside PointsMatrix). */}
+            {key === "completed" && scoringModel === "match_play" && (
+              <GridColumnHeader teams={teams} />
+            )}
+            <div className={key === "completed" ? "flex flex-col" : "flex flex-col gap-2"}>
+              {sectionGames.map((game, i) =>
                 key === "completed" ? (
                   <CompletedRow
                     key={game.id}
@@ -554,6 +574,7 @@ function SessionBreakdown({
                     cells={cellsByGame.get(game.id)}
                     scoringModel={scoringModel}
                     tripId={tripId}
+                    isLast={i === sectionGames.length - 1}
                     onPrefetch={onPrefetch}
                   />
                 ) : (
