@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Trophy, Settings, Users } from "lucide-react";
+import { Settings, Users } from "lucide-react";
 import { fmtPts } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -9,6 +9,42 @@ import type { ScoringModel } from "@/lib/gameTypes";
 // Measure before paint on the client; a plain effect on the server (useLayoutEffect
 // warns during SSR). Standard SSR-safe isomorphic layout effect.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+// The neutral fallback card (no two teams to tint from — a points cup's identity
+// hero, or a half-built 2-team cup).
+const NEUTRAL_CARD = "linear-gradient(158deg,#222e44 0%,#1a2231 100%)";
+
+/**
+ * teamGlow — the hero background: a faint two-color TEAM glow (team A from
+ * the top-left, team B from the bottom-right, low alpha) over the card. The one
+ * intentional hero gradient (STYLE_GUIDE hero carve-out). `color-mix` derives the
+ * low-alpha tint from each team's assigned color, so it's extensible to ANY team
+ * colors (not the prototype's hardcoded green/orange) — e.g. green + orange render
+ * `rgba(34,197,94,0.13)` / `rgba(249,115,22,0.11)` over `--color-bt-card`.
+ */
+function teamGlow(a: LBTeam, b: LBTeam): string {
+  return [
+    `radial-gradient(135% 135% at 0% 0%, color-mix(in srgb, ${a.color} 13%, transparent), transparent 56%)`,
+    `radial-gradient(135% 135% at 100% 100%, color-mix(in srgb, ${b.color} 11%, transparent), transparent 56%)`,
+    "var(--color-bt-card)",
+  ].join(", ");
+}
+
+/**
+ * teamGlowCollapsed — the mini-bar background: a faint two-color TEAM glow (team A from
+ * the top-left, team B from the bottom-right, low alpha) over the card. The one
+ * intentional hero gradient (STYLE_GUIDE hero carve-out). `color-mix` derives the
+ * low-alpha tint from each team's assigned color, so it's extensible to ANY team
+ * colors (not the prototype's hardcoded green/orange) — e.g. green + orange render
+ * `rgba(34,197,94,0.13)` / `rgba(249,115,22,0.11)` over `--color-bt-card`.
+ */
+function teamGlowCollapsed(a: LBTeam, b: LBTeam): string {
+  return [
+    `radial-gradient(90% 150% at 0% 0%, color-mix(in srgb, ${a.color} 13%, transparent), transparent 60%)`,
+    `radial-gradient(85% 150% at 100% 100%, color-mix(in srgb, ${b.color} 11%, transparent), transparent 62%)`,
+    "var(--color-bt-card)",
+  ].join(", ");
+}
 
 /**
  * CompetitionHero — the merged competition header (Task 1). ONE elevated gradient
@@ -80,6 +116,7 @@ export function CompetitionHero({
         winNumber={winNumber}
         pointsAvailable={pointsAvailable}
         clincher={clincher}
+        onEditTeam={onEditTeam}
       />
     );
   }
@@ -94,12 +131,14 @@ export function CompetitionHero({
   return (
     <div
       style={{
-        // ART: gradient card + soft float shadow (raw hex per the hero carve-out).
+        // ART: the two-color TEAM glow (team A top-left, team B bottom-right) over
+        // the card + a soft float shadow. Falls back to the neutral card for a
+        // points cup / half-built cup (no two teams to tint from).
         position: "relative",
-        overflow: "hidden", // crops the trophy so it bleeds top/bottom
+        overflow: "hidden", // clip the gradient to the card radius
         borderRadius: 16,
         border: "1px solid var(--color-bt-border)",
-        background: "linear-gradient(158deg,#222e44 0%,#1a2231 100%)",
+        background: showScores && a && b ? teamGlow(a, b) : NEUTRAL_CARD,
         boxShadow: "0 10px 28px rgba(0,0,0,0.40)",
       }}
       data-testid="competition-hero"
@@ -127,30 +166,18 @@ export function CompetitionHero({
           the Live-face main already insets the card — keeps content off the edges
           without the doubled gap. */}
       <div style={{ position: "relative", padding: "18px 16px 20px" }}>
-        {/* Top row: identity (left) + gear (right). */}
+        {/* Top row: identity (left) + gear (right). The inline trophy TILE next to
+            the cup name is dropped (the hero already carries the big trophy). */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <span
-              className="flex flex-shrink-0 items-center justify-center rounded-xl"
-              style={{
-                width: 36,
-                height: 36,
-                background: "var(--color-bt-accent-faint)",
-                color: "var(--color-bt-accent)",
-              }}
-            >
-              <Trophy size={18} />
-            </span>
-            <div className="min-w-0">
-              <p style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1, color: "var(--color-bt-text)" }}>
-                {cupName}
+          <div className="min-w-0">
+            <p style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1, color: "var(--color-bt-text)" }}>
+              {cupName}
+            </p>
+            {tagline && tagline.trim() && (
+              <p className="mt-0.5" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+                {tagline}
               </p>
-              {tagline && tagline.trim() && (
-                <p className="mt-0.5" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-                  {tagline}
-                </p>
-              )}
-            </div>
+            )}
           </div>
           {onSettings && canEdit && (
             <button
@@ -266,11 +293,28 @@ export function StickyCollapseHero({
   // over-cover (no peek), and re-corrects if the collapsed bar's height changes
   // (ResizeObserver). Layout effect on the client so the correction lands before
   // paint; SSR-safe (useEffect fallback).
+  //
+  // ⚠ ONLY measure while the collapsed bar is at REST (not pinned). The bar is
+  // `position: sticky`, and once it pins Chrome reports its STUCK position for BOTH
+  // `getBoundingClientRect().top` AND `offsetTop` (offsetTop of a stuck sticky
+  // element is `stickyTop + scrollTop`, i.e. its on-screen position — NOT its flow
+  // position). The hero is a normal element whose position is fixed, so the moment
+  // the bar pins the measured hero→bar gap diverges by ~scrollTop and a re-measure
+  // there (any ResizeObserver tick the pin triggers) sets `pull` to a large NEGATIVE
+  // value → a big POSITIVE margin that shoves the hero and every row under it down
+  // the page. That's the "scroll down → open a game → back → leaderboard sits
+  // halfway down" bug; a resize (or hard refresh at scrollTop 0) re-measured at rest
+  // and healed it, which is exactly why it "snapped back on resize". Neither
+  // `rect.top` nor `offsetTop` is pin-invariant — the fix is to gate the measure on
+  // rest, where the bar is at its natural top (> stickyTop) and the gap is real.
   useIsoLayoutEffect(() => {
     const c = collapsedRef.current;
     const e = expandedRef.current;
     if (!c || !e) return;
     const measure = () => {
+      // Skip while pinned — a stuck sticky bar's top reports its on-screen (scrolled)
+      // position, which would corrupt the gap. At rest its top sits below stickyTop.
+      if (c.getBoundingClientRect().top <= stickyTop + 1) return;
       // gap > 0 → the collapsed bar's top peeks above the hero; target a 1px
       // over-cover (gap = -1) so sub-pixel rounding never leaves a sliver.
       const gap = e.getBoundingClientRect().top - c.getBoundingClientRect().top;
@@ -280,8 +324,17 @@ export function StickyCollapseHero({
     const ro = new ResizeObserver(measure);
     ro.observe(c);
     ro.observe(e);
-    return () => ro.disconnect();
-  }, []);
+    // The RO fires on resize, not scroll, so also re-measure as the page returns to
+    // rest (measure() no-ops while pinned, and setPull only fires on a real change —
+    // so this converges once at the top and stays quiet). This is what re-settles
+    // `pull` after a resize landed while pinned, or a remount restored a scrolled
+    // position.
+    window.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", measure);
+    };
+  }, [stickyTop]);
   return (
     <>
       <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
@@ -312,72 +365,158 @@ export function CollapsedHero({
   pointsAvailable,
   clincher,
   footer,
+  onEditTeam,
 }: {
   teams: LBTeam[];
   teamTotals: Record<string, number>;
   winNumber: number;
   pointsAvailable: number;
   clincher: LBTeam | null;
-  /** Optional second row INSIDE the same card, below a divider — the game-page
-   *  header's projection row (#533). Omitted on the leaderboard's sticky bar. */
+  /** Optional projected tier INSIDE the same card, as a flush card-raised row —
+   *  the game-page header's projection (#533). Omitted on the leaderboard's sticky
+   *  bar. */
   footer?: React.ReactNode;
+  /** Tap a team name → that team's identity editor (owner / its captain), same as
+   *  the expanded hero. Omitted where team editing isn't wired (the game page) →
+   *  the names render non-interactive. */
+  onEditTeam?: (teamId: string) => void;
 }) {
-  const footerBlock = footer ? (
-    <>
-      <div style={{ height: 1, background: "var(--color-bt-subtle-border)", margin: "10px 0 9px" }} />
-      {footer}
-    </>
-  ) : null;
   const targetLabel = clincher
     ? `${clincher.short_name ?? clincher.name} wins`
     : pointsAvailable > 0
-      ? `First to ${fmtPts(winNumber)} wins` // "wins" to match the expanded hero's target line
+      ? `First to ${fmtPts(winNumber)} wins`
       : "No points yet";
   const card: React.CSSProperties = {
     borderRadius: 12,
-    // NEUTRAL chrome — the same hero gradient art as expanded (STYLE_GUIDE hero
-    // carve-out), NO team-color wash. Team color lives on the scores/names only.
+    // Same two-color TEAM glow as the expanded hero (2-team cup) so the two
+    // surfaces read as one system; neutral fallback for a points cup.
     border: "1px solid var(--color-bt-border)",
-    background: "linear-gradient(158deg,#212c40 0%,#1a2231 100%)",
+    background: teams.length <= 2 && teams[0] && teams[1] ? teamGlowCollapsed(teams[0], teams[1]) : NEUTRAL_CARD,
     boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
-    padding: "11px 18px",
+    overflow: "hidden", // clip the flush projected-tier row to the card radius
   };
-  const target = (
-    // Normal-case (Task 2 — no all-caps) + bumped to 13/600 so it reads as a
-    // peer of the team-name labels, matching the expanded hero's target line.
-    <span
-      style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
+  // The projected tier is its OWN flush row (card-raised fill + top hairline), not
+  // a plain divider — so it reads as a distinct tier of the same card.
+  const footerBlock = footer ? (
+    <div
+      style={{
+        background: "var(--color-bt-card-raised)",
+        borderTop: "1px solid var(--color-bt-subtle-border)",
+        padding: "9px 14px",
+      }}
     >
-      {targetLabel}
-    </span>
-  );
+      {footer}
+    </div>
+  ) : null;
 
-  // Two teams (match-play cup) → the mock: name/score flanking a centered target.
+  // Two teams (match-play cup) → the tweaked bar: names on their own row (wrap
+  // toward center), then the two scores flanking the target + an INLINE progress
+  // bar (the bar rides between the scores here, not on its own row — that's what
+  // keeps the collapsed bar short).
   if (teams.length <= 2) {
     const [a, b] = teams;
+    const aTotal = a ? teamTotals[a.id] ?? 0 : 0;
+    const bTotal = b ? teamTotals[b.id] ?? 0 : 0;
+    const aWidth = pointsAvailable > 0 ? Math.min(100, (aTotal / pointsAvailable) * 100) : 0;
+    const bWidth = pointsAvailable > 0 ? Math.min(100, (bTotal / pointsAvailable) * 100) : 0;
     return (
       <div style={card} data-testid="competition-hero-collapsed">
-        <div className="flex items-center justify-between gap-2">
-          <CollapsedTeam team={a} points={a ? teamTotals[a.id] ?? 0 : 0} name={a?.name} align="left" />
-          <div className="flex-1 text-center">{target}</div>
-          <CollapsedTeam team={b} points={b ? teamTotals[b.id] ?? 0 : 0} name={b?.name} align="right" />
+        <div style={{ padding: "11px 14px 12px" }}>
+          {/* Names — own row, wrap toward center, team-colored, group icon,
+              tappable → that team's editor (same as the expanded hero). */}
+          <div className="flex items-start justify-between gap-3.5">
+            <MiniName team={a} align="left" onEditTeam={onEditTeam} />
+            <MiniName team={b} align="right" onEditTeam={onEditTeam} />
+          </div>
+          {/* Scores flank the target + inline bar. */}
+          <div className="flex items-center gap-3.5" style={{ marginTop: 5 }}>
+            <MiniScore team={a} points={aTotal} />
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-center"
+                style={{ fontSize: 11, fontWeight: 500, lineHeight: 1, color: "var(--color-bt-text-dim)" }}
+              >
+                {targetLabel}
+              </div>
+              {pointsAvailable > 0 && a && b && (
+                <div
+                  className="relative mt-[7px] flex h-1 w-full overflow-hidden rounded-full"
+                  style={{ background: "rgba(148,163,184,0.18)" }}
+                >
+                  <div className="h-full rounded-l-full transition-all duration-500" style={{ width: `${aWidth}%`, background: a.color }} />
+                  <div className="ml-auto h-full rounded-r-full transition-all duration-500" style={{ width: `${bWidth}%`, background: b.color }} />
+                  <div
+                    className="absolute left-1/2 top-1/2 h-full w-0.5 -translate-x-1/2 -translate-y-1/2"
+                    style={{ background: "var(--color-bt-text)", opacity: 0.45 }}
+                  />
+                </div>
+              )}
+            </div>
+            <MiniScore team={b} points={bTotal} />
+          </div>
         </div>
         {footerBlock}
       </div>
     );
   }
 
-  // N teams (points cup) → an evenly-spaced row + the target on its own line.
+  // N teams (points cup) → an evenly-spaced name-over-score row + target below.
   return (
     <div style={card} data-testid="competition-hero-collapsed">
-      <div className="flex items-stretch justify-between gap-2.5">
-        {teams.map((t) => (
-          <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" />
-        ))}
+      <div style={{ padding: "11px 14px 12px" }}>
+        <div className="flex items-stretch justify-between gap-2.5">
+          {teams.map((t) => (
+            <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" onEditTeam={onEditTeam} />
+          ))}
+        </div>
+        <div className="mt-1.5 text-center">
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{targetLabel}</span>
+        </div>
       </div>
-      <div className="mt-1.5 text-center">{target}</div>
       {footerBlock}
     </div>
+  );
+}
+
+/** One team's big score in the collapsed bar's scores row (team-colored). */
+function MiniScore({ team, points }: { team: LBTeam | undefined; points: number }) {
+  if (!team) return <span style={{ width: 1 }} />;
+  return (
+    <span
+      className="tabular-nums"
+      style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: team.color }}
+    >
+      {fmtPts(points)}
+    </span>
+  );
+}
+
+/** A team name on its side of the collapsed bar — team-colored, group icon,
+ *  wraps toward center (no truncate), capped so it never crowds the scores.
+ *  Tappable → that team's editor (disabled/inert where onEditTeam is omitted). */
+function MiniName({
+  team,
+  align,
+  onEditTeam,
+}: {
+  team: LBTeam | undefined;
+  align: "left" | "right";
+  onEditTeam?: (teamId: string) => void;
+}) {
+  if (!team) return <div style={{ maxWidth: "38%" }} />;
+  return (
+    <button
+      type="button"
+      onClick={() => onEditTeam?.(team.id)}
+      disabled={!onEditTeam}
+      className={`flex min-w-0 items-center gap-1.5 disabled:cursor-default ${align === "right" ? "justify-end text-right" : ""}`}
+      style={{ maxWidth: "38%" }}
+      data-testid={`comp-team-name-collapsed-${align === "left" ? "a" : "b"}`}
+    >
+      {align === "left" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
+      <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.25, color: team.color }}>{team.name}</span>
+      {align === "right" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
+    </button>
   );
 }
 
@@ -394,7 +533,6 @@ export function ProjectionRow({
   teams,
   teamTotals,
   perTeam,
-  gameName,
   final,
 }: {
   teams: LBTeam[];
@@ -403,83 +541,138 @@ export function ProjectionRow({
    *  totals, so total = realized + projected reads correctly. */
   teamTotals: Record<string, number>;
   perTeam: Record<string, number>;
-  gameName: string;
   final: boolean;
+  // gameName dropped: the app bar (#550) now carries the game title, so repeating
+  // it here was redundant. Kept off the projected tier per the tweaked design.
 }) {
-  const contrib = (t: LBTeam | undefined, align: "left" | "right", key?: string) => {
-    if (!t) return <div key={key} style={{ minWidth: 88 }} />;
-    const p = perTeam[t.id] ?? 0;
-    // Projected TOTAL = current realized total + this game's projected delta.
-    // Only while live: once final, the game's points are ALREADY in teamTotals
-    // (adding would double-count), so keep the final display as the solid delta.
-    const projectedTotal = (teamTotals[t.id] ?? 0) + p;
-    return (
-      <div key={key} className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 88 }}>
-        <span
-          className="tabular-nums"
-          // A distinguishable SUB-header under the official score: SAME size as
-          // the mini-bar's official scores (26), but NON-BOLD (600 vs 800) and
-          // FAINT (team color at 0.5 while live) so it doesn't compete with it.
-          style={{ fontSize: 26, fontWeight: 600, color: t.color, opacity: final ? 1 : 0.5, lineHeight: 1 }}
-        >
-          {final ? (p > 0 ? `+${fmtPts(p)}` : fmtPts(p)) : `${fmtPts(projectedTotal)} (+${fmtPts(p)})`}
-        </span>
+  const label = (
+    <div className="flex-shrink-0 text-center">
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "var(--color-bt-text-dim)", lineHeight: 1 }}>
+        {final ? "FINAL" : "PROJECTED"}
       </div>
-    );
-  };
-  const center = (
-    <div className="flex-1 text-center">
-      <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)", lineHeight: 1.2 }}>{gameName}</div>
-      {!final && (
-        // Matches the "First to X wins" target size/style (13, dim) — a peer,
-        // not a tiny afterthought (Task 4).
-        <div style={{ fontSize: 13, fontStyle: "italic", color: "var(--color-bt-text-dim)", marginTop: 1 }}>projected</div>
-      )}
+      <div style={{ fontSize: 11, fontWeight: 400, color: "var(--color-bt-text-dim)", lineHeight: 1.2, marginTop: 3 }}>
+        {final ? "this game" : "if today holds"}
+      </div>
     </div>
   );
 
   if (teams.length <= 2) {
     const [a, b] = teams;
     return (
-      <div className="flex items-center justify-between gap-2" data-testid="header-projection">
-        {contrib(a, "left")}
-        {center}
-        {contrib(b, "right")}
+      <div className="flex items-center justify-between gap-3" data-testid="header-projection">
+        <ProjTeam team={a} perTeam={perTeam} teamTotals={teamTotals} final={final} align="left" />
+        {label}
+        <ProjTeam team={b} perTeam={perTeam} teamTotals={teamTotals} final={final} align="right" />
       </div>
     );
   }
   return (
     <div data-testid="header-projection">
       <div className="flex items-stretch justify-between gap-2.5">
-        {teams.map((t) => contrib(t, "left", t.id))}
+        {teams.map((t) => (
+          <ProjTeam key={t.id} team={t} perTeam={perTeam} teamTotals={teamTotals} final={final} align="left" />
+        ))}
       </div>
-      <div className="mt-1 text-center">{center}</div>
+      <div className="mt-1.5">{label}</div>
     </div>
   );
 }
 
-/** One team's name-over-score block in the collapsed bar (team-colored data). */
+/** One team's projected tier block: the projected TOTAL (team-colored) + a delta
+ *  chip for this game's contribution. While live the total = realized + projected
+ *  delta; once final the game's points are already in the realized total, so the
+ *  total is realized and the chip shows what this game added. */
+function ProjTeam({
+  team,
+  perTeam,
+  teamTotals,
+  final,
+  align,
+}: {
+  team: LBTeam | undefined;
+  perTeam: Record<string, number>;
+  teamTotals: Record<string, number>;
+  final: boolean;
+  align: "left" | "right";
+}) {
+  if (!team) return <div style={{ minWidth: 80 }} />;
+  const p = perTeam[team.id] ?? 0;
+  const total = final ? teamTotals[team.id] ?? 0 : (teamTotals[team.id] ?? 0) + p;
+  const num = (
+    <span
+      className="tabular-nums"
+      style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: team.color }}
+    >
+      {fmtPts(total)}
+    </span>
+  );
+  const chip = <DeltaChip color={team.color} delta={p} />;
+  return (
+    <div
+      className={`flex min-w-0 items-baseline gap-2 ${align === "right" ? "justify-end" : ""}`}
+      style={{ minWidth: 80 }}
+    >
+      {align === "left" ? (<>{num}{chip}</>) : (<>{chip}{num}</>)}
+    </div>
+  );
+}
+
+/** Delta chip — this game's point contribution, as a team-tinted pill (team color
+ *  on a 16%-alpha team fill). ▲ for a positive contribution; a plain 0 when the
+ *  game hasn't moved the team yet (match-play contributions are never negative). */
+function DeltaChip({ color, delta }: { color: string; delta: number }) {
+  return (
+    <span
+      className="inline-flex items-center tabular-nums"
+      style={{
+        gap: 2,
+        padding: "2px 8px",
+        borderRadius: 9999,
+        fontSize: 11.5,
+        fontWeight: 700,
+        lineHeight: 1,
+        background: `color-mix(in srgb, ${color} 16%, transparent)`,
+        color,
+      }}
+    >
+      {delta > 0 && <span style={{ fontSize: 8 }}>&#9650;</span>}
+      {fmtPts(delta)}
+    </span>
+  );
+}
+
+/** One team's name-over-score block in the collapsed bar (team-colored data).
+ *  Tappable → that team's editor (inert where onEditTeam is omitted). */
 function CollapsedTeam({
   team,
   points,
   name,
   align,
+  onEditTeam,
 }: {
   team: LBTeam | undefined;
   points: number;
   name: string | undefined;
   align: "left" | "right";
+  onEditTeam?: (teamId: string) => void;
 }) {
   if (!team) return <div style={{ minWidth: 100 }} />;
   return (
-    <div className="min-w-0 flex-1" style={{ textAlign: align, minWidth: 96 }}>
+    <button
+      type="button"
+      onClick={() => onEditTeam?.(team.id)}
+      disabled={!onEditTeam}
+      className="min-w-0 flex-1 disabled:cursor-default"
+      style={{ textAlign: align, minWidth: 96 }}
+      data-testid={`comp-team-name-collapsed-${team.id}`}
+    >
       <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: team.color, lineHeight: 1.1 }}>
         {name ?? team.name}
       </div>
       <div className="tabular-nums" style={{ fontSize: 26, fontWeight: 800, color: team.color, lineHeight: 1, marginTop: 1 }}>
         {fmtPts(points)}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -571,3 +764,4 @@ function HeroTrophy() {
     </svg>
   );
 }
+
