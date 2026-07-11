@@ -182,6 +182,20 @@ These patterns have been established through prior work. Follow them exactly —
     the board is still stale until a hard refresh / the poll." (History: the
     team-color audit established this for setup-data mutations; the rack/1v1
     finalize + correction lag was the same class on the result path.)
+11. **Glorious Finishing Holes weight is DERIVED, never snapshotted.** The "last N
+    holes worth 2×" modifier (`games.modifiers.glorious_holes: { holes: N }`) is
+    applied at COMPUTE time by `holeWeight`/`remainingSwing` (`src/lib/gloriousHoles.ts`),
+    never stored on a hole result — flip the flag or change N mid-round and the tally
+    just recomputes (nothing migrates). It weights the match tally (a won glorious
+    hole is ±2) and, critically, close-out/dormie compare the lead to the WEIGHTED
+    `remainingSwing`, NOT raw holes left (a 4-up lead with 3 glorious holes / swing 6
+    is still live). Match SINGLES/DOUBLES only, **guarded on `game_type_id`** (via
+    `isMatchPlayFormat`) — NOT the competition `scoring_model` (rack is `match_play`
+    by scoring_model but is net-stroke entry, excluded). The ONE weighted `matchState`
+    (`src/lib/matchPlay.ts`, `buildDecided` now emits `{hole, result}[]`) feeds the
+    live client strip AND the server `computeMatchPlayResults`, so they can't diverge.
+    The margin string keeps X = weighted lead, Y = raw holes-to-play (so "4&2" is a
+    legal, correct glorious margin — do not "fix" it).
 
 ## Guest → real-user conversion (auth)
 

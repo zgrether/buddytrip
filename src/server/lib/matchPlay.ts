@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDecided, matchState } from "@/lib/matchPlay";
+import { gloriousConfig } from "@/lib/gloriousHoles";
+import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, type PerMatchDistribution } from "@/lib/pointsDistribution";
 
@@ -64,6 +66,22 @@ export async function computeMatchPlayResults(
   // → `buildDecided` uses the sequential fallback (the no-course path).
   const { strokeIndex, holeCount } = await loadStrokeIndex(supabase, gameId);
 
+  // Glorious Finishing Holes: the LIVE 2×-last-N weight, read from games.modifiers
+  // at compute time — derived, never snapshotted, so a mid-round flag/N flip just
+  // recomputes here. Format-guarded inside gloriousConfig (inert for anything but
+  // match singles/doubles), and this compute is only ever reached by match_play
+  // games anyway — belt and suspenders. Same helper the live client strip uses, so
+  // finish and the live board can't diverge.
+  const { data: gameCfg } = await supabase
+    .from("games")
+    .select("game_type_id, modifiers")
+    .eq("id", gameId)
+    .maybeSingle();
+  const glorious = gloriousConfig(
+    gameCfg?.game_type_id as string | null,
+    gameCfg?.modifiers as ModifiersMap | null
+  );
+
   // Side handicaps, keyed by SIDE id. A 1v1 side is a user (handicap on
   // game_participants); a 2v2 side is a pair = a play_group (handicap on
   // play_groups). Read both so one compute serves both formats — the id spaces
@@ -122,7 +140,7 @@ export async function computeMatchPlayResults(
       strokeIndex,
       holeCount
     );
-    const st = matchState(decided, holeCount);
+    const st = matchState(decided, holeCount, glorious);
 
     const result: MatchOutcome["result"] = st.over
       ? st.up === 0

@@ -280,6 +280,74 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     expect(matches[0]).toMatchObject({ result: "a_win", margin: "3&2" }); // still 3&2, not recomputed
   });
 
+  // ── Glorious Finishing Holes — the weighted last-N result via the SAME finish
+  // path. "Real data": modifiers persisted on the game, scores in score_entries,
+  // computeMatchPlayResults reads the live config. Proves the down-6-comeback and
+  // the 4-up-stays-live cases end-to-end, each against a no-glorious control.
+  async function pairOwnerMember(gameId: string) {
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+  }
+  // A is 6 DOWN thru 15 (loses 1–6, halves 7–15), then A wins 16/17/18.
+  function downSixThenWinLast(): [Record<number, number>, Record<number, number>] {
+    const a: Record<number, number> = {};
+    const b: Record<number, number> = {};
+    for (let h = 1; h <= 6; h++) { a[h] = 5; b[h] = 4; } // A loses 1–6
+    for (let h = 7; h <= 15; h++) { a[h] = 4; b[h] = 4; } // halved 7–15
+    a[16] = 4; a[17] = 4; a[18] = 4; // A wins the last three…
+    b[16] = 5; b[17] = 5; b[18] = 5;
+    return [a, b];
+  }
+  // A is 4 UP thru 15 (wins 1–4, halves 5–15); only 15 holes entered.
+  function fourUpThru15(): [Record<number, number>, Record<number, number>] {
+    const a: Record<number, number> = {};
+    const b: Record<number, number> = {};
+    for (let h = 1; h <= 4; h++) { a[h] = 4; b[h] = 5; }
+    for (let h = 5; h <= 15; h++) { a[h] = 4; b[h] = 4; }
+    return [a, b];
+  }
+
+  it("GLORIOUS N=3 — 6 down thru 15, wins 16/17/18 → HALVE (the three ±2 swings square it)", async () => {
+    const gameId = await freshGame("Glorious comeback");
+    await ctx.caller().games.update({ tripId, gameId, modifiers: { glorious_holes: { holes: 3 } } });
+    await pairOwnerMember(gameId);
+    const [a, b] = downSixThenWinLast();
+    await enter(gameId, owner, member, a, b);
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    expect(matches[0]).toMatchObject({ result: "halve", status: "complete" });
+  });
+
+  it("CONTROL — same scores, no glorious → b_win (A eliminated at hole 13, comeback never counts)", async () => {
+    const gameId = await freshGame("No-glorious control");
+    await pairOwnerMember(gameId);
+    const [a, b] = downSixThenWinLast();
+    await enter(gameId, owner, member, a, b);
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    expect(matches[0]).toMatchObject({ result: "b_win", margin: "6&5", status: "complete" });
+  });
+
+  it("GLORIOUS N=3 — 4 up thru 15 stays LIVE (weighted swing 6 ≥ lead 4) → not decided", async () => {
+    const gameId = await freshGame("Glorious four-up live");
+    await ctx.caller().games.update({ tripId, gameId, modifiers: { glorious_holes: { holes: 3 } } });
+    await pairOwnerMember(gameId);
+    const [a, b] = fourUpThru15();
+    await enter(gameId, owner, member, a, b);
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    expect(matches[0]).toMatchObject({ result: null, status: "active" }); // NOT closed out
+  });
+
+  it("CONTROL — same 4-up-thru-15, no glorious → a_win 4&3 (raw swing 3 < lead 4 → closed)", async () => {
+    const gameId = await freshGame("Four-up closed control");
+    await pairOwnerMember(gameId);
+    const [a, b] = fourUpThru15();
+    await enter(gameId, owner, member, a, b);
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    expect(matches[0]).toMatchObject({ result: "a_win", margin: "4&3", status: "complete" });
+  });
+
   it("net allocation (fallback) — a received stroke flips a hole", async () => {
     const gameId = await freshGame("Net stroke");
     await ctx.caller().matches.setPairings({
