@@ -1398,7 +1398,13 @@ export function MatchGameView() {
               />
             )}
 
-            {/* Format · Points — the last Settings row (the spine: matches × value). */}
+            {/* Format · Points — the last Settings row (the spine: matches × value).
+                NOT gated on matchesExist (bug fix): the owner can set the per-match
+                value before any match is paired — points mean nothing to the LIVE
+                total yet, but the value itself isn't invalid, and it's fine for
+                "Total Points Available" to read 0 with no matches defined. Rack's
+                "Points per Slot" (GameConfigurationView) never had this lock either
+                — matching that, for consistency across match-format games. */}
             {gameQ.data && (
               <GameSetupRows
                 slot="config"
@@ -1408,7 +1414,6 @@ export function MatchGameView() {
                 canEdit={settingsEditable}
                 locked={scoringEnabled}
                 matchCount={filledDraft.length}
-                configLocked={!matchesExist}
                 configOpen={openRow === "config"}
                 onOpenConfig={() => changeOpenRow("config")}
                 onCloseEditor={() => changeOpenRow(null)}
