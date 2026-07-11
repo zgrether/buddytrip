@@ -196,6 +196,79 @@ These patterns have been established through prior work. Follow them exactly —
     live client strip AND the server `computeMatchPlayResults`, so they can't diverge.
     The margin string keeps X = weighted lead, Y = raw holes-to-play (so "4&2" is a
     legal, correct glorious margin — do not "fix" it).
+12. **Panel navigation idiom (game surfaces open as client-overlay panels, not
+    routes).** Each format view (`MatchGameView`, `RackGameView`, `StrokeGameView`,
+    `NonGolfGameView`) is a standalone component that reads its own `tripId` +
+    `?game=<id>` from `useSearchParams`. The `/games/.../` route is a THIN WRAPPER
+    rendering the same component. The leaderboard (`CompetitionFace`) opens a game
+    as a panel over the persistent, warm board via History API `pushState`
+    (`?game=`) — no server round-trip, no Next.js parallel routes (the app has
+    none). The `opensAsPanel` predicate (`gameRoutes.ts`) is an explicit format
+    ALLOWLIST, not `!!id`, so unknown types never silently panel. `CompletedRow`
+    routes through the panel too. Warm-cache seed = instant paint; never
+    spinner-gate a panel open. **Reuse this idiom for any new game surface — do not
+    add a new routing construct and do not reach for parallel routes** (that
+    recommendation was made once and was wrong; Phase 0 caught it).
+13. **GameChrome context-aware app bar.** Game views publish chrome up to `TopNav`
+    via the `GameChrome` context (a two-context store, so the publisher's effect
+    can't loop): `{ title, onSettings?, onScorecard?, hideBottomNav? }`, published
+    via `usePublishGameChrome` gated on `useInGamePanel()`. Board mode =
+    flag/wordmark left; chat + news + team-color avatar right. Game mode = back +
+    single-line game title left (NO format subtitle — dropped as cruft);
+    owner/delegate-only settings gear right; chat/news/avatar persist (chat is
+    reachable inside games). The panel sits at `top-14 z-30`, BELOW the 56px bar.
+    Header suppression is PROVIDER-AWARE: a game view keeps its own header on a
+    standalone route (no `TopNav` there) and suppresses it only when a `GameChrome`
+    provider is present. `hideBottomNav` is published only on focused entry surfaces
+    (stroke entry / match score / rack entry group). A scorecard Sheet covers the
+    app bar when open (a modal owns the screen). **Follow this for any game-surface
+    chrome.**
+14. **Bottom-control anchoring.** Bottom CTAs (next-hole, Finish, primary in-game
+    actions) anchor to the VIEWPORT bottom — the way rack-n-stack's slide-up keypad
+    does — NEVER placed at the end of the CONTENT. Content-anchored CTAs fall below
+    the fold on tall holes and small viewports (the Pixel 7 Pro failure). **Reuse
+    rack's anchored pattern for any new in-game bottom control.**
+15. **Score durability — the outbox.** `useScoreSaver` is the single per-hole write
+    path (stroke / rack / match). Advance and finish gate on SAVE CONFIRMATION, not
+    local completeness — only `saving`/`error` cells block (`unconfirmedOnHole` /
+    `unconfirmedCount`). A durable localStorage outbox (keyed
+    `bt.scoreOutbox.v1:<gameId>` by `scoreCellKey(participantId, unitLabel)` — the
+    same id the server upsert uses) persists each unconfirmed score BEFORE the
+    mutation settles, clears it on server confirm, and recovers survivors on mount.
+    A failed save keeps the value and flags the cell `error` — NEVER roll back to
+    blank. **The active enterer's in-flight cells (saving / error / in-outbox) WIN
+    over any remote update — never clobber them** (this is the contract sync depends
+    on). Non-golf is the deliberate exception: it posts placement RESULTS via
+    `games.post`, not per-hole `score_entries`.
+16. **Game-state sync — config-hash cross-device reconcile.** Cross-device
+    convergence with zero schema changes and no Realtime. Scores poll ~20s
+    (`useConfigSync`, `GAME_SYNC_INTERVAL_MS`, no background refetch). Config
+    (groupings / modifiers / rules / settings) is covered by `games.configHash`: an
+    FNV-1a hash over sorted-key canonical JSON of the config columns + participants
+    + play_groups + matches, computed ON READ (`configHash.ts`, client-safe 8-hex).
+    **Score-derived fields are excluded from the hash on purpose** so entering
+    scores never churns it. The client reads the hash on the SAME tick as the score
+    poll (one round-trip via `httpBatchLink`); the full config refetches ONLY on
+    hash-mismatch. Convergence is SILENT (chat/text are for human comms, not sync).
+    Score reconcile (`scoreReconcile.reconcileScores`) overlays server values EXCEPT
+    unconfirmed local cells (`protectedKeys`) — active enterer wins, dovetailing
+    with the outbox (#15). **Any new config field must be included in the
+    `configHash` input, or mid-round changes to it won't propagate to other
+    devices.**
+
+### Reuse targets (shared helpers — do not re-decide per site)
+
+- **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
+  luminance picks dark/light text for any team-color background. ONE shared helper;
+  do NOT hardcode a per-color choice and do NOT re-derive per site. Applied in
+  `Avatar`, `MatchCard`, rack board.
+- **Scorecard icon = lucide `Table2`** everywhere (leaderboard rows, entry pages,
+  preview-scorecard buttons). Do not substitute another table/grid glyph.
+- **Scorecard = a `Sheet` overlay** (`Sheet` primitive), not a full-page route —
+  slides in over its caller (leaderboard / scoreboard / entry), dismisses back to
+  the caller, and PRESERVES score state (the caller's `useScoreSaver` feeds both the
+  base view and the sheet). Reuse the `Sheet` primitive for overlay surfaces; this
+  is also the working reference for the someday unified `<Overlay>` primitive.
 
 ## Guest → real-user conversion (auth)
 
