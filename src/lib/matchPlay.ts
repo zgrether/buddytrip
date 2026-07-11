@@ -5,9 +5,26 @@
  *
  * No React, no DB. Net is DERIVED here; gross (`score_entries.value`) is never
  * overwritten (engine decision #16).
+ *
+ * Glorious Finishing Holes: `matchState` weights each hole's win/loss by
+ * `holeWeight` (2× on the last N holes) and compares the lead to the WEIGHTED
+ * remaining swing (`remainingSwing`) for close-out/dormie — see `gloriousHoles.ts`.
+ * With no glorious config every weight is 1 and this is exactly standard match play.
  */
+import { holeWeight, remainingSwing, NO_GLORIOUS, type GloriousConfig } from "./gloriousHoles";
 
 export type HoleResult = "W" | "L" | "H"; // A vs B on NET; decided holes only, play order
+
+/**
+ * A decided hole = its NUMBER + the A-perspective outcome. The number is
+ * load-bearing for glorious weighting (the weight depends on WHICH hole it is), so
+ * `buildDecided` carries it rather than emitting bare outcomes in play order — a
+ * gap-tolerant shape (undecided holes are simply absent, so position ≠ hole number).
+ */
+export interface DecidedHole {
+  hole: number;
+  result: HoleResult;
+}
 
 /**
  * Has this match had any scores entered? (W-GAMEPAGE-01 §11.) A hole is decided
@@ -16,7 +33,7 @@ export type HoleResult = "W" | "L" | "H"; // A vs B on NET; decided holes only, 
  * — removing a scored match clears entered scores, so it must confirm first.
  * Pure + named so the guard and its test share one definition.
  */
-export function matchHasScores(decided: HoleResult[]): boolean {
+export function matchHasScores(decided: DecidedHole[]): boolean {
   return decided.length > 0;
 }
 
@@ -71,18 +88,26 @@ export function buildDecided(
   strokesB: number,
   strokeIndex?: number[],
   holeCount = HOLES
-): HoleResult[] {
+): DecidedHole[] {
   const setA = strokeHoles(strokesA, strokeIndex, holeCount);
   const setB = strokeHoles(strokesB, strokeIndex, holeCount);
-  const out: HoleResult[] = [];
+  const out: DecidedHole[] = [];
   for (let h = 1; h <= holeCount; h++) {
     const ga = grossA[String(h)];
     const gb = grossB[String(h)];
     if (ga == null || gb == null) continue; // undecided — still to play
     const na = ga - (setA.has(h) ? 1 : 0);
     const nb = gb - (setB.has(h) ? 1 : 0);
-    out.push(na < nb ? "W" : na > nb ? "L" : "H");
+    out.push({ hole: h, result: na < nb ? "W" : na > nb ? "L" : "H" });
   }
+  return out;
+}
+
+/** Hole numbers 1..holeCount not present in the decided set — the genuinely
+ *  unplayed holes (gap-tolerant: an undecided mid-round hole counts as unplayed). */
+function unplayedHoles(holeCount: number, played: Set<number>): number[] {
+  const out: number[] = [];
+  for (let h = 1; h <= holeCount; h++) if (!played.has(h)) out.push(h);
   return out;
 }
 
@@ -90,41 +115,59 @@ export function buildDecided(
  * Walk decided holes and FREEZE the official result at the close-out hole —
  * anything after (a "Play it out" hole) is ignored, so a closed 3&2 can't
  * recompute to nonsense when the trailing player wins 17 & 18.
+ *
+ * WEIGHTED for Glorious Finishing Holes: each hole's win/loss counts for
+ * `holeWeight(hole, cfg)` (2× on the last N holes), and close-out/dormie compare the
+ * lead to the WEIGHTED `remainingSwing` over the unplayed holes — NOT raw holes left
+ * (§4). So a 4-up lead with 3 glorious holes (swing 6) stays live; 7-up is closed.
+ * With `NO_GLORIOUS` every weight is 1 and this is byte-for-byte standard match play.
  */
-export function matchState(decided: HoleResult[], holeCount = HOLES): MatchState {
+export function matchState(decided: DecidedHole[], holeCount = HOLES, cfg: GloriousConfig = NO_GLORIOUS): MatchState {
+  const played = new Set<number>();
   let diff = 0;
-  let played = 0;
-  for (const r of decided) {
-    played++;
-    if (r === "W") diff++;
-    else if (r === "L") diff--;
-    const holesLeft = holeCount - played;
+  let count = 0;
+  for (const { hole, result } of decided) {
+    count++;
+    played.add(hole);
+    const w = holeWeight(hole, cfg);
+    if (result === "W") diff += w;
+    else if (result === "L") diff -= w;
+    const holesLeftRaw = holeCount - count; // raw holes still to play (margin Y)
+    const swingLeft = remainingSwing(unplayedHoles(holeCount, played), cfg); // weighted (§4)
     const up = Math.abs(diff);
-    if (holesLeft > 0 && up > holesLeft) return finalize(played, diff, holesLeft, true, true);
-    if (holesLeft === 0) break;
+    if (holesLeftRaw > 0 && up > swingLeft) return finalize(count, diff, holesLeftRaw, swingLeft, true, true);
+    if (holesLeftRaw === 0) break;
   }
-  const holesLeft = holeCount - played;
-  return finalize(played, diff, holesLeft, holesLeft === 0, false);
+  const holesLeftRaw = holeCount - count;
+  const swingLeft = remainingSwing(unplayedHoles(holeCount, played), cfg);
+  return finalize(count, diff, holesLeftRaw, swingLeft, holesLeftRaw === 0, false);
 }
 
 function finalize(
   played: number,
   diff: number,
-  holesLeft: number,
+  holesLeftRaw: number,
+  swingLeft: number,
   over: boolean,
   closedEarly: boolean
 ): MatchState {
   const up = Math.abs(diff);
-  const dormie = !over && up === holesLeft && diff !== 0; // up by exactly the holes remaining
+  // Dormie / close-out are against the WEIGHTED remaining swing (§4), not raw holes.
+  const dormie = !over && up === swingLeft && diff !== 0; // up by exactly the swing left
   let margin: string | null = null;
-  if (closedEarly) margin = `${up}&${holesLeft}`; // "3&2"
-  else if (over && up) margin = `${up} UP`; // won through 18
-  else if (over) margin = "AS"; // halved through 18
+  // Margin string: X = the WEIGHTED lead, Y = RAW holes-to-play. Under glorious the
+  // weighted lead can EXCEED the raw holes remaining, so "4&2" (or even "6&2") is a
+  // LEGAL, correct margin — it means 4 up weighted with 2 holes physically left, and
+  // the match closed because the weighted swing left was smaller than the lead. This
+  // "X > Y is legal" is intentional; do NOT "fix" it to look like standard match play.
+  if (closedEarly) margin = `${up}&${holesLeftRaw}`; // "3&2" (raw) / "6&2" (glorious)
+  else if (over && up) margin = `${up} UP`; // won through the last hole
+  else if (over) margin = "AS"; // halved through the last hole
   return {
     thru: played,
     diff,
     up,
-    holesLeft,
+    holesLeft: holesLeftRaw, // raw holes-to-play (kept raw — the margin's Y and the display count)
     over,
     closed: closedEarly,
     dormie,

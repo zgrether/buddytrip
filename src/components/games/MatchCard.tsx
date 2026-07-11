@@ -1,7 +1,8 @@
 "use client";
 
 import { Table2 } from "lucide-react";
-import { matchState, type HoleResult } from "@/lib/matchPlay";
+import { matchState, type DecidedHole } from "@/lib/matchPlay";
+import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { Participant } from "./types";
 
@@ -27,8 +28,10 @@ const NEU_HALF = "#8c97a8"; // halved — mid
 interface MatchCardProps {
   a: Participant;
   b: Participant;
-  /** Decided holes, A's perspective (W/L/H), in play order. */
-  results: HoleResult[];
+  /** Decided holes, A's perspective — {hole, W/L/H}, in play order. */
+  results: DecidedHole[];
+  /** Glorious Finishing Holes weight (2× the last N). Omit for standard match play. */
+  glorious?: GloriousConfig;
   label?: string;
   /** Team colors (Slice D). Omit for the neutral standalone default. */
   leftColor?: string;
@@ -49,6 +52,7 @@ export function MatchCard({
   a,
   b,
   results,
+  glorious = NO_GLORIOUS,
   label = "Match",
   leftColor,
   rightColor,
@@ -58,7 +62,7 @@ export function MatchCard({
   hideFormat,
   onScorecard,
 }: MatchCardProps) {
-  const st = matchState(results, holeCount);
+  const st = matchState(results, holeCount, glorious);
   const teams = !!(leftColor && rightColor);
   const lc = leftColor || WIN_GREEN; // left emphasis color
   const rc = rightColor || WIN_GREEN; // right emphasis color
@@ -129,7 +133,7 @@ export function MatchCard({
           let bg = "var(--color-bt-card-raised)";
           let op = 0.5;
           if (i < st.thru) {
-            const r = results[i];
+            const r = results[i]?.result;
             bg = r === "W" ? wonL : r === "L" ? wonR : halfC;
             op = 1;
           } else if (st.closed) {

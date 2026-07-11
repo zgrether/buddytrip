@@ -38,7 +38,8 @@ import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
-import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
+import { buildDecided, matchState, strokeHoles, type DecidedHole } from "@/lib/matchPlay";
+import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -434,6 +435,15 @@ export function MatchGameView() {
     [gameQ.data]
   );
   const scIndex = useMemo(() => strokeIndexOf(scUnits), [scUnits]);
+
+  // Glorious Finishing Holes weight — the LIVE 2×-last-N config off this game
+  // (derived at compute time; format-guarded to match singles/doubles). Feeds every
+  // matchState on this page + the entry view, the SAME weight the server scores on,
+  // so the live strips and the finished record can't diverge.
+  const glorious = useMemo<GloriousConfig>(
+    () => gloriousConfig(gameQ.data?.game_type_id as string | null, gameQ.data?.modifiers as ModifiersMap | null),
+    [gameQ.data]
+  );
 
   // Decided holes (A's perspective) for an overview strip — the shared builder.
   const decidedFor = (g: MatchGroupData) =>
@@ -949,7 +959,7 @@ export function MatchGameView() {
   const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
   const projectionPerTeam = useMemo(() => {
     const projMatches: ProjMatch[] = groups.map((g) => {
-      const st = matchState(decidedFor(g), scUnits.length);
+      const st = matchState(decidedFor(g), scUnits.length, glorious);
       return {
         aTeamId: teamOfSide(g.a.id)?.id ?? null,
         bTeamId: teamOfSide(g.b.id)?.id ?? null,
@@ -961,7 +971,7 @@ export function MatchGameView() {
     // decidedFor/teamOfSide are per-render closures; we depend on the DATA they
     // read (scores via loadedValues/values, handicaps, roster→team, scorecard).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, loadedValues, values, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch]);
+  }, [groups, loadedValues, values, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch, glorious]);
 
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
@@ -1044,6 +1054,7 @@ export function MatchGameView() {
               finishLabel="Back to matches"
               finishSubtext="Scores save as you enter"
               meId={me?.id}
+              glorious={glorious}
             />
             {/* Scorecard OVERLAY over entry — entry stays mounted (#543 intact). */}
             {gridOpen && (
@@ -1513,6 +1524,7 @@ export function MatchGameView() {
           complete={status === "complete"}
           canEdit={canEdit}
           decidedFor={decidedFor}
+          glorious={glorious}
           holeCount={scUnits.length}
           onFinish={handleFinish}
           finishing={finishGame.isPending}
@@ -2054,6 +2066,7 @@ function Overview({
   complete,
   canEdit,
   decidedFor,
+  glorious,
   holeCount,
   onFinish,
   finishing,
@@ -2070,7 +2083,9 @@ function Overview({
   published: boolean;
   complete: boolean;
   canEdit: boolean;
-  decidedFor: (g: MatchGroupData) => HoleResult[];
+  decidedFor: (g: MatchGroupData) => DecidedHole[];
+  /** Glorious Finishing Holes weight (2× the last N) for the match state. */
+  glorious: GloriousConfig;
   /** The round's hole count (from the scorecard schema) — feeds matchState so
    *  close-out/over derive against 9 vs 18, not a hardcoded 18. */
   holeCount: number;
@@ -2086,7 +2101,7 @@ function Overview({
 }) {
   if (!published) return <MemberNotReady tripId={tripId} game={game} />;
   const decideds = groups.map(decidedFor);
-  const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount).over);
+  const allOver = groups.length > 0 && decideds.every((d) => matchState(d, holeCount, glorious).over);
   const matchWord = groups.length === 1 ? "Match" : "Matches";
   return (
     <div>
@@ -2114,6 +2129,7 @@ function Overview({
             a={g.a}
             b={g.b}
             results={decideds[i]}
+            glorious={glorious}
             label={`Match ${i + 1}`}
             youId={myId}
             leftColor={g.leftColor}
