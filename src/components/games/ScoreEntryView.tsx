@@ -64,6 +64,13 @@ interface ScoreEntryViewProps {
    *  back/title (+ the config gear). The scorecard affordance relocates to the
    *  right of the "Scores" strip (mirrors match's card-header placement). */
   hideHeader?: boolean;
+  /** Bottom-CTA subtext once every hole is filled (mirrors MatchEntryView's
+   *  `finishSubtext`). Defaults to the stroke-play copy ("Finish" here calls
+   *  games.finish, which really does save results). Rack passes "" — its
+   *  "Finish" is pure navigation back to the hub (no mutation), so the generic
+   *  "Saves results · shows final standings" line doesn't apply. A save/error
+   *  reason (`finishReason`) always overrides this regardless. */
+  finishSubtext?: string;
 }
 
 export function ScoreEntryView({
@@ -83,6 +90,7 @@ export function ScoreEntryView({
   onRetryCell,
   pips,
   hideHeader = false,
+  finishSubtext = "Saves results · shows final standings",
 }: ScoreEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -440,7 +448,7 @@ export function ScoreEntryView({
           icon
           onClick={() => onFinish?.()}
           disabled={gameGate.total > 0}
-          subtext={finishReason ?? "Saves results · shows final standings"}
+          subtext={finishReason ?? finishSubtext}
         />
       ) : currentComplete && hole < units.length ? (
         <BottomCTA
