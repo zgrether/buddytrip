@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown, Flag } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
+import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { Avatar } from "@/components/Avatar";
 import { Checkbox } from "./Checkbox";
 import { GolfChip } from "./GolfChip";
@@ -66,6 +67,16 @@ interface StandardGridProps {
    * visibility, chosen flag, color) from `useScorecardTeeRows`.
    */
   teeRows?: TeeRow[];
+  /**
+   * Glorious Finishing Holes (#569/#571) — the LIVE 2×-last-N weight. Purely
+   * config + format driven: a diamond marks each glorious hole number, a gold
+   * bracket + faint column wash mark the glorious columns, and the tees bar gets
+   * one label. Renders identically whether or not scores/participants exist
+   * (never gated on emptiness — only the config+format predicate decides).
+   * Omit (defaults to `NO_GLORIOUS`) for non-match-play grids — the format guard
+   * inside `gloriousConfig`/`isGloriousHole` makes that redundant but explicit.
+   */
+  glorious?: GloriousConfig;
 }
 
 const NAME_W = 124;
@@ -73,7 +84,26 @@ const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;
 
-export function StandardGrid({ units, participants, values, onCellTap, pips, saveStatus, tee, teeRows = [] }: StandardGridProps) {
+export function StandardGrid({
+  units,
+  participants,
+  values,
+  onCellTap,
+  pips,
+  saveStatus,
+  tee,
+  teeRows = [],
+  glorious = NO_GLORIOUS,
+}: StandardGridProps) {
+  // The ONE predicate — reused, never re-derived. `hole` = the unit's ARRAY
+  // POSITION (index + 1), matching the engine's numbering (buildDecided/
+  // holeWeight), not a parsed label. A non-contiguous/short `units` array (a
+  // 9-hole round, or a test fixture) naturally yields an empty set here — that
+  // IS the "glorious is inert on a short round" behavior, inherited for free,
+  // never special-cased.
+  const gloriousCols = new Set(units.map((_, i) => i).filter((i) => isGloriousHole(i + 1, glorious)));
+  const isGloriousCol = (i: number) => gloriousCols.has(i);
+  const gloriousWash: React.CSSProperties = { background: "var(--color-bt-glorious-faint)" };
   const front = units.filter((u) => u.section === "front");
   const back = units.filter((u) => u.section === "back");
   const hasSections = front.length > 0 && back.length > 0;
@@ -199,6 +229,16 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
               style={{ color: "var(--color-bt-text-dim)", transform: teePanelOpen ? "rotate(180deg)" : undefined, flexShrink: 0 }}
             />
           </button>
+          {/* Glorious label lives OUTSIDE the toggle button (a second nested
+              interactive/text element inside a <button> is the wrong idiom) —
+              a sibling line under the trigger, still read as part of the tees bar. */}
+          {gloriousCols.size > 0 && (
+            <div style={{ padding: "0 12px 8px", textAlign: "right" }}>
+              <span data-testid="glorious-tees-label" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-glorious)" }}>
+                {glorious.n} Glorious Finishing Holes · Worth Double
+              </span>
+            </div>
+          )}
           {teePanelOpen && (
             <div
               className="flex flex-wrap items-center gap-x-4 gap-y-2.5"
@@ -231,11 +271,19 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
           {teeRatings && (
             <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>· {teeRatings}</span>
           )}
+          {gloriousCols.size > 0 && (
+            <span
+              data-testid="glorious-tees-label"
+              style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "var(--color-bt-glorious)" }}
+            >
+              {glorious.n} Glorious Finishing Holes · Worth Double
+            </span>
+          )}
         </div>
       ) : null}
       <div className="relative">
         <div className="no-scrollbar overflow-x-auto">
-          <div style={{ minWidth: "max-content" }}>
+          <div style={{ minWidth: "max-content", position: "relative" }}>
           {/* Header */}
           <div
             className="flex"
@@ -253,9 +301,26 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                 Hole
               </span>
             </div>
-            {units.map((u) => (
-              <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{u.label}</span>
+            {units.map((u, i) => (
+              // Header row: DIAMOND ONLY, no flat wash — layering both the same
+              // faint token double-stacks their alpha and muddies the diamond
+              // exactly where it needs to read clearest. The wash marks the
+              // column on the rows BELOW (yardage/par/index/score).
+              <div key={u.label} className="relative flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                {isGloriousCol(i) && (
+                  <span
+                    aria-hidden
+                    data-testid={`glorious-diamond-${u.label}`}
+                    style={{
+                      position: "absolute",
+                      width: 16,
+                      height: 16,
+                      background: "var(--color-bt-glorious-faint)",
+                      transform: "rotate(45deg)",
+                    }}
+                  />
+                )}
+                <span style={{ position: "relative", fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{u.label}</span>
               </div>
             ))}
             {/* Out / In subtotals + Total as trailing columns. */}
@@ -304,7 +369,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                       </span>
                     </div>
                     {units.map((u, i) => (
-                      <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                      <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label), ...(isGloriousCol(i) ? gloriousWash : {}) }}>
                         <span style={{ fontSize: 11, color: valColor, opacity: row.isChosen ? 1 : 0.75, fontVariantNumeric: "tabular-nums" }}>{row.yards[i] ?? "—"}</span>
                       </div>
                     ))}
@@ -321,8 +386,8 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                       Yards
                     </span>
                   </div>
-                  {units.map((u) => (
-                    <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                  {units.map((u, i) => (
+                    <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label), ...(isGloriousCol(i) ? gloriousWash : {}) }}>
                       <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.yardage ?? "—"}</span>
                     </div>
                   ))}
@@ -340,8 +405,8 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                   Par
                 </span>
               </div>
-              {units.map((u) => (
-                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+              {units.map((u, i) => (
+                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label), ...(isGloriousCol(i) ? gloriousWash : {}) }}>
                   <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{u.par}</span>
                 </div>
               ))}
@@ -359,8 +424,8 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                   Index
                 </span>
               </div>
-              {units.map((u) => (
-                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+              {units.map((u, i) => (
+                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label), ...(isGloriousCol(i) ? gloriousWash : {}) }}>
                   <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.strokeIndex}</span>
                 </div>
               ))}
@@ -382,7 +447,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                     {p.name}
                   </span>
                 </div>
-                {units.map((u) => {
+                {units.map((u, i) => {
                   const v = valOf(p.id, u.label);
                   const hasPip = pips?.[p.id]?.has(u.label);
                   const colored = v != null && hasPar && u.par != null;
@@ -397,6 +462,11 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
                         ...cellBase,
                         height: 44,
                         ...divider(u.label),
+                        // Wash sits on the button's OWN background — behind the
+                        // GolfChip/content, which always paints on top of an
+                        // element's background regardless of DOM order, so the
+                        // eagle ring etc. stay crisp over it (§7 DO-NOT).
+                        ...(isGloriousCol(i) ? gloriousWash : {}),
                         fontSize: 13,
                         fontWeight: 500,
                         color: v != null ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
@@ -418,6 +488,27 @@ export function StandardGrid({ units, participants, values, onCellTap, pips, sav
               </div>
             );
           })}
+          {/* Glorious bracket — a rectangle frame around the glorious columns,
+              spanning header through the last row. Border-only (the wash fill is
+              per-cell, above); pointerEvents:none so it never blocks a score-cell
+              tap. min/max of the glorious index set, not an assumed "last N" span
+              — robust if the predicate ever yields a non-suffix set. */}
+          {gloriousCols.size > 0 && (
+            <div
+              aria-hidden
+              data-testid="glorious-bracket"
+              style={{
+                position: "absolute",
+                left: NAME_W + Math.min(...gloriousCols) * HOLE_W,
+                width: (Math.max(...gloriousCols) - Math.min(...gloriousCols) + 1) * HOLE_W,
+                top: 0,
+                bottom: 0,
+                border: "1px solid var(--color-bt-glorious-border)",
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+          )}
           </div>
         </div>
         {/* Right-edge fade signalling more columns */}

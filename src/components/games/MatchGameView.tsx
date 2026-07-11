@@ -1017,6 +1017,7 @@ export function MatchGameView() {
         direction="low_wins"
         pips={entryPips}
         saveStatus={saveStatus}
+        glorious={glorious}
         onCellTap={readOnly ? undefined : (label) => {
           setCurrentHole(Number(label) || 1);
           matchBack();
