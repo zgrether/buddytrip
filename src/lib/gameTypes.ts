@@ -155,12 +155,12 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "stroke_total",
     scorecardSchema: strokeSchema,
-    // ⚠ TESTABILITY VALUES, NOT real-world applicability. Crossed deliberately so each
-    // golf format exercises one Modifiers render branch (hide / checkbox / stepper / both).
-    // Real applicability is different (e.g. glorious_holes doubles a hole's MATCH value, so it
-    // does NOT apply to stroke play). Reconcile to real applicability when modifier scoring
-    // logic is built — see W-GAMEPAGE-01 §6.5. Tracked in DEFERRED.md.
-    compatibleModifiers: ["moving_tees", "glorious_holes"], // BOTH cards branch
+    // glorious_holes is MATCH-PLAY ONLY (it doubles a hole's match value) — removed
+    // from stroke play when the scoring engine landed (it was inert here). moving_tees
+    // applicability is still provisional (not yet reconciled — a separate call). The
+    // golf formats still happen to exercise all four Modifiers render branches
+    // (hide / checkbox / stepper / both) — locked by modifiers.test.ts.
+    compatibleModifiers: ["moving_tees"], // checkbox-only branch
     supportsFreeForAll: true,
     supportsSides: false,
     requiresSides: false,
@@ -177,7 +177,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "match_play",
     scorecardSchema: singlesSchema,
-    compatibleModifiers: ["moving_tees"], // ⚠ test-matrix value (CHECKBOX-only branch) — see note on gtt_stroke_play
+    compatibleModifiers: ["moving_tees", "glorious_holes"], // BOTH branch — glorious applies to match play (scoring engine)
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
@@ -194,7 +194,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "group_holes",
     resultStrategy: "match_play",
     scorecardSchema: doublesSchema,
-    compatibleModifiers: ["glorious_holes"], // ⚠ test-matrix value (STEPPER-only branch) — see note on gtt_stroke_play
+    compatibleModifiers: ["glorious_holes"], // stepper-only branch — glorious applies to match play (scoring engine)
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
@@ -211,7 +211,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "rack_n_stack",
     scorecardSchema: rackSchema,
-    compatibleModifiers: [], // ⚠ test-matrix value (HIDE-the-row branch: a golf format with none) — see note on gtt_stroke_play
+    compatibleModifiers: [], // hide-the-row branch — no modifiers apply (glorious is match-play hole-win only)
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,

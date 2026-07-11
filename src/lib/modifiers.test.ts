@@ -44,24 +44,25 @@ describe("registry", () => {
   });
 });
 
-// The four render branches the crossed test-matrix exercises (Task 0). Maps each
-// golf format's compatibleModifiers (from gameTypes.ts) through the registry to
-// the control types it would render — locking the matrix + registry together.
+// Real applicability (glorious_holes is match-play only, reconciled when the scoring
+// engine landed) still exercises all four Modifiers render branches across the golf
+// formats. Maps each format's compatibleModifiers (from gameTypes.ts) through the
+// registry to the control types it renders — locking applicability + registry together.
 describe("render-branch matrix (gameTypes.ts → registry)", () => {
   const controlsFor = (id: string) =>
     (GAME_TYPES.find((t) => t.id === id)?.compatibleModifiers ?? []).map((k) => modifierDef(k).controlType);
 
-  it("rack_n_stack → [] (HIDE branch — golf format with none)", () => {
+  it("rack_n_stack → [] (HIDE branch — no modifiers apply)", () => {
     expect(controlsFor("gtt_rack_n_stack")).toEqual([]);
   });
-  it("match_play_singles → [checkbox] (CHECKBOX-only branch)", () => {
-    expect(controlsFor("gtt_match_play_singles")).toEqual(["checkbox"]);
+  it("stroke_play → [checkbox] (CHECKBOX-only — moving_tees; glorious does NOT apply to stroke)", () => {
+    expect(controlsFor("gtt_stroke_play")).toEqual(["checkbox"]);
   });
-  it("match_play_doubles → [checkbox+stepper] (STEPPER-only branch)", () => {
+  it("match_play_doubles → [checkbox+stepper] (STEPPER-only — glorious applies)", () => {
     expect(controlsFor("gtt_match_play_doubles")).toEqual(["checkbox+stepper"]);
   });
-  it("stroke_play → [checkbox, checkbox+stepper] (BOTH branch)", () => {
-    expect(controlsFor("gtt_stroke_play")).toEqual(["checkbox", "checkbox+stepper"]);
+  it("match_play_singles → [checkbox, checkbox+stepper] (BOTH — moving_tees + glorious)", () => {
+    expect(controlsFor("gtt_match_play_singles")).toEqual(["checkbox", "checkbox+stepper"]);
   });
 });
 
