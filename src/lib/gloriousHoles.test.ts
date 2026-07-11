@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gloriousConfig, holeWeight, remainingSwing, NO_GLORIOUS } from "./gloriousHoles";
+import { gloriousConfig, holeWeight, remainingSwing, isGloriousHole, NO_GLORIOUS } from "./gloriousHoles";
 
 // The pure weight helper. The tally/close-out consequences (comeback, weighted
 // close-out, margin string) are gated in matchPlay.test.ts; this file pins the
@@ -71,5 +71,24 @@ describe("remainingSwing — over the actual unplayed-hole set", () => {
 
   it("with no glorious, weighted swing == raw hole count", () => {
     expect(remainingSwing([16, 17, 18], NO_GLORIOUS)).toBe(3);
+  });
+});
+
+describe("isGloriousHole — the ONE predicate the visual layer must call", () => {
+  const cfg = { enabled: true, n: 3 }; // last 3 → holes 16,17,18
+
+  it("true on the last N holes, false elsewhere", () => {
+    expect(isGloriousHole(15, cfg)).toBe(false);
+    expect(isGloriousHole(16, cfg)).toBe(true);
+    expect(isGloriousHole(17, cfg)).toBe(true);
+    expect(isGloriousHole(18, cfg)).toBe(true);
+  });
+
+  it("always false when disabled", () => {
+    for (const h of [16, 17, 18]) expect(isGloriousHole(h, NO_GLORIOUS)).toBe(false);
+  });
+
+  it("agrees with holeWeight (it's a thin wrapper, not a second source of truth)", () => {
+    for (let h = 1; h <= 18; h++) expect(isGloriousHole(h, cfg)).toBe(holeWeight(h, cfg) === 2);
   });
 });

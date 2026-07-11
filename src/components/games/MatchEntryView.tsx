@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronLeft, Table2 } from "lucide-react";
 import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
-import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
+import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
@@ -117,6 +117,9 @@ export function MatchEntryView({
   const unit = units[hole - 1];
   const label = unit?.label ?? String(hole);
   const valueFor = (pid: string, l: string) => values[pid]?.[l];
+  // The ONE predicate — `hole` here IS the engine position (units[hole-1] is the
+  // current unit), so no label-parsing/re-derivation needed.
+  const holeIsGlorious = isGloriousHole(hole, glorious);
 
   // The course's per-hole stroke index (from the snapshot units). Threading it
   // into the live display makes pips + the live net land on the COURSE's
@@ -347,6 +350,26 @@ export function MatchEntryView({
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
       </div>
+
+      {/* Glorious banner — announces (unlike the scorecard's quiet diamond/wash),
+          shown ONLY on a glorious hole, pure config+format (no score dependency). */}
+      {holeIsGlorious && (
+        <div
+          data-testid="glorious-entry-banner"
+          style={{
+            margin: "0 16px 10px",
+            padding: "8px 12px",
+            borderRadius: 10,
+            textAlign: "center",
+            background: "var(--color-bt-glorious-faint)",
+            border: "1px solid var(--color-bt-glorious-border)",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-bt-glorious)" }}>
+            Glorious Finishing Hole · Worth Double
+          </span>
+        </div>
+      )}
 
       {/* Player rows */}
       <div className="flex-1 overflow-y-auto" style={{ padding: "0 12px 8px" }}>

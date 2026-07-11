@@ -30,6 +30,16 @@
   --color-bt-warning-faint: rgba(217, 119, 6, 0.08);
   --color-bt-warning-border: rgba(217, 119, 6, 0.20);
 
+  /* Glorious Finishing Holes (match play, #569/#571) — a deliberately DIFFERENT
+     hue from warning/owner (orange-amber, ~32° hue): pulled toward yellow-olive
+     (~44° hue) with lower saturation so it never reads as the warning/owner
+     semantic on the scorecard, where the two can appear on the same card (the
+     stroke pip already uses --color-bt-warning). Not a score-value color — keep
+     out of the GolfChip eagle/birdie/par palette too. */
+  --color-bt-glorious: #92720f;
+  --color-bt-glorious-faint: rgba(146, 114, 15, 0.08);
+  --color-bt-glorious-border: rgba(146, 114, 15, 0.22);
+
   --color-bt-danger: #dc2626;        /* red-600 */
   --color-bt-danger-bg: #fef2f2;
   --color-bt-danger-faint: rgba(220, 38, 38, 0.08);
@@ -149,6 +159,17 @@
   --color-bt-warning: #fbbf24;
   --color-bt-warning-faint: rgba(251, 191, 36, 0.08);
   --color-bt-warning-border: rgba(251, 191, 36, 0.20);
+
+  /* Glorious Finishing Holes — a deep bronze-gold, deliberately AWAY from warning's
+     bright yellow (#fbbf24, ~43° hue) so the two never read as the same thing on a
+     card that can show both (the amber stroke pip is --color-bt-warning). Verified
+     live side-by-side with the pip + a GolfChip eagle ring on the actual dark card
+     (not just eyeballed in isolation) — an initial #e2a437 read too close to the
+     pip; #c9852f is the one that visibly separates while still reading as gold, not
+     brown/copper. */
+  --color-bt-glorious: #c9852f;
+  --color-bt-glorious-faint: rgba(201, 133, 47, 0.10);
+  --color-bt-glorious-border: rgba(201, 133, 47, 0.35);
 
   --color-bt-danger: #f87171;        /* red-400 */
   --color-bt-danger-bg: #450a0a;

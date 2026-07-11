@@ -118,6 +118,7 @@ uses this token for its `border-color`.
 | Accent dim | `--color-bt-accent-dim` | `#0f766e` | `#14b8a6` | Hover state for accent text |
 | Owner text | `--color-bt-owner` | `#d97706` | `#fbbf24` | Owner role badge (border + text) |
 | Warning text | `--color-bt-warning` | `#d97706` | `#fbbf24` | Maybe/caution states — STATUS DISPLAY ONLY, not buttons |
+| Glorious text | `--color-bt-glorious` | `#92720f` | `#c9852f` | Glorious Finishing Holes modifier ONLY (scorecard diamond/bracket/label, score-entry banner) — a deliberately different hue from Owner/Warning so the two are never mistaken on the same card (the scorecard's amber stroke pip already uses `--color-bt-warning`). Dark value verified live side-by-side with the pip + a GolfChip eagle ring (an initial `#e2a437` read too close). NOT a warning/amber substitute; NOT a score-value color (keep out of the eagle/birdie/par/bogey/dbl+ palette) |
 | Danger text | `--color-bt-danger` | `#dc2626` | `#f87171` | Errors, Can't/declined, destructive actions |
 | Planning text | `--color-bt-planning` | `#2563eb` | `#60a5fa` | Blue status indicators |
 | Ready text | `--color-bt-ready` | `#7c3aed` | `#a78bfa` | Planner role badge, violet states |
@@ -156,6 +157,7 @@ These apply in **both light and dark mode** — vote colors are semantic and do 
 | `--color-bt-tag-bg` | `#f0fdfa` (teal-50) | `#134e4a` (teal-900) |
 | `--color-bt-accent-faint` | `rgba(13,148,136,0.08)` | `rgba(45,212,191,0.12)` |
 | `--color-bt-warning-faint` | `rgba(217,119,6,0.08)` | `rgba(251,191,36,0.08)` |
+| `--color-bt-glorious-faint` | `rgba(146,114,15,0.08)` | `rgba(201,133,47,0.10)` |
 | `--color-bt-danger-faint` | `rgba(220,38,38,0.08)` | `rgba(248,113,113,0.12)` |
 | `--color-bt-planning-faint` | `rgba(37,99,235,0.08)` | `rgba(96,165,250,0.08)` |
 | `--color-bt-danger-bg` | `#fef2f2` | `#450a0a` |
@@ -168,6 +170,7 @@ These apply in **both light and dark mode** — vote colors are semantic and do 
 |-------|-------|------|
 | `--color-bt-accent-border` | `rgba(13,148,136,0.22)` | `rgba(45,212,191,0.25)` |
 | `--color-bt-warning-border` | `rgba(217,119,6,0.20)` | `rgba(251,191,36,0.20)` |
+| `--color-bt-glorious-border` | `rgba(146,114,15,0.22)` | `rgba(201,133,47,0.35)` |
 | `--color-bt-danger-border` | `rgba(220,38,38,0.20)` | `rgba(248,113,113,0.20)` |
 | `--color-bt-planning-border` | `rgba(37,99,235,0.22)` | `rgba(96,165,250,0.25)` |
 
