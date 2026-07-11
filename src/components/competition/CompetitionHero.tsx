@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Settings, Users } from "lucide-react";
-import { fmtPts } from "./GameRow";
+import { fmtPts, ProjectionPill } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
 
@@ -606,7 +606,10 @@ function ProjTeam({
       {fmtPts(total)}
     </span>
   );
-  const chip = <DeltaChip color={team.color} delta={p} />;
+  // The game's point contribution, as the shared ▲ pill (extracted to GameRow so
+  // the hero and the board's live cell share one grammar). No `alwaysTriangle`
+  // here → the ▲ shows only for a positive delta, a plain 0 otherwise.
+  const chip = <ProjectionPill color={team.color} value={p} />;
   return (
     <div
       className={`flex min-w-0 items-baseline gap-2 ${align === "right" ? "justify-end" : ""}`}
@@ -614,30 +617,6 @@ function ProjTeam({
     >
       {align === "left" ? (<>{num}{chip}</>) : (<>{chip}{num}</>)}
     </div>
-  );
-}
-
-/** Delta chip — this game's point contribution, as a team-tinted pill (team color
- *  on a 16%-alpha team fill). ▲ for a positive contribution; a plain 0 when the
- *  game hasn't moved the team yet (match-play contributions are never negative). */
-function DeltaChip({ color, delta }: { color: string; delta: number }) {
-  return (
-    <span
-      className="inline-flex items-center tabular-nums"
-      style={{
-        gap: 2,
-        padding: "2px 8px",
-        borderRadius: 9999,
-        fontSize: 11.5,
-        fontWeight: 700,
-        lineHeight: 1,
-        background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        color,
-      }}
-    >
-      {delta > 0 && <span style={{ fontSize: 8 }}>&#9650;</span>}
-      {fmtPts(delta)}
-    </span>
   );
 }
 
