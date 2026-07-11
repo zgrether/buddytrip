@@ -83,6 +83,14 @@ const NAME_W = 124;
 const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;
+// The right-edge fade (below) is NOT scroll-position-aware — it's pinned to the
+// sheet's edge and stays rendered even once the grid is scrolled all the way to
+// its true end, permanently shading the last FADE_W px of CONTENT (not just
+// "more to scroll" — there's nothing more there). At TOTAL_W (50px) that shaded
+// strip covered roughly half the Total column's numbers. Every row ends in a
+// transparent RightGutter of this same width so the fade lands on empty space
+// instead of real content — shared constant so the two can't drift apart.
+const FADE_W = 24;
 
 export function StandardGrid({
   units,
@@ -333,6 +341,7 @@ export function StandardGrid({
             {hasSections && <HeaderSub label="Out" />}
             {hasSections && <HeaderSub label="In" />}
             <HeaderSub label="Total" wide />
+            <RightGutter />
           </div>
 
           {/* Yardage — DISPLAY ONLY. Multi-tee (Spec 5b): one row per VISIBLE tee,
@@ -382,6 +391,7 @@ export function StandardGrid({
                     {hasSections && <ParSub value={teeSum(row.yards, 0, front.length)} />}
                     {hasSections && <ParSub value={teeSum(row.yards, front.length, units.length)} />}
                     <ParSub value={teeSum(row.yards, 0, units.length)} wide />
+                    <RightGutter />
                   </div>
                 );
               })
@@ -400,6 +410,7 @@ export function StandardGrid({
                   {hasSections && <ParSub value={yardSum(front)} />}
                   {hasSections && <ParSub value={yardSum(back)} />}
                   <ParSub value={yardSum(units)} wide />
+                  <RightGutter />
                 </div>
               )}
 
@@ -419,6 +430,7 @@ export function StandardGrid({
               {hasSections && <ParSub value={parSum(front)} />}
               {hasSections && <ParSub value={parSum(back)} />}
               <ParSub value={parSum(units)} wide />
+              <RightGutter />
             </div>
           )}
 
@@ -438,6 +450,7 @@ export function StandardGrid({
               {hasSections && <IndexSub />}
               {hasSections && <IndexSub />}
               <IndexSub wide />
+              <RightGutter />
             </div>
           )}
 
@@ -491,6 +504,7 @@ export function StandardGrid({
                 {hasSections && <SubCell value={sumOf(p.id, front)} vsPar={hasPar ? vsParOf(p.id, front) : undefined} />}
                 {hasSections && <SubCell value={sumOf(p.id, back)} vsPar={hasPar ? vsParOf(p.id, back) : undefined} />}
                 <SubCell value={totalOf(p.id)} vsPar={hasPar ? vsParOf(p.id, units) : undefined} wide bold leader={isLeader} />
+                <RightGutter />
               </div>
             );
           })}
@@ -522,10 +536,13 @@ export function StandardGrid({
           )}
           </div>
         </div>
-        {/* Right-edge fade signalling more columns */}
+        {/* Right-edge fade signalling more columns — NOT scroll-position-aware
+            (always rendered, even at true max scroll), which is exactly why every
+            row ends in a RightGutter of the same FADE_W: the fade always has
+            FADE_W of real spacer to land on instead of the Total column. */}
         <div
           className="pointer-events-none absolute right-0 top-0 h-full"
-          style={{ width: 24, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
+          style={{ width: FADE_W, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
         />
       </div>
       {/* Legend is pinned below the scroller — it does NOT scroll with the grid. */}
@@ -666,6 +683,13 @@ function IndexSub({ wide }: { wide?: boolean }) {
       }}
     />
   );
+}
+
+/** Transparent trailing spacer, the same width as the right-edge fade — so the
+ *  fade always lands on empty space at the true end of the scroll, never on the
+ *  Total column's real numbers (see FADE_W). One per row, after its last cell. */
+function RightGutter() {
+  return <div aria-hidden style={{ width: FADE_W, minWidth: FADE_W, flexShrink: 0 }} />;
 }
 
 function ParSub({ value, wide }: { value: number; wide?: boolean }) {
