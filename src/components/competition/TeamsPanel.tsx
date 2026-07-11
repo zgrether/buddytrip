@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   ArrowRight,
   ChevronDown,
@@ -155,8 +155,40 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   const utils = trpc.useUtils();
   const queryKey = { tripId, competitionId };
 
+  // Rapid-fire calls (e.g. quickly assigning several players in a row) race their
+  // independent onSettled → invalidate() calls: an EARLIER mutation's refetch can
+  // resolve AFTER a LATER mutation's optimistic write lands, overwriting the cache
+  // with server data that hasn't caught up to the later write yet — silently
+  // dropping it (the "assign too fast, a player reappears unassigned" bug). Defer
+  // the invalidate to the TRAILING EDGE of a burst: track in-flight mutations
+  // across all four calls sharing this hook instance and only invalidate once the
+  // count drops back to 0, so a fast burst gets exactly one, fully-settled refetch
+  // instead of N racing ones. `needsLeaderboard` preserves each mutation type's own
+  // invalidation set (reorder/setCaptain never touched leaderboard — team SIZE is
+  // unchanged — so a reorder-only burst doesn't force an extra leaderboard refetch).
+  const pendingRef = useRef(0);
+  const needsLeaderboardRef = useRef(false);
+  const beginMutation = (needsLeaderboard: boolean) => {
+    pendingRef.current += 1;
+    if (needsLeaderboard) needsLeaderboardRef.current = true;
+  };
+  const settleMutation = () => {
+    pendingRef.current = Math.max(0, pendingRef.current - 1);
+    if (pendingRef.current > 0) return; // more of this burst still in flight
+    utils.teamAssignments.list.invalidate(queryKey);
+    if (needsLeaderboardRef.current) {
+      utils.competitions.leaderboard.invalidate(queryKey);
+      needsLeaderboardRef.current = false;
+    }
+    // faceBootstrap ALSO seeds teamAssignments.list (#10): the consolidated
+    // TeamSheet opens OUTSIDE the LiveFace re-seed path, so re-resolve the
+    // bootstrap or the board reads stale until the 30s poll.
+    utils.competitions.faceBootstrap.invalidate({ tripId });
+  };
+
   const assign = trpc.teamAssignments.assign.useMutation({
     onMutate: async (vars) => {
+      beginMutation(true); // team-size change → leaderboard points move
       await utils.teamAssignments.list.cancel(queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       utils.teamAssignments.list.setData(queryKey, (old) => {
@@ -180,23 +212,12 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
       }
     },
-    onSettled: () => {
-      utils.teamAssignments.list.invalidate(queryKey);
-      // The leaderboard roll-up derives per_match points from TEAM SIZES, so a
-      // (re)assignment moves pointsAvailable / winNumber. The board reads the
-      // bootstrap-seeded competitions.leaderboard cache — invalidate it too so
-      // the leaderboard reflects the change without a hard refresh.
-      utils.competitions.leaderboard.invalidate(queryKey);
-      // faceBootstrap ALSO seeds teamAssignments.list (#10): the consolidated
-      // TeamSheet opens OUTSIDE the LiveFace re-seed path, so re-resolve the
-      // bootstrap or the board reads stale until the 30s poll. (setCaptain already
-      // does this; assign/remove/reorder carry it too for consistency.)
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
+    onSettled: settleMutation,
   });
 
   const remove = trpc.teamAssignments.remove.useMutation({
     onMutate: async (vars) => {
+      beginMutation(true); // team-size change → leaderboard points move
       await utils.teamAssignments.list.cancel(queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       utils.teamAssignments.list.setData(queryKey, (old) => {
@@ -210,13 +231,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
       }
     },
-    onSettled: () => {
-      utils.teamAssignments.list.invalidate(queryKey);
-      // Removing a player changes team sizes → the leaderboard roll-up's
-      // per_match points. Refresh the board's seeded cache (see `assign`).
-      utils.competitions.leaderboard.invalidate(queryKey);
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
+    onSettled: settleMutation,
   });
 
   // reorder (Part 3) — optimistic: rewrite sort_order for this team per the new
@@ -225,6 +240,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   // so re-resolve it (#10) — the order survives an overlay/modal close + reopen.
   const reorder = trpc.teamAssignments.reorder.useMutation({
     onMutate: async (vars) => {
+      beginMutation(false); // sort_order only — team size/points unaffected
       await utils.teamAssignments.list.cancel(queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       const orderIndex = new Map(vars.orderedUserIds.map((id, i) => [id, i]));
@@ -243,10 +259,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
       }
     },
-    onSettled: () => {
-      utils.teamAssignments.list.invalidate(queryKey);
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
+    onSettled: settleMutation,
   });
 
   // setCaptain (PR b) — optimistic: the target gets the flag; any other captain
@@ -255,6 +268,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   // overlay close/reopen, not just the live optimistic state.
   const setCaptain = trpc.teamAssignments.setCaptain.useMutation({
     onMutate: async (vars) => {
+      beginMutation(false); // captain flag only — team size/points unaffected
       await utils.teamAssignments.list.cancel(queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       utils.teamAssignments.list.setData(queryKey, (old) => {
@@ -272,10 +286,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
       }
     },
-    onSettled: () => {
-      utils.teamAssignments.list.invalidate(queryKey);
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
+    onSettled: settleMutation,
   });
 
   return { assign, remove, setCaptain, reorder };
