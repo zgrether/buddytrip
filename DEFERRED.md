@@ -3,7 +3,7 @@
 *Only genuinely open items. Ordered by when they need to happen.*
 *Competition/gaming design detail lives in `COMPETITION_ENGINE.md` — this file
 is the build backlog that points to it.*
-*Last updated: 2026-07-01*
+*Last updated: 2026-07-11 (doc reconciliation pass)*
 
 > Beta is effectively launched (bbmi.app live, wired up, not yet announced).
 > Real users for the next ~3 months are the golf crew + occasional testers
@@ -14,64 +14,47 @@ is the build backlog that points to it.*
 
 ## Active — Competition & Gaming Engine
 
-**The current focus.** Design doc: `COMPETITION_ENGINE.md`. Built **vertically**
-— one format fully working end-to-end, then widen — not horizontally. Each
-slice is demoable on its own.
+**Shipped: Slices A, B, D — end to end.** Design doc: `COMPETITION_ENGINE.md`.
+Built **vertically** — one format fully working end-to-end, then widened — not
+horizontally.
 
-**September critical path = A → B → C → D.** E and F are quality, not blockers.
+**Slice 0 (decisions, no code)** — resolved in `COMPETITION_ENGINE.md` (decisions
+log): sides→`play_groups`, entry-vs-result separation, `game_matches`, universal
+`game_results`, no conversion, drop `starting_score`, moving-tees-as-modifier,
+Quick Game local storage, BBMI 2026 = two-team match play.
 
-### Slice 0 — Decisions (no code) ✅ mostly resolved
+**Slice A — Stroke-entry spine.** Shipped: `games`/`game_participants`/
+`score_entries`/`game_results` tables, the StandardGrid renderer, `stroke_total`
+result computation, game completion flow, Quick Game ⚡.
 
-Resolved in `COMPETITION_ENGINE.md` (decisions log): sides→`play_groups`,
-entry-vs-result separation, `game_matches`, universal `game_results`, no
-conversion, drop `starting_score`, moving-tees-as-modifier, Quick Game local
-storage, BBMI 2026 = two-team match play.
+**Slice B — Match play.** Shipped: `game_matches` + `match_play` result strategy,
+the match-play strip over the grid (per-hole result, running "2 UP"/"3&2"),
+multi-match cards, singles (1v1) and doubles (2v2).
 
-### Slice A — Stroke-entry spine ⭐ critical path
+**Slice D — Competition bolt-on.** Shipped: competition creation persists teams +
+`team_assignments`; the Tier 1 competition leaderboard reads `game_results` ⨝
+`games`; run/post/lock + score-correction model (`games.post`/`openCorrection`).
+Competition close → `circle_events` entry is unconfirmed/likely still open —
+verify before closing it out too.
 
-The simplest case, hardened before sides/teams/modifiers complicate it. **Has
-standalone value for testers in the lead-up** — a real, usable individual
-stroke-play game.
+### Slice C — remaining formats (narrowed — most of this shipped)
 
-- `games`, `game_participants`, `score_entries`, `game_results` tables
-- **StandardGrid** renderer (Tier 3): editable cells, front/back-9 subtotals,
-  low-wins direction
-- `stroke_total` result computation → `game_results`
-- Game completion flow
-- **Quick Game ⚡** title-bar button as a context-free entry into this spine
-  (local-storage state, "play again / discard" on finish) — not a placeholder
+Shipped: **Rack-n-stack** (`gtt_rack_n_stack`, `user_holes` entry, positional
+result), the **GolfCard** renderer (par/handicap/± + course header, referenced
+across `StandardGrid.tsx`/`golfScore.ts`/`handicap.ts`), and the **global course
+picker** — reached via `CourseService` against the standalone global `courses`
+table (migration 039), **not** `circle_courses` (that stays a thin unused stub,
+reserved for a later Circle-era join; see CLAUDE.md's "ID Type Convention"
+section).
 
-### Slice B — Match play ⭐ critical path
-
-The heart of the event.
-
-- `game_matches` table + `match_play` result strategy (W/H/L → match state →
-  points)
-- Match-play layer over the grid: per-hole result, running "2 UP" / "3&2" strip
-- **One card can carry multiple match strips** (a singles foursome = 2 matches);
-  `game_matches` is decoupled from `play_groups`
-- **Singles first** (entity = user, 1v1) before pair formats
-
-### Slice C — September's remaining formats ⭐ critical path
+Still genuinely open (no `gtt_*` id exists for either — confirmed against
+`src/lib/gameTypes.ts`, which only defines stroke play, match play (singles/
+doubles), rack-n-stack, and the generic/manual formats):
 
 - **Foursomes / alt-shot** — `group_holes` entry (one ball per `play_group`),
   `match_play`
 - **Four-ball** — `group_holes` entry, `match_play` (BBMI records one score per
   side, same shape as alt-shot); auto-best-ball compute deferred as optional
-- **Rack-n-stack** — `user_holes` entry, `positional` result (sort each team's
-  totals, compare by index; opponents shift live)
-- **GolfCard** renderer (extends StandardGrid): par/handicap/±, color coding,
-  course + date header
-- **Golf course picker** → `circle_courses` lookup, add-new inline, optional
-  tee-time link
-
-### Slice D — Competition bolt-on ⭐ critical path (Ryder Cup needs it)
-
-- Strip the current Competition tab; rebuild bottom-up
-- Two-team setup → `competition_teams` + time-stamped `competition_team_members`
-- `competition_games` + point distributions (`sides_are_teams=true`)
-- **Tier 1 competition leaderboard** — reads `game_results` ⨝ `competition_games`
-- Competition close → `circle_events` entry
 
 ### Slice E — Games tab + scheduling (not blocking September)
 
@@ -114,6 +97,29 @@ The heart of the event.
   helpers rather than special-casing each. (Spec note: "moving-tees moving-scale
   generalization.")
 
+### Glorious Finishing Holes — known limitations (logged, not bugs)
+
+*Captured this pass, from the PR 569/571 build.*
+
+- **`18−N` round-length inertia.** The last-N-holes-worth-2× weighting
+  (`holeWeight`/`remainingSwing` in `src/lib/gloriousHoles.ts`) is derived from
+  hole number against the round's total hole count. On a round shorter than 18
+  holes, if `N` ≥ the round length the modifier has nothing left to weight and
+  reads as inert — deliberate (derived, not a special-cased error state), not a
+  bug. No action needed; just not obvious from the UI alone.
+- **Design note — why glorious is the one modifier safe to flip mid-scoring.**
+  Issue #501 freezes modifier config once a competition goes live (mid-match
+  config changes are usually unsafe — they'd retroactively rewrite an
+  in-progress result). Glorious Finishing Holes is the deliberate exception: its
+  weight is computed at read-time from the current hole/config
+  (`holeWeight`/`remainingSwing`), never snapshotted onto a stored hole result,
+  so flipping it or changing `N` mid-round just changes what the next compute
+  returns — nothing to migrate, nothing stale to reconcile. That's what makes it
+  architecturally safe to expose as a live Setup toggle even under the #501
+  freeze, where every other modifier stays locked. See CLAUDE.md's "modifier
+  config persistence" gotcha for the adjacent (and unrelated) collapse-persist
+  behavior this is easy to conflate with.
+
 ### 2v2 per-individual handicaps
 
 The per-match handicap **side selector** (1v1 match play) assigns strokes to a *side*. In 2v2 best ball
@@ -123,9 +129,7 @@ selector can't express. **Deferred — not built.** Offline workaround is fine f
 
 ### Desktop side-by-side tee display (someday nomination — not actionable now)
 
-*Captured 2026-06-20 (golfcourseapi build). NOTE: CLAUDE.md references a
-`TRACKER.md` "someday pile" that does not exist in the repo — parking this here
-in DEFERRED.md until that doc is created or this is promoted.*
+*Captured 2026-06-20 (golfcourseapi build).*
 
 - A round uses one configured tee (snapshotted per game). On **desktop**, the
   same captured per-tee data (`courses.tee_sets`) could render multiple tees
@@ -353,31 +357,28 @@ TripNew's "put it to a vote" path was designed to call Claude for 3 suggested
 destinations. **Note:** the stub route + `lib/ai/suggestDestinations.ts` were
 deleted in cleanup. Rebuild from spec. Low effort, nice-to-have.
 
-### Game-page server-render (Stage B pattern, applied to game pages)
+### Game-panel cold-open fetch (superseded framing — was "Stage B server-render")
 
-*Logged 2026-06-16 as the consistent-architecture follow-on to the
-leaderboard→game prefetch fix — the answer if prefetch proves a desktop-only
-win.* The game pages (`games/match/new`, `games/new`, `games/rack/new`) are
-fully client-rendered: their data (`games.getById` / `matches.listByGame` /
-`scores.listByGame` / `games.listOrganizers` / `tripMembers.list`) is **not** in
-the faceBootstrap snapshot, so entering a game from the leaderboard fetches cold
-only after the route mounts — the 2–3s wait reported on bbmi.app. The build
-confirms the JS is largely warm from the leaderboard (shared chunks parsed, the
-~11 kB match route chunk prefetched by `<Link>`), so the bottleneck is the cold
-tRPC batch + a possible Vercel function cold-start, not parse.
+*Originally logged 2026-06-16 against the then-current architecture, where
+`games/match/new`, `games/new`, `games/rack/new` were separate routes and
+entering a game from the leaderboard meant a full client-rendered route mount
+with a cold tRPC batch (the 2–3s wait reported on bbmi.app). That architecture
+is gone: the persistent board game panel (PR 545–547) replaced the route-mount
+model with a client-overlay panel (`?game=` + `history.pushState`) over the
+already-warm leaderboard — see CLAUDE.md pattern #12. The original "server-render
+the whole game page like `faceBootstrap`" prescription no longer fits: there's
+no route to SSR, and the panel is deliberately client-only, warm-cache-seeded.*
 
-Prefetch-on-intent (shipped) warms that batch on hover / pointerdown — a solid
-desktop win, but on touch the pre-navigation window is ~100 ms, so the gain is
-partial: it overlaps the fetch with mount, it does **not** remove server time.
-
-The real (mobile) fix is the **Stage B pattern** the competition face already
-earned: a server-component shell that resolves the game's data in one bootstrap
-round-trip (like `faceBootstrap`) and ships it as `initialData` in the
-dehydrated cache, so the board/scorecard render populated in the server HTML —
-no client round-trip for first paint. The game page is part of the same
-engagement surface (on the course, on a phone); it deserves the same treatment.
-Mirror `leaderboard/page.tsx` + `LiveFaceClient` (SSR helpers + `initialData` +
-child-cache seeding).
+**What's still a real, smaller version of the same problem:** the panel's own
+`games.getById`/`matches.listByGame`/`scores.listByGame` data is still not in
+the faceBootstrap snapshot, so the *first* time a given game's panel opens in a
+session it still does a cold tRPC round-trip before it paints (subsequent opens
+in the same session are warm from the query cache). Not confirmed whether this
+residual cold-open is still perceptible on-device — worth a quick check before
+prioritizing. If it is, the fix is scoped smaller than the original Stage B
+ask: seed the panel's queries into `faceBootstrap` (or prefetch on
+leaderboard-row mount) rather than building a server-component shell for a
+route that no longer exists.
 
 ### Leaderboard double-compute — collapse via the seed, not the invalidations
 

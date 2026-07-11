@@ -255,6 +255,21 @@ These patterns have been established through prior work. Follow them exactly —
     with the outbox (#15). **Any new config field must be included in the
     `configHash` input, or mid-round changes to it won't propagate to other
     devices.**
+17. **Modifier config persists only on Game-Modifiers-row COLLAPSE, not
+    per-click.** The Settings "Modifiers" accordion row buffers edits locally
+    while expanded and writes them to `games.modifiers` only when the row
+    **collapses** — not on each toggle/stepper change. This has cost real
+    debugging time twice: a change that looks applied in the UI (the local
+    control reflects it) silently never reaches the server if the row is left
+    open (navigated away, panel closed, etc.) instead of explicitly collapsed.
+    **Don't trust the UI state when verifying a modifier change landed** —
+    confirm via a direct tRPC fetch (`games.getById` and check `.modifiers`),
+    not by eyeballing the still-open accordion. Glorious Finishing Holes is the
+    one modifier where this collapse-persist timing is safe to flip even
+    mid-scoring under the #501 freeze — see the design note in `DEFERRED.md`
+    under "Glorious Finishing Holes — known limitations" (derived-at-read-time,
+    never snapshotted, so a late collapse-triggered write just changes what the
+    next compute returns).
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 

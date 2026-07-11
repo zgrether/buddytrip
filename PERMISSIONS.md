@@ -133,26 +133,23 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Edit a receipt's splits | ✓ | — | — | `updateSplits` *(Owner)* |
 | Remove an expense | ✓ | ✓ | — | `remove` |
 
-### Competition — `competitions`, `teams`, `events`, `teamAssignments`
+### Competition — `competitions`, `teams`, `teamAssignments`
 
 | Action | Owner | Organizer | Member | tRPC |
 |--------|:-----:|:---------:|:------:|------|
-| View competition / teams / events / leaderboard | ✓ | ✓ | ✓ | `*.list` / `getByTrip` |
+| View competition / teams / leaderboard | ✓ | ✓ | ✓ | `*.list` / `getByTrip` |
 | Create / edit competition | ✓ | ✓ | — | `competitions.create` / `update` |
 | Delete competition | ✓ | — | — | `competitions.delete` *(Owner)* |
 | Create a team | ✓ | ✓ | — | `teams.create` *(co-admin)* |
 | **Edit team identity** (name / short / color) | ✓ | **—** | **captain of *that* team** | `teams.update` *(Owner or that team's captain — **not** a plain Organizer; mig 065)* |
 | Delete a team | ✓ | — | — | `teams.delete` *(Owner)* |
-| Create / edit / reorder / delete events | ✓ | ✓ | — | `events.*` |
-| Link event ↔ agenda item | ✓ | ✓ | — | `events.linkToAgendaItem` |
-| Set point distributions / placements (scoring) | ✓ | ✓ | — | `events.setPointDistributions` / `setPlacements` |
 | Assign member to a team | ✓ | ✓ | — | `teamAssignments.assign` |
 | Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
 | Reorder a team's roster (canonical order) | ✓ | — | — | `teamAssignments.reorder` *(Owner)* |
 | Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
-| **Edit / configure a game** (status incl. drop, points distribution, course, participants) | ✓ | ✓ | **game organizer of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
-| **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **game organizer of *that* game** | `games.setManualResults` / `finish` |
-| **RUN: post results / open score correction** | ✓ | **—** | **game organizer of *that* game** | `games.post` / `openCorrection` *(Owner or game-delegate only — **not** a plain Organizer)* |
+| **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
+| **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **delegate of *that* game** | `games.setManualResults` / `finish` |
+| **RUN: post results / open score correction** | ✓ | **—** | **delegate of *that* game** | `games.post` / `openCorrection` *(Owner or game-delegate only — **not** a plain Organizer)* |
 | Enter a per-hole score (until posted) | ✓ (any unit) | ✓ (any unit) | ✓ (any unit in *their* game) | `scores.upsertEntry` / `deleteEntry` — **scoped** (see below); **blocked** once the game is posted & not in correction |
 | ↳ a plain **Member** | their own **unit** only | — | — | member scores only the match/group they play in; a non-participant scores nothing |
 | Delegate / revoke a game organizer | ✓ | ✓ | — | `games.addOrganizer` / `removeOrganizer` *(trip staff only — a delegate can't sub-delegate)* |
@@ -207,17 +204,18 @@ who's in, what they're called, what role they hold — is the Owner's.
 > `isOwner`. The consolidated Edit Team modal surfaces all three tiers — owner
 > (full), captain (identity editable, roster read-only), member (read-only).
 
-> **Per-game organizer delegation (Slice D1 §8).** Game edit/configure/enter-results
-> resolves to **`canEdit || isGameOrganizer(gameId)`** — trip Owner/Organizer, OR a
-> user granted organizer of *that specific game* (`game_organizers` row). It is
+> **Per-game delegation (Slice D1 §8).** Game edit/configure/enter-results
+> resolves to **`canEdit || isGameDelegate(gameId)`** — trip Owner/Organizer, OR a
+> user granted delegate of *that specific game* (`game_delegates` row). It is
 > **game-isolated**: a pick'em delegate cannot touch the scramble. Enforced at BOTH
-> layers — the `requireGameEdit` tRPC middleware and the `is_game_organizer(game)`
-> RLS path on `games` (UPDATE) + `game_results` (migration 045). Granting is a
-> trip-staff act (`requireTripRole('Organizer')`).
+> layers — the `requireGameEdit` tRPC middleware and the `is_game_delegate(game)`
+> RLS path on `games` (UPDATE) + `game_results` (migration 045, table/function
+> renamed `game_organizers`→`game_delegates` / `is_game_organizer`→`is_game_delegate`
+> in migration 061). Granting is a trip-staff act (`requireTripRole('Organizer')`).
 
 > **Competition RUN-actions are owner/game-delegate scoped — narrower than game
 > edit (Slice D Run/Post §5).** Posting results and opening score correction
-> (`games.post` / `games.openCorrection`) gate on **`isOwner || isGameOrganizer(gameId)`**
+> (`games.post` / `games.openCorrection`) gate on **`isOwner || isGameDelegate(gameId)`**
 > — the trip **Owner** or *that game's* delegate. A plain **Organizer (the trip
 > planner) is NOT a run-action** unless they're also the game's delegate: running
 > the competition is owner/delegate-scoped, distinct from trip-planner scope.
