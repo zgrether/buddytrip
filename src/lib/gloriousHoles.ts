@@ -81,3 +81,13 @@ export function remainingSwing(unplayedHoles: Iterable<number>, cfg: GloriousCon
   for (const h of unplayedHoles) sum += holeWeight(h, cfg);
   return sum;
 }
+
+/**
+ * Is this hole glorious (worth 2×)? The ONE predicate the visual layer (scorecard
+ * diamond/bracket/wash, score-entry banner) must call — never re-inline
+ * `hole > 18 − n` in a component. `hole` is the engine's POSITION (1-based), the
+ * same numbering `holeWeight`/`buildDecided` use, not a display label.
+ */
+export function isGloriousHole(hole: number, cfg: GloriousConfig): boolean {
+  return holeWeight(hole, cfg) === 2;
+}
