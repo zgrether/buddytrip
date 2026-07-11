@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Plus, X } from "lucide-react";
 import { PlayerChip } from "@/components/games/PlayerChip";
 import { Avatar } from "@/components/Avatar";
@@ -153,6 +154,17 @@ export function RackGroupBuilder({
  * The combined-pool picker — a bottom sheet with BOTH teams as two columns (A left,
  * B right). Available = roster minus everyone already in a group. Tap adds to the
  * open group and the sheet stays up (multi-add up to 4); Done closes.
+ *
+ * Containing-block gotcha: RackGroupBuilder renders inside the game PANEL, whose
+ * host wrapper is `position: fixed; z-index: 30` (CompetitionFace) — a positioned,
+ * z-indexed ancestor creates a stacking context that CAPS every descendant
+ * z-index, including a `position: fixed` one (fixed escapes LAYOUT, not stacking
+ * containment). So this sheet's own z-50 only ever competed against other content
+ * INSIDE the z-30 panel — never against the bottom nav (z-40, a sibling outside
+ * the panel), which is why it rendered UNDER the nav and covered the bottom row of
+ * players. Same fix as AboutModal / FeedbackModal / InfoTileModal: escape via
+ * createPortal(..., document.body), which is unaffected by any ancestor's
+ * position/z-index/containing-block at all.
  */
 function CombinedPicker({
   teamA,
@@ -202,7 +214,12 @@ function CombinedPicker({
     );
   };
 
-  return (
+  // SSR guard (matches AboutModal/FeedbackModal/InfoTileModal) — document is
+  // undefined on the server; this component only ever mounts client-side anyway
+  // (behind pickerFor !== null, a client interaction), so this never actually
+  // renders null in practice.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
@@ -223,6 +240,7 @@ function CombinedPicker({
           {column(teamB)}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
