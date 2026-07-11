@@ -310,6 +310,42 @@ export function StrokeGameView() {
     reconcile(loaded);
   }, [urlGameId, scoresQ.data, reconcile]);
 
+  // Resume at the CURRENT hole (the first hole any participant hasn't scored
+  // yet) instead of always landing on hole 1 — seeded ONCE per game, right
+  // after the first score load resolves. Never re-seeds afterward, so it
+  // doesn't fight manual navigation once you're in the entry view (same
+  // pattern as modifiersSeededRef). Mirrors the match-play board's per-group
+  // currentHoleFor / rack's currentHoleForGroup — stroke has no per-group
+  // selection step, so this seeds directly off the single continuous round.
+  //
+  // ⚠ Computes its OWN `loaded` map straight from `scoresQ.data`, deliberately
+  // NOT from `values` — the reconcile effect above (same scoresQ.data trigger)
+  // populates `values` via `reconcile()`, but that's a SEPARATE state update
+  // that lands on a LATER render, not synchronously within this same effect
+  // pass. Reading `values` here raced it: on the very first resolve, `values`
+  // was still the pre-load empty map, so every hole looked incomplete, this
+  // seeded hole 1, and the ref then blocked any correction once `values`
+  // actually caught up one render later. Recomputing from `scoresQ.data`
+  // directly removes the cross-effect ordering dependency entirely.
+  const currentHoleSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!game || !scoresQ.data || currentHoleSeededRef.current === game.id) return;
+    currentHoleSeededRef.current = game.id;
+    const loaded: ScoreValues = {};
+    for (const e of scoresQ.data as { participant_id: string; unit_label: string; value: number | null }[]) {
+      if (e.value == null) continue;
+      (loaded[e.participant_id] ??= {})[e.unit_label] = e.value;
+    }
+    for (let h = 1; h <= scUnits.length; h++) {
+      const label = String(h);
+      if (game.participants.some((p) => loaded[p.id]?.[label] == null)) {
+        setCurrentHole(h);
+        return;
+      }
+    }
+    setCurrentHole(scUnits.length);
+  }, [game, scoresQ.data, scUnits.length]);
+
   // Config sync: poll the cheap config hash on the same tick (batched with the
   // score poll) and, when it changes on another device, silently refetch THIS
   // game's config so groupings/modifiers/rules/course/status converge. Stroke's

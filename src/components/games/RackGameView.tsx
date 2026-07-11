@@ -259,6 +259,17 @@ export function RackGameView() {
     return m;
   }, [participants]);
 
+  // A group's current hole = the first hole ANY of its members hasn't scored
+  // yet, so opening a group drops you where it's at — not hole 1 every time
+  // (the match-play board's currentHoleFor uses the same pattern, two-sided).
+  const currentHoleForGroup = (groupId: string) => {
+    const memberIds = participants.filter((p) => p.play_group_id === groupId).map((p) => p.user_id as string);
+    for (let h = 1; h <= scUnits.length; h++) {
+      if (memberIds.some((pid) => mergedFor(pid)[String(h)] == null)) return h;
+    }
+    return scUnits.length;
+  };
+
   const rackPlayers = useMemo(() => {
     const players: RackPlayer[] = [];
     for (const p of participants) {
@@ -656,6 +667,12 @@ export function RackGameView() {
             onBack={back}
             onOpenGrid={() => setGridOpen(true)}
             onFinish={back}
+            // "Finish" here is pure navigation back to the hub (onFinish={back}
+            // above, no mutation) — the shared default subtext ("Saves results ·
+            // shows final standings") describes stroke's games.finish-calling
+            // Finish, not rack's. The real rack finalize is the hub's separate
+            // "Lock the result" action.
+            finishSubtext=""
             pips={groupPips}
           />
         </div>
@@ -865,7 +882,7 @@ export function RackGameView() {
             : undefined
         }
       />
-      <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); setGridOpen(false); }} />
+      <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(currentHoleForGroup(id)); setGridOpen(false); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
           Handicaps), where mid-game config is deliberate. */}
