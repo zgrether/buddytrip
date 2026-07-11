@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
-  Flag, Plus, X, Trophy,
-  Spade, Target, Beer, Dices, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info,
+  Plus, X, Trophy,
+  Target, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 import { validatePlacement } from "@/lib/gameConfig";
+import { CATEGORY_ICONS } from "@/lib/gameCategoryIcon";
 // Format definitions live in code (W-PERF-01) — the catalog + its type come from
 // here, read synchronously, never fetched. Re-exported below so existing
 // consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
@@ -64,13 +66,16 @@ interface Member { memberId: string; displayName: string }
 
 // ── Static option tables ──────────────────────────────────────────────────────
 
+// Icons sourced from the shared `gameCategoryIcon.ts` map (leaderboard-grid
+// pass) — the leaderboard board resolves the same icon per category, so this
+// picker and the board can never drift. Only the label stays local (picker copy).
 const CATEGORY_ORDER = ["golf", "card", "yard", "bar", "other"] as const;
-const CATEGORY_META: Record<string, { label: string; Icon: typeof Flag }> = {
-  golf: { label: "Golf", Icon: Flag },
-  card: { label: "Card", Icon: Spade },
-  yard: { label: "Yard", Icon: Target },
-  bar: { label: "Bar", Icon: Beer },
-  other: { label: "Other", Icon: Dices },
+const CATEGORY_META: Record<string, { label: string; Icon: LucideIcon }> = {
+  golf: { label: "Golf", Icon: CATEGORY_ICONS.golf },
+  card: { label: "Card", Icon: CATEGORY_ICONS.card },
+  yard: { label: "Yard", Icon: CATEGORY_ICONS.yard },
+  bar: { label: "Bar", Icon: CATEGORY_ICONS.bar },
+  other: { label: "Other", Icon: CATEGORY_ICONS.other },
 };
 
 const COMP_FORMATS = [

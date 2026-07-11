@@ -284,6 +284,13 @@ These patterns have been established through prior work. Follow them exactly —
   the caller, and PRESERVES score state (the caller's `useScoreSaver` feeds both the
   base view and the sheet). Reuse the `Sheet` primitive for overlay surfaces; this
   is also the working reference for the someday unified `<Overlay>` primitive.
+- **Game-type icon = `categoryIcon`/`CATEGORY_ICONS`** (`src/lib/gameCategoryIcon.ts`)
+  — ONE shared category→icon map (golf/card/yard/bar/other), sourced from each
+  game type's `category` field in `gameTypes.ts`. The add-game picker
+  (`CompetitionGamesPanel.tsx`) and the leaderboard board (`GameRow.tsx`'s
+  `formatIcon`) both resolve through it, so they can't drift. Key icons by
+  CATEGORY, never by scoring format — a format-keyed map (swords for match play,
+  layers for rack) reads as "combat/stack" on a board that's half non-golf.
 
 ## Guest → real-user conversion (auth)
 

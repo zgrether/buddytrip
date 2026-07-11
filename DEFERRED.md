@@ -37,6 +37,38 @@ multi-match cards, singles (1v1) and doubles (2v2).
 Competition close → `circle_events` entry is unconfirmed/likely still open —
 verify before closing it out too.
 
+### Leaderboard live-game projected-points pill (deferred — needs new server computation) — #576
+
+*Captured 2026-07-11 during the leaderboard-grid pass (Phase 0 STOP condition).
+The completed-game score grid (team columns, short-name header, winner chip)
+shipped for match_play; the live-game "▲ projected points" pill from the same
+spec did not — this is that gap, logged so it isn't lost.*
+
+A per-game, per-team live projection already exists (`src/lib/gameProjection.ts`
+`rollupMatchPlay`, `computeRack("projected", ...)`), but it's computed
+**client-side, inside each individual game page**, from that page's own
+already-fetched live scoring state (`GamePageHeader`'s `ProjectionRow`). It has
+never been wired to the board. The board's server compute,
+`computeCompetitionLeaderboard`, does not fetch live scores/matches for
+in-progress games at all — only final `game_results` (populated on completion)
+and a boolean "started" flag.
+
+**To build this:** either (a) extend `computeCompetitionLeaderboard` to fetch
+each live game's raw scores/matches and run the existing pure rollup functions
+server-side, or (b) have the board client fire additional per-game queries for
+just the LIVE-section games and compute client-side (reusing
+`gameProjection.ts` as-is, no server change, but N extra queries + new poll
+wiring — the board polls its own 30s interval, separate from `useConfigSync`'s
+20s game-page interval). Until this lands, LIVE rows show today's existing
+treatment (subtitle "Underway · scoring", `N PTS` outer column) rather than a
+pill promising data that isn't there.
+
+**Points cups already have the games×teams grid** — `PointsMatrix.tsx` (the
+collapsible "Game by game" audit table below the standings glance) already
+implements the same team-columns-per-game concept for points competitions.
+The completed-grid work above deliberately did not duplicate it — only
+match_play (which had no aligned-column treatment at all) got the new grid.
+
 ### Slice C — remaining formats (narrowed — most of this shipped)
 
 Shipped: **Rack-n-stack** (`gtt_rack_n_stack`, `user_holes` entry, positional
