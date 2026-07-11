@@ -486,15 +486,16 @@ function NTeamRankedList({
 // ── SessionBreakdown ─────────────────────────────────────────────────────────
 
 // Section order + labels (leaderboard-grid pass §1.3): single-word lifecycle
-// names, order NEW → CONFIGURING → READY → LIVE → COMPLETED (what's most
-// actionable first; done work recedes to the bottom). The Completed section
-// renders compressed single-line rows; the rest use the full GameRow.
+// names. Render order stays Completed-first, descending to New (unchanged from
+// before this pass) — only the label strings + LIVE's teal treatment changed.
+// The Completed section renders compressed single-line rows; the rest use the
+// full GameRow.
 const SECTION_ORDER: { key: GameSection; label: string }[] = [
-  { key: "skeleton", label: "New" },
-  { key: "preparing", label: "Configuring" },
-  { key: "ready", label: "Ready" },
-  { key: "on-tap", label: "Live" },
   { key: "completed", label: "Completed" },
+  { key: "on-tap", label: "Live" },
+  { key: "ready", label: "Ready" },
+  { key: "preparing", label: "Configuring" },
+  { key: "skeleton", label: "New" },
 ];
 
 function SessionBreakdown({
