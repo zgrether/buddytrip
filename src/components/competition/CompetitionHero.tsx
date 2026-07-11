@@ -294,32 +294,47 @@ export function StickyCollapseHero({
   // (ResizeObserver). Layout effect on the client so the correction lands before
   // paint; SSR-safe (useEffect fallback).
   //
-  // ⚠ Measure with `offsetTop` (layout position vs the shared offsetParent), NOT
-  // `getBoundingClientRect().top` (viewport-relative). The two nodes are adjacent
-  // siblings in the same column → same offsetParent → their offsetTop difference is
-  // the pure layout gap, INVARIANT under scroll and under the collapsed bar's
-  // sticky pinning. `rect.top` is not: once the bar is pinned and the hero has
-  // scrolled (or on a soft-nav that restores a scrolled position), rect.top reads a
-  // huge bogus gap, and any re-measure that fires there (a ResizeObserver tick)
-  // corrupts `pull` into a large value that shoves the hero — and all content below
-  // it — way down the page (only a hard refresh, which resets scroll to 0, healed
-  // it). offsetTop can't drift that way.
+  // ⚠ ONLY measure while the collapsed bar is at REST (not pinned). The bar is
+  // `position: sticky`, and once it pins Chrome reports its STUCK position for BOTH
+  // `getBoundingClientRect().top` AND `offsetTop` (offsetTop of a stuck sticky
+  // element is `stickyTop + scrollTop`, i.e. its on-screen position — NOT its flow
+  // position). The hero is a normal element whose position is fixed, so the moment
+  // the bar pins the measured hero→bar gap diverges by ~scrollTop and a re-measure
+  // there (any ResizeObserver tick the pin triggers) sets `pull` to a large NEGATIVE
+  // value → a big POSITIVE margin that shoves the hero and every row under it down
+  // the page. That's the "scroll down → open a game → back → leaderboard sits
+  // halfway down" bug; a resize (or hard refresh at scrollTop 0) re-measured at rest
+  // and healed it, which is exactly why it "snapped back on resize". Neither
+  // `rect.top` nor `offsetTop` is pin-invariant — the fix is to gate the measure on
+  // rest, where the bar is at its natural top (> stickyTop) and the gap is real.
   useIsoLayoutEffect(() => {
     const c = collapsedRef.current;
     const e = expandedRef.current;
     if (!c || !e) return;
     const measure = () => {
+      // Skip while pinned — a stuck sticky bar's top reports its on-screen (scrolled)
+      // position, which would corrupt the gap. At rest its top sits below stickyTop.
+      if (c.getBoundingClientRect().top <= stickyTop + 1) return;
       // gap > 0 → the collapsed bar's top peeks above the hero; target a 1px
       // over-cover (gap = -1) so sub-pixel rounding never leaves a sliver.
-      const gap = e.offsetTop - c.offsetTop;
+      const gap = e.getBoundingClientRect().top - c.getBoundingClientRect().top;
       if (Math.abs(gap + 1) > 1) setPull((p) => p + gap + 1);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(c);
     ro.observe(e);
-    return () => ro.disconnect();
-  }, []);
+    // The RO fires on resize, not scroll, so also re-measure as the page returns to
+    // rest (measure() no-ops while pinned, and setPull only fires on a real change —
+    // so this converges once at the top and stays quiet). This is what re-settles
+    // `pull` after a resize landed while pinned, or a remount restored a scrolled
+    // position.
+    window.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", measure);
+    };
+  }, [stickyTop]);
   return (
     <>
       <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
