@@ -313,9 +313,15 @@ export function StandardGrid({
                     data-testid={`glorious-diamond-${u.label}`}
                     style={{
                       position: "absolute",
-                      width: 16,
-                      height: 16,
-                      background: "var(--color-bt-glorious-faint)",
+                      width: 18,
+                      height: 18,
+                      // -faint (8-10% alpha) reads as almost nothing on the header's
+                      // opaque card-raised surface — bumped to the eagle chip's
+                      // proven-visible fill level (22%) + a border ring, the same
+                      // "fill + ring" grammar GolfChip already uses for its highest
+                      // score tier, so this reads as a deliberate marker, not noise.
+                      background: "color-mix(in srgb, var(--color-bt-glorious) 22%, transparent)",
+                      border: "1px solid var(--color-bt-glorious-border)",
                       transform: "rotate(45deg)",
                     }}
                   />
@@ -492,7 +498,12 @@ export function StandardGrid({
               spanning header through the last row. Border-only (the wash fill is
               per-cell, above); pointerEvents:none so it never blocks a score-cell
               tap. min/max of the glorious index set, not an assumed "last N" span
-              — robust if the predicate ever yields a non-suffix set. */}
+              — robust if the predicate ever yields a non-suffix set.
+              zIndex MUST exceed the header row's (2): the header is `position:
+              sticky` with an OPAQUE background, so at zIndex 1 its top border
+              segment (which sits at the header's own top edge) was fully painted
+              over — the bracket visually "started" below the header instead of
+              enclosing it. At zIndex 3 the thin border renders on top instead. */}
           {gloriousCols.size > 0 && (
             <div
               aria-hidden
@@ -505,7 +516,7 @@ export function StandardGrid({
                 bottom: 0,
                 border: "1px solid var(--color-bt-glorious-border)",
                 pointerEvents: "none",
-                zIndex: 1,
+                zIndex: 3,
               }}
             />
           )}
