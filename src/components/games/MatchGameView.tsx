@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -270,8 +270,13 @@ export function MatchGameView() {
   // Scoring — the connectivity-resilient saver owns `values` + `saveStatus`:
   // optimistic value, retry-with-backoff, per-cell status, kept-and-flagged
   // (never rolled back) on failure.
+  // onCleared: a Reset Hole/cell has no local value left to shadow the
+  // poll-loaded loadedValues/loadedOutcomeValues snapshot (mergedFor's
+  // server layer), so the match-list header and scorecard grid would
+  // otherwise show the pre-reset result until the next scheduled poll —
+  // refetch right away instead of waiting out GAME_SYNC_INTERVAL_MS.
   const { values, setValues, saveStatus, onChange, onClear, retryCell } =
-    useScoreSaver(tripId, gameId, participantTypeOf);
+    useScoreSaver(tripId, gameId, participantTypeOf, () => void scoresQ.refetch());
   // Refactor B: the outcome write path — same durability contract, unconditional
   // (hooks can't be conditional); inert for a score-mode game (nothing calls its
   // onChange/onClear there).
@@ -282,7 +287,7 @@ export function MatchGameView() {
     onChange: onOutcomeChange,
     onClear: onOutcomeClear,
     retryCell: retryOutcomeCell,
-  } = useOutcomeSaver(tripId, gameId);
+  } = useOutcomeSaver(tripId, gameId, () => void outcomesQ.refetch());
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
@@ -1105,12 +1110,16 @@ export function MatchGameView() {
     // The read-only scorecard — shared by a read-only/locked viewer's landing
     // surface and the scorer's overlay. Refactor B: an outcome-mode game has no
     // scores to grid, so it swaps in OutcomeScorecard (two lead rows) instead of
-    // StandardGrid. onCellTap (jump to a hole's entry) is editable-only, score-
-    // mode only for now (OutcomeScorecard has no cell-tap yet — hole nav covers
-    // navigation); back returns to the matches hub (#7).
+    // StandardGrid — same ScorecardChrome (tees/yardage/par/index), only the
+    // rows differ (CC follow-up: "look just like the normal scorecard"), so it
+    // gets the SAME tee/teeRows StandardGrid does. onCellTap (jump to a hole's
+    // entry) is editable-only, score-mode only for now (OutcomeScorecard has no
+    // cell-tap yet — hole nav covers navigation); back returns to the matches hub (#7).
     const scorecardGrid = outcomeMode ? (
       <OutcomeScorecard
         units={scUnits}
+        tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+        teeRows={teeRows}
         a={selectedGroup.a}
         b={selectedGroup.b}
         outcomes={Object.entries(mergedOutcomeFor(selectedGroup.matchId)).map(([h, result]) => ({ hole: Number(h), result }))}
@@ -1520,6 +1529,25 @@ export function MatchGameView() {
                 openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
               />
             </ChecklistRow>
+
+            {/* Entry Mode (Refactor B3) — score entry (today, default) vs
+                hole-outcome entry (tap who won each hole directly). A "how you'll
+                score this match" decision, independent of Course/Handicaps/Points
+                (which stay visible either way — unused-but-harmless in outcome
+                mode, a deliberate B3 scope boundary). Frozen once scoring starts,
+                same as every other setup-spine row — switching mid-round would
+                orphan whichever rows (score_entries / match_hole_outcomes) are
+                already entered. */}
+            {gameQ.data && (
+              <EntryModeRow
+                tripId={tripId}
+                gameId={gameId!}
+                entryMode={outcomeMode ? "outcome" : "score"}
+                canEdit={settingsEditable}
+                locked={scoringEnabled}
+                onChanged={onSetupChanged}
+              />
+            )}
 
             {/* Course — Handicaps' per-hole stroke allocation needs the course's
                 stroke-index table, so Course resolves before Handicaps (W-9HOLE-01);
@@ -2174,6 +2202,97 @@ function AddShapeButton({ kind, label, onClick }: { kind: "1V1" | "2V2"; label: 
     >
       <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", color: doubles ? "#c4b5fd" : "#93c5fd" }}>{kind}</span>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>{label}</span>
+    </button>
+  );
+}
+
+/**
+ * EntryModeRow — the score-entry-vs-hole-outcome toggle (Refactor B3). A native
+ * SETTINGS row (icon + title + subtitle + an inline control, no accordion body —
+ * same idiom as GameSetupRows' "Total Points"/"Points per Slot" inline stepper),
+ * NOT a bespoke widget. The control itself reuses GameManagementPanel's
+ * segmented-track styling (the Setup/Scoring toggle) — a rounded card-raised
+ * track with a neutral-filled active segment. Unlike Setup/Scoring, neither
+ * option here is a "live" action, so BOTH segments use the neutral (not teal)
+ * active treatment — teal stays reserved for the live/scoring signal elsewhere.
+ * Persists on tap (a 2-option select, not a multi-field panel — no collapse-
+ * buffer needed, unlike Modifiers).
+ */
+function EntryModeRow({
+  tripId,
+  gameId,
+  entryMode,
+  canEdit,
+  locked,
+  onChanged,
+}: {
+  tripId: string;
+  gameId: string;
+  entryMode: "score" | "outcome";
+  canEdit: boolean;
+  locked: boolean;
+  onChanged: () => void;
+}) {
+  const updateGame = trpc.games.update.useMutation();
+  const [pending, setPending] = useState(false);
+  const disabled = locked || !canEdit || pending;
+
+  const setMode = (mode: "score" | "outcome") => {
+    if (mode === entryMode || disabled) return;
+    setPending(true);
+    void updateGame
+      .mutateAsync({ tripId, gameId, entryMode: mode })
+      .then(onChanged)
+      .finally(() => setPending(false));
+  };
+
+  return (
+    <ChecklistRow
+      icon={ListChecks}
+      title="Entry Mode"
+      subtitle={entryMode === "outcome" ? "Hole outcome — tap who won each hole" : "Score entry — enter gross strokes"}
+      state="resolved"
+      disabled={!canEdit}
+      locked={locked}
+      testId="row-entry-mode"
+      control={
+        <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 10, background: "var(--color-bt-card-raised)" }}>
+          <EntryModeSegment label="Score" active={entryMode === "score"} onClick={() => setMode("score")} disabled={disabled} testId="entry-mode-score" />
+          <EntryModeSegment label="Outcome" active={entryMode === "outcome"} onClick={() => setMode("outcome")} disabled={disabled} testId="entry-mode-outcome" />
+        </div>
+      }
+    />
+  );
+}
+
+function EntryModeSegment({
+  label,
+  active,
+  onClick,
+  disabled,
+  testId,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  disabled: boolean;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
+      style={{
+        background: active ? "var(--color-bt-base)" : "transparent",
+        color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+        border: active ? "1px solid var(--color-bt-border)" : "1px solid transparent",
+        opacity: disabled && !active ? 0.6 : 1,
+      }}
+      data-testid={testId}
+    >
+      {label}
     </button>
   );
 }

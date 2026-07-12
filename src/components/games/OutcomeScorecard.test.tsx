@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { computeLeadTrack, OutcomeScorecard } from "./OutcomeScorecard";
+import { computeLeadTrack, sectionSwing, OutcomeScorecard } from "./OutcomeScorecard";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
-import type { HoleOutcomeRow } from "@/lib/matchPlay";
-import type { Participant } from "./types";
+import type { HoleOutcomeRow, DecidedHole } from "@/lib/matchPlay";
+import type { Participant, ScoreUnit } from "./types";
 
 /**
  * OutcomeScorecard (Refactor B2, built to outcome_scorecard_mockup.html). The
@@ -99,5 +99,72 @@ describe("OutcomeScorecard — render (react-dom/server)", () => {
     expect(html).not.toContain("outcome-lead-pill");
     expect(html).not.toContain("outcome-closeout");
     expect(html).not.toContain("outcome-as");
+  });
+});
+
+describe("sectionSwing — the pure per-section signed swing (Out/In/Total for a lead row)", () => {
+  it("sums weighted W/L within the range; halves and unplayed holes contribute 0", () => {
+    const decided: DecidedHole[] = [
+      { hole: 1, result: "W" }, // +1
+      { hole: 2, result: "H" }, // 0
+      { hole: 5, result: "L" }, // -1
+      // hole 9 unplayed → 0
+    ];
+    expect(sectionSwing(decided, NO_GLORIOUS, 1, 9)).toBe(0); // +1 - 1 = 0
+    expect(sectionSwing(decided, NO_GLORIOUS, 1, 1)).toBe(1); // just hole 1
+  });
+
+  it("a Glorious hole counts double within its section", () => {
+    const decided: DecidedHole[] = [{ hole: 17, result: "W" }];
+    const glor: GloriousConfig = { enabled: true, n: 2 }; // holes 17-18
+    expect(sectionSwing(decided, glor, 10, 18)).toBe(2);
+  });
+});
+
+// A CC follow-up ("look just like the normal scorecard — tees, yardage, par,
+// stroke index; only the player rows differ"): OutcomeScorecard now renders
+// the SAME ScorecardChrome StandardGrid.test.tsx exercises, around lead rows
+// instead of score rows. Mirrors that file's fixture shape.
+describe("OutcomeScorecard — chrome parity with StandardGrid (tees/yardage/par/index)", () => {
+  const a: Participant = { id: "a", name: "Brad", color: "#4ade80" };
+  const b: Participant = { id: "b", name: "Johnny D", color: "#fb923c" };
+  const courseUnits: ScoreUnit[] = [
+    { label: "1", section: "front", par: 4, strokeIndex: 5, yardage: 410 },
+    { label: "2", section: "front", par: 3, strokeIndex: 17, yardage: 165 },
+    { label: "10", section: "back", par: 5, strokeIndex: 2, yardage: 540 },
+    { label: "18", section: "back", par: 4, strokeIndex: 8, yardage: 430 },
+  ];
+
+  it("renders the course-structure rows from units alone (Par / Yards / Index), same as StandardGrid", () => {
+    const html = renderToStaticMarkup(
+      <OutcomeScorecard units={courseUnits} a={a} b={b} outcomes={[]} tee={{ name: "Blue" }} />
+    );
+    expect(html).toContain("Par");
+    expect(html).toContain("Yards");
+    expect(html).toContain("Index");
+    expect(html).toContain(">4<"); // a par value
+    expect(html).toContain(">17<"); // a stroke index
+    expect(html).toContain("410"); // a yardage
+    expect(html).toContain("Blue tees");
+  });
+
+  it("shows Out / In / Total column headers when units span both nines", () => {
+    const html = renderToStaticMarkup(<OutcomeScorecard units={courseUnits} a={a} b={b} outcomes={[]} />);
+    expect(html).toContain("Out");
+    expect(html).toContain("In");
+    expect(html).toContain("Total");
+  });
+
+  it("the Out/In/Total columns carry the leading side's swing over that section (not blank)", () => {
+    // A wins hole 1 (front) and hole 10 (back) → Out +1, In +1, Total +2.
+    const outcomes: HoleOutcomeRow[] = [{ hole: 1, result: "side_a" }, { hole: 3, result: "side_a" }];
+    const html = renderToStaticMarkup(
+      <OutcomeScorecard units={courseUnits} a={a} b={b} outcomes={outcomes} leftColor={a.color} rightColor={b.color} />
+    );
+    // 3 lead pills total: hole 1, hole 3 (both single-hole cells) + the Total column (+2).
+    // (No Out/In split pill here since each swing is a single hole — Out=+1, In=+1, Total=+2.)
+    const pillCount = html.split("outcome-lead-pill").length - 1;
+    expect(pillCount).toBeGreaterThanOrEqual(3);
+    expect(html).toContain(">2<"); // the Total column's +2
   });
 });

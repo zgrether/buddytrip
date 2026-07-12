@@ -2,9 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
- * matchOutcomes router (Refactor B2). B2 permission scope is ELEVATED TIER ONLY
- * (owner/organizer/delegate), matching migration 075's RLS write policy exactly
- * — the member-tier widening is B3's job (both the mutation AND RLS together).
+ * matchOutcomes router. B3 widened the write permission to the SCOPED model
+ * (matching `scores.ts` exactly): owner/organizer/delegate → any match; a
+ * plain member → only the match they're playing in (`canWriteOutcome` →
+ * `memberCanScoreUnit`); a non-participant member → nothing. Landed together
+ * with migration 076's `can_score_match` RLS policy (see that migration's
+ * comment for why the two layers can't ship separately).
  */
 
 const MATCH_PLAY = "gtt_match_play";
@@ -18,6 +21,7 @@ beforeAll(async () => {
   tripId = await ctx.createTrip("Outcome Router Trip");
   await ctx.addTripMember(tripId, "planner", "Organizer");
   await ctx.addTripMember(tripId, "member", "Member");
+  await ctx.addTripMember(tripId, "outsider", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 });
@@ -26,6 +30,8 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
+/** owner (side A) vs member (side B) — outsider is a trip member but plays no
+ *  part in this match, the genuine "not authorized" case. */
 async function freshOutcomeMatch(name: string): Promise<{ gameId: string; matchId: string }> {
   const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name });
   const gameId = game.id as string;
@@ -39,7 +45,7 @@ async function freshOutcomeMatch(name: string): Promise<{ gameId: string; matchI
   return { gameId, matchId };
 }
 
-describe("matchOutcomes.upsertOutcome — elevated tier only (B2 scope)", () => {
+describe("matchOutcomes.upsertOutcome — scoped permissions (B3)", () => {
   it("Owner records a hole outcome; it persists and round-trips via listByGame", async () => {
     const { gameId, matchId } = await freshOutcomeMatch("Owner Writes");
     await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
@@ -54,10 +60,18 @@ describe("matchOutcomes.upsertOutcome — elevated tier only (B2 scope)", () => 
     expect(rows).toEqual([{ match_id: matchId, hole_number: 2, result: "halved" }]);
   });
 
-  it("a plain Member is REJECTED (B2 scope — widened in B3)", async () => {
-    const { gameId, matchId } = await freshOutcomeMatch("Member Blocked");
+  it("B3: a member IN the match may record its outcome (their own match)", async () => {
+    const { gameId, matchId } = await freshOutcomeMatch("Member In Match");
+    // member is side B of this match — now authorized to decide its holes.
+    await ctx.callerAs("member").matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_b" });
+    const rows = await ctx.caller().matchOutcomes.listByGame({ tripId, gameId });
+    expect(rows).toEqual([{ match_id: matchId, hole_number: 1, result: "side_b" }]);
+  });
+
+  it("a member NOT in the match is still REJECTED (genuine non-participant)", async () => {
+    const { gameId, matchId } = await freshOutcomeMatch("Outsider Blocked");
     await expect(
-      ctx.callerAs("member").matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" })
+      ctx.callerAs("outsider").matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" })
     ).rejects.toThrow();
   });
 
@@ -85,7 +99,7 @@ describe("matchOutcomes.upsertOutcome — elevated tier only (B2 scope)", () => 
   });
 });
 
-describe("matchOutcomes.deleteOutcome — Reset hole", () => {
+describe("matchOutcomes.deleteOutcome — Reset hole (same scoped permissions)", () => {
   it("clears a recorded outcome back to undecided", async () => {
     const { gameId, matchId } = await freshOutcomeMatch("Reset Hole");
     await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
@@ -94,11 +108,19 @@ describe("matchOutcomes.deleteOutcome — Reset hole", () => {
     expect(rows).toEqual([]);
   });
 
-  it("a plain Member is REJECTED (same B2 scope as upsert)", async () => {
-    const { gameId, matchId } = await freshOutcomeMatch("Reset Blocked");
+  it("B3: a member IN the match may reset its own hole", async () => {
+    const { gameId, matchId } = await freshOutcomeMatch("Reset Own Match");
+    await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
+    await ctx.callerAs("member").matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 1 });
+    const rows = await ctx.caller().matchOutcomes.listByGame({ tripId, gameId });
+    expect(rows).toEqual([]);
+  });
+
+  it("a member NOT in the match is still REJECTED", async () => {
+    const { gameId, matchId } = await freshOutcomeMatch("Reset Outsider Blocked");
     await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
     await expect(
-      ctx.callerAs("member").matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 1 })
+      ctx.callerAs("outsider").matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 1 })
     ).rejects.toThrow();
   });
 });

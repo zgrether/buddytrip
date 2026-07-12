@@ -32,6 +32,12 @@ import {
  * prop so non-golf formats (units running down the portrait screen) can flip it
  * later without a rewrite — the flipped layout itself lands when Slice C needs
  * it (GolfCard). Slice A renders `participants-rows` only.
+ *
+ * The tee/yardage/par/stroke-index HEADER (everything above the player rows)
+ * is factored out as `ScorecardChrome` below, so `OutcomeScorecard` (hole-
+ * outcome entry) can render the identical chrome around its own lead rows —
+ * one scorecard look, two row kinds. StandardGrid's own body (below) is what
+ * `ScorecardChrome`'s `children` render-prop supplies here.
  */
 interface StandardGridProps {
   units: ScoreUnit[];
@@ -79,10 +85,10 @@ interface StandardGridProps {
   glorious?: GloriousConfig;
 }
 
-const NAME_W = 124;
-const HOLE_W = 30;
-const SUB_W = 44;
-const TOTAL_W = 50;
+export const NAME_W = 124;
+export const HOLE_W = 30;
+export const SUB_W = 44;
+export const TOTAL_W = 50;
 // The right-edge fade (below) is NOT scroll-position-aware — it's pinned to the
 // sheet's edge and stays rendered even once the grid is scrolled all the way to
 // its true end, permanently shading the last FADE_W px of CONTENT (not just
@@ -90,19 +96,42 @@ const TOTAL_W = 50;
 // strip covered roughly half the Total column's numbers. Every row ends in a
 // transparent RightGutter of this same width so the fade lands on empty space
 // instead of real content — shared constant so the two can't drift apart.
-const FADE_W = 24;
+export const FADE_W = 24;
 
-export function StandardGrid({
-  units,
-  participants,
-  values,
-  onCellTap,
-  pips,
-  saveStatus,
-  tee,
-  teeRows = [],
-  glorious = NO_GLORIOUS,
-}: StandardGridProps) {
+/** Everything a `ScorecardChrome` body (the `children` render-prop) needs to
+ *  paint cells that align pixel-for-pixel with the header above them. */
+export interface ScorecardChromeRenderCtx {
+  hasSections: boolean;
+  front: ScoreUnit[];
+  back: ScoreUnit[];
+  cellBase: React.CSSProperties;
+  nameCell: React.CSSProperties;
+  divider: (l?: string) => React.CSSProperties;
+  isGloriousCol: (i: number) => boolean;
+  gloriousWash: React.CSSProperties;
+}
+
+export interface ScorecardChromeProps {
+  units: ScoreUnit[];
+  tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null;
+  teeRows?: TeeRow[];
+  glorious?: GloriousConfig;
+  /** The player/lead rows — rendered between the Index row and the Glorious
+   *  bracket, using the same cell geometry the header above used. */
+  children: (ctx: ScorecardChromeRenderCtx) => React.ReactNode;
+}
+
+/**
+ * ScorecardChrome — the tee-selector bar + Hole/Yardage/Par/Stroke-Index
+ * header + sticky name column + glorious bracket + right-edge fade. Extracted
+ * from `StandardGrid` (Refactor B follow-up) so `OutcomeScorecard` can reuse
+ * the identical course-structure chrome around its own lead rows instead of a
+ * bespoke, chrome-less table — "look just like the normal scorecard; only the
+ * player rows differ." Behavior-preserving: this is the exact JSX StandardGrid
+ * rendered before the extraction, just wrapped so a second caller can supply
+ * different body rows through `children`.
+ */
+export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIOUS, children }: ScorecardChromeProps) {
   // The ONE predicate — reused, never re-derived. `hole` = the unit's ARRAY
   // POSITION (index + 1), matching the engine's numbering (buildDecided/
   // holeWeight), not a parsed label. A non-contiguous/short `units` array (a
@@ -132,11 +161,6 @@ export function StandardGrid({
   const teeSum = (ys: (number | null)[], from: number, to: number) =>
     ys.slice(from, to).reduce((a: number, y) => a + (y ?? 0), 0);
 
-  const valOf = (pid: string, l: string) => values[pid]?.[l];
-  const sumOf = (pid: string, list: ScoreUnit[]) =>
-    list.reduce((a, u) => a + (valOf(pid, u.label) ?? 0), 0);
-  const totalOf = (pid: string) => sumOf(pid, units);
-
   // GolfCard: par-relative coloring + a Par row + ±-vs-par subtotals, when the
   // units carry par (always for stroke play; real course par lands with the
   // picker). ±-vs-par is over the holes a player has actually scored.
@@ -147,26 +171,6 @@ export function StandardGrid({
   const hasYards = units.length > 0 && units.some((u) => u.yardage != null);
   const parSum = (list: ScoreUnit[]) => list.reduce((a, u) => a + (u.par ?? 0), 0);
   const yardSum = (list: ScoreUnit[]) => list.reduce((a, u) => a + (u.yardage ?? 0), 0);
-  const vsParOf = (pid: string, list: ScoreUnit[]): number => {
-    const scored = list.filter((u) => valOf(pid, u.label) != null);
-    return scored.reduce((a, u) => a + (valOf(pid, u.label)! - (u.par ?? 0)), 0);
-  };
-
-  // Leader (low total among participants who have any score).
-  const scoredIds = participants
-    .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
-    .map((p) => p.id);
-  const entries: StrokeEntry[] = [];
-  for (const p of participants)
-    for (const u of units) {
-      const v = valOf(p.id, u.label);
-      if (v != null) entries.push({ participant_id: p.id, value: v });
-    }
-  const standings = computeStrokePlayStandings(scoredIds, entries);
-  // ALL position-1 entities, so tied co-leaders each get the leader treatment.
-  const leaderIds = new Set(
-    scoredIds.length ? standings.filter((s) => s.position === 1).map((s) => s.entityId) : []
-  );
 
   const cellBase: React.CSSProperties = {
     width: HOLE_W,
@@ -201,6 +205,8 @@ export function StandardGrid({
         tee.slopeRating != null ? `Slope ${tee.slopeRating}` : null,
       ].filter(Boolean).join(" / ")
     : "";
+
+  const ctx: ScorecardChromeRenderCtx = { hasSections, front, back, cellBase, nameCell, divider, isGloriousCol, gloriousWash };
 
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
@@ -454,7 +460,94 @@ export function StandardGrid({
             </div>
           )}
 
-          {/* Rows */}
+          {/* Rows — supplied by the caller (StandardGrid's score rows, or
+              OutcomeScorecard's lead rows). */}
+          {children(ctx)}
+
+          {/* Glorious bracket — a rectangle frame around the glorious columns,
+              spanning header through the last row. Border-only (the wash fill is
+              per-cell, above); pointerEvents:none so it never blocks a score-cell
+              tap. min/max of the glorious index set, not an assumed "last N" span
+              — robust if the predicate ever yields a non-suffix set.
+              zIndex MUST exceed the header row's (2): the header is `position:
+              sticky` with an OPAQUE background, so at zIndex 1 its top border
+              segment (which sits at the header's own top edge) was fully painted
+              over — the bracket visually "started" below the header instead of
+              enclosing it. At zIndex 3 the thin border renders on top instead. */}
+          {gloriousCols.size > 0 && (
+            <div
+              aria-hidden
+              data-testid="glorious-bracket"
+              style={{
+                position: "absolute",
+                left: NAME_W + Math.min(...gloriousCols) * HOLE_W,
+                width: (Math.max(...gloriousCols) - Math.min(...gloriousCols) + 1) * HOLE_W,
+                top: 0,
+                bottom: 0,
+                border: "1px solid var(--color-bt-glorious-border)",
+                pointerEvents: "none",
+                zIndex: 3,
+              }}
+            />
+          )}
+          </div>
+        </div>
+        {/* Right-edge fade signalling more columns — NOT scroll-position-aware
+            (always rendered, even at true max scroll), which is exactly why every
+            row ends in a RightGutter of the same FADE_W: the fade always has
+            FADE_W of real spacer to land on instead of the Total column. */}
+        <div
+          className="pointer-events-none absolute right-0 top-0 h-full"
+          style={{ width: FADE_W, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function StandardGrid({
+  units,
+  participants,
+  values,
+  onCellTap,
+  pips,
+  saveStatus,
+  tee,
+  teeRows = [],
+  glorious = NO_GLORIOUS,
+}: StandardGridProps) {
+  const hasPar = units.length > 0 && units.every((u) => u.par != null);
+
+  const valOf = (pid: string, l: string) => values[pid]?.[l];
+  const sumOf = (pid: string, list: ScoreUnit[]) =>
+    list.reduce((a, u) => a + (valOf(pid, u.label) ?? 0), 0);
+  const totalOf = (pid: string) => sumOf(pid, units);
+  const vsParOf = (pid: string, list: ScoreUnit[]): number => {
+    const scored = list.filter((u) => valOf(pid, u.label) != null);
+    return scored.reduce((a, u) => a + (valOf(pid, u.label)! - (u.par ?? 0)), 0);
+  };
+
+  // Leader (low total among participants who have any score).
+  const scoredIds = participants
+    .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
+    .map((p) => p.id);
+  const entries: StrokeEntry[] = [];
+  for (const p of participants)
+    for (const u of units) {
+      const v = valOf(p.id, u.label);
+      if (v != null) entries.push({ participant_id: p.id, value: v });
+    }
+  const standings = computeStrokePlayStandings(scoredIds, entries);
+  // ALL position-1 entities, so tied co-leaders each get the leader treatment.
+  const leaderIds = new Set(
+    scoredIds.length ? standings.filter((s) => s.position === 1).map((s) => s.entityId) : []
+  );
+
+  return (
+    <>
+      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious}>
+        {({ hasSections, front, back, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => (
+          <>
           {participants.map((p, i) => {
             const isLeader = leaderIds.has(p.id);
             const rowBg = i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)";
@@ -508,50 +601,18 @@ export function StandardGrid({
               </div>
             );
           })}
-          {/* Glorious bracket — a rectangle frame around the glorious columns,
-              spanning header through the last row. Border-only (the wash fill is
-              per-cell, above); pointerEvents:none so it never blocks a score-cell
-              tap. min/max of the glorious index set, not an assumed "last N" span
-              — robust if the predicate ever yields a non-suffix set.
-              zIndex MUST exceed the header row's (2): the header is `position:
-              sticky` with an OPAQUE background, so at zIndex 1 its top border
-              segment (which sits at the header's own top edge) was fully painted
-              over — the bracket visually "started" below the header instead of
-              enclosing it. At zIndex 3 the thin border renders on top instead. */}
-          {gloriousCols.size > 0 && (
-            <div
-              aria-hidden
-              data-testid="glorious-bracket"
-              style={{
-                position: "absolute",
-                left: NAME_W + Math.min(...gloriousCols) * HOLE_W,
-                width: (Math.max(...gloriousCols) - Math.min(...gloriousCols) + 1) * HOLE_W,
-                top: 0,
-                bottom: 0,
-                border: "1px solid var(--color-bt-glorious-border)",
-                pointerEvents: "none",
-                zIndex: 3,
-              }}
-            />
-          )}
-          </div>
-        </div>
-        {/* Right-edge fade signalling more columns — NOT scroll-position-aware
-            (always rendered, even at true max scroll), which is exactly why every
-            row ends in a RightGutter of the same FADE_W: the fade always has
-            FADE_W of real spacer to land on instead of the Total column. */}
-        <div
-          className="pointer-events-none absolute right-0 top-0 h-full"
-          style={{ width: FADE_W, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
-        />
-      </div>
-      {/* Legend is pinned below the scroller — it does NOT scroll with the grid. */}
+          </>
+        )}
+      </ScorecardChrome>
+      {/* Legend is pinned below the scroller — it does NOT scroll with the
+          grid and doesn't apply to lead rows, so it's a sibling of the shared
+          chrome rather than rendered inside it. */}
       {hasPar && (
         <div className="shrink-0" style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}>
           <Legend />
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -631,7 +692,10 @@ function HeaderSub({ label, wide }: { label: string; wide?: boolean }) {
   );
 }
 
-function SubCell({
+/** A tinted Out/In/Total-style subtotal cell — exported so `OutcomeScorecard`
+ *  can render its own lead-at-checkpoint values through the identical visual
+ *  treatment the score grid uses. */
+export function SubCell({
   value,
   vsPar,
   wide,
@@ -687,8 +751,9 @@ function IndexSub({ wide }: { wide?: boolean }) {
 
 /** Transparent trailing spacer, the same width as the right-edge fade — so the
  *  fade always lands on empty space at the true end of the scroll, never on the
- *  Total column's real numbers (see FADE_W). One per row, after its last cell. */
-function RightGutter() {
+ *  Total column's real numbers (see FADE_W). One per row, after its last cell.
+ *  Exported so `OutcomeScorecard`'s lead rows end in the identical spacer. */
+export function RightGutter() {
   return <div aria-hidden style={{ width: FADE_W, minWidth: FADE_W, flexShrink: 0 }} />;
 }
 

@@ -82,3 +82,43 @@ describe("Refactor B2 acceptance case — outcome entry, tap by tap, posts like 
     ).rejects.toThrow(/posted/i);
   }, 60000);
 });
+
+describe("Refactor B3 — presence + live projection for an in-progress outcome-mode game", () => {
+  it("an outcome-mode game reads 'started' and gets a live-projection pill as soon as ≥1 hole is decided", async () => {
+    const comp = await ctx.createCompetition(tripId, "Outcome B3 Presence Cup");
+    const blue = await ctx.createTeam(comp, "Blue");
+    const red = await ctx.createTeam(comp, "Red");
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: comp, user_id: owner, team_id: blue },
+      { competition_id: comp, user_id: member, team_id: red },
+    ]);
+
+    const game = await ctx.caller().games.create({
+      tripId, gameTypeId: MATCH_PLAY, name: "Live Outcome Match", competitionId: comp,
+      pointsDistribution: { type: "per_match", value: 3 },
+    });
+    const gameId = game.id as string;
+    await ctx.admin.from("games").update({ entry_mode: "outcome" }).eq("id", gameId);
+    const matches = await ctx.caller().matches.setPairings({
+      tripId, gameId,
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
+    });
+    const matchId = (matches as { id: string }[])[0].id;
+    await ctx.caller().games.enableScoring({ tripId, gameId });
+
+    // Before any hole is decided — the board still shows this as Ready for
+    // Play, not On Tap; no rows in match_hole_outcomes means the OLD
+    // score_entries-only presence check would have never flipped it.
+    const before = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    expect(before.games.find((g) => g.id === gameId)?.started).toBe(false);
+    expect(before.projections[gameId]).toBeUndefined();
+
+    // Owner wins hole 1 via the real upsertOutcome path — the game is now
+    // "on tap" and the board projects the current leader's full match value.
+    await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
+
+    const after = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    expect(after.games.find((g) => g.id === gameId)?.started).toBe(true);
+    expect(after.projections[gameId]).toEqual({ [blue]: 3 });
+  }, 60000);
+});

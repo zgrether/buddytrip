@@ -2,16 +2,23 @@
 
 import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
-import type { Participant } from "./types";
+import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
+import type { TeeRow } from "@/lib/teeRows";
+import type { Participant, ScoreUnit } from "./types";
 
 /**
  * OutcomeScorecard — the hole-outcome-entry scorecard (Refactor B2, built to
- * `outcome_scorecard_mockup.html`). NO score rows (there are no scores in outcome
- * mode) — two team-colored LEAD rows instead. The running lead lives in the
- * LEADER's row (`N▲`, team-colored); a tied hole shows neutral `AS`; a Glorious
- * hole's double-jump is directly visible in the number; closeout dims the
- * unplayed remainder. Same W/L/H color vocabulary `MatchCard`'s history strip
- * uses (win/lose/halve), reused here for the per-hole win-green treatment.
+ * `outcome_scorecard_mockup.html`; header parity added as a follow-up — "look
+ * just like the normal scorecard, only the player rows differ"). Renders the
+ * SAME `ScorecardChrome` `StandardGrid` uses (tee selector, yardage/par/
+ * stroke-index rows, sticky name column, Out/In/Total columns, Glorious
+ * bracket, right-edge fade) around two team-colored LEAD rows instead of
+ * gross-score rows — there are no scores in outcome mode. The running lead
+ * lives in the LEADER's row (`N▲`, team-colored); a tied hole shows neutral
+ * `AS`; a Glorious hole's double-jump is directly visible in the number;
+ * closeout dims the unplayed remainder. Same W/L/H color vocabulary
+ * `MatchCard`'s history strip uses (win/lose/halve), reused here for the
+ * per-hole win-green treatment.
  */
 
 const WIN_GREEN = "#22c55e"; // = --color-bt-place-1 base; matches MatchCard's neutral "winning" color
@@ -56,14 +63,35 @@ export function computeLeadTrack(
   return { track, st };
 }
 
+/** Signed swing (±weighted W/L; halves are 0) over holes [from,to] (1-indexed,
+ *  inclusive) — the match-play equivalent of a gross-score section sum, so the
+ *  Out/In/Total columns carry real meaning for a lead row the same way they do
+ *  for a stroke row (Out = how the front 9 went, In = how the back 9 went,
+ *  Total = the two combined = the final lead). Exported for unit testing. */
+export function sectionSwing(decided: DecidedHole[], glorious: GloriousConfig, from: number, to: number): number {
+  const byHole = new Map(decided.map((d) => [d.hole, d.result]));
+  let diff = 0;
+  for (let h = from; h <= to; h++) {
+    const result = byHole.get(h);
+    if (result == null) continue;
+    const w = holeWeight(h, glorious);
+    diff += result === "W" ? w : result === "L" ? -w : 0;
+  }
+  return diff;
+}
+
 export interface OutcomeScorecardProps {
-  units: { label: string; par?: number }[];
+  units: ScoreUnit[];
   a: Participant;
   b: Participant;
   outcomes: HoleOutcomeRow[];
   glorious?: GloriousConfig;
   leftColor?: string;
   rightColor?: string;
+  /** Same tee/yardage header StandardGrid gets — outcome mode has no scores,
+   *  but the course structure (tees, par, stroke index) is identical. */
+  tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null;
+  teeRows?: TeeRow[];
 }
 
 export function OutcomeScorecard({
@@ -74,6 +102,8 @@ export function OutcomeScorecard({
   glorious = NO_GLORIOUS,
   leftColor,
   rightColor,
+  tee,
+  teeRows = [],
 }: OutcomeScorecardProps) {
   const decided = buildDecidedFromOutcomes(outcomes);
   const { track, st } = computeLeadTrack(decided, units.length, glorious);
@@ -84,40 +114,20 @@ export function OutcomeScorecard({
 
   return (
     <div data-testid="outcome-scorecard">
-      <div className="no-scrollbar overflow-x-auto">
-        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: units.length * 40 }}>
-          <thead>
-            <tr>
-              <th style={{ width: 96 }} />
-              {units.map((u, i) => (
-                <th key={u.label} style={{ width: 40, padding: "2px 0 8px" }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: track[i]?.glorious ? "var(--color-bt-glorious)" : "var(--color-bt-text)",
-                    }}
-                  >
-                    {u.label}
-                  </div>
-                  {track[i]?.glorious && (
-                    <div style={{ fontSize: 8, fontWeight: 800, color: "var(--color-bt-glorious)", letterSpacing: "0.03em" }}>
-                      ◆
-                    </div>
-                  )}
-                  {u.par != null && (
-                    <div style={{ fontSize: 10, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{u.par}</div>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <LeadRow name={a.name} track={track} side="A" color={lc} />
-            <LeadRow name={b.name} track={track} side="B" color={rc} />
-          </tbody>
-        </table>
-      </div>
+      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious}>
+        {({ hasSections, front, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => {
+          const outSwing = hasSections ? sectionSwing(decided, glorious, 1, front.length) : 0;
+          const inSwing = hasSections ? sectionSwing(decided, glorious, front.length + 1, units.length) : 0;
+          const totalSwing = outSwing + inSwing;
+          const rowProps = { units, track, nameCell, cellBase, divider, isGloriousCol, gloriousWash, hasSections, outSwing, inSwing, totalSwing };
+          return (
+            <>
+              <LeadRow {...rowProps} name={a.name} side="A" color={lc} />
+              <LeadRow {...rowProps} name={b.name} side="B" color={rc} />
+            </>
+          );
+        }}
+      </ScorecardChrome>
 
       {st.over && (
         <p className="text-center" style={{ padding: "12px 10px 2px", fontSize: 13, fontWeight: 800, color: "var(--color-bt-place-1-text)" }} data-testid="outcome-closeout">
@@ -130,27 +140,51 @@ export function OutcomeScorecard({
 
 function LeadRow({
   name,
+  units,
   track,
   side,
   color,
+  nameCell,
+  cellBase,
+  divider,
+  isGloriousCol,
+  gloriousWash,
+  hasSections,
+  outSwing,
+  inSwing,
+  totalSwing,
 }: {
   name: string;
+  units: ScoreUnit[];
   track: LeadCell[];
   side: "A" | "B";
   color: string;
+  nameCell: React.CSSProperties;
+  cellBase: React.CSSProperties;
+  divider: (l?: string) => React.CSSProperties;
+  isGloriousCol: (i: number) => boolean;
+  gloriousWash: React.CSSProperties;
+  hasSections: boolean;
+  outSwing: number;
+  inSwing: number;
+  totalSwing: number;
 }) {
   return (
-    <tr>
-      <td style={{ textAlign: "left", padding: "0 12px", fontSize: 13, fontWeight: 700, color: "var(--color-bt-text)", whiteSpace: "nowrap" }}>
-        {name}
-      </td>
-      {track.map((c) => (
-        <td
+    <div className="flex" style={{ height: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+      <div className="flex items-center" style={{ ...nameCell, padding: "0 10px" }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {name}
+        </span>
+      </div>
+      {track.map((c, i) => (
+        <div
           key={c.hole}
+          className="flex items-center justify-center"
           style={{
-            height: 38,
-            borderTop: "1px solid var(--color-bt-subtle-border)",
-            textAlign: "center",
+            ...cellBase,
+            height: 44,
+            ...divider(units[i]?.label),
+            ...(isGloriousCol(i) && !c.dead ? gloriousWash : {}),
             ...(c.glorious && !c.dead
               ? { outline: "1px dashed var(--color-bt-glorious-border)", outlineOffset: -3, borderRadius: 8 }
               : {}),
@@ -167,9 +201,38 @@ function LeadRow({
               AS
             </span>
           ) : null}
-        </td>
+        </div>
       ))}
-    </tr>
+      {hasSections && <LeadSubCell value={outSwing} side={side} color={color} />}
+      {hasSections && <LeadSubCell value={inSwing} side={side} color={color} />}
+      <LeadSubCell value={totalSwing} side={side} color={color} wide />
+      <RightGutter />
+    </div>
+  );
+}
+
+/** The Out/In/Total column for a lead row — same tinted footprint `SubCell`
+ *  uses for a stroke row's subtotals, showing this side's swing over that
+ *  section via the identical `LeadPill`/`AS` vocabulary the hole cells use. */
+function LeadSubCell({ value, side, color, wide }: { value: number; side: "A" | "B"; color: string; wide?: boolean }) {
+  const showsPill = (side === "A" && value > 0) || (side === "B" && value < 0);
+  return (
+    <div
+      className="flex items-center justify-center"
+      style={{
+        width: wide ? TOTAL_W : SUB_W,
+        minWidth: wide ? TOTAL_W : SUB_W,
+        height: 44,
+        flexShrink: 0,
+        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+      }}
+    >
+      {showsPill ? (
+        <LeadPill value={Math.abs(value)} color={color} />
+      ) : side === "B" && value === 0 ? (
+        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>AS</span>
+      ) : null}
+    </div>
   );
 }
 

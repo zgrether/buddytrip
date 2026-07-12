@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildDecided, matchState } from "@/lib/matchPlay";
+import { buildDecided, buildDecidedFromOutcomes, matchState, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -47,6 +47,9 @@ export interface LiveProjectionInput {
   /** per_match value from `points_distribution` — match play's pointsPerMatch.
    *  Unused by rack (which returns raw slot points to match its game page). */
   pointsPerMatch: number;
+  /** Refactor B3: an outcome-mode match projects from recorded hole outcomes,
+   *  not gross scores (it has none). Unused by rack. */
+  outcomeMode?: boolean;
 }
 
 /** The per-game data the pure projection needs — built from the bulk reads by
@@ -57,11 +60,14 @@ export interface GameProjectionData {
   schema: SchemaShape | null;
   modifiers: ModifiersMap | null;
   /** A2b: `point_value` is the per-match override (null → the even share). */
-  matches: { side_a: SideRef | null; side_b: SideRef | null; point_value?: number | null }[];
+  matches: { id: string; side_a: SideRef | null; side_b: SideRef | null; point_value?: number | null }[];
   parts: { user_id: string; play_group_id: string | null; handicap_strokes: number | null }[];
   playGroups: { id: string; handicap_strokes: number | null }[];
-  /** participant_id → { unit_label: gross }. */
+  /** participant_id → { unit_label: gross }. Score-mode only. */
   gross: Map<string, Record<string, number>>;
+  /** Refactor B3: recorded hole outcomes for this game's matches, outcome-mode
+   *  only — empty for a score-mode game. */
+  outcomes: { match_id: string; hole_number: number; result: HoleOutcomeRow["result"] }[];
   /** user_id → team_id (competition-level). */
   userTeam: Map<string, string>;
 }
@@ -91,10 +97,10 @@ export async function computeLiveProjections(
   // Bulk reads, scoped to the live game ids only (a completed game's per-hole
   // scores never load). One wave, parallel — the board compute's cost stays a
   // fixed handful of extra queries regardless of live-game count.
-  const [gamesMetaRes, matchRowsRes, participantRowsRes, playGroupRowsRes, entryRowsRes, assignRes] =
+  const [gamesMetaRes, matchRowsRes, participantRowsRes, playGroupRowsRes, entryRowsRes, outcomeRowsRes, assignRes] =
     await Promise.all([
       supabase.from("games").select("id, scorecard_schema, modifiers").in("id", gameIds),
-      supabase.from("game_matches").select("game_id, side_a, side_b, point_value").in("game_id", gameIds),
+      supabase.from("game_matches").select("id, game_id, side_a, side_b, point_value").in("game_id", gameIds),
       supabase
         .from("game_participants")
         .select("game_id, user_id, play_group_id, handicap_strokes")
@@ -105,6 +111,10 @@ export async function computeLiveProjections(
         .select("game_id, participant_id, unit_label, value")
         .in("game_id", gameIds)
         .in("participant_type", ["user", "play_group"]),
+      // Refactor B3: the outcome-mode counterpart to entryRowsRes — empty for a
+      // score-mode game (harmless to fetch unconditionally, same pattern as
+      // startedByGame's merge in competitionLeaderboard.ts).
+      supabase.from("match_hole_outcomes").select("game_id, match_id, hole_number, result").in("game_id", gameIds),
       supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", competitionId),
     ]);
 
@@ -119,15 +129,26 @@ export async function computeLiveProjections(
     });
   }
 
-  const matchesByGame = new Map<string, { side_a: SideRef | null; side_b: SideRef | null; point_value: number | null }[]>();
+  const matchesByGame = new Map<string, { id: string; side_a: SideRef | null; side_b: SideRef | null; point_value: number | null }[]>();
   for (const m of matchRowsRes.data ?? []) {
     const arr = matchesByGame.get(m.game_id as string) ?? [];
     arr.push({
+      id: m.id as string,
       side_a: (m.side_a as SideRef | null) ?? null,
       side_b: (m.side_b as SideRef | null) ?? null,
       point_value: (m.point_value as number | null) ?? null,
     });
     matchesByGame.set(m.game_id as string, arr);
+  }
+
+  // Refactor B3: game → this game's recorded hole outcomes (outcome-mode only —
+  // empty array for a score-mode game).
+  const outcomesByGame = new Map<string, { match_id: string; hole_number: number; result: HoleOutcomeRow["result"] }[]>();
+  for (const o of outcomeRowsRes.data ?? []) {
+    const gid = o.game_id as string;
+    const arr = outcomesByGame.get(gid) ?? [];
+    arr.push({ match_id: o.match_id as string, hole_number: o.hole_number as number, result: o.result as HoleOutcomeRow["result"] });
+    outcomesByGame.set(gid, arr);
   }
 
   const partsByGame = new Map<
@@ -173,6 +194,7 @@ export async function computeLiveProjections(
       parts: partsByGame.get(g.id) ?? [],
       playGroups: pgByGame.get(g.id) ?? [],
       gross: grossByGame.get(g.id) ?? new Map(),
+      outcomes: outcomesByGame.get(g.id) ?? [],
       userTeam,
     });
     if (proj) out[g.id] = proj;
@@ -184,12 +206,14 @@ export async function computeLiveProjections(
  *  `buildDecided`→`matchState` the finish path runs), resolve each side to its
  *  team, and sum via the shared `rollupMatchPlay`. */
 function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Record<string, number> | null {
-  const { schema, matches, parts, playGroups, gross, userTeam } = data;
+  const { schema, matches, parts, playGroups, gross, outcomes, userTeam } = data;
   const strokeIndex = schema?.units?.metadata?.handicap_index;
   const holeCount = schema?.units?.count;
   const glorious = gloriousConfig(g.gameTypeId, data.modifiers);
 
   // Side handicaps, keyed by SIDE id (1v1 side = a user; 2v2 side = a play_group).
+  // Score-mode only — an outcome-mode match has no handicap application (the
+  // recorded outcome IS the decision).
   const hcap = new Map<string, number>();
   for (const p of parts) hcap.set(p.user_id, effectiveStrokes(p));
   for (const pg of playGroups) hcap.set(pg.id, effectiveStrokes(pg));
@@ -207,19 +231,30 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Record<
     return (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? null;
   };
 
+  // Refactor B3: outcome-mode matches source decided holes from recorded
+  // outcomes, grouped by match id — mirrors MatchGameView's decidedFor branch.
+  const outcomesByMatch = new Map<string, HoleOutcomeRow[]>();
+  for (const o of outcomes) {
+    const arr = outcomesByMatch.get(o.match_id) ?? [];
+    arr.push({ hole: o.hole_number, result: o.result });
+    outcomesByMatch.set(o.match_id, arr);
+  }
+
   const projMatches: ProjMatch[] = [];
   for (const m of matches) {
     const a = m.side_a;
     const b = m.side_b;
     if (!a?.id || !b?.id) continue; // an unpaired slot isn't a match yet
-    const decided = buildDecided(
-      gross.get(a.id) ?? {},
-      gross.get(b.id) ?? {},
-      hcap.get(a.id) ?? 0,
-      hcap.get(b.id) ?? 0,
-      strokeIndex,
-      holeCount
-    );
+    const decided = g.outcomeMode
+      ? buildDecidedFromOutcomes(outcomesByMatch.get(m.id) ?? [])
+      : buildDecided(
+          gross.get(a.id) ?? {},
+          gross.get(b.id) ?? {},
+          hcap.get(a.id) ?? 0,
+          hcap.get(b.id) ?? 0,
+          strokeIndex,
+          holeCount
+        );
     const st = matchState(decided, holeCount, glorious);
     projMatches.push({
       aTeamId: sideTeam(a),
