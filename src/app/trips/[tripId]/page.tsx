@@ -21,6 +21,7 @@ import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
+import { useRealtimeTripData } from "@/hooks/useRealtimeTripData";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
@@ -145,6 +146,11 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // without this a just-demoted organizer keeps seeing organizer-only tabs
   // until their tripMembers.list cache goes stale or they reload.
   useRealtimeMembers(tripId);
+  // Push quick-info / lodging / schedule list changes live so another member's
+  // header dock + itinerary reflect an edit without a refresh (Wave 1: these
+  // three tables had no realtime coverage, so cross-device they stayed cached
+  // up to the 60s staleTime — the "doesn't show until refresh" symptom).
+  useRealtimeTripData(tripId);
 
   // Remember the most recently visited trip so the root-route Server
   // Component (src/app/page.tsx) can 307 the user back here on return
