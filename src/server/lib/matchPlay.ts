@@ -1,16 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildDecided, matchState } from "@/lib/matchPlay";
+import { buildDecided, buildDecidedFromOutcomes, matchState, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, type PerMatchDistribution } from "@/lib/pointsDistribution";
 
 /**
- * DB-persist side of match-play results. Reads each `game_matches` row, gathers
- * both sides' gross `score_entries` + each side's `handicap_strokes`, builds the
- * decided sequence and runs the SHARED, frozen `matchState` (same rule the live
- * client strip uses — see `src/lib/matchPlay.ts`), then writes the match
+ * DB-persist side of match-play results. Reads each `game_matches` row, builds
+ * the decided sequence and runs the SHARED, frozen `matchState` (same rule the
+ * live client strip uses — see `src/lib/matchPlay.ts`), then writes the match
  * `result`/`margin`/`status` and distills one `game_results` row per side.
+ *
+ * Refactor B — TWO decided-hole sources, picked by `games.entry_mode`:
+ *  - 'score' (default, unchanged): gathers both sides' gross `score_entries` +
+ *    each side's `handicap_strokes`, derives via `buildDecided`.
+ *  - 'outcome': reads `match_hole_outcomes` rows directly — no gross, no
+ *    handicaps, no stroke index; the recorded outcome IS the decision (a
+ *    concession and a 3-net-stroke win are the same row — the app never
+ *    distinguishes them). Derives via `buildDecidedFromOutcomes`.
+ * Both feed the identical, unchanged `matchState` — the engine has zero
+ * awareness of which source it came from.
  *
  * - Reads NET, never overwrites gross (`score_entries.value` stays raw — #16).
  * - Play-it-out holes never change a decided match (`matchState` is frozen).
@@ -18,11 +27,12 @@ import { isPerMatch, type PerMatchDistribution } from "@/lib/pointsDistribution"
  * - Idempotent: a recompute updates the match rows in place and replaces the
  *   game's `game_results`.
  *
- * Stroke index: a game's own `scorecard_schema` snapshot (written when a course
- * is applied — Slice C) drives `buildDecided`. A no-course game has no snapshot,
- * so it falls through to `strokeHoles`'s sequential allocation — the documented
- * Slice B fallback, kept as the no-course path (NOT the template default, which
- * is only a display placeholder).
+ * Stroke index (score mode only): a game's own `scorecard_schema` snapshot
+ * (written when a course is applied — Slice C) drives `buildDecided`. A
+ * no-course game has no snapshot, so it falls through to `strokeHoles`'s
+ * sequential allocation — the documented Slice B fallback, kept as the
+ * no-course path (NOT the template default, which is only a display
+ * placeholder).
  */
 
 interface SideRef {
@@ -73,54 +83,78 @@ export async function computeMatchPlayResults(
   // recomputes here. Format-guarded inside gloriousConfig (inert for anything but
   // match singles/doubles), and this compute is only ever reached by match_play
   // games anyway — belt and suspenders. Same helper the live client strip uses, so
-  // finish and the live board can't diverge.
+  // finish and the live board can't diverge. `entry_mode` picks the decided-hole
+  // SOURCE below (Refactor B) — read in the SAME query, no extra round-trip.
   const { data: gameCfg } = await supabase
     .from("games")
-    .select("game_type_id, modifiers")
+    .select("game_type_id, modifiers, entry_mode")
     .eq("id", gameId)
     .maybeSingle();
   const glorious = gloriousConfig(
     gameCfg?.game_type_id as string | null,
     gameCfg?.modifiers as ModifiersMap | null
   );
+  const outcomeMode = (gameCfg?.entry_mode as string | null) === "outcome";
 
-  // Side handicaps, keyed by SIDE id. A 1v1 side is a user (handicap on
-  // game_participants); a 2v2 side is a pair = a play_group (handicap on
-  // play_groups). Read both so one compute serves both formats — the id spaces
-  // don't collide and a game only ever looks up its own side type's ids.
+  // Refactor B: an outcome-mode match's decided holes come DIRECTLY from recorded
+  // hole outcomes — no gross, no handicap strokes, no stroke index (the outcome IS
+  // the decision; a concession and a 3-net-stroke win are the same row). Skip the
+  // score-mode fetches entirely rather than fetching-and-ignoring them.
   const hcap = new Map<string, number>();
-  const { data: parts } = await supabase
-    .from("game_participants")
-    .select("user_id, handicap_strokes")
-    .eq("game_id", gameId);
-  for (const p of parts ?? []) {
-    hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
-  }
-  const { data: pgroups } = await supabase
-    .from("play_groups")
-    .select("id, handicap_strokes")
-    .eq("game_id", gameId);
-  for (const pg of pgroups ?? []) {
-    hcap.set(pg.id as string, effectiveStrokes(pg as { handicap_strokes: number | null }));
-  }
-
-  // Side gross, keyed by SIDE id → { unit_label → gross }. 1v1 records one entry
-  // per user (participant_type='user'); 2v2 records one entry per side
-  // (participant_type='play_group'). Read both and merge by id.
-  const { data: entries } = await supabase
-    .from("score_entries")
-    .select("participant_id, unit_label, value")
-    .eq("game_id", gameId)
-    .in("participant_type", ["user", "play_group"]);
-  // Nothing scored yet → nothing to derive. Skips the wasted recompute that the
-  // setup-time setHandicap calls would otherwise trigger (no results to write).
-  if ((entries ?? []).length === 0) return [];
   const gross = new Map<string, Record<string, number>>();
-  for (const e of entries ?? []) {
-    if (e.value == null) continue;
-    const pid = e.participant_id as string;
-    if (!gross.has(pid)) gross.set(pid, {});
-    gross.get(pid)![e.unit_label as string] = e.value as number;
+  const outcomesByMatch = new Map<string, HoleOutcomeRow[]>();
+
+  if (outcomeMode) {
+    const { data: outcomeRows } = await supabase
+      .from("match_hole_outcomes")
+      .select("match_id, hole_number, result")
+      .eq("game_id", gameId);
+    // Nothing decided yet → nothing to derive (mirrors the score-mode early return
+    // below, scoped to the outcome table instead of score_entries).
+    if ((outcomeRows ?? []).length === 0) return [];
+    for (const r of outcomeRows ?? []) {
+      const mid = r.match_id as string;
+      const arr = outcomesByMatch.get(mid) ?? [];
+      arr.push({ hole: r.hole_number as number, result: r.result as HoleOutcomeRow["result"] });
+      outcomesByMatch.set(mid, arr);
+    }
+  } else {
+    // Side handicaps, keyed by SIDE id. A 1v1 side is a user (handicap on
+    // game_participants); a 2v2 side is a pair = a play_group (handicap on
+    // play_groups). Read both so one compute serves both formats — the id spaces
+    // don't collide and a game only ever looks up its own side type's ids.
+    const { data: parts } = await supabase
+      .from("game_participants")
+      .select("user_id, handicap_strokes")
+      .eq("game_id", gameId);
+    for (const p of parts ?? []) {
+      hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
+    }
+    const { data: pgroups } = await supabase
+      .from("play_groups")
+      .select("id, handicap_strokes")
+      .eq("game_id", gameId);
+    for (const pg of pgroups ?? []) {
+      hcap.set(pg.id as string, effectiveStrokes(pg as { handicap_strokes: number | null }));
+    }
+
+    // Side gross, keyed by SIDE id → { unit_label → gross }. 1v1 records one entry
+    // per user (participant_type='user'); 2v2 records one entry per side
+    // (participant_type='play_group'). Read both and merge by id.
+    const { data: entries } = await supabase
+      .from("score_entries")
+      .select("participant_id, unit_label, value")
+      .eq("game_id", gameId)
+      .in("participant_type", ["user", "play_group"]);
+    // Nothing scored yet → nothing to derive. Skips the wasted recompute that the
+    // setup-time setHandicap calls would otherwise trigger (no results to write).
+    if ((entries ?? []).length === 0) return [];
+    for (const e of entries ?? []) {
+      if (e.value == null) continue;
+      const pid = e.participant_id as string;
+      if (!gross.has(pid)) gross.set(pid, {});
+      gross.get(pid)![e.unit_label as string] = e.value as number;
+    }
   }
 
   const outcomes: MatchOutcome[] = [];
@@ -134,14 +168,16 @@ export async function computeMatchPlayResults(
     if (!a?.id || !b?.id) continue; // singles needs both sides set
     processedEntities.push(a.id, b.id);
 
-    const decided = buildDecided(
-      gross.get(a.id) ?? {},
-      gross.get(b.id) ?? {},
-      hcap.get(a.id) ?? 0,
-      hcap.get(b.id) ?? 0,
-      strokeIndex,
-      holeCount
-    );
+    const decided = outcomeMode
+      ? buildDecidedFromOutcomes(outcomesByMatch.get(m.id as string) ?? [])
+      : buildDecided(
+          gross.get(a.id) ?? {},
+          gross.get(b.id) ?? {},
+          hcap.get(a.id) ?? 0,
+          hcap.get(b.id) ?? 0,
+          strokeIndex,
+          holeCount
+        );
     const st = matchState(decided, holeCount, glorious);
 
     const result: MatchOutcome["result"] = st.over

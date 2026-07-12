@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { strokeHoles, buildDecided, matchState, matchHasScores, type HoleResult, type DecidedHole } from "./matchPlay";
+import {
+  strokeHoles,
+  buildDecided,
+  buildDecidedFromOutcomes,
+  matchState,
+  matchHasScores,
+  type HoleResult,
+  type DecidedHole,
+  type HoleOutcomeRow,
+} from "./matchPlay";
 import { NO_GLORIOUS, type GloriousConfig } from "./gloriousHoles";
 
 // Compact builder: a sequential run of outcomes on holes 1..n (no gaps) — the shape
@@ -68,6 +77,70 @@ describe("buildDecided — emits {hole, result}", () => {
   it("compares on NET — a received stroke can flip the hole", () => {
     expect(buildDecided({ "1": 5 }, { "1": 4 }, 1, 0)).toEqual([{ hole: 1, result: "H" }]);
     expect(buildDecided({ "1": 5 }, { "1": 4 }, 0, 0)).toEqual([{ hole: 1, result: "L" }]);
+  });
+});
+
+// Refactor B1 — the hole-outcome-entry counterpart to buildDecided. No scores, no
+// handicaps: the recorded outcome IS the decision. `side_a`/`side_b` name the
+// match's sides directly (A's perspective, matching buildDecided's W/L convention).
+describe("buildDecidedFromOutcomes — emits {hole, result} directly from recorded outcomes", () => {
+  it("maps side_a → W, side_b → L, halved → H", () => {
+    const rows: HoleOutcomeRow[] = [
+      { hole: 1, result: "side_a" },
+      { hole: 2, result: "side_b" },
+      { hole: 3, result: "halved" },
+    ];
+    expect(buildDecidedFromOutcomes(rows)).toEqual([
+      { hole: 1, result: "W" },
+      { hole: 2, result: "L" },
+      { hole: 3, result: "H" },
+    ]);
+  });
+
+  it("sorts by hole number regardless of input order (a DB read has no guaranteed order)", () => {
+    const rows: HoleOutcomeRow[] = [
+      { hole: 3, result: "side_a" },
+      { hole: 1, result: "side_b" },
+      { hole: 2, result: "halved" },
+    ];
+    expect(buildDecidedFromOutcomes(rows)).toEqual([
+      { hole: 1, result: "L" },
+      { hole: 2, result: "H" },
+      { hole: 3, result: "W" },
+    ]);
+  });
+
+  it("is gap-tolerant — an undecided hole is simply absent, not a positional gap", () => {
+    const rows: HoleOutcomeRow[] = [{ hole: 1, result: "side_a" }, { hole: 3, result: "side_a" }];
+    expect(buildDecidedFromOutcomes(rows)).toEqual([{ hole: 1, result: "W" }, { hole: 3, result: "W" }]);
+  });
+
+  it("empty input → empty output (nothing decided yet)", () => {
+    expect(buildDecidedFromOutcomes([])).toEqual([]);
+  });
+
+  it("produces a BYTE-IDENTICAL DecidedHole[] to the equivalent gross-derived sequence", () => {
+    // The same match, decided two ways: gross scores (buildDecided) vs a human
+    // tapping the winner directly (buildDecidedFromOutcomes) — must agree exactly.
+    const fromScores = buildDecided({ "1": 4, "2": 5, "3": 4 }, { "1": 5, "2": 5, "3": 3 }, 0, 0);
+    const fromOutcomes = buildDecidedFromOutcomes([
+      { hole: 1, result: "side_a" }, // A's 4 beats B's 5
+      { hole: 2, result: "halved" }, // 5-5 tie
+      { hole: 3, result: "side_b" }, // B's 3 beats A's 4
+    ]);
+    expect(fromOutcomes).toEqual(fromScores);
+  });
+
+  it("byte-identical MATCH STATE too, including a Glorious double-swing", () => {
+    // Holes 16-18 glorious (GLOR3). A wins hole 17 (glorious) — should swing 2, not 1.
+    const outcomeRows: HoleOutcomeRow[] = [
+      ...Array.from({ length: 15 }, (_, i): HoleOutcomeRow => ({ hole: i + 1, result: "halved" })),
+      { hole: 16, result: "halved" },
+      { hole: 17, result: "side_a" },
+    ];
+    const decided = buildDecidedFromOutcomes(outcomeRows);
+    const st = matchState(decided, 18, GLOR3);
+    expect(st).toMatchObject({ up: 2, leader: "A", thru: 17 }); // 2× weight from the glorious win
   });
 });
 

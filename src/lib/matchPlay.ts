@@ -103,6 +103,35 @@ export function buildDecided(
   return out;
 }
 
+/** One hole's recorded outcome (`match_hole_outcomes`) — the storage shape for
+ *  hole-outcome-entry mode (Refactor B). `side_a`/`side_b` name the MATCH's sides
+ *  directly (not a player id) — there is no gross, no handicap, no stroke index:
+ *  the outcome IS the decision (a concession and a 3-net-stroke win are the same
+ *  row — the app never distinguishes them). */
+export type HoleOutcomeResult = "side_a" | "side_b" | "halved";
+export interface HoleOutcomeRow {
+  hole: number;
+  result: HoleOutcomeResult;
+}
+
+/**
+ * Build the decided `DecidedHole[]` (A's perspective, hole order) directly from
+ * recorded hole outcomes — the hole-outcome-entry counterpart to `buildDecided`
+ * (which derives outcomes from gross scores + handicaps). No scores, no strokes:
+ * each outcome row already IS the decision, so this is pure reshaping + sorting.
+ * Gap-tolerant, same contract as `buildDecided`: a hole with no row is simply
+ * absent (still to play), never a distinguished "cleared" state.
+ */
+export function buildDecidedFromOutcomes(rows: HoleOutcomeRow[]): DecidedHole[] {
+  return rows
+    .slice()
+    .sort((a, b) => a.hole - b.hole)
+    .map((r) => ({
+      hole: r.hole,
+      result: r.result === "side_a" ? "W" : r.result === "side_b" ? "L" : "H",
+    }));
+}
+
 /** Hole numbers 1..holeCount not present in the decided set — the genuinely
  *  unplayed holes (gap-tolerant: an undecided mid-round hole counts as unplayed). */
 function unplayedHoles(holeCount: number, played: Set<number>): number[] {
