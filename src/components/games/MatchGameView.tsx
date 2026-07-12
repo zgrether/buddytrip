@@ -270,8 +270,13 @@ export function MatchGameView() {
   // Scoring — the connectivity-resilient saver owns `values` + `saveStatus`:
   // optimistic value, retry-with-backoff, per-cell status, kept-and-flagged
   // (never rolled back) on failure.
+  // onCleared: a Reset Hole/cell has no local value left to shadow the
+  // poll-loaded loadedValues/loadedOutcomeValues snapshot (mergedFor's
+  // server layer), so the match-list header and scorecard grid would
+  // otherwise show the pre-reset result until the next scheduled poll —
+  // refetch right away instead of waiting out GAME_SYNC_INTERVAL_MS.
   const { values, setValues, saveStatus, onChange, onClear, retryCell } =
-    useScoreSaver(tripId, gameId, participantTypeOf);
+    useScoreSaver(tripId, gameId, participantTypeOf, () => void scoresQ.refetch());
   // Refactor B: the outcome write path — same durability contract, unconditional
   // (hooks can't be conditional); inert for a score-mode game (nothing calls its
   // onChange/onClear there).
@@ -282,7 +287,7 @@ export function MatchGameView() {
     onChange: onOutcomeChange,
     onClear: onOutcomeClear,
     retryCell: retryOutcomeCell,
-  } = useOutcomeSaver(tripId, gameId);
+  } = useOutcomeSaver(tripId, gameId, () => void outcomesQ.refetch());
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();

@@ -63,6 +63,13 @@ export function useScoreSaver(
     | "user"
     | "play_group"
     | ((participantId: string) => "user" | "play_group" | undefined),
+  // Fired once a clear is CONFIRMED by the server. A cleared cell has no local
+  // value to shadow the poll-loaded server snapshot with, so any OTHER surface
+  // reading that snapshot (a match-list "THRU"/margin header, a scorecard grid)
+  // stays stale until the next scheduled poll — up to GAME_SYNC_INTERVAL_MS.
+  // The caller uses this to refetch that snapshot immediately instead of
+  // waiting out the interval.
+  onCleared?: () => void,
 ) {
   const typeOf = useCallback(
     (participantId: string): "user" | "play_group" | undefined =>
@@ -161,6 +168,9 @@ export function useScoreSaver(
       // their own outcome, never be orphaned by a later one on the shared observer.
       deleteEntry
         .mutateAsync({ tripId, gameId, participantId, unitLabel, participantType: typeOf(participantId) })
+        // Confirmed gone server-side — let the caller refresh whatever else
+        // reads the poll-loaded snapshot (see `onCleared` above).
+        .then(() => onCleared?.())
         // A failed delete means the value is still on the server — restore it
         // (accurate) and flag it so the user knows the clear didn't take.
         .catch(() => {
@@ -176,7 +186,7 @@ export function useScoreSaver(
           }
         });
     },
-    [tripId, gameId, values, deleteEntry, mark, typeOf],
+    [tripId, gameId, values, deleteEntry, mark, typeOf, onCleared],
   );
 
   /**

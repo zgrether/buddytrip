@@ -26,7 +26,16 @@ import type { HoleOutcomeResult } from "@/lib/matchPlay";
 const MAX_RETRIES = 4;
 const retryDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 8000);
 
-export function useOutcomeSaver(tripId: string | undefined, gameId: string | null | undefined) {
+export function useOutcomeSaver(
+  tripId: string | undefined,
+  gameId: string | null | undefined,
+  // Fired once a clear (Reset hole) is CONFIRMED by the server — mirrors
+  // useScoreSaver's `onCleared`. A cleared hole has no local value to shadow
+  // the poll-loaded server snapshot with, so the match-list/scorecard
+  // surfaces that read `mergedOutcomeFor` stay on the pre-reset result until
+  // the next scheduled poll; the caller uses this to refetch immediately.
+  onCleared?: () => void,
+) {
   const [values, setValues] = useState<OutcomeValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
   const saveStatusRef = useRef(saveStatus);
@@ -93,6 +102,9 @@ export function useOutcomeSaver(tripId: string | undefined, gameId: string | nul
       outcomeOutboxClear(gameId, matchId, Number(hole));
       deleteOutcome
         .mutateAsync({ tripId, gameId, matchId, holeNumber: Number(hole) })
+        // Confirmed gone server-side — let the caller refresh whatever else
+        // reads the poll-loaded snapshot (see `onCleared` above).
+        .then(() => onCleared?.())
         .catch(() => {
           if (prevValue != null) {
             setValues((v) => ({
@@ -103,7 +115,7 @@ export function useOutcomeSaver(tripId: string | undefined, gameId: string | nul
           }
         });
     },
-    [tripId, gameId, values, deleteOutcome, mark],
+    [tripId, gameId, values, deleteOutcome, mark, onCleared],
   );
 
   /** Reflect server outcome truth into the local view without clobbering the
