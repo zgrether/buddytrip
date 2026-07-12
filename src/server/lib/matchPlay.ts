@@ -59,7 +59,9 @@ export async function computeMatchPlayResults(
   const skipComplete = opts?.skipComplete ?? false;
   const { data: matches } = await supabase
     .from("game_matches")
-    .select("id, side_a, side_b, status, result")
+    // point_value = the A2b per-match override (null → the even share). Read here so
+    // the team-points adapter awards `point_value ?? even share` per match.
+    .select("id, side_a, side_b, status, result, point_value")
     .eq("game_id", gameId);
 
   // Stroke index: the game's course snapshot if one is applied, else undefined
@@ -197,6 +199,8 @@ export async function computeMatchPlayResults(
       supabase,
       gameId,
       gameInfo.competition_id as string,
+      // A2b: the even share = points_distribution.value, used as the per-match
+      // FALLBACK. Each match awards its own `point_value` when set, else this.
       (gameInfo.points_distribution as PerMatchDistribution).value,
       matches ?? [],
       outcomes
@@ -247,13 +251,17 @@ function mkResult(
 /** Aggregate decided match outcomes into per-team competition points and write
  *  them to game_results (entity_type='team', raw_score=accumulated points).
  *  Combines skipped-complete matches (from the initial query's result field)
- *  with freshly-computed outcomes so the team total is always complete. */
+ *  with freshly-computed outcomes so the team total is always complete.
+ *
+ *  A2b: each match is worth `point_value ?? evenShareFallback` — the per-match
+ *  override when set, else the game's derived even share (points_distribution.value,
+ *  passed as `evenShareFallback`). So a "counts double" match awards its own value. */
 async function writeTeamMatchPoints(
   supabase: SupabaseClient,
   gameId: string,
   competitionId: string,
-  perMatchValue: number,
-  allMatches: { id: unknown; side_a: unknown; side_b: unknown; result: unknown }[],
+  evenShareFallback: number,
+  allMatches: { id: unknown; side_a: unknown; side_b: unknown; result: unknown; point_value?: unknown }[],
   freshOutcomes: MatchOutcome[]
 ) {
   // Fresh outcomes override stale results for the matches we just processed.
@@ -306,14 +314,16 @@ async function writeTeamMatchPoints(
     const bTeam = sideTeam(b);
     if (!aTeam || !bTeam) continue;
 
+    // A2b award rule: this match's own override, else the even share.
+    const value = (m.point_value as number | null) ?? evenShareFallback;
     if (result === "a_win") {
-      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + perMatchValue);
+      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + value);
     } else if (result === "b_win") {
-      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + perMatchValue);
+      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + value);
     } else {
       // halve — each side gets half
-      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + perMatchValue / 2);
-      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + perMatchValue / 2);
+      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + value / 2);
+      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + value / 2);
     }
   }
 

@@ -361,6 +361,48 @@ export const matchesRouter = router({
       return { ok: true };
     }),
 
+  // setPointValue — Owner/Organizer/delegate (requireGameEdit — the "distribute
+  // within" right; the owner-set TOTAL stays Organizer-only via games.setPointsTotal).
+  // A2b per-match points OVERRIDE: write game_matches.point_value. NULL clears it →
+  // the match reverts to the even share. This mutation owns ONLY the single per-match
+  // column; the client recomputes + persists the REMAINING matches' even share via
+  // games.setPointsDistribution (it holds the live match set). point_value is an AWARD
+  // input, so we re-derive in-progress team points (skipComplete leaves frozen match
+  // results intact; writeTeamMatchPoints re-reads the fresh override). No scores yet →
+  // computeMatchPlayResults early-returns, so this is a cheap no-op during setup.
+  setPointValue: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        matchId: z.string().min(1),
+        value: z.number().min(0).nullable(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      await assertGameInTrip(ctx, input.gameId, ctx.tripId);
+      const { data: match } = await ctx.supabase
+        .from("game_matches")
+        .select("id")
+        .eq("id", input.matchId)
+        .eq("game_id", input.gameId)
+        .maybeSingle();
+      if (!match) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
+      }
+      const { error } = await ctx.supabase
+        .from("game_matches")
+        .update({ point_value: input.value })
+        .eq("id", input.matchId)
+        .eq("game_id", input.gameId);
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set match points: ${error.message}` });
+      }
+      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+      return { ok: true };
+    }),
+
   // ── legacy doubles twins removed (Refactor A2a) ─────────────────────────────
   // setDoublesPairings / setDoublesHandicap were folded into the per-match
   // setPairings / setHandicap above (shape comes from each match's playersPerSide

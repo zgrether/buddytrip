@@ -56,7 +56,8 @@ export interface LiveProjectionInput {
 export interface GameProjectionData {
   schema: SchemaShape | null;
   modifiers: ModifiersMap | null;
-  matches: { side_a: SideRef | null; side_b: SideRef | null }[];
+  /** A2b: `point_value` is the per-match override (null → the even share). */
+  matches: { side_a: SideRef | null; side_b: SideRef | null; point_value?: number | null }[];
   parts: { user_id: string; play_group_id: string | null; handicap_strokes: number | null }[];
   playGroups: { id: string; handicap_strokes: number | null }[];
   /** participant_id → { unit_label: gross }. */
@@ -93,7 +94,7 @@ export async function computeLiveProjections(
   const [gamesMetaRes, matchRowsRes, participantRowsRes, playGroupRowsRes, entryRowsRes, assignRes] =
     await Promise.all([
       supabase.from("games").select("id, scorecard_schema, modifiers").in("id", gameIds),
-      supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds),
+      supabase.from("game_matches").select("game_id, side_a, side_b, point_value").in("game_id", gameIds),
       supabase
         .from("game_participants")
         .select("game_id, user_id, play_group_id, handicap_strokes")
@@ -118,10 +119,14 @@ export async function computeLiveProjections(
     });
   }
 
-  const matchesByGame = new Map<string, { side_a: SideRef | null; side_b: SideRef | null }[]>();
+  const matchesByGame = new Map<string, { side_a: SideRef | null; side_b: SideRef | null; point_value: number | null }[]>();
   for (const m of matchRowsRes.data ?? []) {
     const arr = matchesByGame.get(m.game_id as string) ?? [];
-    arr.push({ side_a: (m.side_a as SideRef | null) ?? null, side_b: (m.side_b as SideRef | null) ?? null });
+    arr.push({
+      side_a: (m.side_a as SideRef | null) ?? null,
+      side_b: (m.side_b as SideRef | null) ?? null,
+      point_value: (m.point_value as number | null) ?? null,
+    });
     matchesByGame.set(m.game_id as string, arr);
   }
 
@@ -216,7 +221,14 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Record<
       holeCount
     );
     const st = matchState(decided, holeCount, glorious);
-    projMatches.push({ aTeamId: sideTeam(a), bTeamId: sideTeam(b), leader: st.leader, started: st.thru > 0 });
+    projMatches.push({
+      aTeamId: sideTeam(a),
+      bTeamId: sideTeam(b),
+      leader: st.leader,
+      started: st.thru > 0,
+      // A2b: carry this match's override so rollupMatchPlay awards it over the even share.
+      points: m.point_value ?? null,
+    });
   }
   return rollupMatchPlay(projMatches, g.pointsPerMatch);
 }

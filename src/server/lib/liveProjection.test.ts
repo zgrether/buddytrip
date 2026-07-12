@@ -38,6 +38,31 @@ describe("projectGame — match play", () => {
     expect(projectGame(input, data)).toEqual({ blue: 3, red: 1 });
   });
 
+  it("A2b — a match's point_value OVERRIDES the even-share pointsPerMatch in the projection", () => {
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
+    const data: GameProjectionData = {
+      schema: { units: { count: 2 } },
+      modifiers: null,
+      matches: [
+        // alice sweeps → blue; this match "counts double" (override 4), not the even 2.
+        { side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, point_value: 4 },
+        // carol sweeps → blue at the even share (no override).
+        { side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" }, point_value: null },
+      ],
+      parts: [part("alice"), part("bob"), part("carol"), part("dave")],
+      playGroups: [],
+      gross: gross({
+        alice: { "1": 4, "2": 4 },
+        bob: { "1": 5, "2": 5 },
+        carol: { "1": 4, "2": 4 },
+        dave: { "1": 5, "2": 5 },
+      }),
+      userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
+    };
+    // blue = 4 (overridden match) + 2 (even-share match) = 6.
+    expect(projectGame(input, data)).toEqual({ blue: 6 });
+  });
+
   it("an unpaired match (a side missing) contributes nothing", () => {
     const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
     const data: GameProjectionData = {

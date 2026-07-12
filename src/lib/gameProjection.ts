@@ -19,6 +19,11 @@ export interface ProjMatch {
   leader: "A" | "B" | null;
   /** Has any hole been decided yet? An unstarted match projects to nothing. */
   started: boolean;
+  /** A2b: this match's OWN points value (`game_matches.point_value`). When set it
+   *  OVERRIDES the game's even-share `pointsPerMatch` for this match only; null/omit
+   *  → the even share. So a "counts double" match is just a match carrying its own
+   *  value — no separate multiplier. */
+  points?: number | null;
 }
 
 /**
@@ -28,6 +33,10 @@ export interface ProjMatch {
  *   - all-square but STARTED → halved → the points split (½ to each side's team);
  *   - not started → contributes nothing.
  * Teams beyond two accumulate independently (a points-cup 2v2 with N teams).
+ *
+ * A2b: each match is worth its own `points` when set (an override), else the game's
+ * even-share `pointsPerMatch` — so an overridden ("counts double") match projects at
+ * its real value, exactly as the finish path awards it.
  */
 export function rollupMatchPlay(matches: ProjMatch[], pointsPerMatch: number): Record<string, number> {
   const out: Record<string, number> = {};
@@ -36,12 +45,13 @@ export function rollupMatchPlay(matches: ProjMatch[], pointsPerMatch: number): R
   };
   for (const m of matches) {
     if (!m.started) continue; // not started → 0
-    if (m.leader === "A") add(m.aTeamId, pointsPerMatch);
-    else if (m.leader === "B") add(m.bTeamId, pointsPerMatch);
+    const value = m.points ?? pointsPerMatch; // A2b: per-match override wins
+    if (m.leader === "A") add(m.aTeamId, value);
+    else if (m.leader === "B") add(m.bTeamId, value);
     else {
       // all-square, in progress → halved
-      add(m.aTeamId, pointsPerMatch / 2);
-      add(m.bTeamId, pointsPerMatch / 2);
+      add(m.aTeamId, value / 2);
+      add(m.bTeamId, value / 2);
     }
   }
   return out;
