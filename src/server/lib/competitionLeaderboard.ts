@@ -54,7 +54,7 @@ export async function computeCompetitionLeaderboard(
     // Games of this competition — all feed the roll-up.
     supabase
       .from("games")
-      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled")
+      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled, entry_mode")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true }),
     // Team sizes drive the team-size-derived per_match formats (rack-n-stack):
@@ -87,7 +87,7 @@ export async function computeCompetitionLeaderboard(
   // participant COUNT (the stroke/rack readiness gate) + the per-game SCORE-entry
   // presence (the On-Tap↔Ready-for-Play split). All depend on the live game ids;
   // run them together.
-  const [resultsRes, matchRowsRes, participantRowsRes, scoreEntryRowsRes] = await Promise.all([
+  const [resultsRes, matchRowsRes, participantRowsRes, scoreEntryRowsRes, outcomeRowsRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
@@ -109,11 +109,22 @@ export async function computeCompetitionLeaderboard(
     gameIds.length
       ? supabase.from("score_entries").select("game_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[] }),
+    // Refactor B3: the outcome-mode counterpart — an outcome game never has
+    // score_entries rows, so it needs its OWN "started" source or it reads
+    // Ready-for-Play forever, however many holes are decided.
+    gameIds.length
+      ? supabase.from("match_hole_outcomes").select("game_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string }[] }),
   ]);
   const results = resultsRes.data;
-  // Games with at least one score entry — drives `started` on each game below.
+  // Games with at least one score entry OR ≥1 decided hole outcome — drives
+  // `started` on each game below. The two sources are mutually exclusive per
+  // game (a game is one entry_mode), so merging them is always safe.
   const startedByGame = new Set<string>();
   for (const r of (scoreEntryRowsRes.data ?? []) as { game_id: string }[]) {
+    startedByGame.add(r.game_id);
+  }
+  for (const r of (outcomeRowsRes.data ?? []) as { game_id: string }[]) {
     startedByGame.add(r.game_id);
   }
   // Participant rows per game — "field picked" (stroke). For rack we track the
@@ -291,6 +302,9 @@ export async function computeCompetitionLeaderboard(
         id: g.id as string,
         gameTypeId: (g.game_type_id as string | null) ?? null,
         pointsPerMatch: isPerMatch(dist) ? dist.value : 0,
+        // Refactor B3: an outcome-mode match projects from recorded outcomes,
+        // not gross scores (it has none).
+        outcomeMode: (g.entry_mode as string | null) === "outcome",
       };
     });
   const projections = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);

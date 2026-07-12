@@ -21,8 +21,8 @@ describe("projectGame — match play", () => {
       schema: { units: { count: 2 } }, // 2-hole round, no course index → sequential fallback
       modifiers: null,
       matches: [
-        { side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" } }, // alice sweeps → blue
-        { side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" } }, // 1 hole halved → all-square
+        { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" } }, // alice sweeps → blue
+        { id: "m2", side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" } }, // 1 hole halved → all-square
       ],
       parts: [part("alice"), part("bob"), part("carol"), part("dave")],
       playGroups: [],
@@ -32,6 +32,7 @@ describe("projectGame — match play", () => {
         carol: { "1": 4 }, // only hole 1 in → started, all-square
         dave: { "1": 4 },
       }),
+      outcomes: [],
       userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
     };
     // match 1: blue up → blue +2. match 2: all-square started → blue +1, red +1.
@@ -45,9 +46,9 @@ describe("projectGame — match play", () => {
       modifiers: null,
       matches: [
         // alice sweeps → blue; this match "counts double" (override 4), not the even 2.
-        { side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, point_value: 4 },
+        { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, point_value: 4 },
         // carol sweeps → blue at the even share (no override).
-        { side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" }, point_value: null },
+        { id: "m2", side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" }, point_value: null },
       ],
       parts: [part("alice"), part("bob"), part("carol"), part("dave")],
       playGroups: [],
@@ -57,6 +58,7 @@ describe("projectGame — match play", () => {
         carol: { "1": 4, "2": 4 },
         dave: { "1": 5, "2": 5 },
       }),
+      outcomes: [],
       userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
     };
     // blue = 4 (overridden match) + 2 (even-share match) = 6.
@@ -68,10 +70,11 @@ describe("projectGame — match play", () => {
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
       modifiers: null,
-      matches: [{ side_a: { type: "user", id: "alice" }, side_b: null }],
+      matches: [{ id: "m1", side_a: { type: "user", id: "alice" }, side_b: null }],
       parts: [part("alice")],
       playGroups: [],
       gross: gross({ alice: { "1": 4, "2": 4 } }),
+      outcomes: [],
       userTeam: userTeam({ alice: "blue" }),
     };
     expect(projectGame(input, data)).toEqual({});
@@ -93,6 +96,7 @@ describe("projectGame — rack", () => {
         p4: { "1": 4, "2": 4 }, // team t2
         p2: { "1": 5, "2": 5 }, // team t2 — highest
       }),
+      outcomes: [],
       userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
     };
     // rank-paired: (p1<p4) → t1, (p3<p2) → t1 → t1 sweeps both slots = 2 slots.
@@ -114,6 +118,7 @@ describe("projectGame — rack", () => {
         p4: { "1": 4, "2": 4 },
         p2: { "1": 5, "2": 5 },
       }),
+      outcomes: [],
       userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
     };
     expect(projectGame(input, data)).toEqual({ t1: 2, t2: 0 });
@@ -130,6 +135,7 @@ describe("projectGame — no projection", () => {
       parts: [],
       playGroups: [],
       gross: new Map(),
+      outcomes: [],
       userTeam: new Map(),
     };
     expect(projectGame(input, data)).toBeNull();
