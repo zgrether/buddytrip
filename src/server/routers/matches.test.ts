@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
-const MATCH_PLAY = "gtt_match_play_singles";
+const MATCH_PLAY = "gtt_match_play";
 
 type Side = { type: string; id: string } | null;
 interface MatchRow {

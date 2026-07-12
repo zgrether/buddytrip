@@ -52,8 +52,9 @@ import { unconfirmedCount, type Participant, type ScoreValues } from "@/componen
 import { showToast } from "@/lib/toast";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MATCH_PLAY = "gtt_match_play_singles";
-const MATCH_PLAY_DOUBLES = "gtt_match_play_doubles";
+// One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
+// each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
+const MATCH_PLAY = "gtt_match_play";
 // Mirrors the server cap (matches router). Dynamic match count grows up to here.
 const MAX_MATCHES = 24;
 
@@ -210,12 +211,25 @@ export function MatchGameView() {
   }, [utils, tripId, gameId]);
   useConfigSync(tripId, gameId, !!gameId, onConfigChanged);
 
-  // Format: the resumed game's type is authoritative; a brand-new game (no game
-  // yet) reads the `?format=doubles` hint. `sided` switches the whole flow
-  // between 1v1 (a side is a user) and 2v2 (a side is a pair = a play_group).
-  // Default singles → existing URLs with no param are byte-for-byte unchanged.
-  const resumedTypeId = gameQ.data?.game_type_id as string | undefined;
-  const sided = resumedTypeId ? resumedTypeId === MATCH_PLAY_DOUBLES : search.get("format") === "doubles";
+  // Shape (Refactor A1): 1v1-vs-2v2 is a per-match property, so the AUTHORITATIVE
+  // signal is the game's own matches — a doubles game's `game_matches` carry
+  // `{type:"play_group"}` sides. Derive `sided` from those (not `game_type_id`,
+  // which is now the uniform `gtt_match_play` for every match game). A brand-new
+  // game with no matches yet reads the `?format=doubles` hint (the standalone
+  // create route), else defaults singles. This ALSO retires the old
+  // "matches-land-before-the-game-row" seed race: shape and matches now arrive
+  // from the SAME query (`matchesQ`), so there's no window where the game type is
+  // ahead of the matches. (A2 unfolds this game-level `sided` into a true
+  // per-match shape so a single game can mix 1v1 + 2v2.)
+  const loadedMatchesForShape = matchesQ.data?.matches ?? [];
+  const sided =
+    loadedMatchesForShape.length > 0
+      ? loadedMatchesForShape.some(
+          (m) =>
+            (m.side_a as { type?: string } | null)?.type === "play_group" ||
+            (m.side_b as { type?: string } | null)?.type === "play_group"
+        )
+      : search.get("format") === "doubles";
   const playersPerSide = sided ? 2 : 1;
 
   // The matches that are actually playable — both sides fully assigned. An
@@ -510,16 +524,12 @@ export function MatchGameView() {
     // The checklist lives on the settings overlay; seed the draft when it opens
     // with an empty local draft.
     if (!cfgOpen || draft.length > 0) return;
-    // WAIT for the game row before seeding. `sided` (→ playersPerSide) is derived
-    // from gameQ.data.game_type_id; matches.listByGame and games.getById are
-    // separate queries, and on a fresh reopen the leaderboard deep-links to
-    // `?game=X&settings=1` (no `format` hint), so matches can land BEFORE the game
-    // does. Seeding in that window uses the fallback `sided=false` and rebuilds a
-    // DOUBLES game as singles — each side's play_group id gets read as a user id —
-    // then the `draft.length > 0` guard freezes that wrong seed even after gameQ
-    // loads and sided flips true. (Singles is unaffected: sided=false is already
-    // correct, which is why 1v1 worked and 2v2 lost its matches on reopen.) Gate on
-    // the loaded row so the one seed we take uses the authoritative format.
+    // Wait for the game row before seeding (course/modifiers/name come from it).
+    // NB (Refactor A1): the old "matches-land-before-the-game-row → doubles seeded
+    // as singles" race is GONE — `sided` now derives from `matchesQ` (the same
+    // query as the matches being seeded), not `gameQ.data.game_type_id`, so shape
+    // and matches are always consistent. This gate remains only so the seed reads
+    // a loaded game row for its other fields.
     if (gameId && !gameQ.data) return;
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide));
@@ -559,7 +569,9 @@ export function MatchGameView() {
     if (!tripId) return;
     const g = await createGame.mutateAsync({
       tripId,
-      gameTypeId: sided ? MATCH_PLAY_DOUBLES : MATCH_PLAY,
+      // One unified type (A1) — the shape lives on the matches the builder writes,
+      // not the game type. The name still reflects the current game-level shape.
+      gameTypeId: MATCH_PLAY,
       name: sided ? "2v2 Match Play" : "Singles Match Play",
       teeTime: teeTime || null,
     });

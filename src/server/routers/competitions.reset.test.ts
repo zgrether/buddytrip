@@ -63,7 +63,7 @@ async function makeMatchGame(): Promise<string> {
   const id = gid("reset-match");
   gameIds.push(id);
   await ctx.admin.from("games").insert({
-    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play_singles",
+    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play",
     name: "Match", status: "complete", corrections_open: false, scoring_enabled: true,
     points_distribution: { type: "per_match", value: 2 }, points_total: null,
   });
@@ -88,7 +88,7 @@ async function makeDoublesGame(): Promise<string> {
   const id = gid("reset-doubles");
   gameIds.push(id);
   await ctx.admin.from("games").insert({
-    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play_doubles",
+    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play",
     name: "Doubles", status: "active", scoring_enabled: true,
     points_distribution: { type: "per_match", value: 1 },
   });

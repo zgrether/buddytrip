@@ -12,8 +12,8 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * (pure); this proves the guard is WIRED on every format's write path.
  */
 const STROKE = "gtt_stroke_play";
-const SINGLES = "gtt_match_play_singles";
-const DOUBLES = "gtt_match_play_doubles";
+const SINGLES = "gtt_match_play";
+const DOUBLES = "gtt_match_play";
 const RACK = "gtt_rack_n_stack";
 
 let ctx: TestContext;

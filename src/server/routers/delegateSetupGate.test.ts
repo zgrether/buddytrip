@@ -14,7 +14,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  *   - the grant is game-isolated (delegate of A can't touch B).
  */
 
-const MATCH = "gtt_match_play_singles";
+const MATCH = "gtt_match_play";
 const RACK = "gtt_rack_n_stack";
 
 let ctx: TestContext;

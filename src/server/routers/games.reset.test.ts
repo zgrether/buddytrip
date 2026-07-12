@@ -32,7 +32,7 @@ async function makeMatchGame(name: string): Promise<string> {
   const id = genId("pgreset-match");
   gameIds.push(id);
   await ctx.admin.from("games").insert({
-    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play_singles",
+    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play",
     name, status: "complete", corrections_open: true, scoring_enabled: true,
     scorecard_schema: { units: { metadata: { par: [4, 4] } } },
     points_distribution: { type: "per_match", value: 2 }, points_total: null,
@@ -155,7 +155,7 @@ describe("games.resetToSkeleton — one game's config cleared, identity kept (in
     expect(tg.scoring_enabled).toBe(false); // un-armed
     // IDENTITY kept: shell + the per-match point VALUE survives (§E-1).
     expect(tg.name).toBe("SkelTarget");
-    expect(tg.game_type_id).toBe("gtt_match_play_singles");
+    expect(tg.game_type_id).toBe("gtt_match_play");
     expect(tg.points_distribution).toMatchObject({ type: "per_match", value: 2 });
 
     // SIBLING untouched: config + scoring all survive.

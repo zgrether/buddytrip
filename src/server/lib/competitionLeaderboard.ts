@@ -8,10 +8,13 @@ import { isManualGameType } from "@/lib/gameTypes";
 import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
-/** Singles vs doubles head-to-head sizing for the team-size-derived formats
- *  (rack-n-stack). Match play itself counts its configured rows instead. */
-function matchFormat(gameTypeId: string | null): MatchFormat {
-  return gameTypeId === "gtt_match_play_doubles" ? "doubles" : "singles";
+/** Head-to-head sizing for the team-size-derived per_match formats (rack-n-stack,
+ *  whose slots are always 1v1). Match play itself counts its configured
+ *  `game_matches` rows (`matchCountByGame`), never this path — and the standalone
+ *  doubles game type was unified away (Refactor A1), so there is no game-level
+ *  "doubles" left to size. Kept as a stable seam for `deriveMatchCount`. */
+function matchFormat(_gameTypeId: string | null): MatchFormat {
+  return "singles";
 }
 
 /**

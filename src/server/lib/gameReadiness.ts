@@ -12,7 +12,10 @@ import { matchPlayReady } from "@/lib/matchDraft";
  * handicaps are optional and NEVER gate readiness.
  */
 
-export const MATCH_PLAY_TYPES = new Set(["gtt_match_play_singles", "gtt_match_play_doubles"]);
+// One unified match-play type (Refactor A1) — 1v1/2v2/mixed is per-match, not a
+// game type. A Set is kept (rather than an equality) so any future match-play
+// variant slots in without touching call sites.
+export const MATCH_PLAY_TYPES = new Set(["gtt_match_play"]);
 export const RACK_TYPE = "gtt_rack_n_stack";
 // Roster-gated golf formats: a stroke field is "configured" once it has
 // participants; rack additionally requires those participants to be GROUPED into

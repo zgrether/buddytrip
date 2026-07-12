@@ -15,7 +15,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 const MANUAL = "gtt_manual";
-const MATCH_PLAY = "gtt_match_play_singles";
+const MATCH_PLAY = "gtt_match_play";
 
 let ctx: TestContext;
 let tripId: string;

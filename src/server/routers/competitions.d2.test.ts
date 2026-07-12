@@ -294,7 +294,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     await ctx.createTeam(comp, "A", { shortName: "A" });
     await ctx.createTeam(comp, "B", { shortName: "B" });
     const g = await ctx.caller().games.create({
-      tripId, gameTypeId: "gtt_match_play_singles", name: "Roster Gate", competitionId: comp,
+      tripId, gameTypeId: "gtt_match_play", name: "Roster Gate", competitionId: comp,
       pointsDistribution: { type: "per_match", value: 2 },
     }) as { id: string };
     gameIds.push(g.id);
@@ -341,7 +341,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     await ctx.createTeam(comp, "A", { shortName: "A" });
     await ctx.createTeam(comp, "B", { shortName: "B" });
     const g = await ctx.caller().games.create({
-      tripId, gameTypeId: "gtt_match_play_singles", name: "Partial", competitionId: comp,
+      tripId, gameTypeId: "gtt_match_play", name: "Partial", competitionId: comp,
       pointsDistribution: { type: "per_match", value: 2 },
     }) as { id: string };
     gameIds.push(g.id);

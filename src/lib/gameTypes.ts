@@ -116,21 +116,18 @@ const strokeSchema = {
   participants: { min: 2, max: 4, participant_type: "individual", assigned_pairings: false },
 } as ScorecardSchema;
 
-const singlesSchema = {
+// Unified match-play scorecard (Refactor A1) — one schema for singles + doubles +
+// mixed, since 1v1-vs-2v2 is a per-MATCH property (each `game_matches.side_a/b`
+// carries its own `{type:"user"|"play_group"}`), not a game-level fact. Carries
+// par + handicap_index (the former singles schema; the old doubles schema dropped
+// handicap_index — incidental drift, corrected here). The participants block is
+// display metadata only — the engine reads shape per-match from the side refs.
+const matchPlaySchema = {
   units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72, handicap_index: STROKE_INDEX_DEFAULT } },
   entry: { value_type: "integer", value_label: "Strokes", min: 1, max: null },
   scoring: { strategy: "match_play", direction: "low_wins", aggregation: "match", sections: SECTIONS_18, tiebreaker: "shared" },
   interaction: { model: "simultaneous", entry_timing: "per_unit" },
-  participants: { min: 2, max: 4, participant_type: "individual", assigned_pairings: true },
-} as ScorecardSchema;
-
-const doublesSchema = {
-  // NB: doubles carries par only (no handicap_index) — matches the live row.
-  units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72 } },
-  entry: { value_type: "integer", value_label: "Strokes", min: 1, max: null },
-  scoring: { strategy: "match_play", direction: "low_wins", aggregation: "match", sections: SECTIONS_18, tiebreaker: "shared" },
-  interaction: { model: "simultaneous", entry_timing: "per_unit" },
-  participants: { min: 4, max: 8, participant_type: "side", players_per_side: 2, assigned_pairings: true },
+  participants: { min: 2, max: 8, participant_type: "individual", assigned_pairings: true },
 } as ScorecardSchema;
 
 const rackSchema = {
@@ -167,37 +164,32 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     maxPlayersPerSide: null,
     compatibleScoringModels: ["points"],
   },
-  gtt_match_play_singles: {
-    id: "gtt_match_play_singles",
-    key: "match_play_singles",
-    name: "Singles Match Play",
-    description: "You versus one other player, straight up. Low net score wins each hole — win more holes than your opponent and the match is yours.",
+  gtt_match_play: {
+    // Refactor A1 — the unified match-play type (was gtt_match_play_singles +
+    // gtt_match_play_doubles). 1v1-vs-2v2 is a per-MATCH property (each match's
+    // side type), so a game can be all-singles, all-doubles, or a mix. The engine
+    // was already shape-agnostic (reads side type per row); this collapses the
+    // game-level fork. A migration re-tags existing singles/doubles rows to this id.
+    id: "gtt_match_play",
+    key: "match_play",
+    name: "Match Play",
+    description: "Head-to-head, hole by hole — low net score wins each hole, and winning more holes wins the match. Each match is 1v1 or 2v2, and one game can mix both.",
     sortOrder: 1,
     category: "golf",
+    // entrySchema is inert metadata (no runtime reader) — per-match entry
+    // granularity (per-user 1v1 vs per-side 2v2) is derived from each match's side
+    // type, not this field.
     entrySchema: "user_holes",
     resultStrategy: "match_play",
-    scorecardSchema: singlesSchema,
-    compatibleModifiers: ["moving_tees", "glorious_holes"], // BOTH branch — glorious applies to match play (scoring engine)
+    scorecardSchema: matchPlaySchema,
+    // Union of the former singles+doubles sets. Still the provisional test-matrix
+    // (see DEFERRED's modifier-applicability reconcile) — not final applicability.
+    compatibleModifiers: ["moving_tees", "glorious_holes"],
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
-    maxPlayersPerSide: 1,
-    compatibleScoringModels: ["match_play"],
-  },
-  gtt_match_play_doubles: {
-    id: "gtt_match_play_doubles",
-    key: "match_play_doubles",
-    name: "2v2 Match Play",
-    description: "You and a teammate take on another pair from the opposing side. Together, you put your score up against your opponents and whichever side wins the most holes takes the match.",
-    sortOrder: 2,
-    category: "golf",
-    entrySchema: "group_holes",
-    resultStrategy: "match_play",
-    scorecardSchema: doublesSchema,
-    compatibleModifiers: ["glorious_holes"], // stepper-only branch — glorious applies to match play (scoring engine)
-    supportsFreeForAll: false,
-    supportsSides: true,
-    requiresSides: true,
+    // Per-match now — inert metadata (no runtime reader); kept as the max any
+    // single match supports.
     maxPlayersPerSide: 2,
     compatibleScoringModels: ["match_play"],
   },

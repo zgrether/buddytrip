@@ -11,8 +11,7 @@ import { isManualGameType } from "@/lib/gameTypes";
  *  deliberately does NOT make it read as golf.) */
 const GAME_ROUTES: Record<string, string> = {
   gtt_stroke_play: "new",
-  gtt_match_play_singles: "match/new",
-  gtt_match_play_doubles: "match/new",
+  gtt_match_play: "match/new",
   gtt_rack_n_stack: "rack/new",
 };
 
@@ -58,10 +57,10 @@ export function isGolfFormat(gameTypeId: string | null): boolean {
   return !!gameTypeId && gameTypeId in GAME_ROUTES;
 }
 
-/** Match-play formats (singles + doubles). Match play was the FIRST format to
- *  open as a layered panel (Spec 2 Phase 1). */
+/** Match play (1v1 / 2v2 / mixed — one unified type as of Refactor A1). Match play
+ *  was the FIRST format to open as a layered panel (Spec 2 Phase 1). */
 export function isMatchPlayFormat(gameTypeId: string | null): boolean {
-  return gameTypeId === "gtt_match_play_singles" || gameTypeId === "gtt_match_play_doubles";
+  return gameTypeId === "gtt_match_play";
 }
 
 /** Rack-n-stack. Opens as a panel (Spec 2 Phase 2). */
