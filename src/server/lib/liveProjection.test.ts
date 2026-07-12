@@ -65,6 +65,28 @@ describe("projectGame — match play", () => {
     expect(projectGame(input, data)).toEqual({ blue: 6 });
   });
 
+  it("B3 — outcome-mode games project from match_hole_outcomes, not gross scores (same result as the score-mode sweep/halve test)", () => {
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2, outcomeMode: true };
+    const data: GameProjectionData = {
+      schema: { units: { count: 2 } },
+      modifiers: null,
+      matches: [
+        { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" } }, // alice sweeps → blue
+        { id: "m2", side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" } }, // 1 hole halved → all-square
+      ],
+      parts: [part("alice"), part("bob"), part("carol"), part("dave")],
+      playGroups: [],
+      gross: new Map(), // deliberately empty — outcome mode must not read gross at all
+      outcomes: [
+        { match_id: "m1", hole_number: 1, result: "side_a" },
+        { match_id: "m1", hole_number: 2, result: "side_a" },
+        { match_id: "m2", hole_number: 1, result: "halved" },
+      ],
+      userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
+    };
+    expect(projectGame(input, data)).toEqual({ blue: 3, red: 1 });
+  });
+
   it("an unpaired match (a side missing) contributes nothing", () => {
     const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
     const data: GameProjectionData = {
