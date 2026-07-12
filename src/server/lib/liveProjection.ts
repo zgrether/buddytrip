@@ -4,7 +4,7 @@ import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
-import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rackNStack";
+import { playerStats, rackProjectedTeamPoints, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 
@@ -23,11 +23,11 @@ import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
  * Rides the board's existing 30s poll (it's extra fields on the same payload), so
  * projections converge across devices with zero new polling.
  *
- * Values match each format's game page verbatim:
- *  - match → per-team COMPETITION points (pointsPerMatch per won match);
- *  - rack  → raw slot points (`computeRack("projected").points`, NO ×value) — the
- *    same value `RackGameView` shows. (The rack game page's raw-vs-×value framing
- *    is a pre-existing question, deliberately NOT "fixed" here so board==game-page.)
+ * Values match each format's game page verbatim, both in COMPETITION points:
+ *  - match → pointsPerMatch per won match (`rollupMatchPlay`);
+ *  - rack  → projected slots × per-slot value (`rackProjectedTeamPoints`, which
+ *    mirrors the decided path's `teamPoints × value`). Both the board and the rack
+ *    game page call that shared helper, so they can't diverge.
  *
  * Only match singles/doubles + rack live games project; stroke has no on-page
  * rollup and non-golf never runs live (it posts straight to complete).
@@ -258,6 +258,11 @@ function projectRack(g: LiveProjectionInput, data: GameProjectionData): Record<s
       stats: playerStats(gross.get(p.user_id) ?? {}, effectiveStrokes(p), par, strokeIndex),
     });
   }
-  const { points } = computeRack(players, "projected", coursePar);
+  // Rack's `per_match` = points PER SLOT; a legacy/placement rack has none → 1
+  // (mirrors the decided path's `value = perMatch ? dist.value : 1`). × slots →
+  // competition points, so the board rack pill reads in the same currency as a
+  // match pill.
+  const perSlotValue = g.pointsPerMatch || 1;
+  const points = rackProjectedTeamPoints(players, coursePar, perSlotValue);
   return { [teamIds[0]]: points.A, [teamIds[1]]: points.B };
 }

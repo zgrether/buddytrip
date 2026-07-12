@@ -155,6 +155,31 @@ export function computeRack(players: RackPlayer[], mode: RackMode, coursePar: nu
   return { slots, sitOut: surplus, points: { A: pa, B: pb } };
 }
 
+/**
+ * Rack PROJECTED competition points per team = raw projected slot points ×
+ * `perSlotValue` (the `per_match` field, which in rack means **points per slot**;
+ * defaults to 1 for a legacy/placement rack). This mirrors the DECIDED path's
+ * downstream multiply (`computeRackNStackResults`: `teamPoints × value`) — the
+ * projected path historically returned RAW slots, so a rack pill read in a
+ * different currency than a match pill. Applying the multiply HERE (a consumer-
+ * layer helper, NOT inside `computeRack`) keeps the decided path — which does its
+ * own downstream multiply — from double-applying.
+ *
+ * The multiply is linear over the summed slot points (incl. ½ halves and the
+ * min(A,B) pairing `computeRack` already resolves), so `points × value` is exactly
+ * "each won slot worth `value`" (2½ slots × 2 = 5). Both projected consumers (the
+ * board's `liveProjection.ts` and the rack game page) call this, so they stay
+ * equal by construction.
+ */
+export function rackProjectedTeamPoints(
+  players: RackPlayer[],
+  coursePar: number,
+  perSlotValue: number
+): { A: number; B: number } {
+  const { points } = computeRack(players, "projected", coursePar);
+  return { A: points.A * perSlotValue, B: points.B * perSlotValue };
+}
+
 /** Format a net-to-par for display: "E" / "+n" / "−n" (rounds projected). */
 export function fmtToPar(value: number): string {
   const r = Math.round(value);

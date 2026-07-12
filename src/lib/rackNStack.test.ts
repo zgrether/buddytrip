@@ -3,6 +3,7 @@ import {
   playerStats,
   projectedNetToPar,
   computeRack,
+  rackProjectedTeamPoints,
   fmtToPar,
   fmtPoints,
   type RackPlayer,
@@ -115,6 +116,38 @@ describe("computeRack — projected mode reorders by pace", () => {
     expect(proj.slots[0].a.id).toBe("a2");
     expect(proj.slots[0].a.value).toBeCloseTo(0, 5);
     expect(proj.slots[1].a.value).toBeCloseTo(2, 5);
+  });
+});
+
+describe("rackProjectedTeamPoints — slots × per-slot value = competition points", () => {
+  // thru 18 for all → projectedNetToPar(net,18,72) = net − 72, so a player's
+  // projected value is net − coursePar. One slot won + one halved → {A:1.5, B:0.5}.
+  const players: RackPlayer[] = [
+    { id: "a1", team: "A", stats: { netToPar: -2, netStrokes: 70, gross: 70, thru: 18 } }, // proj −2
+    { id: "a2", team: "A", stats: { netToPar: 2, netStrokes: 74, gross: 74, thru: 18 } }, //  proj +2
+    { id: "b1", team: "B", stats: { netToPar: -1, netStrokes: 71, gross: 71, thru: 18 } }, // proj −1
+    { id: "b2", team: "B", stats: { netToPar: 2, netStrokes: 74, gross: 74, thru: 18 } }, //  proj +2
+  ];
+
+  it("baseline: raw projected slot points are {A:1.5, B:0.5} (a1 wins slot 1, slot 2 halved)", () => {
+    expect(computeRack(players, "projected", COURSE_PAR).points).toEqual({ A: 1.5, B: 0.5 });
+  });
+
+  it("multiplies the fractional slot points by the per-slot value (× 2 → {A:3, B:1})", () => {
+    expect(rackProjectedTeamPoints(players, COURSE_PAR, 2)).toEqual({ A: 3, B: 1 });
+  });
+
+  it("× 1 (legacy fallback) leaves raw slot points unchanged", () => {
+    expect(rackProjectedTeamPoints(players, COURSE_PAR, 1)).toEqual({ A: 1.5, B: 0.5 });
+  });
+
+  it("zero projected slots → {A:0, B:0} regardless of value (still always-▲ 0 on the board)", () => {
+    // Nobody started (thru 0) → no slots → 0 points, ×value stays 0.
+    const unstarted: RackPlayer[] = [
+      { id: "a", team: "A", stats: { netToPar: 0, netStrokes: 0, gross: 0, thru: 0 } },
+      { id: "b", team: "B", stats: { netToPar: 0, netStrokes: 0, gross: 0, thru: 0 } },
+    ];
+    expect(rackProjectedTeamPoints(unstarted, COURSE_PAR, 3)).toEqual({ A: 0, B: 0 });
   });
 });
 
