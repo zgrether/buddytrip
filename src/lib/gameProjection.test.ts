@@ -51,4 +51,24 @@ describe("rollupMatchPlay", () => {
     expect(rollupMatchPlay([m("blue", null, "A", true)], 2)).toEqual({ blue: 2 });
     expect(rollupMatchPlay([m("blue", null, null, true)], 2)).toEqual({ blue: 1 }); // halve: only blue credited
   });
+
+  // A2b — a match's own `points` (game_matches.point_value) OVERRIDES the even share.
+  it("awards a match's OVERRIDE value over the even-share fallback", () => {
+    const over = (leader: "A" | "B" | null, points: number): ProjMatch => ({ ...m("blue", "red", leader, true), points });
+    expect(rollupMatchPlay([over("A", 4)], 2)).toEqual({ blue: 4 }); // counts double, not the even 2
+    expect(rollupMatchPlay([over("B", 4)], 2)).toEqual({ red: 4 });
+    expect(rollupMatchPlay([over(null, 4)], 2)).toEqual({ blue: 2, red: 2 }); // halved override
+  });
+
+  it("mixes overridden and even-share matches (the Buddy shape)", () => {
+    // 6 singles at the even share 2 + 1 doubles overridden to 4.
+    const singles = Array.from({ length: 6 }, () => m("blue", "red", "A", true)); // blue sweeps → 6×2
+    const doubles: ProjMatch = { ...m("blue", "red", "A", true), points: 4 }; // blue wins the double → +4
+    expect(rollupMatchPlay([...singles, doubles], 2)).toEqual({ blue: 16 }); // 12 + 4, total 16
+  });
+
+  it("a null/undefined `points` falls back to the even share", () => {
+    const withNull: ProjMatch = { ...m("blue", "red", "A", true), points: null };
+    expect(rollupMatchPlay([withNull], 3)).toEqual({ blue: 3 });
+  });
 });
