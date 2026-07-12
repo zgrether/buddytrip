@@ -647,6 +647,9 @@ export const gamesRouter = router({
         // Enabled special rules + per-rule config, keyed by modifier (golf
         // SPECIAL RULES). Presence of a key = enabled. Owner or delegate.
         modifiers: z.record(z.string(), z.record(z.string(), z.unknown())).nullable().optional(),
+        // Refactor B3: the hole-outcome-entry toggle (match play only in
+        // practice; the UI never offers it for other formats). Owner or delegate.
+        entryMode: z.enum(["score", "outcome"]).optional(),
       })
     )
     .use(requireGameEdit())
@@ -658,6 +661,26 @@ export const gamesRouter = router({
       if (input.competitionFormat !== undefined) patch.competition_format = input.competitionFormat;
       if (input.rulesForToday !== undefined) patch.rules_for_today = input.rulesForToday;
       if (input.modifiers !== undefined) patch.modifiers = input.modifiers;
+      if (input.entryMode !== undefined) {
+        // Data-integrity guard (defense-in-depth beyond the client's `locked`
+        // prop): once scoring is enabled, entered score_entries/
+        // match_hole_outcomes rows belong to the CURRENT mode — switching
+        // would silently orphan them. Setup-time only, mirroring every other
+        // setup-spine field (Matches/Course/Points are all frozen the same way).
+        const { data: game } = await ctx.supabase
+          .from("games")
+          .select("scoring_enabled")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+        if (game?.scoring_enabled) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Switch back to setup before changing the entry mode.",
+          });
+        }
+        patch.entry_mode = input.entryMode;
+      }
       if (Object.keys(patch).length === 0) return { success: true };
       const { error } = await ctx.supabase.from("games").update(patch).eq("id", input.gameId).eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to update game: ${error.message}` });

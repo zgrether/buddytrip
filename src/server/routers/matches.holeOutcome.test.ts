@@ -189,3 +189,43 @@ describe("hole-outcome entry — computeMatchPlayResults reads match_hole_outcom
     expect(outcomes).toEqual([]);
   });
 });
+
+/**
+ * B3 — the config toggle. `games.update`'s existing generic PATCH mutation
+ * gained an `entryMode` field rather than a new dedicated mutation. A pending
+ * (not-yet-scoring) game may flip freely; once `scoring_enabled` is true the
+ * switch is rejected (defense-in-depth beyond the client's `locked` prop —
+ * switching mid-round would orphan whichever rows, score_entries or
+ * match_hole_outcomes, are already entered).
+ */
+describe("games.update — entryMode toggle (B3 config toggle)", () => {
+  it("switches a pending game between score and outcome modes", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Toggle Pending" });
+    const gameId = game.id as string;
+
+    await ctx.caller().games.update({ tripId, gameId, entryMode: "outcome" });
+    const { data: row1 } = await ctx.admin.from("games").select("entry_mode").eq("id", gameId).single();
+    expect((row1 as { entry_mode: string }).entry_mode).toBe("outcome");
+
+    await ctx.caller().games.update({ tripId, gameId, entryMode: "score" });
+    const { data: row2 } = await ctx.admin.from("games").select("entry_mode").eq("id", gameId).single();
+    expect((row2 as { entry_mode: string }).entry_mode).toBe("score");
+  });
+
+  it("rejects the switch once scoring is enabled", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Toggle Locked" });
+    const gameId = game.id as string;
+    await ctx.caller().matches.setPairings({
+      tripId, gameId,
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
+    });
+    await ctx.caller().games.enableScoring({ tripId, gameId });
+
+    await expect(
+      ctx.caller().games.update({ tripId, gameId, entryMode: "outcome" })
+    ).rejects.toThrow(/switch back to setup/i);
+
+    const { data: row } = await ctx.admin.from("games").select("entry_mode").eq("id", gameId).single();
+    expect((row as { entry_mode: string }).entry_mode).toBe("score");
+  });
+});
