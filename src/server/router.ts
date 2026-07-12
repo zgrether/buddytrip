@@ -22,6 +22,7 @@ import { newsRouter } from "./routers/news";
 import { gamesRouter } from "./routers/games";
 import { scoresRouter } from "./routers/scores";
 import { matchesRouter } from "./routers/matches";
+import { matchOutcomesRouter } from "./routers/matchOutcomes";
 import { playGroupsRouter } from "./routers/playGroups";
 
 export const appRouter = router({
@@ -48,6 +49,7 @@ export const appRouter = router({
   games: gamesRouter,
   scores: scoresRouter,
   matches: matchesRouter,
+  matchOutcomes: matchOutcomesRouter,
   playGroups: playGroupsRouter,
 });
 

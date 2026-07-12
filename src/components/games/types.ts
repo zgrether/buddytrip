@@ -34,6 +34,11 @@ export interface Participant {
 /** { [participantId]: { [unitLabel]: value } } */
 export type ScoreValues = Record<string, Record<string, number>>;
 
+/** { [matchId]: { [holeLabel]: HoleOutcomeResult } } — the hole-outcome-entry
+ *  (Refactor B) counterpart to `ScoreValues`. Keyed by MATCH (not participant) —
+ *  an outcome belongs to the match, not either player. */
+export type OutcomeValues = Record<string, Record<string, import("@/lib/matchPlay").HoleOutcomeResult>>;
+
 /** Slice A is always low_wins; typed so later strategies can extend. */
 export type ScoreDirection = "low_wins";
 
@@ -63,6 +68,23 @@ export function parseScoreCellKey(key: string): {
 } {
   const i = key.indexOf(":");
   return { participantId: key.slice(0, i), unitLabel: key.slice(i + 1) };
+}
+
+/** Cell key for hole-OUTCOME entry (Refactor B) — `SaveStatusMap`/
+ *  `unconfirmedOnHole`/`unconfirmedCount` are generic over the key string, so they
+ *  apply unchanged to outcomes; only the key shape differs (a match+hole, not a
+ *  participant+unit — an outcome belongs to the MATCH, not either player). */
+export function outcomeCellKey(matchId: string, holeNumber: number): string {
+  return `${matchId}:${holeNumber}`;
+}
+
+/** Inverse of {@link outcomeCellKey}. */
+export function parseOutcomeCellKey(key: string): {
+  matchId: string;
+  holeNumber: number;
+} {
+  const i = key.indexOf(":");
+  return { matchId: key.slice(0, i), holeNumber: Number(key.slice(i + 1)) };
 }
 
 /**

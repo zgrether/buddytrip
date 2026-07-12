@@ -6,12 +6,15 @@ import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { useOutcomeSaver } from "@/hooks/useOutcomeSaver";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
+import { MatchOutcomeEntryView } from "@/components/games/MatchOutcomeEntryView";
+import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
@@ -40,7 +43,7 @@ import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
-import { buildDecided, matchState, strokeHoles, type DecidedHole } from "@/lib/matchPlay";
+import { buildDecided, buildDecidedFromOutcomes, matchState, strokeHoles, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -50,7 +53,7 @@ import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
-import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
+import { unconfirmedCount, type Participant, type ScoreValues, type OutcomeValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -204,6 +207,15 @@ export function MatchGameView() {
     { tripId: tripId!, gameId: gameId! },
     { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
   );
+  // Refactor B: the outcome counterpart to scoresQ — polled the same way so a
+  // remote device's recorded outcomes converge here too. Only relevant for an
+  // outcome-mode game; harmless (empty) to poll for a score-mode one, and the
+  // hook name isn't yet determined by entry_mode gating to keep both queries
+  // unconditional (React Hooks can't be called conditionally).
+  const outcomesQ = trpc.matchOutcomes.listByGame.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
 
   // Config sync: on a config change from another device (matchups reassigned,
   // side handicaps, modifiers/rules, course, go-live, finish), silently refetch
@@ -260,6 +272,17 @@ export function MatchGameView() {
   // (never rolled back) on failure.
   const { values, setValues, saveStatus, onChange, onClear, retryCell } =
     useScoreSaver(tripId, gameId, participantTypeOf);
+  // Refactor B: the outcome write path — same durability contract, unconditional
+  // (hooks can't be conditional); inert for a score-mode game (nothing calls its
+  // onChange/onClear there).
+  const {
+    values: outcomeValues,
+    setValues: setOutcomeValues,
+    saveStatus: outcomeSaveStatus,
+    onChange: onOutcomeChange,
+    onClear: onOutcomeClear,
+    retryCell: retryOutcomeCell,
+  } = useOutcomeSaver(tripId, gameId);
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
@@ -303,6 +326,18 @@ export function MatchGameView() {
     }
     return v;
   }, [scoresQ.data]);
+
+  // Refactor B: this game's entry mode + the loaded outcome-mode counterpart to
+  // loadedValues (keyed by match_id, not participant).
+  const outcomeMode = (gameQ.data as { entry_mode?: string } | undefined)?.entry_mode === "outcome";
+  const loadedOutcomeValues = useMemo(() => {
+    const v: OutcomeValues = {};
+    for (const e of outcomesQ.data ?? []) {
+      (v[e.match_id as string] ??= {})[String(e.hole_number)] = e.result as HoleOutcomeRow["result"];
+    }
+    return v;
+  }, [outcomesQ.data]);
+  const mergedOutcomeFor = (matchId: string) => ({ ...(loadedOutcomeValues[matchId] ?? {}), ...(outcomeValues[matchId] ?? {}) });
 
   // Max singles matches = floor(players ÷ 2): the standalone pool is
   // undifferentiated, so any two of the crew pair up (Slice B). In a 2-team
@@ -517,8 +552,14 @@ export function MatchGameView() {
   );
 
   // Decided holes (A's perspective) for an overview strip — the shared builder.
+  // Refactor B: sourced from recorded outcomes for an outcome-mode game (no
+  // scores exist to derive from); byte-identical shared engine either way.
   const decidedFor = (g: MatchGroupData) =>
-    buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB, scIndex, scUnits.length);
+    outcomeMode
+      ? buildDecidedFromOutcomes(
+          Object.entries(mergedOutcomeFor(g.matchId)).map(([h, result]) => ({ hole: Number(h), result }))
+        )
+      : buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB, scIndex, scUnits.length);
 
   // A match's current hole = the first hole either player hasn't scored yet, so
   // opening a match drops you where it's at (not the hole you left from).
@@ -1061,10 +1102,23 @@ export function MatchGameView() {
       : selectedGroup.a.id === meId || selectedGroup.b.id === meId);
     const canScoreMatch = canEdit || inThisMatch;
     const readOnly = locked || !canScoreMatch;
-    // The read-only scorecard grid — shared by a read-only/locked viewer's landing
-    // surface and the scorer's overlay. onCellTap (jump to a hole's entry) is
-    // editable-only; back returns to the matches hub (#7).
-    const scorecardGrid = (
+    // The read-only scorecard — shared by a read-only/locked viewer's landing
+    // surface and the scorer's overlay. Refactor B: an outcome-mode game has no
+    // scores to grid, so it swaps in OutcomeScorecard (two lead rows) instead of
+    // StandardGrid. onCellTap (jump to a hole's entry) is editable-only, score-
+    // mode only for now (OutcomeScorecard has no cell-tap yet — hole nav covers
+    // navigation); back returns to the matches hub (#7).
+    const scorecardGrid = outcomeMode ? (
+      <OutcomeScorecard
+        units={scUnits}
+        a={selectedGroup.a}
+        b={selectedGroup.b}
+        outcomes={Object.entries(mergedOutcomeFor(selectedGroup.matchId)).map(([h, result]) => ({ hole: Number(h), result }))}
+        glorious={glorious}
+        leftColor={selectedGroup.leftColor}
+        rightColor={selectedGroup.rightColor}
+      />
+    ) : (
       <StandardGrid
         units={scUnits}
         tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
@@ -1091,6 +1145,33 @@ export function MatchGameView() {
           <ScorecardSheet title={locked ? "Scorecard · Final" : "Scorecard"} onClose={matchBack}>
             {scorecardGrid}
           </ScorecardSheet>
+        ) : outcomeMode ? (
+          <>
+            <MatchOutcomeEntryView
+              hideHeader={inPanel}
+              gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
+              subtitle={sided ? "Doubles match · 2v2" : "Singles match · 1v1"}
+              units={scUnits}
+              match={selectedGroup}
+              values={outcomeValues}
+              currentHole={currentHole}
+              onHoleChange={setCurrentHole}
+              onChange={onOutcomeChange}
+              onClear={onOutcomeClear}
+              saveStatus={outcomeSaveStatus}
+              onRetryCell={retryOutcomeCell}
+              onBack={matchBack}
+              onOpenGrid={() => setGridOpen(true)}
+              onFinish={matchBack}
+              finishLabel="Back to matches"
+              finishSubtext="Outcomes save as you enter"
+              meId={me?.id}
+              glorious={glorious}
+            />
+            {gridOpen && (
+              <ScorecardSheet title="Scorecard" onClose={matchBack}>{scorecardGrid}</ScorecardSheet>
+            )}
+          </>
         ) : (
           <>
             <MatchEntryView
@@ -1604,6 +1685,7 @@ export function MatchGameView() {
             if (g) setCurrentHole(currentHoleFor(g));
             setSelectedMatchId(matchId);
             setValues((v) => (Object.keys(v).length ? v : loadedValues));
+            setOutcomeValues((v) => (Object.keys(v).length ? v : loadedOutcomeValues));
             // Locked → land on the read-only scorecard overlay; otherwise editable
             // entry (a non-scorer still resolves to read-only in the score screen).
             setGridOpen(locked);
