@@ -52,7 +52,7 @@ describe("roster-removal lock", () => {
       const gameId = genId("rl-game");
       await ctx.admin.from("games").insert({
         id: gameId, trip_id: tripId, competition_id: competitionId,
-        game_type_id: "gtt_match_play_singles", name: "Locker", status: "active",
+        game_type_id: "gtt_match_play", name: "Locker", status: "active",
         points_distribution: { type: "per_match", value: 2 },
       });
       const { error } = await ctx.admin.from("score_entries").insert({

@@ -58,11 +58,8 @@ describe("render-branch matrix (gameTypes.ts → registry)", () => {
   it("stroke_play → [checkbox] (CHECKBOX-only — moving_tees; glorious does NOT apply to stroke)", () => {
     expect(controlsFor("gtt_stroke_play")).toEqual(["checkbox"]);
   });
-  it("match_play_doubles → [checkbox+stepper] (STEPPER-only — glorious applies)", () => {
-    expect(controlsFor("gtt_match_play_doubles")).toEqual(["checkbox+stepper"]);
-  });
-  it("match_play_singles → [checkbox, checkbox+stepper] (BOTH — moving_tees + glorious)", () => {
-    expect(controlsFor("gtt_match_play_singles")).toEqual(["checkbox", "checkbox+stepper"]);
+  it("match_play → [checkbox, checkbox+stepper] (BOTH — moving_tees + glorious; unified type)", () => {
+    expect(controlsFor("gtt_match_play")).toEqual(["checkbox", "checkbox+stepper"]);
   });
 });
 

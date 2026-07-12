@@ -9,17 +9,17 @@ describe("gloriousConfig — read + format guard", () => {
   const on = { glorious_holes: { holes: 3 } };
 
   it("reads enabled + N off a match-play game's modifiers", () => {
-    expect(gloriousConfig("gtt_match_play_singles", on)).toEqual({ enabled: true, n: 3 });
-    expect(gloriousConfig("gtt_match_play_doubles", { glorious_holes: { holes: 5 } })).toEqual({ enabled: true, n: 5 });
+    expect(gloriousConfig("gtt_match_play", on)).toEqual({ enabled: true, n: 3 });
+    expect(gloriousConfig("gtt_match_play", { glorious_holes: { holes: 5 } })).toEqual({ enabled: true, n: 5 });
   });
 
   it("legacy `{}` shape reads as the default N=3 (existing rows don't break)", () => {
-    expect(gloriousConfig("gtt_match_play_singles", { glorious_holes: {} })).toEqual({ enabled: true, n: 3 });
+    expect(gloriousConfig("gtt_match_play", { glorious_holes: {} })).toEqual({ enabled: true, n: 3 });
   });
 
   it("absent key = disabled (presence-model)", () => {
-    expect(gloriousConfig("gtt_match_play_singles", {})).toBe(NO_GLORIOUS);
-    expect(gloriousConfig("gtt_match_play_singles", null)).toBe(NO_GLORIOUS);
+    expect(gloriousConfig("gtt_match_play", {})).toBe(NO_GLORIOUS);
+    expect(gloriousConfig("gtt_match_play", null)).toBe(NO_GLORIOUS);
   });
 
   it("FORMAT GUARD: inert for stroke / rack / manual even with the flag forced on", () => {

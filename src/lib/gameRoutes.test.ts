@@ -4,8 +4,7 @@ import { gameHref, isGolfFormat, MANUAL_ROUTE } from "@/lib/gameRoutes";
 describe("gameHref", () => {
   it("routes golf formats to their per-format game pages", () => {
     expect(gameHref("trip1", "gtt_stroke_play", "g1")).toBe("/trips/trip1/games/new?game=g1");
-    expect(gameHref("trip1", "gtt_match_play_singles", "g1")).toBe("/trips/trip1/games/match/new?game=g1");
-    expect(gameHref("trip1", "gtt_match_play_doubles", "g1")).toBe("/trips/trip1/games/match/new?game=g1");
+    expect(gameHref("trip1", "gtt_match_play", "g1")).toBe("/trips/trip1/games/match/new?game=g1");
     expect(gameHref("trip1", "gtt_rack_n_stack", "g1")).toBe("/trips/trip1/games/rack/new?game=g1");
   });
 
@@ -24,7 +23,7 @@ describe("gameHref", () => {
     expect(gameHref("trip1", "gtt_stroke_play", "g1", { settings: true })).toBe(
       "/trips/trip1/games/new?game=g1&settings=1"
     );
-    expect(gameHref("trip1", "gtt_match_play_singles", "g1", { settings: true })).toBe(
+    expect(gameHref("trip1", "gtt_match_play", "g1", { settings: true })).toBe(
       "/trips/trip1/games/match/new?game=g1&settings=1"
     );
     expect(gameHref("trip1", "gtt_rack_n_stack", "g1", { settings: true })).toBe(
@@ -44,7 +43,7 @@ describe("gameHref", () => {
 
   it("scorecard → the single format-agnostic empty-preview route, golf only", () => {
     // Every golf format shares ONE scorecard route (it only needs the schema).
-    for (const t of ["gtt_stroke_play", "gtt_match_play_singles", "gtt_match_play_doubles", "gtt_rack_n_stack"]) {
+    for (const t of ["gtt_stroke_play", "gtt_match_play", "gtt_rack_n_stack"]) {
       expect(gameHref("trip1", t, "g1", { scorecard: true })).toBe("/trips/trip1/games/scorecard?game=g1");
     }
     // Non-golf has no course → no scorecard link.

@@ -16,7 +16,7 @@ const id = (t: { id: string }) => t.id;
 
 describe("isGameTypeForScoringModel", () => {
   const stroke = GAME_TYPES.find((t) => t.id === "gtt_stroke_play")!;
-  const singles = GAME_TYPES.find((t) => t.id === "gtt_match_play_singles")!;
+  const matchPlay = GAME_TYPES.find((t) => t.id === "gtt_match_play")!;
   const rack = GAME_TYPES.find((t) => t.id === "gtt_rack_n_stack")!;
   const manual = GAME_TYPES.find((t) => t.id === "gtt_manual")!;
 
@@ -25,9 +25,9 @@ describe("isGameTypeForScoringModel", () => {
     expect(isGameTypeForScoringModel(stroke, "match_play")).toBe(false);
   });
 
-  it("match-play formats are match_play-only", () => {
-    expect(isGameTypeForScoringModel(singles, "match_play")).toBe(true);
-    expect(isGameTypeForScoringModel(singles, "points")).toBe(false);
+  it("match play is match_play-only", () => {
+    expect(isGameTypeForScoringModel(matchPlay, "match_play")).toBe(true);
+    expect(isGameTypeForScoringModel(matchPlay, "points")).toBe(false);
   });
 
   it("rack-n-stack is match_play (net-stroke ENTRY is not the points scoring-model)", () => {
@@ -42,15 +42,14 @@ describe("isGameTypeForScoringModel", () => {
 
   it("a null/absent scoring-model is permissive (never an empty menu)", () => {
     expect(isGameTypeForScoringModel(stroke, null)).toBe(true);
-    expect(isGameTypeForScoringModel(singles, undefined)).toBe(true);
+    expect(isGameTypeForScoringModel(matchPlay, undefined)).toBe(true);
   });
 });
 
 describe("gameTypesForScoringModel — the offered menu", () => {
-  it("a match_play comp offers 1v1/2v2/rack + manual, NOT stroke", () => {
+  it("a match_play comp offers match play + rack + manual, NOT stroke", () => {
     const offered = gameTypesForScoringModel("match_play").map(id);
-    expect(offered).toContain("gtt_match_play_singles");
-    expect(offered).toContain("gtt_match_play_doubles");
+    expect(offered).toContain("gtt_match_play"); // one unified type (was singles + doubles)
     expect(offered).toContain("gtt_rack_n_stack");
     expect(offered).toContain("gtt_manual"); // manual types fit any comp
     expect(offered).not.toContain("gtt_stroke_play");
@@ -60,8 +59,7 @@ describe("gameTypesForScoringModel — the offered menu", () => {
     const offered = gameTypesForScoringModel("points").map(id);
     expect(offered).toContain("gtt_stroke_play");
     expect(offered).toContain("gtt_manual");
-    expect(offered).not.toContain("gtt_match_play_singles");
-    expect(offered).not.toContain("gtt_match_play_doubles");
+    expect(offered).not.toContain("gtt_match_play");
     expect(offered).not.toContain("gtt_rack_n_stack");
   });
 

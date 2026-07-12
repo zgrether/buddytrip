@@ -16,7 +16,7 @@ const part = (user_id: string) => ({ user_id, play_group_id: null, handicap_stro
 
 describe("projectGame — match play", () => {
   it("sums each match's current standing to per-team COMPETITION points (leader full, all-square halved)", () => {
-    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play_singles", pointsPerMatch: 2 };
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } }, // 2-hole round, no course index → sequential fallback
       modifiers: null,
@@ -39,7 +39,7 @@ describe("projectGame — match play", () => {
   });
 
   it("an unpaired match (a side missing) contributes nothing", () => {
-    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play_singles", pointsPerMatch: 2 };
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
       modifiers: null,

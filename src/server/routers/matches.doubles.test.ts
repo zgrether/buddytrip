@@ -10,7 +10,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * game_results with entity_type='play_group'.
  */
 
-const DOUBLES = "gtt_match_play_doubles";
+const DOUBLES = "gtt_match_play";
 
 type Side = { type: string; id: string } | null;
 interface MatchRow {
