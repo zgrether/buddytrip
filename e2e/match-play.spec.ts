@@ -144,8 +144,10 @@ async function driveToSetupWithHandicap(page: Page) {
   const pairings = page.getByTestId("match-pairings");
   await expect(pairings).toBeVisible({ timeout: 20_000 });
   // A new game opens at 0 matches (the valid empty state — just "Add match", no
-  // table). Add the first match to get the pairing slots.
+  // table). "Add match" reveals a shape choice (per-match shape, A2a); pick
+  // "Add singles" for a 1v1 match → two pairing slots.
   await pairings.getByRole("button", { name: "Add match" }).click();
+  await pairings.getByRole("button", { name: /Add singles/ }).click();
   // Fill slot A then slot B. Each pick is gated open→pick→closed so the picks can't
   // race the picker mount/unmount: open the slot, wait for the picker, pick (scoped
   // to the picker so the click can't hit a filled-slot button), wait for it to
