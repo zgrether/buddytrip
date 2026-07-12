@@ -65,6 +65,23 @@ export function parseScoreCellKey(key: string): {
   return { participantId: key.slice(0, i), unitLabel: key.slice(i + 1) };
 }
 
+/** Cell key for hole-OUTCOME entry (Refactor B) — `SaveStatusMap`/
+ *  `unconfirmedOnHole`/`unconfirmedCount` are generic over the key string, so they
+ *  apply unchanged to outcomes; only the key shape differs (a match+hole, not a
+ *  participant+unit — an outcome belongs to the MATCH, not either player). */
+export function outcomeCellKey(matchId: string, holeNumber: number): string {
+  return `${matchId}:${holeNumber}`;
+}
+
+/** Inverse of {@link outcomeCellKey}. */
+export function parseOutcomeCellKey(key: string): {
+  matchId: string;
+  holeNumber: number;
+} {
+  const i = key.indexOf(":");
+  return { matchId: key.slice(0, i), holeNumber: Number(key.slice(i + 1)) };
+}
+
 /**
  * Confirmation gate (Spec 1a — honest advance). A hole is safe to advance/finish
  * PAST only when none of its cells is mid-save (`saving`) or failed (`error`) —
