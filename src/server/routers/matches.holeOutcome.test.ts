@@ -141,10 +141,10 @@ describe("hole-outcome entry — computeMatchPlayResults reads match_hole_outcom
     const matchId = m[0].id;
     const pgA = m[0].side_a.id;
     await ctx.caller().games.enableScoring({ tripId, gameId });
-    const rows = [
-      { hole: 1, result: "side_a" as const }, { hole: 2, result: "side_a" as const }, { hole: 3, result: "side_a" as const },
+    const rows: { hole: number; result: "side_a" | "side_b" | "halved" }[] = [
+      { hole: 1, result: "side_a" }, { hole: 2, result: "side_a" }, { hole: 3, result: "side_a" },
     ];
-    for (let h = 4; h <= 16; h++) rows.push({ hole: h, result: "halved" as const });
+    for (let h = 4; h <= 16; h++) rows.push({ hole: h, result: "halved" });
     await recordOutcomes(gameId, matchId, rows);
 
     await ctx.caller().games.finish({ tripId, gameId });
@@ -164,8 +164,11 @@ describe("hole-outcome entry — computeMatchPlayResults reads match_hole_outcom
     const matchId = (matches as { id: string }[])[0].id;
     await ctx.caller().games.enableScoring({ tripId, gameId });
     // 15 halves, then A wins hole 16 (glorious, weight 2) → 2 up thru 16, 2 to play.
-    const rows = Array.from({ length: 15 }, (_, i) => ({ hole: i + 1, result: "halved" as const }));
-    rows.push({ hole: 16, result: "side_a" as const });
+    const rows: { hole: number; result: "side_a" | "side_b" | "halved" }[] = Array.from(
+      { length: 15 },
+      (_, i) => ({ hole: i + 1, result: "halved" })
+    );
+    rows.push({ hole: 16, result: "side_a" });
     await recordOutcomes(gameId, matchId, rows);
 
     const { matches: outcomes } = await ctx.caller().games.finish({ tripId, gameId });
