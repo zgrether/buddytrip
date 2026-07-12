@@ -67,6 +67,11 @@ interface LeaderboardData {
    *  ▲ projected-points pill). Absent games have no live projection. */
   projections: Record<string, Record<string, number>>;
   teamTotals: Record<string, number>;
+  /** Per-team projected total ("if today holds") = banked + Σ live-game projections
+   *  (server-summed). The hero's projected tier reads it; delta = this − teamTotals. */
+  projectedTeamTotals: Record<string, number>;
+  /** ≥1 game live → show the hero's projected tier at all (independent of any delta). */
+  hasLiveProjection: boolean;
   pointsAvailable: number;
   winNumber: number;
   pointsToClinch: Record<string, number>;
@@ -230,6 +235,8 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         tagline={tagline}
         teams={teams}
         teamTotals={teamTotals}
+        projectedTeamTotals={data.projectedTeamTotals}
+        hasLiveProjection={data.hasLiveProjection}
         pointsAvailable={pointsAvailable}
         winNumber={winNumber}
         clincher={clincher}

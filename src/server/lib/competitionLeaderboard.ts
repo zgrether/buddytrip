@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
+import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
@@ -291,6 +292,17 @@ export async function computeCompetitionLeaderboard(
     });
   const projections = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);
 
+  // Competition-total projection ("if today holds"): banked (teamTotals) + Σ of each
+  // team's live-game projections, summed SERVER-SIDE so the hero reads one authoritative
+  // total off this payload (no client re-aggregation → no board-vs-client drift). Rides
+  // the same 30s poll + faceBootstrap seed as the per-game pills. `hasLive` gates the
+  // hero's whole projected tier (≥1 game live), independent of any team's delta.
+  const projected = projectedTeamTotals(
+    Object.fromEntries(roll.teamTotals),
+    projections,
+    teamIds,
+  );
+
   return {
     teams: teams ?? [],
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
@@ -341,6 +353,10 @@ export async function computeCompetitionLeaderboard(
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
     teamTotals: Object.fromEntries(roll.teamTotals),
+    // Hero "if today holds" tier: per-team projected total (banked + Σ live projections)
+    // + whether any game is live (the tier-visibility gate). Server-summed (Path A).
+    projectedTeamTotals: projected.totals,
+    hasLiveProjection: projected.hasLive,
     pointsToClinch: Object.fromEntries(roll.pointsToClinch),
   };
 }

@@ -38,6 +38,35 @@ export interface ProjMatch {
  * even-share `pointsPerMatch` — so an overridden ("counts double") match projects at
  * its real value, exactly as the finish path awards it.
  */
+/**
+ * Competition-total projection ("if today holds") — the FIRST rollup of projected
+ * points to a competition total. Per team: banked (`teamTotals`) + Σ of that team's
+ * live-game projections (the per-game `projections` the board already computes, Path A).
+ * Summed SERVER-SIDE so one authoritative total rides the board payload and the hero
+ * reads it directly — no client re-aggregation, no board-vs-client drift.
+ *
+ * `hasLive` = at least one game is live (the `projections` map is non-empty). This is
+ * the tier-visibility gate — TRUE even when a live game projects 0 to a team (that team
+ * shows a bare number, no pill), so it must reflect live-game PRESENCE, not any delta.
+ *
+ * Projections are awarded points (≥ 0), so each projected total ≥ its banked total →
+ * every delta (projected − banked) is ≥ 0 and the pill is always ▲.
+ */
+export function projectedTeamTotals(
+  teamTotals: Record<string, number>,
+  projections: Record<string, Record<string, number>>,
+  teamIds: string[],
+): { totals: Record<string, number>; hasLive: boolean } {
+  const totals: Record<string, number> = {};
+  for (const id of teamIds) totals[id] = teamTotals[id] ?? 0;
+  for (const perTeam of Object.values(projections)) {
+    for (const [teamId, pts] of Object.entries(perTeam)) {
+      totals[teamId] = (totals[teamId] ?? 0) + pts;
+    }
+  }
+  return { totals, hasLive: Object.keys(projections).length > 0 };
+}
+
 export function rollupMatchPlay(matches: ProjMatch[], pointsPerMatch: number): Record<string, number> {
   const out: Record<string, number> = {};
   const add = (teamId: string | null, n: number) => {
