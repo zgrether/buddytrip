@@ -10,6 +10,7 @@ import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -99,6 +100,9 @@ export function RackGameView() {
     groupingsTouched.current = true;
     setGroupDraft(next);
   };
+  // Surfaced retry when a groupings persist fails (parity with match's
+  // collapseError) — closes rack's silent-loss gap.
+  const [groupSaveError, setGroupSaveError] = useState(false);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
   const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
@@ -406,12 +410,23 @@ export function RackGameView() {
   // refreshes the board (incl. faceBootstrap, CLAUDE.md #10).
   async function saveGroups() {
     if (!tripId || !gid) return;
-    await setFoursomes.mutateAsync({ tripId, gameId: gid, groups: groupsToPersist(groupDraft) });
-    await utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
-    if (competitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      utils.games.listByTrip.invalidate({ tripId });
+    // try/catch (parity with MatchGameView's persistDraftOnCollapse): a bare
+    // mutateAsync here was a silent loss — a transient failure on close-flush
+    // became an unhandled rejection with the draft already gone from view and no
+    // retry. Now the draft is KEPT (the outbox still holds it) and a retry is
+    // surfaced; success clears both the error and the teardown copy.
+    try {
+      await setFoursomes.mutateAsync({ tripId, gameId: gid, groups: groupsToPersist(groupDraft) });
+      setGroupSaveError(false);
+      clearGroupsOutbox(); // durably persisted → drop the teardown copy
+      await utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+        utils.games.listByTrip.invalidate({ tripId });
+      }
+    } catch {
+      setGroupSaveError(true);
     }
   }
 
@@ -423,8 +438,16 @@ export function RackGameView() {
       setOpenAccordion(null);
       if (groupingsTouched.current) void saveGroups();
     } else {
-      setGroupDraft(currentGroupDraft());
-      groupingsTouched.current = false;
+      // Restore a hard-teardown draft first (only if the server is unchanged
+      // since it diverged); mark it touched so the flush net persists it.
+      const recovered = recoverGroups();
+      if (recovered && recovered.length > 0) {
+        setGroupDraft(recovered);
+        groupingsTouched.current = true;
+      } else {
+        setGroupDraft(currentGroupDraft());
+        groupingsTouched.current = false;
+      }
       setOpenAccordion("groupings");
     }
   }
@@ -541,6 +564,27 @@ export function RackGameView() {
   // Phase 2B.1: a rack with its groups set must be Enabled before the play screen
   // opens (the score saver server-rejects entries until then).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+
+  // Draft durability (Layer 2 — hard-teardown outbox), the rack counterpart to
+  // MatchGameView's. The in-app flush net already persists a built grouping on
+  // every in-app exit; this mirrors the in-progress group draft to localStorage
+  // so a refresh / tab-close / OS-kill / background can't lose it (incomplete
+  // groupings too). `serverFingerprint` is the persisted grouping the draft
+  // diverged from — the no-clobber guard for recover().
+  const groupServerFingerprint = useMemo(
+    () => JSON.stringify(currentGroupDraft()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [groupsQ.data, participants]
+  );
+  const { recover: recoverGroups, clear: clearGroupsOutbox } = useDraftOutbox<string[][]>({
+    view: "rack",
+    gameId: gid,
+    draft: groupDraft,
+    touched: groupingsTouched.current,
+    serverFingerprint: groupServerFingerprint,
+    enabled: !!gid && !scoringEnabled,
+  });
+
   async function refreshGame() {
     if (!tripId || !gid) return;
     await utils.games.getById.invalidate({ tripId, gameId: gid });
@@ -733,6 +777,16 @@ export function RackGameView() {
           Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
         </p>
         <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
+        {groupSaveError && (
+          <button
+            type="button"
+            onClick={() => void saveGroups()}
+            className="mt-2 text-left text-[13px]"
+            style={{ color: "var(--color-bt-danger)" }}
+          >
+            Couldn’t save your groups — tap to retry.
+          </button>
+        )}
       </ChecklistRow>
     );
     // OPTIONS section (extraRows): Handicaps. (Rack has no Game Modifiers — its
