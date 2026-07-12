@@ -182,23 +182,26 @@ export async function computeCompetitionLeaderboard(
     if (isPerMatch(rawDist)) {
       const typeId = g.game_type_id as string | null;
       const isMatchPlayType = typeId != null && MATCH_PLAY_TYPES.has(typeId);
+      const isRackType = typeId === RACK_TYPE;
       // Match play (singles/doubles): available = value × the game's ASSIGNED
       // match count (game_matches rows with both sides paired) — an unfilled slot
       // isn't a match, so it adds no points (round-3.1 "a match = assigned"). The
-      // live clinch goalpost moves as matches get paired / added / removed. Other
-      // per_match formats (rack-n-stack) DON'T use game_matches; their count is
-      // the team-size-derived head-to-head sizing (unchanged stable model) — so
-      // counting rows there would zero them out.
+      // live clinch goalpost moves as matches get paired / added / removed. Rack
+      // DOESN'T use game_matches; its legacy `mc` fallback is the team-size-derived
+      // head-to-head sizing (unchanged stable model) — so counting rows there would
+      // zero them out.
       const mc = isMatchPlayType
         ? matchCountByGame.get(g.id as string) ?? 0
         : deriveMatchCount(teamSizes, matchFormat(typeId)) ?? 0;
-      // A2b: match play's authoritative total is the owner-set `points_total`.
-      // `value × mc` only equals the total when there are NO overrides — once a
-      // match is overridden it drifts, so read the total directly (derive-don't-
-      // snapshot). A legacy match game with a null total (pre-A2b) falls back to
-      // `value × mc`, its old behavior. RACK is unchanged: its total genuinely IS
-      // value × slots (no points_total, no game_matches).
-      const pointsTotal = isMatchPlayType
+      // A2b (match play) + the rack total-points migration: once an owner sets
+      // `points_total`, it's the authoritative total — `value × mc` only equals it
+      // when there's no drift (match play: no overrides; rack: this leaderboard's
+      // roster-derived `mc` happens to match the setup page's game-participant-
+      // derived slot count). Reading `points_total` directly (derive-don't-snapshot)
+      // sidesteps that pre-existing divisor mismatch for any game with an owner-set
+      // total. A legacy game (pre-migration, null total) falls back to `value × mc`,
+      // its old behavior — unchanged for both formats.
+      const pointsTotal = isMatchPlayType || isRackType
         ? (g.points_total as number | null) ?? rawDist.value * mc
         : rawDist.value * mc;
       if (standings.length === 0) {

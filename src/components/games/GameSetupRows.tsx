@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Flag, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GAME_TYPES } from "@/lib/gameTypes";
@@ -11,7 +11,7 @@ import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
-import type { PointsDistribution } from "@/lib/pointsDistribution";
+import { evenShare, type PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
  * §B setup-shell drill-down rows: the **course pre-step** then **Format · Points**.
@@ -37,6 +37,7 @@ export function GameSetupRows({
   onChanged,
   slot = "both",
   matchCount,
+  defaultTotal,
   pointsTitle,
   configLocked = false,
   locked = false,
@@ -61,9 +62,16 @@ export function GameSetupRows({
    *  (W-GAMEPAGE-01 §6.2). Derived live by the page — omit on surfaces that don't
    *  build matches (no Total shown). */
   matchCount?: number;
-  /** Display-only override for the inline points row title. Rack passes
-   *  "Points per Slot" (a rack slot isn't obviously a "match" to the user); the
-   *  underlying `per_match` data model is UNCHANGED. Defaults to "Points Per Match". */
+  /** Total-points migration: the first-setup default for the owner-set
+   *  `points_total` (players per team) — written once via a reconcile effect when
+   *  the row first sees a slot count > 0 and no total yet. Omit where the row
+   *  doesn't offer Total Points (the placement/stroke branch ignores it). */
+  defaultTotal?: number;
+  /** The per-unit noun for the derived subtitle ("Points per Slot" for rack — a
+   *  rack slot isn't obviously a "match"). The underlying `per_match` /
+   *  `points_distribution.value` field is UNCHANGED — label only. Defaults to
+   *  "Points per match". (This row's TITLE is now always "Total Points" — the
+   *  owner sets the total, this label describes the DERIVED per-unit readout.) */
   pointsTitle?: string;
   /** Lock the Points (config) row until ≥1 valid match exists (readiness rework P3
    *  — points mean nothing before a match). Locked = read-only, no chevron, same as
@@ -116,15 +124,28 @@ export function GameSetupRows({
     : namesReady
       ? composedCourseTitle(backId ? [frontName, backName] : [frontName])
       : "Golf Course Selected"; // pre-load: keep the old title until names arrive
-  // Points (§5): the row subtitle is the live "Total Points Available: N" (N teal),
-  // derived from per-match × the valid match count. Per-match drives resolved/empty.
-  const perMatch = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
-  const pointsTotal = (matchCount ?? 0) * perMatch;
-  // Match-format games (1v1/2v2/rack) carry the points INLINE (Phase C §7 — a
-  // right-justified stepper, no expansion). Placement (stroke/non-golf) keeps the
-  // expandable editor (its split needs a body).
+  // Placement (stroke/non-golf) points — UNCHANGED: "Total Points Available" = a
+  // directly-typed per-unit value × matchCount. The total-points inversion below is
+  // rack-specific (match play moved to MatchPointsRow in A2b); placement never
+  // inverts (its owner-set total is Stage-3 distribution-driven, a different model).
+  const rawPerMatch = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
+  const placementPointsTotal = (matchCount ?? 0) * rawPerMatch;
   const ptype = GAME_TYPES.find((t) => t.id === game.game_type_id)?.resultStrategy;
-  const isMatchPlay = ptype === "match_play" || ptype === "rack_n_stack";
+  // Rack is the ONLY remaining consumer of the inline Total-Points row — match play
+  // was carved out to MatchPointsRow (A2b). Placement (stroke/non-golf) keeps the
+  // expandable editor below (its split needs a body).
+  const isRackLike = ptype === "rack_n_stack";
+
+  // Total-points migration (rack) — reuses A2b's storage trio, minus overrides:
+  // the owner sets a TOTAL (`points_total`); the per-slot value DERIVES = total ÷
+  // slot count (`matchCount`, this game's added-participant count) via the shared
+  // `evenShare` (empty overrides array → plain division) and persists to the
+  // UNCHANGED `points_distribution.value` field every downstream reader (award,
+  // live projection, the rack game page's own per-slot memo) already reads.
+  const slotCount = matchCount ?? 0;
+  const persistedTotal = (game.points_total as number | null) ?? null;
+  const effectiveTotal = persistedTotal ?? defaultTotal ?? 0;
+  const derivedPerSlot = evenShare(effectiveTotal, [], slotCount);
 
   return (
     <>
@@ -150,35 +171,43 @@ export function GameSetupRows({
       )}
 
       {slot !== "course" && competitionId && (
-        isMatchPlay ? (
-          // Points row INLINE (Phase C §7): the row carries a right-justified
-          // <Stepper inline> and never opens — exempt from the single-open accordion.
-          // The competition-format picker is gone (removed, not re-homed — the Add/Edit
-          // modal still sets competition_format). Dashed/empty at 0 (reachable since
-          // C1's default-0); resolved + teal check + teal total at >0. The stepper
-          // stays live so `+` lifts it out of empty; `−` disabled at 0 (Stepper floor).
+        isRackLike ? (
+          // Total Points row (rack, A2b's inverted pattern): the row carries a
+          // right-justified <Stepper inline> on the TOTAL and never opens — exempt
+          // from the single-open accordion. No override panel (rack has no per-slot
+          // overrides — DO-NOT list) — this stays a single inline row, unlike match
+          // play's expandable MatchPointsRow.
           <ChecklistRow
             icon={Hash}
-            // Display-only label (rack → "Points per Slot"); the `per_match`
-            // field/data model is unchanged. Defaults to "Points Per Match".
-            title={pointsTitle ?? "Points Per Match"}
+            title="Total Points"
             subtitle={
               <>
-                Total Points Available:{" "}
-                <span style={{ color: pointsReady(perMatch) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{pointsTotal}</span>
+                {pointsTitle ?? "Points per match"}:{" "}
+                <span
+                  style={{
+                    color: pointsReady(derivedPerSlot) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {/* Never auto-rounded — a non-whole share is shown exactly (2 decimals),
+                      same teal treatment as any other resolved value (no amber/warning:
+                      the math downstream is exact; see evenShare's doc). */}
+                  {Number.isInteger(derivedPerSlot) ? derivedPerSlot : derivedPerSlot.toFixed(2)}
+                </span>
               </>
             }
             // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
             // points term satisfied (they can't disagree).
-            state={pointsReady(perMatch) ? "resolved" : "empty"}
+            state={pointsReady(derivedPerSlot) ? "resolved" : "empty"}
             disabled={!canEdit}
             locked={locked}
             testId="row-format-points"
             control={
-              <PointsPerMatchControl
+              <RackTotalPointsControl
                 tripId={tripId}
                 game={game}
-                perMatch={perMatch}
+                slotCount={slotCount}
+                defaultTotal={defaultTotal ?? 0}
                 // P3: locked until ≥1 valid match exists (points mean nothing before
                 // a match). Locked → the stepper is disabled (read-only), matching the
                 // gated rows. Otherwise live.
@@ -195,10 +224,10 @@ export function GameSetupRows({
             subtitle={
               <>
                 Total Points Available:{" "}
-                <span style={{ color: perMatch > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{pointsTotal}</span>
+                <span style={{ color: rawPerMatch > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{placementPointsTotal}</span>
               </>
             }
-            state={perMatch > 0 ? "resolved" : "empty"}
+            state={rawPerMatch > 0 ? "resolved" : "empty"}
             disabled={!canEdit}
             locked={locked}
             expanded={configOpen}
@@ -214,45 +243,102 @@ export function GameSetupRows({
 }
 
 /**
- * The inline per-match points control (Phase C §7) — a canonical `<Stepper inline>`
- * that persists on each change. Floor is 0 (reachable since Add defaults new games
- * to 0); `−` disable-styles at 0. Writes the total+distribution PAIR atomically
- * (total null for match games — the total is derived = value × matchCount), optimistic
- * on the `getById` cache so the row's subtitle/check/total land instantly, then marks
- * the competition board stale (CLAUDE.md #10 — faceBootstrap refreshes the Live face).
+ * RackTotalPointsControl — the total-points migration's inline stepper for rack
+ * (the ONLY remaining consumer of this inline-row shape; match play moved to
+ * `MatchPointsRow` in A2b). Same storage trio as A2b, minus overrides: the owner
+ * steps the TOTAL (`points_total`, via `setPointsTotal`); the per-slot value
+ * DERIVES = total ÷ slot count (`evenShare` with no overrides) and persists to the
+ * UNCHANGED `points_distribution.value` (via `setPointsDistribution`) so every
+ * downstream reader (award, live projection, the rack game page's own per-slot
+ * memo) is untouched. Recomputes live as `slotCount` changes — rack's field GROWS
+ * during setup (unlike match play's more-stable match count) — via a reconcile
+ * effect that also seeds the first-setup default (players per team) ONCE.
  */
-function PointsPerMatchControl({
-  tripId, game, perMatch, disabled,
+function RackTotalPointsControl({
+  tripId, game, slotCount, defaultTotal, disabled,
 }: {
   tripId: string;
   game: GameRow;
-  perMatch: number;
+  slotCount: number;
+  defaultTotal: number;
   disabled?: boolean;
 }) {
   const gameId = game.id;
   const utils = trpc.useUtils();
   const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setDistM = trpc.games.setPointsDistribution.useMutation();
-  // Local value for snappy stepping; re-sync if the persisted value changes elsewhere.
-  const [value, setValue] = useState(perMatch);
-  useEffect(() => { setValue(perMatch); }, [perMatch]);
+
+  const persistedTotal = (game.points_total as number | null) ?? null;
+  const persistedPerUnit = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
+  const effectiveTotal = persistedTotal ?? defaultTotal;
+
+  // Local total for snappy stepping; re-sync when the persisted/default value
+  // changes — render-phase adjust-on-prop-change (no effect; avoids the
+  // cascading-render lint trip a plain useEffect sync hit in A2b).
+  const [value, setValue] = useState(effectiveTotal);
+  const [lastEffectiveTotal, setLastEffectiveTotal] = useState(effectiveTotal);
+  if (effectiveTotal !== lastEffectiveTotal) {
+    setLastEffectiveTotal(effectiveTotal);
+    setValue(effectiveTotal);
+  }
+
+  const bumpBoard = () => {
+    utils.games.listByTrip.invalidate({ tripId });
+    // CLAUDE.md #10: the Live face re-seeds child caches from faceBootstrap, so a
+    // points change must invalidate faceBootstrap or the board reads stale until poll.
+    if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
+  };
+  const persistDerived = async (total: number) => {
+    const derived = evenShare(total, [], slotCount);
+    await setDistM.mutateAsync({ tripId, gameId, distribution: { type: "per_match", value: derived } });
+  };
 
   function onChange(v: number) {
     setValue(v);
-    const next: PointsDistribution = { type: "per_match", value: v };
+    const derived = evenShare(v, [], slotCount);
+    const next: PointsDistribution = { type: "per_match", value: derived };
     const cur = utils.games.getById.getData({ tripId, gameId });
-    if (cur) utils.games.getById.setData({ tripId, gameId }, { ...cur, points_total: null, points_distribution: next } as typeof cur);
+    if (cur) utils.games.getById.setData({ tripId, gameId }, { ...cur, points_total: v, points_distribution: next } as typeof cur);
     void (async () => {
       try {
-        await setTotalM.mutateAsync({ tripId, gameId, total: null });
-        await setDistM.mutateAsync({ tripId, gameId, distribution: next });
-        utils.games.listByTrip.invalidate({ tripId });
-        if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
+        await setTotalM.mutateAsync({ tripId, gameId, total: v });
+        await persistDerived(v);
+        bumpBoard();
       } catch {
         utils.games.getById.invalidate({ tripId, gameId });
       }
     })();
   }
+
+  // Reconcile: (1) first-setup default — no total yet, slots exist → seed the
+  // players-per-team default ONCE. (2) keep the persisted derived value in sync as
+  // `slotCount` changes (rack's field grows live as the owner adds players). Reacts
+  // to PERSISTED props (not the local optimistic `value`) so it converges and never
+  // loops. Gated on `!disabled` so a non-editing viewer's client never writes.
+  const didDefault = useRef(false);
+  useEffect(() => {
+    if (disabled || slotCount === 0) return;
+    if (persistedTotal == null) {
+      if (defaultTotal > 0 && !didDefault.current) {
+        didDefault.current = true;
+        void (async () => {
+          await setTotalM.mutateAsync({ tripId, gameId, total: defaultTotal });
+          await persistDerived(defaultTotal);
+          bumpBoard();
+        })();
+      }
+      return;
+    }
+    const derived = evenShare(persistedTotal, [], slotCount);
+    if (Math.abs(derived - persistedPerUnit) > 1e-9) {
+      void (async () => {
+        await persistDerived(persistedTotal);
+        bumpBoard();
+      })();
+    }
+    // persistDerived/bumpBoard are stable-enough closures; we react to the DATA inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistedTotal, defaultTotal, slotCount, persistedPerUnit, disabled]);
 
   return (
     <Stepper

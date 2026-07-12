@@ -39,6 +39,7 @@ export function GameConfigurationView({
   leadingSettingsRows,
   extraRows,
   matchCount,
+  defaultPointsTotal,
   pointsRowTitle,
   scoringEnabled,
   ready = true,
@@ -76,6 +77,10 @@ export function GameConfigurationView({
    *  (points × count). Rack passes its slot count so the total isn't stuck at 0;
    *  omitted by formats that don't build units (stroke → no Total shown). */
   matchCount?: number;
+  /** Total-points migration: the first-setup default for the owner-set
+   *  `points_total` (players per team, roster ÷ teams) — behavior only, no
+   *  caption. Omitted by formats that don't offer the Total Points row (stroke). */
+  defaultPointsTotal?: number;
   /** Display-only override for the Points row title (rack shows "Points per Slot"
    *  since a rack slot isn't obviously a "match"). The underlying `per_match`
    *  field is UNCHANGED — label only. Defaults to "Points Per Match". */
@@ -184,6 +189,7 @@ export function GameConfigurationView({
             locked={scoringEnabled}
             onChanged={onChanged}
             matchCount={matchCount}
+            defaultTotal={defaultPointsTotal}
             pointsTitle={pointsRowTitle}
           />
 
