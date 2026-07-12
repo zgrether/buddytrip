@@ -1,22 +1,26 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
+import { requireTripMember, canEditGame } from "../middleware";
+import { canWriteOutcome } from "../lib/outcomeAccess";
 
 /**
- * matchOutcomes — hole-outcome entry (Refactor B2): record who won each hole
+ * matchOutcomes — hole-outcome entry (Refactor B2/B3): record who won each hole
  * directly, no gross scores. The write-path counterpart to `scores.ts` for
  * outcome-mode games.
  *
- * B2 permission scope — ELEVATED TIER ONLY (owner/organizer/delegate via
- * `requireGameEdit()`), matching migration 075's RLS write policy exactly. A
- * member-tier check (reusing `memberCanScoreUnit`'s match-membership logic, the
- * same rule `scores.ts` uses) is deliberately deferred to B3, which widens BOTH
- * this mutation AND the RLS policy TOGETHER — `ctx.supabase` is a user-scoped
- * client (RLS-enforcing, not service-role), so a member-tier check here without
- * the matching RLS widening would pass the app check and then fail the actual
- * write, a broken half-permission state. Building both layers in lockstep avoids
- * that gap entirely (see B1/B2 PR discussion).
+ * SCOPED permissions (B3 — mig 076, SERVER-enforced, RLS-backed, matching
+ * `scores.ts`'s exact model):
+ *   Owner / Organizer (co-admin) / delegate-of-this-game → any match.
+ *   Member → only the match they participate in (`canWriteOutcome` →
+ *            `memberCanScoreUnit`, the SAME pure rule scores.ts uses).
+ *   Non-participant member → nothing.
+ * B2 shipped this elevated-tier only (`requireGameEdit()`), deliberately
+ * deferring the member tier: `ctx.supabase` is a user-scoped, RLS-enforcing
+ * client (not service-role), so a member-tier app check without the matching
+ * RLS widening would pass the check and then fail the actual write — a broken
+ * half-permission state. B3 lands both layers together (mig 076's
+ * `can_score_match` policy + this file's `canWriteOutcome` call).
  *
  * No `computeMatchPlayResults` call per write — mirrors `scores.upsertEntry`/
  * `deleteEntry` exactly: live state is derived CLIENT-SIDE from the outcome rows
@@ -39,7 +43,7 @@ export const matchOutcomesRouter = router({
         result: z.enum(["side_a", "side_b", "halved"]),
       })
     )
-    .use(requireGameEdit())
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
@@ -74,6 +78,16 @@ export const matchOutcomesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
       }
 
+      // Outcome-entry permissions (SERVER — the real gate; the UI only reflects
+      // it). Owner / co-admin / delegate-of-this-game → any match; a plain
+      // member → only the match they participate in.
+      if (!(await canWriteOutcome(ctx, ctx.tripId!, input.gameId, input.matchId))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only decide outcomes for your own match.",
+        });
+      }
+
       const id = `${input.matchId}:${input.holeNumber}`;
       const { error } = await ctx.supabase.from("match_hole_outcomes").upsert(
         {
@@ -103,7 +117,7 @@ export const matchOutcomesRouter = router({
         holeNumber: z.number().int().min(1).max(18),
       })
     )
-    .use(requireGameEdit())
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
@@ -118,6 +132,15 @@ export const matchOutcomesRouter = router({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "This round is posted — open score correction to edit it.",
+        });
+      }
+
+      // Same scoped gate as upsertOutcome — clearing a cell is a write too, so a
+      // member can only clear outcomes in their own match (owner/delegate anywhere).
+      if (!(await canWriteOutcome(ctx, ctx.tripId!, input.gameId, input.matchId))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only clear outcomes for your own match.",
         });
       }
 
