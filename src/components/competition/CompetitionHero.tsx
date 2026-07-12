@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Settings, Users } from "lucide-react";
+import { Settings, Trophy, Users } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -74,6 +74,8 @@ export function CompetitionHero({
   tagline,
   teams,
   teamTotals,
+  projectedTeamTotals,
+  hasLiveProjection = false,
   pointsAvailable,
   winNumber,
   clincher,
@@ -87,6 +89,12 @@ export function CompetitionHero({
   tagline: string | null;
   teams: LBTeam[];
   teamTotals: Record<string, number>;
+  /** Per-team projected total ("if today holds") = banked + Σ live projections
+   *  (server-summed). Absent on callers with no projection (game-page header). */
+  projectedTeamTotals?: Record<string, number>;
+  /** ≥1 game live → render the projected tier at all (independent of any delta).
+   *  Default false → no tier (the between-rounds / points-cup / collapsed cases). */
+  hasLiveProjection?: boolean;
   pointsAvailable: number;
   winNumber: number;
   clincher: LBTeam | null;
@@ -245,6 +253,29 @@ export function CompetitionHero({
                 ? `First to ${fmtPts(winNumber)} wins`
                 : "No points in play yet"}
             </p>
+
+            {/* PROJECTED "if today holds" tier (Path A) — banked + Σ live-game
+                projections per team, with a ▲ delta pill. TIER GATE: only when ≥1
+                game is live (hasLiveProjection); nothing live → the hero collapses to
+                just the banked score above. */}
+            {hasLiveProjection && a && b && (
+              <div
+                className="mt-3.5 pt-3.5"
+                style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
+                data-testid="hero-projected-tier"
+              >
+                <p
+                  className="mb-2 text-center"
+                  style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, color: "var(--color-bt-text-dim)" }}
+                >
+                  Projected if today holds
+                </p>
+                <div className="flex items-center justify-between">
+                  <HeroProjSide team={a} projected={projectedTeamTotals?.[a.id] ?? aTotal} banked={aTotal} winNumber={winNumber} align="left" />
+                  <HeroProjSide team={b} projected={projectedTeamTotals?.[b.id] ?? bTotal} banked={bTotal} winNumber={winNumber} align="right" />
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -685,6 +716,57 @@ function TeamName({
     >
       {content}
     </button>
+  );
+}
+
+/**
+ * HeroProjSide — one team's projected "if today holds" block: the projected TOTAL
+ * (team-colored) + a ▲ delta pill, mirrored on each side (left / row-reversed right).
+ *
+ * Per-team pill GATE: the pill shows ONLY when delta > 0. A team the live games add
+ * nothing to shows a BARE projected number (which equals its banked number) — the
+ * absent pill is the signal that it projects no gain (the matching number is correct,
+ * not a bug). The shared `ProjectionPill` carries the ▲ grammar.
+ *
+ * Projected-win FLAIR: a small cup icon when the projected total crosses the win
+ * threshold ("if today holds, they clinch"). Threshold comparison ONLY — this is not
+ * clinch detection (no terminal state / once-fire / correction-safety); it's a purely
+ * presentational icon driven by the live projected number.
+ */
+function HeroProjSide({
+  team,
+  projected,
+  banked,
+  winNumber,
+  align,
+}: {
+  team: LBTeam;
+  projected: number;
+  banked: number;
+  winNumber: number;
+  align: "left" | "right";
+}) {
+  const delta = projected - banked; // ≥ 0 (projections are awarded points)
+  const projectsWin = projected >= winNumber;
+  const cup = projectsWin ? (
+    <Trophy size={15} style={{ color: team.color }} aria-label="Projected to win" data-testid={`hero-proj-cup-${align === "left" ? "a" : "b"}`} />
+  ) : null;
+  const num = (
+    <span className="tabular-nums" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: team.color }}>
+      {fmtPts(projected)}
+    </span>
+  );
+  // Pill only when the team projects a gain; delta 0 → bare number (no pill).
+  const pill = delta > 0 ? <ProjectionPill color={team.color} value={delta} /> : null;
+  return (
+    <div
+      className={`flex items-center gap-2 ${align === "right" ? "flex-row-reverse" : ""}`}
+      data-testid={`hero-proj-${align === "left" ? "a" : "b"}`}
+    >
+      {cup}
+      {num}
+      {pill}
+    </div>
   );
 }
 
