@@ -152,13 +152,13 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
                 side, two stacked for 2v2 (A2a: no compound avatar / "Name & …"). The
                 segment wrapper owns the selection surface, so each chip's own surface
                 is stripped to transparent and shows it through. */}
-            <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none", height: "100%" }} />
+            <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none" }} />
           </Segment>
           <Segment selected={even} onClick={() => onChange(0)} narrow>
             Even
           </Segment>
           <Segment selected={side === "b"} onClick={() => pickSide("b")} innerRef={segBRef}>
-            <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none", height: "100%" }} />
+            <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none" }} />
           </Segment>
         </div>
 
@@ -223,10 +223,13 @@ function Segment({
       style={{
         flex: narrow ? "0 0 auto" : "1 1 0",
         justifyContent: "center",
-        // Player segments carry the shared PlayerChip (which owns its own avatar
+        // Player segments carry the shared SideChips (which own their own avatar
         // inset), so the segment adds no padding; the narrow Even segment hugs its
-        // centered label with its own padding.
-        height: 44,
+        // centered label with its own padding. `minHeight` (not a fixed height) so a
+        // DOUBLES side's two stacked chips grow the row instead of being clipped;
+        // singles keep the 44 baseline, and the flex row stretches all segments
+        // (incl. Even) to the tallest.
+        minHeight: 44,
         borderRadius: 10,
         padding: narrow ? "0 14px" : 0,
         // Selection treatment = TEAL FILL (the scoped expansion of the teal
