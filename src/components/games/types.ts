@@ -34,6 +34,11 @@ export interface Participant {
 /** { [participantId]: { [unitLabel]: value } } */
 export type ScoreValues = Record<string, Record<string, number>>;
 
+/** { [matchId]: { [holeLabel]: HoleOutcomeResult } } — the hole-outcome-entry
+ *  (Refactor B) counterpart to `ScoreValues`. Keyed by MATCH (not participant) —
+ *  an outcome belongs to the match, not either player. */
+export type OutcomeValues = Record<string, Record<string, import("@/lib/matchPlay").HoleOutcomeResult>>;
+
 /** Slice A is always low_wins; typed so later strategies can extend. */
 export type ScoreDirection = "low_wins";
 
