@@ -8,7 +8,15 @@ import { MatchCard } from "./MatchCard";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
-import { unconfirmedOnHole, unconfirmedCount, type OutcomeValues, type SaveStatusMap } from "./types";
+import { ScoreSaveBadge } from "./ScoreSaveBadge";
+import {
+  unconfirmedOnHole,
+  unconfirmedCount,
+  outcomeCellKey,
+  type OutcomeValues,
+  type SaveStatusMap,
+  type CellSaveState,
+} from "./types";
 import type { MatchGroupData } from "./MatchEntryView";
 
 /**
@@ -100,11 +108,14 @@ export function MatchOutcomeEntryView({
   };
   const holeGate = unconfirmedOnHole(saveStatus, [m.matchId], label);
   const gameGate = unconfirmedCount(saveStatus);
-  const advanceReason = holeGate.errored > 0
-    ? "Didn’t save — retry above"
-    : holeGate.saving > 0
-      ? "Saving…"
-      : undefined;
+  // Next Hole's gate is unchanged (still held until confirmed) — but unlike
+  // score entry, one tap both completes AND saves the hole here, so the CTA
+  // would otherwise render already-disabled with a "Saving…" caption on
+  // basically every hole, reflowing the panel. The per-choice ScoreSaveBadge
+  // below carries that feedback instead (in place, no new row); the CTA no
+  // longer needs its own subtext for the routine save.
+  const cellSaveState = saveStatus[outcomeCellKey(m.matchId, hole)];
+  const retryThisHole = () => onRetryCell?.(m.matchId, label);
   const finishReason = gameGate.errored > 0
     ? "Some outcomes didn’t save — retry before finishing"
     : gameGate.saving > 0
@@ -247,6 +258,8 @@ export function MatchOutcomeEntryView({
             sub={selected === "side_a" ? "Won the hole" : undefined}
             onClick={() => pick("side_a")}
             testId="outcome-choice-a"
+            saveState={selected === "side_a" ? cellSaveState : undefined}
+            onRetry={retryThisHole}
           />
           <Choice
             selected={selected === "halved"}
@@ -256,6 +269,8 @@ export function MatchOutcomeEntryView({
             sub={selected === "halved" ? "Hole halved" : undefined}
             onClick={() => pick("halved")}
             testId="outcome-choice-halved"
+            saveState={selected === "halved" ? cellSaveState : undefined}
+            onRetry={retryThisHole}
           />
           <Choice
             selected={selected === "side_b"}
@@ -267,6 +282,8 @@ export function MatchOutcomeEntryView({
             sub={selected === "side_b" ? "Won the hole" : undefined}
             onClick={() => pick("side_b")}
             testId="outcome-choice-b"
+            saveState={selected === "side_b" ? cellSaveState : undefined}
+            onRetry={retryThisHole}
           />
         </div>
         {selected != null && (
@@ -296,7 +313,6 @@ export function MatchOutcomeEntryView({
           label={`Hole ${units[hole]?.label ?? hole + 1} ›`}
           onClick={() => goHole(hole + 1)}
           disabled={holeGate.blocked}
-          subtext={advanceReason}
         />
       ) : null}
     </div>
@@ -323,6 +339,8 @@ function Choice({
   sub,
   onClick,
   testId,
+  saveState,
+  onRetry,
 }: {
   selected: boolean;
   dim: boolean;
@@ -334,17 +352,31 @@ function Choice({
   sub?: string;
   onClick: () => void;
   testId: string;
+  /** In-flight save state for THIS choice's hole, only when it's the selected
+   *  one (mirrors PlayerRow's inline `ScoreSaveBadge` — score entry's same
+   *  feedback, in the same footprint, so the panel below never reflows). */
+  saveState?: CellSaveState;
+  onRetry?: () => void;
 }) {
   const tint = neutral ? "var(--color-bt-accent)" : color ?? "var(--color-bt-accent)";
+  // Only the transient states borrow the badge — once saved, this settles
+  // back to the plain team-colored ✓ below (a "saved" badge would lose the
+  // team-color meaning the solid check carries).
+  const showBadge = saveState === "saving" || saveState === "error";
   return (
-    <button
-      type="button"
+    // role=button (not <button>) so ScoreSaveBadge's error-state Retry button
+    // can nest without invalid button-in-button markup — same pattern as
+    // score entry's PlayerRow.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
       className="flex w-full items-center gap-3 text-left transition-opacity"
       data-testid={testId}
       style={{
         padding: 14,
         borderRadius: 12,
+        cursor: "pointer",
         background: selected ? `color-mix(in srgb, ${tint} 14%, transparent)` : "var(--color-bt-card)",
         border: `1.5px solid ${selected ? tint : "var(--color-bt-border)"}`,
         opacity: dim ? 0.5 : 1,
@@ -364,21 +396,25 @@ function Choice({
         <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>
         {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{sub}</div>}
       </div>
-      <span
-        className="flex flex-shrink-0 items-center justify-center"
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          border: `2px solid ${selected ? tint : "var(--color-bt-border)"}`,
-          background: selected ? tint : "transparent",
-          color: selected ? "var(--color-bt-on-accent)" : "transparent",
-          fontSize: 12,
-          fontWeight: 800,
-        }}
-      >
-        ✓
-      </span>
-    </button>
+      {showBadge ? (
+        <ScoreSaveBadge state={saveState} onRetry={onRetry} />
+      ) : (
+        <span
+          className="flex flex-shrink-0 items-center justify-center"
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            border: `2px solid ${selected ? tint : "var(--color-bt-border)"}`,
+            background: selected ? tint : "transparent",
+            color: selected ? "var(--color-bt-on-accent)" : "transparent",
+            fontSize: 12,
+            fontWeight: 800,
+          }}
+        >
+          ✓
+        </span>
+      )}
+    </div>
   );
 }

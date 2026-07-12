@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MatchOutcomeEntryView } from "./MatchOutcomeEntryView";
 import type { MatchGroupData } from "./MatchEntryView";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
-import type { OutcomeValues } from "./types";
+import type { OutcomeValues, SaveStatusMap } from "./types";
 
 /**
  * MatchOutcomeEntryView (Refactor B2, built to hole_outcome_entry_mockup.html).
@@ -36,7 +36,13 @@ const units = [
 // 18-hole unit list to land on a real glorious hole.
 const units18 = Array.from({ length: 18 }, (_, i) => ({ label: String(i + 1), par: 4 }));
 
-function render(values: OutcomeValues, hole = 1, glorious: GloriousConfig = NO_GLORIOUS, unitList = units) {
+function render(
+  values: OutcomeValues,
+  hole = 1,
+  glorious: GloriousConfig = NO_GLORIOUS,
+  unitList = units,
+  saveStatus?: SaveStatusMap
+) {
   return renderToStaticMarkup(
     <MatchOutcomeEntryView
       gameName="Test Game"
@@ -48,6 +54,7 @@ function render(values: OutcomeValues, hole = 1, glorious: GloriousConfig = NO_G
       currentHole={hole}
       meId="a1"
       glorious={glorious}
+      saveStatus={saveStatus}
     />
   );
 }
@@ -92,5 +99,34 @@ describe("MatchOutcomeEntryView — the three-choice entry zone", () => {
   it("shows the closed-out result banner once the match is decided", () => {
     const html = render({ m1: { "1": "side_a", "2": "side_a", "3": "side_a" } });
     expect(html).toContain("Brad def. Johnny D");
+  });
+});
+
+describe("MatchOutcomeEntryView — inline save feedback (no BottomCTA reflow)", () => {
+  it("shows the selected choice's plain check when nothing is in flight — no save badge, no caption", () => {
+    const html = render({ m1: { "1": "side_a" } });
+    expect(html).not.toContain('aria-label="Saving"');
+    expect(html).not.toContain("Retry");
+  });
+
+  it("swaps the selected choice's check for the inline saving badge while its save is in flight", () => {
+    const html = render({ m1: { "1": "side_a" } }, 1, NO_GLORIOUS, units, { "m1:1": "saving" });
+    expect(html).toContain('aria-label="Saving"');
+    // No layout-shifting caption below the Next Hole CTA — the badge alone carries it.
+    expect(html).not.toContain("Saving…");
+  });
+
+  it("shows an inline retry affordance on the selected choice when its save errored — Next Hole stays held, no caption row", () => {
+    const html = render({ m1: { "1": "side_a" } }, 1, NO_GLORIOUS, units, { "m1:1": "error" });
+    expect(html).toContain("tap to retry");
+    expect(html).toContain("Retry");
+    expect(html).not.toContain("retry above");
+  });
+
+  it("never shows the saving/error badge on an UNselected choice, even if its hole key matches another match", () => {
+    // Only side_a is selected; side_b/halved must render the plain empty ring.
+    const html = render({ m1: { "1": "side_a" } }, 1, NO_GLORIOUS, units, { "m1:1": "saving" });
+    // Exactly one saving badge (side_a's), not three.
+    expect(html.split('aria-label="Saving"').length - 1).toBe(1);
   });
 });
