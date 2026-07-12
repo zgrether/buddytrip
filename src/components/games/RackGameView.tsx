@@ -28,7 +28,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
+import { playerStats, computeRack, rackProjectedTeamPoints, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -282,9 +282,21 @@ export function RackGameView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participants, teamOf, handicapOf, scUnits, scIndex, coursePar, loadedValues, values]);
   const rack = useMemo(() => computeRack(rackPlayers, mode, coursePar), [rackPlayers, mode, coursePar]);
-  // #533 projection (rack) — REUSE the existing rack projection ("if it ended now"
-  // = computeRack in "projected" mode), NOT a rebuild. Map A/B → the two team ids.
-  const projectedPoints = useMemo(() => computeRack(rackPlayers, "projected", coursePar).points, [rackPlayers, coursePar]);
+  // Rack's `per_match` = points PER SLOT (the "Points per Slot" field); a legacy
+  // rack with no per_match distribution → 1, mirroring the decided path
+  // (`computeRackNStackResults`: `value = perMatch ? dist.value : 1`).
+  const perSlotValue = useMemo(() => {
+    const dist = gameQ.data?.points_distribution;
+    return dist?.type === "per_match" ? dist.value : 1;
+  }, [gameQ.data]);
+  // #533 projection (rack) — "if it ended now" projected slots × the per-slot
+  // value = COMPETITION points (the SAME shared helper the board's liveProjection
+  // uses, so the two can't diverge; and the same currency as a match pill). Map
+  // A/B → the two team ids.
+  const projectedPoints = useMemo(
+    () => rackProjectedTeamPoints(rackPlayers, coursePar, perSlotValue),
+    [rackPlayers, coursePar, perSlotValue]
+  );
 
   // Rack SLOT count = the number of rank-paired 1v1s = min(grouped-A, grouped-B),
   // mirroring computeRack's `n = min(A.length, B.length)`. Derived from the

@@ -54,7 +54,7 @@ describe("projectGame — match play", () => {
 });
 
 describe("projectGame — rack", () => {
-  it("returns per-team raw slot points (matching the rack game page's projection)", () => {
+  it("returns per-team COMPETITION points = projected slots × per-slot value (per_match)", () => {
     const input: LiveProjectionInput = { id: "g2", gameTypeId: "gtt_rack_n_stack", pointsPerMatch: 3 };
     const data: GameProjectionData = {
       schema: { units: { metadata: { par: [4, 4], handicap_index: [1, 2] } } },
@@ -70,7 +70,27 @@ describe("projectGame — rack", () => {
       }),
       userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
     };
-    // rank-paired: (p1<p4) → t1, (p3<p2) → t1 → t1 sweeps both slots (raw points).
+    // rank-paired: (p1<p4) → t1, (p3<p2) → t1 → t1 sweeps both slots = 2 slots.
+    // × per_match (3, points-per-slot) → 6 competition points (NOT raw 2).
+    expect(projectGame(input, data)).toEqual({ t1: 6, t2: 0 });
+  });
+
+  it("a legacy rack with no per_match value (0) falls back to ×1 (raw slots)", () => {
+    const input: LiveProjectionInput = { id: "g2", gameTypeId: "gtt_rack_n_stack", pointsPerMatch: 0 };
+    const data: GameProjectionData = {
+      schema: { units: { metadata: { par: [4, 4], handicap_index: [1, 2] } } },
+      modifiers: null,
+      matches: [],
+      parts: [part("p1"), part("p2"), part("p3"), part("p4")],
+      playGroups: [],
+      gross: gross({
+        p1: { "1": 3, "2": 3 },
+        p3: { "1": 4, "2": 4 },
+        p4: { "1": 4, "2": 4 },
+        p2: { "1": 5, "2": 5 },
+      }),
+      userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
+    };
     expect(projectGame(input, data)).toEqual({ t1: 2, t2: 0 });
   });
 });
