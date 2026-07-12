@@ -6,6 +6,7 @@ import { isManualGameType } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
 import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
 /** Singles vs doubles head-to-head sizing for the team-size-derived formats
  *  (rack-n-stack). Match play itself counts its configured rows instead. */
@@ -254,6 +255,31 @@ export async function computeCompetitionLeaderboard(
     }
   }
 
+  // Live per-team projections (leaderboard grid Phase 2). Only in-progress
+  // (active & started) match/rack games get a "if today holds" projection — the
+  // board's LIVE-section pill. Runs the SAME pure functions the game page uses
+  // (Path A), read-only, and rides this payload's existing 30s poll (no new
+  // fetch on the client, converges across devices for free). Stroke/non-golf and
+  // not-yet-started games have no projection → their rows keep the plain layout.
+  const liveProjectionInputs: LiveProjectionInput[] = allGames
+    .filter((g) => {
+      const t = g.game_type_id as string | null;
+      return (
+        g.status === "active" &&
+        startedByGame.has(g.id as string) &&
+        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE)
+      );
+    })
+    .map((g) => {
+      const dist = g.points_distribution as PointsDistribution | null;
+      return {
+        id: g.id as string,
+        gameTypeId: (g.game_type_id as string | null) ?? null,
+        pointsPerMatch: isPerMatch(dist) ? dist.value : 0,
+      };
+    });
+  const projections = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);
+
   return {
     teams: teams ?? [],
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
@@ -298,6 +324,9 @@ export async function computeCompetitionLeaderboard(
       };
     }),
     cells,
+    // gameId → teamId → projected points (LIVE match/rack games only). The board
+    // renders these as the ▲ projected-points pill in each team column.
+    projections,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
     teamTotals: Object.fromEntries(roll.teamTotals),

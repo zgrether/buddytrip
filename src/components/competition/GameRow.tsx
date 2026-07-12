@@ -124,6 +124,8 @@ export function GameRow({
   game,
   teams,
   cells,
+  scoringModel,
+  projection,
   tripId,
   mine,
   canEdit,
@@ -135,6 +137,13 @@ export function GameRow({
   game: LBGame;
   teams: LBTeam[];
   cells: Map<string, LBCell> | undefined;
+  /** The competition's scoring model — gates the LIVE projected-points pill grid
+   *  to match_play boards (the same boards whose completed rows use the team-column
+   *  grid). Points cups keep the plain outer column on live rows. */
+  scoringModel: ScoringModel;
+  /** teamId → projected points for THIS game (LIVE match/rack only). Present →
+   *  the row renders the ▲ pill grid instead of the outer `N PTS` column. */
+  projection?: Record<string, number>;
   tripId: string;
   mine: boolean;
   /** Trip-level edit access (Owner/Organizer). ORed with `mine` (this game's
@@ -198,6 +207,15 @@ export function GameRow({
   const armed = iconArmed(game);
   const armedIcon = armed && !isFinal;
 
+  // LIVE projected-points pill grid (leaderboard grid Phase 2). A live (on-tap)
+  // match/rack game in a match_play cup carries a per-team projection → the row
+  // trades its outer `N PTS` column for a ▲ pill in each team column (aligned to
+  // the completed grid's short-name header). No projection (stroke, not-yet-
+  // started, a points cup) → the plain outer column stays. Gated on match_play so
+  // the pills line up with the completed team-column grid (points cups use a
+  // podium there, not team columns).
+  const showProjectionPills = section === "on-tap" && scoringModel === "match_play" && projection != null;
+
   // Subtitle / running state (§A3), all keyed off the one derived section:
   //  - on-tap    → running state (the real "Blue 2 up · thru 13" is deferred).
   //  - ready     → Ready for Play: enabled + pairings up, waiting on the first score.
@@ -211,7 +229,9 @@ export function GameRow({
   //  - completed → none; the compressed row + outer result speak for it.
   const subtitle =
     section === "on-tap"
-      ? "Underway · scoring"
+      ? showProjectionPills
+        ? "Projected results" // the cells now carry projections → the subtitle says so
+        : "Underway · scoring"
       : section === "ready"
       ? "Ready to play"
       : section === "preparing"
@@ -337,10 +357,24 @@ export function GameRow({
           </span>
         ))}
 
-      {/* Outer column — pts-or-result, pinned right, right-aligned (§A5). */}
-      <div className="flex shrink-0 flex-col items-end" style={{ minWidth: 44 }}>
-        <OuterColumn game={game} teams={teams} cells={cells} isFinal={isFinal} hasScores={!!hasScores} />
-      </div>
+      {/* LIVE → the ▲ projected-points pill in each team column (aligned to the
+          completed grid's GRID_COLW columns via the shared width). Else the outer
+          pts-or-result column, pinned right (§A5). */}
+      {showProjectionPills ? (
+        teams.map((t) => (
+          <span
+            key={t.id}
+            className="flex shrink-0 items-center justify-center"
+            style={{ width: GRID_COLW }}
+          >
+            <ProjectionPill color={t.color} value={projection![t.id] ?? 0} alwaysTriangle />
+          </span>
+        ))
+      ) : (
+        <div className="flex shrink-0 flex-col items-end" style={{ minWidth: 44 }}>
+          <OuterColumn game={game} teams={teams} cells={cells} isFinal={isFinal} hasScores={!!hasScores} />
+        </div>
+      )}
     </div>
   );
 
@@ -443,6 +477,47 @@ function ordinal(n: number): string {
  *  row's grid cells (match_play only) — the two can never misalign since both
  *  read the same constant. Sized for a short-name (≤5 char) column. */
 const GRID_COLW = 56;
+
+/**
+ * ProjectionPill — the ▲ projected-points pill (leaderboard grid Phase 2). A
+ * team-tinted pill: team color on a 16%-alpha team fill, the value in team color.
+ * The SAME visual grammar as the game-page projection strip (this is the extracted
+ * home of `CompetitionHero`'s old `DeltaChip`, which now delegates here so the two
+ * surfaces share one pill).
+ *
+ * `alwaysTriangle`: the board's live cell shows ▲ even at 0 (unambiguously a
+ * PROJECTION, distinct from a completed score of 0). The hero's contribution chip
+ * omits it (shows the ▲ only for a positive delta, a plain 0 otherwise).
+ */
+export function ProjectionPill({
+  color,
+  value,
+  alwaysTriangle = false,
+}: {
+  color: string;
+  value: number;
+  alwaysTriangle?: boolean;
+}) {
+  const triangle = alwaysTriangle || value > 0;
+  return (
+    <span
+      className="inline-flex items-center tabular-nums"
+      style={{
+        gap: 2,
+        padding: "2px 8px",
+        borderRadius: 9999,
+        fontSize: 11.5,
+        fontWeight: 700,
+        lineHeight: 1,
+        background: `color-mix(in srgb, ${color} 16%, transparent)`,
+        color,
+      }}
+    >
+      {triangle && <span style={{ fontSize: 8 }}>&#9650;</span>}
+      {fmtPts(value)}
+    </span>
+  );
+}
 
 /**
  * GridColumnHeader — team short-name column labels (team-colored, small caps,

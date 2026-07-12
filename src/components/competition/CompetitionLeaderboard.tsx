@@ -63,6 +63,9 @@ interface LeaderboardData {
   teams: LBTeam[];
   games: LBGame[];
   cells: LBCell[];
+  /** gameId → teamId → projected points, for LIVE match/rack games only (the
+   *  ▲ projected-points pill). Absent games have no live projection. */
+  projections: Record<string, Record<string, number>>;
   teamTotals: Record<string, number>;
   pointsAvailable: number;
   winNumber: number;
@@ -287,6 +290,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         games={liveGames}
         teams={teams}
         cellsByGame={cellsByGame}
+        projections={data.projections ?? {}}
         scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
@@ -304,11 +308,12 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, teams, cellsByGame, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
+  games, teams, cellsByGame, projections, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
+  projections: Record<string, Record<string, number>>;
   scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
@@ -356,6 +361,7 @@ function GamesSection({
         games={games}
         teams={teams}
         cellsByGame={cellsByGame}
+        projections={projections}
         scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
@@ -502,6 +508,7 @@ function SessionBreakdown({
   games,
   teams,
   cellsByGame,
+  projections,
   scoringModel,
   tripId,
   mineSet,
@@ -512,6 +519,7 @@ function SessionBreakdown({
   games: LBGame[];
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
+  projections: Record<string, Record<string, number>>;
   scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
@@ -583,6 +591,8 @@ function SessionBreakdown({
                     game={game}
                     teams={teams}
                     cells={cellsByGame.get(game.id)}
+                    projection={projections[game.id]}
+                    scoringModel={scoringModel}
                     tripId={tripId}
                     mine={mineSet.has(game.id)}
                     canEdit={canEdit}

@@ -153,6 +153,13 @@ These patterns have been established through prior work. Follow them exactly —
    imports the pure fn. Mirror this split for every new `result_strategy`, and
    branch `games.finish` on the template's `result_strategy` (data-driven, NOT a
    hardcoded format name) so new strategies slot in without touching `finish`.
+   The competition board's LIVE projected-points pill extends this: the read-only
+   `src/server/lib/liveProjection.ts` runs the SAME pure projection fns the game
+   pages use (`rollupMatchPlay` / `computeRack("projected")`) server-side and
+   folds the result into the `competitions.leaderboard` payload (rides its 30s
+   poll, no new client fetch), so the board pill and the game-page projection row
+   can't diverge. When a surface needs a live projection, reuse the pure fn — do
+   NOT write a second rollup.
 9. **Derived values recompute on every input — not just the obvious one.** A value
    derived from multiple inputs must re-derive when *any* of them changes;
    enumerate the full trigger set, not just the one that's easy to think of.
