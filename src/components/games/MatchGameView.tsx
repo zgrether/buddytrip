@@ -1110,12 +1110,16 @@ export function MatchGameView() {
     // The read-only scorecard — shared by a read-only/locked viewer's landing
     // surface and the scorer's overlay. Refactor B: an outcome-mode game has no
     // scores to grid, so it swaps in OutcomeScorecard (two lead rows) instead of
-    // StandardGrid. onCellTap (jump to a hole's entry) is editable-only, score-
-    // mode only for now (OutcomeScorecard has no cell-tap yet — hole nav covers
-    // navigation); back returns to the matches hub (#7).
+    // StandardGrid — same ScorecardChrome (tees/yardage/par/index), only the
+    // rows differ (CC follow-up: "look just like the normal scorecard"), so it
+    // gets the SAME tee/teeRows StandardGrid does. onCellTap (jump to a hole's
+    // entry) is editable-only, score-mode only for now (OutcomeScorecard has no
+    // cell-tap yet — hole nav covers navigation); back returns to the matches hub (#7).
     const scorecardGrid = outcomeMode ? (
       <OutcomeScorecard
         units={scUnits}
+        tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
+        teeRows={teeRows}
         a={selectedGroup.a}
         b={selectedGroup.b}
         outcomes={Object.entries(mergedOutcomeFor(selectedGroup.matchId)).map(([h, result]) => ({ hole: Number(h), result }))}
