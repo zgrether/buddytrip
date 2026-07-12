@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useOutcomeSaver } from "@/hooks/useOutcomeSaver";
+import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -464,6 +465,24 @@ export function MatchGameView() {
     return m;
   }, [serverParticipants, serverPlayGroups]);
 
+  // Draft durability (Layer 2 — hard-teardown outbox). The in-app flush net
+  // already persists a completed draft on every in-app exit; this mirrors the
+  // in-progress draft to localStorage so a refresh / tab-close / OS-kill /
+  // background can't lose it (incomplete drafts too). `serverFingerprint` is the
+  // persisted state the draft diverged from — the no-clobber guard for recover().
+  const serverFingerprint = useMemo(
+    () => JSON.stringify(serverDraftFrom(serverMatches, handicapOf, membersOfSide)),
+    [serverMatches, handicapOf, membersOfSide]
+  );
+  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<DraftMatch[]>({
+    view: "match",
+    gameId,
+    draft,
+    touched: draftTouched.current,
+    serverFingerprint,
+    enabled: !!gameId && !scoringEnabled,
+  });
+
   // A2b Total Points — the PAIRED server matches resolved to display players + each
   // match's per-match override (game_matches.point_value). Paired-only, so it's the
   // same denominator the award/leaderboard use. Feeds the Total Points row's override
@@ -634,6 +653,16 @@ export function MatchGameView() {
     // and matches are always consistent. This gate remains only so the seed reads
     // a loaded game row for its other fields.
     if (gameId && !gameQ.data) return;
+    // Hard-teardown recovery (Layer 2): if an outbox draft survived a
+    // refresh/kill AND the server is unchanged since it diverged, restore it and
+    // mark it touched — so the in-app net persists it and the server seed below
+    // never clobbers it. A stale outbox (server moved on) returns null + clears.
+    const recovered = recoverDraft();
+    if (recovered && recovered.length > 0) {
+      draftTouched.current = true;
+      setDraft(recovered);
+      return;
+    }
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide));
       return;
@@ -642,7 +671,7 @@ export function MatchGameView() {
     // valid empty state (the table hides; only "Add match" shows). "+ Add match"
     // grows it from there (build-as-you-go — W-GAMEPAGE-01 §6.1).
     setDraft([]);
-  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data]);
+  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data, recoverDraft]);
 
   // Seed the modifiers draft from the server — but ONLY while the row is closed,
   // so an in-progress edit is never clobbered. On collapse the row persists +
@@ -768,6 +797,7 @@ export function MatchGameView() {
     if (!tripId || !gameId) return;
     const ok = await saveSetup();
     if (!ok) return;
+    clearDraftOutbox(); // durably persisted on Enable → drop the teardown copy
     await enableScoring.mutateAsync({ tripId, gameId });
     const cur = utils.games.getById.getData({ tripId, gameId });
     if (cur) {
@@ -801,6 +831,7 @@ export function MatchGameView() {
         const empty = draft.map((d, i) => ({ playersPerSide: d.playersPerSide, sideA: null, sideB: null, matchNumber: i + 1 }));
         await setPairings.mutateAsync({ tripId, gameId, matches: empty });
         setCollapseError(false);
+        clearDraftOutbox(); // durably persisted → drop the teardown copy
         if (competitionId) {
           utils.competitions.leaderboard.invalidate({ tripId, competitionId });
           utils.games.listByTrip.invalidate({ tripId });
@@ -815,6 +846,7 @@ export function MatchGameView() {
       const ok = await saveSetup();
       if (ok) {
         setCollapseError(false);
+        clearDraftOutbox(); // durably persisted → drop the teardown copy
         // Mark the competition board stale so a LATER view refetches — but do NOT
         // refetch matchesQ here. Refetching mid-setup updates serverMatches with
         // the just-written (read-after-write racy) rows, which re-derives the
