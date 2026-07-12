@@ -49,8 +49,8 @@ describe("matches router (Slice B — setup + visibility)", () => {
       tripId,
       gameId,
       matches: [
-        { sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 },
-        { sideA: { type: "user", id: planner }, sideB: null, matchNumber: 2 },
+        { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 },
+        { playersPerSide: 1, sideA: { members: [planner] }, sideB: null, matchNumber: 2 },
       ],
     })) as MatchRow[];
     expect(matches).toHaveLength(2);
@@ -66,7 +66,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
       tripId,
       gameId,
       matchId: m1,
-      recipientUserId: member,
+      recipientId: member,
       strokes: 3,
     });
     const { data } = await ctx.admin
@@ -104,7 +104,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
     // under-configured (one empty slot) → enable REFUSED
     await ctx.callerAs("planner").matches.setPairings({
       tripId, gameId: g.id,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: null, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: null, matchNumber: 1 }],
     });
     await expect(
       ctx.callerAs("planner").matches.enableScoring({ tripId, gameId: g.id })
@@ -112,7 +112,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
     // fully paired → enable succeeds: publishes, member can see, status goes active
     await ctx.callerAs("planner").matches.setPairings({
       tripId, gameId: g.id,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     await ctx.callerAs("planner").matches.enableScoring({ tripId, gameId: g.id });
     const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId: g.id });
@@ -162,7 +162,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
       ctx.callerAs("member").matches.setPairings({
         tripId,
         gameId,
-        matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+        matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
       })
     ).rejects.toThrow();
     await expect(ctx.callerAs("member").matches.enableScoring({ tripId, gameId })).rejects.toThrow();
@@ -199,7 +199,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     // owner wins holes 1-3, halves 4-16 → +3 frozen at hole 16 = 3&2.
     const aWins = { 1: 4, 2: 4, 3: 4 };
@@ -235,7 +235,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     // Make it a 9-hole round (loadStrokeIndex reads units.count for the count).
     await ctx.admin.from("games").update({ scorecard_schema: { units: { count: 9 } } }).eq("id", gameId);
@@ -259,7 +259,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     const aHalf: Record<number, number> = {};
     const bHalf: Record<number, number> = {};
@@ -288,7 +288,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
   }
   // A is 6 DOWN thru 15 (loses 1–6, halves 7–15), then A wins 16/17/18.
@@ -353,10 +353,10 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     // member gets 1 stroke → fallback puts it on hole 1.
-    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId: (await firstMatchId(gameId)), recipientUserId: member, strokes: 1 });
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId: (await firstMatchId(gameId)), recipientId: member, strokes: 1 });
     // hole 1: owner 4, member 5 → gross owner wins, but member's net 4 → halved.
     await enter(gameId, owner, member, { 1: 4 }, { 1: 5 });
 
@@ -380,8 +380,8 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
       tripId,
       gameId,
       matches: [
-        { sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 },
-        { sideA: { type: "user", id: planner }, sideB: { type: "user", id: outsider }, matchNumber: 2 },
+        { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 },
+        { playersPerSide: 1, sideA: { members: [planner] }, sideB: { members: [outsider] }, matchNumber: 2 },
       ],
     });
     // Match 1: owner wins holes 1-10 → closes 10&8. Match 2: only hole 1 entered → in progress.
@@ -420,18 +420,18 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     const matchId = await firstMatchId(gameId);
     // Hole 1: owner 5, member 4 → with no strokes, member wins the hole.
     await enter(gameId, owner, member, { 1: 5 }, { 1: 4 });
-    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientUserId: member, strokes: 0 });
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientId: member, strokes: 0 });
     expect(await positionOf(gameId, member)).toBe(1); // member leads
     expect(await positionOf(gameId, owner)).toBe(2);
 
     // Give OWNER a stroke on hole 1 (fallback) → owner net 4 = member 4 → halved.
     // The previously-shown member win must NOT persist — the result re-derives.
-    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientUserId: owner, strokes: 1 });
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientId: owner, strokes: 1 });
     expect(await positionOf(gameId, owner)).toBe(1); // all square now
     expect(await positionOf(gameId, member)).toBe(1);
   });
@@ -441,7 +441,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
     const matchId = await firstMatchId(gameId);
     // Close 3&2: owner wins 1-3, halves 4-16.
@@ -456,7 +456,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
 
     // A big late handicap to member would change earlier holes — but the match
     // is frozen, so its recorded result must be untouched.
-    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientUserId: member, strokes: 18 });
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientId: member, strokes: 18 });
     const { data } = await ctx.admin.from("game_matches").select("result, margin, status").eq("id", matchId).single();
     expect(data).toMatchObject({ result: "a_win", margin: "3&2", status: "complete" });
   });

@@ -11,8 +11,11 @@
  * slot is an unfinished add, not a quiet drop.
  */
 
-/** A side-pairing — the only fields the readiness rule needs. */
+/** A side-pairing — the only fields the readiness rule needs. `playersPerSide` is
+ *  the match's own shape (1 = 1v1, 2 = 2v2), so a mixed game's readiness is judged
+ *  per match, not off an ambient game-level flag (Refactor A2a). */
 export interface MatchSides {
+  playersPerSide: 1 | 2;
   a: string[];
   b: string[];
 }
@@ -28,14 +31,14 @@ export function removeMatchRow<M extends MatchSides>(draft: M[], index: number):
   return draft.filter((_, j) => j !== index);
 }
 
-/** True when both sides carry exactly `playersPerSide` players. */
-export function isMatchFilled(match: MatchSides, playersPerSide: number): boolean {
-  return match.a.length === playersPerSide && match.b.length === playersPerSide;
+/** True when both sides carry exactly the match's own `playersPerSide` players. */
+export function isMatchFilled(match: MatchSides): boolean {
+  return match.a.length === match.playersPerSide && match.b.length === match.playersPerSide;
 }
 
 /** The filled subset — the matches that would actually be created/scored. */
-export function filledMatches<M extends MatchSides>(draft: M[], playersPerSide: number): M[] {
-  return draft.filter((m) => isMatchFilled(m, playersPerSide));
+export function filledMatches<M extends MatchSides>(draft: M[]): M[] {
+  return draft.filter((m) => isMatchFilled(m));
 }
 
 /**
@@ -51,8 +54,8 @@ export function filledMatches<M extends MatchSides>(draft: M[], playersPerSide: 
  * Keep them apart: P3 = "can the row be edited at all"; P-C = "does the Enable
  * button light up."
  */
-export function hasValidMatch(draft: MatchSides[], playersPerSide: number): boolean {
-  return filledMatches(draft, playersPerSide).length > 0;
+export function hasValidMatch(draft: MatchSides[]): boolean {
+  return filledMatches(draft).length > 0;
 }
 
 /**
@@ -74,8 +77,8 @@ export function matchPlayReady(pairedCount: number, totalCount: number): boolean
  * NOT ready (the hard block — no silent collapse to the filled count). Delegates
  * to `matchPlayReady` so the threshold is shared with the server, not duplicated.
  */
-export function allMatchesFilled(draft: MatchSides[], playersPerSide: number): boolean {
-  return matchPlayReady(filledMatches(draft, playersPerSide).length, draft.length);
+export function allMatchesFilled(draft: MatchSides[]): boolean {
+  return matchPlayReady(filledMatches(draft).length, draft.length);
 }
 
 /** A server match side: one user (1v1), one play_group (2v2), or an empty slot. */

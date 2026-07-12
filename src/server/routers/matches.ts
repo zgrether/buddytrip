@@ -28,11 +28,12 @@ import { computeMatchPlayResults } from "../lib/matchPlay";
 // generous ceiling — far above any realistic field — not the old fixed 4.
 const MAX_MATCHES = 24;
 
-const sideSchema = z.object({ type: z.literal("user"), id: z.string().min(1) });
-// 2v2 (doubles): a side is a PAIR of users. setDoublesPairings creates a
-// play_group per side and stores side_a/side_b as {"type":"play_group","id":pgId}
-// — the SAME match engine as singles, with the side being a pair.
-const doublesSideSchema = z.object({ members: z.array(z.string().min(1)).length(2) });
+// Unified per-match side (Refactor A2a). A side is a list of member user-ids:
+// ONE member = a 1v1 side (stored `{type:"user",id}`, no play_group), TWO members
+// = a 2v2 side (a play_group is minted, stored `{type:"play_group",id:pgId}`).
+// Which it is comes from the match's own `playersPerSide`, so ONE game can mix 1v1
+// and 2v2 matches. The result engine resolves a side by id regardless of type.
+const unifiedSideSchema = z.object({ members: z.array(z.string().min(1)).min(1).max(2) });
 
 async function assertGameInTrip(
   ctx: { supabase: { from: (t: string) => unknown } },
@@ -58,9 +59,13 @@ async function assertGameInTrip(
 }
 
 export const matchesRouter = router({
-  // setPairings — Owner/Organizer. Replaces the game's matches and seeds the
-  // foursome card (one play_group shared by the matches). Empty slots allowed
-  // (filled later via assignPlayer); only set sides become participants.
+  // setPairings — Owner/Organizer. Clean-replaces the game's matches. Each match
+  // declares its own `playersPerSide` (1 = 1v1, 2 = 2v2), so ONE game can mix both
+  // (Refactor A2a). Per side: a 1v1 side becomes `{type:"user",id}` (no play_group);
+  // a 2v2 side mints a play_group and stores `{type:"play_group",id:pgId}`. Empty
+  // slots (null) are allowed. The result math (computeMatchPlayResults) resolves a
+  // side by id regardless of type, so a mixed game computes with no engine change.
+  // (Unifies the former setPairings + setDoublesPairings.)
   setPairings: authedProcedure
     .input(
       z.object({
@@ -69,8 +74,9 @@ export const matchesRouter = router({
         matches: z
           .array(
             z.object({
-              sideA: sideSchema.nullable(),
-              sideB: sideSchema.nullable(),
+              playersPerSide: z.union([z.literal(1), z.literal(2)]),
+              sideA: unifiedSideSchema.nullable(),
+              sideB: unifiedSideSchema.nullable(),
               matchNumber: z.number().int().min(1),
             })
           )
@@ -84,46 +90,105 @@ export const matchesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
-      // Replace existing matches for a clean re-save. play_group_id is NOT
-      // written in Slice B — the overview is a flat list, not foursome-grouped
-      // (the play_groups table is Slice C's 2v2 scoring side).
-      await ctx.supabase.from("game_matches").delete().eq("game_id", input.gameId);
+      // Per-match shape sanity: a non-null side carries exactly its match's
+      // players-per-side (1 for 1v1, 2 for 2v2). The client only sends complete
+      // sides; the raw API is validated here too.
+      for (const m of input.matches) {
+        for (const side of [m.sideA, m.sideB]) {
+          if (side && side.members.length !== m.playersPerSide) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `A ${m.playersPerSide === 2 ? "2v2" : "1v1"} side must have ${m.playersPerSide} player(s)`,
+            });
+          }
+        }
+      }
 
-      const rows = input.matches.map((m, i) => ({
+      // Setup-integrity backstop: in a competition, both members of a 2v2 pair
+      // MUST be on the same team (a side is one team's pair). The client's picker
+      // prevents it; this hard-blocks the raw API (defense in depth).
+      const { data: gameRow } = await ctx.supabase
+        .from("games")
+        .select("competition_id")
+        .eq("id", input.gameId)
+        .maybeSingle();
+      const competitionId = (gameRow?.competition_id as string | null) ?? null;
+      if (competitionId) {
+        const { data: assigns } = await ctx.supabase
+          .from("team_assignments")
+          .select("user_id, team_id")
+          .eq("competition_id", competitionId);
+        const teamOf = new Map<string, string>();
+        for (const a of assigns ?? []) teamOf.set(a.user_id as string, a.team_id as string);
+        for (const m of input.matches) {
+          if (m.playersPerSide !== 2) continue;
+          for (const side of [m.sideA, m.sideB]) {
+            if (!side) continue;
+            const t0 = teamOf.get(side.members[0]);
+            const t1 = teamOf.get(side.members[1]);
+            if (t0 && t1 && t0 !== t1) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "A 2v2 pair must be from the same team" });
+            }
+          }
+        }
+      }
+
+      // Clean replace (setup-time, before scoring). Order: matches + participants
+      // reference play_groups (ON DELETE SET NULL), so clear children then groups.
+      await ctx.supabase.from("game_matches").delete().eq("game_id", input.gameId);
+      await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId);
+      await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId);
+
+      const pgRows: { id: string; game_id: string; display_name: null }[] = [];
+      const partRows: {
+        id: string;
+        game_id: string;
+        user_id: string;
+        play_group_id: string | null;
+        team_id: null;
+      }[] = [];
+      // Build a side ref from its member list: 1 member = user side (participant,
+      // no group); 2 members = a minted play_group side (participants tagged with
+      // the group). null = empty slot.
+      const mkSide = (side: { members: string[] } | null): { type: string; id: string } | null => {
+        if (!side) return null;
+        if (side.members.length === 1) {
+          const uid = side.members[0];
+          partRows.push({ id: crypto.randomUUID(), game_id: input.gameId, user_id: uid, play_group_id: null, team_id: null });
+          return { type: "user", id: uid };
+        }
+        const pgId = crypto.randomUUID();
+        pgRows.push({ id: pgId, game_id: input.gameId, display_name: null });
+        for (const uid of side.members) {
+          partRows.push({ id: crypto.randomUUID(), game_id: input.gameId, user_id: uid, play_group_id: pgId, team_id: null });
+        }
+        return { type: "play_group", id: pgId };
+      };
+      const matchRows = input.matches.map((m, i) => ({
         id: crypto.randomUUID(),
         game_id: input.gameId,
         play_group_id: null,
         match_number: m.matchNumber,
         display_order: i,
-        side_a: m.sideA,
-        side_b: m.sideB,
+        side_a: mkSide(m.sideA),
+        side_b: mkSide(m.sideB),
         status: "pending",
       }));
-      const { error } = await ctx.supabase.from("game_matches").insert(rows);
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to set pairings: ${error.message}`,
-        });
-      }
 
-      // Seed participant rows (handicap_strokes lives here) for every set side.
-      const userIds = [
-        ...new Set(
-          input.matches.flatMap((m) => [m.sideA?.id, m.sideB?.id]).filter((x): x is string => !!x)
-        ),
-      ];
-      if (userIds.length > 0) {
-        await ctx.supabase.from("game_participants").upsert(
-          userIds.map((userId) => ({
-            id: crypto.randomUUID(),
-            game_id: input.gameId,
-            user_id: userId,
-            play_group_id: null,
-            team_id: null,
-          })),
-          { onConflict: "game_id,user_id", ignoreDuplicates: true }
-        );
+      if (pgRows.length > 0) {
+        const { error } = await ctx.supabase.from("play_groups").insert(pgRows);
+        if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to create sides: ${error.message}` });
+      }
+      if (partRows.length > 0) {
+        // One row per user per game (UNIQUE game_id,user_id) — a player is on one side.
+        const { error } = await ctx.supabase
+          .from("game_participants")
+          .upsert(partRows, { onConflict: "game_id,user_id" });
+        if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to seed players: ${error.message}` });
+      }
+      const { error } = await ctx.supabase.from("game_matches").insert(matchRows);
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set pairings: ${error.message}` });
       }
 
       const { data } = await ctx.supabase
@@ -225,15 +290,18 @@ export const matchesRouter = router({
       return data ?? [];
     }),
 
-  // setHandicap — Owner/Organizer. One side gets `strokes`, the other 0.
-  // Never split. (strokes=0 → even match, both 0.)
+  // setHandicap — Owner/Organizer. One side of a match gets `strokes`, the other
+  // 0 — never split (Refactor A2a: unifies setHandicap + setDoublesHandicap). The
+  // recipient is a SIDE id: a user id (1v1 → handicap on game_participants) or a
+  // play_group id (2v2 → handicap on play_groups). Both sides of a match share the
+  // same shape, so the target table is resolved once from the recipient's side type.
   setHandicap: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         gameId: z.string(),
         matchId: z.string().min(1),
-        recipientUserId: z.string().min(1),
+        recipientId: z.string().min(1),
         strokes: z.number().int().min(0).max(36),
       })
     )
@@ -250,29 +318,42 @@ export const matchesRouter = router({
       if (!match) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
       }
-      const sides = [
-        (match.side_a as { id: string } | null)?.id,
-        (match.side_b as { id: string } | null)?.id,
-      ].filter((x): x is string => !!x);
-      if (!sides.includes(input.recipientUserId)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Recipient is not in this match",
-        });
+      const sideA = match.side_a as { type: string; id: string } | null;
+      const sideB = match.side_b as { type: string; id: string } | null;
+      const recipientSide = [sideA, sideB].find((s) => s?.id === input.recipientId);
+      if (!recipientSide) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Recipient is not a side in this match" });
       }
-      const other = sides.find((id) => id !== input.recipientUserId);
+      const other = [sideA, sideB].find((s) => s && s.id !== input.recipientId) ?? null;
 
-      await ctx.supabase
-        .from("game_participants")
-        .update({ handicap_strokes: input.strokes })
-        .eq("game_id", input.gameId)
-        .eq("user_id", input.recipientUserId);
-      if (other) {
+      // The side's own type picks the handicap home: a user side → game_participants
+      // (keyed by user_id); a play_group side → play_groups (keyed by id).
+      if (recipientSide.type === "play_group") {
+        await ctx.supabase
+          .from("play_groups")
+          .update({ handicap_strokes: input.strokes })
+          .eq("id", input.recipientId)
+          .eq("game_id", input.gameId);
+        if (other) {
+          await ctx.supabase
+            .from("play_groups")
+            .update({ handicap_strokes: 0 })
+            .eq("id", other.id)
+            .eq("game_id", input.gameId);
+        }
+      } else {
         await ctx.supabase
           .from("game_participants")
-          .update({ handicap_strokes: 0 })
+          .update({ handicap_strokes: input.strokes })
           .eq("game_id", input.gameId)
-          .eq("user_id", other);
+          .eq("user_id", input.recipientId);
+        if (other) {
+          await ctx.supabase
+            .from("game_participants")
+            .update({ handicap_strokes: 0 })
+            .eq("game_id", input.gameId)
+            .eq("user_id", other.id);
+        }
       }
       // Handicap is a recompute INPUT — re-derive in-progress matches so existing
       // hole results reflect the new strokes (a frozen/complete match is skipped).
@@ -280,194 +361,16 @@ export const matchesRouter = router({
       return { ok: true };
     }),
 
-  // ── 2v2 / doubles (Slice C) ────────────────────────────────────────────────
-  // The side is a PAIR (a play_group), the score is one entry per side per hole.
-  // These are the doubles analogues of setPairings / setHandicap; the singles
-  // procedures above are untouched, and the result math (computeMatchPlayResults)
-  // is shared — it resolves a side by id whether the id is a user or a play_group.
-
-  // setDoublesPairings — Owner/Organizer. Clean-replace the game's matches:
-  // create a play_group per side (its 2 members → game_participants), and one
-  // game_match between the two play-group sides. Mirrors setPairings' clean
-  // re-save (setup-time; before scores exist).
-  setDoublesPairings: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        gameId: z.string(),
-        matches: z
-          .array(
-            z.object({
-              sideA: doublesSideSchema.nullable(),
-              sideB: doublesSideSchema.nullable(),
-              matchNumber: z.number().int().min(1),
-            })
-          )
-          // 0 matches is a valid empty state (see setPairings).
-          .min(0)
-          .max(MAX_MATCHES),
-      })
-    )
-    .use(requireGameEdit())
-    .mutation(async ({ ctx, input }) => {
-      await assertGameInTrip(ctx, input.gameId, ctx.tripId);
-
-      // Setup-integrity backstop: in a competition, both members of a pair MUST
-      // be on the same team — a side is one team's pair. The client constrains
-      // the picker so this can't happen from the UI; this hard-blocks the raw API
-      // (defense in depth — never silently accept a cross-team pair).
-      const { data: gameRow } = await ctx.supabase
-        .from("games")
-        .select("competition_id")
-        .eq("id", input.gameId)
-        .maybeSingle();
-      const competitionId = (gameRow?.competition_id as string | null) ?? null;
-      if (competitionId) {
-        const { data: assigns } = await ctx.supabase
-          .from("team_assignments")
-          .select("user_id, team_id")
-          .eq("competition_id", competitionId);
-        const teamOf = new Map<string, string>();
-        for (const a of assigns ?? []) teamOf.set(a.user_id as string, a.team_id as string);
-        for (const m of input.matches) {
-          for (const side of [m.sideA, m.sideB]) {
-            if (!side) continue;
-            const t0 = teamOf.get(side.members[0]);
-            const t1 = teamOf.get(side.members[1]);
-            if (t0 && t1 && t0 !== t1) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "A 2v2 pair must be from the same team" });
-            }
-          }
-        }
-      }
-
-      // Clean replace (setup-time, before scoring — mirrors setPairings). Order
-      // matters: matches reference play_groups (SET NULL), participants reference
-      // play_groups (SET NULL); clear children then the play_groups.
-      await ctx.supabase.from("game_matches").delete().eq("game_id", input.gameId);
-      await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId);
-      await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId);
-
-      const pgRows: { id: string; game_id: string; display_name: null }[] = [];
-      const partRows: {
-        id: string;
-        game_id: string;
-        user_id: string;
-        play_group_id: string;
-        team_id: null;
-      }[] = [];
-      const matchRows = input.matches.map((m, i) => {
-        const mkSide = (side: { members: string[] } | null) => {
-          if (!side) return null;
-          const pgId = crypto.randomUUID();
-          pgRows.push({ id: pgId, game_id: input.gameId, display_name: null });
-          for (const uid of side.members) {
-            partRows.push({
-              id: crypto.randomUUID(),
-              game_id: input.gameId,
-              user_id: uid,
-              play_group_id: pgId,
-              team_id: null,
-            });
-          }
-          return { type: "play_group" as const, id: pgId };
-        };
-        return {
-          id: crypto.randomUUID(),
-          game_id: input.gameId,
-          play_group_id: null,
-          match_number: m.matchNumber,
-          display_order: i,
-          side_a: mkSide(m.sideA),
-          side_b: mkSide(m.sideB),
-          status: "pending",
-        };
-      });
-
-      if (pgRows.length > 0) {
-        const { error } = await ctx.supabase.from("play_groups").insert(pgRows);
-        if (error) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to create sides: ${error.message}` });
-        }
-      }
-      if (partRows.length > 0) {
-        // One row per user per game (UNIQUE game_id,user_id) — a player is on one side.
-        const { error } = await ctx.supabase
-          .from("game_participants")
-          .upsert(partRows, { onConflict: "game_id,user_id" });
-        if (error) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to seed players: ${error.message}` });
-        }
-      }
-      const { error } = await ctx.supabase.from("game_matches").insert(matchRows);
-      if (error) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set pairings: ${error.message}` });
-      }
-
-      const { data } = await ctx.supabase
-        .from("game_matches")
-        .select("*")
-        .eq("game_id", input.gameId)
-        .order("display_order", { ascending: true });
-      return data ?? [];
-    }),
-
-  // setDoublesHandicap — Owner/Organizer. The recipient SIDE (a play_group) gets
-  // `strokes`, the other side 0 — never split. The side handicap lives on
-  // play_groups.handicap_strokes (the doubles analogue of game_participants).
-  setDoublesHandicap: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        gameId: z.string(),
-        matchId: z.string().min(1),
-        recipientPlayGroupId: z.string().min(1),
-        strokes: z.number().int().min(0).max(36),
-      })
-    )
-    .use(requireGameEdit())
-    .mutation(async ({ ctx, input }) => {
-      await assertGameInTrip(ctx, input.gameId, ctx.tripId);
-
-      const { data: match } = await ctx.supabase
-        .from("game_matches")
-        .select("side_a, side_b")
-        .eq("id", input.matchId)
-        .eq("game_id", input.gameId)
-        .maybeSingle();
-      if (!match) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
-      }
-      const sides = [
-        (match.side_a as { id: string } | null)?.id,
-        (match.side_b as { id: string } | null)?.id,
-      ].filter((x): x is string => !!x);
-      if (!sides.includes(input.recipientPlayGroupId)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Recipient is not a side in this match" });
-      }
-      const other = sides.find((id) => id !== input.recipientPlayGroupId);
-
-      await ctx.supabase
-        .from("play_groups")
-        .update({ handicap_strokes: input.strokes })
-        .eq("id", input.recipientPlayGroupId)
-        .eq("game_id", input.gameId);
-      if (other) {
-        await ctx.supabase
-          .from("play_groups")
-          .update({ handicap_strokes: 0 })
-          .eq("id", other)
-          .eq("game_id", input.gameId);
-      }
-      // Handicap is a recompute input — re-derive in-progress matches (#9 freeze).
-      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
-      return { ok: true };
-    }),
+  // ── legacy doubles twins removed (Refactor A2a) ─────────────────────────────
+  // setDoublesPairings / setDoublesHandicap were folded into the per-match
+  // setPairings / setHandicap above (shape comes from each match's playersPerSide
+  // / side type), so ONE game can mix 1v1 and 2v2. The result math was always
+  // shared (computeMatchPlayResults resolves a side by id regardless of type).
 
   // addMatch — Owner/Organizer/delegate. Append ONE empty match (the dynamic
   // "+1"). The configured match count = game_matches rows, so a new row raises
   // the clinch goalpost (value × count) immediately, paired or not. Sides get
-  // filled after via assignPlayer (1v1) / the doubles assignment flow. A match
+  // filled after via the setPairings clean-replace (per-match shape). A match
   // added to an already-active game is itself active (scoreable now); on a
   // pending game it stays pending until activate. Refuses past the cap.
   addMatch: authedProcedure

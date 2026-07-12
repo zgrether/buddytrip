@@ -67,11 +67,12 @@ async function freshGame(name: string) {
 
 /** Pair (owner+planner) vs (member+outsider). Returns the two play_group ids. */
 async function pairUp(gameId: string): Promise<{ pgA: string; pgB: string; matchId: string }> {
-  const matches = (await ctx.caller().matches.setDoublesPairings({
+  const matches = (await ctx.caller().matches.setPairings({
     tripId,
     gameId,
     matches: [
       {
+        playersPerSide: 2,
         sideA: { members: [owner, planner] },
         sideB: { members: [member, outsider] },
         matchNumber: 1,
@@ -83,7 +84,7 @@ async function pairUp(gameId: string): Promise<{ pgA: string; pgB: string; match
 }
 
 describe("doubles setup — sides are play_groups", () => {
-  it("setDoublesPairings creates a play_group per side with its two members", async () => {
+  it("setPairings creates a play_group per side with its two members", async () => {
     const gameId = await freshGame("Pairing");
     const { pgA, pgB } = await pairUp(gameId);
 
@@ -111,14 +112,14 @@ describe("doubles setup — sides are play_groups", () => {
     expect(m.side_b?.type).toBe("play_group");
   });
 
-  it("setDoublesHandicap stores the side handicap on play_groups (recipient n, other 0)", async () => {
+  it("setHandicap stores the side handicap on play_groups (recipient n, other 0)", async () => {
     const gameId = await freshGame("Side handicap");
     const { pgA, pgB, matchId } = await pairUp(gameId);
-    await ctx.callerAs("planner").matches.setDoublesHandicap({
+    await ctx.callerAs("planner").matches.setHandicap({
       tripId,
       gameId,
       matchId,
-      recipientPlayGroupId: pgB,
+      recipientId: pgB,
       strokes: 2,
     });
     const { data } = await ctx.admin.from("play_groups").select("id, handicap_strokes").eq("game_id", gameId);
@@ -132,11 +133,11 @@ describe("doubles setup — sides are play_groups", () => {
   it("a plain Member cannot set doubles pairings", async () => {
     const gameId = await freshGame("Gate");
     await expect(
-      ctx.callerAs("member").matches.setDoublesPairings({
+      ctx.callerAs("member").matches.setPairings({
         tripId,
         gameId,
         matches: [
-          { sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 },
+          { playersPerSide: 2, sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 },
         ],
       })
     ).rejects.toThrow();
@@ -176,7 +177,7 @@ describe("doubles results — one score per side, match engine reused", () => {
     const gameId = await freshGame("Side net");
     const { pgA, pgB, matchId } = await pairUp(gameId);
     // Side B gets 1 stroke → fallback puts it on hole 1.
-    await ctx.caller().matches.setDoublesHandicap({ tripId, gameId, matchId, recipientPlayGroupId: pgB, strokes: 1 });
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientId: pgB, strokes: 1 });
     // Hole 1: A gross 4, B gross 5 → B net 4 → halved, not an A win.
     await enterSides(gameId, pgA, pgB, { 1: 4 }, { 1: 5 });
 
@@ -222,12 +223,12 @@ describe("doubles team integrity — same-team pairs + correct attribution", () 
   it("hard-blocks a cross-team pair (setup-integrity backstop)", async () => {
     const gameId = await compGame("Cross-team");
     await expect(
-      ctx.caller().matches.setDoublesPairings({
+      ctx.caller().matches.setPairings({
         tripId,
         gameId,
         matches: [
           // owner=Blue + member=Red → a structurally invalid pair.
-          { sideA: { members: [owner, member] }, sideB: { members: [planner, outsider] }, matchNumber: 1 },
+          { playersPerSide: 2, sideA: { members: [owner, member] }, sideB: { members: [planner, outsider] }, matchNumber: 1 },
         ],
       })
     ).rejects.toThrow(/same team/i);
@@ -235,11 +236,11 @@ describe("doubles team integrity — same-team pairs + correct attribution", () 
 
   it("accepts same-team pairs and rolls match points to the winning team", async () => {
     const gameId = await compGame("Blue vs Red");
-    const matches = (await ctx.caller().matches.setDoublesPairings({
+    const matches = (await ctx.caller().matches.setPairings({
       tripId,
       gameId,
       matches: [
-        { sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 },
+        { playersPerSide: 2, sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 },
       ],
     })) as MatchRow[];
     const pgA = matches[0].side_a!.id; // Blue

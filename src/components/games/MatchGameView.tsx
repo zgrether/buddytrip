@@ -21,6 +21,7 @@ import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
+import type { SidePlayer } from "@/components/games/MatchSides";
 import { DragHandle } from "@/components/games/DragHandle";
 import { RowNumber } from "@/components/games/RowNumber";
 import { PlayerChip } from "@/components/games/PlayerChip";
@@ -64,6 +65,9 @@ const MAX_MATCHES = 24;
 type SideRef = { type: "user" | "play_group"; id: string } | null;
 interface DraftMatch {
   matchNumber: number;
+  /** Per-match shape (Refactor A2a): 1 = 1v1, 2 = 2v2. One game can mix both — a
+   *  side is FILLED when it carries exactly this many members. */
+  playersPerSide: 1 | 2;
   a: string[]; // member user ids on side A (≤ playersPerSide)
   b: string[]; // member user ids on side B
   handicap: number; // signed: <0 → a gets |n|, >0 → b gets n, 0 → even
@@ -230,30 +234,36 @@ export function MatchGameView() {
             (m.side_b as { type?: string } | null)?.type === "play_group"
         )
       : search.get("format") === "doubles";
-  const playersPerSide = sided ? 2 : 1;
 
-  // The matches that are actually playable — both sides fully assigned. An
-  // unfilled slot is not a match (it never scores), so teeing off COLLAPSES the
-  // game to these: the unfilled slots are discarded and points-in-play / the cup
-  // clinch recompute from this count. "Defined" was builder-time intent only.
-  const filledDraft = useMemo(
-    () => filledMatches(draft, playersPerSide),
-    [draft, playersPerSide]
+  // The matches that are actually playable — both sides fully assigned to their
+  // OWN shape. An unfilled slot is not a match (it never scores), so teeing off
+  // COLLAPSES the game to these: the unfilled slots are discarded and points-in-
+  // play / the cup clinch recompute from this count.
+  const filledDraft = useMemo(() => filledMatches(draft), [draft]);
+
+  // Per-match score-entry type (A2a): a 1v1 match writes per-user entries, a 2v2
+  // match writes per-side (play_group) entries — in the SAME mixed game. So the
+  // saver's participant_type is resolved PER participant id: any id that is one of
+  // this game's play_groups is 'play_group', otherwise 'user'. (The play_group id
+  // space is disjoint from user ids.)
+  const playGroupIdSet = useMemo(
+    () => new Set((matchesQ.data?.playGroups ?? []).map((pg) => (pg as { id: string }).id)),
+    [matchesQ.data]
   );
-
+  const participantTypeOf = useCallback(
+    (pid: string): "user" | "play_group" => (playGroupIdSet.has(pid) ? "play_group" : "user"),
+    [playGroupIdSet]
+  );
   // Scoring — the connectivity-resilient saver owns `values` + `saveStatus`:
   // optimistic value, retry-with-backoff, per-cell status, kept-and-flagged
-  // (never rolled back) on failure. 2v2 records ONE entry per side (the
-  // play_group), so the saver tags writes with participant_type='play_group'.
+  // (never rolled back) on failure.
   const { values, setValues, saveStatus, onChange, onClear, retryCell } =
-    useScoreSaver(tripId, gameId, sided ? "play_group" : undefined);
+    useScoreSaver(tripId, gameId, participantTypeOf);
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const setPairings = trpc.matches.setPairings.useMutation();
   const setHandicap = trpc.matches.setHandicap.useMutation();
-  const setDoublesPairings = trpc.matches.setDoublesPairings.useMutation();
-  const setDoublesHandicap = trpc.matches.setDoublesHandicap.useMutation();
   const enableScoring = trpc.matches.enableScoring.useMutation();
   // Phase 2B.1: Disable scoring — close to the crew, back to setup, scores kept.
   const disableScoring = trpc.games.disableScoring.useMutation();
@@ -379,7 +389,10 @@ export function MatchGameView() {
   // A side's team, DERIVED from its player(s): a user side → that user's team; a
   // pair side → its members' team (both members share one, enforced at setup).
   const teamOfSide = (sideId: string): { id: string; name: string; short_name: string | null; color: string } | undefined => {
-    const memberId = sided ? (membersOfSide.get(sideId) ?? [])[0] : sideId;
+    // Per-match (A2a): resolve the side's type from the data, not a game flag — a
+    // 2v2 side is a play_group (in `membersOfSide`) → its first member's team; a
+    // 1v1 side IS the user. So one game can mix both.
+    const memberId = membersOfSide.has(sideId) ? (membersOfSide.get(sideId) ?? [])[0] : sideId;
     if (!memberId) return undefined;
     const teamId = teamOfUser.get(memberId);
     return teamId ? teamById.get(teamId) : undefined;
@@ -401,14 +414,14 @@ export function MatchGameView() {
   // play_group (2v2, from play_groups). Same map shape, the entry/board read it
   // identically.
   const handicapOf = useMemo(() => {
+    // Per-match (A2a): populate from BOTH tables unconditionally — user ids and
+    // play_group ids never collide, so a mixed game's sides each resolve against
+    // whichever holds their id (the server compute does exactly this).
     const m = new Map<string, number>();
-    if (sided) {
-      for (const pg of serverPlayGroups) m.set(pg.id, effectiveStrokes(pg));
-    } else {
-      for (const p of serverParticipants) m.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
-    }
+    for (const p of serverParticipants) m.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
+    for (const pg of serverPlayGroups) m.set(pg.id, effectiveStrokes(pg));
     return m;
-  }, [sided, serverParticipants, serverPlayGroups]);
+  }, [serverParticipants, serverPlayGroups]);
 
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
@@ -420,12 +433,13 @@ export function MatchGameView() {
     };
   }
 
-  // A scoring side as one Participant. Singles → the user (unchanged). Doubles →
-  // the play_group: id = play_group id (the score key), name = "Alice & Bob".
-  // This is what lets the entry/board/overview render 2v2 with no changes — one
-  // input per side, exactly group_holes.
+  // A scoring side as one Participant, resolved PER SIDE (A2a): a 1v1 side is a user
+  // (unchanged); a 2v2 side is a play_group (id = play_group id = the score key).
+  // The score key + one-input-per-side shape is what lets entry/board/overview
+  // handle 2v2 with no change. (The overview strip's name is still the joined pair;
+  // the BUILDER surfaces render players via the shared SideChips instead.)
   function sideParticipant(sideId: string): Participant {
-    if (!sided) return participant(sideId);
+    if (!membersOfSide.has(sideId)) return participant(sideId); // 1v1 user side
     const members = membersOfSide.get(sideId) ?? [];
     const name = members.map((u) => nameOf.get(u) ?? "Player").join(" & ") || "TBD";
     return {
@@ -625,42 +639,28 @@ export function MatchGameView() {
     if (!tripId || !gameId) return false;
     const matches = filledDraft;
     if (matches.length === 0) return false;
-    if (sided) {
-      const saved = await setDoublesPairings.mutateAsync({
-        tripId,
-        gameId,
-        matches: matches.map((d, i) => ({
-          sideA: { members: d.a },
-          sideB: { members: d.b },
-          matchNumber: i + 1,
-        })),
-      });
-      const handicapWrites = matches.flatMap((d, i) => {
-        const row = saved[i] as { id: string; side_a: SideRef; side_b: SideRef } | undefined;
-        if (!row || d.handicap === 0) return [];
-        const recipient = d.handicap < 0 ? row.side_a : row.side_b;
-        if (!recipient?.id) return [];
-        return [setDoublesHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientPlayGroupId: recipient.id, strokes: Math.abs(d.handicap) })];
-      });
-      await Promise.all(handicapWrites);
-    } else {
-      const saved = await setPairings.mutateAsync({
-        tripId,
-        gameId,
-        matches: matches.map((d, i) => ({
-          sideA: { type: "user" as const, id: d.a[0] },
-          sideB: { type: "user" as const, id: d.b[0] },
-          matchNumber: i + 1,
-        })),
-      });
-      const handicapWrites = matches.flatMap((d, i) => {
-        const row = saved[i] as { id: string } | undefined;
-        if (!row || d.handicap === 0) return [];
-        const recipientUserId = d.handicap < 0 ? d.a[0] : d.b[0];
-        return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) })];
-      });
-      await Promise.all(handicapWrites);
-    }
+    // ONE unified per-match write (A2a): each match carries its own shape via the
+    // members-per-side; the server mints a play_group only for a 2-member side.
+    const saved = await setPairings.mutateAsync({
+      tripId,
+      gameId,
+      matches: matches.map((d, i) => ({
+        playersPerSide: d.playersPerSide,
+        sideA: { members: d.a },
+        sideB: { members: d.b },
+        matchNumber: i + 1,
+      })),
+    });
+    // Handicap goes to the recipient SIDE by id — a user id (1v1) or the minted
+    // play_group id (2v2); the server resolves the table from the side's type.
+    const handicapWrites = matches.flatMap((d, i) => {
+      const row = saved[i] as { id: string; side_a: SideRef; side_b: SideRef } | undefined;
+      if (!row || d.handicap === 0) return [];
+      const recipient = d.handicap < 0 ? row.side_a : row.side_b;
+      if (!recipient?.id) return [];
+      return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientId: recipient.id, strokes: Math.abs(d.handicap) })];
+    });
+    await Promise.all(handicapWrites);
     return true;
   }
 
@@ -709,9 +709,8 @@ export function MatchGameView() {
       const allEmpty = draft.every((m) => m.a.length === 0 && m.b.length === 0);
       if (!allEmpty || !tripId || !gameId) return;
       try {
-        const empty = draft.map((_, i) => ({ sideA: null, sideB: null, matchNumber: i + 1 }));
-        if (sided) await setDoublesPairings.mutateAsync({ tripId, gameId, matches: empty });
-        else await setPairings.mutateAsync({ tripId, gameId, matches: empty });
+        const empty = draft.map((d, i) => ({ playersPerSide: d.playersPerSide, sideA: null, sideB: null, matchNumber: i + 1 }));
+        await setPairings.mutateAsync({ tripId, gameId, matches: empty });
         setCollapseError(false);
         if (competitionId) {
           utils.competitions.leaderboard.invalidate({ tripId, competitionId });
@@ -1180,14 +1179,14 @@ export function MatchGameView() {
         // physically gates Handicaps behind Matches. Collapse = acknowledge +
         // persist (the draft editors commit on close). Course + Name·Format·Points
         // stay overlays this pass (tracked follow-ons) but ride the same one-open.
-        const allFilled = allMatchesFilled(draft, playersPerSide);
+        const allFilled = allMatchesFilled(draft);
         // Roster integrity (team-identity PR 1, the D-gap catch): a paired side whose
         // player has LOST their team is invalid even though its SLOTS are full
         // (dropped-after-paired). The keystone predicate (teamRoster.ts) — distinct
         // from the slot-filled `allFilled` above. Only meaningful in a 2-team
         // competition (standalone match play has no teams → always roster-valid).
         const teamedUserIds = new Set(teamOfUser.keys());
-        const allRosterValid = !twoTeams || draft.every((d) => matchRosterValid(d.a, d.b, playersPerSide, teamedUserIds));
+        const allRosterValid = !twoTeams || draft.every((d) => matchRosterValid(d.a, d.b, d.playersPerSide, teamedUserIds));
         // C3: points > 0 joins the Enable gate (Phase C) — but ONLY for a
         // COMPETITION game. Points-per-match is a cup concept: the inline Points row
         // exists only when `gameCompId` is set (GameSetupRows gates it on
@@ -1204,10 +1203,8 @@ export function MatchGameView() {
         // and Handicaps stay LOCKED until a match exists (they attach to a matchup).
         // Modifiers are NO LONGER gated on this (Task 3b — they're an early format
         // decision, decidable before matchups are set). One named predicate, shared.
-        const matchesExist = hasValidMatch(draft, playersPerSide);
-        const savingSetup =
-          setPairings.isPending || setHandicap.isPending ||
-          setDoublesPairings.isPending || setDoublesHandicap.isPending;
+        const matchesExist = hasValidMatch(draft);
+        const savingSetup = setPairings.isPending || setHandicap.isPending;
         // Standalone-only readout now (T4 hides this row for competitions), so the
         // count is just the trip crew — no roster branch.
         const availableCount = crew.data?.length ?? 0;
@@ -1223,19 +1220,24 @@ export function MatchGameView() {
         // pairing, and a hard cap would BLOCK a legitimate real-world lineup. Cap
         // only where the maximum is genuinely fixed (1v1); leave 2v2 open (the 24
         // ceiling only) so it flexes to reality.
-        const singlesCap = twoTeams
-          ? Math.min(rosterOfTeam(teams[0].id).length, rosterOfTeam(teams[1].id).length)
-          : Math.floor(availableCount / 2);
-        const maxMatchesForAdd = !sided && singlesCap > 0 ? Math.min(MAX_MATCHES, singlesCap) : MAX_MATCHES;
-        // §5 row copy (visual-pass P-A). Matches title is the format name; the
-        // subtitle is a status line ("x of y matches assigned"), not a value dump
-        // (team names live in the expanded editor). Matches uses the INVALID state
-        // while any slot is empty (§4/§6.1 hard-block) — never plain dashed-empty,
-        // since the seeded match always has a slot to fill until paired.
-        const matchesTitle = sided ? "2v2 Matches" : "1-on-1 Matches";
+        // Per-match shape (A2a) means a game can mix 1v1 + 2v2, so the old
+        // singles-only team-size cap no longer applies at the game level — a mixed
+        // lineup can legitimately exceed it. Fall back to the generous MAX ceiling;
+        // per-shape caps can be reintroduced on the add-match choice if wanted.
+        const maxMatchesForAdd = MAX_MATCHES;
+        // §5 row copy. Per-match shape (A2a): the title is just "Matches" (a game
+        // can mix 1v1 + 2v2, so a single format name would lie); the subtitle is a
+        // COMPOSITION line — "6 singles · 1 doubles · X of Y assigned". Matches uses
+        // the INVALID state while any slot is empty (§4/§6.1 hard-block).
+        const matchesTitle = "Matches";
+        const singlesCount = draft.filter((d) => d.playersPerSide === 1).length;
+        const doublesCount = draft.filter((d) => d.playersPerSide === 2).length;
+        const compParts: string[] = [];
+        if (singlesCount) compParts.push(`${singlesCount} single${singlesCount > 1 ? "s" : ""}`);
+        if (doublesCount) compParts.push(`${doublesCount} double${doublesCount > 1 ? "s" : ""}`);
         const matchesSubtitle = draft.length === 0
           ? "No matches yet — add one to start"
-          : `${filledDraft.length} of ${draft.length} matches assigned`;
+          : [...compParts, `${filledDraft.length} of ${draft.length} assigned`].join(" · ");
         // Three-way: 0 matches is a VALID EMPTY state (neutral, not red — a brand-new
         // game shouldn't open in error); a draft with any unfilled/under-rostered slot
         // is invalid (red); all filled + rostered is resolved. (P2/P2b collapse-boundary
@@ -1380,7 +1382,6 @@ export function MatchGameView() {
                 tripId={tripId}
                 draft={draft}
                 setDraft={editDraft}
-                playersPerSide={playersPerSide}
                 nameOf={nameOf}
                 colorOf={colorOf}
                 teamColorOf={teamColorOf}
@@ -1458,14 +1459,12 @@ export function MatchGameView() {
               <HandicapsSection
                 draft={draft}
                 setDraft={editDraft}
-                playersPerSide={playersPerSide}
                 nameOf={nameOf}
                 colorOf={colorOf}
                 // Roster team color (the shared canonical resolver) — assigned
                 // players read their team color; an unassigned player gets undefined →
                 // the neutral palette (honest). Same source the Matches panel + overview use.
                 teamColorOf={teamColorOf}
-                avatarIconOf={avatarIconOf}
               />
             </ChecklistRow>
 
@@ -1585,7 +1584,7 @@ export function MatchGameView() {
             crew={selectorCrew}
             nameOf={nameOf}
             onPick={(userId) => {
-              editDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId, playersPerSide));
+              editDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId));
               setSelector(null);
             }}
             onClose={() => setSelector(null)}
@@ -1609,7 +1608,16 @@ function serverDraftFrom(
   return (serverMatches as { match_number: number; side_a: SideRef; side_b: SideRef }[]).map((mm, i) => {
     const hcA = mm.side_a?.id ? (handicapOf.get(mm.side_a.id) ?? 0) : 0;
     const hcB = mm.side_b?.id ? (handicapOf.get(mm.side_b.id) ?? 0) : 0;
-    return { matchNumber: mm.match_number ?? i + 1, a: sideMemberIds(mm.side_a, membersOfSide), b: sideMemberIds(mm.side_b, membersOfSide), handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0 };
+    // Per-match shape (A2a) read from the side's own type: a play_group side ⇒ 2v2.
+    const playersPerSide: 1 | 2 =
+      mm.side_a?.type === "play_group" || mm.side_b?.type === "play_group" ? 2 : 1;
+    return {
+      matchNumber: mm.match_number ?? i + 1,
+      playersPerSide,
+      a: sideMemberIds(mm.side_a, membersOfSide),
+      b: sideMemberIds(mm.side_b, membersOfSide),
+      handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0,
+    };
   });
 }
 
@@ -1622,10 +1630,11 @@ function assignInDraft(
   matchIdx: number,
   slot: "a" | "b",
   memberIdx: number,
-  userId: string,
-  playersPerSide: number
+  userId: string
 ): DraftMatch[] {
   const next = prev.map((d) => ({ ...d, a: [...d.a], b: [...d.b] }));
+  // Per-match shape (A2a): the target match's own shape drives the assignment.
+  const playersPerSide = next[matchIdx]?.playersPerSide ?? 1;
   if (playersPerSide === 1) {
     // Singles — identical to the original: clear from OTHER matches, set here.
     next.forEach((d, i) => {
@@ -1766,7 +1775,6 @@ const MATCH_GRID = "24px 22px minmax(0,1fr) auto minmax(0,1fr) 24px";
 function MatchSetup({
   draft,
   setDraft,
-  playersPerSide,
   nameOf,
   colorOf,
   teamColorOf,
@@ -1778,7 +1786,6 @@ function MatchSetup({
   tripId: string;
   draft: DraftMatch[];
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
-  playersPerSide: number;
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
   /** A player's TEAM color from their ROSTER assignment (`teamOfUser`) — team
@@ -1804,6 +1811,13 @@ function MatchSetup({
   // slots/stepper inside the card stay tappable.
   const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
   const [armedIdx, setArmedIdx] = useState<number | null>(null);
+  // "＋ Add match" reveals the "Add singles / Add doubles" choice (A2a) so each
+  // match's shape is picked when it's added — a game can mix both.
+  const [addOpen, setAddOpen] = useState(false);
+  const addMatch = (pps: 1 | 2) => {
+    setDraft((prev) => [...prev, { matchNumber: prev.length + 1, playersPerSide: pps, a: [], b: [], handicap: 0 }]);
+    setAddOpen(false);
+  };
 
   const reorderTo = (from: number, ins: number) =>
     setDraft((prev) => {
@@ -1846,10 +1860,10 @@ function MatchSetup({
   // (the "span both rows, centered" effect). Each sub-slot picks a single player.
   // Team identity rides on the player avatar's ROSTER color (memberPart →
   // teamColorOf), never the slot — a dropped-from-team player reads neutral, honestly.
-  const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b") => {
+  const sideSlots = (members: string[], matchIdx: number, slot: "a" | "b", pps: 1 | 2) => {
     return (
       <div className="flex flex-col gap-1.5">
-        {Array.from({ length: playersPerSide }).map((_, k) => (
+        {Array.from({ length: pps }).map((_, k) => (
           <Slot key={k} player={memberPart(members[k])} onTap={() => openSelector(matchIdx, slot, k)} />
         ))}
       </div>
@@ -1945,11 +1959,27 @@ function MatchSetup({
               )}
               {/* grab — far left, away from the × (reorder isn't next to remove). */}
               <DragHandle onMouseDown={() => setArmedIdx(i)} onMouseUp={() => setArmedIdx(null)} />
-              {/* # — the table index column (separate from grab). */}
-              <RowNumber number={i + 1} />
-              {sideSlots(d.a, i, "a")}
+              {/* # — the table index column (separate from grab). A small shape tag
+                  sits under it so a mixed game's 1v1 vs 2v2 cards read at a glance. */}
+              <div className="flex flex-col items-center gap-1">
+                <RowNumber number={i + 1} />
+                <span
+                  style={{
+                    fontSize: 8,
+                    fontWeight: 800,
+                    letterSpacing: "0.03em",
+                    padding: "1px 4px",
+                    borderRadius: 4,
+                    color: d.playersPerSide === 2 ? "#c4b5fd" : "#93c5fd",
+                    background: d.playersPerSide === 2 ? "rgba(167,139,250,0.14)" : "rgba(96,165,250,0.14)",
+                  }}
+                >
+                  {d.playersPerSide === 2 ? "2V2" : "1V1"}
+                </span>
+              </div>
+              {sideSlots(d.a, i, "a", d.playersPerSide)}
               <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-              {sideSlots(d.b, i, "b")}
+              {sideSlots(d.b, i, "b", d.playersPerSide)}
               {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
                   red — draft removal is free (no persisted scores) and the open panel
                   must never read as an error. Far right. Always REMOVES the row —
@@ -1972,21 +2002,47 @@ function MatchSetup({
         </>
       )}
 
-      {/* Add another match — dynamic count grows one at a time, up to `maxMatches`
-          (the 1v1 players-per-team cap, or the 24 ceiling for 2v2 — Task 3a). Once
-          at the cap the affordance is hidden: every player already has a match. */}
+      {/* Add another match (A2a) — "＋ Add match" reveals a singles/doubles choice
+          so a game can mix shapes; each new card carries the chosen playersPerSide.
+          Hidden at the generous MAX ceiling. */}
       {draft.length < maxMatches && (
-        <button
-          type="button"
-          onClick={() => setDraft((prev) => [...prev, { matchNumber: prev.length + 1, a: [], b: [], handicap: 0 }])}
-          className="mt-3 flex w-full items-center justify-center gap-1.5"
-          style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
-        >
-          <Plus size={16} />
-          Add match
-        </button>
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            aria-expanded={addOpen}
+            className="flex w-full items-center justify-center gap-1.5"
+            style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+          >
+            <Plus size={16} />
+            Add match
+          </button>
+          {addOpen && (
+            <div className="mt-2.5 flex gap-2.5" data-testid="add-match-choice">
+              <AddShapeButton kind="1V1" label="Add singles" onClick={() => addMatch(1)} />
+              <AddShapeButton kind="2V2" label="Add doubles" onClick={() => addMatch(2)} />
+            </div>
+          )}
+        </div>
       )}
     </div>
+  );
+}
+
+/** One choice in the Add-match disclosure: a shape tag (1V1 blue / 2V2 purple) over
+ *  a plain label, matching the mockup's two-button "Add singles / Add doubles". */
+function AddShapeButton({ kind, label, onClick }: { kind: "1V1" | "2V2"; label: string; onClick: () => void }) {
+  const doubles = kind === "2V2";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-1 flex-col items-center gap-0.5"
+      style={{ padding: 11, borderRadius: 11, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", color: doubles ? "#c4b5fd" : "#93c5fd" }}>{kind}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>{label}</span>
+    </button>
   );
 }
 
@@ -2000,15 +2056,12 @@ function MatchSetup({
 function HandicapsSection({
   draft,
   setDraft,
-  playersPerSide,
   nameOf,
   colorOf,
   teamColorOf,
-  avatarIconOf,
 }: {
   draft: DraftMatch[];
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
-  playersPerSide: number;
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
   /** A player's TEAM color from their roster assignment (`teamOfUser`), the same
@@ -2019,20 +2072,17 @@ function HandicapsSection({
    *  standalone (non-2-team) game too. (P-D defect 1: colorOf alone was the neutral
    *  palette and lost team identity for the assigned players.) */
   teamColorOf: (userId: string) => string | undefined;
-  avatarIconOf: Map<string, string | null>;
 }) {
-  const sidePart = (members: string[]): Participant | null => {
-    if (members.length === 0) return null;
-    return {
-      id: members.join("+"),
-      name: members.map((u) => nameOf.get(u) ?? "Player").join(" & "),
-      color: teamColorOf(members[0]) ?? colorOf.get(members[0]) ?? PLAYER_COLORS[0],
-      avatarIcon: avatarIconOf.get(members[0]) ?? null,
-    };
-  };
+  // Each side as its players (stacked chips via the shared SideChips) + a display
+  // name for the stroke caption. Replaces the old compound "R&"-avatar / "Name & …"
+  // treatment (A2a) — one chip per player, team-colored, avatar-left.
+  const sidePlayers = (members: string[]): SidePlayer[] =>
+    members.map((u) => ({ id: u, name: nameOf.get(u) ?? "Player", teamColor: teamColorOf(u) ?? colorOf.get(u) ?? PLAYER_COLORS[0] }));
+  const sideName = (members: string[]) => members.map((u) => nameOf.get(u) ?? "Player").join(" & ");
+  // Per-match filled (A2a): both sides at the match's OWN players-per-side.
   const filled = draft
     .map((d, i) => ({ d, i }))
-    .filter(({ d }) => d.a.length === playersPerSide && d.b.length === playersPerSide);
+    .filter(({ d }) => d.a.length === d.playersPerSide && d.b.length === d.playersPerSide);
 
   if (filled.length === 0) {
     return (
@@ -2057,8 +2107,8 @@ function HandicapsSection({
           }}
         >
           <RelHandicapControl
-            a={sidePart(d.a)!}
-            b={sidePart(d.b)!}
+            a={{ players: sidePlayers(d.a), name: sideName(d.a) }}
+            b={{ players: sidePlayers(d.b), name: sideName(d.b) }}
             value={d.handicap}
             matchNumber={draft.length > 1 ? i + 1 : undefined}
             onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}

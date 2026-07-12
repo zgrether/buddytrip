@@ -67,7 +67,7 @@ describe("matches setup gate admits the game delegate (§10)", () => {
     await expect(
       member.matches.setPairings({
         tripId, gameId: mine,
-        matches: [{ sideA: { type: "user", id: ownerId }, sideB: { type: "user", id: memberId }, matchNumber: 1 }],
+        matches: [{ playersPerSide: 1, sideA: { members: [ownerId] }, sideB: { members: [memberId] }, matchNumber: 1 }],
       })
     ).resolves.toBeTruthy();
     // …enableScoring too (the gate admits the delegate; the game is ready).
@@ -77,7 +77,7 @@ describe("matches setup gate admits the game delegate (§10)", () => {
 
     // …but NOT another game (game-isolated).
     await expect(
-      member.matches.setPairings({ tripId, gameId: other, matches: [{ sideA: null, sideB: null, matchNumber: 1 }] })
+      member.matches.setPairings({ tripId, gameId: other, matches: [{ playersPerSide: 1, sideA: null, sideB: null, matchNumber: 1 }] })
     ).rejects.toThrow(/Organizer|game-organizer/i);
   });
 
@@ -87,7 +87,7 @@ describe("matches setup gate admits the game delegate (§10)", () => {
       ctx.callerAs("member").matches.setPairings({
         tripId,
         gameId: g,
-        matches: [{ sideA: null, sideB: null, matchNumber: 1 }],
+        matches: [{ playersPerSide: 1, sideA: null, sideB: null, matchNumber: 1 }],
       })
     ).rejects.toThrow(/Organizer|game-organizer/i);
   });

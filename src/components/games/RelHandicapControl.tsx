@@ -4,8 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { strokeHoles } from "@/lib/matchPlay";
 import { Stepper } from "@/components/games/Stepper";
 import { RowNumber } from "@/components/games/RowNumber";
-import { PlayerChip } from "@/components/games/PlayerChip";
-import type { Participant } from "./types";
+import { SideChips, type SidePlayer } from "@/components/games/MatchSides";
+
+/** One side of the handicap control: its players (stacked chips, A2a) + a display
+ *  name for the stroke caption ("{name} gets strokes on holes …"). */
+export interface HandicapSide {
+  players: SidePlayer[];
+  name: string;
+}
 
 /**
  * RelHandicapControl — the relative-handicap control for 1v1 (Slice B §6, as
@@ -67,8 +73,8 @@ export function relHandicapView(value: number, aName: string, bName: string): Re
 }
 
 interface RelHandicapControlProps {
-  a: Participant;
-  b: Participant;
+  a: HandicapSide;
+  b: HandicapSide;
   value: number; // signed, ∈ [−MAX, MAX]
   onChange: (value: number) => void;
   /** Small left-gutter match number (§8). Omit for a lone match (no number shown). */
@@ -142,16 +148,17 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
         {/* Segmented selector */}
         <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}>
           <Segment selected={side === "a"} onClick={() => pickSide("a")} innerRef={segARef}>
-            {/* The SHARED PlayerChip (avatar 30, left-aligned) — identical to the
-                Matches chip. The segment wrapper owns the selection surface, so the
-                chip's own surface is stripped to transparent and shows it through. */}
-            <PlayerChip name={a.name} teamColor={a.color} style={{ background: "transparent", border: "none", height: "100%" }} />
+            {/* The SHARED SideChips (avatar-left PlayerChips) — one chip for a 1v1
+                side, two stacked for 2v2 (A2a: no compound avatar / "Name & …"). The
+                segment wrapper owns the selection surface, so each chip's own surface
+                is stripped to transparent and shows it through. */}
+            <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none" }} />
           </Segment>
           <Segment selected={even} onClick={() => onChange(0)} narrow>
             Even
           </Segment>
           <Segment selected={side === "b"} onClick={() => pickSide("b")} innerRef={segBRef}>
-            <PlayerChip name={b.name} teamColor={b.color} style={{ background: "transparent", border: "none", height: "100%" }} />
+            <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none" }} />
           </Segment>
         </div>
 
@@ -216,10 +223,13 @@ function Segment({
       style={{
         flex: narrow ? "0 0 auto" : "1 1 0",
         justifyContent: "center",
-        // Player segments carry the shared PlayerChip (which owns its own avatar
+        // Player segments carry the shared SideChips (which own their own avatar
         // inset), so the segment adds no padding; the narrow Even segment hugs its
-        // centered label with its own padding.
-        height: 44,
+        // centered label with its own padding. `minHeight` (not a fixed height) so a
+        // DOUBLES side's two stacked chips grow the row instead of being clipped;
+        // singles keep the 44 baseline, and the flex row stretches all segments
+        // (incl. Even) to the tallest.
+        minHeight: 44,
         borderRadius: 10,
         padding: narrow ? "0 14px" : 0,
         // Selection treatment = TEAL FILL (the scoped expansion of the teal

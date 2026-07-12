@@ -53,10 +53,22 @@ const retryDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 8000);
 export function useScoreSaver(
   tripId: string | undefined,
   gameId: string | null | undefined,
-  // The scoring unit's type. Omitted → 'user' (singles/stroke — server default,
-  // unchanged). 2v2 passes 'play_group' so each side records one entry.
-  participantType?: "user" | "play_group",
+  // The scoring unit's type per write. Omitted → 'user' (singles/stroke — server
+  // default). A constant tags every write (a uniform game). A RESOLVER
+  // `(participantId) => type` tags each write by its own participant — needed by a
+  // MIXED match-play game (A2a), where a 1v1 match writes 'user' entries and a 2v2
+  // match writes 'play_group' entries in the SAME game. Memoize a resolver so the
+  // callbacks stay identity-stable.
+  participantType?:
+    | "user"
+    | "play_group"
+    | ((participantId: string) => "user" | "play_group" | undefined),
 ) {
+  const typeOf = useCallback(
+    (participantId: string): "user" | "play_group" | undefined =>
+      typeof participantType === "function" ? participantType(participantId) : participantType,
+    [participantType],
+  );
   const [values, setValues] = useState<ScoreValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
   // A live mirror of saveStatus so `reconcile` can read the latest without being
@@ -118,7 +130,7 @@ export function useScoreSaver(
       // them reach the server (idempotent upserts); this restores per-cell
       // STATUS only.
       upsertEntry
-        .mutateAsync({ tripId, gameId, participantId, unitLabel, value, participantType })
+        .mutateAsync({ tripId, gameId, participantId, unitLabel, value, participantType: typeOf(participantId) })
         // Confirmed on the server → safe to drop the durable copy.
         .then(() => {
           mark(key, "saved");
@@ -128,7 +140,7 @@ export function useScoreSaver(
         // never roll back; the outbox re-sends it on the next mount.
         .catch(() => mark(key, "error"));
     },
-    [tripId, gameId, upsertEntry, mark, participantType],
+    [tripId, gameId, upsertEntry, mark, typeOf],
   );
 
   const onClear = useCallback(
@@ -148,7 +160,7 @@ export function useScoreSaver(
       // mutateAsync per call (see onChange): concurrent clears must each resolve
       // their own outcome, never be orphaned by a later one on the shared observer.
       deleteEntry
-        .mutateAsync({ tripId, gameId, participantId, unitLabel, participantType })
+        .mutateAsync({ tripId, gameId, participantId, unitLabel, participantType: typeOf(participantId) })
         // A failed delete means the value is still on the server — restore it
         // (accurate) and flag it so the user knows the clear didn't take.
         .catch(() => {
@@ -164,7 +176,7 @@ export function useScoreSaver(
           }
         });
     },
-    [tripId, gameId, values, deleteEntry, mark, participantType],
+    [tripId, gameId, values, deleteEntry, mark, typeOf],
   );
 
   /**
