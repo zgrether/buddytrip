@@ -721,17 +721,24 @@ function TeamName({
 
 /**
  * HeroProjSide — one team's projected "if today holds" block: the projected TOTAL
- * (team-colored) + a ▲ delta pill, mirrored on each side (left / row-reversed right).
+ * (team-colored, the OUTER element) + a ▲ delta pill on the INNER side (toward center),
+ * mirrored on each side. The number is always outermost so it stays aligned with the
+ * banked score directly above it — nothing is placed on its outer edge.
  *
  * Per-team pill GATE: the pill shows ONLY when delta > 0. A team the live games add
  * nothing to shows a BARE projected number (which equals its banked number) — the
  * absent pill is the signal that it projects no gain (the matching number is correct,
  * not a bug). The shared `ProjectionPill` carries the ▲ grammar.
  *
- * Projected-win FLAIR: a small cup icon when the projected total crosses the win
- * threshold ("if today holds, they clinch"). Threshold comparison ONLY — this is not
- * clinch detection (no terminal state / once-fire / correction-safety); it's a purely
- * presentational icon driven by the live projected number.
+ * Projected-win FLAIR: a small cup icon on the INNER side of the pill (toward center:
+ * to the right of the pill for the left team, to the left of the pill for the right
+ * team), when the projected total crosses the win threshold ("if today holds, they
+ * clinch"). Innermost so it never sits on the score's outer edge → the score stays
+ * aligned. Threshold comparison ONLY — this is not clinch detection (no terminal state
+ * / once-fire / correction-safety); it's a purely presentational icon.
+ *
+ * Order is [number, pill, cup] with the row REVERSED for the right team, so the number
+ * is always outermost (aligned with the banked score above) and the cup is innermost.
  */
 function HeroProjSide({
   team,
@@ -748,9 +755,6 @@ function HeroProjSide({
 }) {
   const delta = projected - banked; // ≥ 0 (projections are awarded points)
   const projectsWin = projected >= winNumber;
-  const cup = projectsWin ? (
-    <Trophy size={15} style={{ color: team.color }} aria-label="Projected to win" data-testid={`hero-proj-cup-${align === "left" ? "a" : "b"}`} />
-  ) : null;
   const num = (
     <span className="tabular-nums" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: team.color }}>
       {fmtPts(projected)}
@@ -758,14 +762,19 @@ function HeroProjSide({
   );
   // Pill only when the team projects a gain; delta 0 → bare number (no pill).
   const pill = delta > 0 ? <ProjectionPill color={team.color} value={delta} /> : null;
+  const cup = projectsWin ? (
+    <Trophy size={15} style={{ color: team.color }} aria-label="Projected to win" data-testid={`hero-proj-cup-${align === "left" ? "a" : "b"}`} />
+  ) : null;
+  // [number, pill, cup] → the row reverses for the right team, keeping the number
+  // outermost (aligned) and the cup innermost (toward center, inner side of the pill).
   return (
     <div
       className={`flex items-center gap-2 ${align === "right" ? "flex-row-reverse" : ""}`}
       data-testid={`hero-proj-${align === "left" ? "a" : "b"}`}
     >
-      {cup}
       {num}
       {pill}
+      {cup}
     </div>
   );
 }
