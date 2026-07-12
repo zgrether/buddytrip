@@ -146,7 +146,6 @@ export function GameSetupRows({
   const persistedTotal = (game.points_total as number | null) ?? null;
   const effectiveTotal = persistedTotal ?? defaultTotal ?? 0;
   const derivedPerSlot = evenShare(effectiveTotal, [], slotCount);
-  const perSlotFractional = !Number.isInteger(derivedPerSlot);
 
   return (
     <>
@@ -186,21 +185,15 @@ export function GameSetupRows({
                 {pointsTitle ?? "Points per match"}:{" "}
                 <span
                   style={{
-                    color: !pointsReady(derivedPerSlot)
-                      ? "var(--color-bt-text-dim)"
-                      : perSlotFractional
-                        ? "var(--color-bt-warning)"
-                        : "var(--color-bt-accent)",
+                    color: pointsReady(derivedPerSlot) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
                     fontWeight: 600,
                   }}
                 >
+                  {/* Never auto-rounded — a non-whole share is shown exactly (2 decimals),
+                      same teal treatment as any other resolved value (no amber/warning:
+                      the math downstream is exact; see evenShare's doc). */}
                   {Number.isInteger(derivedPerSlot) ? derivedPerSlot : derivedPerSlot.toFixed(2)}
                 </span>
-                {/* Honest fraction (never auto-rounded): a hint toward a total the
-                    slot count divides cleanly, same amber convention as A2b. */}
-                {perSlotFractional && slotCount > 0 && (
-                  <span style={{ color: "var(--color-bt-warning)" }}> — not whole, pick a total divisible by {slotCount}</span>
-                )}
               </>
             }
             // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
