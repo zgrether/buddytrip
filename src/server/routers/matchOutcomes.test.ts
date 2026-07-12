@@ -14,7 +14,7 @@ const MATCH_PLAY = "gtt_match_play";
 
 let ctx: TestContext;
 let tripId: string;
-let owner: string, member: string, outsider: string;
+let owner: string, member: string;
 
 beforeAll(async () => {
   ctx = await TestContext.create();
@@ -24,7 +24,6 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "outsider", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
-  outsider = ctx.getUser("outsider").id;
 });
 
 afterAll(async () => {
