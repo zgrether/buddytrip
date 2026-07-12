@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rollupMatchPlay, type ProjMatch } from "./gameProjection";
+import { rollupMatchPlay, projectedTeamTotals, type ProjMatch } from "./gameProjection";
 
 // #533 — the match-play projection rule: up → leader's full points, all-square
 // (started) → halved, not-started → nothing. Summed per team, N-team-aware.
@@ -70,5 +70,41 @@ describe("rollupMatchPlay", () => {
   it("a null/undefined `points` falls back to the even share", () => {
     const withNull: ProjMatch = { ...m("blue", "red", "A", true), points: null };
     expect(rollupMatchPlay([withNull], 3)).toEqual({ blue: 3 });
+  });
+});
+
+// The hero "if today holds" rollup — banked + Σ live-game projections per team.
+describe("projectedTeamTotals", () => {
+  const ids = ["blue", "red"];
+
+  it("sums each team's live-game projections onto its banked total", () => {
+    const { totals, hasLive } = projectedTeamTotals(
+      { blue: 8, red: 8 },
+      { g1: { blue: 2 }, g2: { red: 4, blue: 0 }, g3: { red: 2 } }, // blue +2, red +6
+      ids,
+    );
+    expect(totals).toEqual({ blue: 10, red: 14 });
+    expect(hasLive).toBe(true);
+    // Delta (projected − banked) = Σ projections, ≥ 0 for every team.
+    expect(totals.blue - 8).toBe(2);
+    expect(totals.red - 8).toBe(6);
+  });
+
+  it("hasLive is FALSE when no game is live (empty projections) → totals = banked", () => {
+    const { totals, hasLive } = projectedTeamTotals({ blue: 8, red: 8 }, {}, ids);
+    expect(totals).toEqual({ blue: 8, red: 8 });
+    expect(hasLive).toBe(false);
+  });
+
+  it("hasLive is TRUE even when a live game projects 0 to a team (delta 0 ≠ no live)", () => {
+    // One team gains, the other gets a bare number — the tier still shows.
+    const { totals, hasLive } = projectedTeamTotals({ blue: 8, red: 8 }, { g1: { blue: 2 } }, ids);
+    expect(totals).toEqual({ blue: 10, red: 8 }); // red delta 0 → bare number in the UI
+    expect(hasLive).toBe(true);
+  });
+
+  it("seeds every team from teamIds (a team with no banked entry starts at 0)", () => {
+    const { totals } = projectedTeamTotals({ blue: 5 }, { g1: { red: 3 } }, ids);
+    expect(totals).toEqual({ blue: 5, red: 3 });
   });
 });
