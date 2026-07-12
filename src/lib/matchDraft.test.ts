@@ -6,15 +6,15 @@ import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasVali
 // Readiness rework P3 — the downstream gate (Points/Handicaps/Modifiers locked
 // until a valid match exists).
 describe("hasValidMatch (the downstream gate)", () => {
-  const s = (a: string[], b: string[]): MatchSides => ({ a, b });
+  const s = (a: string[], b: string[]): MatchSides => ({ playersPerSide: (Math.max(a.length, b.length) || 1) as 1 | 2, a, b });
   it("true only when ≥1 match is fully paired", () => {
-    expect(hasValidMatch([s(["x"], ["y"])], 1)).toBe(true); // 1 paired
-    expect(hasValidMatch([s(["x"], ["y"]), s([], [])], 1)).toBe(true); // ≥1 paired (the other empty)
+    expect(hasValidMatch([s(["x"], ["y"])])).toBe(true); // 1 paired
+    expect(hasValidMatch([s(["x"], ["y"]), s([], [])])).toBe(true); // ≥1 paired (the other empty)
   });
   it("false at zero paired — incl. a seeded-but-empty match", () => {
-    expect(hasValidMatch([s([], [])], 1)).toBe(false); // seeded empty only
-    expect(hasValidMatch([s(["x"], [])], 1)).toBe(false); // half-paired only
-    expect(hasValidMatch([], 1)).toBe(false);
+    expect(hasValidMatch([s([], [])])).toBe(false); // seeded empty only
+    expect(hasValidMatch([s(["x"], [])])).toBe(false); // half-paired only
+    expect(hasValidMatch([])).toBe(false);
   });
 });
 
@@ -30,9 +30,9 @@ describe("pointsReady (the points term of the Enable gate)", () => {
 });
 
 describe("the Enable gate = all matches paired AND points > 0 (C3)", () => {
-  const s = (a: string[], b: string[]): MatchSides => ({ a, b });
+  const s = (a: string[], b: string[]): MatchSides => ({ playersPerSide: (Math.max(a.length, b.length) || 1) as 1 | 2, a, b });
   const enableReady = (draft: MatchSides[], pps: number, points: number) =>
-    allMatchesFilled(draft, pps) && pointsReady(points);
+    allMatchesFilled(draft) && pointsReady(points);
   it("true only when every match is paired AND points > 0", () => {
     expect(enableReady([s(["x"], ["y"])], 1, 3)).toBe(true); // paired + points
   });
@@ -58,20 +58,20 @@ describe("matchPlayReady (the shared threshold)", () => {
 // match must keep "Enable scoring" disabled (no silent collapse to the filled
 // count). These guard the pure rule the setup face derives the gate from.
 
-const singles = (a: string[], b: string[]): MatchSides => ({ a, b });
+const singles = (a: string[], b: string[]): MatchSides => ({ playersPerSide: (Math.max(a.length, b.length) || 1) as 1 | 2, a, b });
 
 describe("isMatchFilled", () => {
   it("singles (1 per side): filled only when both sides have a player", () => {
-    expect(isMatchFilled(singles(["x"], ["y"]), 1)).toBe(true);
-    expect(isMatchFilled(singles([], ["y"]), 1)).toBe(false);
-    expect(isMatchFilled(singles(["x"], []), 1)).toBe(false);
-    expect(isMatchFilled(singles([], []), 1)).toBe(false);
+    expect(isMatchFilled(singles(["x"], ["y"]))).toBe(true);
+    expect(isMatchFilled(singles([], ["y"]))).toBe(false);
+    expect(isMatchFilled(singles(["x"], []))).toBe(false);
+    expect(isMatchFilled(singles([], []))).toBe(false);
   });
 
   it("2v2 (2 per side): a half-filled side is not full strength", () => {
-    expect(isMatchFilled(singles(["a", "b"], ["c", "d"]), 2)).toBe(true);
-    expect(isMatchFilled(singles(["a"], ["c", "d"]), 2)).toBe(false);
-    expect(isMatchFilled(singles(["a", "b"], ["c"]), 2)).toBe(false);
+    expect(isMatchFilled(singles(["a", "b"], ["c", "d"]))).toBe(true);
+    expect(isMatchFilled(singles(["a"], ["c", "d"]))).toBe(false);
+    expect(isMatchFilled(singles(["a", "b"], ["c"]))).toBe(false);
   });
 });
 
@@ -82,7 +82,7 @@ describe("filledMatches", () => {
       singles(["c"], []),
       singles(["d"], ["e"]),
     ];
-    const out = filledMatches(draft, 1);
+    const out = filledMatches(draft);
     expect(out).toHaveLength(2);
     expect(out[0]).toBe(draft[0]);
     expect(out[1]).toBe(draft[2]);
@@ -91,25 +91,25 @@ describe("filledMatches", () => {
 
 describe("allMatchesFilled (the Enable-scoring gate)", () => {
   it("is FALSE for an empty draft (nothing to score)", () => {
-    expect(allMatchesFilled([], 1)).toBe(false);
+    expect(allMatchesFilled([])).toBe(false);
   });
 
   it("is TRUE when every match is fully paired", () => {
-    expect(allMatchesFilled([singles(["a"], ["b"]), singles(["c"], ["d"])], 1)).toBe(true);
+    expect(allMatchesFilled([singles(["a"], ["b"]), singles(["c"], ["d"])])).toBe(true);
   });
 
   it("HARD-BLOCKS: a single unfilled slot anywhere disables the gate", () => {
     // The just-added empty match (build-as-you-go) keeps the gate shut...
-    expect(allMatchesFilled([singles(["a"], ["b"]), singles([], [])], 1)).toBe(false);
+    expect(allMatchesFilled([singles(["a"], ["b"]), singles([], [])])).toBe(false);
     // ...as does a half-filled trailing match.
-    expect(allMatchesFilled([singles(["a"], ["b"]), singles(["c"], [])], 1)).toBe(false);
+    expect(allMatchesFilled([singles(["a"], ["b"]), singles(["c"], [])])).toBe(false);
     // ...and an unfilled match in the MIDDLE (not just the trailing one).
-    expect(allMatchesFilled([singles(["a"], ["b"]), singles([], ["x"]), singles(["c"], ["d"])], 1)).toBe(false);
+    expect(allMatchesFilled([singles(["a"], ["b"]), singles([], ["x"]), singles(["c"], ["d"])])).toBe(false);
   });
 
   it("2v2: every side must be at full strength", () => {
-    expect(allMatchesFilled([singles(["a", "b"], ["c", "d"])], 2)).toBe(true);
-    expect(allMatchesFilled([singles(["a", "b"], ["c"])], 2)).toBe(false);
+    expect(allMatchesFilled([singles(["a", "b"], ["c", "d"])])).toBe(true);
+    expect(allMatchesFilled([singles(["a", "b"], ["c"])])).toBe(false);
   });
 });
 
@@ -145,7 +145,7 @@ describe("sideMemberIds (type-driven side → member ids)", () => {
   it("a filled 2v2 match reconstructs as two 2-member sides (both fully paired)", () => {
     const a = sideMemberIds({ type: "play_group", id: "pgA" }, members);
     const b = sideMemberIds({ type: "play_group", id: "pgB" }, members);
-    expect(isMatchFilled({ a, b }, 2)).toBe(true); // survives the reopen as a real match
+    expect(isMatchFilled({ playersPerSide: 2, a, b })).toBe(true); // survives the reopen as a real match
   });
 });
 
@@ -183,7 +183,7 @@ describe("flushOnOverlayClose (persist-on-overlay-close decision)", () => {
 // (the table hides; only "Add match" shows), so the last match is deletable — no
 // floor-clamp.
 describe("removeMatchRow (the × action)", () => {
-  const m = (a: string[], b: string[], handicap = 0) => ({ a, b, handicap, matchNumber: 0 });
+  const m = (a: string[], b: string[], handicap = 0) => ({ playersPerSide: (Math.max(a.length, b.length) || 1) as 1 | 2, a, b, handicap, matchNumber: 0 });
 
   it("with >1 match, REMOVES the match at the index", () => {
     const draft = [m(["a"], ["b"]), m(["c"], ["d"]), m(["e"], ["f"])];
@@ -202,8 +202,8 @@ describe("removeMatchRow (the × action)", () => {
   it("an empty draft reads as NOT ready (Enable still blocked on 0 matches)", () => {
     const empty = removeMatchRow([m(["a"], ["b"])], 0);
     expect(empty).toHaveLength(0);
-    expect(allMatchesFilled(empty, 1)).toBe(false); // can't enable an empty game
-    expect(hasValidMatch(empty, 1)).toBe(false); // Points/Handicaps/Modifiers stay locked
+    expect(allMatchesFilled(empty)).toBe(false); // can't enable an empty game
+    expect(hasValidMatch(empty)).toBe(false); // Points/Handicaps/Modifiers stay locked
   });
 
   it("does not mutate the input draft", () => {

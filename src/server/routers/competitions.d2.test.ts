@@ -312,7 +312,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     // assigned, everywhere." It must STILL read Setting up and add no points.
     await ctx.caller().matches.setPairings({
       tripId, gameId: g.id,
-      matches: [{ sideA: { type: "user", id: ctx.user.id }, sideB: null, matchNumber: 1 }],
+      matches: [{ playersPerSide: 1, sideA: { members: [ctx.user.id] }, sideB: null, matchNumber: 1 }],
     });
     lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     game = lb.games.find((x: { id: string }) => x.id === g.id) as { ready: boolean; configured: boolean; pointsTotal: number | null };

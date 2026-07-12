@@ -106,8 +106,8 @@ describe("1v1 match — the unit is the match (its two players)", () => {
       tripId,
       gameId,
       matches: [
-        { sideA: { type: "user", id: owner }, sideB: { type: "user", id: planner }, matchNumber: 1 },
-        { sideA: { type: "user", id: member }, sideB: { type: "user", id: outsider }, matchNumber: 2 },
+        { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [planner] }, matchNumber: 1 },
+        { playersPerSide: 1, sideA: { members: [member] }, sideB: { members: [outsider] }, matchNumber: 2 },
       ],
     });
     await ctx.caller().games.enableScoring({ tripId, gameId });
@@ -133,10 +133,10 @@ describe("2v2 match — the unit is the match (its two side groups)", () => {
   beforeAll(async () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: DOUBLES, name: "Doubles Perms" });
     gameId = g.id;
-    const matches = (await ctx.caller().matches.setDoublesPairings({
+    const matches = (await ctx.caller().matches.setPairings({
       tripId,
       gameId,
-      matches: [{ sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 }],
+      matches: [{ playersPerSide: 2, sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 }],
     })) as MatchRow[];
     pgA = matches[0].side_a!.id; // owner+planner
     pgB = matches[0].side_b!.id; // member+outsider
