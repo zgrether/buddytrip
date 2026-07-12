@@ -81,6 +81,7 @@ export function ChecklistRow({
   onToggle,
   children,
   control,
+  headerControl,
   disabled,
   locked,
   testId,
@@ -106,6 +107,11 @@ export function ChecklistRow({
    *  accordion** (W-GAMEPAGE Phase C: the Points row). Mutually exclusive with
    *  accordion/overlay; the control owns its own taps. */
   control?: React.ReactNode;
+  /** An ACCORDION row that ALSO carries a header control (e.g. the A2b Total Points
+   *  row: a ± total stepper beside the expand chevron). Rendered in the header,
+   *  OUTSIDE the toggle button (so its own buttons don't nest in / trigger the
+   *  toggle), before the chevron. Only honored on accordion rows. */
+  headerControl?: React.ReactNode;
   /** Dependency not yet met — the row would be an accordion, but its prerequisite
    *  isn't satisfied (e.g. Handicaps before a course is chosen). Renders VISIBLY
    *  disabled (dimmed, non-interactive — the Danger-Zone dimming pattern) instead
@@ -218,9 +224,25 @@ export function ChecklistRow({
   if (accordion) {
     return (
       <div ref={rowRef} className="rounded-xl" style={{ ...containerStyle, scrollMarginTop: 12 }} data-testid={testId}>
-        <button type="button" onClick={onToggle} className={headerClass} aria-expanded={isOpen}>
-          {headerInner}
-        </button>
+        {headerControl ? (
+          // A header-control accordion (Total Points): the icon+title toggle the
+          // panel; the control (a stepper) sits beside the chevron OUTSIDE that
+          // button, owning its own taps. Split so we never nest buttons.
+          <div className={headerClass}>
+            <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-expanded={isOpen}>
+              {iconBlock}
+              {content}
+            </button>
+            <span className="flex shrink-0 items-center">{headerControl}</span>
+            <button type="button" onClick={onToggle} aria-label="Toggle" aria-expanded={isOpen} className="flex shrink-0 items-center">
+              <ChevronDown size={16} style={{ color: "var(--color-bt-text-dim)", transform: isOpen ? "rotate(180deg)" : undefined, transition: "transform 120ms" }} />
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={onToggle} className={headerClass} aria-expanded={isOpen}>
+            {headerInner}
+          </button>
+        )}
         {isOpen && (
           // No under-header divider — the body is the SAME surface as the header,
           // so there's no seam to mark; an abrupt border read as a defect.

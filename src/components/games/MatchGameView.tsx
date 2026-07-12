@@ -29,6 +29,7 @@ import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
+import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
@@ -422,6 +423,48 @@ export function MatchGameView() {
     for (const pg of serverPlayGroups) m.set(pg.id, effectiveStrokes(pg));
     return m;
   }, [serverParticipants, serverPlayGroups]);
+
+  // A2b Total Points — the PAIRED server matches resolved to display players + each
+  // match's per-match override (game_matches.point_value). Paired-only, so it's the
+  // same denominator the award/leaderboard use. Feeds the Total Points row's override
+  // panel (shared MatchupChips renderer) + the game-page projection's per-match value.
+  const pointsMatches = useMemo<PointsMatch[]>(() => {
+    const memberList = (side: { type: string; id: string } | null): string[] =>
+      side ? (membersOfSide.has(side.id) ? membersOfSide.get(side.id) ?? [] : [side.id]) : [];
+    const toPlayers = (ids: string[]): SidePlayer[] =>
+      ids.map((u) => ({ id: u, name: nameOf.get(u) ?? "Player", teamColor: teamColorOf(u) ?? colorOf.get(u) ?? PLAYER_COLORS[0] }));
+    return serverMatches
+      .filter((mm) => (mm as { side_a: unknown; side_b: unknown }).side_a && (mm as { side_b: unknown }).side_b)
+      .map((mm) => {
+        const row = mm as { id: string; match_number: number | null; side_a: { type: string; id: string } | null; side_b: { type: string; id: string } | null; point_value: number | null };
+        return {
+          id: row.id,
+          number: row.match_number ?? 0,
+          aPlayers: toPlayers(memberList(row.side_a)),
+          bPlayers: toPlayers(memberList(row.side_b)),
+          pointValue: row.point_value ?? null,
+        };
+      });
+    // teamColorOf/colorOf/nameOf are per-render closures over memoized maps; react to
+    // the underlying data instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverMatches, membersOfSide, nameOf, colorOf, teamById, teamOfUser, twoTeams]);
+
+  // matchId → override, for the game-page projection (per-match award value).
+  const pointValueByMatch = useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const mm of serverMatches) m.set((mm as { id: string }).id, ((mm as { point_value: number | null }).point_value) ?? null);
+    return m;
+  }, [serverMatches]);
+
+  // Default total = players per team (total competition players ÷ teams) — the
+  // first-setup default the Total Points row persists (behavior only, §3).
+  const defaultTotal = useMemo(() => {
+    const totalPlayers = (assignQ.data ?? []).length;
+    const teamCount = teams.length;
+    if (teamCount === 0 || totalPlayers === 0) return 0;
+    return Math.round(totalPlayers / teamCount);
+  }, [assignQ.data, teams.length]);
 
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
@@ -976,13 +1019,16 @@ export function MatchGameView() {
         bTeamId: teamOfSide(g.b.id)?.id ?? null,
         leader: st.leader,
         started: st.thru > 0,
+        // A2b: this match's own override (else the even-share pointsPerMatch fallback)
+        // so the game-page projection double-counts an overridden match too.
+        points: pointValueByMatch.get(g.matchId) ?? null,
       };
     });
     return rollupMatchPlay(projMatches, pointsPerMatch);
     // decidedFor/teamOfSide are per-render closures; we depend on the DATA they
     // read (scores via loadedValues/values, handicaps, roster→team, scorecard).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, loadedValues, values, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch, glorious]);
+  }, [groups, loadedValues, values, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch, pointValueByMatch, glorious]);
 
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
@@ -1193,11 +1239,13 @@ export function MatchGameView() {
         // competitionId), and a STANDALONE match game has no points at all (created
         // with points_distribution null). So the points term is conditional —
         // otherwise a standalone game (no Points UI, always 0) could NEVER enable.
-        // The per-match value read here is the SAME number the inline Points row
-        // shows, so the row's resolved state and the gate agree (one truth);
-        // pointsReady is the family's client-gate extension (matchDraft.ts).
-        const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
-        const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(pointsPerMatch));
+        // A2b: readiness keys on the owner-set TOTAL (effectiveTotal = points_total ??
+        // players-per-team default), NOT the even share — an all-overridden game has a
+        // 0 even share but a real total, and must still be enable-able. This is the
+        // SAME resolved truth the Total Points row shows (total > 0), so the row's
+        // state and the gate agree; pointsReady is the family's client-gate extension.
+        const effectiveTotal = ((gameQ.data?.points_total as number | null) ?? null) ?? defaultTotal;
+        const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(effectiveTotal));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
         // and Handicaps stay LOCKED until a match exists (they attach to a matchup).
@@ -1411,25 +1459,27 @@ export function MatchGameView() {
               />
             )}
 
-            {/* Format · Points — the last Settings row (the spine: matches × value).
-                NOT gated on matchesExist (bug fix): the owner can set the per-match
-                value before any match is paired — points mean nothing to the LIVE
-                total yet, but the value itself isn't invalid, and it's fine for
-                "Total Points Available" to read 0 with no matches defined. Rack's
-                "Points per Slot" (GameConfigurationView) never had this lock either
-                — matching that, for consistency across match-format games. */}
-            {gameQ.data && (
-              <GameSetupRows
-                slot="config"
+            {/* Total Points — the A2b spine (Refactor A2b): the owner sets a TOTAL,
+                the per-match value DERIVES (total ÷ matches), and individual matches
+                can be OVERRIDDEN with the remainder redistributing to keep the total
+                locked. Replaces the old inline "Points Per Match" stepper for match
+                play; rack keeps its "Points per Slot" inline control (GameSetupRows).
+                Competition games only (a standalone match has no points). */}
+            {gameQ.data && gameCompId && (
+              <MatchPointsRow
                 tripId={tripId}
+                gameId={gameId!}
                 competitionId={gameCompId}
-                game={gameQ.data as unknown as GameRow}
+                matches={pointsMatches}
+                pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
+                pointsDistributionValue={
+                  gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0
+                }
+                defaultTotal={defaultTotal}
                 canEdit={settingsEditable}
                 locked={scoringEnabled}
-                matchCount={filledDraft.length}
-                configOpen={openRow === "config"}
-                onOpenConfig={() => changeOpenRow("config")}
-                onCloseEditor={() => changeOpenRow(null)}
+                expanded={openRow === "config"}
+                onToggle={() => toggleRow("config")}
                 onChanged={onSetupChanged}
               />
             )}
