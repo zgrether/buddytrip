@@ -1465,6 +1465,11 @@ function SetDestinationSheet({
       utils.trips.list.invalidate();
       utils.ideas.list.invalidate({ tripId });
       utils.archivedIdeas.list.invalidate();
+      // Carried-over lodging (step 2) wrote logistics_items rows via a bare
+      // create mutation that doesn't invalidate — so the Lodging tab / itinerary
+      // wouldn't show them until a refresh. Invalidate the read key here (Wave 1:
+      // the one genuine same-device missing-invalidation bug found in Phase 0).
+      utils.logistics.list.invalidate({ tripId });
       onClose();
     } catch (err) {
       console.error("Failed to set destination:", err);
