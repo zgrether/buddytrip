@@ -178,7 +178,7 @@ export function CompetitionHero({
             the cup name is dropped (the hero already carries the big trophy). */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.1, color: "var(--color-bt-text)" }}>
+            <p style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: "var(--color-bt-text)" }}>
               {cupName}
             </p>
             {tagline && tagline.trim() && (
