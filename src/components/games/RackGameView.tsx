@@ -126,7 +126,7 @@ export function RackGameView() {
   // (STATE) so a reopen is instant while the scores re-fetch.
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
-  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  const { rows: teeRows, courseName } = useScorecardTeeRows(tripId, gameQ.data);
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
   // Scores are STATE — poll (~20s, paused when tab hidden) so remote entries
   // reflect on this open board (game-state sync); reconcile below merges them in
@@ -711,7 +711,7 @@ export function RackGameView() {
       // scorecard — now an overlay; dismiss returns to the rack hub (#7).
       return (
         <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
-          <ScorecardSheet title={scorecardTitle} onClose={back}>{scorecardGrid}</ScorecardSheet>
+          <ScorecardSheet title={scorecardTitle} subtitle={courseName ?? undefined} onClose={back}>{scorecardGrid}</ScorecardSheet>
         </div>
       );
     }
@@ -745,7 +745,7 @@ export function RackGameView() {
           />
         </div>
         {/* Scorecard OVERLAY over entry — entry stays mounted (#543 intact). */}
-        {gridOpen && <ScorecardSheet title={scorecardTitle} onClose={back}>{scorecardGrid}</ScorecardSheet>}
+        {gridOpen && <ScorecardSheet title={scorecardTitle} subtitle={courseName ?? undefined} onClose={back}>{scorecardGrid}</ScorecardSheet>}
       </div>
     );
   }

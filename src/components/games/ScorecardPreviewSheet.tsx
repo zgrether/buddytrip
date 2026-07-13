@@ -39,7 +39,7 @@ export function ScorecardPreviewSheet({
     () => teeFromSchema(schema as Parameters<typeof teeFromSchema>[0]),
     [schema],
   );
-  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  const { rows: teeRows } = useScorecardTeeRows(tripId, gameQ.data);
   const name = (gameQ.data?.name as string | undefined) ?? undefined;
   const hasCourse = !!(gameQ.data as { course_id?: string | null } | undefined)?.course_id;
   // Glorious visibility keys off config + format ONLY — zero participants (this

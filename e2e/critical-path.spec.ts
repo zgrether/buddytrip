@@ -127,7 +127,7 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   // 5. Open the review scorecard and assert BOTH entered scores surface in the
   //    EXACT right cells (keyed by participant id = user id, hole "1") — "a score
   //    shows up where it should". Test-id selectors, not brittle text.
-  await page.getByRole("button", { name: "Scorecard grid" }).click();
+  await page.getByRole("button", { name: "Scorecard", exact: true }).click();
 
   await expect(page.getByTestId(`score-cell-${ownerId}-1`)).toHaveText("7");
   await expect(page.getByTestId(`score-cell-${memberId}-1`)).toHaveText("3");

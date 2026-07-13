@@ -64,7 +64,7 @@ describe("StandardGrid — multi-tee yardage rows (5b)", () => {
   it("collapses the tee selector behind a disclosure, summarizing the chosen tee", () => {
     expect(html).toContain("tee-legend-toggle"); // the disclosure trigger (collapsed by default)
     expect(html).toContain("Tees"); // the trigger label
-    expect(html).toContain("White · in play"); // chosen tee shown in the trigger summary
+    expect(html).toContain("White · playing"); // chosen tee shown in the trigger summary
     // The full per-tee selection is behind the collapsed disclosure — a tee that is
     // neither chosen nor rendered in the grid (Red, default-hidden) is absent from
     // the initial static markup until the disclosure is expanded.
@@ -77,8 +77,8 @@ describe("StandardGrid — multi-tee yardage rows (5b)", () => {
     expect(html).not.toContain("tee-row-Red"); // default-hidden → no row (only the legend entry)
   });
 
-  it("marks the chosen tee in play and highlights it (accent-faint token)", () => {
-    expect(html).toContain("· in play");
+  it("marks the chosen tee playing and highlights it (accent-faint token)", () => {
+    expect(html).toContain("· playing");
     expect(html).toContain("var(--color-bt-accent-faint)"); // the chosen row's brighter fill
     expect(html).toContain("var(--color-bt-accent)"); // the chosen row's left accent rail
   });
