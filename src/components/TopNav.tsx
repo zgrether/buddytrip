@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Pin, MessageCircle, Megaphone, ChevronDown, ChevronLeft, Settings, Table2 } from "lucide-react";
+import { Newspaper, MessageCircle, Megaphone, ChevronDown, ChevronLeft, Settings, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
@@ -369,7 +369,7 @@ function NewsToolButton({
   const utils = trpc.useUtils();
   return (
     <ToolButton
-      icon={Pin}
+      icon={Newspaper}
       label="News"
       count={unread}
       badgeBg="var(--color-bt-accent)"

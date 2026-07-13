@@ -1,7 +1,7 @@
 "use client";
 
 import { type FC, useEffect, useRef } from "react";
-import { Home, Plus, Activity, type LucideIcon } from "lucide-react";
+import { Home, Plus, Trophy, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
 // ── Publish the rendered nav height ────────────────────────────────────────
@@ -63,7 +63,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
     {
       id: "live",
       label: "Live",
-      Icon: Activity,
+      Icon: Trophy,
       href: activeTripId ? `/trips/${activeTripId}/leaderboard` : "#",
       hidden: !activeTripId,
     },
@@ -129,7 +129,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
     {
       id: "live",
       label: liveLabel?.trim() || "Live",
-      Icon: Activity,
+      Icon: Trophy,
       href: `/trips/${tripId}/leaderboard`,
       hidden: showComp !== undefined ? !showComp : !eventId,
     },

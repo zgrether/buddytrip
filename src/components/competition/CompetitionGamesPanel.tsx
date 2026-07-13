@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Plus, X, Trophy,
+  Plus, X, ListTree,
   Target, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -80,8 +80,8 @@ const CATEGORY_META: Record<string, { label: string; Icon: LucideIcon }> = {
 
 const COMP_FORMATS = [
   { key: "head_to_head", label: "Head-to-Head / Match", desc: "One-off matchup, winner takes the points.", Icon: Swords },
-  { key: "bracket_se", label: "Bracket — Single Elimination", desc: "Lose once, you're out.", Icon: Trophy },
-  { key: "bracket_de", label: "Bracket — Double Elimination", desc: "Two lives — a losers' bracket.", Icon: Trophy },
+  { key: "bracket_se", label: "Bracket — Single Elimination", desc: "Lose once, you're out.", Icon: ListTree },
+  { key: "bracket_de", label: "Bracket — Double Elimination", desc: "Two lives — a losers' bracket.", Icon: ListTree },
   { key: "best_of_n", label: "Best of N", desc: "First to win the majority of games.", Icon: Target },
   { key: "live_results", label: "Live Results", desc: "A running tally that updates as it plays (e.g. Pick'em).", Icon: Radio },
 ] as const;

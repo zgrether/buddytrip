@@ -216,9 +216,13 @@ export function LiveFaceClient({
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Band 1 — the global title bar, identical to the trip face (§2). */}
+      {/* Band 1 — the global title bar, identical to the trip face (§2), EXCEPT
+          the trip-switcher is suppressed here (W3-Header2): the competition face
+          is a destination reached from within a trip, not a place to hop between
+          trips. Scoped to this face's bar only — the trip face keeps its switcher. */}
       <TopNav
         tripId={tripId}
+        hideTripSwitcher
         onOpenChat={openChat}
         chatOpen={chatOpen}
         onOpenNews={openNews}

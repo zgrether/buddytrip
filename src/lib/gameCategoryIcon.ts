@@ -1,16 +1,17 @@
-import { Flag, Spade, Target, Beer, Dices, Gamepad2 } from "lucide-react";
+import { LandPlot, Spade, Target, Beer, Dices, Gamepad2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { getGameTypeDefinition, type GameCategory } from "@/lib/gameTypes";
 
 /**
  * One shared game-type icon source (add-game picker + competition leaderboard).
  * Keyed by CATEGORY (golf/card/yard/bar/other), not scoring format — all golf
- * formats (stroke/singles/doubles/rack) share the flag. Format-specific icons
+ * formats (stroke/singles/doubles/rack) share the land-plot (course) glyph.
+ * Format-specific icons
  * (swords for match play, layers for rack) read as "combat/stack" on a board
  * that's half non-golf; category is what actually orients a viewer.
  */
 export const CATEGORY_ICONS: Record<GameCategory, LucideIcon> = {
-  golf: Flag,
+  golf: LandPlot,
   card: Spade,
   yard: Target,
   bar: Beer,

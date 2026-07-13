@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag, Spade, Target, Beer, Dices } from "lucide-react";
+import { LandPlot, Spade, Target, Beer, Dices } from "lucide-react";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { MemberSetupView } from "./MemberSetupView";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -21,8 +21,8 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  * is exactly how the callers already differentiate the two.
  */
 
-const CATEGORY_ICON: Record<string, typeof Flag> = {
-  golf: Flag,
+const CATEGORY_ICON: Record<string, typeof LandPlot> = {
+  golf: LandPlot,
   card: Spade,
   yard: Target,
   bar: Beer,

@@ -31,7 +31,10 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
       <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         Groups · tap to enter scores
       </span>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      {/* items-start: when one card is taller (a wrapped name / longer roster),
+          the shorter column top-aligns to its row instead of stretching or
+          floating mid-height (W3-Rack3). */}
+      <div className="mt-2 grid grid-cols-2 items-start gap-2">
         {groups.map((g) => (
           <button
             key={g.id}

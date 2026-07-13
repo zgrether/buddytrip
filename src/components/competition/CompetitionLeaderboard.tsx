@@ -342,6 +342,32 @@ function GamesSection({
   );
 
   if (games.length === 0) {
+    // Owner/editor with a fresh, empty board → the whole panel is an invitation
+    // to begin (§4 invitation styling: dashed border + surface-invitation), and
+    // tapping anywhere routes to the setup entry point (add the first game).
+    // Non-editors can't set up, so they get a calm read-only note instead.
+    if (canEdit && onAddGame) {
+      return (
+        <button
+          type="button"
+          onClick={onAddGame}
+          data-testid="comp-games-empty-cta"
+          className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl px-4 py-8 text-center transition-opacity hover:opacity-80"
+          style={{
+            background: "var(--color-bt-surface-invitation)",
+            border: "1.5px dashed var(--color-bt-border)",
+          }}
+        >
+          <Plus size={20} style={{ color: "var(--color-bt-accent)" }} />
+          <span style={{ color: "var(--color-bt-text)", fontSize: 15, fontWeight: 600 }}>
+            Tap to start setting up
+          </span>
+          <span style={{ color: "var(--color-bt-text-dim)", fontSize: 12 }}>
+            Add the first game to start the board.
+          </span>
+        </button>
+      );
+    }
     return (
       <div
         className="overflow-hidden rounded-xl"
@@ -356,7 +382,6 @@ function GamesSection({
           <p className="mt-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
             Add the first one to start the board.
           </p>
-          {addBtn && <div className="mt-3">{addBtn}</div>}
         </div>
       </div>
     );
@@ -570,8 +595,9 @@ function SessionBreakdown({
                   style={{ background: "currentColor", boxShadow: "0 0 0 3px var(--color-bt-accent-faint)" }}
                 />
               )}
-              {label}{" "}
-              <span style={{ color: "var(--color-bt-text)" }}>· {sectionGames.length}</span>
+              {label}
+              {/* Count right-justified to the section's right edge (W3-LB2). */}
+              <span className="ml-auto tabular-nums" style={{ color: "var(--color-bt-text)" }}>{sectionGames.length}</span>
             </p>
             {/* Team short-name column header — sits directly above COMPLETED
                 only (§1.2), match_play only (points cups get their own
