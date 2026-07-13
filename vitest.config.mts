@@ -12,7 +12,13 @@ export default defineConfig({
   esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
-    testTimeout: 30_000,
+    // Server-router tests run against the shared REMOTE Supabase project and do
+    // many sequential round-trips per test (setPairings → setHandicap → score
+    // entries → finish). Under CI load a single round-trip can spike to several
+    // seconds, tipping a heavy test past the old 30s default and flaking the
+    // merge gate (e.g. matches.test.ts "closed-out 3&2"). 60s gives real
+    // headroom; a genuinely hung test still fails, just 30s later.
+    testTimeout: 60_000,
     exclude: ["e2e/**", "node_modules/**"],
     globalSetup: ["src/__tests__/helpers/global-setup.ts"],
   },
