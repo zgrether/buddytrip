@@ -181,38 +181,48 @@ export function GameSetupRows({
             icon={Hash}
             title="Total Points"
             subtitle={
-              <>
-                {pointsTitle ?? "Points per match"}:{" "}
-                <span
-                  style={{
-                    color: pointsReady(derivedPerSlot) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                    fontWeight: 600,
-                  }}
-                >
-                  {/* Never auto-rounded — a non-whole share is shown exactly (2 decimals),
-                      same teal treatment as any other resolved value (no amber/warning:
-                      the math downstream is exact; see evenShare's doc). */}
-                  {Number.isInteger(derivedPerSlot) ? derivedPerSlot : derivedPerSlot.toFixed(2)}
-                </span>
-              </>
+              slotCount > 0 ? (
+                <>
+                  {pointsTitle ?? "Points per match"}:{" "}
+                  <span
+                    style={{
+                      color: pointsReady(derivedPerSlot) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {/* Never auto-rounded — a non-whole share is shown exactly (2 decimals),
+                        same teal treatment as any other resolved value (no amber/warning:
+                        the math downstream is exact; see evenShare's doc). */}
+                    {Number.isInteger(derivedPerSlot) ? derivedPerSlot : derivedPerSlot.toFixed(2)}
+                  </span>
+                </>
+              ) : (
+                // Pre-match: nothing to distribute across yet (W3-Rack4).
+                <span style={{ color: "var(--color-bt-text-dim)" }}>Add a group first — points split across the rack&rsquo;s slots.</span>
+              )
             }
             // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
-            // points term satisfied (they can't disagree).
-            state={pointsReady(derivedPerSlot) ? "resolved" : "empty"}
+            // points term satisfied (they can't disagree). Never resolved before a slot.
+            state={slotCount > 0 && pointsReady(derivedPerSlot) ? "resolved" : "empty"}
             disabled={!canEdit}
             locked={locked}
             testId="row-format-points"
+            // The total-points control (dropdown/stepper) only renders once at least
+            // one match/slot exists — there's nothing to distribute across otherwise
+            // (W3-Rack4). Before that the row is a plain pre-match prompt.
             control={
-              <RackTotalPointsControl
-                tripId={tripId}
-                game={game}
-                slotCount={slotCount}
-                defaultTotal={defaultTotal ?? 0}
-                // P3: locked until ≥1 valid match exists (points mean nothing before
-                // a match). Locked → the stepper is disabled (read-only), matching the
-                // gated rows. Otherwise live.
-                disabled={configLocked || !canEdit}
-              />
+              slotCount > 0 ? (
+                <RackTotalPointsControl
+                  tripId={tripId}
+                  game={game}
+                  slotCount={slotCount}
+                  defaultTotal={defaultTotal ?? 0}
+                  // P3: locked until ≥1 valid match exists (points mean nothing before
+                  // a match). Locked → the stepper is disabled (read-only), matching the
+                  // gated rows. Otherwise live.
+                  disabled={configLocked || !canEdit}
+                />
+              ) : undefined
             }
           />
         ) : (
