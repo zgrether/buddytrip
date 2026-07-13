@@ -222,7 +222,11 @@ function Segment({
       className="flex min-w-0 items-center"
       style={{
         flex: narrow ? "0 0 auto" : "1 1 0",
-        justifyContent: "center",
+        // Player segments left-justify their chips (avatar-left, matching the
+        // Matches renderer) instead of floating centered (W4-7); the narrow Even
+        // segment keeps its centered label.
+        justifyContent: narrow ? "center" : "flex-start",
+        paddingLeft: narrow ? undefined : 8,
         // Player segments carry the shared SideChips (which own their own avatar
         // inset), so the segment adds no padding; the narrow Even segment hugs its
         // centered label with its own padding. `minHeight` (not a fixed height) so a
