@@ -24,7 +24,10 @@ type GameLike = {
   } | null;
 } | null | undefined;
 
-export function useScorecardTeeRows(tripId: string | undefined, game: GameLike): TeeRow[] {
+export function useScorecardTeeRows(
+  tripId: string | undefined,
+  game: GameLike
+): { rows: TeeRow[]; courseName: string | null } {
   const courseId = game?.course_id ?? null;
   const backCourseId = game?.back_course_id ?? null;
   const chosenTeeName = game?.scorecard_schema?.units?.metadata?.tee?.name ?? null;
@@ -41,8 +44,11 @@ export function useScorecardTeeRows(tripId: string | undefined, game: GameLike):
 
   const frontTees = (frontQ.data?.tee_sets as RawTee[] | undefined) ?? null;
   const backTees = (backQ.data?.tee_sets as RawTee[] | undefined) ?? null;
+  // The front course's name — already fetched here; surfaced (Wave 2) so the
+  // scorecard overlay header can show it without a second query.
+  const courseName = (frontQ.data?.name as string | undefined) ?? null;
 
-  return useMemo(() => {
+  const rows = useMemo(() => {
     if (!frontTees?.length) return [];
     return buildTeeRows({
       chosenTeeName,
@@ -52,4 +58,6 @@ export function useScorecardTeeRows(tripId: string | undefined, game: GameLike):
       backTees: backCourseId ? backTees : null,
     });
   }, [frontTees, backTees, backCourseId, chosenTeeName, holeCount]);
+
+  return { rows, courseName };
 }

@@ -51,7 +51,7 @@ export default function ScorecardPreviewPage() {
     [schema]
   );
   // Multi-tee yardage rows (Spec 5b) — reads the persisted course record(s).
-  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  const { rows: teeRows } = useScorecardTeeRows(tripId, gameQ.data);
   const gameTypeId = gameQ.data?.game_type_id as string | undefined;
   // A course is applied ⟺ course_id is set (a 9-hole front counts — the preview
   // honestly shows a lone front nine so "I forgot the back" is visible).

@@ -198,7 +198,7 @@ export function MatchGameView() {
   // raw scores stay short, so a reopen refreshes them while the rest is instant.
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
-  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  const { rows: teeRows, courseName: scorecardCourseName } = useScorecardTeeRows(tripId, gameQ.data);
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
   // Scores are STATE — poll (~20s, paused when tab hidden) so remote entries
   // reflect on this open board (game-state sync). `loadedValues` is a memo of
@@ -1183,7 +1183,7 @@ export function MatchGameView() {
         {readOnly ? (
           // Read-only when locked OR the viewer can't score this match — the
           // scorecard IS the surface, now an overlay; dismiss returns to the hub.
-          <ScorecardSheet title={locked ? "Scorecard · Final" : "Scorecard"} onClose={matchBack}>
+          <ScorecardSheet title={locked ? "Scorecard · Final" : "Scorecard"} subtitle={scorecardCourseName ?? undefined} onClose={matchBack}>
             {scorecardGrid}
           </ScorecardSheet>
         ) : outcomeMode ? (
@@ -1210,7 +1210,7 @@ export function MatchGameView() {
               glorious={glorious}
             />
             {gridOpen && (
-              <ScorecardSheet title="Scorecard" onClose={matchBack}>{scorecardGrid}</ScorecardSheet>
+              <ScorecardSheet title="Scorecard" subtitle={scorecardCourseName ?? undefined} onClose={matchBack}>{scorecardGrid}</ScorecardSheet>
             )}
           </>
         ) : (
@@ -1238,7 +1238,7 @@ export function MatchGameView() {
             />
             {/* Scorecard OVERLAY over entry — entry stays mounted (#543 intact). */}
             {gridOpen && (
-              <ScorecardSheet title="Scorecard" onClose={matchBack}>{scorecardGrid}</ScorecardSheet>
+              <ScorecardSheet title="Scorecard" subtitle={scorecardCourseName ?? undefined} onClose={matchBack}>{scorecardGrid}</ScorecardSheet>
             )}
           </>
         )}

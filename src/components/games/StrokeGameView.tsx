@@ -80,7 +80,7 @@ export function StrokeGameView() {
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId }
   );
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record.
-  const teeRows = useScorecardTeeRows(tripId, gameQ.data);
+  const { rows: teeRows, courseName } = useScorecardTeeRows(tripId, gameQ.data);
   // Scores are STATE — poll them (~20s) so a remote device's entries reflect on
   // this open board (game-state sync). refetchIntervalInBackground:false pauses
   // the poll when the tab is hidden. The reconcile below merges fresh server
@@ -612,7 +612,7 @@ export function StrokeGameView() {
           // #557: a viewer who can't score this game lands on the read-only
           // scorecard — now as an overlay; dismissing leaves the game (back to the
           // board), consistent with the "scorecard floats" model.
-          <ScorecardSheet onClose={() => router.back()}>{scorecardGrid}</ScorecardSheet>
+          <ScorecardSheet subtitle={courseName ?? undefined} onClose={() => router.back()}>{scorecardGrid}</ScorecardSheet>
         ) : (
           <>
             {view === "final" ? (
@@ -647,7 +647,7 @@ export function StrokeGameView() {
             )}
             {/* Scorecard OVERLAY over entry/final — the base stays mounted so
                 dismiss returns with in-progress entry intact (#543). */}
-            {gridOpen && <ScorecardSheet onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
+            {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
           </>
         )}
       </div>

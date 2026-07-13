@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Flag } from "lucide-react";
+import { ChevronDown, Flag, Check } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { Avatar } from "@/components/Avatar";
-import { Checkbox } from "./Checkbox";
 import { GolfChip } from "./GolfChip";
 import {
   scoreCellKey,
@@ -216,67 +215,89 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
           space; the chosen tee shows in the trigger and always renders in the grid.
           The chosen tee is checked + disabled (in play, never hidable). */}
       {multiTee ? (
-        <div style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+        // Wave 2: an itinerary-style FLOATING tee filter — a compact "Tees" pill
+        // that opens a popover checklist over the grid (Level-3 float surface),
+        // replacing the inline checkbox grid that pushed the scorecard down.
+        <div className="relative flex items-center gap-2" style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
           <button
             type="button"
             onClick={() => setTeePanelOpen((o) => !o)}
+            aria-haspopup="menu"
             aria-expanded={teePanelOpen}
-            className="flex w-full items-center gap-2"
-            style={{ padding: "8px 12px" }}
+            className="inline-flex min-w-0 items-center gap-2 rounded-full"
+            style={{ padding: "6px 12px", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
             data-testid="tee-legend-toggle"
           >
-            <Flag size={13} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+            <Flag size={12} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
             <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
               Tees
             </span>
             {chosenTee && (
               <span className="flex min-w-0 items-center gap-1.5">
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: chosenTee.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
-                <span className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text)" }}>
-                  {chosenTee.name} · in play
+                <span className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
+                  {chosenTee.name} · playing
                 </span>
               </span>
             )}
             <ChevronDown
-              size={16}
-              className="ml-auto transition-transform"
+              size={14}
+              className="transition-transform"
               style={{ color: "var(--color-bt-text-dim)", transform: teePanelOpen ? "rotate(180deg)" : undefined, flexShrink: 0 }}
             />
           </button>
-          {/* Glorious label lives OUTSIDE the toggle button (a second nested
-              interactive/text element inside a <button> is the wrong idiom) —
-              a sibling line under the trigger, still read as part of the tees bar. */}
+          {/* Glorious label — a sibling of the pill (never nested in a button). */}
           {gloriousCols.size > 0 && (
-            <div style={{ padding: "0 12px 8px", textAlign: "right" }}>
-              <span data-testid="glorious-tees-label" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-glorious)" }}>
-                {glorious.n} Glorious Finishing Holes · Worth Double
-              </span>
-            </div>
+            <span data-testid="glorious-tees-label" className="ml-auto truncate" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-glorious)" }}>
+              {glorious.n} Glorious Finishing Holes · Worth Double
+            </span>
           )}
           {teePanelOpen && (
-            <div
-              className="flex flex-wrap items-center gap-x-4 gap-y-2.5"
-              style={{ padding: "2px 12px 10px" }}
-              data-testid="tee-legend"
-            >
-              {teeRows.map((row) => {
-                const on = teeVisible(row);
-                return (
-                  <div key={row.name} className="flex items-center gap-1.5">
-                    <Checkbox
-                      on={on}
+            <>
+              {/* Click-outside backdrop (the itinerary filter closes on re-tap
+                  only; a tee filter over a scrollable grid wants outside-dismiss). */}
+              <button
+                aria-hidden
+                tabIndex={-1}
+                onClick={() => setTeePanelOpen(false)}
+                className="fixed inset-0 z-40 cursor-default"
+                style={{ background: "transparent" }}
+              />
+              <div
+                role="menu"
+                data-testid="tee-legend"
+                className="absolute left-3 top-[calc(100%-2px)] z-50 flex min-w-[200px] flex-col gap-0.5 rounded-xl p-1.5"
+                style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
+              >
+                {teeRows.map((row) => {
+                  const on = teeVisible(row);
+                  return (
+                    <button
+                      key={row.name}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={on}
                       disabled={row.isChosen}
                       onClick={() => toggleTee(row)}
-                      label={`Show ${row.name} tee yardages`}
-                    />
-                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: row.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: row.isChosen ? 700 : 500, color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
-                      {row.name}{row.isChosen ? " · in play" : ""}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-card)] disabled:cursor-default"
+                      aria-label={`${row.name} tee yardages`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: row.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+                        <span className="truncate" style={{ fontSize: 13, fontWeight: row.isChosen ? 700 : 600, color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
+                          {row.name}{row.isChosen ? " · playing" : ""}
+                        </span>
+                      </span>
+                      {on ? (
+                        <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+                      ) : (
+                        <span style={{ width: 14, flexShrink: 0 }} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       ) : tee ? (
