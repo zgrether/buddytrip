@@ -67,7 +67,11 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("Places API error:", res.status, errText);
-      return NextResponse.json({ predictions: [] });
+      // Surface the failure so the client can show "search unavailable" instead
+      // of a silent empty dropdown that reads as "no matches" (the exact way a
+      // misconfigured key / disabled API / billing-off used to look like a dead
+      // field). 502 = upstream failed, distinct from a real 200 empty result.
+      return NextResponse.json({ error: "Places search unavailable", predictions: [] }, { status: 502 });
     }
 
     const data = await res.json();
@@ -99,7 +103,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ predictions });
   } catch (err) {
     console.error("Places API fetch error:", err);
-    return NextResponse.json({ predictions: [] });
+    return NextResponse.json({ error: "Places search unavailable", predictions: [] }, { status: 502 });
   }
 }
 
