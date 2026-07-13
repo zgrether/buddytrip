@@ -191,10 +191,12 @@ export function GameRow({
   const isFinal = section === "completed";
 
   // Final sheds the operational layer (scorecard + delegate), keeps the result
-  // (round-3.1 §A2). The scorecard column is golf-only and present everywhere
-  // EXCEPT Final; a course set makes it a real button (opens the scorecard via
-  // the row link), no course makes it a muted, inert status icon.
-  const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal;
+  // (round-3.1 §A2). The scorecard column is golf-only, present in the SETUP /
+  // upcoming states (skeleton/preparing/ready). It's ALSO suppressed once the
+  // game is LIVE (on-tap) — the icon is a course PREVIEW, which is noise next to
+  // live scoring context (W3-LB6) — and at Final. A course set makes it a real
+  // button (opens the scorecard via the row link); no course = a muted status icon.
+  const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal && section !== "on-tap";
   const scorecardOpens = showScorecard && game.hasCourse === true && !!href;
   const showDelegate = mine && !isFinal;
   // A row is tappable when it has a route (golf OR the non-golf manual page) —
@@ -441,7 +443,9 @@ function OuterColumn({
           return (
             <span key={team.id} className="flex items-center gap-1 text-[13px] font-semibold tabular-nums">
               <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
-              <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "–"}</span>
+              {/* Completed game: a team with no cell scored a real zero, not
+                  "not-applicable" — show 0, reserve the dash for unplayed (W3-LB5). */}
+              <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "0"}</span>
             </span>
           );
         })}
@@ -681,7 +685,8 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
                 : undefined,
             }}
           >
-            {v != null ? fmtPts(v) : "–"}
+            {/* completed → a no-score team is a real 0, not unplayed (W3-LB5). */}
+            {v != null ? fmtPts(v) : "0"}
           </span>
         );
       })}
