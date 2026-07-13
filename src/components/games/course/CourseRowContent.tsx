@@ -64,14 +64,32 @@ export function CourseRowContent({
     !!backId && !!appliedTeeName && backTees.length > 0 &&
     !backTees.some((t) => (t.name ?? "").trim() === appliedTeeName);
 
-  function refresh(courseId?: string) {
+  // Apply mutations are in flight → drive the tee chooser's pending feedback.
+  const applying = applyCourse.isPending || setBackNine.isPending;
+
+  // Fast-path the course/tee-apply response (the reported "long delay"): the
+  // mutation RETURNS the updated game row, so merge it straight into the getById
+  // cache — the parent (gameQ) repaints the resolved course INSTANTLY instead of
+  // waiting on the shared onSetupChanged cascade (gameQ.refetch + the board's
+  // faceBootstrap/leaderboard/listByTrip refetches, heavy because the board stays
+  // mounted under the panel). A course/tee change is pre-scoring (frozen once
+  // scores exist), so the board can't have changed — skipping that cascade here
+  // is safe. Merge (not overwrite): applyCourse returns SELECT * (no
+  // `participants`), while getById caches game + participants, so spread over prev.
+  const patchGameFromReturn = (row: unknown, courseId?: string) => {
+    if (row && typeof row === "object") {
+      utils.games.getById.setData(
+        { tripId, gameId },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (prev: any) => (prev ? { ...prev, ...(row as Record<string, unknown>) } : prev)
+      );
+    }
     if (courseId) utils.courses.getById.invalidate({ courseId });
-    onChanged();
-  }
+  };
   const onPickFront = ({ id, teeName }: { id: string; teeName?: string }) =>
-    applyCourse.mutate({ tripId, gameId, courseId: id, teeSetName: teeName }, { onSuccess: () => refresh(id) });
+    applyCourse.mutate({ tripId, gameId, courseId: id, teeSetName: teeName }, { onSuccess: (row) => patchGameFromReturn(row, id) });
   const onPickBack = ({ id, teeName }: { id: string; teeName?: string }) =>
-    setBackNine.mutate({ tripId, gameId, backCourseId: id, backTeeSetName: teeName }, { onSuccess: () => refresh(id) });
+    setBackNine.mutate({ tripId, gameId, backCourseId: id, backTeeSetName: teeName }, { onSuccess: (row) => patchGameFromReturn(row, id) });
   // Remove the back nine (per-nine × — Task 2b): re-apply the FRONT alone, which
   // resets back_course_id and shrinks the schema back to 9 → the "needs a back
   // nine" state (re-pick from there). Reuses applyCourse — no new server machinery
@@ -79,13 +97,15 @@ export function CourseRowContent({
   const onRemoveBack = () =>
     applyCourse.mutate(
       { tripId, gameId, courseId: frontId!, teeSetName: appliedTeeName || undefined },
-      { onSuccess: () => refresh(frontId!) }
+      { onSuccess: (row) => patchGameFromReturn(row, frontId!) }
     );
-  const onClearCourse = () => clearCourse.mutate({ tripId, gameId }, { onSuccess: () => refresh() });
+  // Clearing the course fully is rare and not the hot tee-select path — keep the
+  // broad refresh (onChanged) so every dependent surface re-derives from scratch.
+  const onClearCourse = () => clearCourse.mutate({ tripId, gameId }, { onSuccess: () => { onChanged(); } });
 
   // ── No course → front picker ──────────────────────────────────────────────
   if (!frontId) {
-    return <CourseSearchPanel tripId={tripId} gameId={gameId} onApply={onPickFront} />;
+    return <CourseSearchPanel tripId={tripId} gameId={gameId} onApply={onPickFront} busy={applying} />;
   }
 
   // ── 9-hole front, no back → needs a back nine ─────────────────────────────
@@ -97,7 +117,7 @@ export function CourseRowContent({
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>Add the back nine</span>
           <p className="mb-2 mt-0.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>A 9-hole course needs a back nine to make a full 18.</p>
-          <CourseSearchPanel tripId={tripId} gameId={gameId} mode="back" onApply={onPickBack} />
+          <CourseSearchPanel tripId={tripId} gameId={gameId} mode="back" onApply={onPickBack} busy={applying} />
         </div>
       </div>
     );

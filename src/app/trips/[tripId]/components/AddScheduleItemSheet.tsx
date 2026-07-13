@@ -62,6 +62,12 @@ function usePlacesSearch(types?: string[]) {
   const [query, setQuery] = useState("");
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [loading, setLoading] = useState(false);
+  // "unavailable" when the proxy fails (missing/misconfigured GOOGLE_PLACES_API_KEY,
+  // Places API not enabled/billed, network) — distinct from a genuine 200 empty
+  // result. Without this the field silently shows nothing on any failure, reading
+  // as a dead field (the reported bug: no results in the deployed env where the
+  // key isn't set).
+  const [unavailable, setUnavailable] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const search = useCallback((q: string) => {
@@ -69,6 +75,7 @@ function usePlacesSearch(types?: string[]) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (q.length < 2) {
       setPredictions([]);
+      setUnavailable(false);
       return;
     }
     setLoading(true);
@@ -79,10 +86,19 @@ function usePlacesSearch(types?: string[]) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: q, types }),
         });
-        const data = await res.json();
-        setPredictions(data.predictions ?? []);
+        const data = await res.json().catch(() => ({}));
+        // A non-OK status or an { error } body means the lookup couldn't run —
+        // surface it rather than coalescing to an empty "no matches" list.
+        if (!res.ok || data.error) {
+          setPredictions([]);
+          setUnavailable(true);
+        } else {
+          setPredictions(data.predictions ?? []);
+          setUnavailable(false);
+        }
       } catch {
         setPredictions([]);
+        setUnavailable(true);
       } finally {
         setLoading(false);
       }
@@ -92,9 +108,10 @@ function usePlacesSearch(types?: string[]) {
   const clear = useCallback(() => {
     setQuery("");
     setPredictions([]);
+    setUnavailable(false);
   }, []);
 
-  return { query, predictions, loading, search, clear };
+  return { query, predictions, loading, unavailable, search, clear };
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -674,6 +691,12 @@ export function AddScheduleItemSheet({
                   </p>
                 )}
 
+                {placesSearch.unavailable && !placesSearch.loading && (
+                  <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Course search is unavailable right now — enter the course manually below.
+                  </p>
+                )}
+
                 {/* "Can't find it?" fallback — shown once the user has typed something */}
                 {!placesSearch.loading && placesSearch.query.length >= 2 && (
                   <button
@@ -882,6 +905,11 @@ export function AddScheduleItemSheet({
                 {locationSearch.loading && locationSearch.query.length >= 2 && (
                   <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     Searching...
+                  </p>
+                )}
+                {locationSearch.unavailable && !locationSearch.loading && (
+                  <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Location search is unavailable right now — you can still type the venue name.
                   </p>
                 )}
               </div>

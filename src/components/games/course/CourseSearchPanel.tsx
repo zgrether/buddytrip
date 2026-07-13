@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, AlertTriangle, PencilLine, ChevronRight } from "lucide-react";
+import { Search, AlertTriangle, PencilLine, ChevronRight, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { searchCourses, teeColor, type CourseSummary } from "@/lib/courseService";
 import { manualEntryVisible, dedupeApiCourses } from "@/lib/courseSearch";
@@ -22,7 +22,7 @@ import type { RecentCourse } from "./CoursePicker";
  * applied tee is what the row's loud value shows).
  */
 export function CourseSearchPanel({
-  tripId, gameId, onApply, mode = "front",
+  tripId, gameId, onApply, mode = "front", busy = false,
 }: {
   tripId: string;
   gameId: string;
@@ -32,6 +32,10 @@ export function CourseSearchPanel({
    *  the golfcourseapi search (a back nine is a saved/manual 9-holer), and the
    *  entry page lands in back-slot mode. Default "front" (the whole course). */
   mode?: "front" | "back";
+  /** The parent's apply mutation is in flight — disable + spinner the tapped tee
+   *  so a tee-select gives IMMEDIATE feedback instead of looking frozen while the
+   *  apply + refresh runs. */
+  busy?: boolean;
 }) {
   const back = mode === "back";
   const router = useRouter();
@@ -42,6 +46,8 @@ export function CourseSearchPanel({
   const [apiSearched, setApiSearched] = useState(false);
   // The saved course whose tee chooser is expanded (multi-tee select-before-apply).
   const [teePickFor, setTeePickFor] = useState<RecentCourse | null>(null);
+  // The tee label currently being applied — drives the per-tee spinner (feedback).
+  const [pendingTee, setPendingTee] = useState<string | null>(null);
 
   const recent = trpc.courses.list.useQuery({ limit: 8 });
   const apiUsage = trpc.courses.apiUsage.useQuery(undefined, { staleTime: 0 });
@@ -109,17 +115,26 @@ export function CourseSearchPanel({
         </div>
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Choose a tee</span>
         <div className="flex flex-wrap gap-2">
-          {(teePickFor.tee_sets ?? []).map((t, i) => (
-            <button
-              key={i}
-              onClick={() => onApply({ id: teePickFor.id, name: teePickFor.name, teeName: t.name?.trim() || undefined })}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <span style={{ width: 9, height: 9, borderRadius: "50%", background: teeColor(t.name || `Tee ${i + 1}`) }} />
-              {t.name || `Tee ${i + 1}`}
-            </button>
-          ))}
+          {(teePickFor.tee_sets ?? []).map((t, i) => {
+            const label = t.name || `Tee ${i + 1}`;
+            const isPending = busy && pendingTee === label;
+            return (
+              <button
+                key={i}
+                onClick={() => { setPendingTee(label); onApply({ id: teePickFor.id, name: teePickFor.name, teeName: t.name?.trim() || undefined }); }}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm disabled:opacity-60"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+              >
+                {isPending ? (
+                  <Loader2 size={13} className="animate-spin" style={{ color: "var(--color-bt-text-dim)" }} />
+                ) : (
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: teeColor(label) }} />
+                )}
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
