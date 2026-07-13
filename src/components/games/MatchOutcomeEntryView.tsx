@@ -33,7 +33,9 @@ import type { MatchGroupData } from "./MatchEntryView";
  */
 interface MatchOutcomeEntryViewProps {
   gameName: string;
-  units: { label: string; par?: number }[];
+  /** yardage/strokeIndex are optional — present only when the match game has a
+   *  course/tee snapshot; the meta line shows them when available (header parity). */
+  units: { label: string; par?: number | null; yardage?: number | null; strokeIndex?: number | null }[];
   match: MatchGroupData;
   values: OutcomeValues;
   onChange: (matchId: string, hole: string, result: HoleOutcomeResult) => void;
@@ -186,9 +188,10 @@ export function MatchOutcomeEntryView({
               {subtitle ?? `Hole ${hole} of ${units.length}`}
             </div>
           </div>
-          <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-            <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
+          {/* Scorecard now lives in the hole-navigator meta line (thumb zone),
+              matching stroke/rack — this standalone-route header keeps only a
+              spacer so the title stays centered (Wave 2 parity). */}
+          <div className="h-9 w-9" />
         </header>
       )}
 
@@ -208,7 +211,6 @@ export function MatchOutcomeEntryView({
           leftColor={m.leftColor}
           rightColor={m.rightColor}
           hideFormat
-          onScorecard={onOpenGrid}
         />
         {st.over && (
           <div
@@ -228,18 +230,36 @@ export function MatchOutcomeEntryView({
         )}
       </div>
 
-      {/* Hole navigation — verbatim reuse of entryChrome. */}
-      <div className="flex shrink-0 items-center justify-between" style={{ padding: "8px 16px 12px" }}>
+      {/* Hole navigation — header parity with stroke/rack (Wave 2): tightened
+          padding + a single meta line (Par · Yds · Hdcp) with the scorecard
+          button relocated inline (thumb zone), not on the MatchCard band. */}
+      <div className="flex shrink-0 items-center justify-between" style={{ padding: "10px 16px 6px" }}>
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
+        <div className="flex flex-col items-center" style={{ gap: 8, flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
-          {par != null && (
-            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-              Par {par}
-            </div>
-          )}
+          <div className="flex items-center justify-center" style={{ gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              {[
+                par != null ? `Par ${par}` : null,
+                unit?.yardage != null ? `${unit.yardage} yds` : null,
+                unit?.strokeIndex != null ? `Hdcp ${unit.strokeIndex}` : null,
+              ].filter(Boolean).join(" · ")}
+            </span>
+            {onOpenGrid && (
+              <button
+                type="button"
+                onClick={onOpenGrid}
+                aria-label="Scorecard"
+                data-testid="entry-scorecard"
+                className="inline-flex shrink-0 items-center justify-center rounded-md"
+                style={{ width: 28, height: 28, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Table2 size={15} style={{ color: "var(--color-bt-accent)" }} />
+              </button>
+            )}
+          </div>
           <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />

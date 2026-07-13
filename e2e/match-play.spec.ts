@@ -235,7 +235,7 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   // 6. Open the scorecard grid and assert BOTH gross scores landed in the right
   //    cells (keyed by participant id = user id, hole "1"). The relocated handicap
   //    affects NET, not these gross cells.
-  await page.getByRole("button", { name: "Scorecard grid" }).click();
+  await page.getByRole("button", { name: "Scorecard", exact: true }).click();
   await expect(page.getByTestId(`score-cell-${ownerId}-1`)).toHaveText("4");
   await expect(page.getByTestId(`score-cell-${memberId}-1`)).toHaveText("6");
 
