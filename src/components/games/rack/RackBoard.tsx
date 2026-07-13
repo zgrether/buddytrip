@@ -56,10 +56,10 @@ export function RackBoard({
           this standings ladder — so the ladder keeps its own section label to
           orient it against the groups (the redundant element was the team-totals
           band, now removed, not this label). The Current/Projected toggle sits
-          on the same row. */}
+          on the same row. ("· the rack" suffix removed — W3-Rack1.) */}
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Standings · the rack
+          Standings
         </span>
         {showProjectedToggle && !final && <RsToggle mode={mode} onMode={onMode} />}
       </div>
@@ -201,7 +201,10 @@ export function RsToggle({ mode, onMode }: { mode: RackMode; onMode: (m: RackMod
   const on = mode === "projected";
   return (
     <div className="flex items-center gap-2">
-      <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>{on ? "Projected to 18" : "Current standings"}</span>
+      {/* Status label only in current mode — the redundant "Projected to 18"
+          text is gone; the button itself now carries the projection label
+          (W3-Rack2). */}
+      {!on && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>Current standings</span>}
       <button
         onClick={() => onMode(on ? "current" : "projected")}
         className="flex items-center gap-1"
@@ -218,7 +221,7 @@ export function RsToggle({ mode, onMode }: { mode: RackMode; onMode: (m: RackMod
         }}
       >
         <TrendingUp size={13} />
-        Projected
+        18 Hole Projection
       </button>
     </div>
   );
