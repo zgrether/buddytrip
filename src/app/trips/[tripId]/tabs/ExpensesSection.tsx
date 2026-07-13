@@ -930,11 +930,20 @@ export function ExpensesSection({
                           : undefined,
                       }}
                     >
-                      <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                        {memberName(members, m.user_id)}
-                        {isCurrentUser && (
-                          <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
-                        )}
+                      <span className="flex min-w-0 items-center gap-2 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {/* Reused member avatar (Tabler icon / initials) beside the
+                            name — matches the split-toggle avatars above (W4-5). */}
+                        <Avatar
+                          name={memberName(members, m.user_id)}
+                          avatarIcon={m.user?.avatar_icon ?? null}
+                          sizePx={22}
+                        />
+                        <span className="truncate">
+                          {memberName(members, m.user_id)}
+                          {isCurrentUser && (
+                            <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
+                          )}
+                        </span>
                       </span>
                       <span
                         className="text-sm font-semibold tabular-nums"
