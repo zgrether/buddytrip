@@ -232,9 +232,9 @@ export function ScoreEntryView({
                 <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
               </button>
             )}
-            <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-              <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
+            {/* Scorecard now lives in the hole-navigator meta line (thumb zone),
+                not this hard-to-reach top-right corner — one location for both the
+                panel and standalone-route chrome (Wave 2). */}
           </div>
         </header>
       )}
@@ -242,93 +242,42 @@ export function ScoreEntryView({
       {/* ── Unsaved-scores safety net (Connectivity Layer 1) ── */}
       <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
 
-      {/* ── Standings strip (+ the scorecard affordance on the right when the
-          header is hidden — mirrors match's card-header placement) ── */}
-      <div
-        className="flex shrink-0 items-center"
-        style={{
-          minHeight: 42,
-          padding: "0 14px",
-          background: "var(--color-bt-card)",
-          borderBottom: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            color: "var(--color-bt-text-dim)",
-            flexShrink: 0,
-          }}
-        >
-          Scores
-        </span>
-        {scoredIds.length === 0 ? (
-          <span style={{ fontStyle: "italic", fontSize: 14, color: "var(--color-bt-text-dim)" }}>
-            Teeing off
-          </span>
-        ) : (
-          [...participants]
-            .filter((p) => scoredIds.includes(p.id))
-            .sort((a, b) => totalOf(a.id) - totalOf(b.id))
-            .map((p) => {
-              const lead = isLeading(p.id);
-              return (
-                <span
-                  key={p.id}
-                  className="flex shrink-0 items-center gap-1.5"
-                  style={{
-                    padding: "3px 9px",
-                    borderRadius: 9999,
-                    background: lead ? "var(--color-bt-place-1-bg)" : "transparent",
-                    fontWeight: lead ? 600 : 400,
-                  }}
-                >
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: p.color }} />
-                  <span style={{ fontSize: 14, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
-                    {p.name}
-                  </span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text)" }}>
-                    {totalOf(p.id)}
-                  </span>
-                </span>
-              );
-            })
-        )}
-        </div>
-        {hideHeader && onOpenGrid && (
-          <button
-            type="button"
-            onClick={onOpenGrid}
-            aria-label="Scorecard"
-            data-testid="entry-scorecard"
-            className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-          >
-            <Table2 size={17} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
-        )}
-      </div>
-
-      {/* ── Hole navigation ── */}
+      {/* ── Hole navigation ── (Wave 2: the redundant SCORES summary strip was
+          removed — each player's running total now shows on their own row — and
+          the meta line gained Yards + the relocated scorecard button, tightened.) */}
       <div
         className="flex shrink-0 items-center justify-between"
-        style={{ padding: "16px 16px" }}
+        style={{ padding: "10px 16px 6px" }}
       >
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
-          {/* The ONLY thing the bigger-fonts pass leaves alone — the main title. */}
+        <div className="flex flex-col items-center" style={{ gap: 8, flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
-          {par != null && (
-            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-              Par {par}
-              {unit?.strokeIndex != null && ` · Hdcp ${unit.strokeIndex}`}
-            </div>
-          )}
+          {/* Meta line: Par · Yards · Hdcp · [scorecard icon]. Yards/Hdcp only
+              when the game has a course/tee snapshot; the scorecard button is
+              icon-only (relocated here from the app bar — thumb zone). */}
+          <div className="flex items-center justify-center" style={{ gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              {[
+                par != null ? `Par ${par}` : null,
+                unit?.yardage != null ? `${unit.yardage} yds` : null,
+                unit?.strokeIndex != null ? `Hdcp ${unit.strokeIndex}` : null,
+              ].filter(Boolean).join(" · ")}
+            </span>
+            {onOpenGrid && (
+              <button
+                type="button"
+                onClick={onOpenGrid}
+                aria-label="Scorecard"
+                data-testid="entry-scorecard"
+                className="inline-flex shrink-0 items-center justify-center rounded-md"
+                style={{ width: 28, height: 28, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Table2 size={15} style={{ color: "var(--color-bt-accent)" }} />
+              </button>
+            )}
+          </div>
           <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
@@ -383,27 +332,28 @@ export function ScoreEntryView({
                       </span>
                     )}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: par != null && v != null ? 600 : 400,
-                      color:
-                        par != null && v != null
-                          ? GOLF_STYLE[golfResult(v, par)!].fg
-                          : lead
-                            ? "var(--color-bt-place-1-text)"
-                            : "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    {par != null && v != null
-                      ? stroked
-                        ? `${golfWord(v, par)} · net ${golfWord(v - 1, par)}`
-                        : golfWord(v, par)
-                      : total === 0
-                        ? "No scores yet"
-                        : lead
-                          ? `${total} total · Leading`
-                          : `${total} total`}
+                  {/* Wave 2: the running total now shows on EVERY row (it used to
+                      live only in the removed SCORES strip, or on the row only
+                      while the current hole was unscored). Total leads; the hole's
+                      golf word (or "Leading") follows, keeping its own color. */}
+                  <div style={{ fontSize: 13 }}>
+                    {total === 0 ? (
+                      <span style={{ fontWeight: 400, color: "var(--color-bt-text-dim)" }}>No scores yet</span>
+                    ) : (
+                      <>
+                        <span style={{ fontWeight: 400, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
+                          {total} total
+                        </span>
+                        {par != null && v != null ? (
+                          <span style={{ fontWeight: 600, color: GOLF_STYLE[golfResult(v, par)!].fg }}>
+                            {" · "}
+                            {stroked ? `${golfWord(v, par)} · net ${golfWord(v - 1, par)}` : golfWord(v, par)}
+                          </span>
+                        ) : lead ? (
+                          <span style={{ fontWeight: 600, color: "var(--color-bt-place-1-text)" }}> · Leading</span>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
                 <ScoreSaveBadge
