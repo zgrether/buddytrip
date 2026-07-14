@@ -53,7 +53,7 @@ export interface ConfigDraft {
   /** A draft FIELD (spec §2.7-2): Save commits the config AND goes live / disables
    *  in one action. Not a separate transaction. */
   scoringEnabled: boolean;
-  /** `games.entry_mode` — "gross" (score entry) vs "outcome" (hole winner). */
+  /** `games.entry_mode` — "score" (gross entry) vs "outcome" (hole winner). */
   entryMode: string;
   modifiers: ModifiersMap;
   matches: DraftMatchConfig[];
@@ -115,7 +115,7 @@ export function configToDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     scoringEnabled: game.scoring_enabled ?? false,
-    entryMode: game.entry_mode ?? "gross",
+    entryMode: game.entry_mode ?? "score",
     modifiers: game.modifiers ?? {},
     matches: matches.map((m) => ({
       matchNumber: m.matchNumber,

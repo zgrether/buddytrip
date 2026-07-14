@@ -21,7 +21,7 @@ const GAME = {
   name: "Front 9 Match",
   rules_for_today: "no gimmes",
   scoring_enabled: false,
-  entry_mode: "gross",
+  entry_mode: "score",
   modifiers: { glorious_holes: { holes: 3 } },
   points_total: 6,
   points_distribution: { type: "per_match", value: 3 } as const,
@@ -40,7 +40,7 @@ describe("configToDraft — baseline", () => {
     expect(d.name).toBe("Front 9 Match");
     expect(d.rulesForToday).toBe("no gimmes");
     expect(d.scoringEnabled).toBe(false);
-    expect(d.entryMode).toBe("gross");
+    expect(d.entryMode).toBe("score");
     expect(d.pointsTotal).toBe(6);
     expect(d.course.id).toBe("course-1");
     expect(d.delegates).toEqual(["u9"]);
@@ -54,7 +54,7 @@ describe("configToDraft — baseline", () => {
       name: "",
       rulesForToday: null,
       scoringEnabled: false,
-      entryMode: "gross",
+      entryMode: "score",
       modifiers: {},
       pointsTotal: null,
       pointsDistribution: null,
