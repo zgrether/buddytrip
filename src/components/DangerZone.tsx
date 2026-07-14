@@ -90,6 +90,7 @@ export function DangerConfirmModal({
   testId,
   onCancel,
   onConfirm,
+  children,
 }: {
   tone: "warning" | "danger";
   icon: React.ReactNode;
@@ -101,6 +102,10 @@ export function DangerConfirmModal({
   testId: string;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Optional extra content rendered BELOW the body copy and ABOVE the button row
+   *  — the slot the delete-competition confirm reserves for the future
+   *  "Delete games / Keep games" choice control. Omit for a plain confirm. */
+  children?: React.ReactNode;
 }) {
   const accent = tone === "danger" ? "var(--color-bt-danger)" : "var(--color-bt-warning)";
   const accentFaint = tone === "danger" ? "var(--color-bt-danger-faint)" : "var(--color-bt-warning-faint)";
@@ -130,6 +135,7 @@ export function DangerConfirmModal({
             <p className="mt-1.5 text-sm leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
               {body}
             </p>
+            {children != null && <div className="mt-3 text-left">{children}</div>}
           </div>
           <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
             <button

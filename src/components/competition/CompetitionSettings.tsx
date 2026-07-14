@@ -410,7 +410,7 @@ function DangerSection({
           icon={<Trash2 size={14} />}
           tone="danger"
           label="Delete competition"
-          blurb="Removes the competition, its teams, and rosters. Games detach to the trip (their scores are kept). This can't be undone."
+          blurb="Deletes the competition, its teams and rosters, and its games (scores and results are permanently removed). This can't be undone."
           onClick={() => open("delete")}
           testId="competition-delete-btn"
         />
@@ -450,28 +450,34 @@ function DangerSection({
           tone="danger"
           icon={<Trash2 size={18} />}
           title={`Delete “${competition.name}”?`}
-          body={`This removes the competition, its teams, and rosters${describeRemoved(teamsCount)}.${describeDetach(gamesCount)} This cannot be undone.`}
+          body={`This removes the competition, its teams, and rosters${describeRemoved(teamsCount)}.${describeDeleteGames(gamesCount)} This cannot be undone.`}
           confirmLabel="Delete Competition"
           pendingLabel="Deleting…"
           isPending={deleteComp.isPending}
           testId="competition-delete-confirm"
           onCancel={() => setConfirm(null)}
           onConfirm={() => deleteComp.mutate({ tripId, competitionId: competition.id })}
-        />
+        >
+          {/* Keep-games slot (deferred): the future "Delete games / Keep games
+              (detach to the trip)" choice control renders HERE, above the confirm
+              button, defaulting to Delete. It flips the mutation's p_delete_games
+              and unlocks only once the orphan-display UI ships — not wired now
+              (Phase 1 is delete-only). */}
+        </DangerConfirmModal>
       )}
     </section>
   );
 }
 
-/** The removed cascade: team rosters (assignments). Games are NOT removed — they
- *  detach (ON DELETE SET NULL, migration 056), so they're described separately. */
+/** The removed cascade: team rosters (assignments). */
 function describeRemoved(assignments: number): string {
   if (assignments <= 0) return "";
   return ` (${assignments} assignment${assignments === 1 ? "" : "s"})`;
 }
 
-/** Games detach to standalone trip games (scores preserved), they are not deleted. */
-function describeDetach(games: number): string {
+/** Games are now DELETED with the competition (Phase 1 default), not detached —
+ *  their scores/results go too. N=0 → skip the clause entirely (no games to name). */
+function describeDeleteGames(games: number): string {
   if (games <= 0) return "";
-  return ` Its ${games} game${games === 1 ? "" : "s"} detach to the trip (scores kept).`;
+  return ` Its ${games} game${games === 1 ? "" : "s"} — and all their scores and results — are permanently deleted.`;
 }

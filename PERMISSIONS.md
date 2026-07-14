@@ -139,7 +139,7 @@ who's in, what they're called, what role they hold — is the Owner's.
 |--------|:-----:|:---------:|:------:|------|
 | View competition / teams / leaderboard | ✓ | ✓ | ✓ | `*.list` / `getByTrip` |
 | Create / edit competition | ✓ | ✓ | — | `competitions.create` / `update` |
-| Delete competition | ✓ | — | — | `competitions.delete` *(Owner)* |
+| Delete competition | ✓ | — | — | `competitions.delete` *(Owner — CASCADE-deletes its games + all scores/results; gate is the **competition** owner via `requireCompetitionRole('owner')` + the RPC's `assert_competition_owner`, normally the same person as the trip Owner)* |
 | Create a team | ✓ | ✓ | — | `teams.create` *(co-admin)* |
 | **Edit team identity** (name / short / color) | ✓ | **—** | **captain of *that* team** | `teams.update` *(Owner or that team's captain — **not** a plain Organizer; mig 065)* |
 | Delete a team | ✓ | — | — | `teams.delete` *(Owner)* |
