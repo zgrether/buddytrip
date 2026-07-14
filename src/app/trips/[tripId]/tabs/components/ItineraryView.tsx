@@ -21,6 +21,7 @@ import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { addDays, differenceInDays } from "@/lib/tripStatus";
+import { TravelChip } from "./TravelChip";
 import {
   buildItinerary,
   groupByDay,
@@ -529,10 +530,6 @@ const ARRIVAL_MODES: { key: ArrivalEvent["mode"]; label: string; Icon: LucideIco
   { key: "other", label: "Other", Icon: Navigation },
 ];
 
-function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] || name;
-}
-
 function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
   const [open, setOpen] = useState(false);
   const groups = ARRIVAL_MODES.map((m) => ({
@@ -598,7 +595,16 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
               </span>
               <div className="flex flex-1 flex-wrap gap-1.5">
                 {g.people.map((p) => (
-                  <PersonChip key={p.memberId} person={p} />
+                  <TravelChip
+                    key={p.memberId}
+                    person={{
+                      displayName: p.displayName,
+                      time: p.time,
+                      avatarIcon: p.avatarIcon,
+                      isGuest: p.isGuest,
+                      detail: p.subtitle,
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -606,45 +612,6 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-function PersonChip({ person }: { person: ArrivalEvent }) {
-  const untimed = !person.time;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full py-[3px] pl-[3px] pr-2.5"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: `1px ${untimed ? "dashed" : "solid"} var(--color-bt-border)`,
-      }}
-    >
-      <Avatar
-        name={person.displayName}
-        avatarIcon={person.avatarIcon ?? null}
-        sizePx={22}
-        muted={person.isGuest ?? false}
-      />
-      {/* Name + time share a baseline so the smaller time doesn't ride higher
-          than the name; the outer chip still center-aligns the avatar. */}
-      <span className="inline-flex items-baseline gap-1.5">
-        <span
-          className="text-[12px] font-semibold leading-none"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {firstName(person.displayName)}
-        </span>
-        <span
-          className="text-[11px] leading-none"
-          style={{
-            color: "var(--color-bt-text-dim)",
-            fontStyle: untimed ? "italic" : undefined,
-          }}
-        >
-          {untimed ? "TBD" : fmtTime12(person.time as string)}
-        </span>
-      </span>
-    </span>
   );
 }
 
