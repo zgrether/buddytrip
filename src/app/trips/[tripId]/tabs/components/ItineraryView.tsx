@@ -532,12 +532,12 @@ function SkeletonCard({
 }
 
 // ── TravelGroup ───────────────────────────────────────────────────────────
-// Collapsible per-day travel summary at the top of a day — used for BOTH
-// arrivals ("Arrivals · N / Who's getting in") and departures ("Departures ·
-// N / Who's heading out"). Expands to Flying / Driving / Other sub-groups
-// (only modes with people; WHITE labels) of shared TravelChip pills. Untimed
-// legs render "TBD" in a dashed chip; timed people sort first (events arrive
-// pre-sorted by time, untimed last).
+// Per-day travel summary at the top of a day — used for BOTH arrivals
+// ("Arrivals for Sep 9") and departures ("Departures for Sep 13"). The header
+// names the leg + date (no subtext); below it, the people are grouped by
+// Flying / Driving / Other (only modes with people; WHITE labels) as a stacked
+// list of shared TravelChip rows. Each chip carries its own tap-to-expand
+// Details toggle; untimed legs render "TBD" in a dashed chip.
 
 const TRAVEL_MODES: { key: "flying" | "driving" | "other"; label: string; Icon: LucideIcon }[] = [
   { key: "flying", label: "Flying", Icon: Plane },
@@ -547,20 +547,26 @@ const TRAVEL_MODES: { key: "flying" | "driving" | "other"; label: string; Icon: 
 
 function TravelGroup({
   events,
-  title,
-  subtitle,
+  label,
+  date,
   HeaderIcon,
 }: {
   events: (ArrivalEvent | DepartureEvent)[];
-  title: string;
-  subtitle: string;
+  /** "Arrivals" | "Departures". */
+  label: string;
+  /** The day this group sits on (YYYY-MM-DD) — shown as "… for Sep 9". */
+  date: string;
   HeaderIcon: LucideIcon;
 }) {
-  const [open, setOpen] = useState(false);
   const groups = TRAVEL_MODES.map((m) => ({
     ...m,
     people: events.filter((a) => a.mode === m.key),
   })).filter((m) => m.people.length > 0);
+
+  const dateLabel = parseLocalDate(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 
   return (
     <div
@@ -571,71 +577,45 @@ function TravelGroup({
         borderLeft: "3px solid var(--color-bt-accent)",
       }}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3.5"
-        aria-expanded={open}
-      >
+      <div className="flex items-center gap-3.5">
         <span
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
           style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
         >
           <HeaderIcon size={18} />
         </span>
-        <span className="min-w-0 flex-1 text-left">
-          <span className="block text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            {title}{" "}
-            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
-              · {events.length}
-            </span>
-          </span>
-          <span className="block text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {subtitle}
-          </span>
+        <span className="text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          {label} for {dateLabel}
         </span>
-        <ChevronDown
-          size={16}
-          className="flex-shrink-0 transition-transform"
-          style={{
-            color: "var(--color-bt-text-dim)",
-            transform: open ? "rotate(180deg)" : undefined,
-          }}
-        />
-      </button>
+      </div>
 
-      {open && (
-        <div
-          className="mt-2.5 flex flex-col gap-2.5 pt-2.5"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        >
-          {groups.map((g) => (
-            <div key={g.key} className="flex items-start gap-2.5">
-              <span
-                className="flex w-[72px] flex-shrink-0 items-center gap-1.5 pt-1 text-xs font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                <g.Icon size={13} />
-                {g.label}
-              </span>
-              <div className="flex flex-1 flex-wrap gap-1.5">
-                {g.people.map((p) => (
-                  <TravelChip
-                    key={p.memberId}
-                    person={{
-                      displayName: p.displayName,
-                      time: p.time,
-                      avatarIcon: p.avatarIcon,
-                      isGuest: p.isGuest,
-                      detail: p.subtitle,
-                    }}
-                  />
-                ))}
-              </div>
+      <div className="mt-2.5 flex flex-col gap-2.5 pt-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+        {groups.map((g) => (
+          <div key={g.key} className="flex items-start gap-2.5">
+            <span
+              className="flex w-[72px] flex-shrink-0 items-center gap-1.5 pt-1 text-xs font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              <g.Icon size={13} />
+              {g.label}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              {g.people.map((p) => (
+                <TravelChip
+                  key={p.memberId}
+                  person={{
+                    displayName: p.displayName,
+                    time: p.time,
+                    avatarIcon: p.avatarIcon,
+                    isGuest: p.isGuest,
+                    detail: p.subtitle,
+                  }}
+                />
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1114,20 +1094,10 @@ function DaySection({
       </div>
       <div className={compact ? "space-y-1" : "space-y-1.5"}>
         {arrivals.length > 0 && (
-          <TravelGroup
-            events={arrivals}
-            title="Arrivals"
-            subtitle="Who's getting in — tap for details"
-            HeaderIcon={Plane}
-          />
+          <TravelGroup events={arrivals} label="Arrivals" date={date} HeaderIcon={Plane} />
         )}
         {departures.length > 0 && (
-          <TravelGroup
-            events={departures}
-            title="Departures"
-            subtitle="Who's heading out — tap for details"
-            HeaderIcon={PlaneTakeoff}
-          />
+          <TravelGroup events={departures} label="Departures" date={date} HeaderIcon={PlaneTakeoff} />
         )}
         {events.map((event) => (
           <EventCard key={event.id} event={event} compact={compact} />

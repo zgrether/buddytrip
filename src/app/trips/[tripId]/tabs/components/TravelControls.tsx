@@ -143,6 +143,8 @@ function TravelLegFields({
   inputBg,
   emptyHint,
   warning,
+  defaultMonth,
+  highlightRange,
 }: {
   mode: TravelMode | null;
   detail: string;
@@ -159,6 +161,10 @@ function TravelLegFields({
   emptyHint?: string;
   /** Optional inline warning banner rendered above the mode picker. */
   warning?: React.ReactNode;
+  /** Month the date picker opens on when empty (the trip's start month). */
+  defaultMonth?: Date | null;
+  /** Trip span, tinted in the date picker so the user sees the trip dates. */
+  highlightRange?: { start: Date | null; end: Date | null } | null;
 }) {
   const modeSelected = !!mode;
 
@@ -214,12 +220,14 @@ function TravelLegFields({
             >
               Details
             </label>
-            <input
-              type="text"
+            {/* Textarea (not input) so longer descriptions wrap onto multiple
+                lines instead of scrolling in a single row. */}
+            <textarea
               value={detail}
               onChange={(e) => onDetail(e.target.value)}
               placeholder={mode ? TRAVEL_MODE_META[mode].placeholder : ""}
-              className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+              rows={2}
+              className="w-full resize-y rounded-lg border px-2.5 py-1.5 text-sm outline-none"
               style={{
                 background: inputBg,
                 borderColor: "var(--color-bt-border)",
@@ -244,6 +252,8 @@ function TravelLegFields({
                 accentFaint={DOMAIN_COLORS.travel.faint}
                 value={date ? parseLocalDate(date) : null}
                 onChange={(d) => onDate(d ? toISODate(d) : "")}
+                defaultMonth={defaultMonth}
+                highlightRange={highlightRange}
               />
             </div>
             <div style={{ flex: "1 1 100px" }}>
@@ -269,8 +279,10 @@ function TravelLegFields({
 }
 
 // ── LegHeader — small "Arrival" / "Departure" sub-header ───────────────────
+// Exported so the rendered (read-only) crew view labels its legs the same way
+// the editor does.
 
-function LegHeader({ Icon, label }: { Icon: LucideIcon; label: string }) {
+export function LegHeader({ Icon, label }: { Icon: LucideIcon; label: string }) {
   return (
     <div
       className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
@@ -293,13 +305,17 @@ export function TravelFields({
   value,
   onChange,
   tripStartDate,
+  tripEndDate,
   surface = "card",
   emptyHint = "Pick a travel type to add details.",
 }: {
   value: TravelFormValue;
   onChange: (next: TravelFormValue) => void;
-  /** Optional — flags arrivals entered before the trip starts. */
+  /** Optional — flags arrivals entered before the trip starts, and opens the
+   *  date pickers on the trip's start month. */
   tripStartDate?: string | null;
+  /** Optional — with tripStartDate, tints the trip span in the date pickers. */
+  tripEndDate?: string | null;
   /** "card" = sits on a card surface (YOU tile); "recessed" = sits inside a
    *  drawer, so inputs use the recessed base background. */
   surface?: "card" | "recessed";
@@ -310,6 +326,14 @@ export function TravelFields({
     !!value.arrivalDate && !!tripStartDate && value.arrivalDate < tripStartDate;
   const inputBg =
     surface === "recessed" ? "var(--color-bt-base)" : "var(--color-bt-card-raised)";
+
+  // Date-picker context: open on the trip's start month, and tint the trip
+  // span so the picker shows when the trip is.
+  const defaultMonth = tripStartDate ? parseLocalDate(tripStartDate) : null;
+  const highlightRange =
+    tripStartDate && tripEndDate
+      ? { start: parseLocalDate(tripStartDate), end: parseLocalDate(tripEndDate) }
+      : null;
 
   return (
     <div className="space-y-4">
@@ -328,6 +352,8 @@ export function TravelFields({
           dateLabel="Arriving"
           inputBg={inputBg}
           emptyHint={emptyHint}
+          defaultMonth={defaultMonth}
+          highlightRange={highlightRange}
           warning={
             arrivalBeforeTrip ? (
               <div
@@ -368,10 +394,43 @@ export function TravelFields({
           dateLabel="Departing"
           inputBg={inputBg}
           emptyHint={emptyHint}
+          defaultMonth={defaultMonth}
+          highlightRange={highlightRange}
         />
       </div>
     </div>
   );
+}
+
+// ── Optimistic cache patch ─────────────────────────────────────────────────
+// Map a travel mutation's (camelCase) variables onto the snake_case columns a
+// tripMembers.list row carries, so an edit reflects INSTANTLY in the roster /
+// YOU tile rather than snapping back to the old value until the refetch lands.
+
+interface TravelVars {
+  travelMode?: string | null;
+  travelDetail?: string | null;
+  flightAirline?: string | null;
+  flightNumber?: string | null;
+  flightArrivalTime?: string | null;
+  flightAirport?: string | null;
+  departureMode?: string | null;
+  departureDetail?: string | null;
+  departureTime?: string | null;
+}
+
+export function travelVarsToRow(v: TravelVars): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (v.travelMode !== undefined) row.travel_mode = v.travelMode;
+  if (v.travelDetail !== undefined) row.travel_detail = v.travelDetail;
+  if (v.flightAirline !== undefined) row.flight_airline = v.flightAirline;
+  if (v.flightNumber !== undefined) row.flight_number = v.flightNumber;
+  if (v.flightArrivalTime !== undefined) row.flight_arrival_time = v.flightArrivalTime;
+  if (v.flightAirport !== undefined) row.flight_airport = v.flightAirport;
+  if (v.departureMode !== undefined) row.departure_mode = v.departureMode;
+  if (v.departureDetail !== undefined) row.departure_detail = v.departureDetail;
+  if (v.departureTime !== undefined) row.departure_time = v.departureTime;
+  return row;
 }
 
 // ── TravelEditor — segmented mode + detail + arriving date/time + footer ────
@@ -384,18 +443,26 @@ export function TravelFields({
 export function TravelEditor({
   tripId,
   member,
+  memberUserId,
   targetUserId,
   tripStartDate,
+  tripEndDate,
   surface = "card",
   onSaved,
   onCancel,
 }: {
   tripId: string;
   member: TravelMember;
+  /** The edited member's user_id — the row key for the optimistic cache patch
+   *  (so a save shows immediately). Self-edit = the current user's row. */
+  memberUserId?: string | null;
   /** Omit for self-edit; set to edit another member as owner. */
   targetUserId?: string;
-  /** Optional — flags arrivals entered before the trip starts. */
+  /** Optional — flags arrivals entered before the trip starts + seeds the
+   *  date pickers' month. */
   tripStartDate?: string | null;
+  /** Optional — with tripStartDate, tints the trip span in the date pickers. */
+  tripEndDate?: string | null;
   /** "card" = sits on a card surface (YOU tile); "recessed" = sits inside a
    *  drawer, so inputs use the recessed base background. */
   surface?: "card" | "recessed";
@@ -409,10 +476,29 @@ export function TravelEditor({
     utils.tripMembers.list.invalidate({ tripId });
     onSaved();
   };
-  const updateTravel = trpc.tripMembers.updateTravel.useMutation({ onSuccess: invalidate });
-  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
+  // Optimistically patch the edited member's row so the collapsed view reflects
+  // the save instantly; roll back on error; invalidate on success to reconcile.
+  const rowId = targetUserId ?? memberUserId ?? null;
+  const optimistic = {
+    async onMutate(vars: TravelVars) {
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      if (rowId) {
+        utils.tripMembers.list.setData({ tripId }, (old) =>
+          (old ?? []).map((r) =>
+            r.user_id === rowId ? { ...r, ...(travelVarsToRow(vars) as Partial<typeof r>) } : r,
+          ),
+        );
+      }
+      return { prev };
+    },
+    onError(_e: unknown, _v: unknown, ctx: { prev?: ReturnType<typeof utils.tripMembers.list.getData> } | undefined) {
+      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
+    },
     onSuccess: invalidate,
-  });
+  };
+  const updateTravel = trpc.tripMembers.updateTravel.useMutation(optimistic);
+  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation(optimistic);
   const isPending = targetUserId
     ? updateMemberTravel.isPending
     : updateTravel.isPending;
@@ -446,6 +532,7 @@ export function TravelEditor({
         value={form}
         onChange={setForm}
         tripStartDate={tripStartDate}
+        tripEndDate={tripEndDate}
         surface={surface}
       />
 

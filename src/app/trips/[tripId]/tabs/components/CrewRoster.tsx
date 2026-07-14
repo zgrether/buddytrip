@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Plus } from "lucide-react";
+import { Calendar, Plus, PlaneLanding, PlaneTakeoff } from "lucide-react";
 import { Avatar, InvitedAvatar, PlaceholderAvatar } from "@/components/Avatar";
 import { parseLocalDate } from "@/lib/dates";
 import {
   TravelEditor,
   TravelModePill,
+  LegHeader,
   summarizeTravel,
   formatArrivalLabel,
   type TravelMode,
@@ -338,10 +339,12 @@ export function YouTile({
   member: m,
   tripId,
   tripStartDate,
+  tripEndDate,
 }: {
   member: Member;
   tripId: string;
   tripStartDate?: string | null;
+  tripEndDate?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -447,7 +450,9 @@ export function YouTile({
               <TravelEditor
                 tripId={tripId}
                 member={m}
+                memberUserId={m.user_id}
                 tripStartDate={tripStartDate}
+                tripEndDate={tripEndDate}
                 surface="recessed"
                 onSaved={() => setEditing(false)}
                 onCancel={() => setEditing(false)}
@@ -455,34 +460,47 @@ export function YouTile({
             </div>
           ) : hasTravel ? (
             <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1 space-y-2.5">
+              <div className="min-w-0 flex-1 space-y-3">
                 {mode && (
-                  <div className="flex items-center gap-2.5">
-                    <TravelModePill mode={mode} withLabel />
-                    <div className="min-w-0 flex-1">
-                      {detail && (
-                        <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
-                          {detail}
-                        </p>
-                      )}
-                      <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {arrivalLabel ? `Arriving ${arrivalLabel}` : "Arriving"}
-                      </p>
+                  <div>
+                    {/* The Arrival/Departure header names the leg, so the
+                        detail line drops the "Arriving/Departing" word and the
+                        mode badge is icon-only (the icon is enough). */}
+                    <LegHeader Icon={PlaneLanding} label="Arrival" />
+                    <div className="mt-1 flex items-start gap-2.5">
+                      <TravelModePill mode={mode} />
+                      <div className="min-w-0 flex-1">
+                        {detail && (
+                          <p className="text-sm break-words" style={{ color: "var(--color-bt-text)" }}>
+                            {detail}
+                          </p>
+                        )}
+                        {arrivalLabel && (
+                          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {arrivalLabel}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
                 {departureMode && (
-                  <div className="flex items-center gap-2.5">
-                    <TravelModePill mode={departureMode} withLabel />
-                    <div className="min-w-0 flex-1">
-                      {m.departure_detail && (
-                        <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
-                          {m.departure_detail}
-                        </p>
-                      )}
-                      <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {departureLabel ? `Departing ${departureLabel}` : "Departing"}
-                      </p>
+                  <div>
+                    <LegHeader Icon={PlaneTakeoff} label="Departure" />
+                    <div className="mt-1 flex items-start gap-2.5">
+                      <TravelModePill mode={departureMode} />
+                      <div className="min-w-0 flex-1">
+                        {m.departure_detail && (
+                          <p className="text-sm break-words" style={{ color: "var(--color-bt-text)" }}>
+                            {m.departure_detail}
+                          </p>
+                        )}
+                        {departureLabel && (
+                          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {departureLabel}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
