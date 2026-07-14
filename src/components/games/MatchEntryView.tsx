@@ -400,7 +400,7 @@ export function MatchEntryView({
       {/* Player rows */}
       {/* Item 1: shrink-0 (no inner scroll) + the flex-1 spacer below anchors the
           keypad to the viewport bottom, matching stroke/rack. */}
-      <div className="shrink-0" style={{ padding: "0 12px 8px" }}>
+      <div className="shrink-0" style={{ padding: "10px 12px 8px" }}>
         {groups.map((g) => {
           const { m } = g;
           const deadHere = g.isDeadHole(hole) && !playOut.has(m.matchId);

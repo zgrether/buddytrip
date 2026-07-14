@@ -188,7 +188,9 @@ function NameCell({ name, players, align, tinted, color, you }: { name: string; 
           <span
             key={p.id}
             className="max-w-full truncate"
-            style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.4 }}
+            // Match the 1v1's short-name size (17) — a 2v2 must NOT read smaller;
+            // the row grows (minHeight + stretch) to fit two full-size lines.
+            style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.3 }}
           >
             {p.name}
           </span>

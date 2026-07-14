@@ -291,7 +291,7 @@ export function MatchOutcomeEntryView({
           matching stroke/rack (the whole screen flows, nothing pinned in a cramped
           scroll box). Item 4: the "Who won this hole?" prompt is gone — the three
           choices are self-evident. */}
-      <div className="shrink-0" style={{ padding: "0 16px 8px" }}>
+      <div className="shrink-0" style={{ padding: "10px 16px 8px" }}>
         <div className="flex flex-col" style={{ gap: 9 }}>
           <Choice
             selected={selected === "side_a"}
