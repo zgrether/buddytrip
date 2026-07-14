@@ -182,13 +182,13 @@ function NameCell({ name, players, align, tinted, color, you }: { name: string; 
     return (
       <div
         className="flex min-w-0 flex-1 flex-col justify-center"
-        style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: "3px 10px", background: bg }}
+        style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: "8px 10px", background: bg }}
       >
         {players.map((p) => (
           <span
             key={p.id}
             className="max-w-full truncate"
-            style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.25 }}
+            style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.4 }}
           >
             {p.name}
           </span>
