@@ -588,6 +588,17 @@ export function MatchGameView() {
   // A match's current hole = the first hole either player hasn't scored yet, so
   // opening a match drops you where it's at (not the hole you left from).
   const currentHoleFor = (g: MatchGroupData) => {
+    // Outcome mode records per-hole OUTCOMES (keyed by hole label), not gross per
+    // side — reading the gross merge (mergedFor) there is always empty and lands
+    // on hole 1 (item 3). Read the right source per mode; first hole without a
+    // value = the current hole (mirrors stroke's currentHoleSeededRef).
+    if (outcomeMode) {
+      const rec = mergedOutcomeFor(g.matchId);
+      for (let h = 1; h <= scUnits.length; h++) {
+        if (rec[scUnits[h - 1]?.label ?? String(h)] == null) return h;
+      }
+      return scUnits.length;
+    }
     const va = mergedFor(g.a.id);
     const vb = mergedFor(g.b.id);
     for (let h = 1; h <= scUnits.length; h++) {
@@ -1077,7 +1088,10 @@ export function MatchGameView() {
   const inPanel = useInGamePanel();
   const chromeTitle =
     screen === "score" && selectedGroup
-      ? `${selectedGroup.a.name} v ${selectedGroup.b.name}`
+      // Item 5: the app-bar title is "Match N" — the player names truncate on a
+      // 2v2 and are redundant (they're in the state band + choice rows). label is
+      // already "Match N" from the groups builder.
+      ? selectedGroup.label
       : (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
   usePublishGameChrome(
     inPanel
@@ -1204,7 +1218,7 @@ export function MatchGameView() {
           <>
             <MatchOutcomeEntryView
               hideHeader={inPanel}
-              gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
+              gameName={selectedGroup.label}
               subtitle={sided ? "Doubles match · 2v2" : "Singles match · 1v1"}
               units={scUnits}
               match={selectedGroup}
@@ -1231,7 +1245,7 @@ export function MatchGameView() {
           <>
             <MatchEntryView
               hideHeader={inPanel}
-              gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
+              gameName={selectedGroup.label}
               subtitle={sided ? "Doubles match · 2v2" : "Singles match · 1v1"}
               units={scUnits}
               matches={[selectedGroup]}

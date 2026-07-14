@@ -68,11 +68,13 @@ describe("MatchOutcomeEntryView — the three-choice entry zone", () => {
     expect(html).not.toContain("keypad"); // no StrokeKeypad-style number entry
   });
 
-  it("marks the recorded choice as selected via its testid and check ring", () => {
+  it("marks the recorded choice as selected via team-color state + check (no subtext)", () => {
     const html = render({ m1: { "1": "side_a" } });
-    // The selected choice renders "Won the hole"; the others show no sub-label.
-    expect(html).toContain("Won the hole");
+    // Item 4: no "Won the hole" subtext — selection reads from the team-color
+    // wash/border + filled check on the chosen row. side_a = Brad (#4ade80).
+    expect(html).not.toContain("Won the hole");
     expect(html).toContain("outcome-choice-a");
+    expect(html).toContain("1.5px solid #4ade80");
   });
 
   it("empty hole → the Reset|OK commit bar shows (item 1); no advance until committed", () => {

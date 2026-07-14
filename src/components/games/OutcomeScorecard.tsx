@@ -3,7 +3,7 @@
 import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
-import { SideChips, type SidePlayer } from "./MatchSides";
+import type { SidePlayer } from "./MatchSides";
 import type { TeeRow } from "@/lib/teeRows";
 import type { Participant, ScoreUnit } from "./types";
 
@@ -85,8 +85,8 @@ export interface OutcomeScorecardProps {
   units: ScoreUnit[];
   a: Participant;
   b: Participant;
-  /** Per-side players (item 3) — 2v2 renders the shared stacked SideChips in the
-   *  name column instead of the compound "R & B" single name. */
+  /** Per-side players — a 2v2 renders two stacked NAMES (no avatars) in the name
+   *  column instead of the compound "R & B" single name. */
   aPlayers?: SidePlayer[];
   bPlayers?: SidePlayer[];
   outcomes: HoleOutcomeRow[];
@@ -180,12 +180,18 @@ function LeadRow({
 }) {
   const stacked = players && players.length > 1;
   return (
-    // minHeight (not fixed 44) so a 2v2's stacked SideChips grow the row; a 1v1
-    // keeps the 44px single-name row (item 3).
+    // minHeight (not fixed 44) so a 2v2's two-line names grow the row and every
+    // cell stretches to match; a 1v1 keeps the 44px single-name row.
     <div className="flex" style={{ minHeight: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-      <div className="flex items-center" style={{ ...nameCell, padding: stacked ? "5px 10px" : "0 10px" }}>
+      <div className={`flex ${stacked ? "flex-col justify-center" : "items-center"}`} style={{ ...nameCell, padding: stacked ? "6px 10px" : "0 10px" }}>
         {stacked ? (
-          <SideChips players={players!} chipStyle={{ background: "transparent", border: "none" }} gap={2} />
+          // 2v2 → two stacked NAMES, no avatar disks — avatars don't fit the dense
+          // grid; the row grows to fit two full-size names (same as MatchCard).
+          players!.map((p) => (
+            <span key={p.id} className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35 }}>
+              {p.name}
+            </span>
+          ))
         ) : (
           <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {name}
@@ -198,7 +204,7 @@ function LeadRow({
           className="flex items-center justify-center"
           style={{
             ...cellBase,
-            height: 44,
+            minHeight: 44,
             ...divider(units[i]?.label),
             ...(isGloriousCol(i) && !c.dead ? gloriousWash : {}),
             ...(c.glorious && !c.dead
@@ -238,7 +244,7 @@ function LeadSubCell({ value, side, color, wide }: { value: number; side: "A" | 
       style={{
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
-        height: 44,
+        minHeight: 44,
         flexShrink: 0,
         background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
       }}
