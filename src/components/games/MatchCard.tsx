@@ -4,7 +4,7 @@ import { Table2 } from "lucide-react";
 import { matchState, type DecidedHole } from "@/lib/matchPlay";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
-import { SideChips, type SidePlayer } from "./MatchSides";
+import type { SidePlayer } from "./MatchSides";
 import type { Participant } from "./types";
 
 /**
@@ -174,15 +174,25 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
  *  leading side gets a faint tint of its emphasis color. Uniform 600 weight. */
 function NameCell({ name, players, align, tinted, color, you }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string; you?: boolean }) {
   const bg = tinted ? `${color}29` : "transparent";
-  // 2v2 → the shared stacked renderer (item 3), aligned to the cell's inward edge;
-  // transparent chips so the tint reads through (matches the formation panel).
+  // 2v2 → two stacked NAMES, NO avatar disks (item 6). Avatars on the scoreboard
+  // were a mistake; the 1v1's avatar-free single line is the reference — this just
+  // wraps it to two lines for the two players. Leans inward like the 1v1; the
+  // team-tint reads through. (Score-entry choice rows keep their avatars — item 2.)
   if (players && players.length > 1) {
     return (
       <div
-        className="flex min-w-0 flex-1 items-center"
-        style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "5px 10px", background: bg }}
+        className="flex min-w-0 flex-1 flex-col justify-center"
+        style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: "3px 10px", background: bg }}
       >
-        <SideChips players={players} chipStyle={{ background: "transparent", border: "none" }} gap={2} />
+        {players.map((p) => (
+          <span
+            key={p.id}
+            className="max-w-full truncate"
+            style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.25 }}
+          >
+            {p.name}
+          </span>
+        ))}
       </div>
     );
   }
