@@ -47,6 +47,10 @@ export type MemberEditorTarget = {
   flight_number?: string | null;
   flight_airport?: string | null;
   flight_arrival_time?: string | null;
+  /** Departure leg — mirror of the arrival fields (migration 080). */
+  departure_mode?: string | null;
+  departure_detail?: string | null;
+  departure_time?: string | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -124,7 +128,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
     setTravelCleared(false);
     setTravelForm(next);
   };
-  const hadSavedTravel = !!member.travel_mode;
+  const hadSavedTravel = !!member.travel_mode || !!member.departure_mode;
   const travelDirty = travelCleared
     ? hadSavedTravel
     : !travelFormsEqual(travelForm, initialTravelForm);
@@ -542,7 +546,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               icon={Calendar}
               title="Travel"
               action={
-                travelForm.mode !== null ? (
+                travelForm.mode !== null || travelForm.departureMode !== null ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -558,7 +562,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               }
             >
               <p className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                How they&rsquo;re getting in — shows on the roster and the itinerary.
+                How they&rsquo;re getting in and out — shows on the roster and the itinerary.
               </p>
               {/* No empty hint here — the group hint + segmented control
                   above already say what to do. */}

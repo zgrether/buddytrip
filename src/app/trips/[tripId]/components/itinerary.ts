@@ -52,6 +52,11 @@ export interface ItineraryTripMember {
   flight_arrival_time?: string | null; // ISO timestamptz
   flight_airport?: string | null;
   travel_shared?: boolean | null;
+  /** Departure leg — mirror of the arrival fields (see migration 080). A
+   *  member can have an arrival, a departure, both, or neither. */
+  departure_mode?: "driving" | "flying" | "other" | null;
+  departure_detail?: string | null;
+  departure_time?: string | null; // ISO timestamptz
   /** Guest (placeholder) members can't share their own travel — exclude them. */
   isGuest?: boolean | null;
   user?: { name?: string | null; avatar_icon?: string | null } | null;
@@ -94,6 +99,21 @@ export type ItineraryEvent =
       title: string;
       subtitle?: string | null;
       /** Travel mode — drives the Flying / Driving / Other grouping. */
+      mode: "driving" | "flying" | "other";
+      memberId: string;
+      displayName: string;
+      avatarIcon?: string | null;
+      isGuest?: boolean | null;
+    }
+  | {
+      // Mirror of `arrival`, placed on the DEPARTURE date. Same shape so the
+      // shared TravelChip + a Departures group render it identically.
+      kind: "departure";
+      id: string;
+      date: string;
+      time: string | null;
+      title: string;
+      subtitle?: string | null;
       mode: "driving" | "flying" | "other";
       memberId: string;
       displayName: string;
@@ -271,6 +291,28 @@ export function buildItinerary(input: {
     });
   }
 
+  // ── 4. Member departures ──
+  // Mirror of arrivals, placed on the DEPARTURE date. `departure_detail` is the
+  // single free-text description (departures have no legacy structured fields).
+  for (const m of input.members) {
+    if (!m.departure_mode) continue;
+    if (!m.departure_time) continue;
+
+    events.push({
+      kind: "departure",
+      id: `departure-${m.memberId}`,
+      date: localDateOfTimestamp(m.departure_time),
+      time: localTimeOfTimestamp(m.departure_time),
+      title: `${m.displayName} departs`,
+      subtitle: m.departure_detail ?? null,
+      mode: m.departure_mode,
+      memberId: m.memberId,
+      displayName: m.displayName,
+      avatarIcon: m.user?.avatar_icon ?? null,
+      isGuest: m.isGuest ?? false,
+    });
+  }
+
   events.sort(compareEvents);
   return events;
 }
@@ -341,8 +383,9 @@ export function summarizeLodging(
 const KIND_PRIORITY: Record<ItineraryEvent["kind"], number> = {
   "lodging-checkout": 0,
   arrival: 1,
-  "lodging-checkin": 2,
-  schedule: 3,
+  departure: 2,
+  "lodging-checkin": 3,
+  schedule: 4,
 };
 
 function compareEvents(a: ItineraryEvent, b: ItineraryEvent): number {

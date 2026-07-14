@@ -324,6 +324,58 @@ describe("tripMembers router — travel", () => {
     });
     expect(result.travel_mode).toBeNull();
   });
+
+  it("updateTravel — member can enter a departure leg (date/time/mode/details)", async () => {
+    const caller = ctx.callerAs("member");
+    const result = await caller.tripMembers.updateTravel({
+      tripId,
+      travelMode: "flying",
+      travelDetail: "Landing Thu",
+      flightArrivalTime: "2026-09-09T15:30:00Z",
+      departureMode: "driving",
+      departureDetail: "Heading out Sunday — carpool with Sam",
+      departureTime: "2026-09-13T11:00:00Z",
+      travelShared: true,
+    });
+    expect(result.travel_mode).toBe("flying");
+    expect(result.departure_mode).toBe("driving");
+    expect(result.departure_detail).toBe("Heading out Sunday — carpool with Sam");
+    // timestamptz round-trips as an ISO string carrying the stored instant.
+    expect(result.departure_time).toContain("2026-09-13");
+  });
+
+  it("updateTravel — departure leg is independent of the arrival leg", async () => {
+    const caller = ctx.callerAs("member");
+    // Clear arrival but keep departure fields untouched (omit them) — they must
+    // not be wiped by an arrival-only update.
+    const result = await caller.tripMembers.updateTravel({
+      tripId,
+      travelMode: null,
+      travelShared: false,
+    });
+    expect(result.travel_mode).toBeNull();
+    // departure_* untouched (still set from the prior test).
+    expect(result.departure_mode).toBe("driving");
+  });
+
+  it("updateMemberTravel — owner can enter a departure leg for a member", async () => {
+    const caller = ctx.caller();
+    const member = ctx.getUser("member");
+    const result = await caller.tripMembers.updateMemberTravel({
+      tripId,
+      targetUserId: member.id,
+      travelMode: "flying",
+      departureMode: "flying",
+      departureDetail: "Red-eye home",
+      departureTime: "2026-09-13T22:15:00Z",
+    });
+    expect(result.success).toBe(true);
+
+    const list = await caller.tripMembers.list({ tripId });
+    const row = list.find((m) => m.user_id === member.id);
+    expect(row?.departure_mode).toBe("flying");
+    expect(row?.departure_detail).toBe("Red-eye home");
+  });
 });
 
 // ── sendInvitationBlast tests ────────────────────────────────────────────────

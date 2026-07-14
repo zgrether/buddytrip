@@ -35,7 +35,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_emailed_at, email_count",
+      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, departure_mode, departure_detail, departure_time, last_emailed_at, email_count",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -558,6 +558,10 @@ export const tripMembersRouter = router({
         flightArrivalTime: z.string().nullable().optional(),
         flightAirport: z.string().max(100).nullable().optional(),
         travelShared: z.boolean().default(true),
+        // Departure leg — mirror of the arrival fields (Phase-0 model A).
+        departureMode: z.enum(["driving", "flying", "other"]).nullable().optional(),
+        departureDetail: z.string().max(500).nullable().optional(),
+        departureTime: z.string().nullable().optional(),
       })
     )
     .use(requireTripMember)
@@ -571,13 +575,16 @@ export const tripMembersRouter = router({
       if (input.flightNumber !== undefined) update.flight_number = input.flightNumber;
       if (input.flightArrivalTime !== undefined) update.flight_arrival_time = input.flightArrivalTime;
       if (input.flightAirport !== undefined) update.flight_airport = input.flightAirport;
+      if (input.departureMode !== undefined) update.departure_mode = input.departureMode;
+      if (input.departureDetail !== undefined) update.departure_detail = input.departureDetail;
+      if (input.departureTime !== undefined) update.departure_time = input.departureTime;
 
       const { data, error } = await ctx.supabase
         .from("trip_members")
         .update(update)
         .eq("trip_id", ctx.tripId)
         .eq("user_id", ctx.user!.id)
-        .select("user_id, trip_id, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared")
+        .select("user_id, trip_id, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, departure_mode, departure_detail, departure_time")
         .single();
 
       if (error || !data) {
@@ -613,6 +620,10 @@ export const tripMembersRouter = router({
         flightNumber: z.string().max(50).nullable().optional(),
         flightArrivalTime: z.string().nullable().optional(),
         flightAirport: z.string().max(100).nullable().optional(),
+        // Departure leg — mirror of the arrival fields (Phase-0 model A).
+        departureMode: z.enum(["driving", "flying", "other"]).nullable().optional(),
+        departureDetail: z.string().max(500).nullable().optional(),
+        departureTime: z.string().nullable().optional(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -637,6 +648,9 @@ export const tripMembersRouter = router({
       if (input.flightNumber !== undefined) update.flight_number = input.flightNumber;
       if (input.flightArrivalTime !== undefined) update.flight_arrival_time = input.flightArrivalTime;
       if (input.flightAirport !== undefined) update.flight_airport = input.flightAirport;
+      if (input.departureMode !== undefined) update.departure_mode = input.departureMode;
+      if (input.departureDetail !== undefined) update.departure_detail = input.departureDetail;
+      if (input.departureTime !== undefined) update.departure_time = input.departureTime;
 
       const { error } = await ctx.supabase
         .from("trip_members")
