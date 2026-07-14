@@ -13,7 +13,7 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useConfigSync } from "@/hooks/useConfigSync";
-import { GAME_TYPES, type ScoringModel } from "@/lib/gameTypes";
+import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -260,17 +260,27 @@ export function NonGolfGameView() {
   return (
     <div className="flex flex-col" style={{ minHeight: inPanel ? "100%" : "100vh", background: "var(--color-bt-base)" }}>
       {header(gameName)}
-      {/* Standard game header — row 1 (the collapsed cup hero) + row 2 (this
-          game's projected/final per-team contribution), sticky over the
-          scoreboard. Competition games only. */}
+      {/* Standard game header — row 1 (the collapsed cup hero) + optional row 2
+          (this game's projected/final per-team contribution), sticky over the
+          scoreboard. Competition games only.
+
+          Row 2 is OMITTED for manual (direct-submit) formats: the result is
+          entered and posted in one action, so there's nothing to "project" —
+          the row would only ever mirror what was just submitted. A future
+          non-golf format with incremental/engine scoring (resultStrategy set)
+          keeps the projection. */}
       <GamePageHeader
         tripId={tripId}
         competitionId={competitionId}
-        projection={{
-          perTeam: projectionPerTeam,
-          gameName,
-          final: game.status === "complete",
-        }}
+        projection={
+          isManualGameType(game.game_type_id)
+            ? undefined
+            : {
+                perTeam: projectionPerTeam,
+                gameName,
+                final: game.status === "complete",
+              }
+        }
       />
       {competitionId && (
         <NonGolfScoreboard
