@@ -245,6 +245,115 @@ describe("buildItinerary — filtering", () => {
   });
 });
 
+// ── buildItinerary: departures (mirror of arrivals) ───────────────────────
+
+describe("buildItinerary — departures", () => {
+  it("emits a departure event on the departure date", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          // No arrival — departure-only member.
+          travel_mode: null,
+          flight_arrival_time: null,
+          departure_mode: "flying",
+          departure_detail: "Red-eye home",
+          departure_time: "2026-09-13T22:15:00Z",
+        }),
+      ],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "departure",
+      date: "2026-09-13",
+      time: "22:15",
+      mode: "flying",
+      subtitle: "Red-eye home",
+    });
+  });
+
+  it("places arrival and departure on their own dates for one member", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          flight_arrival_time: "2026-09-09T15:30:00Z",
+          departure_mode: "driving",
+          departure_time: "2026-09-13T11:00:00Z",
+        }),
+      ],
+    });
+    const arrival = events.find((e) => e.kind === "arrival");
+    const departure = events.find((e) => e.kind === "departure");
+    expect(arrival?.date).toBe("2026-09-09");
+    expect(departure?.date).toBe("2026-09-13");
+  });
+
+  it("excludes departures without a departure_mode", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          travel_mode: null,
+          flight_arrival_time: null,
+          departure_mode: null,
+          departure_time: "2026-09-13T11:00:00Z",
+        }),
+      ],
+    });
+    expect(events).toHaveLength(0);
+  });
+
+  it("excludes departures without a departure_time", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          travel_mode: null,
+          flight_arrival_time: null,
+          departure_mode: "flying",
+          departure_time: null,
+        }),
+      ],
+    });
+    expect(events).toHaveLength(0);
+  });
+
+  it("treats a midnight departure as date-only (time is null)", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          travel_mode: null,
+          flight_arrival_time: null,
+          departure_mode: "driving",
+          departure_time: "2026-09-13T00:00:00Z",
+        }),
+      ],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("departure");
+    expect(events[0].date).toBe("2026-09-13");
+    expect(events[0].time).toBeNull();
+  });
+
+  it("does not regress arrivals when no departure is set", () => {
+    // A member with only an arrival still weaves in exactly one arrival event.
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [member()],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("arrival");
+  });
+});
+
 // ── buildItinerary: lodging splitting ─────────────────────────────────────
 
 describe("buildItinerary — lodging", () => {

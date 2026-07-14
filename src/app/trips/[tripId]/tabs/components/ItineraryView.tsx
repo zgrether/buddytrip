@@ -13,6 +13,7 @@ import {
   MapPin,
   Navigation,
   Plane,
+  PlaneTakeoff,
   Trophy,
   X,
 } from "lucide-react";
@@ -44,6 +45,7 @@ type Category = "lodging" | "travel" | "events";
 type EventCategory = "lodging" | "travel" | "event";
 
 type ArrivalEvent = Extract<ItineraryEvent, { kind: "arrival" }>;
+type DepartureEvent = Extract<ItineraryEvent, { kind: "departure" }>;
 
 function categoryOf(event: ItineraryEvent): EventCategory {
   switch (event.kind) {
@@ -51,6 +53,7 @@ function categoryOf(event: ItineraryEvent): EventCategory {
     case "lodging-checkout":
       return "lodging";
     case "arrival":
+    case "departure":
       return "travel";
     case "schedule":
       return "event";
@@ -189,7 +192,7 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
   };
 
   const showLodgingBlock = lodgingStays.length > 0 && selected.has("lodging");
-  const showArrivals = selected.has("travel");
+  const showTravel = selected.has("travel");
 
   // Show the filter control only if there's >1 category to filter between.
   const showFilterPills = available.length > 1;
@@ -274,18 +277,22 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
             // Per-day visible content under the active filter.
             const dayData = new Map<
               string,
-              { arrivals: ArrivalEvent[]; items: ItineraryEvent[] }
+              { arrivals: ArrivalEvent[]; departures: DepartureEvent[]; items: ItineraryEvent[] }
             >();
             for (const date of days) {
               const dayEvents = eventsByDate.get(date) ?? [];
-              const arrivals = showArrivals
+              const arrivals = showTravel
                 ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
                 : [];
-              // Lodging check-in/out stay inline; only arrivals are pulled out.
+              const departures = showTravel
+                ? (dayEvents.filter((e) => e.kind === "departure") as DepartureEvent[])
+                : [];
+              // Lodging check-in/out stay inline; arrivals + departures are
+              // pulled out into their own top-of-day summary groups.
               const items = dayEvents
-                .filter((e) => e.kind !== "arrival")
+                .filter((e) => e.kind !== "arrival" && e.kind !== "departure")
                 .filter(showEvent);
-              dayData.set(date, { arrivals, items });
+              dayData.set(date, { arrivals, departures, items });
             }
 
             const renderDay = (date: string, compact = false) => {
@@ -297,6 +304,7 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
                   dayNumber={dayNumOf(date)}
                   isToday={date === today}
                   arrivals={dd.arrivals}
+                  departures={dd.departures}
                   events={dd.items}
                   compact={compact}
                 />
@@ -309,7 +317,13 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
             const blocks = groupDayBlocks(
               days.map((date) => {
                 const dd = dayData.get(date)!;
-                return { date, empty: dd.arrivals.length === 0 && dd.items.length === 0 };
+                return {
+                  date,
+                  empty:
+                    dd.arrivals.length === 0 &&
+                    dd.departures.length === 0 &&
+                    dd.items.length === 0,
+                };
               }),
               today,
             );
@@ -517,24 +531,35 @@ function SkeletonCard({
   );
 }
 
-// ── ArrivalsGroup ─────────────────────────────────────────────────────────
-// Collapsible per-day arrivals summary at the top of a day: "Arrivals · N"
-// (teal travel category) expands to Flying / Driving / Other groups (only
-// modes with people; WHITE labels) of avatar + first-name + time chips.
-// Untimed arrivals render "TBD" in a dashed chip; timed people sort first
-// (the arrivals arrive pre-sorted by time, untimed last).
+// ── TravelGroup ───────────────────────────────────────────────────────────
+// Collapsible per-day travel summary at the top of a day — used for BOTH
+// arrivals ("Arrivals · N / Who's getting in") and departures ("Departures ·
+// N / Who's heading out"). Expands to Flying / Driving / Other sub-groups
+// (only modes with people; WHITE labels) of shared TravelChip pills. Untimed
+// legs render "TBD" in a dashed chip; timed people sort first (events arrive
+// pre-sorted by time, untimed last).
 
-const ARRIVAL_MODES: { key: ArrivalEvent["mode"]; label: string; Icon: LucideIcon }[] = [
+const TRAVEL_MODES: { key: "flying" | "driving" | "other"; label: string; Icon: LucideIcon }[] = [
   { key: "flying", label: "Flying", Icon: Plane },
   { key: "driving", label: "Driving", Icon: Car },
   { key: "other", label: "Other", Icon: Navigation },
 ];
 
-function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
+function TravelGroup({
+  events,
+  title,
+  subtitle,
+  HeaderIcon,
+}: {
+  events: (ArrivalEvent | DepartureEvent)[];
+  title: string;
+  subtitle: string;
+  HeaderIcon: LucideIcon;
+}) {
   const [open, setOpen] = useState(false);
-  const groups = ARRIVAL_MODES.map((m) => ({
+  const groups = TRAVEL_MODES.map((m) => ({
     ...m,
-    people: arrivals.filter((a) => a.mode === m.key),
+    people: events.filter((a) => a.mode === m.key),
   })).filter((m) => m.people.length > 0);
 
   return (
@@ -556,17 +581,17 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
           style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
         >
-          <Plane size={18} />
+          <HeaderIcon size={18} />
         </span>
         <span className="min-w-0 flex-1 text-left">
           <span className="block text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Arrivals{" "}
+            {title}{" "}
             <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
-              · {arrivals.length}
+              · {events.length}
             </span>
           </span>
           <span className="block text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Who&apos;s getting in — tap for details
+            {subtitle}
           </span>
         </span>
         <ChevronDown
@@ -1022,6 +1047,7 @@ function EmptyRunBand({
           dayNumber={dayNumOf(date)}
           isToday={false}
           arrivals={[]}
+          departures={[]}
           events={[]}
         />
       ))}
@@ -1035,6 +1061,7 @@ function DaySection({
   dayNumber,
   isToday,
   arrivals,
+  departures,
   events,
   compact = false,
 }: {
@@ -1042,6 +1069,7 @@ function DaySection({
   dayNumber: number | null;
   isToday: boolean;
   arrivals: ArrivalEvent[];
+  departures: DepartureEvent[];
   events: ItineraryEvent[];
   /** Tighter spacing for the dimmed past-day expansion. */
   compact?: boolean;
@@ -1085,11 +1113,26 @@ function DaySection({
         )}
       </div>
       <div className={compact ? "space-y-1" : "space-y-1.5"}>
-        {arrivals.length > 0 && <ArrivalsGroup arrivals={arrivals} />}
+        {arrivals.length > 0 && (
+          <TravelGroup
+            events={arrivals}
+            title="Arrivals"
+            subtitle="Who's getting in — tap for details"
+            HeaderIcon={Plane}
+          />
+        )}
+        {departures.length > 0 && (
+          <TravelGroup
+            events={departures}
+            title="Departures"
+            subtitle="Who's heading out — tap for details"
+            HeaderIcon={PlaneTakeoff}
+          />
+        )}
         {events.map((event) => (
           <EventCard key={event.id} event={event} compact={compact} />
         ))}
-        {arrivals.length === 0 && events.length === 0 && (
+        {arrivals.length === 0 && departures.length === 0 && events.length === 0 && (
           <p className="pl-3 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
             Nothing scheduled
           </p>
