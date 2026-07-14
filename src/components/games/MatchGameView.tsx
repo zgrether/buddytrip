@@ -1130,9 +1130,13 @@ export function MatchGameView() {
     });
     return rollupMatchPlay(projMatches, pointsPerMatch);
     // decidedFor/teamOfSide are per-render closures; we depend on the DATA they
-    // read (scores via loadedValues/values, handicaps, roster→team, scorecard).
+    // read. GROSS mode reads scores (loadedValues/values); OUTCOME mode reads the
+    // per-hole outcomes (loadedOutcomeValues/outcomeValues) — BOTH must be deps or
+    // the projection goes stale as outcomes are entered (it only recomputed on
+    // remount, i.e. after exiting to the leaderboard). Plus handicaps, roster→team,
+    // scorecard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, loadedValues, values, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch, pointValueByMatch, glorious]);
+  }, [groups, loadedValues, values, loadedOutcomeValues, outcomeValues, outcomeMode, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch, pointValueByMatch, glorious]);
 
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
