@@ -79,13 +79,14 @@ export function TravelChip({ person }: { person: TravelChipPerson }) {
       </span>
       {detail && (
         // Second line — details, in the secondary text treatment. Aligned under
-        // the name (past the 22px avatar + 6px gap). Collapsed = one-line
-        // ellipsis; expanded = wraps to full text.
+        // the name (past the 22px avatar + 6px gap). The column stretches this
+        // line to the chip's (capped) width, so collapsed = one-line ellipsis
+        // (`truncate`); expanded = wraps to full text.
         <span
           className={`mt-1 block pl-[28px] text-[11px] leading-snug ${
             expanded ? "whitespace-normal break-words" : "truncate"
           }`}
-          style={{ color: "var(--color-bt-text-dim)", maxWidth: "100%" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           {detail}
         </span>
@@ -94,9 +95,10 @@ export function TravelChip({ person }: { person: TravelChipPerson }) {
   );
 
   // Compact pill on the raised surface. Dashed border marks an untimed leg
-  // (matches the prior arrivals treatment). Capped width so a long detail
-  // truncates rather than ballooning the row; expanded, it wraps within the cap.
-  const baseClass = "inline-flex flex-col items-start rounded-2xl py-[5px] pl-[3px] pr-2.5 text-left align-top";
+  // (matches the prior arrivals treatment). Block-level column flex (default
+  // align-items: stretch) + a capped width so a long detail truncates rather
+  // than ballooning the row; expanded, it wraps within the cap.
+  const baseClass = "flex flex-col rounded-2xl py-[5px] pl-[3px] pr-2.5 text-left";
   const chipStyle = {
     background: "var(--color-bt-card-raised)",
     border: `1px ${untimed ? "dashed" : "solid"} var(--color-bt-border)`,
