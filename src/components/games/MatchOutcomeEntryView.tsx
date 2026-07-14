@@ -286,15 +286,12 @@ export function MatchOutcomeEntryView({
         </div>
       )}
 
-      {/* Entry zone — three stacked player-row-styled choices. No number pad;
-          one tap records the whole hole. */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "0 16px 8px" }}>
-        <p
-          className="text-center"
-          style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)", letterSpacing: "0.02em", margin: "2px 0 10px" }}
-        >
-          Who won this hole?
-        </p>
+      {/* Entry zone — three stacked choices. Item 1: `shrink-0` (no inner scroll)
+          + the `flex-1` spacer below anchors the bottom control to the viewport,
+          matching stroke/rack (the whole screen flows, nothing pinned in a cramped
+          scroll box). Item 4: the "Who won this hole?" prompt is gone — the three
+          choices are self-evident. */}
+      <div className="shrink-0" style={{ padding: "0 16px 8px" }}>
         <div className="flex flex-col" style={{ gap: 9 }}>
           <Choice
             selected={selected === "side_a"}
@@ -304,7 +301,6 @@ export function MatchOutcomeEntryView({
             avatarIcon={m.a.avatarIcon}
             label={m.a.name}
             players={m.aPlayers}
-            sub={selected === "side_a" ? "Won the hole" : undefined}
             onClick={() => pick("side_a")}
             testId="outcome-choice-a"
             saveState={selected === "side_a" ? cellSaveState : undefined}
@@ -315,7 +311,6 @@ export function MatchOutcomeEntryView({
             dim={selected != null && selected !== "halved"}
             neutral
             label="Halved"
-            sub={selected === "halved" ? "Hole halved" : undefined}
             onClick={() => pick("halved")}
             testId="outcome-choice-halved"
             saveState={selected === "halved" ? cellSaveState : undefined}
@@ -329,7 +324,6 @@ export function MatchOutcomeEntryView({
             avatarIcon={m.b.avatarIcon}
             label={m.b.name}
             players={m.bPlayers}
-            sub={selected === "side_b" ? "Won the hole" : undefined}
             onClick={() => pick("side_b")}
             testId="outcome-choice-b"
             saveState={selected === "side_b" ? cellSaveState : undefined}
@@ -337,6 +331,10 @@ export function MatchOutcomeEntryView({
           />
         </div>
       </div>
+
+      {/* Spacer: pushes the bottom control to the viewport bottom (stroke/rack
+          pattern) now that the entry zone is shrink-0, not an inner scroll. */}
+      <div className="flex-1" />
 
       {/* Bottom controls — item 1, mirroring stroke/rack. The pure
           `outcomeBottomState` model decides: while a hole is being selected (a
@@ -502,6 +500,10 @@ function Choice({
   // back to the plain team-colored ✓ below (a "saved" badge would lose the
   // team-color meaning the solid check carries).
   const showBadge = saveState === "saving" || saveState === "error";
+  // Item 2: a 2v2 side stacks two chips — pack them tightly (shorter chips, small
+  // gap, reduced row padding) so the side is close to stroke/rack row density
+  // instead of an oversized block. Avatars stay (this is density only).
+  const stacked = !!(players && players.length > 1);
   return (
     // role=button (not <button>) so ScoreSaveBadge's error-state Retry button
     // can nest without invalid button-in-button markup — same pattern as
@@ -513,7 +515,7 @@ function Choice({
       className="flex w-full items-center gap-3 text-left transition-opacity"
       data-testid={testId}
       style={{
-        padding: 14,
+        padding: stacked ? "8px 14px" : 14,
         borderRadius: 12,
         cursor: "pointer",
         background: selected ? `color-mix(in srgb, ${tint} 14%, transparent)` : "var(--color-bt-card)",
@@ -526,8 +528,7 @@ function Choice({
         // no compound "R & B". The choice row is the selection surface, so the
         // chips are transparent (they show it through).
         <div className="min-w-0 flex-1">
-          <SideChips players={players} chipStyle={{ background: "transparent", border: "none" }} gap={4} />
-          {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600, marginTop: 3 }}>{sub}</div>}
+          <SideChips players={players} chipStyle={{ background: "transparent", border: "none", height: 36, padding: "0 6px" }} gap={2} />
         </div>
       ) : (
         <>
