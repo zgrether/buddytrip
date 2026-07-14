@@ -4,10 +4,10 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import {
   ManualPlacementEditor,
-  fmtValue,
   type GameRow,
   type LBTeamLite,
 } from "@/components/competition/CompetitionGamesPanel";
+import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import type { ScoringModel } from "@/lib/gameTypes";
 
 /**
@@ -57,7 +57,10 @@ export function NonGolfScoreboard({
   const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
 
   const [order, setOrder] = useState<string[]>(initialOrder.length ? initialOrder : teams.map((t) => t.id));
-  const [result, setResult] = useState<string>(() => initialResult ?? initialOrder[0] ?? teams[0]?.id ?? "");
+  // Start with NO outcome selected on a fresh game so nothing reads as
+  // pre-decided (and the Post button stays disabled until the user picks).
+  // When correcting a posted game, seed from the recorded outcome.
+  const [result, setResult] = useState<string>(() => initialResult ?? "");
   const [error, setError] = useState<string | null>(null);
 
   // complete + !corrections_open → "posted" (re-post re-runs the compute); active
@@ -112,7 +115,6 @@ export function NonGolfScoreboard({
       {winLoseTie ? (
         <NonGolfMatchControl
           teams={teams}
-          pointsInPlay={game.points_total ?? 0}
           result={result}
           onPick={canEdit ? setResult : () => {}}
         />
@@ -126,7 +128,7 @@ export function NonGolfScoreboard({
         <button
           type="button"
           onClick={commit}
-          disabled={busy}
+          disabled={busy || (winLoseTie && !result)}
           data-testid="nongolf-post"
           className="w-full rounded-xl py-3 text-sm font-bold disabled:opacity-50"
           style={{ background: correcting ? "var(--color-bt-warning)" : "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
@@ -139,79 +141,52 @@ export function NonGolfScoreboard({
 }
 
 /**
- * NonGolfMatchControl (Part 3) — the declared-outcome control for a non-golf
- * head-to-head, modeled as a REAL one match: Team A **vs** Team B, with the
- * N points in play shown, and a declared outcome (win, or draw-and-split). It
- * replaces the old context-free "Who won?" toggle. The outcome still feeds the
- * existing path (a team id = that side won; "tie" = draw-split) — this is the
- * STRUCTURE (a readable one-match), not the full styled control.
- *
- * NOTE (follow-on, NOT this spec): the full visual REFRESH — proper VS framing,
- * points-in-play styling, match stylings echoing the golf match control's visual
- * language — is a deferred mockup pass. This is the correct-but-basic version.
+ * NonGolfMatchControl — the declared-outcome control for a non-golf head-to-head,
+ * using the SAME three-choice entry as golf's hole-outcome entry (the shared
+ * `OutcomeChoiceRow`): Team A / Halved / Team B, tap-to-select, team-colored with
+ * a ✓ and the other rows dimmed. It stops at SELECTION — nothing posts on tap;
+ * the board's "Post results" button below commits. Starts unselected (nothing
+ * pre-decided) and the outcome feeds the existing path (a team id = that side
+ * won; "tie" = halved/split).
  */
 function NonGolfMatchControl({
-  teams, pointsInPlay, result, onPick,
+  teams, result, onPick,
 }: {
-  teams: LBTeamLite[]; pointsInPlay: number; result: string; onPick: (r: string) => void;
+  teams: LBTeamLite[]; result: string; onPick: (r: string) => void;
 }) {
   const [a, b] = teams;
-  const split = fmtValue(pointsInPlay / 2);
-  const win = fmtValue(pointsInPlay);
-
-  const options: { id: string; label: string; pays: string; testid: string }[] = [
-    { id: a?.id ?? "", label: `${a?.name ?? "Team A"} wins`, pays: `+${win}`, testid: `match-win-${a?.id}` },
-    { id: "tie", label: "Draw — split", pays: `${split} each`, testid: "match-draw" },
-    { id: b?.id ?? "", label: `${b?.name ?? "Team B"} wins`, pays: `+${win}`, testid: `match-win-${b?.id}` },
-  ];
+  const aId = a?.id ?? "";
+  const bId = b?.id ?? "";
+  const anySelected = result !== "";
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* The match: Team A vs Team B — the framing the bare "who won?" lacked. */}
-      <div
-        className="flex items-center justify-between gap-2 rounded-xl px-3 py-3"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        data-testid="match-framing"
-      >
-        <Side team={a} align="start" />
-        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>vs</span>
-        <Side team={b} align="end" />
-      </div>
-
-      <div className="flex items-center justify-center gap-1.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        <span className="font-semibold tabular-nums" style={{ color: "var(--color-bt-accent)" }}>{win}</span>
-        {pointsInPlay === 1 ? "point" : "points"} in play
-      </div>
-
-      <div role="radiogroup" aria-label="Match outcome" className="space-y-1.5">
-        {options.map((o) => {
-          const sel = result === o.id;
-          return (
-            <button
-              key={o.id || o.testid}
-              type="button"
-              role="radio"
-              aria-checked={sel}
-              onClick={() => onPick(o.id)}
-              data-testid={o.testid}
-              className="flex w-full items-center justify-between gap-2.5 rounded-lg px-3 py-3 text-left"
-              style={{ background: sel ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)", border: `1px solid ${sel ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}` }}
-            >
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: sel ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>{o.label}</span>
-              <span className="shrink-0 text-xs font-bold tabular-nums" style={{ color: sel ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>{o.pays}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Side({ team, align }: { team: LBTeamLite | undefined; align: "start" | "end" }) {
-  return (
-    <div className={`flex min-w-0 flex-1 items-center gap-2 ${align === "end" ? "flex-row-reverse text-right" : ""}`}>
-      <span className="h-3.5 w-3.5 flex-shrink-0 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
-      <span className="min-w-0 truncate text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>{team?.name ?? "Team"}</span>
+    <div role="radiogroup" aria-label="Match outcome" className="flex flex-col" style={{ gap: 9 }}>
+      <OutcomeChoiceRow
+        selected={result === aId}
+        dim={anySelected && result !== aId}
+        color={a?.color}
+        avatarName={a?.name}
+        label={a?.name ?? "Team A"}
+        onClick={() => onPick(aId)}
+        testId={`match-win-${aId}`}
+      />
+      <OutcomeChoiceRow
+        selected={result === "tie"}
+        dim={anySelected && result !== "tie"}
+        neutral
+        label="Halved"
+        onClick={() => onPick("tie")}
+        testId="match-draw"
+      />
+      <OutcomeChoiceRow
+        selected={result === bId}
+        dim={anySelected && result !== bId}
+        color={b?.color}
+        avatarName={b?.name}
+        label={b?.name ?? "Team B"}
+        onClick={() => onPick(bId)}
+        testId={`match-win-${bId}`}
+      />
     </div>
   );
 }
