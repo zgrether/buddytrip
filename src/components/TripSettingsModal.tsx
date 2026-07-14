@@ -358,17 +358,17 @@ export function TripSettingsModal({
                     </Section>
                   )}
 
-                  {isOwner && (
+                  {/* Owner-only creation entry — shown ONLY until a competition
+                      exists. Once one does, this row is redundant (it's managed
+                      from the leaderboard/Live face itself), so we hide the whole
+                      section rather than show a low-value "open it" row. */}
+                  {isOwner && !competition && (
                     <Section label="Competition">
                       <Row
                         testId="settings-competition-row"
                         icon={<Trophy size={17} />}
-                        title={competition ? "Competition" : "Enable competition"}
-                        subtitle={
-                          competition
-                            ? "Open the Live face to manage it"
-                            : "Teams, games, and a live leaderboard"
-                        }
+                        title="Enable competition"
+                        subtitle="Teams, games, and a live leaderboard"
                         onClick={() => {
                           // Same entry the enable card uses — the face hosts the
                           // create flow (and the management surface once it
