@@ -130,30 +130,34 @@ describe("competitions router", () => {
     expect(ok).toEqual({ success: true });
   });
 
-  it("delete — DETACHES its games (competition_id → null), never orphans them", async () => {
+  it("delete — CASCADE-deletes its games (Phase 1 default), never leaving detached orphans", async () => {
     const caller = ctx.caller();
-    const comp = await caller.competitions.create({ tripId, name: "Detach Cup" });
+    const comp = await caller.competitions.create({ tripId, name: "Cascade Cup" });
     ctx.trackCompetition(comp.id);
     const game = (await caller.games.create({
       tripId,
       gameTypeId: "gtt_manual",
-      name: "Detach Game",
+      name: "Cascade Game",
       competitionId: comp.id,
       pointsDistribution: { type: "placement", values: [3, 1] },
     })) as { id: string };
 
     await caller.competitions.delete({ tripId, competitionId: comp.id });
 
-    // The game SURVIVES (non-destructive) but no longer claims a dead
-    // competition — the FK's ON DELETE SET NULL detaches it to standalone.
+    // The game is DELETED with the competition (delete_competition_cascade,
+    // migration 079) — NOT SET NULL-detached. The row is gone, and nothing is
+    // left carrying the dead competition id. (The full child-cascade / ordering
+    // proof lives in deleteCompetitionCascade.test.ts.)
     const { data: row } = await ctx.admin
       .from("games")
-      .select("id, competition_id")
+      .select("id")
       .eq("id", game.id)
       .maybeSingle();
-    expect(row).not.toBeNull();
-    expect(row!.competition_id).toBeNull();
-
-    await ctx.admin.from("games").delete().eq("id", game.id);
+    expect(row).toBeNull();
+    const { data: detached } = await ctx.admin
+      .from("games")
+      .select("id")
+      .eq("competition_id", comp.id);
+    expect(detached?.length ?? 0).toBe(0);
   });
 });
