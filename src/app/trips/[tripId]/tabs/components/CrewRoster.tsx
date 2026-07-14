@@ -44,6 +44,10 @@ export type Member = {
   flight_number?: string | null;
   flight_airport?: string | null;
   flight_arrival_time?: string | null;
+  /** Departure leg — mirror of the arrival fields (migration 080). */
+  departure_mode?: string | null;
+  departure_detail?: string | null;
+  departure_time?: string | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -344,7 +348,9 @@ export function YouTile({
   const mode = (m.travel_mode as TravelMode | null) ?? null;
   const detail = summarizeTravel(m);
   const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
-  const hasTravel = !!mode;
+  const departureMode = (m.departure_mode as TravelMode | null) ?? null;
+  const departureLabel = formatArrivalLabel(m.departure_time);
+  const hasTravel = !!mode || !!departureMode;
 
   return (
     <section>
@@ -448,24 +454,37 @@ export function YouTile({
               />
             </div>
           ) : hasTravel ? (
-            <div className="flex items-center gap-3">
-              <TravelModePill mode={mode} withLabel />
-              <div className="min-w-0 flex-1">
-                {detail && (
-                  <p
-                    className="truncate text-sm"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {detail}
-                  </p>
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1 space-y-2.5">
+                {mode && (
+                  <div className="flex items-center gap-2.5">
+                    <TravelModePill mode={mode} withLabel />
+                    <div className="min-w-0 flex-1">
+                      {detail && (
+                        <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+                          {detail}
+                        </p>
+                      )}
+                      <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {arrivalLabel ? `Arriving ${arrivalLabel}` : "Arriving"}
+                      </p>
+                    </div>
+                  </div>
                 )}
-                {arrivalLabel && (
-                  <p
-                    className="truncate text-[11px]"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Arriving {arrivalLabel}
-                  </p>
+                {departureMode && (
+                  <div className="flex items-center gap-2.5">
+                    <TravelModePill mode={departureMode} withLabel />
+                    <div className="min-w-0 flex-1">
+                      {m.departure_detail && (
+                        <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+                          {m.departure_detail}
+                        </p>
+                      )}
+                      <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {departureLabel ? `Departing ${departureLabel}` : "Departing"}
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
               <button
