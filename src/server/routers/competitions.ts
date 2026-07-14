@@ -318,11 +318,19 @@ export const competitionsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireCompetitionRole("owner"))
     .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
-        .from("competitions")
-        .delete()
-        .eq("id", input.competitionId)
-        .eq("trip_id", ctx.tripId);
+      // Cascade-delete (Phase 1): remove the competition AND its games (the new
+      // default), atomically and in the load-bearing order (games-by-competition
+      // FIRST so they're deleted rather than SET NULL-detached, then the
+      // competition — CASCADEs teams + assignments), via the plpgsql primitive.
+      // `p_delete_games: true` is the near-term default; the deferred "keep games"
+      // branch (false → games detach) is gated on the future orphan-display UI.
+      // Owner gate unchanged: requireCompetitionRole('owner') here + the RPC's own
+      // assert_competition_owner (defence-in-depth against a direct PostgREST call).
+      const { error } = await ctx.supabase.rpc("delete_competition_cascade", {
+        p_trip_id: ctx.tripId,
+        p_competition_id: input.competitionId,
+        p_delete_games: true,
+      });
 
       if (error) {
         throw new TRPCError({
