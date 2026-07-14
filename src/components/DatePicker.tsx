@@ -42,6 +42,12 @@ interface BaseProps {
   min?: Date | null;
   /** Latest selectable day (inclusive). Days after are disabled. */
   max?: Date | null;
+  /** Month to open on when there's no committed value (e.g. the trip's start
+   *  month) so the calendar lands near the relevant dates rather than today. */
+  defaultMonth?: Date | null;
+  /** Days to tint as a context window (e.g. the trip's date span) so the user
+   *  can see when the trip is while picking. Not selectable-constraining. */
+  highlightRange?: DateRange | null;
   /** data-testid for the trigger field (E2E). */
   testId?: string;
   disabled?: boolean;
@@ -113,6 +119,8 @@ export function DatePicker(props: DatePickerProps) {
     presets = true,
     min,
     max,
+    defaultMonth,
+    highlightRange,
     testId,
     disabled = false,
   } = props;
@@ -137,10 +145,10 @@ export function DatePicker(props: DatePickerProps) {
     if (mode === "range") {
       const v = props.value ?? { start: null, end: null };
       setDraftRange({ start: v.start, end: v.end });
-      setViewDate(startOfMonth(v.start ?? v.end ?? today));
+      setViewDate(startOfMonth(v.start ?? v.end ?? defaultMonth ?? today));
     } else {
       setDraftSingle(props.value ?? null);
-      setViewDate(startOfMonth(props.value ?? today));
+      setViewDate(startOfMonth(props.value ?? defaultMonth ?? today));
     }
     setOpen(true);
   }
@@ -256,6 +264,15 @@ export function DatePicker(props: DatePickerProps) {
     month: "long",
     year: "numeric",
   });
+
+  // Context-window bounds (e.g. the trip span) — tinted, not selection.
+  const hlStart = highlightRange?.start ? atNoon(highlightRange.start) : null;
+  const hlEnd = highlightRange?.end ? atNoon(highlightRange.end) : null;
+  const inHighlight = (day: Date): boolean => {
+    if (!hlStart || !hlEnd) return false;
+    const t = atNoon(day).getTime();
+    return t >= hlStart.getTime() && t <= hlEnd.getTime();
+  };
 
   return (
     <div className="relative" ref={rootRef}>
@@ -426,11 +443,22 @@ export function DatePicker(props: DatePickerProps) {
               // Continuous range fill: a half/full bar behind the caps.
               const showFill = between || (isStart && hasEnd) || isEnd;
 
+              // Trip-window tint (behind everything, fainter than selection) so
+              // the user sees the trip span while picking. Suppressed on a cap.
+              const showHighlight = inHighlight(day) && !isCap && !showFill;
+
               return (
                 <div
                   key={day.getTime()}
                   className="relative flex h-9 items-center justify-center"
                 >
+                  {showHighlight && (
+                    <div
+                      className="absolute inset-y-1 inset-x-0"
+                      style={{ background: accentFaint, opacity: 0.5 }}
+                      aria-hidden
+                    />
+                  )}
                   {showFill && (
                     <div
                       className="absolute inset-y-1"
