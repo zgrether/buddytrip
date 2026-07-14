@@ -698,6 +698,7 @@ export function RackGameView() {
         units={scUnits}
         tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
         teeRows={teeRows}
+        gameId={gid}
         participants={ps}
         values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
         direction="low_wins"
