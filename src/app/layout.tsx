@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Providers } from "@/lib/providers";
+import { SiteFooter } from "@/components/SiteFooter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,7 +28,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          {/* Global legal footer — Privacy/Terms on every page incl. pre-auth
+              login (Google verification). Hides itself on `/` (MarketingFooter
+              carries the links there). */}
+          <SiteFooter />
+        </Providers>
       </body>
     </html>
   );

@@ -27,6 +27,8 @@ export function MarketingFooter() {
         <a href="#how-it-works" className="bt-mkt-nav-link">How it works</a>
         <a href="#about" className="bt-mkt-nav-link">About</a>
         <Link href="/login" className="bt-mkt-nav-link">Sign in</Link>
+        <Link href="/privacy" className="bt-mkt-nav-link">Privacy</Link>
+        <Link href="/terms" className="bt-mkt-nav-link">Terms</Link>
       </div>
       <div className="bt-mkt-footer-copy">
         © 2026 BuddyTrip · Built for the crew
