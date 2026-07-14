@@ -592,7 +592,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             {/* YOU tile — the current user's own card + inline travel
                 self-service, lifted out of the roster list below. */}
             {me && (
-              <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} />
+              <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} tripEndDate={trip.end_date ?? null} />
             )}
             <section>
               <div
@@ -759,7 +759,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           {/* YOU tile — current user lifted out of Organizers, with inline
               travel self-service. */}
           {me && (
-            <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} />
+            <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} tripEndDate={trip.end_date ?? null} />
           )}
           {/* ORGANIZERS section. When there are no other organizers:
               - if no crew has been added yet (just the owner), hide the whole
@@ -987,6 +987,8 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
               tripId={tripId}
               member={target}
               canManageRoles={!!isOwner}
+              tripStartDate={trip.start_date ?? null}
+              tripEndDate={trip.end_date ?? null}
               onClose={() => setEditingMemberId(null)}
             />
           );

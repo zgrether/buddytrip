@@ -18,6 +18,7 @@ import {
   travelMemberToForm,
   travelFormToPayload,
   travelFormsEqual,
+  travelVarsToRow,
   TRAVEL_CLEAR_PAYLOAD,
   type TravelFormValue,
 } from "./TravelControls";
@@ -97,10 +98,20 @@ interface MemberEditorProps {
   member: MemberEditorTarget;
   /** True when the current user is the trip Owner — enables role changes. */
   canManageRoles: boolean;
+  /** Trip span — seeds the travel date pickers' month + tints the trip dates. */
+  tripStartDate?: string | null;
+  tripEndDate?: string | null;
   onClose: () => void;
 }
 
-export function MemberEditor({ tripId, member, canManageRoles, onClose }: MemberEditorProps) {
+export function MemberEditor({
+  tripId,
+  member,
+  canManageRoles,
+  tripStartDate,
+  tripEndDate,
+  onClose,
+}: MemberEditorProps) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
 
@@ -146,8 +157,24 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
     onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
   });
   // Owner-edits-anyone travel write (works for placeholders too). Fired as
-  // part of handleSave when the travel fields are dirty.
+  // part of handleSave when the travel fields are dirty. Optimistically patches
+  // the edited member's row so the roster reflects the save immediately.
   const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
+    async onMutate(vars) {
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      utils.tripMembers.list.setData({ tripId }, (old) =>
+        (old ?? []).map((r) =>
+          r.user_id === vars.targetUserId
+            ? { ...r, ...(travelVarsToRow(vars) as Partial<typeof r>) }
+            : r,
+        ),
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
+    },
     onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
   });
   const removeMember = trpc.tripMembers.remove.useMutation({
@@ -569,6 +596,8 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               <TravelFields
                 value={travelForm}
                 onChange={handleTravelChange}
+                tripStartDate={tripStartDate}
+                tripEndDate={tripEndDate}
                 surface="recessed"
                 emptyHint=""
               />
