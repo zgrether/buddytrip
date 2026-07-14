@@ -1178,6 +1178,7 @@ export function MatchGameView() {
         units={scUnits}
         tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
         teeRows={teeRows}
+        gameId={gameId}
         a={selectedGroup.a}
         b={selectedGroup.b}
         aPlayers={selectedGroup.aPlayers}
@@ -1192,6 +1193,7 @@ export function MatchGameView() {
         units={scUnits}
         tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
         teeRows={teeRows}
+        gameId={gameId}
         participants={entryParticipants}
         values={values}
         direction="low_wins"

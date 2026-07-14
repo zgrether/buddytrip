@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, Flag, Check } from "lucide-react";
+import { useTeeVisibility } from "@/hooks/useTeeVisibility";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
@@ -73,6 +74,12 @@ interface StandardGridProps {
    */
   teeRows?: TeeRow[];
   /**
+   * Game id — keys the persisted tee filter so it survives reloads and is
+   * consistent across the scorecard's entry points. Omit for Quick Game /
+   * tests → the tee filter is in-memory only.
+   */
+  gameId?: string | null;
+  /**
    * Glorious Finishing Holes (#569/#571) — the LIVE 2×-last-N weight. Purely
    * config + format driven: a diamond marks each glorious hole number, a gold
    * bracket + faint column wash mark the glorious columns, and the tees bar gets
@@ -115,6 +122,10 @@ export interface ScorecardChromeProps {
   tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null;
   teeRows?: TeeRow[];
   glorious?: GloriousConfig;
+  /** Game id — keys the persisted tee filter (which yardage rows are shown) so
+   *  the choice survives reloads and is consistent across the scorecard's entry
+   *  points. Omit for Quick Game / tests → the filter is in-memory only. */
+  gameId?: string | null;
   /** The player/lead rows — rendered between the Index row and the Glorious
    *  bracket, using the same cell geometry the header above used. */
   children: (ctx: ScorecardChromeRenderCtx) => React.ReactNode;
@@ -130,7 +141,7 @@ export interface ScorecardChromeProps {
  * rendered before the extraction, just wrapped so a second caller can supply
  * different body rows through `children`.
  */
-export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIOUS, children }: ScorecardChromeProps) {
+export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIOUS, gameId, children }: ScorecardChromeProps) {
   // The ONE predicate — reused, never re-derived. `hole` = the unit's ARRAY
   // POSITION (index + 1), matching the engine's numbering (buildDecided/
   // holeWeight), not a parsed label. A non-contiguous/short `units` array (a
@@ -151,11 +162,13 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
   // The tee selector is collapsed by default (it's setup busy-ness, not scoring);
   // the chosen tee still shows in the trigger summary and in the grid below.
   const [teePanelOpen, setTeePanelOpen] = useState(false);
-  const [teeOverrides, setTeeOverrides] = useState<Record<string, boolean>>({});
+  // Tee filter overrides are PERSISTED per game (localStorage, keyed on gameId
+  // — consistent across the scorecard's entry points). Absent gameId → in-memory.
+  const [teeOverrides, setTeeOverrides] = useTeeVisibility(gameId);
   const teeVisible = (row: TeeRow) => row.isChosen || (teeOverrides[row.name] ?? row.defaultVisible);
   const chosenTee = teeRows.find((r) => r.isChosen);
   const toggleTee = (row: TeeRow) =>
-    setTeeOverrides((o) => ({ ...o, [row.name]: !(o[row.name] ?? row.defaultVisible) }));
+    setTeeOverrides({ ...teeOverrides, [row.name]: !(teeOverrides[row.name] ?? row.defaultVisible) });
   // A tee's front/back/total yardage — its yards align with `units` by index.
   const teeSum = (ys: (number | null)[], from: number, to: number) =>
     ys.slice(from, to).reduce((a: number, y) => a + (y ?? 0), 0);
@@ -536,6 +549,7 @@ export function StandardGrid({
   tee,
   teeRows = [],
   glorious = NO_GLORIOUS,
+  gameId,
 }: StandardGridProps) {
   const hasPar = units.length > 0 && units.every((u) => u.par != null);
 
@@ -566,7 +580,7 @@ export function StandardGrid({
 
   return (
     <>
-      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious}>
+      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious} gameId={gameId}>
         {({ hasSections, front, back, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => (
           <>
           {participants.map((p, i) => {

@@ -594,6 +594,7 @@ export function StrokeGameView() {
         units={scUnits}
         tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
         teeRows={teeRows}
+        gameId={game.id}
         participants={game.participants}
         values={values}
         direction="low_wins"

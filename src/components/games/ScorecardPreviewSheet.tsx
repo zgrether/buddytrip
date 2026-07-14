@@ -60,7 +60,7 @@ export function ScorecardPreviewSheet({
           />
         </div>
       ) : hasCourse && units.length > 0 ? (
-        <StandardGrid units={units} tee={tee} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} glorious={glorious} />
+        <StandardGrid units={units} tee={tee} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} gameId={gameId} glorious={glorious} />
       ) : (
         <p className="px-6 py-10 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No course set for this game yet — apply a course in game settings to preview its scorecard.

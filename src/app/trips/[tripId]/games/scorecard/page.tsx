@@ -109,7 +109,7 @@ export default function ScorecardPreviewPage() {
     <div className="flex min-h-screen flex-col" style={{ background: "var(--color-bt-base)" }}>
       {header("Scorecard", (gameQ.data.name as string | undefined) ?? undefined)}
       <div className="min-h-0 flex-1">
-        <StandardGrid units={units} tee={tee} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} />
+        <StandardGrid units={units} tee={tee} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} gameId={gameId} />
       </div>
     </div>
   );

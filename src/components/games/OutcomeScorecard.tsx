@@ -97,6 +97,8 @@ export interface OutcomeScorecardProps {
    *  but the course structure (tees, par, stroke index) is identical. */
   tee?: { name: string; courseRating?: number | null; slopeRating?: number | null; bogeyRating?: number | null } | null;
   teeRows?: TeeRow[];
+  /** Game id — keys the persisted tee filter (see ScorecardChrome). */
+  gameId?: string | null;
 }
 
 export function OutcomeScorecard({
@@ -111,6 +113,7 @@ export function OutcomeScorecard({
   rightColor,
   tee,
   teeRows = [],
+  gameId,
 }: OutcomeScorecardProps) {
   const decided = buildDecidedFromOutcomes(outcomes);
   const { track, st } = computeLeadTrack(decided, units.length, glorious);
@@ -121,7 +124,7 @@ export function OutcomeScorecard({
 
   return (
     <div data-testid="outcome-scorecard">
-      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious}>
+      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious} gameId={gameId}>
         {({ hasSections, front, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => {
           const outSwing = hasSections ? sectionSwing(decided, glorious, 1, front.length) : 0;
           const inSwing = hasSections ? sectionSwing(decided, glorious, front.length + 1, units.length) : 0;
