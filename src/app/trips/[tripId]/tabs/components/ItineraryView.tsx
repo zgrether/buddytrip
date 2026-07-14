@@ -23,6 +23,7 @@ import { Avatar } from "@/components/Avatar";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { addDays, differenceInDays } from "@/lib/tripStatus";
 import { TravelChip } from "./TravelChip";
+import { useItineraryFilters, type ItineraryFilterCategory } from "./useItineraryFilters";
 import {
   buildItinerary,
   groupByDay,
@@ -39,10 +40,11 @@ import type { TripData } from "../types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-/** The selectable filter categories (everything except the "all" shortcut). */
-type Category = "lodging" | "travel" | "events";
+/** The selectable filter categories (everything except the "all" shortcut).
+ *  Travel is split into Arrivals and Departures so they filter independently. */
+type Category = ItineraryFilterCategory;
 
-type EventCategory = "lodging" | "travel" | "event";
+type EventCategory = "lodging" | "arrival" | "departure" | "event";
 
 type ArrivalEvent = Extract<ItineraryEvent, { kind: "arrival" }>;
 type DepartureEvent = Extract<ItineraryEvent, { kind: "departure" }>;
@@ -53,8 +55,9 @@ function categoryOf(event: ItineraryEvent): EventCategory {
     case "lodging-checkout":
       return "lodging";
     case "arrival":
+      return "arrival";
     case "departure":
-      return "travel";
+      return "departure";
     case "schedule":
       return "event";
   }
@@ -79,10 +82,11 @@ export interface ItineraryViewProps {
  *
  *   1. ITINERARY section header (sits at the top of the view, mirroring
  *      Schedule / Crew tab headers).
- *   2. Filter pills: All / Lodging / Travel / Events. Each non-All pill
- *      only renders when that category has at least one event. The Travel
- *      pill shows whenever member arrivals exist — travel is entered per
- *      crew member on the Crew tab, so there's no owner activation gate.
+ *   2. Filter pills: Lodging / Arrivals / Departures / Events. Each pill only
+ *      renders when that category has at least one event, and the selection
+ *      persists per trip (useItineraryFilters). Arrivals/Departures show
+ *      whenever member travel exists — entered per crew member on the Crew
+ *      tab, so there's no owner activation gate.
  *   3. Day-by-day timeline from trip start through trip end, pulling from
  *      confirmed schedule items, lodging check-in/out, and crew members'
  *      travel arrivals.
@@ -153,46 +157,62 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
 
   // Per-category availability — drives which filter chips render. Don't tease
   // a filter the user can't use. Lodging comes from the summarized block.
+  // Travel is split: Arrivals and Departures gate independently.
   const hasLodging = lodgingStays.length > 0;
-  const hasTravel = events.some((e) => categoryOf(e) === "travel");
-  const hasEvents = events.some((e) => categoryOf(e) === "event");
+  const hasArrivals = events.some((e) => e.kind === "arrival");
+  const hasDepartures = events.some((e) => e.kind === "departure");
+  const hasEvents = events.some((e) => e.kind === "schedule");
 
   const available = useMemo<Category[]>(
     () => [
       ...(hasLodging ? (["lodging"] as const) : []),
-      ...(hasTravel ? (["travel"] as const) : []),
+      ...(hasArrivals ? (["arrivals"] as const) : []),
+      ...(hasDepartures ? (["departures"] as const) : []),
       ...(hasEvents ? (["events"] as const) : []),
     ],
-    [hasLodging, hasTravel, hasEvents],
+    [hasLodging, hasArrivals, hasDepartures, hasEvents],
   );
 
   // ── Filter (additive multi-select; "All" = show every category) ─────────
-  // `selected` holds the categories currently shown. Default = everything.
-  // "All" is a select-all/reset, not its own exclusive filter; toggling off
-  // the last category snaps back to everything (never an empty list).
-  const [selected, setSelected] = useState<Set<Category>>(
-    () => new Set<Category>(["lodging", "travel", "events"]),
+  // Persisted per trip as the set of HIDDEN categories (see useItineraryFilters
+  // — storing "what's off" keeps a newly-appearing category shown by default).
+  // The shown set is derived; toggling off the last visible category snaps back
+  // to everything (never an empty list).
+  const [hidden, setHidden] = useItineraryFilters(tripId);
+  const selected = useMemo(
+    () => new Set<Category>(available.filter((c) => !hidden.has(c))),
+    [available, hidden],
   );
-  const allSelected = available.length > 0 && available.every((c) => selected.has(c));
+  const allSelected = available.length > 0 && available.every((c) => !hidden.has(c));
 
   const toggleCategory = (c: Category) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
-      // Never leave zero categories showing — snap back to everything.
-      if (!available.some((a) => next.has(a))) return new Set<Category>(available);
-      return next;
-    });
+    const next = new Set(hidden);
+    if (next.has(c)) next.delete(c);
+    else next.add(c);
+    // Never leave zero categories showing — snap back to everything (clear).
+    if (available.every((a) => next.has(a))) {
+      setHidden(new Set());
+      return;
+    }
+    setHidden(next);
   };
 
   const showEvent = (event: ItineraryEvent): boolean => {
-    const cat = categoryOf(event);
-    return selected.has(cat === "event" ? "events" : cat);
+    switch (categoryOf(event)) {
+      case "event":
+        return selected.has("events");
+      case "lodging":
+        return selected.has("lodging");
+      case "arrival":
+        return selected.has("arrivals");
+      case "departure":
+        return selected.has("departures");
+    }
   };
 
   const showLodgingBlock = lodgingStays.length > 0 && selected.has("lodging");
-  const showTravel = selected.has("travel");
+  const showArrivals = selected.has("arrivals");
+  const showDepartures = selected.has("departures");
 
   // Show the filter control only if there's >1 category to filter between.
   const showFilterPills = available.length > 1;
@@ -239,8 +259,11 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
               {hasLodging && (
                 <FilterPill label="Lodging" tone="lodging" active={selected.has("lodging")} onClick={() => toggleCategory("lodging")} />
               )}
-              {hasTravel && (
-                <FilterPill label="Travel" tone="travel" active={selected.has("travel")} onClick={() => toggleCategory("travel")} />
+              {hasArrivals && (
+                <FilterPill label="Arrivals" tone="arrivals" active={selected.has("arrivals")} onClick={() => toggleCategory("arrivals")} />
+              )}
+              {hasDepartures && (
+                <FilterPill label="Departures" tone="departures" active={selected.has("departures")} onClick={() => toggleCategory("departures")} />
               )}
               {hasEvents && (
                 <FilterPill label="Events" tone="events" active={selected.has("events")} onClick={() => toggleCategory("events")} />
@@ -252,7 +275,8 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
                 allSelected={allSelected}
                 toggleCategory={toggleCategory}
                 hasLodging={hasLodging}
-                hasTravel={hasTravel}
+                hasArrivals={hasArrivals}
+                hasDepartures={hasDepartures}
                 hasEvents={hasEvents}
               />
             </div>
@@ -281,10 +305,10 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
             >();
             for (const date of days) {
               const dayEvents = eventsByDate.get(date) ?? [];
-              const arrivals = showTravel
+              const arrivals = showArrivals
                 ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
                 : [];
-              const departures = showTravel
+              const departures = showDepartures
                 ? (dayEvents.filter((e) => e.kind === "departure") as DepartureEvent[])
                 : [];
               // Lodging check-in/out stay inline; arrivals + departures are
@@ -705,16 +729,18 @@ function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
 
 // ── FilterPill ────────────────────────────────────────────────────────────
 
-type PillTone = "all" | "lodging" | "travel" | "events";
+type PillTone = "all" | "lodging" | "arrivals" | "departures" | "events";
 
 // Each filter pill uses its CATEGORY's item color (the same tokens EventCard
 // stripes use), so the filters read in the exact hues of the items they show.
 // (The global DOMAIN_COLORS map is temporarily all-teal app-wide, so we map
-// locally here instead.) "All" = teal (the itinerary's Home hue).
+// locally here instead.) "All" = teal (the itinerary's Home hue). Arrivals and
+// Departures both carry the travel teal — the labels distinguish them.
 const FILTER_COLORS: Record<PillTone, { color: string; faint: string }> = {
   all: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
   lodging: { color: "var(--color-bt-planning)", faint: "var(--color-bt-blue-bg)" },
-  travel: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
+  arrivals: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
+  departures: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
   events: { color: "var(--color-bt-ready)", faint: "var(--color-bt-ready-bg)" },
 };
 
@@ -810,20 +836,23 @@ function FilterDropdown({
   allSelected,
   toggleCategory,
   hasLodging,
-  hasTravel,
+  hasArrivals,
+  hasDepartures,
   hasEvents,
 }: {
   selected: Set<Category>;
   allSelected: boolean;
   toggleCategory: (c: Category) => void;
   hasLodging: boolean;
-  hasTravel: boolean;
+  hasArrivals: boolean;
+  hasDepartures: boolean;
   hasEvents: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const cats: { c: Category; label: string; tone: PillTone }[] = [
     ...(hasLodging ? [{ c: "lodging" as const, label: "Lodging", tone: "lodging" as const }] : []),
-    ...(hasTravel ? [{ c: "travel" as const, label: "Travel", tone: "travel" as const }] : []),
+    ...(hasArrivals ? [{ c: "arrivals" as const, label: "Arrivals", tone: "arrivals" as const }] : []),
+    ...(hasDepartures ? [{ c: "departures" as const, label: "Departures", tone: "departures" as const }] : []),
     ...(hasEvents ? [{ c: "events" as const, label: "Events", tone: "events" as const }] : []),
   ];
   const dotOf = (tone: PillTone) => FILTER_COLORS[tone].color;
@@ -1144,7 +1173,9 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
     iconBg = "var(--color-bt-blue-bg)";
     iconColor = "var(--color-bt-planning)";
     Icon = Home;
-  } else if (category === "travel") {
+  } else if (category === "arrival" || category === "departure") {
+    // Arrivals/departures render in TravelGroup, not as EventCards — this
+    // branch is a defensive fallback keeping the travel-teal treatment.
     stripeColor = "var(--color-bt-accent)";
     iconBg = "var(--color-bt-accent-faint)";
     iconColor = "var(--color-bt-accent)";
