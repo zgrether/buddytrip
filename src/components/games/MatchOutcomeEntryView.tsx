@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, Table2, Equal } from "lucide-react";
-import { buildDecidedFromOutcomes, matchState, type HoleOutcomeResult } from "@/lib/matchPlay";
+import { ChevronLeft, Table2, Equal, Check } from "lucide-react";
+import { buildDecidedFromOutcomes, matchState, outcomeBottomState, type HoleOutcomeResult } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { MatchCard } from "./MatchCard";
+import { SideChips, type SidePlayer } from "./MatchSides";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
@@ -33,7 +34,9 @@ import type { MatchGroupData } from "./MatchEntryView";
  */
 interface MatchOutcomeEntryViewProps {
   gameName: string;
-  units: { label: string; par?: number }[];
+  /** yardage/strokeIndex are optional — present only when the match game has a
+   *  course/tee snapshot; the meta line shows them when available (header parity). */
+  units: { label: string; par?: number | null; yardage?: number | null; strokeIndex?: number | null }[];
   match: MatchGroupData;
   values: OutcomeValues;
   onChange: (matchId: string, hole: string, result: HoleOutcomeResult) => void;
@@ -75,6 +78,10 @@ export function MatchOutcomeEntryView({
   glorious = NO_GLORIOUS,
 }: MatchOutcomeEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
+  // Item 1: the pending LOCAL selection, hole-scoped so it auto-clears when the
+  // hole changes (no effect needed — read only when localPick.hole === hole).
+  // Tapping a choice sets this; nothing commits until OK.
+  const [localPick, setLocalPick] = useState<{ hole: number; result: HoleOutcomeResult } | null>(null);
   const hole = currentHole ?? holeInternal;
   const setHole = (h: number) => {
     if (onHoleChange) onHoleChange(h);
@@ -95,7 +102,14 @@ export function MatchOutcomeEntryView({
   const winner = st.leader === "A" ? m.a : st.leader === "B" ? m.b : null;
   const loser = st.leader === "A" ? m.b : st.leader === "B" ? m.a : null;
 
-  const selected = values[m.matchId]?.[label] as HoleOutcomeResult | undefined;
+  // Item 1 — local-until-OK selection model (mirrors stroke/rack: pick is local,
+  // OK commits). `committedForHole` is what's persisted; `localForHole` is the
+  // uncommitted pick for THIS hole; `selected` (what the choice rows highlight)
+  // shows the local pick over the committed one so you can change your mind
+  // before OK. `dirty` = there's a new pick to commit.
+  const committedForHole = values[m.matchId]?.[label] as HoleOutcomeResult | undefined;
+  const localForHole = localPick?.hole === hole ? localPick.result : undefined;
+  const selected = localForHole ?? committedForHole;
 
   // ── Save status (Connectivity Layer 1 — same discipline as score entry) ────
   const errorCount = Object.values(saveStatus).filter((s) => s === "error").length;
@@ -128,14 +142,28 @@ export function MatchOutcomeEntryView({
   const completedHoleNumbers = units
     .map((u, i) => (values[m.matchId]?.[u.label] != null ? i + 1 : 0))
     .filter((n) => n > 0);
-  const currentComplete = selected != null;
+  // Next Hole gates on the COMMITTED outcome (not the local pick) — it appears
+  // only after OK commits (via `committedForHole` in the bottom section),
+  // mirroring stroke's post-confirm advance.
   const allHolesComplete = completedHoleNumbers.length === units.length && units.length > 0;
   const canFinish = st.over || allHolesComplete;
 
   const pick = (result: HoleOutcomeResult) => {
-    onChange(m.matchId, label, result);
+    // Item 1: pure local selection — ZERO server write, zero advance on tap.
+    setLocalPick({ hole, result });
+  };
+  const commitPick = () => {
+    // OK — commit the selected outcome via the existing outbox path (onChange
+    // fires the durable write), exactly like stroke/rack's check. The Next Hole
+    // CTA then appears over this control, gated until the save confirms.
+    if (localForHole == null) return;
+    onChange(m.matchId, label, localForHole);
+    setLocalPick(null);
   };
   const reset = () => {
+    // Reset (bottom-left) clears the selection — the local pick AND any
+    // committed outcome for this hole.
+    setLocalPick(null);
     onClear?.(m.matchId, label);
   };
 
@@ -161,9 +189,10 @@ export function MatchOutcomeEntryView({
               {subtitle ?? `Hole ${hole} of ${units.length}`}
             </div>
           </div>
-          <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
-            <Table2 size={20} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
+          {/* Scorecard now lives in the hole-navigator meta line (thumb zone),
+              matching stroke/rack — this standalone-route header keeps only a
+              spacer so the title stays centered (Wave 2 parity). */}
+          <div className="h-9 w-9" />
         </header>
       )}
 
@@ -175,6 +204,8 @@ export function MatchOutcomeEntryView({
         <MatchCard
           a={m.a}
           b={m.b}
+          aPlayers={m.aPlayers}
+          bPlayers={m.bPlayers}
           results={decided}
           glorious={glorious}
           label={m.label}
@@ -183,7 +214,6 @@ export function MatchOutcomeEntryView({
           leftColor={m.leftColor}
           rightColor={m.rightColor}
           hideFormat
-          onScorecard={onOpenGrid}
         />
         {st.over && (
           <div
@@ -203,18 +233,36 @@ export function MatchOutcomeEntryView({
         )}
       </div>
 
-      {/* Hole navigation — verbatim reuse of entryChrome. */}
-      <div className="flex shrink-0 items-center justify-between" style={{ padding: "8px 16px 12px" }}>
+      {/* Hole navigation — header parity with stroke/rack (Wave 2): tightened
+          padding + a single meta line (Par · Yds · Hdcp) with the scorecard
+          button relocated inline (thumb zone), not on the MatchCard band. */}
+      <div className="flex shrink-0 items-center justify-between" style={{ padding: "10px 16px 6px" }}>
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
+        <div className="flex flex-col items-center" style={{ gap: 8, flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
-          {par != null && (
-            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-              Par {par}
-            </div>
-          )}
+          <div className="flex items-center justify-center" style={{ gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              {[
+                par != null ? `Par ${par}` : null,
+                unit?.yardage != null ? `${unit.yardage} yds` : null,
+                unit?.strokeIndex != null ? `Hdcp ${unit.strokeIndex}` : null,
+              ].filter(Boolean).join(" · ")}
+            </span>
+            {onOpenGrid && (
+              <button
+                type="button"
+                onClick={onOpenGrid}
+                aria-label="Scorecard"
+                data-testid="entry-scorecard"
+                className="inline-flex shrink-0 items-center justify-center rounded-md"
+                style={{ width: 28, height: 28, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Table2 size={15} style={{ color: "var(--color-bt-accent)" }} />
+              </button>
+            )}
+          </div>
           <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
@@ -255,6 +303,7 @@ export function MatchOutcomeEntryView({
             avatarName={m.a.name}
             avatarIcon={m.a.avatarIcon}
             label={m.a.name}
+            players={m.aPlayers}
             sub={selected === "side_a" ? "Won the hole" : undefined}
             onClick={() => pick("side_a")}
             testId="outcome-choice-a"
@@ -279,6 +328,7 @@ export function MatchOutcomeEntryView({
             avatarName={m.b.name}
             avatarIcon={m.b.avatarIcon}
             label={m.b.name}
+            players={m.bPlayers}
             sub={selected === "side_b" ? "Won the hole" : undefined}
             onClick={() => pick("side_b")}
             testId="outcome-choice-b"
@@ -286,35 +336,120 @@ export function MatchOutcomeEntryView({
             onRetry={retryThisHole}
           />
         </div>
-        {selected != null && (
-          <button
-            type="button"
-            onClick={reset}
-            className="w-full text-center"
-            style={{ padding: 10, fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
-            data-testid="outcome-reset-hole"
-          >
-            Reset hole
-          </button>
-        )}
       </div>
 
-      {/* Bottom: Next Hole | Finish — confirmation-gated, same idiom as score entry. */}
-      {canFinish ? (
-        <BottomCTA
-          label={finishLabel}
-          icon
-          onClick={() => onFinish?.()}
-          disabled={gameGate.total > 0}
-          subtext={finishReason ?? finishSubtext}
-        />
-      ) : currentComplete && hole < units.length ? (
-        <BottomCTA
-          label={`Hole ${units[hole]?.label ?? hole + 1} ›`}
-          onClick={() => goHole(hole + 1)}
-          disabled={holeGate.blocked}
-        />
-      ) : null}
+      {/* Bottom controls — item 1, mirroring stroke/rack. The pure
+          `outcomeBottomState` model decides: while a hole is being selected (a
+          dirty local pick) or is still empty, the `commit` bar shows Reset (left)
+          + OK/check (right); on OK the outcome commits (outbox) and the Next Hole
+          / Finish CTA appears OVER this control, held until the save confirms
+          (honest advance). A settled, committed hole shows the CTA directly. */}
+      {(() => {
+        const bottom = outcomeBottomState({
+          committed: committedForHole,
+          localPick: localForHole,
+          canFinish,
+          isLastHole: hole >= units.length,
+        });
+        switch (bottom.kind) {
+          case "commit":
+            return (
+              <OutcomeCommitBar canReset={bottom.canReset} onReset={reset} canOk={bottom.canOk} onOk={commitPick} />
+            );
+          case "finish":
+            return (
+              <BottomCTA
+                label={finishLabel}
+                icon
+                onClick={() => onFinish?.()}
+                disabled={gameGate.total > 0}
+                subtext={finishReason ?? finishSubtext}
+              />
+            );
+          case "next":
+            return (
+              <BottomCTA
+                label={`Hole ${units[hole]?.label ?? hole + 1} ›`}
+                onClick={() => goHole(hole + 1)}
+                disabled={holeGate.blocked}
+              />
+            );
+          default:
+            return null;
+        }
+      })()}
+    </div>
+  );
+}
+
+/** The pre-commit bottom bar (item 1) — Reset (left) + OK/check (right), the
+ *  outcome-entry counterpart to the stroke keypad's Delete + Confirm. Anchored to
+ *  the viewport bottom (last flex child) like the keypad. OK carries the same
+ *  teal check treatment `BottomCTA`/`StrokeKeypad` use; both buttons dim when
+ *  their action is unavailable (nothing to reset / no new pick to commit). */
+function OutcomeCommitBar({
+  canReset,
+  onReset,
+  canOk,
+  onOk,
+}: {
+  canReset: boolean;
+  onReset: () => void;
+  canOk: boolean;
+  onOk: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--color-bt-card-float)",
+        borderTop: "1px solid var(--color-bt-border)",
+        padding: "12px 16px 24px",
+      }}
+    >
+      <div className="flex items-center" style={{ gap: 10 }}>
+        <button
+          type="button"
+          onClick={canReset ? onReset : undefined}
+          disabled={!canReset}
+          aria-label="Reset hole"
+          data-testid="outcome-reset"
+          className="flex items-center justify-center transition-transform active:scale-[0.98] disabled:cursor-default"
+          style={{
+            height: 54,
+            flex: "0 0 auto",
+            padding: "0 22px",
+            borderRadius: 12,
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+            color: canReset ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+            fontSize: 15,
+            fontWeight: 600,
+            opacity: canReset ? 1 : 0.6,
+          }}
+        >
+          Reset
+        </button>
+        <button
+          type="button"
+          onClick={canOk ? onOk : undefined}
+          disabled={!canOk}
+          aria-label="Confirm outcome"
+          data-testid="outcome-ok"
+          className="flex flex-1 items-center justify-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-default"
+          style={{
+            height: 54,
+            borderRadius: 12,
+            background: canOk ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+            color: canOk ? "var(--color-bt-on-accent)" : "var(--color-bt-text-dim)",
+            fontSize: 17,
+            fontWeight: 600,
+            opacity: canOk ? 1 : 0.75,
+          }}
+        >
+          {canOk && <Check size={20} strokeWidth={2.2} />}
+          OK
+        </button>
+      </div>
     </div>
   );
 }
@@ -336,6 +471,7 @@ function Choice({
   avatarName,
   avatarIcon,
   label,
+  players,
   sub,
   onClick,
   testId,
@@ -349,6 +485,9 @@ function Choice({
   avatarName?: string;
   avatarIcon?: string | null;
   label: string;
+  /** A 2v2 side's players (item 3) — when 2+, the row shows the shared stacked
+   *  `SideChips` instead of a single avatar + compound "R & B" label. */
+  players?: SidePlayer[];
   sub?: string;
   onClick: () => void;
   testId: string;
@@ -382,20 +521,32 @@ function Choice({
         opacity: dim ? 0.5 : 1,
       }}
     >
-      {neutral ? (
-        <span
-          className="flex flex-shrink-0 items-center justify-center"
-          style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-        >
-          <Equal size={14} />
-        </span>
+      {players && players.length > 1 ? (
+        // 2v2 → the shared stacked renderer (item 3): both players, avatar-left,
+        // no compound "R & B". The choice row is the selection surface, so the
+        // chips are transparent (they show it through).
+        <div className="min-w-0 flex-1">
+          <SideChips players={players} chipStyle={{ background: "transparent", border: "none" }} gap={4} />
+          {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600, marginTop: 3 }}>{sub}</div>}
+        </div>
       ) : (
-        <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} />
+        <>
+          {neutral ? (
+            <span
+              className="flex flex-shrink-0 items-center justify-center"
+              style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+            >
+              <Equal size={14} />
+            </span>
+          ) : (
+            <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} />
+          )}
+          <div className="min-w-0 flex-1">
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>
+            {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{sub}</div>}
+          </div>
+        </>
       )}
-      <div className="min-w-0 flex-1">
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>
-        {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{sub}</div>}
-      </div>
       {showBadge ? (
         <ScoreSaveBadge state={saveState} onRetry={onRetry} />
       ) : (

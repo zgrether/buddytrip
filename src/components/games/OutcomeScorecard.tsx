@@ -3,6 +3,7 @@
 import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
+import { SideChips, type SidePlayer } from "./MatchSides";
 import type { TeeRow } from "@/lib/teeRows";
 import type { Participant, ScoreUnit } from "./types";
 
@@ -84,6 +85,10 @@ export interface OutcomeScorecardProps {
   units: ScoreUnit[];
   a: Participant;
   b: Participant;
+  /** Per-side players (item 3) — 2v2 renders the shared stacked SideChips in the
+   *  name column instead of the compound "R & B" single name. */
+  aPlayers?: SidePlayer[];
+  bPlayers?: SidePlayer[];
   outcomes: HoleOutcomeRow[];
   glorious?: GloriousConfig;
   leftColor?: string;
@@ -98,6 +103,8 @@ export function OutcomeScorecard({
   units,
   a,
   b,
+  aPlayers,
+  bPlayers,
   outcomes,
   glorious = NO_GLORIOUS,
   leftColor,
@@ -122,8 +129,8 @@ export function OutcomeScorecard({
           const rowProps = { units, track, nameCell, cellBase, divider, isGloriousCol, gloriousWash, hasSections, outSwing, inSwing, totalSwing };
           return (
             <>
-              <LeadRow {...rowProps} name={a.name} side="A" color={lc} />
-              <LeadRow {...rowProps} name={b.name} side="B" color={rc} />
+              <LeadRow {...rowProps} name={a.name} players={aPlayers} side="A" color={lc} />
+              <LeadRow {...rowProps} name={b.name} players={bPlayers} side="B" color={rc} />
             </>
           );
         }}
@@ -140,6 +147,7 @@ export function OutcomeScorecard({
 
 function LeadRow({
   name,
+  players,
   units,
   track,
   side,
@@ -155,6 +163,7 @@ function LeadRow({
   totalSwing,
 }: {
   name: string;
+  players?: SidePlayer[];
   units: ScoreUnit[];
   track: LeadCell[];
   side: "A" | "B";
@@ -169,12 +178,19 @@ function LeadRow({
   inSwing: number;
   totalSwing: number;
 }) {
+  const stacked = players && players.length > 1;
   return (
-    <div className="flex" style={{ height: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-      <div className="flex items-center" style={{ ...nameCell, padding: "0 10px" }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {name}
-        </span>
+    // minHeight (not fixed 44) so a 2v2's stacked SideChips grow the row; a 1v1
+    // keeps the 44px single-name row (item 3).
+    <div className="flex" style={{ minHeight: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+      <div className="flex items-center" style={{ ...nameCell, padding: stacked ? "5px 10px" : "0 10px" }}>
+        {stacked ? (
+          <SideChips players={players!} chipStyle={{ background: "transparent", border: "none" }} gap={2} />
+        ) : (
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {name}
+          </span>
+        )}
       </div>
       {track.map((c, i) => (
         <div

@@ -5,6 +5,7 @@ import {
   buildDecidedFromOutcomes,
   matchState,
   matchHasScores,
+  outcomeBottomState,
   type HoleResult,
   type DecidedHole,
   type HoleOutcomeRow,
@@ -272,5 +273,44 @@ describe("§6e — weighted margin string: X = weighted lead, Y = raw holes-to-p
     const win16 = [...upN(3), { hole: 16, result: "W" as HoleResult }];
     expect(matchState(win16, 18, GLOR3)).toMatchObject({ closed: true, margin: "5&2", holesLeft: 2, up: 5 });
     expect(matchState(win16, 18, NO_GLORIOUS).margin).toBe("4&2");
+  });
+});
+
+describe("outcomeBottomState — hole-outcome entry commit model (Match-Play Parity item 1)", () => {
+  const mid = (over = { canFinish: false, isLastHole: false }) => over;
+
+  it("empty hole (nothing committed, no pick) → commit bar, OK+Reset disabled (nothing auto-commits)", () => {
+    expect(outcomeBottomState({ committed: undefined, localPick: undefined, ...mid() }))
+      .toEqual({ kind: "commit", canOk: false, canReset: false });
+  });
+
+  it("a local pick with nothing committed → commit bar, OK+Reset ENABLED (one write waits on OK)", () => {
+    expect(outcomeBottomState({ committed: undefined, localPick: "side_a", ...mid() }))
+      .toEqual({ kind: "commit", canOk: true, canReset: true });
+  });
+
+  it("committed, no pending pick, mid-round → NEXT (settled, no re-write)", () => {
+    expect(outcomeBottomState({ committed: "side_a", localPick: undefined, canFinish: false, isLastHole: false }))
+      .toEqual({ kind: "next", canOk: false, canReset: false });
+  });
+
+  it("committed, no pending pick, match can finish → FINISH", () => {
+    expect(outcomeBottomState({ committed: "halved", localPick: undefined, canFinish: true, isLastHole: false }).kind)
+      .toBe("finish");
+  });
+
+  it("committed, no pending pick, last hole, cannot finish → NONE", () => {
+    expect(outcomeBottomState({ committed: "side_b", localPick: undefined, canFinish: false, isLastHole: true }).kind)
+      .toBe("none");
+  });
+
+  it("tapping the SAME choice as committed is not dirty → stays settled (NEXT), OK disabled", () => {
+    expect(outcomeBottomState({ committed: "side_a", localPick: "side_a", canFinish: false, isLastHole: false }))
+      .toEqual({ kind: "next", canOk: false, canReset: false });
+  });
+
+  it("tapping a DIFFERENT choice than committed → commit bar with OK enabled (a correction to OK)", () => {
+    expect(outcomeBottomState({ committed: "side_a", localPick: "side_b", canFinish: false, isLastHole: false }))
+      .toEqual({ kind: "commit", canOk: true, canReset: true });
   });
 });

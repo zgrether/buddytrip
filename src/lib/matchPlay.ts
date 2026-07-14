@@ -115,6 +115,44 @@ export interface HoleOutcomeRow {
 }
 
 /**
+ * Bottom-control state machine for hole-OUTCOME entry (Match-Play Parity item 1).
+ * Pure so the local-until-OK commit contract is testable without a DOM. Encodes:
+ * a hole is COMMITTED only via OK — tapping a choice sets a local pick and never
+ * writes; OK is available only when that local pick DIFFERS from what's committed
+ * (`dirty`). While selecting (dirty) or empty (nothing committed), the bottom is
+ * the `commit` bar; once committed and settled it swaps to `finish`/`next`
+ * (mirroring stroke's post-confirm advance), matching `ScoreEntryView`.
+ *
+ *   committed=undef, local=undef   → commit  (canOk:false, canReset:false)  ← nothing auto-commits
+ *   committed=undef, local=side_a  → commit  (canOk:true,  canReset:true)   ← OK will write once
+ *   committed=side_a, local=undef  → next/finish/none                       ← settled, no re-write
+ *   committed=side_a, local=side_b → commit  (canOk:true,  canReset:true)   ← a correction to OK
+ *   committed=side_a, local=side_a → next/finish/none                       ← same pick, not dirty
+ */
+export type OutcomeBottomKind = "commit" | "finish" | "next" | "none";
+export interface OutcomeBottomState {
+  kind: OutcomeBottomKind;
+  /** commit-kind only: OK enabled ⟺ there's a new pick to commit (dirty). */
+  canOk: boolean;
+  /** commit-kind only: Reset enabled ⟺ something is selected (local or committed). */
+  canReset: boolean;
+}
+export function outcomeBottomState(args: {
+  committed: HoleOutcomeResult | undefined;
+  localPick: HoleOutcomeResult | undefined;
+  canFinish: boolean;
+  isLastHole: boolean;
+}): OutcomeBottomState {
+  const { committed, localPick, canFinish, isLastHole } = args;
+  const dirty = localPick !== undefined && localPick !== committed;
+  if (dirty || committed === undefined) {
+    return { kind: "commit", canOk: dirty, canReset: (localPick ?? committed) !== undefined };
+  }
+  const kind: OutcomeBottomKind = canFinish ? "finish" : isLastHole ? "none" : "next";
+  return { kind, canOk: false, canReset: false };
+}
+
+/**
  * Build the decided `DecidedHole[]` (A's perspective, hole order) directly from
  * recorded hole outcomes — the hole-outcome-entry counterpart to `buildDecided`
  * (which derives outcomes from gross scores + handicaps). No scores, no strokes:
