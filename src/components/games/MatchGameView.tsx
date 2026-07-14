@@ -1029,11 +1029,23 @@ export function MatchGameView() {
         .map((mm, i) => {
           const a = mm.side_a as { id: string };
           const b = mm.side_b as { id: string };
+          // Per-side player lists for the shared stacked renderer (item 3): a
+          // side id resolves to its play-group members (2v2) or, for a 1v1,
+          // the side id IS the user id. Same SidePlayer shape the formation
+          // panel / Total Points row already build.
+          const sidePlayersOf = (sideId: string): SidePlayer[] =>
+            (membersOfSide.get(sideId) ?? [sideId]).map((u) => ({
+              id: u,
+              name: nameOf.get(u) ?? "Player",
+              teamColor: teamColorOf(u) ?? colorOf.get(u) ?? PLAYER_COLORS[0],
+            }));
           return {
             matchId: mm.id as string,
             label: `Match ${(mm.match_number as number) ?? i + 1}`,
             a: sideParticipant(a.id),
             b: sideParticipant(b.id),
+            aPlayers: sidePlayersOf(a.id),
+            bPlayers: sidePlayersOf(b.id),
             strokesA: handicapOf.get(a.id) ?? 0,
             strokesB: handicapOf.get(b.id) ?? 0,
             // Team colors (Slice D) for the strip/entry, when in a 2-team comp.
@@ -1154,6 +1166,8 @@ export function MatchGameView() {
         teeRows={teeRows}
         a={selectedGroup.a}
         b={selectedGroup.b}
+        aPlayers={selectedGroup.aPlayers}
+        bPlayers={selectedGroup.bPlayers}
         outcomes={Object.entries(mergedOutcomeFor(selectedGroup.matchId)).map(([h, result]) => ({ hole: Number(h), result }))}
         glorious={glorious}
         leftColor={selectedGroup.leftColor}
@@ -2479,6 +2493,8 @@ function Overview({
             key={g.matchId}
             a={g.a}
             b={g.b}
+            aPlayers={g.aPlayers}
+            bPlayers={g.bPlayers}
             results={decideds[i]}
             glorious={glorious}
             label={`Match ${i + 1}`}

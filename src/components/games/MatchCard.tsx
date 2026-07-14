@@ -4,6 +4,7 @@ import { Table2 } from "lucide-react";
 import { matchState, type DecidedHole } from "@/lib/matchPlay";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
+import { SideChips, type SidePlayer } from "./MatchSides";
 import type { Participant } from "./types";
 
 /**
@@ -38,6 +39,12 @@ interface MatchCardProps {
   rightColor?: string;
   holeCount?: number;
   onClick?: () => void;
+  /** Per-side players (Match-Play Parity item 3) — when a side has 2+ players
+   *  (a 2v2), the name cell renders the shared stacked `SideChips` instead of the
+   *  collapsed single-line "R & B" name; the row grows to fit. Omit / single-entry
+   *  for a 1v1 (keeps the compact single-name strip). */
+  aPlayers?: SidePlayer[];
+  bPlayers?: SidePlayer[];
   /** Current user's id — appends "(you)" to their name. */
   youId?: string;
   /** Hide the "· 1v1" suffix in the header (entry page shows just "MATCH #"). */
@@ -58,6 +65,8 @@ export function MatchCard({
   rightColor,
   holeCount = 18,
   onClick,
+  aPlayers,
+  bPlayers,
   youId,
   hideFormat,
   onScorecard,
@@ -114,16 +123,17 @@ export function MatchCard({
         </span>
       </div>
 
-      {/* 2 · Row */}
-      <div className="flex" style={{ height: 50, alignItems: "stretch" }}>
+      {/* 2 · Row — `minHeight` (not a fixed 50) so a 2v2's stacked SideChips grow
+          the strip instead of clipping (item 3); a 1v1 keeps the 50px single-name row. */}
+      <div className="flex" style={{ minHeight: 50, alignItems: "stretch" }}>
         <Margin active={aLeads} square={square} text={aLeads ? leadText : "AS"} color={lc} closed={st.closed} />
-        <NameCell name={a.name} align="right" tinted={aLeads} color={lc} you={!!youId && a.id === youId} />
+        <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} you={!!youId && a.id === youId} />
         <div style={{ width: 3, background: wonL }} />
         <div className="flex items-center justify-center" style={{ width: 40, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {centerNum}
         </div>
         <div style={{ width: 3, background: wonR }} />
-        <NameCell name={b.name} align="left" tinted={bLeads} color={rc} you={!!youId && b.id === youId} />
+        <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} you={!!youId && b.id === youId} />
         <Margin active={bLeads} square={square} text={bLeads ? leadText : "AS"} color={rc} closed={st.closed} />
       </div>
 
@@ -162,14 +172,28 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
 
 /** Name column — leans inward (left col right-justified, right col left-justified);
  *  leading side gets a faint tint of its emphasis color. Uniform 600 weight. */
-function NameCell({ name, align, tinted, color, you }: { name: string; align: "left" | "right"; tinted: boolean; color: string; you?: boolean }) {
-  // Shrink the font for long names (the cell is narrow) instead of truncating.
+function NameCell({ name, players, align, tinted, color, you }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string; you?: boolean }) {
+  const bg = tinted ? `${color}29` : "transparent";
+  // 2v2 → the shared stacked renderer (item 3), aligned to the cell's inward edge;
+  // transparent chips so the tint reads through (matches the formation panel).
+  if (players && players.length > 1) {
+    return (
+      <div
+        className="flex min-w-0 flex-1 items-center"
+        style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "5px 10px", background: bg }}
+      >
+        <SideChips players={players} chipStyle={{ background: "transparent", border: "none" }} gap={2} />
+      </div>
+    );
+  }
+  // 1v1 → the compact single name; shrink the font for long names (narrow cell)
+  // instead of truncating.
   const len = name.length + (you ? 6 : 0);
   const fontSize = len > 16 ? 13 : len > 12 ? 15 : 17;
   return (
     <div
       className="flex min-w-0 flex-1 items-center"
-      style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "0 10px", background: tinted ? `${color}29` : "transparent" }}
+      style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "0 10px", background: bg }}
     >
       <span style={{ fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {name}

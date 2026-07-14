@@ -75,9 +75,21 @@ describe("MatchOutcomeEntryView — the three-choice entry zone", () => {
     expect(html).toContain("outcome-choice-a");
   });
 
-  it("shows Reset hole only once a choice is recorded", () => {
-    expect(render({})).not.toContain("outcome-reset-hole");
-    expect(render({ m1: { "1": "halved" } })).toContain("outcome-reset-hole");
+  it("empty hole → the Reset|OK commit bar shows (item 1); no advance until committed", () => {
+    // Item 1: nothing commits on tap — an unselected hole shows the pre-commit
+    // bar (Reset + OK, both disabled here) and does NOT offer Next Hole yet.
+    const html = render({});
+    expect(html).toContain("outcome-ok");
+    expect(html).toContain("outcome-reset");
+    expect(html).not.toContain("Hole 2 ›");
+  });
+
+  it("a committed hole is settled → the Next Hole CTA replaces the commit bar", () => {
+    // committed + no pending pick → the bottom swaps to Next Hole (mirrors
+    // stroke's post-confirm advance); the commit bar is gone (nothing to OK).
+    const html = render({ m1: { "1": "halved" } });
+    expect(html).toContain("Hole 2 ›");
+    expect(html).not.toContain("outcome-ok");
   });
 
   it("shows the Glorious banner only on a glorious hole", () => {

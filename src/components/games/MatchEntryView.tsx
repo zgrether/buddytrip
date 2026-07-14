@@ -6,6 +6,7 @@ import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
+import type { SidePlayer } from "./MatchSides";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
@@ -43,6 +44,12 @@ export interface MatchGroupData {
   label: string;
   a: Participant;
   b: Participant;
+  /** Per-side player lists (Match-Play Parity item 3) — one entry for a 1v1,
+   *  two for a 2v2 — so surfaces can render the shared stacked `SideChips`
+   *  renderer instead of the collapsed "R & B" single-line name on `a`/`b`.
+   *  Optional: absent (or single-entry) falls back to the compact single name. */
+  aPlayers?: SidePlayer[];
+  bPlayers?: SidePlayer[];
   strokesA: number; // handicap strokes A receives (usually 0)
   strokesB: number;
   /** Team colors (Slice D) — the strip tints the leader in the side's team
@@ -281,6 +288,8 @@ export function MatchEntryView({
               <MatchCard
                 a={m.a}
                 b={m.b}
+                aPlayers={m.aPlayers}
+                bPlayers={m.bPlayers}
                 results={boardDecided}
                 glorious={glorious}
                 label={m.label}

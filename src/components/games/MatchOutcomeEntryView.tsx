@@ -5,6 +5,7 @@ import { ChevronLeft, Table2, Equal, Check } from "lucide-react";
 import { buildDecidedFromOutcomes, matchState, outcomeBottomState, type HoleOutcomeResult } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { MatchCard } from "./MatchCard";
+import { SideChips, type SidePlayer } from "./MatchSides";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
@@ -203,6 +204,8 @@ export function MatchOutcomeEntryView({
         <MatchCard
           a={m.a}
           b={m.b}
+          aPlayers={m.aPlayers}
+          bPlayers={m.bPlayers}
           results={decided}
           glorious={glorious}
           label={m.label}
@@ -300,6 +303,7 @@ export function MatchOutcomeEntryView({
             avatarName={m.a.name}
             avatarIcon={m.a.avatarIcon}
             label={m.a.name}
+            players={m.aPlayers}
             sub={selected === "side_a" ? "Won the hole" : undefined}
             onClick={() => pick("side_a")}
             testId="outcome-choice-a"
@@ -324,6 +328,7 @@ export function MatchOutcomeEntryView({
             avatarName={m.b.name}
             avatarIcon={m.b.avatarIcon}
             label={m.b.name}
+            players={m.bPlayers}
             sub={selected === "side_b" ? "Won the hole" : undefined}
             onClick={() => pick("side_b")}
             testId="outcome-choice-b"
@@ -466,6 +471,7 @@ function Choice({
   avatarName,
   avatarIcon,
   label,
+  players,
   sub,
   onClick,
   testId,
@@ -479,6 +485,9 @@ function Choice({
   avatarName?: string;
   avatarIcon?: string | null;
   label: string;
+  /** A 2v2 side's players (item 3) — when 2+, the row shows the shared stacked
+   *  `SideChips` instead of a single avatar + compound "R & B" label. */
+  players?: SidePlayer[];
   sub?: string;
   onClick: () => void;
   testId: string;
@@ -512,20 +521,32 @@ function Choice({
         opacity: dim ? 0.5 : 1,
       }}
     >
-      {neutral ? (
-        <span
-          className="flex flex-shrink-0 items-center justify-center"
-          style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-        >
-          <Equal size={14} />
-        </span>
+      {players && players.length > 1 ? (
+        // 2v2 → the shared stacked renderer (item 3): both players, avatar-left,
+        // no compound "R & B". The choice row is the selection surface, so the
+        // chips are transparent (they show it through).
+        <div className="min-w-0 flex-1">
+          <SideChips players={players} chipStyle={{ background: "transparent", border: "none" }} gap={4} />
+          {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600, marginTop: 3 }}>{sub}</div>}
+        </div>
       ) : (
-        <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} />
+        <>
+          {neutral ? (
+            <span
+              className="flex flex-shrink-0 items-center justify-center"
+              style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+            >
+              <Equal size={14} />
+            </span>
+          ) : (
+            <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} />
+          )}
+          <div className="min-w-0 flex-1">
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>
+            {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{sub}</div>}
+          </div>
+        </>
       )}
-      <div className="min-w-0 flex-1">
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>
-        {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{sub}</div>}
-      </div>
       {showBadge ? (
         <ScoreSaveBadge state={saveState} onRetry={onRetry} />
       ) : (
