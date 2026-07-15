@@ -10,6 +10,7 @@ import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { buildScorecardSchema, composeTwoNines, validateStrokeIndex, type SnapshotTee, type ScorecardSchema } from "@/lib/courseIndex";
+import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -352,40 +353,19 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
-      const holeCount = course.hole_count as number;
-      const par = course.par as number[];
-      const hasIndex = (course.has_stroke_index as boolean | null) ?? true;
-
-      // Resolve the configured tee: the requested name, else the first tee.
-      // Snapshotting the SELECTED tee (not a hardcoded default) is what keeps the
-      // displayed yardage honest to what the round was set up with.
-      const teeSets = (course.tee_sets as SnapshotTee[] | null) ?? [];
-      const selectedTee =
-        (input.teeSetName ? teeSets.find((t) => t.name === input.teeSetName) : undefined) ??
-        teeSets[0] ??
-        null;
-      // Index-off course → snapshot par only (buildScorecardSchema fills a
-      // sequential index; net falls back to hole order). Index-on → validate it
-      // as defense in depth before snapshotting.
-      const handicapIndex = hasIndex ? (course.handicap_index as number[]) : null;
-      if (hasIndex && !validateStrokeIndex(handicapIndex!, holeCount).valid) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Course stroke index is not a valid permutation — fix it before use.",
-        });
+      // The snapshot derivation is the shared pure fn (courseSnapshot.ts): tee
+      // resolution, index validation, and the par/index/yardage freeze. The settings
+      // draft pre-computes the SAME snapshot client-side and hands it to
+      // save_game_config, so an applied course and a drafted one can't drift.
+      const snap = buildCourseSnapshot(course as CourseSnapshotInput, game.game_type_id as string, input.teeSetName);
+      if (!snap.ok) {
+        throw new TRPCError(
+          snap.reason === "bad_index"
+            ? { code: "BAD_REQUEST", message: "Course stroke index is not a valid permutation — fix it before use." }
+            : { code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema to snapshot onto." }
+        );
       }
-
-      // Base scorecard comes from the format definition in code (W-PERF-01) —
-      // buildScorecardSchema deep-clones it, so sharing the const is safe.
-      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
-      if (!baseSchema?.units) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Game type has no scorecard schema to snapshot onto.",
-        });
-      }
-
-      const snapshot = buildScorecardSchema(baseSchema, par, handicapIndex, holeCount, selectedTee);
+      const snapshot = snap.schema;
       // Applying a (fresh) front course resets any prior two-nines back ref — a
       // 9-hole course lands as a lone front "needs a back nine" until setBackNine.
       const { error } = await ctx.supabase
