@@ -658,6 +658,32 @@ export function MatchGameView() {
     settingsEditable, scoringEnabled, gameCompId, pointsOverrideKey,
   ]);
 
+  // ── Rules write adapter (TEMPORARY — draft-then-save staging) ───────────────
+  // GameRulesNote is controlled from here now; this commits on blur exactly as the
+  // note used to internally. The FLIP folds rulesDraft into configDraft and drops
+  // commitRules (the page's single Save persists it). Seeded ONCE on first load,
+  // mirroring the note's mount-time useState seed.
+  const [rulesDraft, setRulesDraft] = useState("");
+  const rulesSavedRef = useRef("");
+  const rulesSeeded = useRef(false);
+  const updateGameM = trpc.games.update.useMutation();
+  useEffect(() => {
+    if (rulesSeeded.current || !gameQ.data) return;
+    rulesSeeded.current = true;
+    const initial = ((gameQ.data.rules_for_today as string | null) ?? "");
+    setRulesDraft(initial);
+    rulesSavedRef.current = initial;
+  }, [gameQ.data]);
+  const commitRules = () => {
+    const next = rulesDraft.trim();
+    if (next === rulesSavedRef.current.trim()) return; // nothing changed
+    rulesSavedRef.current = rulesDraft;
+    void (async () => {
+      await updateGameM.mutateAsync({ tripId: tripId!, gameId: gameId!, rulesForToday: next || null });
+      utils.games.getById.invalidate({ tripId: tripId!, gameId: gameId! });
+    })();
+  };
+
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
     return {
@@ -1641,7 +1667,14 @@ export function MatchGameView() {
                 the carved-out exception (plain canEdit). Saves on blur — the back
                 arrow blurs the field, so there's no Save&exit to flush. */}
             {gameCompId && gameQ.data && (
-              <GameRulesNote tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
+              <GameRulesNote
+                tripId={tripId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                value={rulesDraft}
+                onChange={setRulesDraft}
+                onBlurCommit={commitRules}
+              />
             )}
 
             {/* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control,

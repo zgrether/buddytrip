@@ -15,32 +15,55 @@ export interface GameRulesNoteHandle {
  * the game-setup page BELOW the checklist. It's notes, not a task: nothing to
  * "resolve", so it is NOT a ChecklistRow — a plain textarea.
  *
- * The one field with no collapse event, so it can't ride persist-on-collapse: it
- * saves on **blur** (self-contained — works on surfaces with no Save&exit, like
- * the Configuration screen) AND exposes `flush()` so the page's "Save & exit" can
- * commit it before navigating (the honest "I typed a rules sheet, save it" door).
+ * TWO MODES:
+ *  - **Uncontrolled** (default — the Configuration / non-golf / member surfaces):
+ *    self-contained, saves on **blur**, and exposes `flush()` so a page's
+ *    "Save & exit" can commit before navigating.
+ *  - **Controlled** (pass `value` — the draft-then-save match settings page):
+ *    the parent owns the text and decides what an edit means. `onChange` reports
+ *    every keystroke; `onBlurCommit` fires where the uncontrolled mode would have
+ *    saved. Under draft-then-save the parent just updates its draft and the page's
+ *    single Save persists it, so nothing commits here.
+ * The uncontrolled mode stays until the remaining surfaces convert (P2).
  */
 export const GameRulesNote = forwardRef<GameRulesNoteHandle, {
   tripId: string;
   game: GameRow;
   canEdit: boolean;
-}>(function GameRulesNote({ tripId, game, canEdit }, ref) {
+  /** Controlled mode: the text to show. Omit for the self-persisting default. */
+  value?: string;
+  /** Controlled mode: every edit. */
+  onChange?: (next: string) => void;
+  /** Controlled mode: fired where the uncontrolled mode would have saved (blur). */
+  onBlurCommit?: () => void;
+}>(function GameRulesNote({ tripId, game, canEdit, value, onChange, onBlurCommit }, ref) {
+  const controlled = value !== undefined;
   const initial = (game.rules_for_today as string | null) ?? "";
-  const [text, setText] = useState(initial);
+  const [ownText, setOwnText] = useState(initial);
+  const text = controlled ? value : ownText;
   // The last value we persisted — so flush/blur is a no-op when nothing changed.
   const savedRef = useRef(initial);
   const update = trpc.games.update.useMutation();
   const utils = trpc.useUtils();
 
   const commit = useCallback(async () => {
-    const next = text.trim();
+    if (controlled) {
+      onBlurCommit?.(); // the parent owns persistence in controlled mode
+      return;
+    }
+    const next = ownText.trim();
     if (next === savedRef.current.trim()) return; // nothing changed
-    savedRef.current = text;
+    savedRef.current = ownText;
     await update.mutateAsync({ tripId, gameId: game.id, rulesForToday: next || null });
     utils.games.getById.invalidate({ tripId, gameId: game.id });
-  }, [text, tripId, game.id, update, utils]);
+  }, [controlled, onBlurCommit, ownText, tripId, game.id, update, utils]);
 
   useImperativeHandle(ref, () => ({ flush: () => commit().catch(() => {}) }), [commit]);
+
+  const setText = (next: string) => {
+    if (controlled) onChange?.(next);
+    else setOwnText(next);
+  };
 
   return (
     <div className="mt-6">
