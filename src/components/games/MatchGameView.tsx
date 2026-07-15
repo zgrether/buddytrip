@@ -1756,6 +1756,9 @@ export function MatchGameView() {
                   onEnable={attemptReady}
                   onDisable={handleDisable}
                   pending={saveConfigM.isPending}
+                  // The toggle answers the tap from the DRAFT, but until Save lands the
+                  // server disagrees — say so rather than claim a live game that isn't.
+                  staged={configDraft.scoringEnabled !== scoringEnabled}
                   hideLabel
                 />
               </>

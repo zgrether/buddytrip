@@ -167,9 +167,10 @@ async function driveToSetupWithHandicap(page: Page) {
   await expect(selector).toBeHidden({ timeout: 10_000 });
   await expect(addPlayer).toHaveCount(0, { timeout: 10_000 }); // both slots filled
 
-  // Course is gated BEFORE Handicaps now (W-9HOLE-01) — apply the seeded 18-hole
-  // course so Handicaps unlocks. Opening Course collapses Matches, committing the
-  // pairing via persist-on-collapse (the same commit the handicaps step relied on).
+  // Course is gated BEFORE Handicaps (W-9HOLE-01) — apply the seeded 18-hole course
+  // so Handicaps unlocks. Draft-then-save: the pick STAGES the course (the row
+  // renders the drafted snapshot); nothing is written yet. Rows are multi-open now,
+  // so this no longer collapses Matches either.
   await toggle("row-course").click();
   const coursePanel = page.getByTestId("course-search-panel");
   await expect(coursePanel).toBeVisible({ timeout: 10_000 });
@@ -177,24 +178,42 @@ async function driveToSetupWithHandicap(page: Page) {
   // 1 tee → applies directly; the row resolves to the course name.
   await expect(page.getByTestId("row-course")).toContainText(courseName, { timeout: 10_000 });
 
-  // persist-on-collapse, isolated from Enable: opening Course collapsed Matches,
-  // which must have written the filled pairing to the server already.
-  await expect.poll(async () => filledMatchCount(await latestGameId()), { timeout: 15_000 }).toBeGreaterThan(0);
-
-  // Open the HANDICAPS row — now ungated (Matches + Course both resolved).
+  // Open the HANDICAPS row — ungated once Matches + Course resolve. Both gates read
+  // the DRAFT, so they open with nothing persisted yet (that's the point of the
+  // refactor: cross-row derivations read one draft, not the server).
   await expect(page.getByTestId("row-handicaps")).not.toContainText(/first/, { timeout: 10_000 });
   await toggle("row-handicaps").click();
 
-  // The Handicaps panel is now open in place → give MP Member a stroke via the
-  // relocated control. Picking a side defaults to 1 stroke → "on hole …"; gate on
-  // that so the tap can't race the just-rendered control.
+  // Give MP Member a stroke. Picking a side defaults to 1 stroke → "on hole …"; gate
+  // on that so the tap can't race the just-rendered control.
   const handicaps = page.getByTestId("handicaps-section");
   await expect(handicaps).toBeVisible({ timeout: 10_000 });
   await handicaps.getByRole("button", { name: /MP Member/ }).click();
   await expect(handicaps.getByText(/on hole/i)).toBeVisible({ timeout: 10_000 });
-  // Collapse Handicaps (tap the header again) → persist-on-collapse commits the stroke.
-  await toggle("row-handicaps").click();
-  await expect(handicaps).toBeHidden({ timeout: 10_000 });
+
+  // NOTHING has reached the server yet — the whole page is one draft until Save.
+  // This is the inverse of the old assertion here (which required the pairing to be
+  // persisted by now, via the persist-on-collapse the flip deleted), and it's the
+  // property worth guarding: no row may write behind the user's back.
+  expect(await filledMatchCount(await latestGameId())).toBe(0);
+  await expect(page.getByTestId("settings-save")).toBeEnabled({ timeout: 10_000 });
+}
+
+/** The page's ONE commit. Save is disabled until the draft differs from the frozen
+ *  baseline, so gating on enabled also proves the dirty check saw the edits. */
+async function saveSettings(page: Page) {
+  const save = page.getByTestId("settings-save");
+  await expect(save).toBeEnabled({ timeout: 10_000 });
+  await save.click();
+  // "Saved" is the ONLY honest signal that a save LANDED. Don't gate on the button
+  // going disabled: it's disabled while the write is in flight too (`!dirty ||
+  // saving`), so that assertion resolves instantly and races the RPC. Nor on the
+  // draft going clean — Cancel lands clean too. The hint is set only on a resolved
+  // mutation, which is exactly what we need to observe here.
+  await expect(page.getByTestId("settings-dirty-hint")).toHaveText("Saved", { timeout: 20_000 });
+  // The bar reports failure inline (readiness / conflict / frozen) rather than via a
+  // toast — assert it stayed quiet so a regression names itself here.
+  await expect(page.getByTestId("settings-save-error")).toBeHidden();
 }
 
 test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
@@ -209,7 +228,16 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   await expect(scoringSeg).toBeEnabled({ timeout: 10_000 });
   await scoringSeg.click();
 
-  // #512 correction: enabling now flips the toggle IN PLACE (no auto-navigate) — the
+  // Draft-then-save: the flip is a DRAFT field, so going live is not a separate
+  // transaction — Save commits the pairing, the course, the handicap AND
+  // scoring_enabled in ONE atomic write (the old saveSetup()+enableScoring two-step
+  // collapsed into this). Nothing was live before this click.
+  await saveSettings(page);
+
+  // The config landed together with the flip.
+  expect(await filledMatchCount(await latestGameId())).toBeGreaterThan(0);
+
+  // #512 correction: enabling flips the toggle IN PLACE (no auto-navigate) — the
   // "This game is live" lock banner appearing is the "now live" signal. The settings
   // back arrow then returns to the game page, which is now in scoring mode → overview.
   await expect(page.getByTestId("scoring-lock-banner")).toBeVisible({ timeout: 20_000 });
@@ -240,10 +268,16 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   await expect(page.getByTestId(`score-cell-${memberId}-1`)).toHaveText("6");
 
   // The handicap RELOCATION, gated end-to-end: the stroke set in the relocated row
-  // persisted (setHandicap → game_participants.handicap_strokes; recipient = n,
-  // other side = 0). The accordion's persist-on-collapse is what wrote it (the
-  // stroke committed when the Handicaps panel collapsed, before Enable).
+  // persisted (game_participants.handicap_strokes; recipient = n, other side = 0).
+  // Under draft-then-save the page's single Save wrote it — the signed draft handicap
+  // is pre-split into per-side strokes by configDraftToPayload and written by the
+  // RPC, rather than committed by the Handicaps panel collapsing.
   const hcap = await handicapByUser(await latestGameId());
   expect(hcap.get(memberId)).toBe(1);
-  expect(hcap.get(ownerId)).toBe(0);
+  // The non-recipient has NO strokes. Read it the way the app does (`effectiveStrokes`
+  // → `?? 0`) rather than pinning the storage shape: `save_game_config` writes
+  // NULLIF(strokes, 0), so "none" persists as NULL, where the old per-row setHandicap
+  // wrote a literal 0. Behaviourally identical — every reader normalises — so assert
+  // the meaning, not the encoding.
+  expect(hcap.get(ownerId) ?? 0).toBe(0);
 });
