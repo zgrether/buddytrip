@@ -9,6 +9,57 @@ Zach supplied. This note only covers the ONE remaining P1 step: **the flip.**
 
 ---
 
+## ✅ THE FLIP IS DONE (`39daa98b` prep + `abfa57cc` flip)
+
+`tsc` + `next lint` clean; 1190 unit tests green. All 10 work items landed.
+**Read "Deviations" and "Open before PR" below — they change the plan as written.**
+
+### Deviations from this plan (all deliberate)
+1. **081 / the payload were REOPENED** (Zach approved; 081 is unpushed, so editing
+   it in place breaks no migration history). The plan's freeze was incompatible with
+   its own course work item: `ConfigDraft.course` / `SaveConfigPayload` / 081 had **no
+   `back_course_id`**, so a drafted two-nines 18 could not round-trip — it would
+   persist the composed schema and strand the back-nine identity, and clearing a
+   course that had one would leave a stale ref rendering a phantom back nine.
+   Added `backCourseId` end-to-end + a `COURSE_LOCKED` freeze guard in 081 mirroring
+   `applyCourse` (refuse a course change once scores exist — **not** a destructive
+   score delete), gated on an actual course change so a scores-retained game can still
+   be saved. Also lifted `setBackNine`'s compose chain into the shared pure
+   `buildComposedCourseSnapshot`, which the staging never prepared.
+2. **Item 9's "merge returned rows" is not available** — `games.saveConfig` returns
+   `{ ok: true }` (the RPC is `RETURNS void`). LEAN = invalidate `getById` +
+   `listByGame` (both active here → they refetch) + mark the board stale.
+3. **`pointValueByMatch` deliberately still reads `serverMatches`.** Item 3 lists it,
+   but it feeds the OVERVIEW's projection — which renders only in scoring mode (draft
+   frozen, server IS truth) and keys by SERVER match id, which a drafted match has
+   none of. Repointing it at the draft would break the one screen it's used on.
+4. **Two components the plan didn't list had to be converted**, or a live write would
+   move the config hash out from under the frozen baseHash and make the user's own
+   Save conflict: `EntryModeRow` (was `games.update` on tap) and **`GameIdentityHeader`**
+   (was `games.update` on name blur + `addOrganizer`/`removeOrganizer` on pick).
+5. **Delegates bug fixed in passing:** the mirror seeded `delegates: []` while 081
+   REPLACES the list from the payload — every Organizer's Save would have silently
+   revoked the game's delegate. The mirror now reads `games.listOrganizers`.
+6. **First-setup points default** moved into the MIRROR (not a draft edit) so opening
+   a fresh game doesn't read as dirty; it replaces the deleted reconcile's auto-seed
+   and is established by the first Save (going live is always one).
+
+### Open before PR
+- **`games.saveConfig` has NO server test** (a pre-existing P1.6 gap — there is no
+  `saveConfig` case anywhere in `src/server/routers/*.test.ts`). It can't be written
+  green today: the suite runs against the REMOTE Supabase and **081 isn't applied
+  there yet**. Once 081 lands via CI, add cases for: the hash conflict, `GAME_LIVE`,
+  `NOT_READY` rollback, `HAS_SCORES`, the new `COURSE_LOCKED`, **delegate preservation
+  for a delegate's own Save vs an Organizer's replace**, and the back-nine round-trip.
+- **P1.7 + P1.8 still pending** (below). Zach still by-eyes a seeded 2v2 on preview —
+  CC verified the module compiles + the route serves 200 with a clean console, but
+  cannot reach a seeded 2v2.
+- **P3 dead code created by the flip:** `flushOnOverlayClose` + its `SettingsRow` /
+  `CloseFlush` types (`src/lib/matchDraft.ts:110-141`) are now referenced ONLY by
+  their own test — the mechanism they decided for is gone. Delete both with the test.
+
+---
+
 ## State: everything under the flip is landed, green, behaviour-preserving
 
 | Commit | What |
