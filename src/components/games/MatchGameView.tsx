@@ -667,6 +667,14 @@ export function MatchGameView() {
 
   // Save is enabled iff something really changed (pure whole-page equality).
   const dirty = !!baseline && !configDraftsEqual(configDraft, baseline.draft);
+  // Did a Save actually land in THIS session? The clean state has two very different
+  // causes — "your changes were written" and "your changes were thrown away" (Cancel)
+  // or simply "you haven't touched anything yet" — and only the first one may claim a
+  // save happened. Cleared the moment the draft goes dirty again.
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
 
   // ── Course, drafted (spec §2.2 Design A: the CLIENT pre-computes the snapshot) ─
   // Each handler runs the SAME shared pure derivation the server's applyCourse /
@@ -1100,6 +1108,7 @@ export function MatchGameView() {
     clearDraftOutbox(); // durably persisted → drop the teardown copy
     resetSlices(configDraft.matches);
     setOpenRows(new Set());
+    setJustSaved(true); // the one path that earns "Saved"
 
     if (scoringFlipped) {
       // Going live / disabling DOES move the board — run the full cascade. Flip the
@@ -1136,6 +1145,7 @@ export function MatchGameView() {
   function handleCancel() {
     resetSlices(serverConfigDraft.matches);
     setSaveError(null);
+    setJustSaved(false); // discarded, NOT saved — never claim otherwise
     clearDraftOutbox();
   }
 
@@ -1673,6 +1683,7 @@ export function MatchGameView() {
               <SaveBar
                 dirty={dirty}
                 saving={saveConfigM.isPending}
+                justSaved={justSaved}
                 error={saveError}
                 onSave={() => void handleSave()}
                 onCancel={handleCancel}
@@ -2123,21 +2134,29 @@ function assignInDraft(
 function SaveBar({
   dirty,
   saving,
+  justSaved,
   error,
   onSave,
   onCancel,
 }: {
   dirty: boolean;
   saving: boolean;
+  /** A Save actually landed this session — the ONLY state that may claim one did. */
+  justSaved: boolean;
   error: string | null;
   onSave: () => void;
   onCancel: () => void;
 }) {
+  // "Clean" is not the same claim as "saved". Cancel DISCARDS the draft and lands
+  // clean, and an untouched page is clean too — neither wrote anything, so neither
+  // may say so. Only a landed Save earns "Saved"; otherwise the label says nothing
+  // rather than something false.
+  const hint = saving ? "Saving…" : dirty ? "Unsaved changes" : justSaved ? "Saved" : "";
   return (
     <div className="sticky top-0 z-10 -mx-4 mb-1 px-4 pb-2 pt-2" style={{ background: "var(--color-bt-base)" }} data-testid="settings-save-bar">
       <div className="flex items-center gap-2.5">
         <span className="flex-1 truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="settings-dirty-hint">
-          {saving ? "Saving…" : dirty ? "Unsaved changes" : "All changes saved"}
+          {hint}
         </span>
         <button
           type="button"
