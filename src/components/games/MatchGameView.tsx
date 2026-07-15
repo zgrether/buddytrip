@@ -96,6 +96,27 @@ type Screen = "new" | "member-wait" | "setup" | "overview" | "score" | "config";
 type RowId = "matches" | "handicaps" | "players" | "course" | "config" | "modifiers";
 
 /**
+ * The whole settings draft as one serializable bundle — what the hard-teardown
+ * outbox stores (P1.7). `null` = that slice is untouched, mirroring the live state
+ * exactly, so a recovered bundle restores only what the user actually edited.
+ *
+ * The outbox used to hold ONLY the matches draft, which under the composite model
+ * meant a refresh recovered your pairings and silently dropped your name / points /
+ * course / rules edits — partial durability that reads as data loss.
+ */
+interface SettingsDraftBundle {
+  matches: DraftMatch[] | null;
+  name: string | null;
+  rules: string | null;
+  scoring: boolean | null;
+  entryMode: string | null;
+  modifiers: ModifiersMap | null;
+  pointsTotal: number | null;
+  course: ConfigDraft["course"] | null;
+  delegates: string[] | null;
+}
+
+/**
  * MatchGameView — the singles/doubles match-play game surface (Slice B). Walks the
  * full lifecycle (create → pairings → handicap → enableScoring → score → finish),
  * role-gated, persisting each step via the `matches` router. Resume an existing
@@ -207,6 +228,8 @@ export function MatchGameView() {
   // race the accordion's instant-open exposed). A ref is always current, so it's
   // the reliable lock. Reset on every fresh seed entry (create / Edit).
   const draftTouched = useRef(false);
+  // One-shot latch for the hard-teardown outbox restore (see the seed effect).
+  const didRecoverRef = useRef(false);
   // The user-edit setter: marks the draft touched, then updates it. Use this for
   // EVERY user edit (picks, reorder, remove, add, handicap); use raw setDraft only
   // for SEEDING (create / resume / Edit), which must NOT set the touched lock.
@@ -529,20 +552,52 @@ export function MatchGameView() {
     return m;
   }, [serverParticipants, serverPlayGroups]);
 
-  // Draft durability (Layer 2 — hard-teardown outbox). The in-app flush net
-  // already persists a completed draft on every in-app exit; this mirrors the
-  // in-progress draft to localStorage so a refresh / tab-close / OS-kill /
-  // background can't lose it (incomplete drafts too). `serverFingerprint` is the
-  // persisted state the draft diverged from — the no-clobber guard for recover().
+  // Has the user touched ANY slice? Drives the outbox mirror below AND freezes the
+  // baseline/baseHash further down — one definition, so "dirty enough to protect"
+  // and "dirty enough to freeze the base" can't drift apart.
+  const anyTouched =
+    draftTouched.current ||
+    nameDraft !== null || rulesDraft !== null || scoringDraft !== null ||
+    entryModeDraft !== null || modifiersDraft !== null || pointsTotalDraft !== null ||
+    courseDraft !== null || delegatesDraft !== null;
+
+  // Draft durability (Layer 2 — hard-teardown outbox). The in-app net (now the
+  // confirm-on-leave gate) covers every IN-APP exit; this mirrors the in-progress
+  // draft to localStorage so a refresh / tab-close / OS-kill / background can't lose
+  // it (incomplete drafts too — those never reach the server at all).
+  //
+  // It stores the WHOLE composite now, not just the matches slice: under
+  // draft-then-save a matches-only outbox recovered your pairings and silently
+  // dropped the name / points / course / rules edits made in the same sitting.
+  const draftBundle = useMemo<SettingsDraftBundle>(
+    () => ({
+      matches: draftTouched.current ? draft : null,
+      name: nameDraft,
+      rules: rulesDraft,
+      scoring: scoringDraft,
+      entryMode: entryModeDraft,
+      modifiers: modifiersDraft,
+      pointsTotal: pointsTotalDraft,
+      course: courseDraft,
+      delegates: delegatesDraft,
+    }),
+    [draft, nameDraft, rulesDraft, scoringDraft, entryModeDraft, modifiersDraft, pointsTotalDraft, courseDraft, delegatesDraft]
+  );
+  // `serverFingerprint` is the persisted state the draft diverged from — the
+  // no-clobber guard for recover(). Deliberately still the MATCHES fingerprint
+  // rather than the config hash: the hash arrives async, and a fingerprint of ""
+  // while it loads would compare unequal and DELETE a perfectly good outbox entry on
+  // every mount. The matches fingerprint is available synchronously from data we
+  // already hold, and matches are the part a stale restore could actually corrupt.
   const serverFingerprint = useMemo(
     () => JSON.stringify(serverDraftFrom(serverMatches, handicapOf, membersOfSide)),
     [serverMatches, handicapOf, membersOfSide]
   );
-  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<DraftMatch[]>({
+  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<SettingsDraftBundle | DraftMatch[]>({
     view: "match",
     gameId,
-    draft,
-    touched: draftTouched.current,
+    draft: draftBundle,
+    touched: anyTouched,
     serverFingerprint,
     enabled: !!gameId && !scoringEnabled,
   });
@@ -643,13 +698,6 @@ export function MatchGameView() {
     }),
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
-
-  // Has the user touched ANY slice? Freezes the baseline + baseHash (below).
-  const anyTouched =
-    draftTouched.current ||
-    nameDraft !== null || rulesDraft !== null || scoringDraft !== null ||
-    entryModeDraft !== null || modifiersDraft !== null || pointsTotalDraft !== null ||
-    courseDraft !== null || delegatesDraft !== null;
 
   // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
   // The dirty check's reference point AND the optimistic-concurrency base, captured
@@ -983,19 +1031,39 @@ export function MatchGameView() {
     // and matches are always consistent. This gate remains only so the seed reads
     // a loaded game row for its other fields.
     if (gameId && !gameQ.data) return;
-    // Hard-teardown recovery (Layer 2): if an outbox draft survived a
-    // refresh/kill AND the server is unchanged since it diverged, restore it and
-    // mark it touched — so the in-app net persists it and the server seed below
-    // never clobbers it. A stale outbox (server moved on) returns null + clears.
-    const recovered = recoverDraft();
-    if (recovered && recovered.length > 0) {
-      draftTouched.current = true;
-      // Normalize `pointValue`: a draft written to localStorage BEFORE the
-      // draft-then-save flip predates that field, so it recovers as `undefined` —
-      // which the Save payload's `pointValue: number | null` would reject at the zod
-      // boundary (undefined is dropped by JSON, not coerced to null). Default it.
-      setDraft(recovered.map((m) => ({ ...m, pointValue: m.pointValue ?? null })));
-      return;
+    // Hard-teardown recovery (Layer 2): if an outbox draft survived a refresh/kill
+    // AND the server is unchanged since it diverged, restore it. A stale outbox
+    // (server moved on) returns null + clears itself. One-shot — restoring a
+    // NON-matches slice (a name edit, say) leaves `draft` empty, so without this the
+    // effect would re-enter and re-apply the bundle on every server tick.
+    if (!didRecoverRef.current) {
+      didRecoverRef.current = true;
+      const recovered = recoverDraft();
+      if (recovered) {
+        // A bundle written BEFORE the composite outbox stored the bare matches
+        // array — restore it as a matches-only bundle rather than dropping it.
+        const bundle: SettingsDraftBundle = Array.isArray(recovered)
+          ? { matches: recovered, name: null, rules: null, scoring: null, entryMode: null, modifiers: null, pointsTotal: null, course: null, delegates: null }
+          : recovered;
+        if (bundle.name !== null) setNameDraft(bundle.name);
+        if (bundle.rules !== null) setRulesDraft(bundle.rules);
+        if (bundle.scoring !== null) setScoringDraft(bundle.scoring);
+        if (bundle.entryMode !== null) setEntryModeDraft(bundle.entryMode);
+        if (bundle.modifiers !== null) setModifiersDraft(bundle.modifiers);
+        if (bundle.pointsTotal !== null) setPointsTotalDraft(bundle.pointsTotal);
+        if (bundle.course !== null) setCourseDraft(bundle.course);
+        if (bundle.delegates !== null) setDelegatesDraft(bundle.delegates);
+        if (bundle.matches && bundle.matches.length > 0) {
+          // Mark touched so the server seed below never clobbers the restore.
+          draftTouched.current = true;
+          // Normalize `pointValue`: a draft written to localStorage BEFORE the flip
+          // predates that field and recovers as `undefined` — which the Save
+          // payload's `pointValue: number | null` rejects at the zod boundary
+          // (undefined is dropped by JSON, not coerced to null). Default it.
+          setDraft(bundle.matches.map((m) => ({ ...m, pointValue: m.pointValue ?? null })));
+          return;
+        }
+      }
     }
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide));
