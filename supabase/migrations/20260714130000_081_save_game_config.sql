@@ -120,9 +120,16 @@ DECLARE
 BEGIN
   PERFORM public.assert_game_edit(p_game_id);
 
+  -- FOR UPDATE serializes concurrent saves against this game: two simultaneous
+  -- commits can't interleave (the second blocks until the first's tx ends). The
+  -- optimistic base-config-hash check lives in the games.saveConfig tRPC front
+  -- door (it reuses computeConfigHash / #16 — re-implementing that FNV-1a canonical
+  -- hash in plpgsql would drift from the JS and false-reject every save); this
+  -- lock closes the residual millisecond RPC-vs-RPC window that the JS check can't.
   SELECT trip_id, scoring_enabled, status, game_type_id
     INTO v_trip_id, v_was_live, v_status, v_type
-    FROM public.games WHERE id = p_game_id AND trip_id = p_trip_id;
+    FROM public.games WHERE id = p_game_id AND trip_id = p_trip_id
+    FOR UPDATE;
   IF v_trip_id IS NULL THEN
     RAISE EXCEPTION 'GAME_NOT_FOUND' USING ERRCODE = 'no_data_found';
   END IF;
