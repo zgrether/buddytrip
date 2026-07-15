@@ -24,9 +24,20 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  * slot, empty by default → no visual change. (As of the A2-ux correction the
  * Setup/Scoring toggle is a standalone `GameManagementPanel` on the settings page,
  * not threaded through this slot.)
+ *
+ * TWO MODES (mirrors `GameRulesNote` / `CourseRowContent`):
+ *  - **Uncontrolled** (default — stroke/rack via `GameConfigurationView`):
+ *    self-persisting. The name commits on blur/Enter via `games.update`; the
+ *    assignment commits on pick via `addOrganizer`/`removeOrganizer`.
+ *  - **Controlled** (pass `nameValue` — the draft-then-save match settings page):
+ *    the parent owns both fields and decides what an edit means. Nothing commits
+ *    here; the page's single Save persists them. This matters beyond tidiness — a
+ *    live write from this header would move the game's config hash out from under
+ *    the page's frozen baseHash and make the user's own Save conflict.
  */
 export function GameIdentityHeader({
   tripId, game, canEdit, isOwner, children,
+  nameValue, onNameChange, delegateValue, onDelegateChange,
 }: {
   tripId: string;
   game: GameRow;
@@ -37,13 +48,24 @@ export function GameIdentityHeader({
   /** Mode-controls slot (A2-precursor) — the Game Management panel/toggle mounts
    *  here in A2-ux. Rendered below the assigned-to frame; omitted → nothing renders. */
   children?: React.ReactNode;
+  /** Controlled mode: the name to show. Omit for the self-persisting default. */
+  nameValue?: string;
+  /** Controlled mode: the name was committed (blur/Enter). */
+  onNameChange?: (next: string) => void;
+  /** Controlled mode: the assigned delegate's user id (null = the owner). */
+  delegateValue?: string | null;
+  /** Controlled mode: the assignment changed. */
+  onDelegateChange?: (next: string | null) => void;
 }) {
   const gameId = game.id;
   const me = useCurrentUser();
   const utils = trpc.useUtils();
+  // Controlled when the parent supplies the name — the one field every state of
+  // this header can reach (mirrors CourseRowContent's `onApplyFront` gate).
+  const controlled = nameValue !== undefined;
 
   // ── Name (tap-to-edit inline) ──────────────────────────────────────────────
-  const name = (game.name as string | null) ?? "Untitled game";
+  const name = controlled ? nameValue : ((game.name as string | null) ?? "Untitled game");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +76,7 @@ export function GameIdentityHeader({
     setEditing(false);
     const next = draft.trim();
     if (!next || next === name) { setDraft(name); return; }
+    if (controlled) { onNameChange?.(next); return; } // the parent owns persistence
     updateName.mutate(
       { tripId, gameId, name: next },
       { onSuccess: () => utils.games.getById.invalidate({ tripId, gameId }) }
@@ -63,8 +86,12 @@ export function GameIdentityHeader({
   // ── Assigned to (delegate, owner-gated) ────────────────────────────────────
   const membersQ = trpc.tripMembers.list.useQuery({ tripId }, { enabled: isOwner });
   const members = (membersQ.data ?? []) as { memberId: string; displayName: string }[];
+  // Kept enabled in BOTH modes: a controlled parent reads the same query for its
+  // own mirror, so this shares the cache rather than adding a round-trip.
   const orgQ = trpc.games.listOrganizers.useQuery({ tripId, gameId });
-  const delegateId = ((orgQ.data as { user_id: string }[] | undefined)?.[0]?.user_id) ?? null;
+  const delegateId = controlled
+    ? (delegateValue ?? null)
+    : (((orgQ.data as { user_id: string }[] | undefined)?.[0]?.user_id) ?? null);
   const addOrg = trpc.games.addOrganizer.useMutation();
   const removeOrg = trpc.games.removeOrganizer.useMutation();
   const [picking, setPicking] = useState(false);
@@ -76,6 +103,7 @@ export function GameIdentityHeader({
   async function assign(next: string | null) {
     setPicking(false);
     if (next === delegateId) return;
+    if (controlled) { onDelegateChange?.(next); return; } // the parent owns persistence
     try {
       if (delegateId) await removeOrg.mutateAsync({ tripId, gameId, userId: delegateId });
       if (next) await addOrg.mutateAsync({ tripId, gameId, userId: next });
