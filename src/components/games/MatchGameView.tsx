@@ -599,7 +599,16 @@ export function MatchGameView() {
       distribution: { type: "per_match", value: ev },
     });
   };
+  // Mirrors MatchPointsRow's old component-local `localTotal`: optimistic on a
+  // step, re-synced when the value in force changes. An override committed while
+  // the total's write is still in flight must redistribute against the STEPPED
+  // total, not the stale persisted one.
+  const localTotalRef = useRef(pointsTotalInForce ?? defaultTotal);
+  useEffect(() => {
+    localTotalRef.current = pointsTotalInForce ?? defaultTotal;
+  }, [pointsTotalInForce, defaultTotal]);
   const onPointsTotalChange = (next: number) => {
+    localTotalRef.current = next;
     void (async () => {
       try {
         await setPointsTotalM.mutateAsync({ tripId: tripId!, gameId: gameId!, total: next });
@@ -617,7 +626,7 @@ export function MatchGameView() {
         const nextOvrs = pointsMatches
           .map((m) => (m.id === matchId ? value : m.pointValue))
           .filter((v): v is number => v != null);
-        await persistEvenShare(pointsTotalInForce ?? defaultTotal, nextOvrs);
+        await persistEvenShare(localTotalRef.current, nextOvrs);
         bumpPointsBoard();
       } catch {
         utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! });

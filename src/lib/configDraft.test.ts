@@ -18,6 +18,7 @@ import {
  */
 
 const GAME = {
+  game_type_id: "gtt_match_play",
   name: "Front 9 Match",
   rules_for_today: "no gimmes",
   scoring_enabled: false,
@@ -154,6 +155,41 @@ describe("configDraftToPayload — derived write", () => {
       []
     );
     expect(configDraftToPayload(d).pointsDistribution).toEqual({ type: "placement", values: [5, 3, 1] });
+  });
+
+  it("ESTABLISHES the per_match share on first setup (distribution still null)", () => {
+    // The reconcile effect that used to seed this is gone; without establishing it
+    // here a first Save would write a total with nothing to award against
+    // (`point_value ?? points_distribution.value` → null).
+    const d = configToDraft({ ...GAME, points_distribution: null }, MATCHES, []);
+    expect(configDraftToPayload(d).pointsDistribution).toEqual({ type: "per_match", value: 3 });
+  });
+
+  it("does NOT invent a per_match share for a non-match-play format", () => {
+    const d = configToDraft(
+      { ...GAME, game_type_id: "gtt_stroke_play", points_distribution: null },
+      MATCHES,
+      []
+    );
+    expect(configDraftToPayload(d).pointsDistribution).toBeNull();
+  });
+
+  it("reports matchesDirty against the baseline — false when the match set is untouched", () => {
+    const base = configToDraft(GAME, MATCHES, []);
+    const same = configToDraft(GAME, MATCHES, []);
+    expect(configDraftToPayload(same, base).matchesDirty).toBe(false);
+    // An edit elsewhere (points) still leaves the MATCH set clean.
+    same.pointsTotal = 12;
+    expect(configDraftToPayload(same, base).matchesDirty).toBe(false);
+  });
+
+  it("reports matchesDirty true on a real match edit, and when no baseline is given", () => {
+    const base = configToDraft(GAME, MATCHES, []);
+    const edited = configToDraft(GAME, MATCHES, []);
+    edited.matches[0].a = ["uX"];
+    expect(configDraftToPayload(edited, base).matchesDirty).toBe(true);
+    // No baseline → conservatively claim dirty (the RPC then rewrites).
+    expect(configDraftToPayload(base).matchesDirty).toBe(true);
   });
 
   it("trims name / rules and passes course snapshot through", () => {

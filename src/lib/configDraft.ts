@@ -26,6 +26,7 @@
  */
 
 import { evenShare, type PointsDistribution } from "./pointsDistribution";
+import { isMatchPlayFormat } from "./gameRoutes";
 import type { ModifiersMap } from "./modifiers";
 
 /** A match inside the composite draft. Extends the pairing shape (`DraftMatch`)
@@ -48,6 +49,10 @@ export interface DraftMatchConfig {
 /** The whole settings page as one editable object. Every settings row reads and
  *  writes THIS — no row reads `serverMatches` directly (spec §1). */
 export interface ConfigDraft {
+  /** The game's format id — READ-ONLY context, never edited (so it's excluded from
+   *  the dirty check). Drives the points model: a match-play draft derives a
+   *  `per_match` even share from the total. */
+  gameTypeId: string | null;
   name: string;
   rulesForToday: string | null;
   /** A draft FIELD (spec §2.7-2): Save commits the config AND goes live / disables
@@ -89,6 +94,7 @@ export interface DraftMatchInput {
 
 /** The `games`-row fields the draft baseline reads (a subset of `getById`). */
 export interface ConfigGameSnapshot {
+  game_type_id?: string | null;
   name?: string | null;
   rules_for_today?: string | null;
   scoring_enabled?: boolean | null;
@@ -112,6 +118,7 @@ export function configToDraft(
   delegates: string[]
 ): ConfigDraft {
   return {
+    gameTypeId: game.game_type_id ?? null,
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     scoringEnabled: game.scoring_enabled ?? false,
@@ -173,6 +180,18 @@ export interface SaveConfigPayload {
   scorecardSchema: unknown | null;
   delegates: string[];
   matches: SaveMatchRow[];
+  /**
+   * Did the match set actually change vs the state the draft was seeded from?
+   *
+   * False → the RPC SKIPS the matches/participants/play_groups clean-replace
+   * entirely. Two reasons: (1) an unchanged match set shouldn't churn row ids on
+   * every Save, and (2) it's what lets a game that kept its scores through a
+   * disable still be edited/re-enabled — the RPC refuses a match REWRITE once
+   * score rows exist (they'd be orphaned by the new ids), but a no-op match write
+   * is harmless. A client that under-reports this just gets its match edits
+   * ignored (safe); one that over-reports gets refused (also safe).
+   */
+  matchesDirty: boolean;
 }
 
 /** Split a signed handicap into per-side stroke counts (<0 → A gets |n|; >0 → B
@@ -190,10 +209,16 @@ export function splitHandicap(signed: number): { strokesA: number; strokesB: num
  * The match-play even share is recomputed here from the FINAL draft
  * (`evenShare(total, overrides, filledCount)`) and folded into
  * `points_distribution.value`, so the persisted fallback award can't lag a match
- * add/remove. A `placement` distribution is authored explicitly and passed
- * through untouched.
+ * add/remove. It is ESTABLISHED here too, not just refreshed: a first-setup game
+ * has `points_distribution = null`, and the reconcile effect that used to seed it
+ * is gone — without this, a first Save would write a total with nothing to award
+ * against (`point_value ?? points_distribution.value` → null). A `placement`
+ * distribution is authored explicitly and passed through untouched.
+ *
+ * Pass `baseline` (the draft as seeded from the server) to report `matchesDirty`
+ * honestly; omit it and the payload conservatively claims the matches changed.
  */
-export function configDraftToPayload(draft: ConfigDraft): SaveConfigPayload {
+export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft): SaveConfigPayload {
   const filled = draft.matches.filter(isDraftMatchFilled);
   const matches: SaveMatchRow[] = filled.map((m) => {
     const { strokesA, strokesB } = splitHandicap(m.handicap);
@@ -208,8 +233,15 @@ export function configDraftToPayload(draft: ConfigDraft): SaveConfigPayload {
     };
   });
 
+  // Match play derives its per_match share from the total — establish it when it's
+  // absent (first setup) as well as refresh it. Anything else (a placement payout)
+  // is authored, so leave it alone.
   let distribution = draft.pointsDistribution;
-  if (distribution?.type === "per_match" && draft.pointsTotal != null) {
+  if (
+    draft.pointsTotal != null &&
+    isMatchPlayFormat(draft.gameTypeId) &&
+    (distribution == null || distribution.type === "per_match")
+  ) {
     const overrides = filled.map((m) => m.pointValue).filter((v): v is number => v != null);
     distribution = { type: "per_match", value: evenShare(draft.pointsTotal, overrides, filled.length) };
   }
@@ -226,6 +258,7 @@ export function configDraftToPayload(draft: ConfigDraft): SaveConfigPayload {
     scorecardSchema: draft.course.scorecardSchema,
     delegates: [...draft.delegates].sort(),
     matches,
+    matchesDirty: baseline ? !matchesEqual(draft.matches, baseline.matches) : true,
   };
 }
 

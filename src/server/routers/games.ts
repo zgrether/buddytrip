@@ -43,10 +43,19 @@ async function readGameConfigHash(
     supabase.from("games").select(GAME_CONFIG_COLS).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
     supabase.from("game_participants").select("user_id, play_group_id, team_id, handicap_strokes").eq("game_id", gameId).order("user_id", { ascending: true }),
     supabase.from("play_groups").select("id, display_name, handicap_strokes").eq("game_id", gameId).order("id", { ascending: true }),
-    supabase.from("matches").select("id, play_group_id, match_number, display_order, side_a, side_b").eq("game_id", gameId).order("id", { ascending: true }),
+    // `game_matches` — NOT "matches" (no such relation exists). The old spelling
+    // errored on every call and, because only gameRes.error was checked, the error
+    // was swallowed and `[]` was hashed: pairings never contributed to the
+    // fingerprint. That silently broke BOTH consumers — cross-device sync never saw
+    // a matchup change (CLAUDE.md #16 claims it does), and saveConfig's concurrency
+    // check would pass while another device's pairings were being clobbered.
+    supabase.from("game_matches").select("id, play_group_id, match_number, display_order, side_a, side_b").eq("game_id", gameId).order("id", { ascending: true }),
   ]);
-  if (gameRes.error) {
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${gameRes.error.message}` });
+  // Check EVERY query: a child failure must throw, never quietly hash an empty set
+  // (that's what hid the bug above).
+  const failed = gameRes.error ?? partsRes.error ?? groupsRes.error ?? matchesRes.error;
+  if (failed) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${failed.message}` });
   }
   if (!gameRes.data) return null;
   return computeConfigHash({
@@ -763,7 +772,9 @@ export const gamesRouter = router({
         // mismatch = someone else changed this game since the page opened.
         baseHash: z.string(),
         payload: z.object({
-          name: z.string(),
+          // min(1): a game must keep a name — the draft trims, so an emptied field
+          // would otherwise blank the title everywhere on the board.
+          name: z.string().min(1).max(200),
           rulesForToday: z.string().nullable(),
           scoringEnabled: z.boolean(),
           entryMode: z.string(),
@@ -784,6 +795,7 @@ export const gamesRouter = router({
               pointValue: z.number().nullable(),
             })
           ),
+          matchesDirty: z.boolean(),
         }),
       })
     )
@@ -814,6 +826,9 @@ export const gamesRouter = router({
         }
         if (msg.includes("NOT_READY")) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Finish setting up this game before switching it to scoring." });
+        }
+        if (msg.includes("HAS_SCORES")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Scores are already entered — reset this game's scores before changing its matchups." });
         }
         if (msg.includes("NOT_AUTHORIZED")) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You can't edit this game." });

@@ -34,6 +34,11 @@
 --    owner-set points_total and the delegate list are Organizer-only (a delegate
 --    distributes WITHIN a total and can't sub-delegate), so a delegate's Save
 --    leaves those untouched even though the bulk config is theirs to edit.
+--  · The match clean-replace runs ONLY when the payload says the match set changed
+--    (`matchesDirty`), and is REFUSED outright once score rows exist — new row ids
+--    would strand them (the applyCourse "scores are already entered" precedent).
+--    Disable KEEPS scores, so a disabled-but-scored game is a reachable state: this
+--    is what lets it still be edited/re-enabled while its matchups stay frozen.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── assert_game_edit — throwing guard, the requireGameEdit equivalent ─────────
@@ -112,6 +117,8 @@ DECLARE
   v_type text;
   v_is_org boolean;
   v_go_live boolean := COALESCE((p_payload->>'scoringEnabled')::boolean, false);
+  v_matches_dirty boolean := COALESCE((p_payload->>'matchesDirty')::boolean, true);
+  v_has_scores boolean;
   v_match jsonb;
   v_ord int;
   v_paired int := 0;
@@ -124,8 +131,15 @@ BEGIN
   -- commits can't interleave (the second blocks until the first's tx ends). The
   -- optimistic base-config-hash check lives in the games.saveConfig tRPC front
   -- door (it reuses computeConfigHash / #16 — re-implementing that FNV-1a canonical
-  -- hash in plpgsql would drift from the JS and false-reject every save); this
-  -- lock closes the residual millisecond RPC-vs-RPC window that the JS check can't.
+  -- hash in plpgsql would drift from the JS and false-reject every save).
+  --
+  -- ACCEPTED LIMITATION (not closed): the hash is validated OUTSIDE this lock, so a
+  -- true lost update — A checks, B checks, A writes, B clobbers — is still reachable
+  -- in the sub-100ms window between the JS hash-check and this write. We accept it:
+  -- human-timescale collisions (two people editing settings seconds apart) ARE
+  -- caught by the JS check; fully closing it would need a stored version column
+  -- bumped under this lock, which every other write path would have to maintain and
+  -- which false-rejects when stale. FOR UPDATE only removes the RPC-vs-RPC interleave.
   SELECT trip_id, scoring_enabled, status, game_type_id
     INTO v_trip_id, v_was_live, v_status, v_type
     FROM public.games WHERE id = p_game_id AND trip_id = p_trip_id
@@ -163,7 +177,9 @@ BEGIN
   -- 1 · Scalar game columns. points_total is Organizer-only (a delegate keeps the
   -- current total); everything else is requireGameEdit-writable.
   UPDATE public.games SET
-      name                = COALESCE(p_payload->>'name', name),
+      -- NULLIF(btrim(...)) so a blank/whitespace name can never erase the title
+      -- (the zod floor catches it first; this is the defence in depth).
+      name                = COALESCE(NULLIF(btrim(p_payload->>'name'), ''), name),
       rules_for_today     = p_payload->>'rulesForToday',
       entry_mode          = COALESCE(p_payload->>'entryMode', entry_mode),
       modifiers           = COALESCE(NULLIF(p_payload->'modifiers', 'null'::jsonb), '{}'::jsonb),
@@ -177,28 +193,47 @@ BEGIN
 
   -- 2 · Matches / participants / play_groups — clean replace (mirrors setPairings;
   -- children reference play_groups ON DELETE SET NULL, so clear children first).
-  DELETE FROM public.game_matches WHERE game_id = p_game_id;
-  DELETE FROM public.game_participants WHERE game_id = p_game_id;
-  DELETE FROM public.play_groups WHERE game_id = p_game_id;
+  --
+  -- ONLY when the match set actually changed. Skipping an unchanged set keeps row
+  -- ids stable across Saves, and it's what lets a game that KEPT ITS SCORES through
+  -- a disable still be edited and re-enabled — the clean replace mints new ids, so
+  -- running it over retained score rows would orphan them.
+  IF v_matches_dirty THEN
+    -- A rewrite once scores exist would strand them against dead ids. Refuse it the
+    -- way applyCourse refuses a course change after scores ("Scores are already
+    -- entered"), rather than silently orphaning. Scoring lives in score_entries
+    -- (gross) or match_hole_outcomes (outcome mode) — either counts.
+    SELECT EXISTS (SELECT 1 FROM public.score_entries WHERE game_id = p_game_id)
+        OR EXISTS (SELECT 1 FROM public.match_hole_outcomes WHERE game_id = p_game_id)
+      INTO v_has_scores;
+    IF v_has_scores THEN
+      RAISE EXCEPTION 'HAS_SCORES: scores are already entered — reset this game''s scores before changing its matchups'
+        USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
 
-  v_ord := 0;
-  FOR v_match IN SELECT jsonb_array_elements(COALESCE(p_payload->'matches', '[]'::jsonb))
-  LOOP
-    INSERT INTO public.game_matches
-      (id, game_id, play_group_id, match_number, display_order, side_a, side_b, status, point_value)
-    VALUES (
-      gen_random_uuid()::text,
-      p_game_id,
-      NULL,
-      COALESCE((v_match->>'matchNumber')::int, v_ord + 1),
-      v_ord,
-      public._write_game_side(p_game_id, v_match->'a', COALESCE((v_match->>'strokesA')::int, 0)),
-      public._write_game_side(p_game_id, v_match->'b', COALESCE((v_match->>'strokesB')::int, 0)),
-      'pending',
-      NULLIF(v_match->>'pointValue', '')::numeric
-    );
-    v_ord := v_ord + 1;
-  END LOOP;
+    DELETE FROM public.game_matches WHERE game_id = p_game_id;
+    DELETE FROM public.game_participants WHERE game_id = p_game_id;
+    DELETE FROM public.play_groups WHERE game_id = p_game_id;
+
+    v_ord := 0;
+    FOR v_match IN SELECT jsonb_array_elements(COALESCE(p_payload->'matches', '[]'::jsonb))
+    LOOP
+      INSERT INTO public.game_matches
+        (id, game_id, play_group_id, match_number, display_order, side_a, side_b, status, point_value)
+      VALUES (
+        gen_random_uuid()::text,
+        p_game_id,
+        NULL,
+        COALESCE((v_match->>'matchNumber')::int, v_ord + 1),
+        v_ord,
+        public._write_game_side(p_game_id, v_match->'a', COALESCE((v_match->>'strokesA')::int, 0)),
+        public._write_game_side(p_game_id, v_match->'b', COALESCE((v_match->>'strokesB')::int, 0)),
+        'pending',
+        NULLIF(v_match->>'pointValue', '')::numeric
+      );
+      v_ord := v_ord + 1;
+    END LOOP;
+  END IF;
 
   -- 3 · Delegates — Organizer-only (a delegate cannot sub-delegate). A delegate's
   -- Save leaves the list untouched; only an Owner/Organizer replaces it.
