@@ -51,6 +51,7 @@ import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds } from "@/lib/matchDraft";
 import { configToDraft, type ConfigDraft, type DraftMatchInput } from "@/lib/configDraft";
+import { evenShare } from "@/lib/pointsDistribution";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
@@ -558,6 +559,104 @@ export function MatchGameView() {
       []
     );
   }, [serverMatches, membersOfSide, handicapOf, gameQ.data]);
+
+  // ── Points write adapter (TEMPORARY — draft-then-save staging) ──────────────
+  // MatchPointsRow is presentational now (it reports edits, owns no persistence).
+  // This block reproduces EXACTLY what it used to do internally — set the total /
+  // an override, re-derive + persist the even share, bump the board — so this
+  // staging commit is behaviour-identical to before. The FLIP commit DELETES all
+  // of it: the handlers become draft edits, and the even share is derived once, at
+  // write time, by configDraftToPayload (which is what kills the stale-matchCount
+  // auto-persist this reconcile can still do today).
+  const setPointsTotalM = trpc.games.setPointsTotal.useMutation();
+  const setPointsDistM = trpc.games.setPointsDistribution.useMutation();
+  const setPointValueM = trpc.matches.setPointValue.useMutation();
+  const pointsTotalInForce = (gameQ.data?.points_total as number | null) ?? null;
+  const pointsDistValue =
+    (gameQ.data?.points_distribution as { type?: string; value?: number } | null)?.type === "per_match"
+      ? ((gameQ.data?.points_distribution as { value?: number } | null)?.value ?? 0)
+      : 0;
+
+  const bumpPointsBoard = useCallback(() => {
+    utils.games.listByTrip.invalidate({ tripId: tripId! });
+    utils.games.getById.invalidate({ tripId: tripId!, gameId: gameId! });
+    utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! });
+    void gameQ.refetch();
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
+      // CLAUDE.md #10: the Live face re-seeds child caches from faceBootstrap, so a
+      // points change must invalidate it or the board reads stale until the poll.
+      utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripId, gameId, competitionId, utils]);
+
+  const persistEvenShare = async (total: number, ovrs: number[]) => {
+    const ev = evenShare(total, ovrs, pointsMatches.length);
+    await setPointsDistM.mutateAsync({
+      tripId: tripId!,
+      gameId: gameId!,
+      distribution: { type: "per_match", value: ev },
+    });
+  };
+  const onPointsTotalChange = (next: number) => {
+    void (async () => {
+      try {
+        await setPointsTotalM.mutateAsync({ tripId: tripId!, gameId: gameId!, total: next });
+        await persistEvenShare(next, pointsMatches.map((m) => m.pointValue).filter((v): v is number => v != null));
+        bumpPointsBoard();
+      } catch {
+        utils.games.getById.invalidate({ tripId: tripId!, gameId: gameId! });
+      }
+    })();
+  };
+  const onPointsOverrideChange = (matchId: string, value: number | null) => {
+    void (async () => {
+      try {
+        await setPointValueM.mutateAsync({ tripId: tripId!, gameId: gameId!, matchId, value });
+        const nextOvrs = pointsMatches
+          .map((m) => (m.id === matchId ? value : m.pointValue))
+          .filter((v): v is number => v != null);
+        await persistEvenShare(pointsTotalInForce ?? defaultTotal, nextOvrs);
+        bumpPointsBoard();
+      } catch {
+        utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! });
+      }
+    })();
+  };
+
+  // The reconcile, lifted VERBATIM out of MatchPointsRow (same guards, same drift
+  // check, same first-setup default seed). It still auto-writes — deleting it is
+  // the flip commit's job, not this one's, so behaviour stays identical here.
+  const didPointsDefault = useRef(false);
+  // Statically-checkable dep: the override set as a stable string.
+  const pointsOverrideKey = pointsMatches.map((m) => `${m.id}:${m.pointValue}`).join(",");
+  useEffect(() => {
+    if (!settingsEditable || scoringEnabled || pointsMatches.length === 0 || !gameCompId) return;
+    const persistedOvrs = pointsMatches.map((m) => m.pointValue).filter((v): v is number => v != null);
+    if (pointsTotalInForce == null) {
+      if (defaultTotal > 0 && !didPointsDefault.current) {
+        didPointsDefault.current = true;
+        void (async () => {
+          await setPointsTotalM.mutateAsync({ tripId: tripId!, gameId: gameId!, total: defaultTotal });
+          await persistEvenShare(defaultTotal, persistedOvrs);
+          bumpPointsBoard();
+        })();
+      }
+      return;
+    }
+    const ev = evenShare(pointsTotalInForce, persistedOvrs, pointsMatches.length);
+    if (Math.abs(ev - pointsDistValue) > 1e-9) {
+      void (async () => {
+        await persistEvenShare(pointsTotalInForce, persistedOvrs);
+        bumpPointsBoard();
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pointsTotalInForce, defaultTotal, pointsMatches.length, pointsDistValue,
+    settingsEditable, scoringEnabled, gameCompId, pointsOverrideKey,
+  ]);
 
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
@@ -1676,20 +1775,15 @@ export function MatchGameView() {
                 Competition games only (a standalone match has no points). */}
             {gameQ.data && gameCompId && (
               <MatchPointsRow
-                tripId={tripId}
-                gameId={gameId!}
-                competitionId={gameCompId}
                 matches={pointsMatches}
-                pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
-                pointsDistributionValue={
-                  gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0
-                }
+                pointsTotal={pointsTotalInForce}
                 defaultTotal={defaultTotal}
                 canEdit={settingsEditable}
                 locked={scoringEnabled}
                 expanded={openRow === "config"}
                 onToggle={() => toggleRow("config")}
-                onChanged={onSetupChanged}
+                onTotalChange={onPointsTotalChange}
+                onOverrideChange={onPointsOverrideChange}
               />
             )}
 

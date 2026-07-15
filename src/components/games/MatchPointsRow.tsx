@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Hash, X } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
 import { MatchupChips, type SidePlayer } from "@/components/games/MatchSides";
@@ -17,12 +16,19 @@ import { evenShare } from "@/lib/pointsDistribution";
  *
  * Storage (locked by Phase 0, unchanged field names — `per_match` is REUSED, never
  * renamed):
- *   - total          → `games.points_total`            (owner-set, via setPointsTotal)
- *   - even share     → `games.points_distribution.value` (derived, via setPointsDistribution)
- *   - per-match ovr  → `game_matches.point_value`       (via matches.setPointValue; null = even)
+ *   - total          → `games.points_total`            (owner-set)
+ *   - even share     → `games.points_distribution.value` (derived, never authored)
+ *   - per-match ovr  → `game_matches.point_value`       (null = even share)
  * The award sites read `point_value ?? points_distribution.value` per match; the
- * leaderboard total reads `points_total` (authoritative). This component is the ONLY
- * writer of that trio for match play.
+ * leaderboard total reads `points_total` (authoritative).
+ *
+ * PRESENTATIONAL (Draft-Then-Save P1): this row owns NO persistence — it renders the
+ * values it's given and reports edits via `onTotalChange` / `onOverrideChange`. The
+ * parent decides what an edit means (today: the existing mutations; after the flip: a
+ * draft edit committed by the page's single Save). The even share shown here is
+ * DERIVED for display only (`evenShare(total, overrides, matchCount)`) and is never
+ * written from this component — that's what made the old reconcile effect able to
+ * auto-persist a wrong share off a stale match count.
  *
  * Header: title "Total Points" + a ± stepper (sets the total) + "Points per match: X"
  * subtext (flips to "Custom" when any override exists). Expanded = the override list
@@ -47,28 +53,20 @@ export interface PointsMatch {
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
 export function MatchPointsRow({
-  tripId,
-  gameId,
-  competitionId,
   matches,
   pointsTotal,
-  pointsDistributionValue,
   defaultTotal,
   canEdit,
   locked,
   expanded,
   onToggle,
-  onChanged,
+  onTotalChange,
+  onOverrideChange,
 }: {
-  tripId: string;
-  gameId: string;
-  competitionId: string | null;
   /** Paired matches only (both sides set) — the award/leaderboard denominator. */
   matches: PointsMatch[];
-  /** Persisted owner total (null until first setup). */
+  /** The owner total in force (null until first setup → `defaultTotal` shows). */
   pointsTotal: number | null;
-  /** Persisted even share (`points_distribution.value`) — for the drift reconcile. */
-  pointsDistributionValue: number;
   /** Players-per-team = total competition players ÷ teams. The first-setup default. */
   defaultTotal: number;
   canEdit: boolean;
@@ -76,17 +74,15 @@ export function MatchPointsRow({
   locked: boolean;
   expanded: boolean;
   onToggle: () => void;
-  onChanged?: () => void;
+  /** The owner stepped the TOTAL. The parent decides what that means. */
+  onTotalChange: (next: number) => void;
+  /** One match's override set (a number) or cleared (null → back to the even share). */
+  onOverrideChange: (matchId: string, value: number | null) => void;
 }) {
-  const utils = trpc.useUtils();
-  const setTotalM = trpc.games.setPointsTotal.useMutation();
-  const setDistM = trpc.games.setPointsDistribution.useMutation();
-  const setPvM = trpc.matches.setPointValue.useMutation();
-
   const matchCount = matches.length;
   // Effective total: the owner's set value, else the players-per-team default.
   const effectiveTotal = pointsTotal ?? defaultTotal;
-  // Local total for snappy stepping; re-sync when the persisted value changes
+  // Local total for snappy stepping; re-sync when the value in force changes
   // (render-phase adjust-on-prop-change, no effect).
   const [localTotal, setLocalTotal] = useState(effectiveTotal);
   const [lastEffectiveTotal, setLastEffectiveTotal] = useState(effectiveTotal);
@@ -100,76 +96,14 @@ export function MatchPointsRow({
   const anyOverride = overrideValues.length > 0;
   const cleanEven = Number.isInteger(even);
 
-  // Persist the even share for the given (total, overrides) — always derived.
-  const persistEven = async (total: number, ovrs: number[]) => {
-    const ev = evenShare(total, ovrs, matchCount);
-    await setDistM.mutateAsync({ tripId, gameId, distribution: { type: "per_match", value: ev } });
-  };
-  const bumpBoard = () => {
-    utils.games.listByTrip.invalidate({ tripId });
-    utils.games.getById.invalidate({ tripId, gameId });
-    utils.matches.listByGame.invalidate({ tripId, gameId });
-    // CLAUDE.md #10: the Live face re-seeds child caches from faceBootstrap, so a
-    // points change must invalidate faceBootstrap or the board reads stale until poll.
-    if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
-    onChanged?.();
-  };
-
-  // The owner steps the TOTAL. Optimistic local, then persist total + derived even share.
-  const onTotalChange = async (next: number) => {
+  // The owner steps the TOTAL: optimistic local (snappy stepper), then report it.
+  // No persistence here and NO reconcile effect — the even share is derived for
+  // display above and re-derived from the FINAL state at write time, so this row
+  // can never auto-persist a share computed off a stale match count.
+  const stepTotal = (next: number) => {
     setLocalTotal(next);
-    try {
-      await setTotalM.mutateAsync({ tripId, gameId, total: next });
-      await persistEven(next, overrideValues);
-      bumpBoard();
-    } catch {
-      utils.games.getById.invalidate({ tripId, gameId });
-    }
+    onTotalChange(next);
   };
-
-  // Set / clear one match's override, then redistribute the remainder (even share).
-  const onOverride = async (matchId: string, value: number | null) => {
-    try {
-      await setPvM.mutateAsync({ tripId, gameId, matchId, value });
-      const nextOvrs = matches
-        .map((m) => (m.id === matchId ? value : m.pointValue))
-        .filter((v): v is number => v != null);
-      await persistEven(localTotal, nextOvrs);
-      bumpBoard();
-    } catch {
-      utils.matches.listByGame.invalidate({ tripId, gameId });
-    }
-  };
-
-  // Reconcile the PERSISTED even share with the derived value: (1) first-setup default
-  // — no total yet → write players-per-team once; (2) keep points_distribution.value in
-  // sync as matches are added/removed or overrides change (recompute-on-input). Based on
-  // PERSISTED props (not local optimistic state) so it converges and never loops.
-  const didDefault = useRef(false);
-  useEffect(() => {
-    if (!canEdit || locked || matchCount === 0) return;
-    const persistedOvrs = matches.map((m) => m.pointValue).filter((v): v is number => v != null);
-    if (pointsTotal == null) {
-      if (defaultTotal > 0 && !didDefault.current) {
-        didDefault.current = true;
-        void (async () => {
-          await setTotalM.mutateAsync({ tripId, gameId, total: defaultTotal });
-          await persistEven(defaultTotal, persistedOvrs);
-          bumpBoard();
-        })();
-      }
-      return;
-    }
-    const ev = evenShare(pointsTotal, persistedOvrs, matchCount);
-    if (Math.abs(ev - pointsDistributionValue) > 1e-9) {
-      void (async () => {
-        await persistEven(pointsTotal, persistedOvrs);
-        bumpBoard();
-      })();
-    }
-    // persistEven/bumpBoard are stable-enough closures; we react to the DATA inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pointsTotal, defaultTotal, matchCount, pointsDistributionValue, canEdit, locked, matches.map((m) => `${m.id}:${m.pointValue}`).join(",")]);
 
   const subtitle = (
     <>
@@ -197,7 +131,7 @@ export function MatchPointsRow({
           value={localTotal}
           min={0}
           max={MAX_TOTAL}
-          onChange={locked || !canEdit ? () => {} : (v) => void onTotalChange(v)}
+          onChange={locked || !canEdit ? () => {} : (v) => stepTotal(v)}
           disabled={locked || !canEdit}
           testId="total-points-stepper"
         />
@@ -227,7 +161,7 @@ export function MatchPointsRow({
               even={even}
               value={m.pointValue}
               disabled={locked || !canEdit}
-              onCommit={(v) => void onOverride(m.id, v)}
+              onCommit={(v) => onOverrideChange(m.id, v)}
             />
           </div>
         ))}
