@@ -100,14 +100,110 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const id of gameIds) {
-    await ctx.admin.from("score_entries").delete().eq("game_id", id);
-    await ctx.admin.from("game_matches").delete().eq("game_id", id);
-    await ctx.admin.from("game_participants").delete().eq("game_id", id);
-    await ctx.admin.from("game_delegates").delete().eq("game_id", id);
-    await ctx.admin.from("games").delete().eq("id", id);
+  // Batched by table, NOT looped per game: this file makes a dozen-plus games, and a
+  // per-game loop is 5+ sequential round-trips each — enough to blow vitest's 10s
+  // hookTimeout and fail the file with every test passing. Children first
+  // (game_participants → play_groups is ON DELETE SET NULL, so clear it before the
+  // groups), mirroring the RPC's own clean-replace order.
+  if (gameIds.length > 0) {
+    await ctx.admin.from("score_entries").delete().in("game_id", gameIds);
+    await ctx.admin.from("match_hole_outcomes").delete().in("game_id", gameIds);
+    await ctx.admin.from("game_matches").delete().in("game_id", gameIds);
+    await ctx.admin.from("game_participants").delete().in("game_id", gameIds);
+    await ctx.admin.from("play_groups").delete().in("game_id", gameIds);
+    await ctx.admin.from("game_delegates").delete().in("game_id", gameIds);
+    await ctx.admin.from("games").delete().in("id", gameIds);
   }
   await ctx.cleanup();
+});
+
+/**
+ * configHash determinism — the assumption the whole draft-then-save model rests on.
+ *
+ * The hash is read twice for two different purposes and compared: `useConfigSync`
+ * polls it (a change = another device edited the config) and `saveConfig` recomputes
+ * it to judge the client's baseHash. If it were unstable for a FIXED state, both
+ * consumers break in ways that look like anything but a hash bug — sync would fire
+ * "config changed" on every poll, and Save would reject at random with "this game
+ * changed on another device".
+ *
+ * `readGameConfigHash` fans out over four queries; the three LIST reads
+ * (game_participants / play_groups / game_matches) each need a total ORDER BY or the
+ * row order — and therefore the hash — is at Postgres's discretion. They order by
+ * `user_id`, `id`, `id`; the schema makes each unique within a game
+ * (UNIQUE(game_id, user_id) + the two primary keys), so each is a total order. These
+ * tests hold that empirically, over the shapes where a tie could actually exist:
+ * several matches, several participants, and play_groups.
+ */
+describe("configHash — determinism (the concurrency check rides on this)", () => {
+  /** Read the hash N times back-to-back with NO writes in between. */
+  async function hashRepeatedly(gameId: string, times = 5): Promise<string[]> {
+    const out: string[] = [];
+    for (let i = 0; i < times; i++) out.push(await hashOf(gameId));
+    return out;
+  }
+
+  it("is stable across repeated reads — multiple matches + participants", async () => {
+    const gameId = await newGame("Hash stable 1v1s");
+    const seeded = await draftOf(gameId);
+    // TWO matches so game_matches has >1 row to order, and four participants so
+    // game_participants does too. A missing/partial ORDER BY has ties to get wrong.
+    const edited: ConfigDraft = {
+      ...seeded,
+      pointsTotal: 4,
+      matches: [
+        { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: -1, pointValue: null },
+        { matchNumber: 2, playersPerSide: 1, a: [planner], b: [outsider], handicap: 2, pointValue: 3 },
+      ],
+    };
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(edited, seeded),
+    });
+
+    const hashes = await hashRepeatedly(gameId);
+    expect(new Set(hashes).size).toBe(1);
+    expect(hashes[0]).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it("is stable across repeated reads — a 2v2 (play_groups in the fan-out)", async () => {
+    const gameId = await newGame("Hash stable 2v2");
+    const seeded = await draftOf(gameId);
+    // A 2v2 mints TWO play_groups and four participants — the only shape that
+    // exercises the play_groups read at all.
+    const edited: ConfigDraft = {
+      ...seeded,
+      pointsTotal: 2,
+      matches: [
+        { matchNumber: 1, playersPerSide: 2, a: [owner, planner], b: [member, outsider], handicap: 3, pointValue: null },
+      ],
+    };
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(edited, seeded),
+    });
+
+    expect(new Set(await hashRepeatedly(gameId)).size).toBe(1);
+  });
+
+  it("but still MOVES on a real config write (it isn't stable by being constant)", async () => {
+    // Guards the obvious way to pass the tests above: a hash that never changes is
+    // perfectly stable and perfectly useless.
+    const gameId = await newGame("Hash moves");
+    const before = await hashOf(gameId);
+    const seeded = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: before,
+      payload: configDraftToPayload({ ...seeded, name: "Moved" }, seeded),
+    });
+    expect(await hashOf(gameId)).not.toBe(before);
+  });
 });
 
 describe("saveConfig — optimistic concurrency", () => {

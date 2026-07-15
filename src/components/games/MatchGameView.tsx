@@ -583,23 +583,35 @@ export function MatchGameView() {
     }),
     [draft, nameDraft, rulesDraft, scoringDraft, entryModeDraft, modifiersDraft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
-  // `serverFingerprint` is the persisted state the draft diverged from — the
-  // no-clobber guard for recover(). Deliberately still the MATCHES fingerprint
-  // rather than the config hash: the hash arrives async, and a fingerprint of ""
-  // while it loads would compare unequal and DELETE a perfectly good outbox entry on
-  // every mount. The matches fingerprint is available synchronously from data we
-  // already hold, and matches are the part a stale restore could actually corrupt.
-  const serverFingerprint = useMemo(
-    () => JSON.stringify(serverDraftFrom(serverMatches, handicapOf, membersOfSide)),
-    [serverMatches, handicapOf, membersOfSide]
+  // The SERVER-produced config hash. Declared here, above the outbox, because the
+  // outbox's `base` and Save's `baseHash` MUST BE ONE VALUE — captured once and fed
+  // to both. Same query + key `useConfigSync` polls, so it shares that cache and
+  // costs no extra round-trip.
+  //
+  // Why one value: they answer two halves of the same question. The outbox's base
+  // decides recover-vs-discard ("did the server move since this draft diverged?");
+  // baseHash decides conflict-vs-allow ("is the state I opened with still current?").
+  // Key them off DIFFERENT fingerprints and they disagree about what the base was —
+  // e.g. a matches-only fingerprint ignores a remote COURSE change, so the outbox
+  // happily restores, the baseline re-seeds to the newer server at mount, Save's
+  // check passes, and the recovered draft silently overwrites the other device.
+  const hashQ = trpc.games.configHash.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
   );
+  const serverHash = hashQ.data?.hash;
   const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<SettingsDraftBundle | DraftMatch[]>({
     view: "match",
     gameId,
     draft: draftBundle,
     touched: anyTouched,
-    serverFingerprint,
-    enabled: !!gameId && !scoringEnabled,
+    // The hook tracks this while untouched and freezes it at the first edit —
+    // exactly when `baseline` freezes, off the same query. So the stored base IS the
+    // baseHash the eventual Save is judged against.
+    serverFingerprint: serverHash ?? "",
+    // Never mirror before the hash lands: an entry stored with base "" could never
+    // be recovered (it would compare unequal to every real hash and delete itself).
+    enabled: !!gameId && !scoringEnabled && !!serverHash,
   });
 
   // matchId → override, for the game-page projection (per-match award value).
@@ -709,25 +721,22 @@ export function MatchGameView() {
   // silently clobber A. Freezing means my Save is judged against the state I
   // actually opened with.
   //
-  // The hash is the server's own (`games.configHash`, the same query + key
-  // useConfigSync polls, so this shares its cache and adds no round-trip) — never
-  // recomputed client-side, because `saveConfig` re-derives it via the shared
-  // readGameConfigHash and the two must be byte-identical.
-  const hashQ = trpc.games.configHash.useQuery(
-    { tripId: tripId!, gameId: gameId! },
-    { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
-  );
+  // The hash is the server's own (`games.configHash`, declared up with the outbox
+  // because BOTH must key off the same value) — never recomputed client-side,
+  // because `saveConfig` re-derives it via the shared readGameConfigHash and the two
+  // must be byte-identical.
   const [baseline, setBaseline] = useState<{ draft: ConfigDraft; hash: string } | null>(null);
   useEffect(() => {
     if (anyTouched) return; // frozen while dirty — see above
-    const hash = hashQ.data?.hash;
-    if (!gameQ.data || !hash) return;
+    if (!gameQ.data || !serverHash) return;
     setBaseline((prev) =>
-      prev && prev.hash === hash && configDraftsEqual(prev.draft, serverConfigDraft)
+      prev && prev.hash === serverHash && configDraftsEqual(prev.draft, serverConfigDraft)
         ? prev // no churn — keep the identity stable so `dirty` doesn't thrash
-        : { draft: serverConfigDraft, hash },
+        : { draft: serverConfigDraft, hash: serverHash },
     );
-  }, [anyTouched, serverConfigDraft, hashQ.data?.hash, gameQ.data]);
+    // `serverHash` (not hashQ.data) — the SAME binding the outbox's base reads, so
+    // the two can't drift apart. Both freeze on this `anyTouched` transition.
+  }, [anyTouched, serverConfigDraft, serverHash, gameQ.data]);
 
   // Save is enabled iff something really changed (pure whole-page equality).
   const dirty = !!baseline && !configDraftsEqual(configDraft, baseline.draft);
@@ -1030,7 +1039,14 @@ export function MatchGameView() {
     // query as the matches being seeded), not `gameQ.data.game_type_id`, so shape
     // and matches are always consistent. This gate remains only so the seed reads
     // a loaded game row for its other fields.
-    if (gameId && !gameQ.data) return;
+    //
+    // Wait for the config HASH too: it's the outbox's base, so recovering before it
+    // lands would compare a stored base against "" — discarding (and deleting) a
+    // perfectly good draft. It batches with the queries above, so this costs nothing
+    // in practice. Gating the WHOLE effect (not just the recover) matters: the server
+    // seed below fills `draft`, and the `draft.length > 0` guard would then stop the
+    // effect ever re-entering to recover.
+    if (gameId && (!gameQ.data || !serverHash)) return;
     // Hard-teardown recovery (Layer 2): if an outbox draft survived a refresh/kill
     // AND the server is unchanged since it diverged, restore it. A stale outbox
     // (server moved on) returns null + clears itself. One-shot — restoring a
@@ -1073,7 +1089,7 @@ export function MatchGameView() {
     // valid empty state (the table hides; only "Add match" shows). "+ Add match"
     // grows it from there (build-as-you-go — W-GAMEPAGE-01 §6.1).
     setDraft([]);
-  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data, recoverDraft]);
+  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data, serverHash, recoverDraft]);
 
   // (The modifiers seed effect is GONE. It existed because `modifiersDraft` was a
   // server MIRROR that had to be re-synced whenever the row was closed and skipped
