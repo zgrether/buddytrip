@@ -50,6 +50,7 @@ import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds } from "@/lib/matchDraft";
+import { configToDraft, type ConfigDraft, type DraftMatchInput } from "@/lib/configDraft";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
@@ -524,6 +525,39 @@ export function MatchGameView() {
     if (teamCount === 0 || totalPlayers === 0) return 0;
     return Math.round(totalPlayers / teamCount);
   }, [assignQ.data, teams.length]);
+
+  // ── The composite config draft (Draft-Then-Save P1, spec §1/§2.1) ───────────
+  // The ONE object every cross-row derivation reads, so no row reads serverMatches
+  // directly (the two-store hazard). In THIS seam commit it MIRRORS the server
+  // (built via configToDraft from the loaded game + matches), so behavior is
+  // unchanged; the follow-on commit promotes it to editable state fed by the
+  // panels and de-fangs MatchPointsRow's server-writing reconcile in lockstep
+  // (points can't move to the draft until that reconcile stops keying off server
+  // match ids). Delegates/name/rules join the dirty+Save layer next; the read
+  // derivations below don't use them, so [] here is fine.
+  const configDraft = useMemo<ConfigDraft>(() => {
+    const matchInputs: DraftMatchInput[] = (serverMatches as {
+      match_number: number | null; side_a: SideRef; side_b: SideRef; point_value: number | null;
+    }[]).map((mm, i) => {
+      const playersPerSide: 1 | 2 =
+        mm.side_a?.type === "play_group" || mm.side_b?.type === "play_group" ? 2 : 1;
+      const hcA = mm.side_a?.id ? (handicapOf.get(mm.side_a.id) ?? 0) : 0;
+      const hcB = mm.side_b?.id ? (handicapOf.get(mm.side_b.id) ?? 0) : 0;
+      return {
+        matchNumber: mm.match_number ?? i + 1,
+        playersPerSide,
+        a: sideMemberIds(mm.side_a, membersOfSide),
+        b: sideMemberIds(mm.side_b, membersOfSide),
+        handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0,
+        pointValue: mm.point_value ?? null,
+      };
+    });
+    return configToDraft(
+      (gameQ.data ?? {}) as Parameters<typeof configToDraft>[0],
+      matchInputs,
+      []
+    );
+  }, [serverMatches, membersOfSide, handicapOf, gameQ.data]);
 
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
@@ -1400,7 +1434,7 @@ export function MatchGameView() {
         // 0 even share but a real total, and must still be enable-able. This is the
         // SAME resolved truth the Total Points row shows (total > 0), so the row's
         // state and the gate agree; pointsReady is the family's client-gate extension.
-        const effectiveTotal = ((gameQ.data?.points_total as number | null) ?? null) ?? defaultTotal;
+        const effectiveTotal = (configDraft.pointsTotal ?? null) ?? defaultTotal;
         const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(effectiveTotal));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
@@ -1453,8 +1487,8 @@ export function MatchGameView() {
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
         // schema (a lone 9-hole front still "needs a back nine" → not resolved).
         const courseResolved =
-          !!gameQ.data?.course_id &&
-          (((gameQ.data?.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
+          !!configDraft.course.id &&
+          (((configDraft.course.scorecardSchema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
         const handicapsReady = matchesExist && courseResolved;
         const handicapsState: ChecklistRowState = anyHandicap ? "resolved" : "empty";
         // When the row is disabled (course/matches not yet resolved) the subtitle
