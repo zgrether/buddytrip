@@ -44,19 +44,40 @@ Zach supplied. This note only covers the ONE remaining P1 step: **the flip.**
    a fresh game doesn't read as dirty; it replaces the deleted reconcile's auto-seed
    and is established by the first Save (going live is always one).
 
-### Open before PR
-- **`games.saveConfig` has NO server test** (a pre-existing P1.6 gap — there is no
-  `saveConfig` case anywhere in `src/server/routers/*.test.ts`). It can't be written
-  green today: the suite runs against the REMOTE Supabase and **081 isn't applied
-  there yet**. Once 081 lands via CI, add cases for: the hash conflict, `GAME_LIVE`,
-  `NOT_READY` rollback, `HAS_SCORES`, the new `COURSE_LOCKED`, **delegate preservation
-  for a delegate's own Save vs an Organizer's replace**, and the back-nine round-trip.
-- **P1.7 + P1.8 still pending** (below). Zach still by-eyes a seeded 2v2 on preview —
-  CC verified the module compiles + the route serves 200 with a clean console, but
-  cannot reach a seeded 2v2.
+### ✅ Also done since (PR #609 — draft)
+- **081 is APPLIED** to the shared project (via the PR's CI `db push`, recorded under
+  the correct filename timestamp). Note CI fires only on push-to-**main** / PR-to-main
+  — a bare feature-branch push applies nothing, which is why the PR exists.
+- **`games.saveConfig` now HAS its server test** (11 cases, green):
+  `src/server/routers/games.saveConfig.test.ts`. ⚠ The baseline threading is the trap
+  those tests document — `matchesDirty` is draft-vs-baseline, so passing an
+  already-paired draft as its OWN baseline reports false, the RPC skips the match
+  write, and go-live then correctly fails NOT_READY.
+- **P1.7 done:** confirm-on-leave (`useGameSettingsOverlay` gates both exits; the
+  popstate leg must re-push the entry it already consumed, or the SECOND back-press
+  escapes) + the outbox now stores the WHOLE composite bundle, not just matches.
+- **Two UI lies fixed, both found by Zach's eyeball:** the Save bar said "All changes
+  saved" after Cancel, and `GameManagementPanel` claimed "The game is live" on a
+  merely-STAGED flip (new `staged` prop).
+- **The match-play E2E was rewritten** to the draft-then-save contract — it asserted
+  persist-on-collapse. Its key assertion now INVERTS: nothing may reach the server
+  before Save. Gate on the **"Saved" hint**, never on the Save button going disabled
+  (it's disabled while saving too → resolves instantly and races the RPC).
+
+### Open before merge
+- **P1.8 gates (§5 1–12) not run.** Zach still by-eyes a seeded 2v2 on preview — now
+  actually possible end-to-end (081 is live). 4/4 critical-path E2E green locally.
+- **P2 untouched:** rack / stroke / non-golf still self-persist. Their components take
+  the uncontrolled default, so they're unaffected — but they're the reason
+  `GameRulesNote` / `CourseRowContent` / `GameIdentityHeader` / `GameSetupRows` keep
+  their two-mode shape.
 - **P3 dead code created by the flip:** `flushOnOverlayClose` + its `SettingsRow` /
   `CloseFlush` types (`src/lib/matchDraft.ts:110-141`) are now referenced ONLY by
   their own test — the mechanism they decided for is gone. Delete both with the test.
+- **Known accepted gap:** `save_game_config` stores `NULLIF(strokes, 0)`, so "no
+  handicap" persists as NULL where the old `setHandicap` wrote 0. Behaviourally
+  identical (`effectiveStrokes` → `?? 0`); don't "fix" it, and don't assert the
+  encoding in tests.
 
 ---
 
