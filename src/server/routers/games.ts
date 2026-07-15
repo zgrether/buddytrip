@@ -26,6 +26,37 @@ const GAME_CONFIG_COLS =
   "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode";
 
 /**
+ * Compute the config fingerprint — the ONE place the hash is built, so the
+ * `configHash` query (cross-device sync) and `saveConfig`'s optimistic-
+ * concurrency check produce byte-identical hashes for the same state (same
+ * select, same ordering, same `computeConfigHash`). A client captures its base
+ * hash via `configHash`; `saveConfig` recomputes it here at save time and rejects
+ * a mismatch. Returns null when the game doesn't exist.
+ */
+async function readGameConfigHash(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string
+): Promise<string | null> {
+  const [gameRes, partsRes, groupsRes, matchesRes] = await Promise.all([
+    supabase.from("games").select(GAME_CONFIG_COLS).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
+    supabase.from("game_participants").select("user_id, play_group_id, team_id, handicap_strokes").eq("game_id", gameId).order("user_id", { ascending: true }),
+    supabase.from("play_groups").select("id, display_name, handicap_strokes").eq("game_id", gameId).order("id", { ascending: true }),
+    supabase.from("matches").select("id, play_group_id, match_number, display_order, side_a, side_b").eq("game_id", gameId).order("id", { ascending: true }),
+  ]);
+  if (gameRes.error) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${gameRes.error.message}` });
+  }
+  if (!gameRes.data) return null;
+  return computeConfigHash({
+    game: gameRes.data,
+    participants: partsRes.data ?? [],
+    groups: groupsRes.data ?? [],
+    matches: matchesRes.data ?? [],
+  });
+}
+
+/**
  * games — the competition-engine spine (Slice A: individual stroke play).
  *
  * Game setup (create / addParticipants) is Owner+Organizer work
@@ -217,43 +248,13 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const [gameRes, partsRes, groupsRes, matchesRes] = await Promise.all([
-        ctx.supabase
-          .from("games")
-          .select(GAME_CONFIG_COLS)
-          .eq("id", input.gameId)
-          .eq("trip_id", ctx.tripId)
-          .maybeSingle(),
-        ctx.supabase
-          .from("game_participants")
-          .select("user_id, play_group_id, team_id, handicap_strokes")
-          .eq("game_id", input.gameId)
-          .order("user_id", { ascending: true }),
-        ctx.supabase
-          .from("play_groups")
-          .select("id, display_name, handicap_strokes")
-          .eq("game_id", input.gameId)
-          .order("id", { ascending: true }),
-        ctx.supabase
-          .from("matches")
-          .select("id, play_group_id, match_number, display_order, side_a, side_b")
-          .eq("game_id", input.gameId)
-          .order("id", { ascending: true }),
-      ]);
-      if (gameRes.error) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${gameRes.error.message}` });
-      }
-      if (!gameRes.data) {
+      // Ordered arrays (by id/user_id) + canonical (sorted-key) hashing make the
+      // fingerprint stable regardless of DB row-return order. Shared with
+      // saveConfig's concurrency check (readGameConfigHash) so they can't drift.
+      const hash = await readGameConfigHash(ctx.supabase, ctx.tripId, input.gameId);
+      if (hash === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
-      // Ordered arrays (by id/user_id) + canonical (sorted-key) hashing make the
-      // fingerprint stable regardless of DB row-return order.
-      const hash = computeConfigHash({
-        game: gameRes.data,
-        participants: partsRes.data ?? [],
-        groups: groupsRes.data ?? [],
-        matches: matchesRes.data ?? [],
-      });
       return { hash };
     }),
 
@@ -762,6 +763,87 @@ export const gamesRouter = router({
           .eq("status", "active");
       }
       return { success: true };
+    }),
+
+  // saveConfig — Draft-Then-Save (P1). The ONE atomic commit for the whole game
+  // settings page: the client drafts everything (matches, handicaps, points,
+  // course, modifiers, entryMode, name, rules, delegates, scoring_enabled) and
+  // saves once. Optimistic concurrency via the config hash the client captured on
+  // open; the write itself is the all-or-nothing save_game_config plpgsql RPC
+  // (design A — the client pre-computes every derived row, the SQL only writes;
+  // the scoring_enabled state machine, in-RPC readiness assert, and the
+  // Organizer-only points_total/delegates sub-guards all live inside the RPC).
+  // requireGameEdit gates here AND inside the RPC (defence in depth).
+  saveConfig: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        // Fingerprint of the server state the draft was seeded from (#16). A
+        // mismatch = someone else changed this game since the page opened.
+        baseHash: z.string(),
+        payload: z.object({
+          name: z.string(),
+          rulesForToday: z.string().nullable(),
+          scoringEnabled: z.boolean(),
+          entryMode: z.string(),
+          modifiers: z.record(z.string(), z.record(z.string(), z.unknown())),
+          pointsTotal: z.number().nullable(),
+          pointsDistribution: z.unknown().nullable(),
+          courseId: z.string().nullable(),
+          scorecardSchema: z.unknown().nullable(),
+          delegates: z.array(z.string()),
+          matches: z.array(
+            z.object({
+              matchNumber: z.number().int(),
+              playersPerSide: z.union([z.literal(1), z.literal(2)]),
+              a: z.array(z.string()),
+              b: z.array(z.string()),
+              strokesA: z.number().int(),
+              strokesB: z.number().int(),
+              pointValue: z.number().nullable(),
+            })
+          ),
+        }),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      // 1 · Optimistic concurrency — the same hash the client opened with must
+      //     still describe the server, or another device changed it since. The
+      //     hash is recomputed the SAME way configHash produces it (shared helper),
+      //     so a stale disable/go-live is caught too (scoring_enabled is hashed).
+      const currentHash = await readGameConfigHash(ctx.supabase, ctx.tripId, input.gameId);
+      if (currentHash === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      if (currentHash !== input.baseHash) {
+        throw new TRPCError({ code: "CONFLICT", message: "This game changed on another device — reload before saving." });
+      }
+      // 2 · The atomic write. Map the RPC's RAISE prefixes to typed errors so the
+      //     Save banner can surface the readiness reason / live-reject legibly.
+      const { error } = await ctx.supabase.rpc("save_game_config", {
+        p_trip_id: ctx.tripId,
+        p_game_id: input.gameId,
+        p_payload: input.payload,
+      });
+      if (error) {
+        const msg = error.message ?? "";
+        if (msg.includes("GAME_LIVE")) {
+          throw new TRPCError({ code: "CONFLICT", message: "This game is live — reload before editing its settings." });
+        }
+        if (msg.includes("NOT_READY")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Finish setting up this game before switching it to scoring." });
+        }
+        if (msg.includes("NOT_AUTHORIZED")) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You can't edit this game." });
+        }
+        if (msg.includes("GAME_NOT_FOUND")) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Save failed: ${msg}` });
+      }
+      return { ok: true };
     }),
 
   // setPointsTotal — Owner/Organizer ONLY (the delegation boundary, Stage 3).
