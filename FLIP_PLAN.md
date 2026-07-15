@@ -79,6 +79,25 @@ Zach supplied. This note only covers the ONE remaining P1 step: **the flip.**
   identical (`effectiveStrokes` → `?? 0`); don't "fix" it, and don't assert the
   encoding in tests.
 
+### The one-value rule, and how it was nearly lost (keep this)
+The outbox `base` and Save's `baseHash` are ONE value — both read the single
+`serverHash` binding off `games.configHash`, frozen on the same `anyTouched`
+transition. The composite outbox first shipped keyed on the MATCHES fingerprint
+instead, which silently defeats the concurrency check: a remote COURSE change leaves
+the matches fingerprint equal, so the outbox restores, the baseline re-seeds to the
+newer server at mount (nothing is touched yet), Save's check passes, and the
+recovered draft overwrites the other device. Both guards say "fine" about different
+states — exactly what the constraint exists to prevent.
+
+The trap that motivates the wrong fix: the hash is async, and comparing a stored base
+against `""` while it loads DELETES a good outbox entry. The remedy is to GATE on the
+hash (`enabled` requires it; the seed effect waits for it — and must gate the WHOLE
+effect, since the server seed fills `draft` and the `draft.length > 0` guard would
+then stop it ever re-entering to recover), never to key the outbox off something
+else. Consequence to know: a `configHash` failure now blocks the matches seed. That's
+consistent (Save is disabled without a baseline anyway) but it means the row renders
+empty rather than erroring — worth a nicer failure if it's ever seen in the wild.
+
 ---
 
 ## State: everything under the flip is landed, green, behaviour-preserving
