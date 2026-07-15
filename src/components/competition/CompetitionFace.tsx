@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ChevronLeft, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
-import { CompetitionHeader } from "./CompetitionHeader";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
-import { CompetitionSettings } from "./CompetitionSettings";
+import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
 import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
@@ -17,7 +16,6 @@ import { MatchGameView } from "@/components/games/MatchGameView";
 import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
-import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
 import { useGameChrome } from "@/components/games/GameChrome";
 
@@ -39,14 +37,15 @@ interface Competition {
  * The competition face's surfaces (the setup guide AND the aggregate games panel
  * were both retired — creation lands directly on the bones board):
  *   board    — the leaderboard (the main view for everyone, setup + live)
- *   settings — the consolidated Settings page (competition details + Team Rosters
- *              + delete) — reached from the header gear
- * Settings is a history-pushed overlay (the shared `useGameSettingsOverlay`, the
- * SAME contract the per-game settings pages use): opening it pushes a history
- * entry so the in-page "Board" back arrow AND the OS/browser back button both
- * dismiss it and return to the leaderboard — never past it to the trip home.
- * (Gear-only here — no `?settings=1` deep link; competition settings is reached
- * solely from the gear, so `deepLink: false`.)
+ *   settings — the consolidated Settings modal (competition details + scoring
+ *              model + the reset/delete hatches) — reached from the header gear
+ * Settings is a floating CompetitionSettingsModal OVER the still-mounted board —
+ * the TripSettingsModal idiom: a card-float overlay whose master menu drills into
+ * Competition details / Scoring model / the danger-zone confirms. The modal owns
+ * its own back-button interception (useModalBackButton), so the OS/browser back
+ * button closes it and returns to the board. (Replaces the old history-pushed
+ * full-page sub-surface with its separate "Board" back arrow + a still-visible
+ * header gear.)
  * "Add a game" no longer routes to a panel — it opens the GameSheet modal
  * directly over the board; existing games are managed on their per-game pages.
  */
@@ -84,14 +83,14 @@ export function CompetitionFace({
   const utils = trpc.useUtils();
 
   // The board is the home in every stage now — creation lands here directly
-  // (the setup guide was retired). Settings is a history-pushed overlay over the
-  // board: opening pushes a history entry so back (in-page arrow OR OS/browser
-  // button) returns to the leaderboard, not the trip home. Reuses the shared
-  // game-settings overlay hook (one home for the behavior); gear-only, so
-  // deepLink is false — competition settings has no `?settings=1` deep link.
+  // (the setup guide was retired). Settings is a floating modal OVER the board
+  // (the TripSettingsModal idiom — card-float overlay with master→detail
+  // drill-in), opened from the header gear. The modal owns its own back-button
+  // interception (useModalBackButton), so a plain boolean is all the host needs;
+  // no history-pushed sub-surface, no in-page "Board" back button.
   // "Add a game" opens a modal over the board.
-  const { open: settingsOpen, openConfig: openSettings, closeConfig: closeSettings } =
-    useGameSettingsOverlay({ canEdit, deepLink: false });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const openSettings = () => setSettingsOpen(true);
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
@@ -225,46 +224,10 @@ export function CompetitionFace({
   const setRosterSetup = (next: "saved" | "dismissed") =>
     advanceRoster.mutate({ tripId, competitionId: competition.id, rosterSetup: next });
 
-  const header = (
-    <CompetitionHeader
-      competition={competition}
-      tripId={tripId}
-      onSettings={canEdit ? openSettings : undefined}
-    />
-  );
-
-  // ── Sub-surface: the consolidated Settings page — a history-pushed overlay ───
-  // over the board. Back (in-page arrow OR OS/browser button) returns to the
-  // leaderboard via useGameSettingsOverlay, never past it to the trip home.
-  if (settingsOpen) {
-    return (
-      <div className="space-y-4">
-        {header}
-        <button
-          type="button"
-          onClick={closeSettings}
-          className="inline-flex items-center gap-1 text-[13px] font-semibold"
-          style={{ color: "var(--color-bt-accent)" }}
-          data-testid="comp-back-to-board"
-        >
-          <ChevronLeft size={16} /> Board
-        </button>
-
-        <CompetitionSettings
-          competition={competition}
-          tripId={tripId}
-          canEdit={canEdit}
-          isOwner={isOwner}
-          onDeleted={onCompetitionDeleted}
-        />
-      </div>
-    );
-  }
-
   // ── Board (the home, setup + live) ──────────────────────────────────────────
-  // The merged hero (identity + gear + scores) lives INSIDE the leaderboard now,
-  // so the old CompetitionHeader is gone from the board — it survives only on the
-  // Settings sub-surface above.
+  // The merged hero (identity + gear + scores) lives INSIDE the leaderboard now
+  // (the standalone CompetitionHeader strip was retired with the old full-page
+  // settings sub-surface); the hero's gear opens the settings modal.
   const scoringModel = competition.scoring_model ?? "match_play";
   return (
     <div className="space-y-4">
@@ -390,6 +353,21 @@ export function CompetitionFace({
           lives on the board), so no panel/scorecard z-fight. */}
       {scorecardGameId && (
         <ScorecardPreviewSheet tripId={tripId} gameId={scorecardGameId} onClose={() => router.back()} />
+      )}
+
+      {/* Competition settings — a floating modal over the still-mounted board
+          (the TripSettingsModal idiom): a card-float overlay whose menu drills
+          into Competition details / Scoring model / the danger-zone confirms.
+          Opened from the header gear; owns its own back-button handling. */}
+      {settingsOpen && (
+        <CompetitionSettingsModal
+          competition={competition}
+          tripId={tripId}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          onClose={() => setSettingsOpen(false)}
+          onDeleted={onCompetitionDeleted}
+        />
       )}
     </div>
   );
