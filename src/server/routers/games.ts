@@ -9,8 +9,8 @@ import { computeRackNStackResults } from "../lib/rackNStack";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { buildScorecardSchema, composeTwoNines, validateStrokeIndex, type SnapshotTee, type ScorecardSchema } from "@/lib/courseIndex";
-import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
+import { type ScorecardSchema } from "@/lib/courseIndex";
+import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -462,66 +462,39 @@ export const gamesRouter = router({
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       if (!game.course_id) throw new TRPCError({ code: "BAD_REQUEST", message: "Set a front nine first." });
 
-      const schema = game.scorecard_schema as ScorecardSchema | null;
-      const frontMeta = schema?.units?.metadata;
-      const frontCount = schema?.units?.count ?? frontMeta?.par?.length ?? 0;
-      // Only a two-nines game gets a back: a 9-hole front (count 9) composing its
-      // first back, or an already-composed 18 (count 18 + a back ref) swapping it.
-      // A real 18-hole course (count 18, no back ref) is rejected.
-      if (!frontMeta?.par?.length || (frontCount === 18 && !game.back_course_id)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "This isn't a 9-hole front — it doesn't take a back nine." });
-      }
-
       const { data: back } = await ctx.supabase
         .from("courses")
         .select("hole_count, par, handicap_index, has_stroke_index, tee_sets")
         .eq("id", input.backCourseId)
         .maybeSingle();
       if (!back) throw new TRPCError({ code: "NOT_FOUND", message: "Back-nine course not found" });
-      if ((back.hole_count as number) !== 9) throw new TRPCError({ code: "BAD_REQUEST", message: "The back nine must be a 9-hole course." });
-      const backHasIndex = ((back.has_stroke_index as boolean | null) ?? true) && Array.isArray(back.handicap_index);
-      if (backHasIndex && !validateStrokeIndex(back.handicap_index as number[], 9).valid) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Back-nine stroke index is not a valid permutation." });
-      }
 
-      const backTees = (back.tee_sets as SnapshotTee[] | null) ?? [];
-      // Back-nine tee INHERITS the front's tee (W-GAMEPAGE-01 pin #3): match the
-      // front's applied tee NAME on the back course so the back-9 yardages come
-      // from the same-named tee; fall back to the back's first tee when that name
-      // is absent (the UI surfaces the fallback). An explicit backTeeSetName (a
-      // deliberate override) still wins. The composed tee NAME stays the front's
-      // (see composedTee below) regardless — this only picks the back-9 yards.
-      const frontTeeName = frontMeta.tee?.name?.trim();
-      const backTee =
-        (input.backTeeSetName ? backTees.find((t) => t.name === input.backTeeSetName) : undefined) ??
-        (frontTeeName ? backTees.find((t) => (t.name ?? "").trim() === frontTeeName) : undefined) ??
-        backTees[0] ?? null;
-
-      // Recover the FRONT nine's ORIGINAL 1..9 data from the snapshot. On the
-      // first compose the schema IS a 9-hole front (index already 1..9). On a
-      // SWAP the schema is the previously-composed 18, whose first 9 stroke-index
-      // values are the INTERLEAVED odd ranks (2·s−1) — de-interleave them back to
-      // 1..9 (`(v+1)/2`) so composeTwoNines re-interleaves correctly against the
-      // new back. (par/yards just slice; only the index is interleaved.)
-      const frontIdx9: number[] | null = frontMeta.handicap_index?.length
-        ? (frontCount === 18
-            ? frontMeta.handicap_index.slice(0, 9).map((v) => (v + 1) / 2)
-            : frontMeta.handicap_index.slice(0, 9))
-        : null;
-      const composed = composeTwoNines(
-        { par: frontMeta.par.slice(0, 9), index: frontIdx9, yards: frontMeta.tee?.yards?.slice(0, 9) ?? null },
-        { par: back.par as number[], index: backHasIndex ? (back.handicap_index as number[]) : null, yards: backTee?.yards ?? null }
+      // The compose derivation is the shared pure fn (courseSnapshot.ts): the
+      // two-nines gate, the back-index validation, the front de-interleave, the
+      // tee inheritance, and the P-F0a back-tee-name capture. The settings draft
+      // pre-computes the SAME composed 18 client-side and hands it to
+      // save_game_config, so a composed course and a drafted one can't drift.
+      const composedSnap = buildComposedCourseSnapshot(
+        {
+          frontSchema: game.scorecard_schema as ScorecardSchema | null,
+          hasBackRef: !!game.back_course_id,
+          backCourse: back as CourseSnapshotInput,
+        },
+        game.game_type_id as string,
+        input.backTeeSetName
       );
-      const composedTee: SnapshotTee | null = frontMeta.tee
-        ? { ...frontMeta.tee, yards: composed.yards }
-        : (backTee ? { ...backTee, yards: composed.yards } : null);
-
-      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
-      if (!baseSchema?.units) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." });
-      // P-F0a: record the back nine's CHOSEN tee name (the composed tee carries the
-      // FRONT's name) so the §16 split-band header can label the back band honestly.
-      // Capture-only — `backTee` selection / yardages above are unchanged.
-      const snapshot = buildScorecardSchema(baseSchema, composed.par, composed.index, 18, composedTee, backTee?.name ?? null);
+      if (!composedSnap.ok) {
+        throw new TRPCError(
+          composedSnap.reason === "no_front" || composedSnap.reason === "not_two_nines"
+            ? { code: "BAD_REQUEST", message: "This isn't a 9-hole front — it doesn't take a back nine." }
+            : composedSnap.reason === "back_not_nine"
+              ? { code: "BAD_REQUEST", message: "The back nine must be a 9-hole course." }
+              : composedSnap.reason === "bad_back_index"
+                ? { code: "BAD_REQUEST", message: "Back-nine stroke index is not a valid permutation." }
+                : { code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." }
+        );
+      }
+      const snapshot = composedSnap.schema;
 
       // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
       // front (1-9) is left intact. (A no-op on the first compose.)
@@ -782,6 +755,7 @@ export const gamesRouter = router({
           pointsTotal: z.number().nullable(),
           pointsDistribution: z.unknown().nullable(),
           courseId: z.string().nullable(),
+          backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),
           delegates: z.array(z.string()),
           matches: z.array(
@@ -829,6 +803,11 @@ export const gamesRouter = router({
         }
         if (msg.includes("HAS_SCORES")) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Scores are already entered — reset this game's scores before changing its matchups." });
+        }
+        // The course half of the same freeze boundary (mirrors applyCourse's own
+        // refusal), distinct from HAS_SCORES so the banner names the right cause.
+        if (msg.includes("COURSE_LOCKED")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Scores are already entered — reset this game's scores before changing its course." });
         }
         if (msg.includes("NOT_AUTHORIZED")) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You can't edit this game." });

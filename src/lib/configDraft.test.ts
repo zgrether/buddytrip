@@ -62,7 +62,7 @@ describe("configToDraft — baseline", () => {
       matches: [],
       delegates: [],
     });
-    expect(d.course).toEqual({ id: null, scorecardSchema: null });
+    expect(d.course).toEqual({ id: null, backId: null, scorecardSchema: null });
   });
 
   it("sorts delegates so order-only differences aren't dirty", () => {
@@ -107,6 +107,16 @@ describe("configDraftsEqual — dirty check", () => {
   it("a delegate add/remove is dirty", () => {
     expect(configDraftsEqual(base, clone((d) => { d.delegates = ["u9", "u10"]; }))).toBe(false);
     expect(configDraftsEqual(base, clone((d) => { d.delegates = []; }))).toBe(false);
+  });
+
+  // W-9HOLE-01: composing / swapping / dropping a back nine moves ONLY back_course_id
+  // when the two nines happen to share a schema shape — so the dirty check has to
+  // compare it, or Save would stay disabled on a real back-nine edit.
+  it("a back-nine compose / swap / drop is dirty", () => {
+    expect(configDraftsEqual(base, clone((d) => { d.course.backId = "back-1"; }))).toBe(false);
+    const composed = clone((d) => { d.course.backId = "back-1"; });
+    expect(configDraftsEqual(composed, clone((d) => { d.course.backId = "back-2"; }))).toBe(false);
+    expect(configDraftsEqual(composed, base)).toBe(false);
   });
 });
 
@@ -198,6 +208,21 @@ describe("configDraftToPayload — derived write", () => {
     expect(p.name).toBe("Trim Me");
     expect(p.rulesForToday).toBe(null); // whitespace-only → null
     expect(p.scorecardSchema).toEqual({ units: { count: 18 } });
+  });
+
+  // The back ref rides the payload in lockstep with courseId: a composed two-nines
+  // 18 has to round-trip it (else the back-nine identity is stranded), and clearing
+  // the course has to null it (else a stale ref renders a phantom back nine).
+  it("carries the back-nine ref alongside the course", () => {
+    const composed = configToDraft({ ...GAME, back_course_id: "back-1" }, MATCHES, []);
+    expect(composed.course.backId).toBe("back-1");
+    expect(configDraftToPayload(composed).backCourseId).toBe("back-1");
+
+    const cleared = configToDraft({ ...GAME, course_id: null, back_course_id: null, scorecard_schema: null }, MATCHES, []);
+    const p = configDraftToPayload(cleared);
+    expect(p.courseId).toBe(null);
+    expect(p.backCourseId).toBe(null);
+    expect(p.scorecardSchema).toBe(null);
   });
 });
 

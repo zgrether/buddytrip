@@ -70,6 +70,12 @@ export interface ConfigDraft {
   pointsDistribution: PointsDistribution | null;
   course: {
     id: string | null;
+    /** `games.back_course_id` — the composed two-nines 18's BACK course (W-9HOLE-01);
+     *  null for a real 18 or a lone 9-hole front. Drafted alongside `id` because the
+     *  row's front/back/needs-a-back state reads it: persisting the composed schema
+     *  without it would strand the back-nine identity (and a stale ref would render a
+     *  phantom back nine against an unrelated course). */
+    backId: string | null;
     /** Snapshotted `scorecard_schema` (par[] / handicap_index[] frozen in
      *  `units.metadata`). Recomputed by the UI when the course changes; this
      *  module only carries it through. */
@@ -103,6 +109,7 @@ export interface ConfigGameSnapshot {
   points_total?: number | null;
   points_distribution?: PointsDistribution | null;
   course_id?: string | null;
+  back_course_id?: string | null;
   scorecard_schema?: unknown | null;
 }
 
@@ -134,7 +141,11 @@ export function configToDraft(
     })),
     pointsTotal: game.points_total ?? null,
     pointsDistribution: game.points_distribution ?? null,
-    course: { id: game.course_id ?? null, scorecardSchema: game.scorecard_schema ?? null },
+    course: {
+      id: game.course_id ?? null,
+      backId: game.back_course_id ?? null,
+      scorecardSchema: game.scorecard_schema ?? null,
+    },
     delegates: [...delegates].sort(),
   };
 }
@@ -177,6 +188,9 @@ export interface SaveConfigPayload {
   pointsTotal: number | null;
   pointsDistribution: PointsDistribution | null;
   courseId: string | null;
+  /** `games.back_course_id` — written in lockstep with `courseId`/`scorecardSchema`
+   *  so a composed two-nines 18 round-trips (and clearing the course clears it). */
+  backCourseId: string | null;
   scorecardSchema: unknown | null;
   delegates: string[];
   matches: SaveMatchRow[];
@@ -255,6 +269,7 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
     pointsTotal: draft.pointsTotal,
     pointsDistribution: distribution,
     courseId: draft.course.id,
+    backCourseId: draft.course.backId,
     scorecardSchema: draft.course.scorecardSchema,
     delegates: [...draft.delegates].sort(),
     matches,
@@ -298,6 +313,7 @@ export function configDraftsEqual(a: ConfigDraft, b: ConfigDraft): boolean {
     a.entryMode === b.entryMode &&
     a.pointsTotal === b.pointsTotal &&
     a.course.id === b.course.id &&
+    a.course.backId === b.course.backId &&
     canonical(a.modifiers) === canonical(b.modifiers) &&
     canonical(a.pointsDistribution) === canonical(b.pointsDistribution) &&
     canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&

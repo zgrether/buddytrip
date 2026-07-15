@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildCourseSnapshot, type CourseSnapshotInput } from "./courseSnapshot";
+import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "./courseSnapshot";
+import type { ScorecardSchema } from "./courseIndex";
 
 /**
  * buildCourseSnapshot — the shared "apply a course" derivation. These lock the
@@ -68,5 +69,102 @@ describe("buildCourseSnapshot", () => {
     expect(JSON.stringify(buildCourseSnapshot(COURSE, "gtt_match_play", "Blue"))).toBe(
       JSON.stringify(buildCourseSnapshot(COURSE, "gtt_match_play", "Blue"))
     );
+  });
+});
+
+/**
+ * buildComposedCourseSnapshot — the two-nines half (W-9HOLE-01), lifted out of the
+ * server's setBackNine so the draft composes the SAME 18. The subtle one is the
+ * front de-interleave on a SWAP: a composed 18's first nine carries the odd ranks
+ * (2·s−1), which must be mapped back to 1..9 before re-composing, or every swap
+ * would corrupt the front's stroke index.
+ */
+const PAR9 = [4, 4, 3, 5, 4, 4, 3, 4, 5];
+const INDEX9 = [7, 3, 9, 1, 5, 6, 8, 4, 2];
+
+const BACK9: CourseSnapshotInput = {
+  hole_count: 9,
+  par: [4, 3, 5, 4, 4, 3, 4, 5, 4],
+  handicap_index: [2, 8, 4, 6, 1, 9, 5, 3, 7],
+  has_stroke_index: true,
+  tee_sets: [{ name: "Blue", yards: Array(9).fill(380), courseRating: 35.5, slopeRating: 128 }],
+};
+
+/** A lone 9-hole front, as `applyCourse` leaves it (index already 1..9). */
+const front9 = (): ScorecardSchema => {
+  const res = buildCourseSnapshot(
+    { hole_count: 9, par: PAR9, handicap_index: INDEX9, has_stroke_index: true, tee_sets: [{ name: "Blue", yards: Array(9).fill(400), courseRating: 35.1, slopeRating: 126 }] },
+    "gtt_match_play"
+  );
+  if (!res.ok) throw new Error("front fixture failed");
+  return res.schema;
+};
+
+describe("buildComposedCourseSnapshot", () => {
+  it("composes a 9-hole front + a 9-hole back into an interleaved 18", () => {
+    const res = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.schema.units?.count).toBe(18);
+    expect(res.schema.units?.metadata?.par).toEqual([...PAR9, ...BACK9.par]);
+    // Front takes the ODD ranks (2s−1), back the EVEN (2s) — a valid 1..18 permutation.
+    const idx = res.schema.units?.metadata?.handicap_index ?? [];
+    expect(idx.slice(0, 9)).toEqual(INDEX9.map((s) => 2 * s - 1));
+    expect(idx.slice(9)).toEqual(BACK9.handicap_index!.map((s) => 2 * s));
+    expect([...idx].sort((a, b) => a - b)).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+  });
+
+  it("a SWAP de-interleaves the front back to 1..9 — the front's index survives", () => {
+    const first = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    // Swap the back on the ALREADY-composed 18 (count 18 + a back ref).
+    const swapped = buildComposedCourseSnapshot({ frontSchema: first.schema, hasBackRef: true, backCourse: BACK9 }, "gtt_match_play");
+    expect(swapped.ok).toBe(true);
+    if (!swapped.ok) return;
+    // Re-composing the same back is idempotent — proof the de-interleave inverted
+    // the interleave exactly (a missing (v+1)/2 would drift the front's ranks).
+    expect(swapped.schema.units?.metadata?.handicap_index).toEqual(first.schema.units?.metadata?.handicap_index);
+  });
+
+  it("the composed tee keeps the FRONT's name and spans 18 yards", () => {
+    const res = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.schema.units?.metadata?.tee?.name).toBe("Blue");
+    expect(res.schema.units?.metadata?.tee?.yards).toEqual([...Array(9).fill(400), ...Array(9).fill(380)]);
+  });
+
+  it("records the back's chosen tee name when it differs from the front's", () => {
+    const twoTee: CourseSnapshotInput = {
+      ...BACK9,
+      tee_sets: [{ name: "Gold", yards: Array(9).fill(300), courseRating: 33.0, slopeRating: 118 }],
+    };
+    // No "Blue" on the back → its first tee supplies the yards (the UI surfaces this).
+    const res = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: twoTee }, "gtt_match_play");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.schema.units?.metadata?.backTeeName).toBe("Gold");
+    expect(res.schema.units?.metadata?.tee?.name).toBe("Blue"); // composed name stays the front's
+  });
+
+  it("refuses a real 18 with no back ref, a non-9 back, and a bad back index", () => {
+    const real18 = buildCourseSnapshot(COURSE, "gtt_match_play");
+    expect(real18.ok).toBe(true);
+    if (!real18.ok) return;
+    expect(buildComposedCourseSnapshot({ frontSchema: real18.schema, hasBackRef: false, backCourse: BACK9 }, "gtt_match_play"))
+      .toEqual({ ok: false, reason: "not_two_nines" });
+    expect(buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: COURSE }, "gtt_match_play"))
+      .toEqual({ ok: false, reason: "back_not_nine" });
+    expect(buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: { ...BACK9, handicap_index: [1, 1, 1] } }, "gtt_match_play"))
+      .toEqual({ ok: false, reason: "bad_back_index" });
+    expect(buildComposedCourseSnapshot({ frontSchema: null, hasBackRef: false, backCourse: BACK9 }, "gtt_match_play"))
+      .toEqual({ ok: false, reason: "no_front" });
+  });
+
+  it("is deterministic — the draft and the server compose byte-identically", () => {
+    const a = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    const b = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });

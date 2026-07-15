@@ -119,6 +119,10 @@ DECLARE
   v_go_live boolean := COALESCE((p_payload->>'scoringEnabled')::boolean, false);
   v_matches_dirty boolean := COALESCE((p_payload->>'matchesDirty')::boolean, true);
   v_has_scores boolean;
+  v_cur_course_id text;
+  v_cur_back_course_id text;
+  v_cur_schema jsonb;
+  v_course_dirty boolean;
   v_match jsonb;
   v_ord int;
   v_paired int := 0;
@@ -140,8 +144,8 @@ BEGIN
   -- caught by the JS check; fully closing it would need a stored version column
   -- bumped under this lock, which every other write path would have to maintain and
   -- which false-rejects when stale. FOR UPDATE only removes the RPC-vs-RPC interleave.
-  SELECT trip_id, scoring_enabled, status, game_type_id
-    INTO v_trip_id, v_was_live, v_status, v_type
+  SELECT trip_id, scoring_enabled, status, game_type_id, course_id, back_course_id, scorecard_schema
+    INTO v_trip_id, v_was_live, v_status, v_type, v_cur_course_id, v_cur_back_course_id, v_cur_schema
     FROM public.games WHERE id = p_game_id AND trip_id = p_trip_id
     FOR UPDATE;
   IF v_trip_id IS NULL THEN
@@ -174,6 +178,29 @@ BEGIN
   -- ── NOT live: write the whole config atomically ─────────────────────────────
   v_is_org := public.has_trip_role(v_trip_id, ARRAY['Owner'::text, 'Organizer'::text]);
 
+  -- Course freeze boundary — mirrors games.applyCourse: once ANY score is in, the
+  -- par/index the round is being played on is fixed, so re-applying/removing a
+  -- course (or swapping a tee, which rewrites the snapshot) would silently rescore
+  -- it. Refuse rather than rewrite. Gated on an ACTUAL course change so a Save that
+  -- leaves the course alone still works on a game that KEPT its scores through a
+  -- disable (the same reason the match clean-replace gates on v_matches_dirty).
+  -- Course identity AND the snapshot both count: a tee swap moves only the schema.
+  -- jsonb IS DISTINCT FROM is semantic (key order normalized), so an untouched
+  -- schema round-tripping through the client compares equal.
+  v_course_dirty :=
+        (p_payload->>'courseId')     IS DISTINCT FROM v_cur_course_id
+     OR (p_payload->>'backCourseId') IS DISTINCT FROM v_cur_back_course_id
+     OR NULLIF(p_payload->'scorecardSchema', 'null'::jsonb) IS DISTINCT FROM v_cur_schema;
+  IF v_course_dirty THEN
+    SELECT EXISTS (SELECT 1 FROM public.score_entries WHERE game_id = p_game_id)
+        OR EXISTS (SELECT 1 FROM public.match_hole_outcomes WHERE game_id = p_game_id)
+      INTO v_has_scores;
+    IF v_has_scores THEN
+      RAISE EXCEPTION 'COURSE_LOCKED: scores are already entered — the course can''t be changed now'
+        USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+  END IF;
+
   -- 1 · Scalar game columns. points_total is Organizer-only (a delegate keeps the
   -- current total); everything else is requireGameEdit-writable.
   UPDATE public.games SET
@@ -188,6 +215,11 @@ BEGIN
                                  ELSE points_total END,
       points_distribution = NULLIF(p_payload->'pointsDistribution', 'null'::jsonb),
       course_id           = p_payload->>'courseId',
+      -- Written in LOCKSTEP with course_id/scorecard_schema (W-9HOLE-01): the row's
+      -- front/back/"needs a back nine" state reads it, so persisting a composed 18
+      -- without it strands the back-nine identity, and leaving a stale ref behind a
+      -- cleared/re-picked course renders a phantom back nine.
+      back_course_id      = p_payload->>'backCourseId',
       scorecard_schema    = NULLIF(p_payload->'scorecardSchema', 'null'::jsonb)
     WHERE id = p_game_id AND trip_id = p_trip_id;
 
