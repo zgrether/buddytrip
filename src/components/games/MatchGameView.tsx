@@ -153,9 +153,25 @@ export function MatchGameView() {
   // OS/mouse back are the SAME action; the deep-link path routes back through the
   // router to the leaderboard. (Aliased to `cfgOpen` — the rest of the page is
   // unchanged.)
-  const { open: cfgOpen, openConfig, closeConfig } = useGameSettingsOverlay({
+  // Draft-then-save: leaving with unsaved edits would silently bin the whole page's
+  // draft (the old model persisted per-row, so this path couldn't lose anything).
+  // `dirty` + `handleCancel` are defined far below — this hook has to be declared up
+  // here with the other screen state — so hand them over by latest-ref, which the
+  // hook reads at close time rather than at mount.
+  const dirtyRef = useRef(false);
+  const discardRef = useRef<() => void>(() => {});
+  const {
+    open: cfgOpen,
+    openConfig,
+    closeConfig,
+    confirmingClose,
+    confirmDiscard,
+    cancelClose,
+  } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
+    isDirty: () => dirtyRef.current,
+    onDiscard: () => discardRef.current(),
   });
 
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
@@ -1149,6 +1165,15 @@ export function MatchGameView() {
     clearDraftOutbox();
   }
 
+  // Feed the settings overlay's confirm-on-leave guard (declared above `dirty`).
+  // Only gate while the overlay is actually OPEN and the user can edit — a member's
+  // read-only view, or the game screens underneath, must never trap a back-press.
+  const guardDirty = cfgOpen && canEdit && dirty;
+  useEffect(() => {
+    dirtyRef.current = guardDirty;
+    discardRef.current = handleCancel;
+  });
+
   // The Setup/Scoring toggle is now a DRAFT edit (spec §2.7-2) — flipping it stages
   // `scoring_enabled` and Save commits it together with the config. `enableReady`
   // still gates the Enable direction client-side; the RPC re-asserts readiness
@@ -2011,6 +2036,21 @@ export function MatchGameView() {
       )}
       </div>
 
+      {/* Confirm-on-leave (P1.7) — the whole page is one draft, so a back-press with
+          unsaved edits would bin it silently. Both exits (the arrow and the OS/browser
+          back) route through the overlay's guard, which raises this instead. */}
+      {confirmingClose && (
+        <DiscardChangesPrompt
+          onDiscard={confirmDiscard}
+          onKeepEditing={cancelClose}
+          onSave={() => {
+            cancelClose();
+            void handleSave();
+          }}
+          saving={saveConfigM.isPending}
+        />
+      )}
+
       {/* Player selector sheet — constrained to the side's team in a 2-team
           competition (no cross-team pair), else the whole roster/crew. */}
       {selector && (() => {
@@ -2209,6 +2249,80 @@ function SaveBar({
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * DiscardChangesPrompt (P1.7) — the confirm-on-leave gate.
+ *
+ * Draft-then-save moved the whole settings page onto ONE draft, which turned a
+ * back-press into a silent data-loss path (the old per-row persistence meant leaving
+ * could never lose anything). This offers the way OUT of that: Save what you did,
+ * keep editing, or explicitly throw it away.
+ *
+ * Discard is the DANGER action and it is never the default — the safe options come
+ * first, and the destructive one is styled as destructive (STYLE_GUIDE §5), because
+ * the thing it destroys is the user's unsaved work.
+ */
+function DiscardChangesPrompt({
+  onDiscard,
+  onKeepEditing,
+  onSave,
+  saving,
+}: {
+  onDiscard: () => void;
+  onKeepEditing: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={onKeepEditing}
+      data-testid="discard-changes-prompt"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full"
+        style={{ maxWidth: 340, background: "var(--color-bt-card-float)", borderRadius: 18, padding: 18 }}
+      >
+        <div style={{ fontSize: 16.5, fontWeight: 700, color: "var(--color-bt-text)" }}>Unsaved changes</div>
+        <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Your changes to this game haven’t been saved yet. Leaving now discards them.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="w-full disabled:opacity-40"
+            style={{ height: 44, borderRadius: 12, background: "var(--color-bt-accent)", color: "var(--color-bt-base)", border: "none", fontSize: 14.5, fontWeight: 600 }}
+            data-testid="discard-prompt-save"
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+          <button
+            type="button"
+            onClick={onKeepEditing}
+            className="w-full"
+            style={{ height: 44, borderRadius: 12, background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)", fontSize: 14.5, fontWeight: 600 }}
+            data-testid="discard-prompt-keep"
+          >
+            Keep editing
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="w-full"
+            style={{ height: 44, borderRadius: 12, background: "transparent", color: "var(--color-bt-danger)", border: "0.5px solid var(--color-bt-danger-border)", fontSize: 14.5, fontWeight: 600 }}
+            data-testid="discard-prompt-discard"
+          >
+            Discard changes
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

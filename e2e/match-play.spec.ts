@@ -216,6 +216,45 @@ async function saveSettings(page: Page) {
   await expect(page.getByTestId("settings-save-error")).toBeHidden();
 }
 
+/**
+ * Confirm-on-leave (P1.7). Draft-then-save made a back-press a data-loss path — the
+ * whole page is one draft that only commits on Save — so BOTH exits must be gated.
+ * The browser-back leg is the one worth driving in a real browser: popstate fires
+ * AFTER the entry is consumed, so staying put means pushing a replacement on, and
+ * getting that wrong strands the user (or lets the next back escape the page).
+ */
+test("dirty settings refuse to leave silently — browser back and the arrow both gate", async ({ page }) => {
+  test.setTimeout(60_000);
+  await driveToSetupWithHandicap(page); // leaves a dirty, never-saved draft
+
+  const prompt = page.getByTestId("discard-changes-prompt");
+
+  // 1. OS/browser back → gated, and "Keep editing" leaves us exactly where we were.
+  await page.goBack();
+  await expect(prompt).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("discard-prompt-keep").click();
+  await expect(prompt).toBeHidden();
+  await expect(page.getByTestId("match-pairings")).toBeVisible(); // still on settings
+
+  // A second back-press must still be caught — i.e. the guard really did put an
+  // entry back, rather than letting this one escape the page.
+  await page.goBack();
+  await expect(prompt).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("discard-prompt-keep").click();
+  await expect(prompt).toBeHidden();
+
+  // 2. The in-page arrow → the same gate (nothing popped on this path).
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(prompt).toBeVisible({ timeout: 10_000 });
+
+  // 3. Discard → the draft is dropped and we actually leave. Nothing was ever
+  //    written, which is the whole point of the gate existing.
+  await page.getByTestId("discard-prompt-discard").click();
+  await expect(prompt).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByTestId("match-pairings")).toBeHidden({ timeout: 10_000 });
+  expect(await filledMatchCount(await latestGameId())).toBe(0);
+});
+
 test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
   test.setTimeout(60_000);
   await driveToSetupWithHandicap(page);
