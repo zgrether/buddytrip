@@ -315,14 +315,14 @@ describe("saveConfig — the scoring_enabled state machine", () => {
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
   });
 
-  it("a live game (true→true) writes name + rules but stays live and leaves game config frozen", async () => {
+  it("a live game with NO scores (true→true) writes the FULL config — matchups included", async () => {
+    // Freeze-redesign headline (084): scoring_enabled no longer freezes config. A
+    // live, score-LESS game is fully editable — 083's narrow true→true write is gone.
+    // (The pre-084 version of this test asserted the OPPOSITE — that config was
+    // frozen — which was the behavior 084 deliberately removed.)
     const gameId = await newGame("Live editable");
-    await goLive(gameId);
+    await goLive(gameId); // NO scores
 
-    // 083: a live game staying live is no longer refused — it writes the fields that
-    // can't rescore a completed hole (name / rules), ignores everything game-altering,
-    // and stays live. Bundle a matches change into the SAME payload to prove it's
-    // ignored rather than applied.
     const live = await draftOf(gameId);
     await ctx.caller().games.saveConfig({
       tripId,
@@ -330,10 +330,10 @@ describe("saveConfig — the scoring_enabled state machine", () => {
       baseHash: await hashOf(gameId),
       payload: configDraftToPayload(
         {
-          ...onePairedMatch(live),
+          ...live,
           name: "Renamed While Live",
           rulesForToday: "no gimmes after 5pm",
-          scoringEnabled: true,
+          scoringEnabled: true, // stays live
           matches: [{ matchNumber: 1, playersPerSide: 1, a: [planner], b: [outsider], handicap: 0, pointValue: null }],
         },
         live
@@ -343,15 +343,15 @@ describe("saveConfig — the scoring_enabled state machine", () => {
     expect(after.name).toBe("Renamed While Live");
     expect(after.rules_for_today).toBe("no gimmes after 5pm");
     expect(after.scoring_enabled).toBe(true); // stayed live
-    // The matchup in the payload was IGNORED — the live game still has its original
-    // owner-vs-member pairing, not the planner-vs-outsider one bundled above.
+    // The matchup DID change — no scores, so the structural rewrite is allowed even
+    // while live. This is the "everything editable when there's nothing to protect" case.
     const { matches } = (await ctx.caller().matches.listByGame({ tripId, gameId })) as {
       matches: { side_a: { id: string } | null; side_b: { id: string } | null }[];
     };
     const ids = matches.flatMap((m) => [m.side_a?.id, m.side_b?.id]);
-    expect(ids).toContain(owner);
-    expect(ids).toContain(member);
-    expect(ids).not.toContain(outsider);
+    expect(ids).toContain(planner);
+    expect(ids).toContain(outsider);
+    expect(ids).not.toContain(member);
   });
 
   it("a live game (true→true) can gain a delegate mid-round (Organizer write)", async () => {
