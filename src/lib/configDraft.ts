@@ -195,17 +195,25 @@ export interface SaveConfigPayload {
   delegates: string[];
   matches: SaveMatchRow[];
   /**
-   * Did the match set actually change vs the state the draft was seeded from?
+   * Did the match SET (structure: which matches, each side's roster, the shape)
+   * change vs the state the draft was seeded from? — NOT whether a per-match FIELD
+   * (handicap / pointValue) changed.
    *
-   * False → the RPC SKIPS the matches/participants/play_groups clean-replace
-   * entirely. Two reasons: (1) an unchanged match set shouldn't churn row ids on
-   * every Save, and (2) it's what lets a game that kept its scores through a
-   * disable still be edited/re-enabled — the RPC refuses a match REWRITE once
-   * score rows exist (they'd be orphaned by the new ids), but a no-op match write
-   * is harmless. A client that under-reports this just gets its match edits
-   * ignored (safe); one that over-reports gets refused (also safe).
+   * True  → the RPC clean-replaces matches/participants/play_groups (mints fresh
+   *         UUIDs). REFUSED once scores exist (`HAS_SCORES`) — the new ids would
+   *         orphan the score rows.
+   * False → the RPC does NOT clean-replace. It instead writes the per-match FIELDS
+   *         in place (game_matches.point_value + side handicap_strokes), keyed to the
+   *         surviving rows by match_number — allowed WITH scores (the warned tier).
+   *
+   * So a handicap or point-override edit on a scored game (same set, field differs)
+   * reports False here and persists in place; adding/removing a player or a match
+   * reports True and is refused with scores. A client that under-reports gets its
+   * structural edits silently written in-place-only (safe-ish); over-reports gets
+   * refused (safe). Was `matchesDirty` — renamed when the structure/field split
+   * landed (migration 084).
    */
-  matchesDirty: boolean;
+  matchesStructureDirty: boolean;
 }
 
 /** Split a signed handicap into per-side stroke counts (<0 → A gets |n|; >0 → B
@@ -273,25 +281,53 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
     scorecardSchema: draft.course.scorecardSchema,
     delegates: [...draft.delegates].sort(),
     matches,
-    matchesDirty: baseline ? !matchesEqual(draft.matches, baseline.matches) : true,
+    // ONLY structure gates the clean-replace now — a field-only edit (handicap /
+    // point override) reports false and the RPC writes it in place.
+    matchesStructureDirty: baseline ? !matchesStructureEqual(draft.matches, baseline.matches) : true,
   };
 }
 
 // ── Dirty check ──────────────────────────────────────────────────────────────
 
-function matchesEqual(a: DraftMatchConfig[], b: DraftMatchConfig[]): boolean {
+/**
+ * A match row splits into TWO kinds of change, and they persist completely
+ * differently — `matchesDirty` used to conflate them, which is why editing a
+ * handicap or a point override on a scored game was wrongly refused:
+ *
+ *  - STRUCTURE (`matchesStructureEqual`) = the SET: which matches exist, each side's
+ *    roster, the shape. A change here has no stable row identity to update, so the
+ *    RPC clean-replaces (mints fresh UUIDs) — which orphans score rows. Correctly
+ *    REFUSED once scores exist (`HAS_SCORES`).
+ *  - FIELDS (`matchFieldsEqual`) = values on rows that AREN'T going anywhere: the
+ *    per-side `handicap` and the per-match `pointValue`. The set is identical, so
+ *    these persist via an in-place `UPDATE` — allowed with scores (the WARNED tier:
+ *    results recalculate, nothing is orphaned). Only meaningful when structure is
+ *    equal (same rows to update); it's not a substitute for upsert-by-identity,
+ *    which handles "set changed but some rows survive" — this is "set is identical."
+ */
+function matchesStructureEqual(a: DraftMatchConfig[], b: DraftMatchConfig[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((m, i) => {
     const n = b[i];
     return (
       m.matchNumber === n.matchNumber &&
       m.playersPerSide === n.playersPerSide &&
-      m.handicap === n.handicap &&
-      m.pointValue === n.pointValue &&
       arraysEqual(m.a, n.a) &&
       arraysEqual(m.b, n.b)
     );
   });
+}
+
+/** FIELDS equality — assumes structure already matches (compares position-wise). */
+function matchFieldsEqual(a: DraftMatchConfig[], b: DraftMatchConfig[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((m, i) => m.handicap === b[i].handicap && m.pointValue === b[i].pointValue);
+}
+
+/** The whole-match dirty check (drives the Save-enabled gate) — dirty if EITHER
+ *  structure or fields differ. */
+function matchesEqual(a: DraftMatchConfig[], b: DraftMatchConfig[]): boolean {
+  return matchesStructureEqual(a, b) && matchFieldsEqual(a, b);
 }
 
 function arraysEqual(a: string[], b: string[]): boolean {

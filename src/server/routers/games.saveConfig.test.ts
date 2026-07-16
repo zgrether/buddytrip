@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { configToDraft, configDraftToPayload, type ConfigDraft, type SaveConfigPayload } from "../../lib/configDraft";
+import { configToDraft, configDraftToPayload, type ConfigDraft, type DraftMatchConfig, type SaveConfigPayload } from "../../lib/configDraft";
 
 /**
  * games.saveConfig — the atomic Save front door (Game Settings: Draft-Then-Save P1).
@@ -605,6 +605,73 @@ describe("saveConfig — the freeze boundaries once scores exist", () => {
       payload: configDraftToPayload({ ...withScores, name: "Course Untouched" }, withScores),
     });
     expect((await ctx.caller().games.getById({ tripId, gameId })).name).toBe("Course Untouched");
+  });
+});
+
+describe("saveConfig — the STRUCTURE / FIELD split (084 warned tier)", () => {
+  /** A draft whose matches mirror the live game's single owner-vs-member match, so a
+   *  field-only edit (handicap / point override) is STRUCTURE-clean and takes the
+   *  in-place path — the whole point of the split. */
+  const withMatch = (draft: ConfigDraft, over: Partial<DraftMatchConfig> = {}): ConfigDraft => ({
+    ...draft,
+    matches: [{ matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null, ...over }],
+  });
+
+  it("a HANDICAP edit on a scored game SUCCEEDS and writes in place (warned, not refused)", async () => {
+    const gameId = await newGame("Handicap warned");
+    await goLive(gameId); // one match: owner vs member, handicap 0
+    await ctx.caller().scores.upsertEntry({
+      tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 4,
+    });
+
+    // handicap 5 (positive → side B = member gets 5). Same SET, a FIELD differs, so
+    // this is structure-clean → the in-place UPDATE, allowed with scores. Under the
+    // old conflated `matchesDirty` this was refused as HAS_SCORES.
+    const base = withMatch(await draftOf(gameId));
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(withMatch(await draftOf(gameId), { handicap: 5 }), base),
+    });
+
+    // Persisted in place — the member's handicap_strokes moved, no clean-replace.
+    const { data } = await ctx.admin.from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId);
+    expect(new Map((data ?? []).map((p) => [p.user_id as string, p.handicap_strokes])).get(member)).toBe(5);
+    // Game stayed live; scores untouched.
+    expect((await ctx.caller().games.getById({ tripId, gameId }) as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
+    expect(((await ctx.caller().scores.listByGame({ tripId, gameId })) as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("a POINT OVERRIDE edit on a scored game SUCCEEDS in place", async () => {
+    const gameId = await newGame("Point override warned");
+    await goLive(gameId);
+    await ctx.caller().scores.upsertEntry({
+      tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 4,
+    });
+    const base = withMatch(await draftOf(gameId));
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(withMatch(await draftOf(gameId), { pointValue: 5 }), base),
+    });
+    const { data } = await ctx.admin.from("game_matches").select("point_value").eq("game_id", gameId);
+    expect(Number((data ?? [])[0]?.point_value)).toBe(5);
+  });
+
+  it("ENTRY MODE change on a scored game is REFUSED — the third locked-tier guard", async () => {
+    const gameId = await newGame("Entry mode locked");
+    await goLive(gameId);
+    await ctx.caller().scores.upsertEntry({
+      tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 4,
+    });
+    const live = await draftOf(gameId);
+    await expect(
+      ctx.caller().games.saveConfig({
+        tripId, gameId, baseHash: await hashOf(gameId),
+        payload: configDraftToPayload({ ...live, entryMode: "outcome" }, live),
+      })
+      // Actionable, names the affordance — not the raw ENTRY_MODE_LOCKED prefix.
+    ).rejects.toThrow(/changing how it's scored/i);
+    // Refused → entry_mode unchanged.
+    expect((await ctx.caller().games.getById({ tripId, gameId }) as Record<string, unknown>).entry_mode).toBe("score");
   });
 });
 

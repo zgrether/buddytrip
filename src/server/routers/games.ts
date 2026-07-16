@@ -780,7 +780,7 @@ export const gamesRouter = router({
               pointValue: z.number().nullable(),
             })
           ),
-          matchesDirty: z.boolean(),
+          matchesStructureDirty: z.boolean(),
         }),
       })
     )
@@ -829,6 +829,22 @@ export const gamesRouter = router({
             message: "This game already has scores. Reset scores in the game's Danger zone before changing its course.",
           });
         }
+        // 084: the third locked-tier guard — changing how a scored game is scored
+        // (entry mode) would orphan the entered data.
+        if (msg.includes("ENTRY_MODE_LOCKED")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This game already has scores. Reset scores in the game's Danger zone before changing how it's scored.",
+          });
+        }
+        // 084 verify-on-skip-path: the in-place field write found the match set no
+        // longer matches what the client sent — another device changed it. Reload.
+        if (msg.includes("STRUCTURE_MISMATCH")) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This game changed on another device — reload before saving.",
+          });
+        }
         if (msg.includes("NOT_AUTHORIZED")) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You can't edit this game." });
         }
@@ -837,6 +853,14 @@ export const gamesRouter = router({
         }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Save failed: ${msg}` });
       }
+      // 3 · Re-derive results. A FIELD edit (handicap / point override) on a scored
+      //     game changes a recompute INPUT, and the RPC only WRITES — plpgsql can't
+      //     call the shared JS engine (buildDecided/matchState/glorious). Run it here,
+      //     exactly as matches.setHandicap / setPointValue do (skipComplete freezes a
+      //     complete match). Cheap no-op when no scores exist (early-returns) or on a
+      //     non-match game (no game_matches to process), so it's safe to run for every
+      //     save rather than trying to detect "was this a field change."
+      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
       return { ok: true };
     }),
 
