@@ -801,13 +801,22 @@ export const gamesRouter = router({
         if (msg.includes("NOT_READY")) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Finish setting up this game before switching it to scoring." });
         }
+        // The two freeze boundaries. Each names the ACTUAL affordance — "Reset scores"
+        // in the game's Danger zone — rather than restating the condition: this lands
+        // in the Save banner, and "scores are already entered" tells the user what's
+        // wrong without telling them what to do about it. Kept DISTINCT from each
+        // other so the banner names the right cause (matchups vs course).
         if (msg.includes("HAS_SCORES")) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Scores are already entered — reset this game's scores before changing its matchups." });
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This game already has scores. Reset scores in the game's Danger zone before changing its matchups.",
+          });
         }
-        // The course half of the same freeze boundary (mirrors applyCourse's own
-        // refusal), distinct from HAS_SCORES so the banner names the right cause.
         if (msg.includes("COURSE_LOCKED")) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Scores are already entered — reset this game's scores before changing its course." });
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This game already has scores. Reset scores in the game's Danger zone before changing its course.",
+          });
         }
         if (msg.includes("NOT_AUTHORIZED")) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You can't edit this game." });

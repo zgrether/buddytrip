@@ -450,20 +450,21 @@ export function MatchGameView() {
   // longer goes Live — first score does, #396). The owner lands on the overview
   // once enabled (or active/complete); members see it once enabled (= published).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  // The DRAFT's live flag — `configDraft.scoringEnabled` by construction, computed
+  // here because the settings lock is derived ~240 lines above the composite memo.
+  // configDraft reads THIS, so there is exactly one definition.
+  const draftScoringEnabled = scoringDraft ?? scoringEnabled;
   // #501: game-altering config (matches/course/points/handicaps/modifiers) freezes
   // in scoring mode. MatchSetup/HandicapsSection have no read-only mode, so their
   // rows go non-expandable; GameSetupRows/ModifierCards take settingsEditable directly.
   //
-  // Reads the SERVER's `scoring_enabled`, NOT `configDraft.scoringEnabled` — the one
-  // place on this page that deliberately doesn't follow the draft, so staging Setup
-  // on a live game does not unlock the rows until the disable is Saved. That is
-  // FORCED BY THE RPC, not a UI oversight: `save_game_config`'s true→false branch
-  // disables and RETURNs early WITHOUT rewriting config, so any edits riding the same
-  // payload as the disable are silently dropped. Repointing this at the draft without
-  // fixing that branch turns a clunky two-step into silent data loss — the exact class
-  // of bug this refactor exists to remove. The fix needs a new migration (081 is
-  // applied; never edit it) — see DEFERRED.md "unlock on a staged Setup".
-  const settingsEditable = canEdit && !scoringEnabled;
+  // Follows the DRAFT (migration 082): staging Setup unlocks the rows immediately, so
+  // one atomic Save disables AND re-configures. This was only safe once 082 landed —
+  // 081's true→false branch disabled and RETURNed early WITHOUT writing config, so
+  // unlocking on a staged Setup would have silently dropped every edit riding that
+  // same payload. 082 lets the branch fall through, under the existing course/matches
+  // freeze guards. Don't repoint this back at the server flag without re-reading them.
+  const settingsEditable = canEdit && !draftScoringEnabled;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
@@ -621,7 +622,14 @@ export function MatchGameView() {
     serverFingerprint: serverHash ?? "",
     // Never mirror before the hash lands: an entry stored with base "" could never
     // be recovered (it would compare unequal to every real hash and delete itself).
-    enabled: !!gameId && !scoringEnabled && !!serverHash,
+    //
+    // Gated on the DRAFT's flag, not the server's: now that staging Setup unlocks the
+    // rows (082), edits made against a still-live game are real drafted work and a
+    // refresh must not lose them. The old server gate existed because the outbox fed
+    // setPairings writes — nothing auto-writes from it any more, it only restores a
+    // draft, so mirroring a staged-Setup game is safe. An untouched live game still
+    // mirrors nothing: its rows are locked, so there's nothing to protect.
+    enabled: !!gameId && !draftScoringEnabled && !!serverHash,
   });
 
   // matchId → override, for the game-page projection (per-match award value).
@@ -705,7 +713,7 @@ export function MatchGameView() {
       ...serverConfigDraft,
       name: nameDraft ?? serverConfigDraft.name,
       rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
-      scoringEnabled: scoringDraft ?? serverConfigDraft.scoringEnabled,
+      scoringEnabled: draftScoringEnabled, // === scoringDraft ?? serverConfigDraft.scoringEnabled
       entryMode: entryModeDraft ?? serverConfigDraft.entryMode,
       modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
       // The matches slice is guarded by the SAME `draftTouched` lock the seed effect
@@ -718,7 +726,7 @@ export function MatchGameView() {
       course: courseDraft ?? serverConfigDraft.course,
       delegates: delegatesDraft ?? serverConfigDraft.delegates,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
+    [serverConfigDraft, nameDraft, rulesDraft, draftScoringEnabled, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
 
   // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
@@ -1889,11 +1897,12 @@ export function MatchGameView() {
             )}
 
             {/* #501: live-game lock — the settings below freeze until the owner/
-                delegate flips the toggle above back to Setup. Keyed on the SERVER's
-                flag (`scoringEnabled`), not the draft: the freeze is about what's
-                actually live and being scored on, and staging a disable must not
-                unlock the config before the Save lands. */}
-            {scoringEnabled && canEdit && <ScoringLockBanner />}
+                delegate flips the toggle above back to Setup. Follows the DRAFT, in
+                lockstep with `settingsEditable`: the banner explains why the rows are
+                frozen, so it has to clear exactly when they unlock or it contradicts
+                them. (082 is what makes staging Setup a real unlock — see
+                `settingsEditable`.) */}
+            {draftScoringEnabled && canEdit && <ScoringLockBanner />}
 
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
                 competition the rosters live on the competition face (the leaderboard
@@ -1934,7 +1943,7 @@ export function MatchGameView() {
               // #501: non-expandable AND force-collapsed in scoring mode (MatchSetup
               // has no read-only mode, so it must not render interactively when live).
               // #512: locked → dim + lock icon (it reads as frozen, not just chevron-less).
-              locked={scoringEnabled}
+              locked={draftScoringEnabled}
               expanded={openRows.has("matches") && settingsEditable}
               onToggle={settingsEditable ? () => toggleRow("matches") : undefined}
               testId="row-matches"
@@ -1965,7 +1974,7 @@ export function MatchGameView() {
               <EntryModeRow
                 entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
                 canEdit={settingsEditable}
-                locked={scoringEnabled}
+                locked={draftScoringEnabled}
                 onChange={setEntryModeDraft}
               />
             )}
@@ -1986,7 +1995,7 @@ export function MatchGameView() {
                 competitionId={gameCompId}
                 game={draftGameRow}
                 canEdit={settingsEditable}
-                locked={scoringEnabled}
+                locked={draftScoringEnabled}
                 courseOpen={openRows.has("course")}
                 onOpenCourse={() => toggleRow("course")}
                 onCloseEditor={() => closeRow("course")}
@@ -2011,7 +2020,7 @@ export function MatchGameView() {
                 pointsTotal={configDraft.pointsTotal}
                 defaultTotal={defaultTotal}
                 canEdit={settingsEditable}
-                locked={scoringEnabled}
+                locked={draftScoringEnabled}
                 expanded={openRows.has("config")}
                 onToggle={() => toggleRow("config")}
                 onTotalChange={onPointsTotalChange}
@@ -2032,7 +2041,7 @@ export function MatchGameView() {
               state={handicapsState}
               // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
               // has no read-only mode). #512: locked → dim + lock icon.
-              locked={scoringEnabled}
+              locked={draftScoringEnabled}
               // Task 2c: when the prerequisites aren't met (no course / no matches)
               // the row is VISIBLY disabled (dimmed), not silently unclickable — pass
               // the real toggle but mark it disabled so it reads "not available yet".
@@ -2063,7 +2072,7 @@ export function MatchGameView() {
                 title="Game Modifiers"
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
-                locked={scoringEnabled}
+                locked={draftScoringEnabled}
                 expanded={openRows.has("modifiers")}
                 // Task 3b: modifiers are an EARLY format decision (carry-over, moving
                 // tees); matches (who plays whom) is often decided the day before.
@@ -2087,7 +2096,16 @@ export function MatchGameView() {
 
             {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
                 ONE home, so the per-game danger ladder lives here too: reset scores /
-                reset settings / delete). */}
+                reset settings / delete).
+
+                The ONE control here that deliberately keeps reading the SERVER's flag
+                while everything above it follows the draft. These aren't drafted edits
+                — they're immediate, irreversible server surgery. A game that is LIVE
+                and being scored on right now must not have its scores wiped because
+                someone staged a Setup toggle they haven't saved; the gate has to
+                reflect what's actually live, not what's merely intended. Consequence
+                worth knowing: the HAS_SCORES refusal points here, so on a live scored
+                game the user Saves the disable first, THEN resets. */}
             {isOwner && gameQ.data && (
               <GameDangerZone
                 tripId={tripId}

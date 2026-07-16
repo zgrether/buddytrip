@@ -184,29 +184,20 @@ that case doesn't have to be re-derived from scratch.*
   reader normalises via `effectiveStrokes` (`?? 0`), so the two are behaviourally
   identical. Don't "fix" the encoding, and don't assert it in tests — assert the
   meaning (`hcap.get(id) ?? 0`).
-- **A live game's settings rows read the SERVER's `scoring_enabled`, not the draft.**
-  So staging Setup on a live game does NOT unlock the rows — you Save the disable
-  first, then edit. That's forced by the RPC, not a UI oversight: its `true→false`
-  branch disables and RETURNs early WITHOUT rewriting config, so config edits riding
-  the same payload as a disable would be silently discarded. Repointing
-  `settingsEditable` at the draft without changing that branch converts a clunky
-  two-step into silent data loss. See the "unlock on staged Setup" nomination below.
-
-### Game settings — unlock on a staged Setup (needs an RPC change first)
-
-The two-step above (Save the disable → rows unlock → edit → Save again) is real
-friction and worth removing, but it can't be done client-side. `save_game_config`'s
-`true→false` branch early-returns after flipping the flag, so the fix is a NEW
-migration (081 is applied — never edit it) letting that branch fall through and write
-config before disabling, with the existing `COURSE_LOCKED` / `HAS_SCORES` freeze
-guards applying to it. Then `settingsEditable` / the row `locked` props / the lock
-banner can all read `configDraft.scoringEnabled` and a staged Setup unlocks
-immediately, with one atomic Save doing both.
-
-Note the resulting semantics, which are correct but worth knowing: on a game that
-kept its scores through a disable, "flip to Setup + edit matches + Save" would be
-REFUSED as `HAS_SCORES` and the whole thing rolls back — including the disable. The
-user then cancels the match edits and saves the disable alone.
+- **The Danger zone reads the SERVER's `scoring_enabled` while everything above it
+  reads the draft.** That asymmetry is deliberate: reset-scores / reset-settings /
+  delete aren't drafted edits, they're immediate irreversible server surgery, so a
+  game that is LIVE and being scored on right now must not have its scores wiped
+  because someone staged a Setup toggle they never saved. Consequence worth knowing:
+  the `HAS_SCORES` refusal points at the Danger zone, so on a live scored game the
+  user Saves the disable first, THEN resets, then re-edits. Don't "fix" the asymmetry
+  by repointing it at the draft.
+- **A disable + a match change on a scored game is refused ATOMICALLY — the disable
+  rolls back with it** (migration 082). Correct, not a gap: a disable keeps scores, so
+  the `HAS_SCORES` guard fires, and a partial apply would be worse than an honest
+  refusal. The old two-step couldn't have done it either — the second Save hit the
+  same guard. The user resets the scores, or drops the match edits and saves the
+  disable alone.
 
 ### 2v2 per-individual handicaps
 

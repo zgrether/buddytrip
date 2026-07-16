@@ -290,16 +290,71 @@ describe("saveConfig — the scoring_enabled state machine", () => {
       })
     ).rejects.toThrow(/live/i);
 
-    // true→false disables without rewriting config — the name in that payload is ignored.
+    // true→false DISABLES AND WRITES CONFIG in one atomic save (migration 082).
+    // Under 081 this branch returned early and the name was silently dropped — which
+    // is why the settings rows couldn't unlock on a merely-staged Setup.
     await ctx.caller().games.saveConfig({
       tripId,
       gameId,
       baseHash: await hashOf(gameId),
-      payload: configDraftToPayload({ ...live, name: "Ignored On Disable", scoringEnabled: false }, live),
+      payload: configDraftToPayload({ ...live, name: "Disabled And Renamed", scoringEnabled: false }, live),
     });
     const after = await ctx.caller().games.getById({ tripId, gameId });
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
-    expect(after.name).toBe("Live guard");
+    expect(after.name).toBe("Disabled And Renamed");
+  });
+
+  it("disable + a MATCH change on a scored game is refused atomically — the disable rolls back too", async () => {
+    const gameId = await newGame("Disable with scores");
+    await goLive(gameId);
+    // A disable KEEPS scores, so this is the state the guard has to hold in.
+    await ctx.caller().scores.upsertEntry({
+      tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 4,
+    });
+
+    const live = await draftOf(gameId);
+    const paired = onePairedMatch(live);
+    await expect(
+      ctx.caller().games.saveConfig({
+        tripId,
+        gameId,
+        baseHash: await hashOf(gameId),
+        payload: configDraftToPayload(
+          { ...paired, scoringEnabled: false, matches: [{ ...paired.matches[0], b: [planner] }] },
+          paired
+        ),
+      })
+      // Actionable, and it names the real affordance — not the raw RAISE prefix.
+    ).rejects.toThrow(/Reset scores in the game's Danger zone/i);
+
+    // ATOMIC: the disable rode the same payload as the refused match edit, so it must
+    // NOT have landed. The user resets the scores, or drops the edit and saves the
+    // disable alone.
+    const after = await ctx.caller().games.getById({ tripId, gameId });
+    expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
+  });
+
+  it("disable + a non-match edit on a scored game DOES land (the guard is change-gated)", async () => {
+    const gameId = await newGame("Disable keeps scores");
+    await goLive(gameId);
+    await ctx.caller().scores.upsertEntry({
+      tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 5,
+    });
+
+    const live = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload({ ...live, name: "Renamed On Disable", rulesForToday: "no gimmes", scoringEnabled: false }, live),
+    });
+    const after = await ctx.caller().games.getById({ tripId, gameId });
+    expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
+    expect(after.name).toBe("Renamed On Disable");
+    expect((after as Record<string, unknown>).rules_for_today).toBe("no gimmes");
+    // Scores are NEVER touched by a disable — that's what makes it non-destructive.
+    const rows = (await ctx.caller().scores.listByGame({ tripId, gameId })) as unknown[];
+    expect(rows.length).toBeGreaterThan(0);
   });
 });
 
