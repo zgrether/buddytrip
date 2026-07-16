@@ -152,6 +152,53 @@ doubles), rack-n-stack, and the generic/manual formats):
   config persistence" gotcha for the adjacent (and unrelated) collapse-persist
   behavior this is easy to conflate with.
 
+### Game Settings draft-then-save — accepted divergences (logged, not bugs)
+
+*Captured from the P1 flip. These are DELIBERATE. Each looks like a defect from one
+angle, and "fixing" any of them re-opens something worse — the reasoning is here so
+that case doesn't have to be re-derived from scratch.*
+
+- **`save_game_config`'s lost-update window is accepted, not closed.** The
+  optimistic-concurrency `baseHash` is validated in the tRPC front door, OUTSIDE the
+  RPC's `FOR UPDATE` lock, so a true lost update — A checks, B checks, A writes, B
+  clobbers — stays reachable in the sub-100ms gap. `FOR UPDATE` only removes the
+  RPC-vs-RPC interleave. Human-timescale collisions (two people editing settings
+  seconds apart) ARE caught. Closing it properly needs a stored version column bumped
+  under the lock, which every other write path would then have to maintain and which
+  false-rejects when stale. Documented in the migration itself; don't "tighten" the
+  lock without reading that note.
+- **The outbox `base` and Save's `baseHash` MUST stay ONE value.** Both read the
+  single `serverHash` binding off `games.configHash`, frozen on the same
+  `anyTouched` transition. They answer two halves of one question — recover-vs-discard
+  and conflict-vs-allow — and keying them off different fingerprints makes them
+  disagree about what the base was. This shipped wrong once: the outbox was keyed on a
+  MATCHES fingerprint, so a remote COURSE change left it equal, the outbox restored,
+  the baseline re-seeded to the newer server at mount, Save's check passed, and the
+  recovered draft silently overwrote the other device. **The trap that invites the
+  wrong fix:** the hash is async, and comparing a stored base against `""` while it
+  loads deletes a good outbox entry. Gate on the hash (the outbox's `enabled` requires
+  it; the seed effect waits for it) — never re-key the outbox off something
+  synchronous.
+- **"No handicap" persists as NULL, not 0.** `save_game_config` writes
+  `NULLIF(strokes, 0)`, where the old per-row `setHandicap` wrote a literal `0`. Every
+  reader normalises via `effectiveStrokes` (`?? 0`), so the two are behaviourally
+  identical. Don't "fix" the encoding, and don't assert it in tests — assert the
+  meaning (`hcap.get(id) ?? 0`).
+- **The Danger zone reads the SERVER's `scoring_enabled` while everything above it
+  reads the draft.** That asymmetry is deliberate: reset-scores / reset-settings /
+  delete aren't drafted edits, they're immediate irreversible server surgery, so a
+  game that is LIVE and being scored on right now must not have its scores wiped
+  because someone staged a Setup toggle they never saved. Consequence worth knowing:
+  the `HAS_SCORES` refusal points at the Danger zone, so on a live scored game the
+  user Saves the disable first, THEN resets, then re-edits. Don't "fix" the asymmetry
+  by repointing it at the draft.
+- **A disable + a match change on a scored game is refused ATOMICALLY — the disable
+  rolls back with it** (migration 082). Correct, not a gap: a disable keeps scores, so
+  the `HAS_SCORES` guard fires, and a partial apply would be worse than an honest
+  refusal. The old two-step couldn't have done it either — the second Save hit the
+  same guard. The user resets the scores, or drops the match edits and saves the
+  disable alone.
+
 ### 2v2 per-individual handicaps
 
 The per-match handicap **side selector** (1v1 match play) assigns strokes to a *side*. In 2v2 best ball

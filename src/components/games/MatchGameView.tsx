@@ -49,9 +49,20 @@ import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds } from "@/lib/matchDraft";
+import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, sideMemberIds } from "@/lib/matchDraft";
+import {
+  configToDraft,
+  configDraftToPayload,
+  configDraftsEqual,
+  isDraftMatchFilled,
+  type ConfigDraft,
+  type DraftMatchConfig,
+  type DraftMatchInput,
+} from "@/lib/configDraft";
+import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
+import type { ScorecardSchema } from "@/lib/courseIndex";
 import { matchRosterValid } from "@/lib/teamRoster";
-import { GAME_TYPES } from "@/lib/gameTypes";
+import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { unconfirmedCount, type Participant, type ScoreValues, type OutcomeValues } from "@/components/games/types";
@@ -68,16 +79,42 @@ const MAX_MATCHES = 24;
 // holds each side as a list of member user ids — length ≤1 for singles, ≤2 for
 // doubles — so one code path serves both (singles is the 1-per-side case).
 type SideRef = { type: "user" | "play_group"; id: string } | null;
-interface DraftMatch {
-  matchNumber: number;
-  /** Per-match shape (Refactor A2a): 1 = 1v1, 2 = 2v2. One game can mix both — a
-   *  side is FILLED when it carries exactly this many members. */
-  playersPerSide: 1 | 2;
-  a: string[]; // member user ids on side A (≤ playersPerSide)
-  b: string[]; // member user ids on side B
-  handicap: number; // signed: <0 → a gets |n|, >0 → b gets n, 0 → even
-}
+/**
+ * The editable match row. This IS the composite draft's match shape
+ * (`DraftMatchConfig`) — not a parallel type. Draft-then-save folded the per-match
+ * points override (`pointValue`) onto the match itself, so Points derives from the
+ * DRAFT rather than `serverMatches`: a not-yet-saved match has no server id to key
+ * an override map by, and co-locating it keeps the override correct across
+ * reorder / add / remove.
+ */
+type DraftMatch = DraftMatchConfig;
 type Screen = "new" | "member-wait" | "setup" | "overview" | "score" | "config";
+
+/** Which settings rows are expanded. Multi-open (draft-then-save): a row's panel is
+ *  pure UI state now — collapsing no longer commits anything, so there's no reason
+ *  to force one open at a time. */
+type RowId = "matches" | "handicaps" | "players" | "course" | "config" | "modifiers";
+
+/**
+ * The whole settings draft as one serializable bundle — what the hard-teardown
+ * outbox stores (P1.7). `null` = that slice is untouched, mirroring the live state
+ * exactly, so a recovered bundle restores only what the user actually edited.
+ *
+ * The outbox used to hold ONLY the matches draft, which under the composite model
+ * meant a refresh recovered your pairings and silently dropped your name / points /
+ * course / rules edits — partial durability that reads as data loss.
+ */
+interface SettingsDraftBundle {
+  matches: DraftMatch[] | null;
+  name: string | null;
+  rules: string | null;
+  scoring: boolean | null;
+  entryMode: string | null;
+  modifiers: ModifiersMap | null;
+  pointsTotal: number | null;
+  course: ConfigDraft["course"] | null;
+  delegates: string[] | null;
+}
 
 /**
  * MatchGameView — the singles/doubles match-play game surface (Slice B). Walks the
@@ -137,14 +174,53 @@ export function MatchGameView() {
   // OS/mouse back are the SAME action; the deep-link path routes back through the
   // router to the leaderboard. (Aliased to `cfgOpen` — the rest of the page is
   // unchanged.)
-  const { open: cfgOpen, openConfig, closeConfig } = useGameSettingsOverlay({
+  // Draft-then-save: leaving with unsaved edits would silently bin the whole page's
+  // draft (the old model persisted per-row, so this path couldn't lose anything).
+  // `dirty` + `handleCancel` are defined far below — this hook has to be declared up
+  // here with the other screen state — so hand them over by latest-ref, which the
+  // hook reads at close time rather than at mount.
+  const dirtyRef = useRef(false);
+  const discardRef = useRef<() => void>(() => {});
+  const {
+    open: cfgOpen,
+    openConfig,
+    closeConfig,
+    confirmingClose,
+    confirmDiscard,
+    cancelClose,
+  } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
+    isDirty: () => dirtyRef.current,
+    onDiscard: () => discardRef.current(),
   });
 
   const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
-  // Setup editing state
+  // ── The composite draft's SLICES (Draft-Then-Save P1, spec §2.1) ────────────
+  // The whole settings page is ONE client draft; nothing reaches the server until
+  // Save. Each slice is `null` when UNTOUCHED, and `configDraft` (below) assembles
+  // them OVER the server mirror — so an untouched field tracks the server (incl.
+  // another device's change) while a touched one holds the user's edit.
+  //
+  // Why slices instead of one restructured object: `draft` (the matches slice) is
+  // declared here, ABOVE the mirror memo it would have to read, and the editors
+  // (MatchSetup/HandicapsSection) already write it. Promoting it in place would
+  // force a reorder that cascades through the file; assembling siblings over the
+  // mirror gets the same ONE-object read seam with a local change.
   const [draft, setDraft] = useState<DraftMatch[]>([]);
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  // "" is a legal drafted value (rules cleared) — only null means untouched, which
+  // is why every slice tests `?? mirror` rather than truthiness.
+  const [rulesDraft, setRulesDraft] = useState<string | null>(null);
+  const [scoringDraft, setScoringDraft] = useState<boolean | null>(null);
+  const [entryModeDraft, setEntryModeDraft] = useState<string | null>(null);
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
+  const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null>(null);
+  const [courseDraft, setCourseDraft] = useState<ConfigDraft["course"] | null>(null);
+  const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
+  // Surfaced when Save fails — the draft is KEPT (edits are never discarded) and
+  // the panel stays open so the reason is readable and the action retryable.
+  const [saveError, setSaveError] = useState<string | null>(null);
   // Once the user TOUCHES the draft in a setup session, the server must never
   // re-derive over it. The seed effect's `draft.length` guard alone is not enough:
   // under concurrent renders its closure can read a stale length and re-seed,
@@ -152,6 +228,8 @@ export function MatchGameView() {
   // race the accordion's instant-open exposed). A ref is always current, so it's
   // the reliable lock. Reset on every fresh seed entry (create / Edit).
   const draftTouched = useRef(false);
+  // One-shot latch for the hard-teardown outbox restore (see the seed effect).
+  const didRecoverRef = useRef(false);
   // The user-edit setter: marks the draft touched, then updates it. Use this for
   // EVERY user edit (picks, reorder, remove, add, handicap); use raw setDraft only
   // for SEEDING (create / resume / Edit), which must NOT set the touched lock.
@@ -160,22 +238,29 @@ export function MatchGameView() {
     setDraft(fn);
   };
   const [selector, setSelector] = useState<{ matchIdx: number; slot: "a" | "b"; memberIdx: number } | null>(null);
-  // Which checklist row's editor is OPEN — the accordion model's single source of
-  // truth, owned by the page so ONE panel is open at a time across EVERY row (the
-  // Matches/Handicaps/Players accordions AND the Course/Config overlays). Opening
-  // one collapses any other; collapsing a draft editor (matches/handicaps) commits
-  // it (persist-on-collapse). The one-open rule physically gates Handicaps: it
-  // can't be open while Matches is, so you set matches → collapse → open handicaps.
-  const [openRow, setOpenRow] = useState<"matches" | "handicaps" | "players" | "course" | "config" | "modifiers" | null>(null);
-  // Surfaced when a persist-on-collapse save fails — the draft is kept (edits are
-  // never discarded on a transient error), so this offers a retry rather than a
-  // silent loss.
-  const [collapseError, setCollapseError] = useState(false);
-  // Modifiers draft (golf "special rules" — config-only, W-GAMEPAGE-01 §6.5).
-  // Page-owned so the row persists on collapse like Matches/Handicaps. Seeded
-  // from the game's modifiers whenever the row is CLOSED (never mid-edit — see
-  // the seed effect below).
-  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
+  // Which rows are expanded. MULTI-OPEN (draft-then-save): the single-open accordion
+  // existed to force a commit between rows — collapsing a draft editor is what used
+  // to persist it, so two rows open at once meant a cross-row derivation could read a
+  // half-committed store. Nothing commits on collapse now (the page's one Save does),
+  // so open/close is pure UI state and any number of rows can be open. That also
+  // retires the incidental one-open gating of Handicaps behind Matches — Handicaps
+  // keeps its OWN explicit prerequisite gate (`handicapsReady`), which is the honest
+  // rule anyway.
+  const [openRows, setOpenRows] = useState<Set<RowId>>(() => new Set());
+  const toggleRow = (row: RowId) =>
+    setOpenRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(row)) next.delete(row);
+      else next.add(row);
+      return next;
+    });
+  const closeRow = (row: RowId) =>
+    setOpenRows((prev) => {
+      if (!prev.has(row)) return prev;
+      const next = new Set(prev);
+      next.delete(row);
+      return next;
+    });
   // Back-stack: forward transitions push the screen they left; Back pops to it.
   // Empty stack means we arrived directly (derived screen) → leave to trip home.
   const [navStack, setNavStack] = useState<Screen[]>([]);
@@ -291,15 +376,17 @@ export function MatchGameView() {
   } = useOutcomeSaver(tripId, gameId, () => void outcomesQ.refetch());
 
   const createGame = trpc.games.create.useMutation();
+  // Still the NEW-GAME path's course apply (handleCreate snapshots the picked course
+  // onto the just-created game). The SETTINGS page no longer calls it — course is a
+  // draft slice there, committed by save_game_config.
   const applyCourse = trpc.games.applyCourse.useMutation();
-  const setPairings = trpc.matches.setPairings.useMutation();
-  const setHandicap = trpc.matches.setHandicap.useMutation();
-  const enableScoring = trpc.matches.enableScoring.useMutation();
-  // Phase 2B.1: Disable scoring — close to the crew, back to setup, scores kept.
-  const disableScoring = trpc.games.disableScoring.useMutation();
-  // Modifiers (golf "special rules" — config-only, W-GAMEPAGE-01 §6.5). Persisted
-  // via games.update on accordion-collapse; presence-model jsonb (lib/modifiers).
-  const updateModifiers = trpc.games.update.useMutation();
+  // (setPairings / setHandicap / matches.enableScoring / games.disableScoring /
+  // games.update-for-modifiers are GONE from this page. Every one of them was a
+  // piecemeal settings write; `save_game_config` replaces the lot with one atomic
+  // commit, and `scoring_enabled` rides the same payload rather than a second
+  // round-trip. The routers themselves stay — other surfaces still use them, and
+  // matches.setHandicap / matches.setPointValue remain the deliberate CORRECTIONS
+  // late-edit path, which this refactor does not touch.)
   // Finishing retries (idempotent recompute); a failure stays on the overview
   // and surfaces via the global error toast — loud + retryable, not a silent
   // stall. Score writes go through useScoreSaver (above).
@@ -363,10 +450,21 @@ export function MatchGameView() {
   // longer goes Live — first score does, #396). The owner lands on the overview
   // once enabled (or active/complete); members see it once enabled (= published).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
+  // The DRAFT's live flag — `configDraft.scoringEnabled` by construction, computed
+  // here because the settings lock is derived ~240 lines above the composite memo.
+  // configDraft reads THIS, so there is exactly one definition.
+  const draftScoringEnabled = scoringDraft ?? scoringEnabled;
   // #501: game-altering config (matches/course/points/handicaps/modifiers) freezes
   // in scoring mode. MatchSetup/HandicapsSection have no read-only mode, so their
   // rows go non-expandable; GameSetupRows/ModifierCards take settingsEditable directly.
-  const settingsEditable = canEdit && !scoringEnabled;
+  //
+  // Follows the DRAFT (migration 082): staging Setup unlocks the rows immediately, so
+  // one atomic Save disables AND re-configures. This was only safe once 082 landed —
+  // 081's true→false branch disabled and RETURNed early WITHOUT writing config, so
+  // unlocking on a staged Setup would have silently dropped every edit riding that
+  // same payload. 082 lets the branch fall through, under the existing course/matches
+  // freeze guards. Don't repoint this back at the server flag without re-reading them.
+  const settingsEditable = canEdit && !draftScoringEnabled;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
@@ -465,56 +563,101 @@ export function MatchGameView() {
     return m;
   }, [serverParticipants, serverPlayGroups]);
 
-  // Draft durability (Layer 2 — hard-teardown outbox). The in-app flush net
-  // already persists a completed draft on every in-app exit; this mirrors the
-  // in-progress draft to localStorage so a refresh / tab-close / OS-kill /
-  // background can't lose it (incomplete drafts too). `serverFingerprint` is the
-  // persisted state the draft diverged from — the no-clobber guard for recover().
-  const serverFingerprint = useMemo(
-    () => JSON.stringify(serverDraftFrom(serverMatches, handicapOf, membersOfSide)),
-    [serverMatches, handicapOf, membersOfSide]
+  // Has the user touched ANY slice? Drives the outbox mirror below AND freezes the
+  // baseline/baseHash further down — one definition, so "dirty enough to protect"
+  // and "dirty enough to freeze the base" can't drift apart.
+  const anyTouched =
+    draftTouched.current ||
+    nameDraft !== null || rulesDraft !== null || scoringDraft !== null ||
+    entryModeDraft !== null || modifiersDraft !== null || pointsTotalDraft !== null ||
+    courseDraft !== null || delegatesDraft !== null;
+
+  // Draft durability (Layer 2 — hard-teardown outbox). The in-app net (now the
+  // confirm-on-leave gate) covers every IN-APP exit; this mirrors the in-progress
+  // draft to localStorage so a refresh / tab-close / OS-kill / background can't lose
+  // it (incomplete drafts too — those never reach the server at all).
+  //
+  // It stores the WHOLE composite now, not just the matches slice: under
+  // draft-then-save a matches-only outbox recovered your pairings and silently
+  // dropped the name / points / course / rules edits made in the same sitting.
+  const draftBundle = useMemo<SettingsDraftBundle>(
+    () => ({
+      matches: draftTouched.current ? draft : null,
+      name: nameDraft,
+      rules: rulesDraft,
+      scoring: scoringDraft,
+      entryMode: entryModeDraft,
+      modifiers: modifiersDraft,
+      pointsTotal: pointsTotalDraft,
+      course: courseDraft,
+      delegates: delegatesDraft,
+    }),
+    [draft, nameDraft, rulesDraft, scoringDraft, entryModeDraft, modifiersDraft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
-  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<DraftMatch[]>({
+  // The SERVER-produced config hash. Declared here, above the outbox, because the
+  // outbox's `base` and Save's `baseHash` MUST BE ONE VALUE — captured once and fed
+  // to both. Same query + key `useConfigSync` polls, so it shares that cache and
+  // costs no extra round-trip.
+  //
+  // Why one value: they answer two halves of the same question. The outbox's base
+  // decides recover-vs-discard ("did the server move since this draft diverged?");
+  // baseHash decides conflict-vs-allow ("is the state I opened with still current?").
+  // Key them off DIFFERENT fingerprints and they disagree about what the base was —
+  // e.g. a matches-only fingerprint ignores a remote COURSE change, so the outbox
+  // happily restores, the baseline re-seeds to the newer server at mount, Save's
+  // check passes, and the recovered draft silently overwrites the other device.
+  const hashQ = trpc.games.configHash.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
+  const serverHash = hashQ.data?.hash;
+  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<SettingsDraftBundle | DraftMatch[]>({
     view: "match",
     gameId,
-    draft,
-    touched: draftTouched.current,
-    serverFingerprint,
-    enabled: !!gameId && !scoringEnabled,
+    draft: draftBundle,
+    touched: anyTouched,
+    // The hook tracks this while untouched and freezes it at the first edit —
+    // exactly when `baseline` freezes, off the same query. So the stored base IS the
+    // baseHash the eventual Save is judged against.
+    serverFingerprint: serverHash ?? "",
+    // Never mirror before the hash lands: an entry stored with base "" could never
+    // be recovered (it would compare unequal to every real hash and delete itself).
+    //
+    // Gated on the DRAFT's flag, not the server's: now that staging Setup unlocks the
+    // rows (082), edits made against a still-live game are real drafted work and a
+    // refresh must not lose them. The old server gate existed because the outbox fed
+    // setPairings writes — nothing auto-writes from it any more, it only restores a
+    // draft, so mirroring a staged-Setup game is safe. An untouched live game still
+    // mirrors nothing: its rows are locked, so there's nothing to protect.
+    enabled: !!gameId && !draftScoringEnabled && !!serverHash,
   });
 
-  // A2b Total Points — the PAIRED server matches resolved to display players + each
-  // match's per-match override (game_matches.point_value). Paired-only, so it's the
-  // same denominator the award/leaderboard use. Feeds the Total Points row's override
-  // panel (shared MatchupChips renderer) + the game-page projection's per-match value.
-  const pointsMatches = useMemo<PointsMatch[]>(() => {
-    const memberList = (side: { type: string; id: string } | null): string[] =>
-      side ? (membersOfSide.has(side.id) ? membersOfSide.get(side.id) ?? [] : [side.id]) : [];
-    const toPlayers = (ids: string[]): SidePlayer[] =>
-      ids.map((u) => ({ id: u, name: nameOf.get(u) ?? "Player", teamColor: teamColorOf(u) ?? colorOf.get(u) ?? PLAYER_COLORS[0] }));
-    return serverMatches
-      .filter((mm) => (mm as { side_a: unknown; side_b: unknown }).side_a && (mm as { side_b: unknown }).side_b)
-      .map((mm) => {
-        const row = mm as { id: string; match_number: number | null; side_a: { type: string; id: string } | null; side_b: { type: string; id: string } | null; point_value: number | null };
-        return {
-          id: row.id,
-          number: row.match_number ?? 0,
-          aPlayers: toPlayers(memberList(row.side_a)),
-          bPlayers: toPlayers(memberList(row.side_b)),
-          pointValue: row.point_value ?? null,
-        };
-      });
-    // teamColorOf/colorOf/nameOf are per-render closures over memoized maps; react to
-    // the underlying data instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverMatches, membersOfSide, nameOf, colorOf, teamById, teamOfUser, twoTeams]);
-
   // matchId → override, for the game-page projection (per-match award value).
+  // DELIBERATELY still keyed off `serverMatches`, not the draft: this feeds the
+  // OVERVIEW's header projection, which only renders in scoring mode — where the
+  // settings draft is frozen and the server IS the truth — and it keys by SERVER
+  // match id (`groups[].matchId`), which a drafted match doesn't have. Repointing it
+  // at the draft would break it on the one screen it's used. (The §1 two-store
+  // hazard is about SETTINGS rows deriving from two stores; this isn't one.)
   const pointValueByMatch = useMemo(() => {
     const m = new Map<string, number | null>();
     for (const mm of serverMatches) m.set((mm as { id: string }).id, ((mm as { point_value: number | null }).point_value) ?? null);
     return m;
   }, [serverMatches]);
+
+  // This game's delegates (per-game organizers) — a REAL slice of the composite
+  // draft, not a placeholder. `save_game_config` replaces the delegate list from
+  // the payload for an Owner/Organizer, so the mirror MUST carry the persisted
+  // list: seeding it `[]` would make every Organizer's Save silently revoke the
+  // game's delegate. Same query key GameIdentityHeader reads → shared cache.
+  const orgQ = trpc.games.listOrganizers.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId }
+  );
+  const serverDelegates = useMemo(
+    () => ((orgQ.data as { user_id: string }[] | undefined) ?? []).map((o) => o.user_id),
+    [orgQ.data]
+  );
 
   // Default total = players per team (total competition players ÷ teams) — the
   // first-setup default the Total Points row persists (behavior only, §3).
@@ -524,6 +667,257 @@ export function MatchGameView() {
     if (teamCount === 0 || totalPlayers === 0) return 0;
     return Math.round(totalPlayers / teamCount);
   }, [assignQ.data, teams.length]);
+
+  // ── The SERVER MIRROR (Draft-Then-Save P1, spec §1/§2.1) ────────────────────
+  // The persisted config as one ConfigDraft. Every untouched slice reads through
+  // THIS, so an unedited field still tracks the server (incl. a remote change the
+  // #16 hash-poll pulls in) instead of freezing at mount.
+  const serverConfigDraft = useMemo<ConfigDraft>(() => {
+    const matchInputs: DraftMatchInput[] = (serverMatches as {
+      match_number: number | null; side_a: SideRef; side_b: SideRef; point_value: number | null;
+    }[]).map((mm, i) => {
+      const playersPerSide: 1 | 2 =
+        mm.side_a?.type === "play_group" || mm.side_b?.type === "play_group" ? 2 : 1;
+      const hcA = mm.side_a?.id ? (handicapOf.get(mm.side_a.id) ?? 0) : 0;
+      const hcB = mm.side_b?.id ? (handicapOf.get(mm.side_b.id) ?? 0) : 0;
+      return {
+        matchNumber: mm.match_number ?? i + 1,
+        playersPerSide,
+        a: sideMemberIds(mm.side_a, membersOfSide),
+        b: sideMemberIds(mm.side_b, membersOfSide),
+        handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0,
+        pointValue: mm.point_value ?? null,
+      };
+    });
+    const base = configToDraft(
+      (gameQ.data ?? {}) as Parameters<typeof configToDraft>[0],
+      matchInputs,
+      serverDelegates
+    );
+    // First-setup points default, folded into the MIRROR (not a draft edit) so it
+    // lands in the baseline too — opening settings on a fresh game must not read as
+    // dirty. This REPLACES the deleted reconcile effect's default-seed: the total is
+    // now established by the first Save that happens for another reason (going live
+    // is always one), not auto-persisted the moment the row renders. Competition
+    // games only — a standalone match has no points at all.
+    if (gameCompId && base.pointsTotal == null && defaultTotal > 0) base.pointsTotal = defaultTotal;
+    return base;
+  }, [serverMatches, membersOfSide, handicapOf, gameQ.data, serverDelegates, gameCompId, defaultTotal]);
+
+  // ── The COMPOSITE draft — the ONE object every derivation and Save reads ─────
+  // Slices OVER the mirror. This is the read seam §1 is about: no settings row may
+  // derive from `serverMatches` (the two-store hazard that only worked because the
+  // single-open accordion force-committed between rows).
+  const configDraft = useMemo<ConfigDraft>(
+    () => ({
+      ...serverConfigDraft,
+      name: nameDraft ?? serverConfigDraft.name,
+      rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
+      scoringEnabled: draftScoringEnabled, // === scoringDraft ?? serverConfigDraft.scoringEnabled
+      entryMode: entryModeDraft ?? serverConfigDraft.entryMode,
+      modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
+      // The matches slice is guarded by the SAME `draftTouched` lock the seed effect
+      // uses: until the user edits, `draft` is either unseeded ([] off the settings
+      // page) or a copy of the server, so the mirror is the honest read. The ref is
+      // safe in a memo here because it only ever flips in the same commit as a
+      // `setDraft` (editDraft does both), which is already a dep.
+      matches: draftTouched.current ? draft : serverConfigDraft.matches,
+      pointsTotal: pointsTotalDraft ?? serverConfigDraft.pointsTotal,
+      course: courseDraft ?? serverConfigDraft.course,
+      delegates: delegatesDraft ?? serverConfigDraft.delegates,
+    }),
+    [serverConfigDraft, nameDraft, rulesDraft, draftScoringEnabled, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
+  );
+
+  // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
+  // The dirty check's reference point AND the optimistic-concurrency base, captured
+  // in ONE shot from the same render's mirror + the SERVER-produced hash.
+  //
+  // Both must freeze the moment the draft is touched. If the ~20s poll refreshed the
+  // baseHash mid-edit, the conflict check would defeat itself: A saves → my poll
+  // lands → my base becomes A's POST-save hash → my Save passes its check → I
+  // silently clobber A. Freezing means my Save is judged against the state I
+  // actually opened with.
+  //
+  // The hash is the server's own (`games.configHash`, declared up with the outbox
+  // because BOTH must key off the same value) — never recomputed client-side,
+  // because `saveConfig` re-derives it via the shared readGameConfigHash and the two
+  // must be byte-identical.
+  const [baseline, setBaseline] = useState<{ draft: ConfigDraft; hash: string } | null>(null);
+  useEffect(() => {
+    if (anyTouched) return; // frozen while dirty — see above
+    if (!gameQ.data || !serverHash) return;
+    setBaseline((prev) =>
+      prev && prev.hash === serverHash && configDraftsEqual(prev.draft, serverConfigDraft)
+        ? prev // no churn — keep the identity stable so `dirty` doesn't thrash
+        : { draft: serverConfigDraft, hash: serverHash },
+    );
+    // `serverHash` (not hashQ.data) — the SAME binding the outbox's base reads, so
+    // the two can't drift apart. Both freeze on this `anyTouched` transition.
+  }, [anyTouched, serverConfigDraft, serverHash, gameQ.data]);
+
+  // Save is enabled iff something really changed (pure whole-page equality).
+  const dirty = !!baseline && !configDraftsEqual(configDraft, baseline.draft);
+  // Did a Save actually land in THIS session? The clean state has two very different
+  // causes — "your changes were written" and "your changes were thrown away" (Cancel)
+  // or simply "you haven't touched anything yet" — and only the first one may claim a
+  // save happened. Cleared the moment the draft goes dirty again.
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
+
+  // ── Course, drafted (spec §2.2 Design A: the CLIENT pre-computes the snapshot) ─
+  // Each handler runs the SAME shared pure derivation the server's applyCourse /
+  // setBackNine / clearCourse run, then stages the result — so a drafted course and
+  // an immediately-applied one can't drift (CLAUDE.md #8). The `courses` row is
+  // fetched imperatively (shared tRPC cache — the row is already warm from the
+  // picker in the common case).
+  const [courseBusy, setCourseBusy] = useState(false);
+  const gameTypeId = (gameQ.data?.game_type_id as string | undefined) ?? "";
+
+  const applyFrontToDraft = (courseId: string, teeName?: string) => {
+    if (!gameTypeId) return;
+    setCourseBusy(true);
+    void (async () => {
+      try {
+        const course = await utils.courses.getById.fetch({ courseId });
+        const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, gameTypeId, teeName);
+        if (!snap.ok) {
+          setSaveError(
+            snap.reason === "bad_index"
+              ? "That course's stroke index isn't a valid permutation — fix it before use."
+              : "That game type has no scorecard to snapshot onto."
+          );
+          return;
+        }
+        // A fresh front RESETS any prior two-nines back ref (mirrors applyCourse's
+        // `back_course_id: null`) — a 9-hole course lands as a lone front that
+        // "needs a back nine" until one is composed.
+        setSaveError(null);
+        setCourseDraft({ id: courseId, backId: null, scorecardSchema: snap.schema });
+      } catch {
+        setSaveError("Couldn’t load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+      }
+    })();
+  };
+
+  const applyBackToDraft = (backCourseId: string, backTeeName?: string) => {
+    if (!gameTypeId) return;
+    setCourseBusy(true);
+    void (async () => {
+      try {
+        const back = await utils.courses.getById.fetch({ courseId: backCourseId });
+        const res = buildComposedCourseSnapshot(
+          {
+            // Compose onto the DRAFT's front, not the server's — the front may itself
+            // be an unsaved pick from this same session.
+            frontSchema: configDraft.course.scorecardSchema as ScorecardSchema | null,
+            hasBackRef: !!configDraft.course.backId,
+            backCourse: back as unknown as CourseSnapshotInput,
+          },
+          gameTypeId,
+          backTeeName
+        );
+        if (!res.ok) {
+          setSaveError(
+            res.reason === "back_not_nine"
+              ? "The back nine must be a 9-hole course."
+              : res.reason === "bad_back_index"
+                ? "That course's stroke index isn't a valid permutation — fix it before use."
+                : "This isn’t a 9-hole front — it doesn’t take a back nine."
+          );
+          return;
+        }
+        setSaveError(null);
+        setCourseDraft({ id: configDraft.course.id, backId: backCourseId, scorecardSchema: res.schema });
+      } catch {
+        setSaveError("Couldn’t load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+      }
+    })();
+  };
+
+  // Drop just the back nine = re-snapshot the FRONT alone (exactly what the server
+  // path does — it re-runs applyCourse with the front), which shrinks the schema
+  // back to 9 and clears the back ref → the "needs a back nine" state.
+  const removeBackNineFromDraft = () => {
+    const frontId = configDraft.course.id;
+    if (!frontId) return;
+    const teeName = ((configDraft.course.scorecardSchema as { units?: { metadata?: { tee?: { name?: string } } } } | null)
+      ?.units?.metadata?.tee?.name ?? "").trim();
+    applyFrontToDraft(frontId, teeName || undefined);
+  };
+
+  // Clearing reverts the schema to the format's CODE-defined base template — NOT
+  // null. `clearCourse` does exactly this; drafting null instead would strip the
+  // game of its scorecard entirely.
+  const clearCourseInDraft = () => {
+    setSaveError(null);
+    setCourseDraft({
+      id: null,
+      backId: null,
+      scorecardSchema: getGameTypeDefinition(gameTypeId)?.scorecardSchema ?? null,
+    });
+  };
+
+  // The game row as the DRAFT sees it — the course rows render pending state from
+  // this, so an unsaved pick shows exactly as it will persist.
+  const draftGameRow = useMemo(
+    () =>
+      ({
+        ...(gameQ.data as unknown as GameRow),
+        name: configDraft.name,
+        course_id: configDraft.course.id,
+        back_course_id: configDraft.course.backId,
+        scorecard_schema: configDraft.course.scorecardSchema,
+      }) as GameRow,
+    [gameQ.data, configDraft.name, configDraft.course]
+  );
+
+  // ── Total Points, off the DRAFT (A2b + Draft-Then-Save) ─────────────────────
+  // Both staging adapters are GONE. The points write adapter (mutations +
+  // persistEvenShare + bumpPointsBoard + the lifted reconcile + localTotalRef) and
+  // the rules blur adapter (commitRules + updateGameM) were scaffolding that
+  // reproduced the old per-click writes while the components went controlled; the
+  // handlers below are plain draft edits and the page's ONE Save persists them.
+  //
+  // That deletion is what kills the reconcile's auto-persist: the even share is no
+  // longer written from a render at all — `configDraftToPayload` derives it ONCE,
+  // at write time, from the FINAL draft, so it can't be computed off a stale match
+  // count (P1.4 falls out of this).
+  //
+  // The paired DRAFT matches resolved to display players + each match's override.
+  // Paired-only, so it's the same denominator the award/leaderboard use. Keyed by
+  // DRAFT INDEX, never a server match id — an unsaved match has none, and the
+  // override travels ON its match (`pointValue`), so add/remove/reorder can't
+  // mis-attribute it.
+  const pointsMatches = useMemo<PointsMatch[]>(() => {
+    const toPlayers = (ids: string[]): SidePlayer[] =>
+      ids.map((u) => ({ id: u, name: nameOf.get(u) ?? "Player", teamColor: teamColorOf(u) ?? colorOf.get(u) ?? PLAYER_COLORS[0] }));
+    return configDraft.matches
+      .map((m, i) => ({ m, i }))
+      .filter(({ m }) => isDraftMatchFilled(m))
+      .map(({ m, i }) => ({
+        id: String(i), // the DRAFT index — the row's key + what onOverrideChange routes back
+        number: i + 1,
+        aPlayers: toPlayers(m.a),
+        bPlayers: toPlayers(m.b),
+        pointValue: m.pointValue,
+      }));
+    // teamColorOf/colorOf/nameOf are per-render closures over memoized maps; react to
+    // the underlying data instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configDraft.matches, nameOf, colorOf, teamById, teamOfUser, twoTeams]);
+
+  const onPointsTotalChange = (next: number) => setPointsTotalDraft(next);
+  const onPointsOverrideChange = (draftIdx: string, value: number | null) => {
+    const idx = Number(draftIdx);
+    editDraft((prev) => prev.map((m, i) => (i === idx ? { ...m, pointValue: value } : m)));
+  };
 
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
@@ -663,16 +1057,47 @@ export function MatchGameView() {
     // query as the matches being seeded), not `gameQ.data.game_type_id`, so shape
     // and matches are always consistent. This gate remains only so the seed reads
     // a loaded game row for its other fields.
-    if (gameId && !gameQ.data) return;
-    // Hard-teardown recovery (Layer 2): if an outbox draft survived a
-    // refresh/kill AND the server is unchanged since it diverged, restore it and
-    // mark it touched — so the in-app net persists it and the server seed below
-    // never clobbers it. A stale outbox (server moved on) returns null + clears.
-    const recovered = recoverDraft();
-    if (recovered && recovered.length > 0) {
-      draftTouched.current = true;
-      setDraft(recovered);
-      return;
+    //
+    // Wait for the config HASH too: it's the outbox's base, so recovering before it
+    // lands would compare a stored base against "" — discarding (and deleting) a
+    // perfectly good draft. It batches with the queries above, so this costs nothing
+    // in practice. Gating the WHOLE effect (not just the recover) matters: the server
+    // seed below fills `draft`, and the `draft.length > 0` guard would then stop the
+    // effect ever re-entering to recover.
+    if (gameId && (!gameQ.data || !serverHash)) return;
+    // Hard-teardown recovery (Layer 2): if an outbox draft survived a refresh/kill
+    // AND the server is unchanged since it diverged, restore it. A stale outbox
+    // (server moved on) returns null + clears itself. One-shot — restoring a
+    // NON-matches slice (a name edit, say) leaves `draft` empty, so without this the
+    // effect would re-enter and re-apply the bundle on every server tick.
+    if (!didRecoverRef.current) {
+      didRecoverRef.current = true;
+      const recovered = recoverDraft();
+      if (recovered) {
+        // A bundle written BEFORE the composite outbox stored the bare matches
+        // array — restore it as a matches-only bundle rather than dropping it.
+        const bundle: SettingsDraftBundle = Array.isArray(recovered)
+          ? { matches: recovered, name: null, rules: null, scoring: null, entryMode: null, modifiers: null, pointsTotal: null, course: null, delegates: null }
+          : recovered;
+        if (bundle.name !== null) setNameDraft(bundle.name);
+        if (bundle.rules !== null) setRulesDraft(bundle.rules);
+        if (bundle.scoring !== null) setScoringDraft(bundle.scoring);
+        if (bundle.entryMode !== null) setEntryModeDraft(bundle.entryMode);
+        if (bundle.modifiers !== null) setModifiersDraft(bundle.modifiers);
+        if (bundle.pointsTotal !== null) setPointsTotalDraft(bundle.pointsTotal);
+        if (bundle.course !== null) setCourseDraft(bundle.course);
+        if (bundle.delegates !== null) setDelegatesDraft(bundle.delegates);
+        if (bundle.matches && bundle.matches.length > 0) {
+          // Mark touched so the server seed below never clobbers the restore.
+          draftTouched.current = true;
+          // Normalize `pointValue`: a draft written to localStorage BEFORE the flip
+          // predates that field and recovers as `undefined` — which the Save
+          // payload's `pointValue: number | null` rejects at the zod boundary
+          // (undefined is dropped by JSON, not coerced to null). Default it.
+          setDraft(bundle.matches.map((m) => ({ ...m, pointValue: m.pointValue ?? null })));
+          return;
+        }
+      }
     }
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide));
@@ -682,30 +1107,16 @@ export function MatchGameView() {
     // valid empty state (the table hides; only "Add match" shows). "+ Add match"
     // grows it from there (build-as-you-go — W-GAMEPAGE-01 §6.1).
     setDraft([]);
-  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data, recoverDraft]);
+  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data, serverHash, recoverDraft]);
 
-  // Seed the modifiers draft from the server — but ONLY while the row is closed,
-  // so an in-progress edit is never clobbered. On collapse the row persists +
-  // optimistically updates the game cache, so this re-syncs to the same value
-  // (and picks up any external change while closed). Mirrors the draft seed.
-  useEffect(() => {
-    if (openRow === "modifiers") return;
-    setModifiersDraft(((gameQ.data?.modifiers as ModifiersMap | null) ?? {}));
-  }, [gameQ.data?.modifiers, openRow]);
-
-  // After a +1/−1 (or initial create): re-pull the game's matches AND refresh
-  // the competition board so "first to XX" / "X of Y" recompute ON SCREEN. The
-  // board has no realtime sub (only a 30s poll) and re-seeds competitions.
-  // leaderboard FROM faceBootstrap on mount, so invalidate BOTH (CLAUDE.md #10),
-  // else the goalpost reads stale until the poll.
-  async function refreshAfterMatchCountChange() {
-    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
-    if (competitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
-      utils.games.listByTrip.invalidate({ tripId: tripId! });
-      utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
-    }
-  }
+  // (The modifiers seed effect is GONE. It existed because `modifiersDraft` was a
+  // server MIRROR that had to be re-synced whenever the row was closed and skipped
+  // mid-edit. As a null-when-untouched slice it needs no seed at all: untouched
+  // reads the mirror through `configDraft` — which also picks up a remote change
+  // for free — and touched holds the edit until Save. This is what retires
+  // CLAUDE.md #17's persist-on-COLLAPSE hazard for this page: an edit can no longer
+  // be silently discarded by leaving the row open, because collapsing was never
+  // what saved it.)
 
   // ── Actions ──────────────────────────────────────────────────────────
   async function handleCreate() {
@@ -741,220 +1152,141 @@ export function MatchGameView() {
     openConfig();
   }
 
-  // Tee off — the advance affordance. It's a SIGNAL, not a gate: clickable while
-  // slots are unfilled. With every slot filled it commits straight through; with
-  // some unfilled it confirms the collapse first (the game drops to the filled
-  // count and the cup clinch shifts — a surfaced consequence, not a scold). With
-  // nothing filled there's no match to play, so it's a no-op.
-  function attemptReady() {
-    // Hard block (W-GAMEPAGE-01 §6.1/§7): every match must be fully paired — the
-    // Enable button is disabled while any slot is empty, so this is a guard, not a
-    // gate. (No more collapse-on-incomplete: an empty match is an unfinished add,
-    // resolved by filling or removing it — not auto-dropped.)
-    if (draft.length === 0 || filledDraft.length !== draft.length) return;
-    // Collapse any open row WITHOUT re-firing persist-on-collapse (raw setter).
-    setOpenRow(null);
-    void commitReady();
-  }
+  // ── THE SAVE (Draft-Then-Save P1, spec §2.7) ────────────────────────────────
+  // The ONE commit path for the whole settings page. Everything that used to write
+  // piecemeal — persist-on-collapse (matches/handicaps), persist-on-collapse
+  // (modifiers), rules-on-blur, points-per-click, course-on-pick, entry-mode-on-tap,
+  // name-on-blur, delegate-on-pick, and the saveSetup()+enableScoring two-step — is
+  // now one atomic `save_game_config` RPC.
+  //
+  // `scoring_enabled` is a DRAFT FIELD, not a separate transaction: Save commits the
+  // config AND goes live / disables in the same all-or-nothing write. The RPC asserts
+  // readiness POST-write inside its tx, so a not-ready go-live rolls the whole thing
+  // back — no half-configured live game.
+  const saveConfigM = trpc.games.saveConfig.useMutation();
 
-  // Persist the pairings + handicaps for the FILLED matches — WITHOUT enabling
-  // scoring (the config-checklist decouple). Operates on `filledDraft` ONLY —
-  // unfilled slots are discarded (setPairings clean-replaces, so dropped rows are
-  // gone and the board recomputes points-in-play / clinch from the filled count).
-  // This is exactly what commitReady used to persist, minus the enableScoring — so
-  // a standalone Save carries everything (pairings AND the per-match handicaps).
-  // Returns false when there's nothing to save (no full match).
-  async function saveSetup(): Promise<boolean> {
-    if (!tripId || !gameId) return false;
-    const matches = filledDraft;
-    if (matches.length === 0) return false;
-    // ONE unified per-match write (A2a): each match carries its own shape via the
-    // members-per-side; the server mints a play_group only for a 2-member side.
-    const saved = await setPairings.mutateAsync({
-      tripId,
-      gameId,
-      matches: matches.map((d, i) => ({
-        playersPerSide: d.playersPerSide,
-        sideA: { members: d.a },
-        sideB: { members: d.b },
-        matchNumber: i + 1,
-      })),
-    });
-    // Handicap goes to the recipient SIDE by id — a user id (1v1) or the minted
-    // play_group id (2v2); the server resolves the table from the side's type.
-    const handicapWrites = matches.flatMap((d, i) => {
-      const row = saved[i] as { id: string; side_a: SideRef; side_b: SideRef } | undefined;
-      if (!row || d.handicap === 0) return [];
-      const recipient = d.handicap < 0 ? row.side_a : row.side_b;
-      if (!recipient?.id) return [];
-      return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientId: recipient.id, strokes: Math.abs(d.handicap) })];
-    });
-    await Promise.all(handicapWrites);
-    return true;
-  }
-
-  // ("Configure now, open later" no longer needs an explicit Save — collapsing a
-  // draft editor persists it via persistDraftOnCollapse, so leaving the checklist
-  // with rows collapsed has already saved everything.)
-
-  // Enable scoring = save THEN enable, then STAY on the settings page in place
-  // (#512 correction: flipping the toggle changes the mode here, it does NOT
-  // navigate — the user reads the now-live banner + locked panels and uses the back
-  // arrow to return when ready). The save carries the full config; enabling is the
-  // separate, readiness-gated step. Optimistically flip scoring_enabled in the game
-  // cache so the banner + lock appear without waiting on a refetch (#459); the
-  // board refresh runs AFTER enableScoring so the leaderboard/overview reflect it.
-  async function commitReady() {
-    if (!tripId || !gameId) return;
-    const ok = await saveSetup();
-    if (!ok) return;
-    clearDraftOutbox(); // durably persisted on Enable → drop the teardown copy
-    await enableScoring.mutateAsync({ tripId, gameId });
-    const cur = utils.games.getById.getData({ tripId, gameId });
-    if (cur) {
-      utils.games.getById.setData({ tripId, gameId }, { ...cur, scoring_enabled: true } as typeof cur);
+  // The board cascade, run ONLY when Save flips `scoring_enabled`. A config-only
+  // save can't change the leaderboard (the game isn't live, so it contributes
+  // nothing), so it takes the LEAN path instead — see handleSave.
+  async function refreshAfterMatchCountChange() {
+    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
+      utils.games.listByTrip.invalidate({ tripId: tripId! });
+      utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
     }
-    await refreshAfterMatchCountChange();
-    // No closeConfig() — the overlay stays open so the toggle flips in place. The
-    // back arrow (closeConfig → history.back) still pops the openConfig entry → game
-    // page, so the user is never stranded.
   }
 
-  // ── Accordion control (one panel open at a time) ──────────────────────────
-  // Persist-on-collapse: closing a draft editor (Matches/Handicaps) commits its
-  // pairings + handicaps in the BACKGROUND. The row already reads resolved from
-  // the client draft (optimistic — the check/value land on tap, not on the
-  // server return); this just syncs it. No-op until a real match exists. On
-  // failure the draft is KEPT (never discard edits) and an inline retry surfaces.
-  async function persistDraftOnCollapse() {
-    if (filledDraft.length === 0) {
-      // Nothing filled — persist the EMPTY shape so it SURVIVES reload (saveSetup's
-      // filled-only write would skip it and the server would keep the old players —
-      // the revert-on-reload bug). Two sub-cases, both handled here:
-      //   • draft === []  → 0 matches (deleted the last one); persist [].
-      //   • all rows empty → persist the null-sided rows.
-      // `every` is true on an empty array, so this covers both. A transient
-      // half-filled slot is left unpersisted (existing behavior), never wiped.
-      // saveSetup stays filled-only: it's also the Enable gate's "ready" signal.
-      const allEmpty = draft.every((m) => m.a.length === 0 && m.b.length === 0);
-      if (!allEmpty || !tripId || !gameId) return;
-      try {
-        const empty = draft.map((d, i) => ({ playersPerSide: d.playersPerSide, sideA: null, sideB: null, matchNumber: i + 1 }));
-        await setPairings.mutateAsync({ tripId, gameId, matches: empty });
-        setCollapseError(false);
-        clearDraftOutbox(); // durably persisted → drop the teardown copy
-        if (competitionId) {
-          utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-          utils.games.listByTrip.invalidate({ tripId });
-          utils.competitions.faceBootstrap.invalidate({ tripId });
-        }
-      } catch {
-        setCollapseError(true);
-      }
+  /** Drop every slice back to "untouched" so the composite re-mirrors the just-saved
+   *  server state and the baseline/baseHash re-seed from the next read.
+   *
+   *  `matches` seeds the matches slice with what we just SAVED rather than `[]`: the
+   *  seed effect only fires into an EMPTY draft, so blanking it would leave the
+   *  Matches panel showing "no matches" until the refetch landed. Passing the saved
+   *  set keeps the panel showing exactly what's now on the server, with no flash. It
+   *  also preserves any UNFILLED rows the user is still building — `configDraftToPayload`
+   *  never persists those, and blowing them away as a side effect of an unrelated Save
+   *  would silently discard an in-progress add. */
+  function resetSlices(matches: DraftMatch[]) {
+    draftTouched.current = false;
+    setDraft(matches.map((m) => ({ ...m, a: [...m.a], b: [...m.b] })));
+    setNameDraft(null);
+    setRulesDraft(null);
+    setScoringDraft(null);
+    setEntryModeDraft(null);
+    setModifiersDraft(null);
+    setPointsTotalDraft(null);
+    setCourseDraft(null);
+    setDelegatesDraft(null);
+  }
+
+  async function handleSave() {
+    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending) return;
+    setSaveError(null);
+    // `baseline.draft` is what makes matchesDirty honest (an untouched match set
+    // must NOT trigger the RPC's clean-replace — that's what lets a game which kept
+    // its scores through a disable still be edited and re-enabled).
+    const payload = configDraftToPayload(configDraft, baseline.draft);
+    // ONE captured value feeds both the conflict check and the outbox base — if
+    // these could disagree, conflict-vs-allow and recover-vs-discard would too.
+    const baseHash = baseline.hash;
+    // Did THIS save flip the live flag? Decides the cascade below.
+    const scoringFlipped = payload.scoringEnabled !== baseline.draft.scoringEnabled;
+
+    try {
+      await saveConfigM.mutateAsync({ tripId, gameId, baseHash, payload });
+    } catch (e) {
+      // Keep the draft AND the panel open — edits are never discarded on a failed
+      // save. The banner renders the reason (readiness / conflict / course-frozen)
+      // legibly rather than a bare toast.
+      setSaveError((e as { message?: string })?.message || "Couldn’t save your changes.");
       return;
     }
-    try {
-      const ok = await saveSetup();
-      if (ok) {
-        setCollapseError(false);
-        clearDraftOutbox(); // durably persisted → drop the teardown copy
-        // Mark the competition board stale so a LATER view refetches — but do NOT
-        // refetch matchesQ here. Refetching mid-setup updates serverMatches with
-        // the just-written (read-after-write racy) rows, which re-derives the
-        // STILL-OPEN draft from server and wipes in-progress edits. The board
-        // isn't visible during setup; it refreshes on Enable (commitReady) or on
-        // the next mount. (These invalidates are no-op refetch here since those
-        // queries aren't active on this page — they just go stale.)
-        if (competitionId) {
-          utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-          utils.games.listByTrip.invalidate({ tripId });
-          utils.competitions.faceBootstrap.invalidate({ tripId });
-        }
+
+    clearDraftOutbox(); // durably persisted → drop the teardown copy
+    resetSlices(configDraft.matches);
+    setOpenRows(new Set());
+    setJustSaved(true); // the one path that earns "Saved"
+
+    if (scoringFlipped) {
+      // Going live / disabling DOES move the board — run the full cascade. Flip the
+      // cache optimistically first so the banner + locks land without a round-trip.
+      const cur = utils.games.getById.getData({ tripId, gameId });
+      if (cur) {
+        utils.games.getById.setData({ tripId, gameId }, { ...cur, scoring_enabled: payload.scoringEnabled } as typeof cur);
       }
-    } catch {
-      setCollapseError(true);
+      await refreshAfterMatchCountChange();
+    } else {
+      // LEAN: a config-only save. `saveConfig` returns { ok: true } (the RPC is
+      // RETURNS void), so there are no rows to merge — invalidate the two queries
+      // this page actually reads (both active → they refetch) and mark the board
+      // stale. No scores/leaderboard refetch: the game isn't live, so the board's
+      // numbers can't have moved. faceBootstrap is the one that actually refreshes
+      // the Live face (CLAUDE.md #10) — invalidating only the child is silently
+      // undone by the face's re-seed.
+      await Promise.all([
+        utils.games.getById.invalidate({ tripId, gameId }),
+        utils.matches.listByGame.invalidate({ tripId, gameId }),
+      ]);
+      utils.games.listByTrip.invalidate({ tripId });
+      if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
     }
+    // The hash moved (we just changed the config) — refetch it so the baseline
+    // re-seeds against the POST-save server state rather than waiting out the poll.
+    void hashQ.refetch();
+    // No closeConfig(): Save stays put. Flipping to scoring re-renders this page in
+    // its locked mode (the user reads the now-live banner); the back arrow leaves.
   }
 
-  // Modifiers persist-on-collapse: write the draft to games.modifiers, optimistic
-  // on the game cache so the row's resolved/summary lands instantly, then mark the
-  // competition board stale (CLAUDE.md #10 — faceBootstrap is the one that refreshes
-  // the Live face). All-config-valid, so no draft-keep-on-error dance like Matches.
-  async function persistModifiersOnCollapse() {
-    if (!tripId || !gameId) return;
-    const cur = utils.games.getById.getData({ tripId, gameId });
-    if (cur) utils.games.getById.setData({ tripId, gameId }, { ...cur, modifiers: modifiersDraft } as typeof cur);
-    try {
-      await updateModifiers.mutateAsync({ tripId, gameId, modifiers: modifiersDraft });
-      if (competitionId) {
-        utils.games.listByTrip.invalidate({ tripId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
-    } catch {
-      // Re-sync from the server cache on failure (the optimistic write is rolled
-      // back by the next gameQ read; the row stays usable).
-      void gameQ.refetch();
-    }
+  /** Cancel = discard every edit and re-mirror the server. The matches slice seeds
+   *  straight from the mirror (the persisted set) — that IS the discard. */
+  function handleCancel() {
+    resetSlices(serverConfigDraft.matches);
+    setSaveError(null);
+    setJustSaved(false); // discarded, NOT saved — never claim otherwise
+    clearDraftOutbox();
   }
 
-  // The single entry point for changing which row is open. Leaving a draft editor
-  // commits it (covers BOTH collapse paths: tapping the row to close it AND
-  // opening another row, since one-at-a-time collapses the current one first).
-  function changeOpenRow(next: typeof openRow) {
-    if (next === openRow) return;
-    if (openRow === "matches" || openRow === "handicaps") void persistDraftOnCollapse();
-    if (openRow === "modifiers") void persistModifiersOnCollapse();
-    setOpenRow(next);
-  }
-  // Accordion header tap: toggle this row (collapsing whatever else was open).
-  const toggleRow = (row: typeof openRow) => changeOpenRow(openRow === row ? null : row);
-
-  // Persist-on-CLOSE (companion to persist-on-collapse). The accordion only
-  // commits a draft editor when the OPEN ROW changes (changeOpenRow). Closing the
-  // whole settings overlay with a row still expanded — the common "assign the
-  // matches → tap Back" path — never routed through changeOpenRow, so the
-  // just-entered pairings/handicaps were dropped (they looked saved via the
-  // optimistic draft, but nothing hit the server; reopening the game showed no
-  // matches). Two distinct teardown paths, so we cover BOTH:
-  //   • Gear path — closeConfig/OS-back → popstate → the page STAYS mounted and
-  //     cfgOpen flips true→false. The effect below catches that transition.
-  //   • Deep-link path (?settings=1) — closeConfig → router.back() UNMOUNTS the
-  //     whole page (no cfgOpen transition ever commits). The unmount cleanup
-  //     catches that. (mutateAsync's network write runs to completion even after
-  //     unmount — React Query doesn't abort mutations — so the pairings persist.)
-  // The pure decision (flushOnOverlayClose) picks which write, gating
-  // matches/handicaps on draftTouched so an untouched row closing writes nothing.
-  const runCloseFlush = () => {
-    // Setup-mode only. Draft writes (setPairings clean-replaces game_matches) must
-    // never fire against a live/scoring game — enabling always clears openRow, so
-    // this is belt-and-suspenders against a stray unmount mid-transition.
-    if (scoringEnabled) return;
-    const flush = flushOnOverlayClose(openRow, draftTouched.current);
-    if (flush === "draft") void persistDraftOnCollapse();
-    else if (flush === "modifiers") void persistModifiersOnCollapse();
-  };
-  // Latest-ref so the unmount handler (empty deps) reads current draft/openRow.
-  const closeFlushRef = useRef(runCloseFlush);
-  closeFlushRef.current = runCloseFlush;
-
-  const prevCfgOpen = useRef(cfgOpen);
+  // Feed the settings overlay's confirm-on-leave guard (declared above `dirty`).
+  // Only gate while the overlay is actually OPEN and the user can edit — a member's
+  // read-only view, or the game screens underneath, must never trap a back-press.
+  const guardDirty = cfgOpen && canEdit && dirty;
   useEffect(() => {
-    const wasOpen = prevCfgOpen.current;
-    prevCfgOpen.current = cfgOpen;
-    if (!wasOpen || cfgOpen) return; // only the true→false transition (stays mounted)
-    runCloseFlush();
-    if (openRow !== null) setOpenRow(null);
-    // persistDraftOnCollapse/persistModifiersOnCollapse are per-render closures
-    // (not memoized); we intentionally react to the cfgOpen/openRow transition
-    // only, not to their identity, so they stay out of the dep list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfgOpen, openRow]);
+    dirtyRef.current = guardDirty;
+    discardRef.current = handleCancel;
+  });
 
-  // Unmount flush — the deep-link/navigate-away teardown the cfgOpen effect can't
-  // see (the component leaves without a committed cfgOpen=false render).
-  useEffect(() => {
-    return () => closeFlushRef.current();
-  }, []);
+  // The Setup/Scoring toggle is now a DRAFT edit (spec §2.7-2) — flipping it stages
+  // `scoring_enabled` and Save commits it together with the config. `enableReady`
+  // still gates the Enable direction client-side; the RPC re-asserts readiness
+  // server-side inside the tx, so the gate can't be bypassed.
+  function attemptReady() {
+    if (draft.length === 0 || filledDraft.length !== draft.length) return;
+    setScoringDraft(true);
+  }
+  function handleDisable() {
+    setScoringDraft(false);
+  }
 
   // Dynamic match count — mid-life +1 / −1 (the explicit "arm with 1, add a 2nd
   // mid-life" path). Each persists incrementally (NOT a bulk re-save, so
@@ -999,25 +1331,11 @@ export function MatchGameView() {
     }
   }
 
-  // Phase 2B.3: Disable scoring — close to the crew, KEEP scores, and STAY in
-  // Configuration (continue configuring right here; NOT a hub reverse-transform).
-  // Invalidate the board (incl. faceBootstrap, CLAUDE.md #10) so the row drops
-  // back to the muted-icon Ready state.
-  async function handleDisable() {
-    if (!tripId || !gameId) return;
-    try {
-      await disableScoring.mutateAsync({ tripId, gameId });
-      await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
-      if (competitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        utils.games.listByTrip.invalidate({ tripId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
-      // Stay on the settings page (cfgOpen holds — disable doesn't navigate).
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
+  // (Phase 2B.3's standalone `handleDisable` — a direct games.disableScoring call —
+  // is GONE. Disable is a DRAFT edit now (`setScoringDraft(false)`, above): Save
+  // commits it through the same atomic RPC, whose true→false branch flips scoring
+  // off, returns the game to setup and reverts the active match rows WITHOUT
+  // rewriting config — and, as before, never touches scores.)
 
   // #7: reopen a posted game for correction, then land on the overview so the
   // editor can tap the match to fix (entry is editable again while correcting).
@@ -1092,7 +1410,12 @@ export function MatchGameView() {
       // 2v2 and are redundant (they're in the state band + choice rows). label is
       // already "Match N" from the groups builder.
       ? selectedGroup.label
-      : (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
+      // The DRAFT's name, not the server's. GameIdentityHeader renders
+      // `configDraft.name`, so reading `gameQ.data.name` here put two different names
+      // for the same game on screen at once — a stale app bar directly above the live
+      // field editing it. Untouched, the draft IS the mirror, so this is identical to
+      // the old behaviour everywhere except mid-edit, which is the case that was wrong.
+      : configDraft.name.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
   usePublishGameChrome(
     inPanel
       ? {
@@ -1377,10 +1700,10 @@ export function MatchGameView() {
       {cfgOpen && (() => {
         // The config CHECKLIST — UNIFORM canonical rows; each EXPANDS its editor IN
         // PLACE (the row is the frame; the panel drops down beneath it, sheds all
-        // modal chrome). One open at a time (page-owned `openRow`) — which also
-        // physically gates Handicaps behind Matches. Collapse = acknowledge +
-        // persist (the draft editors commit on close). Course + Name·Format·Points
-        // stay overlays this pass (tracked follow-ons) but ride the same one-open.
+        // modal chrome). MULTI-OPEN (page-owned `openRows`): collapsing is no longer
+        // a commit, so any number of rows can be open at once and every row reads the
+        // ONE composite draft. The page's single Save (the bar at the top) is the
+        // only thing that writes.
         const allFilled = allMatchesFilled(draft);
         // Roster integrity (team-identity PR 1, the D-gap catch): a paired side whose
         // player has LOST their team is invalid even though its SLOTS are full
@@ -1400,7 +1723,7 @@ export function MatchGameView() {
         // 0 even share but a real total, and must still be enable-able. This is the
         // SAME resolved truth the Total Points row shows (total > 0), so the row's
         // state and the gate agree; pointsReady is the family's client-gate extension.
-        const effectiveTotal = ((gameQ.data?.points_total as number | null) ?? null) ?? defaultTotal;
+        const effectiveTotal = (configDraft.pointsTotal ?? null) ?? defaultTotal;
         const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(effectiveTotal));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
@@ -1408,7 +1731,6 @@ export function MatchGameView() {
         // Modifiers are NO LONGER gated on this (Task 3b — they're an early format
         // decision, decidable before matchups are set). One named predicate, shared.
         const matchesExist = hasValidMatch(draft);
-        const savingSetup = setPairings.isPending || setHandicap.isPending;
         // Standalone-only readout now (T4 hides this row for competitions), so the
         // count is just the trip crew — no roster branch.
         const availableCount = crew.data?.length ?? 0;
@@ -1453,8 +1775,8 @@ export function MatchGameView() {
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
         // schema (a lone 9-hole front still "needs a back nine" → not resolved).
         const courseResolved =
-          !!gameQ.data?.course_id &&
-          (((gameQ.data?.scorecard_schema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
+          !!configDraft.course.id &&
+          (((configDraft.course.scorecardSchema as { units?: { count?: number } } | null)?.units?.count) ?? 0) === 18;
         const handicapsReady = matchesExist && courseResolved;
         const handicapsState: ChecklistRowState = anyHandicap ? "resolved" : "empty";
         // When the row is disabled (course/matches not yet resolved) the subtitle
@@ -1471,7 +1793,7 @@ export function MatchGameView() {
         // format's gameTypes.ts compatibleModifiers (NOT the deprecated DB column).
         // Empty → the row is hidden entirely.
         const availableModifiers = GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? [];
-        const modifiersOn = enabledCount(modifiersDraft, availableModifiers);
+        const modifiersOn = enabledCount(configDraft.modifiers, availableModifiers);
         const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "empty";
         const modifiersSubtitle = modifiersOn > 0 ? "Modifiers have been added" : "No modifiers added to your round yet";
         const onSetupChanged = () => {
@@ -1484,12 +1806,39 @@ export function MatchGameView() {
         };
         return (
           <SettingsColumn className="pb-4">
+            {/* SAVE BAR — the page's ONE commit, at the TOP (spec §2.7). Every row
+                below is a draft edit; nothing reaches the server until this. Save is
+                Primary (STYLE_GUIDE §5, inline — there's no shared <Button>), Cancel
+                is Ghost, and Save enables only when the draft actually differs from
+                the frozen baseline. */}
+            {canEdit && (
+              <SaveBar
+                dirty={dirty}
+                saving={saveConfigM.isPending}
+                justSaved={justSaved}
+                error={saveError}
+                onSave={() => void handleSave()}
+                onCancel={handleCancel}
+              />
+            )}
+
             {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
                 "Assigned to" frame. Display-first, above the checklist. Competition
                 games only — it re-homes the modal's name/delegate, which were
-                competition-scoped (a standalone game has no delegate/config row). */}
+                competition-scoped (a standalone game has no delegate/config row).
+                CONTROLLED: name + delegate are draft slices — a live write here would
+                move the config hash out from under our frozen baseHash. */}
             {gameCompId && gameQ.data && (
-              <GameIdentityHeader tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} isOwner={isOwner} />
+              <GameIdentityHeader
+                tripId={tripId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                nameValue={configDraft.name}
+                onNameChange={setNameDraft}
+                delegateValue={configDraft.delegates[0] ?? null}
+                onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
+              />
             )}
 
             {/* Format explainer — the compact "how you compete" block that pairs
@@ -1505,10 +1854,17 @@ export function MatchGameView() {
 
             {/* RULES OF THE DAY — at the TOP (out of the awkward middle zone that
                 disables in scoring mode). Always editable (incl. scoring mode) per
-                the carved-out exception (plain canEdit). Saves on blur — the back
-                arrow blurs the field, so there's no Save&exit to flush. */}
+                the carved-out exception (plain canEdit). A draft slice now — the
+                page's Save persists it, so there's no on-blur commit. */}
             {gameCompId && gameQ.data && (
-              <GameRulesNote tripId={tripId} game={gameQ.data as unknown as GameRow} canEdit={canEdit} />
+              <GameRulesNote
+                tripId={tripId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                controlled
+                value={configDraft.rulesForToday ?? ""}
+                onChange={setRulesDraft}
+              />
             )}
 
             {/* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control,
@@ -1523,20 +1879,30 @@ export function MatchGameView() {
                     the toggle matching SETTINGS / OPTIONS (the panel's own caption is
                     suppressed via hideLabel so it isn't double-labeled). */}
                 <ZoneHeader>Game Management</ZoneHeader>
+                {/* The toggle reads the DRAFT (`configDraft.scoringEnabled`), not the
+                    server — flipping it stages the change and Save commits it with the
+                    rest of the config, so the mode you see is the mode you'd save. */}
                 <GameManagementPanel
-                  mode={scoringEnabled ? "scoring" : "setup"}
+                  mode={configDraft.scoringEnabled ? "scoring" : "setup"}
                   ready={enableReady}
                   onEnable={attemptReady}
                   onDisable={handleDisable}
-                  pending={savingSetup || enableScoring.isPending || disableScoring.isPending}
+                  pending={saveConfigM.isPending}
+                  // The toggle answers the tap from the DRAFT, but until Save lands the
+                  // server disagrees — say so rather than claim a live game that isn't.
+                  staged={configDraft.scoringEnabled !== scoringEnabled}
                   hideLabel
                 />
               </>
             )}
 
             {/* #501: live-game lock — the settings below freeze until the owner/
-                delegate flips the toggle above back to Setup. */}
-            {scoringEnabled && canEdit && <ScoringLockBanner />}
+                delegate flips the toggle above back to Setup. Follows the DRAFT, in
+                lockstep with `settingsEditable`: the banner explains why the rows are
+                frozen, so it has to clear exactly when they unlock or it contradicts
+                them. (082 is what makes staging Setup a real unlock — see
+                `settingsEditable`.) */}
+            {draftScoringEnabled && canEdit && <ScoringLockBanner staged={draftScoringEnabled !== scoringEnabled} />}
 
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
                 competition the rosters live on the competition face (the leaderboard
@@ -1548,7 +1914,7 @@ export function MatchGameView() {
                 title="Players"
                 subtitle={`${availableCount} player${availableCount === 1 ? "" : "s"}`}
                 state="resolved"
-                expanded={openRow === "players"}
+                expanded={openRows.has("players")}
                 onToggle={() => toggleRow("players")}
                 testId="row-players"
               >
@@ -1577,8 +1943,8 @@ export function MatchGameView() {
               // #501: non-expandable AND force-collapsed in scoring mode (MatchSetup
               // has no read-only mode, so it must not render interactively when live).
               // #512: locked → dim + lock icon (it reads as frozen, not just chevron-less).
-              locked={scoringEnabled}
-              expanded={openRow === "matches" && settingsEditable}
+              locked={draftScoringEnabled}
+              expanded={openRows.has("matches") && settingsEditable}
               onToggle={settingsEditable ? () => toggleRow("matches") : undefined}
               testId="row-matches"
             >
@@ -1606,31 +1972,39 @@ export function MatchGameView() {
                 already entered. */}
             {gameQ.data && (
               <EntryModeRow
-                tripId={tripId}
-                gameId={gameId!}
-                entryMode={outcomeMode ? "outcome" : "score"}
+                entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
                 canEdit={settingsEditable}
-                locked={scoringEnabled}
-                onChanged={onSetupChanged}
+                locked={draftScoringEnabled}
+                onChange={setEntryModeDraft}
               />
             )}
 
             {/* Course — Handicaps' per-hole stroke allocation needs the course's
-                stroke-index table, so Course resolves before Handicaps (W-9HOLE-01);
-                the one-open chain reads Matches → Course → Handicaps (Handicaps is
-                in Zone 4 below). */}
+                stroke-index table, so Course resolves before Handicaps (W-9HOLE-01).
+                CONTROLLED: the course is a DRAFT slice. It cannot be deferred to a
+                later pass — a course applied straight to the server while the rest of
+                the page drafts would be reverted by Save writing the draft's older
+                course back, and it would move the config hash out from under our
+                frozen baseHash (the user's own Save would then conflict).
+                `draftGameRow` feeds the row the DRAFT's course state, so it renders
+                the pending front/back/needs-a-back-nine exactly as it will persist. */}
             {gameQ.data && (
               <GameSetupRows
                 slot="course"
                 tripId={tripId}
                 competitionId={gameCompId}
-                game={gameQ.data as unknown as GameRow}
+                game={draftGameRow}
                 canEdit={settingsEditable}
-                locked={scoringEnabled}
-                courseOpen={openRow === "course"}
-                onOpenCourse={() => changeOpenRow("course")}
-                onCloseEditor={() => changeOpenRow(null)}
+                locked={draftScoringEnabled}
+                courseOpen={openRows.has("course")}
+                onOpenCourse={() => toggleRow("course")}
+                onCloseEditor={() => closeRow("course")}
                 onChanged={onSetupChanged}
+                onApplyFront={applyFrontToDraft}
+                onApplyBack={applyBackToDraft}
+                onRemoveBackNine={removeBackNineFromDraft}
+                onClearCourse={clearCourseInDraft}
+                courseBusy={courseBusy}
               />
             )}
 
@@ -1642,20 +2016,15 @@ export function MatchGameView() {
                 Competition games only (a standalone match has no points). */}
             {gameQ.data && gameCompId && (
               <MatchPointsRow
-                tripId={tripId}
-                gameId={gameId!}
-                competitionId={gameCompId}
                 matches={pointsMatches}
-                pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
-                pointsDistributionValue={
-                  gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0
-                }
+                pointsTotal={configDraft.pointsTotal}
                 defaultTotal={defaultTotal}
                 canEdit={settingsEditable}
-                locked={scoringEnabled}
-                expanded={openRow === "config"}
+                locked={draftScoringEnabled}
+                expanded={openRows.has("config")}
                 onToggle={() => toggleRow("config")}
-                onChanged={onSetupChanged}
+                onTotalChange={onPointsTotalChange}
+                onOverrideChange={onPointsOverrideChange}
               />
             )}
 
@@ -1672,12 +2041,12 @@ export function MatchGameView() {
               state={handicapsState}
               // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
               // has no read-only mode). #512: locked → dim + lock icon.
-              locked={scoringEnabled}
+              locked={draftScoringEnabled}
               // Task 2c: when the prerequisites aren't met (no course / no matches)
               // the row is VISIBLY disabled (dimmed), not silently unclickable — pass
               // the real toggle but mark it disabled so it reads "not available yet".
               disabled={!handicapsReady}
-              expanded={openRow === "handicaps" && settingsEditable}
+              expanded={openRows.has("handicaps") && settingsEditable}
               onToggle={settingsEditable ? () => toggleRow("handicaps") : undefined}
               testId="row-handicaps"
             >
@@ -1703,8 +2072,8 @@ export function MatchGameView() {
                 title="Game Modifiers"
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
-                locked={scoringEnabled}
-                expanded={openRow === "modifiers"}
+                locked={draftScoringEnabled}
+                expanded={openRows.has("modifiers")}
                 // Task 3b: modifiers are an EARLY format decision (carry-over, moving
                 // tees); matches (who plays whom) is often decided the day before.
                 // Don't gate early-decidable config on late-decided data — no
@@ -1714,34 +2083,29 @@ export function MatchGameView() {
               >
                 <ModifierCards
                   available={availableModifiers}
-                  modifiers={modifiersDraft}
+                  modifiers={configDraft.modifiers}
                   onChange={setModifiersDraft}
                   readOnly={!settingsEditable}
                 />
               </ChecklistRow>
             )}
 
-            {/* Rules of the Day — freeform note (W-EDITMODAL-01). Saves on blur;
-                "Save & exit" flushes it via rulesRef. Competition games only. */}
-            {collapseError && (
-              <button
-                type="button"
-                onClick={() => void persistDraftOnCollapse()}
-                className="text-left text-[13px]"
-                style={{ color: "var(--color-bt-danger)" }}
-              >
-                Couldn’t save your changes — tap to retry.
-              </button>
-            )}
-
-            {/* Auto-save (W-EDITMODAL-01): the whole page persists on change — the
-                checklist rows on collapse, Rules on blur — so there's no page-level
-                Save & exit (removed). The back arrow leaves cleanly; the back tap
-                blurs the Rules field, committing any unsaved text. */}
+            {/* (The persist-on-collapse retry button is GONE with the mechanism it
+                retried. Save is the ONE commit and it reports its own failure in the
+                SaveBar above, next to the action that failed.) */}
 
             {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
                 ONE home, so the per-game danger ladder lives here too: reset scores /
-                reset settings / delete). */}
+                reset settings / delete).
+
+                The ONE control here that deliberately keeps reading the SERVER's flag
+                while everything above it follows the draft. These aren't drafted edits
+                — they're immediate, irreversible server surgery. A game that is LIVE
+                and being scored on right now must not have its scores wiped because
+                someone staged a Setup toggle they haven't saved; the gate has to
+                reflect what's actually live, not what's merely intended. Consequence
+                worth knowing: the HAS_SCORES refusal points here, so on a live scored
+                game the user Saves the disable first, THEN resets. */}
             {isOwner && gameQ.data && (
               <GameDangerZone
                 tripId={tripId}
@@ -1789,6 +2153,21 @@ export function MatchGameView() {
       )}
       </div>
 
+      {/* Confirm-on-leave (P1.7) — the whole page is one draft, so a back-press with
+          unsaved edits would bin it silently. Both exits (the arrow and the OS/browser
+          back) route through the overlay's guard, which raises this instead. */}
+      {confirmingClose && (
+        <DiscardChangesPrompt
+          onDiscard={confirmDiscard}
+          onKeepEditing={cancelClose}
+          onSave={() => {
+            cancelClose();
+            void handleSave();
+          }}
+          saving={saveConfigM.isPending}
+        />
+      )}
+
       {/* Player selector sheet — constrained to the side's team in a 2-team
           competition (no cross-team pair), else the whole roster/crew. */}
       {selector && (() => {
@@ -1831,7 +2210,7 @@ function serverDraftFrom(
   // A server side → its member user ids, resolved from the side's OWN type
   // (sideMemberIds) so the reconstruction can't be corrupted by a not-yet-loaded
   // `sided` flag — the 2v2-matches-vanish-on-reopen race.
-  return (serverMatches as { match_number: number; side_a: SideRef; side_b: SideRef }[]).map((mm, i) => {
+  return (serverMatches as { match_number: number; side_a: SideRef; side_b: SideRef; point_value: number | null }[]).map((mm, i) => {
     const hcA = mm.side_a?.id ? (handicapOf.get(mm.side_a.id) ?? 0) : 0;
     const hcB = mm.side_b?.id ? (handicapOf.get(mm.side_b.id) ?? 0) : 0;
     // Per-match shape (A2a) read from the side's own type: a play_group side ⇒ 2v2.
@@ -1843,6 +2222,9 @@ function serverDraftFrom(
       a: sideMemberIds(mm.side_a, membersOfSide),
       b: sideMemberIds(mm.side_b, membersOfSide),
       handicap: hcA > 0 ? -hcA : hcB > 0 ? hcB : 0,
+      // The per-match points override rides the draft match now (A2b + P1) — seed it
+      // from the server or the Points row would reset every override on re-entry.
+      pointValue: mm.point_value ?? null,
     };
   });
 }
@@ -1894,6 +2276,174 @@ function assignInDraft(
  * back arrow only (top-left), centered title (white) + subtitle, optional
  * top-right slot (the overview's Edit link).
  */
+/**
+ * SaveBar — the settings page's ONE commit affordance (Draft-Then-Save P1 §2.7).
+ *
+ * At the TOP of the page: every row below is a draft edit, so the commit belongs
+ * where the user can see it the whole time rather than at the end of a long scroll.
+ * Save is **Primary** and Cancel is **Ghost** (STYLE_GUIDE §5, inline-styled — the
+ * repo has no shared <Button>). Save is disabled until the draft actually differs
+ * from the frozen baseline, so it can't fire a no-op write.
+ *
+ * On failure the panel STAYS open, the draft is kept, and the reason renders here
+ * legibly — the RPC's readiness assert (PRECONDITION_FAILED "finish setting up this
+ * game…"), the optimistic-concurrency CONFLICT, and the course/matches freeze all
+ * arrive as real sentences, so the banner names what to fix instead of a bare
+ * "save failed".
+ */
+function SaveBar({
+  dirty,
+  saving,
+  justSaved,
+  error,
+  onSave,
+  onCancel,
+}: {
+  dirty: boolean;
+  saving: boolean;
+  /** A Save actually landed this session — the ONLY state that may claim one did. */
+  justSaved: boolean;
+  error: string | null;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  // "Clean" is not the same claim as "saved". Cancel DISCARDS the draft and lands
+  // clean, and an untouched page is clean too — neither wrote anything, so neither
+  // may say so. Only a landed Save earns "Saved"; otherwise the label says nothing
+  // rather than something false.
+  const hint = saving ? "Saving…" : dirty ? "Unsaved changes" : justSaved ? "Saved" : "";
+  return (
+    <div className="sticky top-0 z-10 -mx-4 mb-1 px-4 pb-2 pt-2" style={{ background: "var(--color-bt-base)" }} data-testid="settings-save-bar">
+      <div className="flex items-center gap-2.5">
+        <span className="flex-1 truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="settings-dirty-hint">
+          {hint}
+        </span>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={!dirty || saving}
+          className="disabled:opacity-40"
+          style={{
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 12,
+            background: "transparent",
+            color: "var(--color-bt-text-dim)",
+            border: "0.5px solid var(--color-bt-border)",
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+          data-testid="settings-cancel"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!dirty || saving}
+          className="disabled:opacity-40"
+          style={{
+            height: 38,
+            padding: "0 18px",
+            borderRadius: 12,
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
+            border: "none",
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+          data-testid="settings-save"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {error && (
+        <p
+          className="mt-2 rounded-lg px-3 py-2 text-[12.5px] leading-snug"
+          style={{ background: "var(--color-bt-danger-faint)", border: "1px solid var(--color-bt-danger-border)", color: "var(--color-bt-danger)" }}
+          data-testid="settings-save-error"
+        >
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * DiscardChangesPrompt (P1.7) — the confirm-on-leave gate.
+ *
+ * Draft-then-save moved the whole settings page onto ONE draft, which turned a
+ * back-press into a silent data-loss path (the old per-row persistence meant leaving
+ * could never lose anything). This offers the way OUT of that: Save what you did,
+ * keep editing, or explicitly throw it away.
+ *
+ * Discard is the DANGER action and it is never the default — the safe options come
+ * first, and the destructive one is styled as destructive (STYLE_GUIDE §5), because
+ * the thing it destroys is the user's unsaved work.
+ */
+function DiscardChangesPrompt({
+  onDiscard,
+  onKeepEditing,
+  onSave,
+  saving,
+}: {
+  onDiscard: () => void;
+  onKeepEditing: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={onKeepEditing}
+      data-testid="discard-changes-prompt"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full"
+        style={{ maxWidth: 340, background: "var(--color-bt-card-float)", borderRadius: 18, padding: 18 }}
+      >
+        <div style={{ fontSize: 16.5, fontWeight: 700, color: "var(--color-bt-text)" }}>Unsaved changes</div>
+        <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Your changes to this game haven’t been saved yet. Leaving now discards them.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="w-full disabled:opacity-40"
+            style={{ height: 44, borderRadius: 12, background: "var(--color-bt-accent)", color: "var(--color-bt-base)", border: "none", fontSize: 14.5, fontWeight: 600 }}
+            data-testid="discard-prompt-save"
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+          <button
+            type="button"
+            onClick={onKeepEditing}
+            className="w-full"
+            style={{ height: 44, borderRadius: 12, background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)", fontSize: 14.5, fontWeight: 600 }}
+            data-testid="discard-prompt-keep"
+          >
+            Keep editing
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            className="w-full"
+            style={{ height: 44, borderRadius: 12, background: "transparent", color: "var(--color-bt-danger)", border: "0.5px solid var(--color-bt-danger-border)", fontSize: 14.5, fontWeight: 600 }}
+            data-testid="discard-prompt-discard"
+          >
+            Discard changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** A labeled zone divider on the setup face (W-GAMEPAGE-01 §5) — the groups are
  *  labels, not panes (one scrolling column). Token-styled, quiet caption. */
 function ZoneHeader({ children }: { children: React.ReactNode }) {
@@ -2041,7 +2591,7 @@ function MatchSetup({
   // match's shape is picked when it's added — a game can mix both.
   const [addOpen, setAddOpen] = useState(false);
   const addMatch = (pps: 1 | 2) => {
-    setDraft((prev) => [...prev, { matchNumber: prev.length + 1, playersPerSide: pps, a: [], b: [], handicap: 0 }]);
+    setDraft((prev) => [...prev, { matchNumber: prev.length + 1, playersPerSide: pps, a: [], b: [], handicap: 0, pointValue: null }]);
     setAddOpen(false);
   };
 
@@ -2281,35 +2831,29 @@ function AddShapeButton({ kind, label, onClick }: { kind: "1V1" | "2V2"; label: 
  * track with a neutral-filled active segment. Unlike Setup/Scoring, neither
  * option here is a "live" action, so BOTH segments use the neutral (not teal)
  * active treatment — teal stays reserved for the live/scoring signal elsewhere.
- * Persists on tap (a 2-option select, not a multi-field panel — no collapse-
- * buffer needed, unlike Modifiers).
+ *
+ * CONTROLLED (Draft-Then-Save P1): this row owns no persistence — it renders the
+ * mode it's given and reports a tap via `onChange`. The page stages it in the
+ * composite draft and its single Save commits it. (It used to `games.update` on
+ * tap; under draft-then-save that would move the game's config hash out from under
+ * the page's frozen baseHash and make the user's OWN Save conflict.)
  */
 function EntryModeRow({
-  tripId,
-  gameId,
   entryMode,
   canEdit,
   locked,
-  onChanged,
+  onChange,
 }: {
-  tripId: string;
-  gameId: string;
   entryMode: "score" | "outcome";
   canEdit: boolean;
   locked: boolean;
-  onChanged: () => void;
+  onChange: (mode: "score" | "outcome") => void;
 }) {
-  const updateGame = trpc.games.update.useMutation();
-  const [pending, setPending] = useState(false);
-  const disabled = locked || !canEdit || pending;
+  const disabled = locked || !canEdit;
 
   const setMode = (mode: "score" | "outcome") => {
     if (mode === entryMode || disabled) return;
-    setPending(true);
-    void updateGame
-      .mutateAsync({ tripId, gameId, entryMode: mode })
-      .then(onChanged)
-      .finally(() => setPending(false));
+    onChange(mode);
   };
 
   return (
@@ -2368,7 +2912,7 @@ function EntryModeSegment({
  * Phase 1). Lifted out of MatchSetup so handicaps are their own checklist row,
  * gated by Matches: it renders one RelHandicapControl per FULLY-PAIRED match
  * (nothing to allocate strokes between until both sides are set). Edits the same
- * draft.handicap the inline control did; the parent's saveSetup persists it.
+ * draft.handicap the inline control did; the parent's Save persists it.
  */
 function HandicapsSection({
   draft,

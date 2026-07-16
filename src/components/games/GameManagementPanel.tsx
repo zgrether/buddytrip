@@ -26,6 +26,7 @@ export function GameManagementPanel({
   onEnable,
   onDisable,
   pending = false,
+  staged = false,
   hideLabel = false,
 }: {
   /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
@@ -36,6 +37,12 @@ export function GameManagementPanel({
   onEnable: () => void;
   onDisable: () => void;
   pending?: boolean;
+  /** Draft-then-save: `mode` reflects the DRAFT and hasn't been committed yet, so the
+   *  copy must not claim a live game that isn't live (or a closed one still open).
+   *  The toggle position still follows the draft — it has to answer the tap — but the
+   *  sentence under it says what's actually true and what Save will do. Self-persisting
+   *  hosts (stroke/rack/non-golf) omit this and read exactly as before. */
+  staged?: boolean;
   /** #512: the match settings page renders a peer `GAME MANAGEMENT` section header
    *  (ZoneHeader) above the panel, so suppress the internal caption there to avoid a
    *  double label. Other hosts (stroke/rack/non-golf) have no section headers — they
@@ -85,9 +92,13 @@ export function GameManagementPanel({
       <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
         <PlayCircle size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
         <span>
-          {isScoring
-            ? "The game is live and open to the crew. Switch back to setup to close it — any entered scores are kept."
-            : "Players can’t access the game while it’s being set up. Switch to scoring when you’ve completed the minimum requirements."}
+          {staged
+            ? isScoring
+              ? "Not live yet — Save to switch this game to scoring and open it to the crew."
+              : "Still live for the crew — Save to switch this game back to setup. Any entered scores are kept."
+            : isScoring
+              ? "The game is live and open to the crew. Switch back to setup to close it — any entered scores are kept."
+              : "Players can’t access the game while it’s being set up. Switch to scoring when you’ve completed the minimum requirements."}
         </span>
       </p>
     </div>

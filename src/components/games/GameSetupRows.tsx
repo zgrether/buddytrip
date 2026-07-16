@@ -46,6 +46,11 @@ export function GameSetupRows({
   onOpenCourse,
   onOpenConfig,
   onCloseEditor,
+  onApplyFront,
+  onApplyBack,
+  onRemoveBackNine,
+  onClearCourse,
+  courseBusy,
 }: {
   tripId: string;
   /** Null for a standalone game — the Name·Format·Points editor is competition-
@@ -89,6 +94,22 @@ export function GameSetupRows({
   onOpenConfig?: () => void;
   /** The editor dismissed itself → clear the page's openRow. */
   onCloseEditor?: () => void;
+  /** Course ACTION controlled-mode (draft-then-save) — a DIFFERENT axis from the
+   *  `courseOpen`/`configOpen` open-state control above. Passing `onApplyFront` flips
+   *  `CourseRowContent` out of self-persisting mode: it then reports the action and
+   *  the page decides what it means (staging it in the settings draft, pre-computing
+   *  the snapshot with the shared `buildCourseSnapshot`). Omit them all and the body
+   *  keeps its own applyCourse/setBackNine/clearCourse mutations, which is what every
+   *  other consumer (stroke/rack/config-view) still wants.
+   *
+   *  Pass them TOGETHER or not at all: `onApplyFront` alone flips the mode and the
+   *  remaining actions would silently no-op. */
+  onApplyFront?: (courseId: string, teeName?: string) => void;
+  onApplyBack?: (backCourseId: string, backTeeName?: string) => void;
+  onRemoveBackNine?: () => void;
+  onClearCourse?: () => void;
+  /** Controlled mode: the page's course write is in flight (drives the tee chooser). */
+  courseBusy?: boolean;
 }) {
   // Controlled when the page supplies open-state; else self-manage (the original
   // behavior, kept for every non-checklist consumer).
@@ -165,8 +186,21 @@ export function GameSetupRows({
           testId="row-course"
         >
           {/* W-9HOLE-01: front picker → a 9-hole course "needs a back nine" → the
-              back picker composes a retained two-nines 18, swappable day-of. */}
-          <CourseRowContent tripId={tripId} game={game} canEdit={canEdit} onChanged={onChanged} />
+              back picker composes a retained two-nines 18, swappable day-of.
+              The course-action props pass STRAIGHT through: undefined for every
+              self-persisting consumer (so the body keeps its own mutations), and the
+              full set for the draft-then-save settings page. */}
+          <CourseRowContent
+            tripId={tripId}
+            game={game}
+            canEdit={canEdit}
+            onChanged={onChanged}
+            onApplyFront={onApplyFront}
+            onApplyBack={onApplyBack}
+            onRemoveBackNine={onRemoveBackNine}
+            onClearCourse={onClearCourse}
+            busy={courseBusy}
+          />
         </ChecklistRow>
       )}
 

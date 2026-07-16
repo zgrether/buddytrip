@@ -9,7 +9,8 @@ import { computeRackNStackResults } from "../lib/rackNStack";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { buildScorecardSchema, composeTwoNines, validateStrokeIndex, type SnapshotTee, type ScorecardSchema } from "@/lib/courseIndex";
+import { type ScorecardSchema } from "@/lib/courseIndex";
+import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -24,6 +25,46 @@ import { computeConfigHash } from "@/lib/configHash";
  */
 const GAME_CONFIG_COLS =
   "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode";
+
+/**
+ * Compute the config fingerprint — the ONE place the hash is built, so the
+ * `configHash` query (cross-device sync) and `saveConfig`'s optimistic-
+ * concurrency check produce byte-identical hashes for the same state (same
+ * select, same ordering, same `computeConfigHash`). A client captures its base
+ * hash via `configHash`; `saveConfig` recomputes it here at save time and rejects
+ * a mismatch. Returns null when the game doesn't exist.
+ */
+async function readGameConfigHash(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string
+): Promise<string | null> {
+  const [gameRes, partsRes, groupsRes, matchesRes] = await Promise.all([
+    supabase.from("games").select(GAME_CONFIG_COLS).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
+    supabase.from("game_participants").select("user_id, play_group_id, team_id, handicap_strokes").eq("game_id", gameId).order("user_id", { ascending: true }),
+    supabase.from("play_groups").select("id, display_name, handicap_strokes").eq("game_id", gameId).order("id", { ascending: true }),
+    // `game_matches` — NOT "matches" (no such relation exists). The old spelling
+    // errored on every call and, because only gameRes.error was checked, the error
+    // was swallowed and `[]` was hashed: pairings never contributed to the
+    // fingerprint. That silently broke BOTH consumers — cross-device sync never saw
+    // a matchup change (CLAUDE.md #16 claims it does), and saveConfig's concurrency
+    // check would pass while another device's pairings were being clobbered.
+    supabase.from("game_matches").select("id, play_group_id, match_number, display_order, side_a, side_b").eq("game_id", gameId).order("id", { ascending: true }),
+  ]);
+  // Check EVERY query: a child failure must throw, never quietly hash an empty set
+  // (that's what hid the bug above).
+  const failed = gameRes.error ?? partsRes.error ?? groupsRes.error ?? matchesRes.error;
+  if (failed) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${failed.message}` });
+  }
+  if (!gameRes.data) return null;
+  return computeConfigHash({
+    game: gameRes.data,
+    participants: partsRes.data ?? [],
+    groups: groupsRes.data ?? [],
+    matches: matchesRes.data ?? [],
+  });
+}
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -217,43 +258,13 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const [gameRes, partsRes, groupsRes, matchesRes] = await Promise.all([
-        ctx.supabase
-          .from("games")
-          .select(GAME_CONFIG_COLS)
-          .eq("id", input.gameId)
-          .eq("trip_id", ctx.tripId)
-          .maybeSingle(),
-        ctx.supabase
-          .from("game_participants")
-          .select("user_id, play_group_id, team_id, handicap_strokes")
-          .eq("game_id", input.gameId)
-          .order("user_id", { ascending: true }),
-        ctx.supabase
-          .from("play_groups")
-          .select("id, display_name, handicap_strokes")
-          .eq("game_id", input.gameId)
-          .order("id", { ascending: true }),
-        ctx.supabase
-          .from("matches")
-          .select("id, play_group_id, match_number, display_order, side_a, side_b")
-          .eq("game_id", input.gameId)
-          .order("id", { ascending: true }),
-      ]);
-      if (gameRes.error) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${gameRes.error.message}` });
-      }
-      if (!gameRes.data) {
+      // Ordered arrays (by id/user_id) + canonical (sorted-key) hashing make the
+      // fingerprint stable regardless of DB row-return order. Shared with
+      // saveConfig's concurrency check (readGameConfigHash) so they can't drift.
+      const hash = await readGameConfigHash(ctx.supabase, ctx.tripId, input.gameId);
+      if (hash === null) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
-      // Ordered arrays (by id/user_id) + canonical (sorted-key) hashing make the
-      // fingerprint stable regardless of DB row-return order.
-      const hash = computeConfigHash({
-        game: gameRes.data,
-        participants: partsRes.data ?? [],
-        groups: groupsRes.data ?? [],
-        matches: matchesRes.data ?? [],
-      });
       return { hash };
     }),
 
@@ -351,40 +362,19 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
-      const holeCount = course.hole_count as number;
-      const par = course.par as number[];
-      const hasIndex = (course.has_stroke_index as boolean | null) ?? true;
-
-      // Resolve the configured tee: the requested name, else the first tee.
-      // Snapshotting the SELECTED tee (not a hardcoded default) is what keeps the
-      // displayed yardage honest to what the round was set up with.
-      const teeSets = (course.tee_sets as SnapshotTee[] | null) ?? [];
-      const selectedTee =
-        (input.teeSetName ? teeSets.find((t) => t.name === input.teeSetName) : undefined) ??
-        teeSets[0] ??
-        null;
-      // Index-off course → snapshot par only (buildScorecardSchema fills a
-      // sequential index; net falls back to hole order). Index-on → validate it
-      // as defense in depth before snapshotting.
-      const handicapIndex = hasIndex ? (course.handicap_index as number[]) : null;
-      if (hasIndex && !validateStrokeIndex(handicapIndex!, holeCount).valid) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Course stroke index is not a valid permutation — fix it before use.",
-        });
+      // The snapshot derivation is the shared pure fn (courseSnapshot.ts): tee
+      // resolution, index validation, and the par/index/yardage freeze. The settings
+      // draft pre-computes the SAME snapshot client-side and hands it to
+      // save_game_config, so an applied course and a drafted one can't drift.
+      const snap = buildCourseSnapshot(course as CourseSnapshotInput, game.game_type_id as string, input.teeSetName);
+      if (!snap.ok) {
+        throw new TRPCError(
+          snap.reason === "bad_index"
+            ? { code: "BAD_REQUEST", message: "Course stroke index is not a valid permutation — fix it before use." }
+            : { code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema to snapshot onto." }
+        );
       }
-
-      // Base scorecard comes from the format definition in code (W-PERF-01) —
-      // buildScorecardSchema deep-clones it, so sharing the const is safe.
-      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
-      if (!baseSchema?.units) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Game type has no scorecard schema to snapshot onto.",
-        });
-      }
-
-      const snapshot = buildScorecardSchema(baseSchema, par, handicapIndex, holeCount, selectedTee);
+      const snapshot = snap.schema;
       // Applying a (fresh) front course resets any prior two-nines back ref — a
       // 9-hole course lands as a lone front "needs a back nine" until setBackNine.
       const { error } = await ctx.supabase
@@ -472,66 +462,39 @@ export const gamesRouter = router({
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       if (!game.course_id) throw new TRPCError({ code: "BAD_REQUEST", message: "Set a front nine first." });
 
-      const schema = game.scorecard_schema as ScorecardSchema | null;
-      const frontMeta = schema?.units?.metadata;
-      const frontCount = schema?.units?.count ?? frontMeta?.par?.length ?? 0;
-      // Only a two-nines game gets a back: a 9-hole front (count 9) composing its
-      // first back, or an already-composed 18 (count 18 + a back ref) swapping it.
-      // A real 18-hole course (count 18, no back ref) is rejected.
-      if (!frontMeta?.par?.length || (frontCount === 18 && !game.back_course_id)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "This isn't a 9-hole front — it doesn't take a back nine." });
-      }
-
       const { data: back } = await ctx.supabase
         .from("courses")
         .select("hole_count, par, handicap_index, has_stroke_index, tee_sets")
         .eq("id", input.backCourseId)
         .maybeSingle();
       if (!back) throw new TRPCError({ code: "NOT_FOUND", message: "Back-nine course not found" });
-      if ((back.hole_count as number) !== 9) throw new TRPCError({ code: "BAD_REQUEST", message: "The back nine must be a 9-hole course." });
-      const backHasIndex = ((back.has_stroke_index as boolean | null) ?? true) && Array.isArray(back.handicap_index);
-      if (backHasIndex && !validateStrokeIndex(back.handicap_index as number[], 9).valid) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Back-nine stroke index is not a valid permutation." });
-      }
 
-      const backTees = (back.tee_sets as SnapshotTee[] | null) ?? [];
-      // Back-nine tee INHERITS the front's tee (W-GAMEPAGE-01 pin #3): match the
-      // front's applied tee NAME on the back course so the back-9 yardages come
-      // from the same-named tee; fall back to the back's first tee when that name
-      // is absent (the UI surfaces the fallback). An explicit backTeeSetName (a
-      // deliberate override) still wins. The composed tee NAME stays the front's
-      // (see composedTee below) regardless — this only picks the back-9 yards.
-      const frontTeeName = frontMeta.tee?.name?.trim();
-      const backTee =
-        (input.backTeeSetName ? backTees.find((t) => t.name === input.backTeeSetName) : undefined) ??
-        (frontTeeName ? backTees.find((t) => (t.name ?? "").trim() === frontTeeName) : undefined) ??
-        backTees[0] ?? null;
-
-      // Recover the FRONT nine's ORIGINAL 1..9 data from the snapshot. On the
-      // first compose the schema IS a 9-hole front (index already 1..9). On a
-      // SWAP the schema is the previously-composed 18, whose first 9 stroke-index
-      // values are the INTERLEAVED odd ranks (2·s−1) — de-interleave them back to
-      // 1..9 (`(v+1)/2`) so composeTwoNines re-interleaves correctly against the
-      // new back. (par/yards just slice; only the index is interleaved.)
-      const frontIdx9: number[] | null = frontMeta.handicap_index?.length
-        ? (frontCount === 18
-            ? frontMeta.handicap_index.slice(0, 9).map((v) => (v + 1) / 2)
-            : frontMeta.handicap_index.slice(0, 9))
-        : null;
-      const composed = composeTwoNines(
-        { par: frontMeta.par.slice(0, 9), index: frontIdx9, yards: frontMeta.tee?.yards?.slice(0, 9) ?? null },
-        { par: back.par as number[], index: backHasIndex ? (back.handicap_index as number[]) : null, yards: backTee?.yards ?? null }
+      // The compose derivation is the shared pure fn (courseSnapshot.ts): the
+      // two-nines gate, the back-index validation, the front de-interleave, the
+      // tee inheritance, and the P-F0a back-tee-name capture. The settings draft
+      // pre-computes the SAME composed 18 client-side and hands it to
+      // save_game_config, so a composed course and a drafted one can't drift.
+      const composedSnap = buildComposedCourseSnapshot(
+        {
+          frontSchema: game.scorecard_schema as ScorecardSchema | null,
+          hasBackRef: !!game.back_course_id,
+          backCourse: back as CourseSnapshotInput,
+        },
+        game.game_type_id as string,
+        input.backTeeSetName
       );
-      const composedTee: SnapshotTee | null = frontMeta.tee
-        ? { ...frontMeta.tee, yards: composed.yards }
-        : (backTee ? { ...backTee, yards: composed.yards } : null);
-
-      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
-      if (!baseSchema?.units) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." });
-      // P-F0a: record the back nine's CHOSEN tee name (the composed tee carries the
-      // FRONT's name) so the §16 split-band header can label the back band honestly.
-      // Capture-only — `backTee` selection / yardages above are unchanged.
-      const snapshot = buildScorecardSchema(baseSchema, composed.par, composed.index, 18, composedTee, backTee?.name ?? null);
+      if (!composedSnap.ok) {
+        throw new TRPCError(
+          composedSnap.reason === "no_front" || composedSnap.reason === "not_two_nines"
+            ? { code: "BAD_REQUEST", message: "This isn't a 9-hole front — it doesn't take a back nine." }
+            : composedSnap.reason === "back_not_nine"
+              ? { code: "BAD_REQUEST", message: "The back nine must be a 9-hole course." }
+              : composedSnap.reason === "bad_back_index"
+                ? { code: "BAD_REQUEST", message: "Back-nine stroke index is not a valid permutation." }
+                : { code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." }
+        );
+      }
+      const snapshot = composedSnap.schema;
 
       // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
       // front (1-9) is left intact. (A no-op on the first compose.)
@@ -762,6 +725,108 @@ export const gamesRouter = router({
           .eq("status", "active");
       }
       return { success: true };
+    }),
+
+  // saveConfig — Draft-Then-Save (P1). The ONE atomic commit for the whole game
+  // settings page: the client drafts everything (matches, handicaps, points,
+  // course, modifiers, entryMode, name, rules, delegates, scoring_enabled) and
+  // saves once. Optimistic concurrency via the config hash the client captured on
+  // open; the write itself is the all-or-nothing save_game_config plpgsql RPC
+  // (design A — the client pre-computes every derived row, the SQL only writes;
+  // the scoring_enabled state machine, in-RPC readiness assert, and the
+  // Organizer-only points_total/delegates sub-guards all live inside the RPC).
+  // requireGameEdit gates here AND inside the RPC (defence in depth).
+  saveConfig: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        // Fingerprint of the server state the draft was seeded from (#16). A
+        // mismatch = someone else changed this game since the page opened.
+        baseHash: z.string(),
+        payload: z.object({
+          // min(1): a game must keep a name — the draft trims, so an emptied field
+          // would otherwise blank the title everywhere on the board.
+          name: z.string().min(1).max(200),
+          rulesForToday: z.string().nullable(),
+          scoringEnabled: z.boolean(),
+          entryMode: z.string(),
+          modifiers: z.record(z.string(), z.record(z.string(), z.unknown())),
+          pointsTotal: z.number().nullable(),
+          pointsDistribution: z.unknown().nullable(),
+          courseId: z.string().nullable(),
+          backCourseId: z.string().nullable(),
+          scorecardSchema: z.unknown().nullable(),
+          delegates: z.array(z.string()),
+          matches: z.array(
+            z.object({
+              matchNumber: z.number().int(),
+              playersPerSide: z.union([z.literal(1), z.literal(2)]),
+              a: z.array(z.string()),
+              b: z.array(z.string()),
+              strokesA: z.number().int(),
+              strokesB: z.number().int(),
+              pointValue: z.number().nullable(),
+            })
+          ),
+          matchesDirty: z.boolean(),
+        }),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      // 1 · Optimistic concurrency — the same hash the client opened with must
+      //     still describe the server, or another device changed it since. The
+      //     hash is recomputed the SAME way configHash produces it (shared helper),
+      //     so a stale disable/go-live is caught too (scoring_enabled is hashed).
+      const currentHash = await readGameConfigHash(ctx.supabase, ctx.tripId, input.gameId);
+      if (currentHash === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      if (currentHash !== input.baseHash) {
+        throw new TRPCError({ code: "CONFLICT", message: "This game changed on another device — reload before saving." });
+      }
+      // 2 · The atomic write. Map the RPC's RAISE prefixes to typed errors so the
+      //     Save banner can surface the readiness reason / live-reject legibly.
+      const { error } = await ctx.supabase.rpc("save_game_config", {
+        p_trip_id: ctx.tripId,
+        p_game_id: input.gameId,
+        p_payload: input.payload,
+      });
+      if (error) {
+        const msg = error.message ?? "";
+        if (msg.includes("GAME_LIVE")) {
+          throw new TRPCError({ code: "CONFLICT", message: "This game is live — reload before editing its settings." });
+        }
+        if (msg.includes("NOT_READY")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Finish setting up this game before switching it to scoring." });
+        }
+        // The two freeze boundaries. Each names the ACTUAL affordance — "Reset scores"
+        // in the game's Danger zone — rather than restating the condition: this lands
+        // in the Save banner, and "scores are already entered" tells the user what's
+        // wrong without telling them what to do about it. Kept DISTINCT from each
+        // other so the banner names the right cause (matchups vs course).
+        if (msg.includes("HAS_SCORES")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This game already has scores. Reset scores in the game's Danger zone before changing its matchups.",
+          });
+        }
+        if (msg.includes("COURSE_LOCKED")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This game already has scores. Reset scores in the game's Danger zone before changing its course.",
+          });
+        }
+        if (msg.includes("NOT_AUTHORIZED")) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You can't edit this game." });
+        }
+        if (msg.includes("GAME_NOT_FOUND")) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Save failed: ${msg}` });
+      }
+      return { ok: true };
     }),
 
   // setPointsTotal — Owner/Organizer ONLY (the delegation boundary, Stage 3).

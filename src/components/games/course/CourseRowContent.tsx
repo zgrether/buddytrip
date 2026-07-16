@@ -19,18 +19,42 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  *    two-nines 18 shows Front + Back, each with its own × — front × clears the
  *    course, back × drops just the back (→ "needs a back nine", re-pick from there).
  *
- * All course mutations live here (applyCourse = front / also used to drop the back
- * by re-applying the front alone, setBackNine = back, clearCourse). They're live —
- * the accordion collapse just recedes.
+ * TWO MODES:
+ *  - **Uncontrolled** (default): the course mutations live here (applyCourse =
+ *    front / also used to drop the back by re-applying the front alone,
+ *    setBackNine = back, clearCourse). They're live — the accordion collapse just
+ *    recedes.
+ *  - **Controlled** (pass the `on*` action callbacks — the draft-then-save settings
+ *    page): this body reports the ACTION and the parent decides what it means.
+ *    State still comes from the `game` prop, so a drafting parent passes a
+ *    draft-shaped game and this renders the draft without knowing it. Under
+ *    draft-then-save the parent updates its draft (pre-computing the scorecard
+ *    snapshot via the shared buildCourseSnapshot) and the page's single Save
+ *    persists it — nothing commits from here.
+ * The uncontrolled mode stays until the remaining surfaces convert (P2).
  */
 export function CourseRowContent({
   tripId, game, canEdit, onChanged,
+  onApplyFront, onApplyBack, onRemoveBackNine, onClearCourse: onClearCourseProp, busy,
 }: {
   tripId: string;
   game: GameRow;
   canEdit: boolean;
   onChanged: () => void;
+  /** Controlled mode: a front course (+ tee) was picked. */
+  onApplyFront?: (courseId: string, teeName?: string) => void;
+  /** Controlled mode: a back nine (+ tee) was picked. */
+  onApplyBack?: (backCourseId: string, backTeeName?: string) => void;
+  /** Controlled mode: drop just the back nine (→ "needs a back nine"). */
+  onRemoveBackNine?: () => void;
+  /** Controlled mode: clear the course entirely. */
+  onClearCourse?: () => void;
+  /** Controlled mode: the parent's write is in flight (drives the tee chooser). */
+  busy?: boolean;
 }) {
+  // Controlled when the parent supplies the front-apply action (the one every
+  // state of this body can reach).
+  const controlled = onApplyFront !== undefined;
   const gameId = game.id;
   const router = useRouter();
   // Scorecard preview (Spec 5a) — the empty par/yardage/stroke-index card, read from
@@ -64,8 +88,9 @@ export function CourseRowContent({
     !!backId && !!appliedTeeName && backTees.length > 0 &&
     !backTees.some((t) => (t.name ?? "").trim() === appliedTeeName);
 
-  // Apply mutations are in flight → drive the tee chooser's pending feedback.
-  const applying = applyCourse.isPending || setBackNine.isPending;
+  // Apply mutations are in flight → drive the tee chooser's pending feedback. In
+  // controlled mode the parent owns the write, so it reports the pending state.
+  const applying = controlled ? !!busy : applyCourse.isPending || setBackNine.isPending;
 
   // Fast-path the course/tee-apply response (the reported "long delay"): the
   // mutation RETURNS the updated game row, so merge it straight into the getById
@@ -86,22 +111,31 @@ export function CourseRowContent({
     }
     if (courseId) utils.courses.getById.invalidate({ courseId });
   };
-  const onPickFront = ({ id, teeName }: { id: string; teeName?: string }) =>
+  const onPickFront = ({ id, teeName }: { id: string; teeName?: string }) => {
+    if (controlled) return void onApplyFront!(id, teeName);
     applyCourse.mutate({ tripId, gameId, courseId: id, teeSetName: teeName }, { onSuccess: (row) => patchGameFromReturn(row, id) });
-  const onPickBack = ({ id, teeName }: { id: string; teeName?: string }) =>
+  };
+  const onPickBack = ({ id, teeName }: { id: string; teeName?: string }) => {
+    if (controlled) return void onApplyBack?.(id, teeName);
     setBackNine.mutate({ tripId, gameId, backCourseId: id, backTeeSetName: teeName }, { onSuccess: (row) => patchGameFromReturn(row, id) });
+  };
   // Remove the back nine (per-nine × — Task 2b): re-apply the FRONT alone, which
   // resets back_course_id and shrinks the schema back to 9 → the "needs a back
   // nine" state (re-pick from there). Reuses applyCourse — no new server machinery
   // (the composed tee name is the front's, so it round-trips the front's tee).
-  const onRemoveBack = () =>
+  const onRemoveBack = () => {
+    if (controlled) return void onRemoveBackNine?.();
     applyCourse.mutate(
       { tripId, gameId, courseId: frontId!, teeSetName: appliedTeeName || undefined },
       { onSuccess: (row) => patchGameFromReturn(row, frontId!) }
     );
+  };
   // Clearing the course fully is rare and not the hot tee-select path — keep the
   // broad refresh (onChanged) so every dependent surface re-derives from scratch.
-  const onClearCourse = () => clearCourse.mutate({ tripId, gameId }, { onSuccess: () => { onChanged(); } });
+  const onClearCourse = () => {
+    if (controlled) return void onClearCourseProp?.();
+    clearCourse.mutate({ tripId, gameId }, { onSuccess: () => { onChanged(); } });
+  };
 
   // ── No course → front picker ──────────────────────────────────────────────
   if (!frontId) {
