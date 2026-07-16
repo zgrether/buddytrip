@@ -167,6 +167,49 @@ points shift standings. Converting the formats should carry the draft-then-save
 plumbing but leave the freeze model as-is (or minimal) so the redesign has one place to
 land, not four hardened copies.
 
+### `pairings_published_at` ≡ `scoring_enabled` — redundant, collapse is a separable cleanup
+
+Two columns encode ONE concept ("this game is revealed to the crew / open for scoring")
+and are always moved together. `pairings_published_at` (mig 035, match-play only,
+timestamptz) predates `scoring_enabled` (mig 057, uniform per-format boolean, which was
+introduced specifically to REPLACE the match "publish" coupling and was backfilled from
+`pairings_published_at` at 057:30). Since 057 they've been vestigial-vs-canonical:
+
+- **`scoring_enabled` is load-bearing** — read in ~15 sites: RLS on every child table
+  (mig 068 gates member SELECT/WRITE of game_participants/matches/play_groups/
+  score_entries/results on it), the `scores`/`matchOutcomes` write-gates, the leaderboard
+  board sections + armed icon, all four game views' screen derivation, and the
+  `save_game_config` state machine.
+- **`pairings_published_at` has exactly ONE production reader:** `matches.listByGame`
+  derives `const published = !!game.pairings_published_at` (`matches.ts:597`), which flows
+  to the client as the match-play `MemberNotReady` gate (member sees the pairings vs the
+  "not announced yet" placeholder). Its timestamp VALUE is never read — only its
+  null-ness. The other formats gate their member view off `scoring_enabled` and ignore it.
+
+**The latent inconsistency:** `matches.ts:552`'s own comment asserts "enabled-ness lives
+in `scoring_enabled` for every format (not `pairings_published_at` for match)" — yet the
+member-visibility `published` flag right below it (`matches.ts:597`) still reads the
+LEGACY column. The comment says one thing; the code reads the other.
+
+**Why it doesn't bite today — and why that's load-bearing, not safe:** there are actually
+THREE signals moving in lockstep — `scoring_enabled`, `pairings_published_at`, AND
+`status` (`pending`↔`active`, the `matches.listByGame` access gate at `:604` + the screen
+derivations). Every enable writes all three (`= true`/`now()`/`'active'`), every disable
+clears all three, in a single UPDATE, in every path. The invariant
+`pairings_published_at IS NOT NULL ⟺ scoring_enabled = true ⟺ status = 'active'` holds
+everywhere — and the member-visibility path **silently depends on it**. So this is NOT a
+free cleanup: anything that moves one signal without the others (a new mutation, a
+partial reset, an optimistic client setData) breaks member visibility in a way no type
+checker catches. **Do not touch one of the three in isolation.**
+
+**The cleanup (separable, deferred):** repoint `matches.listByGame`'s `published` at
+`scoring_enabled` (or `status`), stop writing `pairings_published_at`, drop the column in
+a migration. Blast radius: the RLS/member-visibility path, so it wants its own PR with
+member-visibility tests, not a bundle into a feature. The ONLY thing that would justify
+KEEPING the column distinct is a future need for the publish *timestamp* itself (audit /
+"revealed at" display) — nothing consumes it today. (Verified by the freeze-redesign
+Phase 0; Zach's call = leave the three in lockstep, log the collapse for later.)
+
 ### Game Settings draft-then-save — accepted divergences (logged, not bugs)
 
 *Captured from the P1 flip. These are DELIBERATE. Each looks like a defect from one
