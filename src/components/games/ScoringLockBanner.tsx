@@ -7,8 +7,10 @@ import { Lock } from "lucide-react";
  * (scoring mode). Game-altering settings are frozen mid-game — changing them
  * alters a game in progress, which must be intentional, not casual. The sanctioned
  * path is the Setup/Scoring toggle (rendered below): switch back to Setup to edit
- * (scores are kept), then re-enable. Rules of the Day stays editable in both modes
- * (it's notes, not game-altering), so it is NOT covered by this lock.
+ * (scores are kept), then re-enable. The NAME, ASSIGNMENT (delegates) and RULES OF
+ * THE DAY stay editable in both modes — they can't rescore a completed hole, and a
+ * delegate is exactly the kind of thing you add mid-round — so they are NOT covered
+ * by this lock (migration 083 lets a live save write just those fields).
  *
  * Friction, not prohibition — the edit path exists, it's just deliberate.
  *
@@ -32,8 +34,8 @@ export function ScoringLockBanner({ staged = false }: { staged?: boolean }) {
         </p>
         <p className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
           {staged
-            ? "Settings are locked while this is staged to scoring. Save to open it to the crew, or switch back to Setup to keep editing. Rules of the day can still be edited."
-            : "Settings are locked while it’s being scored. Switch back to Setup (the Game Play toggle) to change them — any scores entered are kept. Rules of the day can still be edited."}
+            ? "Settings are locked while this is staged to scoring. Save to open it to the crew, or switch back to Setup to keep editing. The name, assignment, and rules of the day can still be edited."
+            : "Settings are locked while it’s being scored. Switch back to Setup (the Game Play toggle) to change them — any scores entered are kept. The name, assignment, and rules of the day can still be edited."}
         </p>
       </div>
     </div>

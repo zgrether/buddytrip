@@ -1251,6 +1251,12 @@ export function MatchGameView() {
       utils.games.listByTrip.invalidate({ tripId });
       if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
     }
+    // Delegates aren't in the config hash (they live in game_delegates, not the
+    // hashed game/participants/matches), and neither cascade above touches
+    // listOrganizers — so a delegate change on ANY save would read stale until
+    // remount (the mirror's `serverDelegates` reads this query). Invalidate it
+    // unconditionally: cheap, and it's the source GameIdentityHeader renders from.
+    utils.games.listOrganizers.invalidate({ tripId, gameId });
     // The hash moved (we just changed the config) — refetch it so the baseline
     // re-seeds against the POST-save server state rather than waiting out the poll.
     void hashQ.refetch();

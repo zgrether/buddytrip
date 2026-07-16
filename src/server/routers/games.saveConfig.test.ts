@@ -276,20 +276,68 @@ describe("saveConfig — the scoring_enabled state machine", () => {
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
   });
 
-  it("a live game refuses a settings save (true→true); disable (true→false) is allowed", async () => {
-    const gameId = await newGame("Live guard");
+  it("a live game (true→true) writes name + rules but stays live and leaves game config frozen", async () => {
+    const gameId = await newGame("Live editable");
     await goLive(gameId);
 
+    // 083: a live game staying live is no longer refused — it writes the fields that
+    // can't rescore a completed hole (name / rules), ignores everything game-altering,
+    // and stays live. Bundle a matches change into the SAME payload to prove it's
+    // ignored rather than applied.
     const live = await draftOf(gameId);
-    await expect(
-      ctx.caller().games.saveConfig({
-        tripId,
-        gameId,
-        baseHash: await hashOf(gameId),
-        payload: configDraftToPayload({ ...live, name: "Edited While Live", scoringEnabled: true }, live),
-      })
-    ).rejects.toThrow(/live/i);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(
+        {
+          ...onePairedMatch(live),
+          name: "Renamed While Live",
+          rulesForToday: "no gimmes after 5pm",
+          scoringEnabled: true,
+          matches: [{ matchNumber: 1, playersPerSide: 1, a: [planner], b: [outsider], handicap: 0, pointValue: null }],
+        },
+        live
+      ),
+    });
+    const after = await ctx.caller().games.getById({ tripId, gameId }) as Record<string, unknown>;
+    expect(after.name).toBe("Renamed While Live");
+    expect(after.rules_for_today).toBe("no gimmes after 5pm");
+    expect(after.scoring_enabled).toBe(true); // stayed live
+    // The matchup in the payload was IGNORED — the live game still has its original
+    // owner-vs-member pairing, not the planner-vs-outsider one bundled above.
+    const { matches } = (await ctx.caller().matches.listByGame({ tripId, gameId })) as {
+      matches: { side_a: { id: string } | null; side_b: { id: string } | null }[];
+    };
+    const ids = matches.flatMap((m) => [m.side_a?.id, m.side_b?.id]);
+    expect(ids).toContain(owner);
+    expect(ids).toContain(member);
+    expect(ids).not.toContain(outsider);
+  });
 
+  it("a live game (true→true) can gain a delegate mid-round (Organizer write)", async () => {
+    const gameId = await newGame("Live delegate");
+    await goLive(gameId);
+    expect((await ctx.caller().games.listOrganizers({ tripId, gameId })) as unknown[]).toHaveLength(0);
+
+    const live = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      // Adding a co-scorer mid-round is exactly the case this exists for.
+      payload: configDraftToPayload({ ...live, delegates: [member], scoringEnabled: true }, live),
+    });
+    expect(
+      ((await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[]).map((d) => d.user_id)
+    ).toEqual([member]);
+    expect((await ctx.caller().games.getById({ tripId, gameId }) as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
+  });
+
+  it("disable (true→false) writes config in one atomic save", async () => {
+    const gameId = await newGame("Disable writes");
+    await goLive(gameId);
+    const live = await draftOf(gameId);
     // true→false DISABLES AND WRITES CONFIG in one atomic save (migration 082).
     // Under 081 this branch returned early and the name was silently dropped — which
     // is why the settings rows couldn't unlock on a merely-staged Setup.
