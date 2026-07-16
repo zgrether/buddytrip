@@ -39,7 +39,7 @@ async function readGameConfigHash(
   tripId: string,
   gameId: string
 ): Promise<string | null> {
-  const [gameRes, partsRes, groupsRes, matchesRes] = await Promise.all([
+  const [gameRes, partsRes, groupsRes, matchesRes, delegatesRes] = await Promise.all([
     supabase.from("games").select(GAME_CONFIG_COLS).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
     supabase.from("game_participants").select("user_id, play_group_id, team_id, handicap_strokes").eq("game_id", gameId).order("user_id", { ascending: true }),
     supabase.from("play_groups").select("id, display_name, handicap_strokes").eq("game_id", gameId).order("id", { ascending: true }),
@@ -50,10 +50,20 @@ async function readGameConfigHash(
     // a matchup change (CLAUDE.md #16 claims it does), and saveConfig's concurrency
     // check would pass while another device's pairings were being clobbered.
     supabase.from("game_matches").select("id, play_group_id, match_number, display_order, side_a, side_b").eq("game_id", gameId).order("id", { ascending: true }),
+    // `game_delegates` — the LAST field save_game_config writes that the hash didn't
+    // see, so a cross-device delegate change (incl. 083's mid-round add) was invisible
+    // to BOTH consumers, same class as the `.from("matches")` bug above.
+    // SELECT user_id ONLY — never granted_by / created_at. save_game_config replaces
+    // the whole delegate list with DELETE+INSERT on every org save, re-minting
+    // granted_by (auth.uid()) and created_at (DEFAULT now()) each time, so hashing
+    // those would churn the fingerprint on every save even when the delegate SET is
+    // unchanged — false conflicts + phantom cross-device "config changed". user_id is
+    // the semantic content and a total order (PK is game_id, user_id).
+    supabase.from("game_delegates").select("user_id").eq("game_id", gameId).order("user_id", { ascending: true }),
   ]);
   // Check EVERY query: a child failure must throw, never quietly hash an empty set
   // (that's what hid the bug above).
-  const failed = gameRes.error ?? partsRes.error ?? groupsRes.error ?? matchesRes.error;
+  const failed = gameRes.error ?? partsRes.error ?? groupsRes.error ?? matchesRes.error ?? delegatesRes.error;
   if (failed) {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${failed.message}` });
   }
@@ -63,6 +73,7 @@ async function readGameConfigHash(
     participants: partsRes.data ?? [],
     groups: groupsRes.data ?? [],
     matches: matchesRes.data ?? [],
+    delegates: delegatesRes.data ?? [],
   });
 }
 

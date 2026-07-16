@@ -204,6 +204,45 @@ describe("configHash — determinism (the concurrency check rides on this)", () 
     });
     expect(await hashOf(gameId)).not.toBe(before);
   });
+
+  it("MOVES on a delegate change — game_delegates is in the fan-out now", async () => {
+    // The gap this closes: game_delegates is the last field the RPC writes that the
+    // hash didn't see, so a cross-device delegate change was invisible to the
+    // conflict check AND to useConfigSync — same class as the `.from("matches")` bug.
+    const gameId = await newGame("Hash sees delegates");
+    const before = await hashOf(gameId);
+    const seeded = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: before,
+      payload: configDraftToPayload({ ...seeded, delegates: [member] }, seeded),
+    });
+    expect(await hashOf(gameId)).not.toBe(before);
+  });
+
+  it("does NOT churn when the SAME delegate set is re-granted (created_at/granted_by excluded)", async () => {
+    // The churn trap: save_game_config DELETE+INSERTs the whole delegate list on every
+    // org save, re-minting granted_by (auth.uid()) and created_at (now()). Hashing
+    // those would move the fingerprint on every save even when the delegate SET is
+    // unchanged — false conflicts + phantom "config changed" on other devices. The
+    // hash reads user_id ONLY, so a re-grant of the identical set is a no-op.
+    const gameId = await newGame("Delegate re-grant");
+    const seed = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: configDraftToPayload({ ...seed, delegates: [member] }, seed),
+    });
+    const afterGrant = await hashOf(gameId);
+
+    // Re-save with the IDENTICAL delegate set → RPC re-mints granted_by/created_at.
+    const now = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: afterGrant,
+      payload: configDraftToPayload({ ...now, delegates: [member] }, now),
+    });
+    expect(await hashOf(gameId)).toBe(afterGrant); // unchanged — only user_id is hashed
+  });
 });
 
 describe("saveConfig — optimistic concurrency", () => {
@@ -276,20 +315,68 @@ describe("saveConfig — the scoring_enabled state machine", () => {
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
   });
 
-  it("a live game refuses a settings save (true→true); disable (true→false) is allowed", async () => {
-    const gameId = await newGame("Live guard");
+  it("a live game (true→true) writes name + rules but stays live and leaves game config frozen", async () => {
+    const gameId = await newGame("Live editable");
     await goLive(gameId);
 
+    // 083: a live game staying live is no longer refused — it writes the fields that
+    // can't rescore a completed hole (name / rules), ignores everything game-altering,
+    // and stays live. Bundle a matches change into the SAME payload to prove it's
+    // ignored rather than applied.
     const live = await draftOf(gameId);
-    await expect(
-      ctx.caller().games.saveConfig({
-        tripId,
-        gameId,
-        baseHash: await hashOf(gameId),
-        payload: configDraftToPayload({ ...live, name: "Edited While Live", scoringEnabled: true }, live),
-      })
-    ).rejects.toThrow(/live/i);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(
+        {
+          ...onePairedMatch(live),
+          name: "Renamed While Live",
+          rulesForToday: "no gimmes after 5pm",
+          scoringEnabled: true,
+          matches: [{ matchNumber: 1, playersPerSide: 1, a: [planner], b: [outsider], handicap: 0, pointValue: null }],
+        },
+        live
+      ),
+    });
+    const after = await ctx.caller().games.getById({ tripId, gameId }) as Record<string, unknown>;
+    expect(after.name).toBe("Renamed While Live");
+    expect(after.rules_for_today).toBe("no gimmes after 5pm");
+    expect(after.scoring_enabled).toBe(true); // stayed live
+    // The matchup in the payload was IGNORED — the live game still has its original
+    // owner-vs-member pairing, not the planner-vs-outsider one bundled above.
+    const { matches } = (await ctx.caller().matches.listByGame({ tripId, gameId })) as {
+      matches: { side_a: { id: string } | null; side_b: { id: string } | null }[];
+    };
+    const ids = matches.flatMap((m) => [m.side_a?.id, m.side_b?.id]);
+    expect(ids).toContain(owner);
+    expect(ids).toContain(member);
+    expect(ids).not.toContain(outsider);
+  });
 
+  it("a live game (true→true) can gain a delegate mid-round (Organizer write)", async () => {
+    const gameId = await newGame("Live delegate");
+    await goLive(gameId);
+    expect((await ctx.caller().games.listOrganizers({ tripId, gameId })) as unknown[]).toHaveLength(0);
+
+    const live = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      // Adding a co-scorer mid-round is exactly the case this exists for.
+      payload: configDraftToPayload({ ...live, delegates: [member], scoringEnabled: true }, live),
+    });
+    expect(
+      ((await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[]).map((d) => d.user_id)
+    ).toEqual([member]);
+    expect((await ctx.caller().games.getById({ tripId, gameId }) as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
+  });
+
+  it("disable (true→false) writes config in one atomic save", async () => {
+    const gameId = await newGame("Disable writes");
+    await goLive(gameId);
+    const live = await draftOf(gameId);
     // true→false DISABLES AND WRITES CONFIG in one atomic save (migration 082).
     // Under 081 this branch returned early and the name was silently dropped — which
     // is why the settings rows couldn't unlock on a merely-staged Setup.
