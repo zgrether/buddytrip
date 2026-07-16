@@ -1902,7 +1902,7 @@ export function MatchGameView() {
                 frozen, so it has to clear exactly when they unlock or it contradicts
                 them. (082 is what makes staging Setup a real unlock — see
                 `settingsEditable`.) */}
-            {draftScoringEnabled && canEdit && <ScoringLockBanner />}
+            {draftScoringEnabled && canEdit && <ScoringLockBanner staged={draftScoringEnabled !== scoringEnabled} />}
 
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
                 competition the rosters live on the competition face (the leaderboard

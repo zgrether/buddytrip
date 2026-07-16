@@ -468,7 +468,9 @@ describe("saveConfig — the freeze boundaries once scores exist", () => {
           paired
         ),
       })
-    ).rejects.toThrow(/scores are already entered/i);
+      // Actionable copy naming the real affordance — not the raw RAISE prefix, and
+      // not a restatement of the condition.
+    ).rejects.toThrow(/Reset scores in the game's Danger zone/i);
 
     // ...but an unchanged match set is a no-op write, so the game stays editable.
     // This is exactly what keeps disable → fix a typo → re-enable working.

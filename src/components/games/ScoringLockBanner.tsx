@@ -11,8 +11,14 @@ import { Lock } from "lucide-react";
  * (it's notes, not game-altering), so it is NOT covered by this lock.
  *
  * Friction, not prohibition — the edit path exists, it's just deliberate.
+ *
+ * Under draft-then-save the lock follows the DRAFT (in lockstep with the rows this
+ * banner explains — it has to appear and clear exactly when they do, or it
+ * contradicts them). That means it can show for a game that is only STAGED to go
+ * live, so `staged` swaps the copy: an unsaved toggle must not claim the game is
+ * live and being scored when it isn't yet.
  */
-export function ScoringLockBanner() {
+export function ScoringLockBanner({ staged = false }: { staged?: boolean }) {
   return (
     <div
       className="mb-3 flex items-start gap-2.5 rounded-xl px-3.5 py-3"
@@ -22,11 +28,12 @@ export function ScoringLockBanner() {
       <Lock size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
       <div>
         <p className="text-sm font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-          This game is live
+          {staged ? "Going live when you save" : "This game is live"}
         </p>
         <p className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          Settings are locked while it’s being scored. Switch back to Setup (the Game Play toggle) to change
-          them — any scores entered are kept. Rules of the day can still be edited.
+          {staged
+            ? "Settings are locked while this is staged to scoring. Save to open it to the crew, or switch back to Setup to keep editing. Rules of the day can still be edited."
+            : "Settings are locked while it’s being scored. Switch back to Setup (the Game Play toggle) to change them — any scores entered are kept. Rules of the day can still be edited."}
         </p>
       </div>
     </div>
