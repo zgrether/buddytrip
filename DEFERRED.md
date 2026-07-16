@@ -152,6 +152,21 @@ doubles), rack-n-stack, and the generic/manual formats):
   config persistence" gotcha for the adjacent (and unrelated) collapse-persist
   behavior this is easy to conflate with.
 
+### Per-setting freeze redesign — coming; do NOT harden the current freeze (Zach, blocking P2)
+
+The current live-game freeze is COARSE: `settingsEditable = canEdit && !scoringEnabled`
+locks the whole settings spine, with a hand-picked carve-out (name / delegate / rules,
+via migration 083). A **per-setting freeze redesign is coming that changes the model** —
+which settings are editable mid-round becomes a per-field decision, not one flag.
+
+**Constraint for P2 (rack/stroke/non-golf onto draft-then-save):** do NOT replicate the
+current coarse freeze into the three remaining formats, and do NOT treat
+`entry_mode`/points as a "one-line loosen." They stay frozen because that's PART OF the
+redesign, not an oversight — `entry_mode` orphans entered data if switched mid-round,
+points shift standings. Converting the formats should carry the draft-then-save
+plumbing but leave the freeze model as-is (or minimal) so the redesign has one place to
+land, not four hardened copies.
+
 ### Game Settings draft-then-save — accepted divergences (logged, not bugs)
 
 *Captured from the P1 flip. These are DELIBERATE. Each looks like a defect from one
