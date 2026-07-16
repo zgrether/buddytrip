@@ -9,6 +9,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useOutcomeSaver } from "@/hooks/useOutcomeSaver";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
+import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
@@ -313,6 +314,11 @@ export function MatchGameView() {
     void utils.matches.listByGame.invalidate({ tripId, gameId });
   }, [utils, tripId, gameId]);
   useConfigSync(tripId, gameId, !!gameId, onConfigChanged);
+  // Realtime config push (migration 084): the INSTANT half — another browser sees a
+  // settings change without waiting out the poll above (which is also paused on a
+  // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
+  // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
+  useRealtimeGame(tripId, gameId);
 
   // Shape (Refactor A1): 1v1-vs-2v2 is a per-match property, so the AUTHORITATIVE
   // signal is the game's own matches — a doubles game's `game_matches` carry
