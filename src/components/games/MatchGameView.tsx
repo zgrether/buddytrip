@@ -453,6 +453,16 @@ export function MatchGameView() {
   // #501: game-altering config (matches/course/points/handicaps/modifiers) freezes
   // in scoring mode. MatchSetup/HandicapsSection have no read-only mode, so their
   // rows go non-expandable; GameSetupRows/ModifierCards take settingsEditable directly.
+  //
+  // Reads the SERVER's `scoring_enabled`, NOT `configDraft.scoringEnabled` — the one
+  // place on this page that deliberately doesn't follow the draft, so staging Setup
+  // on a live game does not unlock the rows until the disable is Saved. That is
+  // FORCED BY THE RPC, not a UI oversight: `save_game_config`'s true→false branch
+  // disables and RETURNs early WITHOUT rewriting config, so any edits riding the same
+  // payload as the disable are silently dropped. Repointing this at the draft without
+  // fixing that branch turns a clunky two-step into silent data loss — the exact class
+  // of bug this refactor exists to remove. The fix needs a new migration (081 is
+  // applied; never edit it) — see DEFERRED.md "unlock on a staged Setup".
   const settingsEditable = canEdit && !scoringEnabled;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
@@ -1392,7 +1402,12 @@ export function MatchGameView() {
       // 2v2 and are redundant (they're in the state band + choice rows). label is
       // already "Match N" from the groups builder.
       ? selectedGroup.label
-      : (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
+      // The DRAFT's name, not the server's. GameIdentityHeader renders
+      // `configDraft.name`, so reading `gameQ.data.name` here put two different names
+      // for the same game on screen at once — a stale app bar directly above the live
+      // field editing it. Untouched, the draft IS the mirror, so this is identical to
+      // the old behaviour everywhere except mid-edit, which is the case that was wrong.
+      : configDraft.name.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
   usePublishGameChrome(
     inPanel
       ? {

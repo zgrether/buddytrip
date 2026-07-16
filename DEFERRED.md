@@ -152,6 +152,62 @@ doubles), rack-n-stack, and the generic/manual formats):
   config persistence" gotcha for the adjacent (and unrelated) collapse-persist
   behavior this is easy to conflate with.
 
+### Game Settings draft-then-save — accepted divergences (logged, not bugs)
+
+*Captured from the P1 flip. These are DELIBERATE. Each looks like a defect from one
+angle, and "fixing" any of them re-opens something worse — the reasoning is here so
+that case doesn't have to be re-derived from scratch.*
+
+- **`save_game_config`'s lost-update window is accepted, not closed.** The
+  optimistic-concurrency `baseHash` is validated in the tRPC front door, OUTSIDE the
+  RPC's `FOR UPDATE` lock, so a true lost update — A checks, B checks, A writes, B
+  clobbers — stays reachable in the sub-100ms gap. `FOR UPDATE` only removes the
+  RPC-vs-RPC interleave. Human-timescale collisions (two people editing settings
+  seconds apart) ARE caught. Closing it properly needs a stored version column bumped
+  under the lock, which every other write path would then have to maintain and which
+  false-rejects when stale. Documented in the migration itself; don't "tighten" the
+  lock without reading that note.
+- **The outbox `base` and Save's `baseHash` MUST stay ONE value.** Both read the
+  single `serverHash` binding off `games.configHash`, frozen on the same
+  `anyTouched` transition. They answer two halves of one question — recover-vs-discard
+  and conflict-vs-allow — and keying them off different fingerprints makes them
+  disagree about what the base was. This shipped wrong once: the outbox was keyed on a
+  MATCHES fingerprint, so a remote COURSE change left it equal, the outbox restored,
+  the baseline re-seeded to the newer server at mount, Save's check passed, and the
+  recovered draft silently overwrote the other device. **The trap that invites the
+  wrong fix:** the hash is async, and comparing a stored base against `""` while it
+  loads deletes a good outbox entry. Gate on the hash (the outbox's `enabled` requires
+  it; the seed effect waits for it) — never re-key the outbox off something
+  synchronous.
+- **"No handicap" persists as NULL, not 0.** `save_game_config` writes
+  `NULLIF(strokes, 0)`, where the old per-row `setHandicap` wrote a literal `0`. Every
+  reader normalises via `effectiveStrokes` (`?? 0`), so the two are behaviourally
+  identical. Don't "fix" the encoding, and don't assert it in tests — assert the
+  meaning (`hcap.get(id) ?? 0`).
+- **A live game's settings rows read the SERVER's `scoring_enabled`, not the draft.**
+  So staging Setup on a live game does NOT unlock the rows — you Save the disable
+  first, then edit. That's forced by the RPC, not a UI oversight: its `true→false`
+  branch disables and RETURNs early WITHOUT rewriting config, so config edits riding
+  the same payload as a disable would be silently discarded. Repointing
+  `settingsEditable` at the draft without changing that branch converts a clunky
+  two-step into silent data loss. See the "unlock on staged Setup" nomination below.
+
+### Game settings — unlock on a staged Setup (needs an RPC change first)
+
+The two-step above (Save the disable → rows unlock → edit → Save again) is real
+friction and worth removing, but it can't be done client-side. `save_game_config`'s
+`true→false` branch early-returns after flipping the flag, so the fix is a NEW
+migration (081 is applied — never edit it) letting that branch fall through and write
+config before disabling, with the existing `COURSE_LOCKED` / `HAS_SCORES` freeze
+guards applying to it. Then `settingsEditable` / the row `locked` props / the lock
+banner can all read `configDraft.scoringEnabled` and a staged Setup unlocks
+immediately, with one atomic Save doing both.
+
+Note the resulting semantics, which are correct but worth knowing: on a game that
+kept its scores through a disable, "flip to Setup + edit matches + Save" would be
+REFUSED as `HAS_SCORES` and the whole thing rolls back — including the disable. The
+user then cancels the match edits and saves the disable alone.
+
 ### 2v2 per-individual handicaps
 
 The per-match handicap **side selector** (1v1 match play) assigns strokes to a *side*. In 2v2 best ball
