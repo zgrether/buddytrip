@@ -57,13 +57,23 @@ export interface RelHandicapView {
   /** Even → no stepper (one line, no caption); a side → the centered <Stepper full> reveals. */
   showStepper: boolean;
 }
-export function relHandicapView(value: number, aName: string, bName: string): RelHandicapView {
+export function relHandicapView(
+  value: number,
+  aName: string,
+  bName: string,
+  // The applied course's stroke index (+ hole count) — so the caption names the REAL
+  // holes strokes fall on, matching what the scoring engine does (buildDecided passes
+  // the same index). Omitted / index-less course → strokeHoles' sequential 1..n
+  // fallback, which is also what the engine falls back to, so the two never disagree.
+  strokeIndex?: number[],
+  holeCount?: number,
+): RelHandicapView {
   const clamped = Math.max(-MAX, Math.min(MAX, Math.round(value)));
   const side: "a" | "b" | "even" = clamped < 0 ? "a" : clamped > 0 ? "b" : "even";
   const n = Math.abs(clamped);
   const even = side === "even";
   const recipient = even ? null : side === "a" ? aName : bName;
-  const holes = [...strokeHoles(n)].sort((x, y) => x - y);
+  const holes = [...strokeHoles(n, strokeIndex, holeCount)].sort((x, y) => x - y);
   // Even → no caption (the segment says it); a side → who gets the strokes.
   const caption = even
     ? ""
@@ -81,12 +91,16 @@ interface RelHandicapControlProps {
   matchNumber: number;
   /** Drives the 1V1/2V2 shape tag under the number (shared MatchNumberBadge). */
   playersPerSide: number;
+  /** The applied course's stroke index + hole count, so the "gets strokes on holes …"
+   *  caption names the real allocation (not sequential 1..n) when the course has one. */
+  strokeIndex?: number[];
+  holeCount?: number;
   /** No top hairline on the first row (MatchGridRow delimits BETWEEN matches). */
   isFirst?: boolean;
 }
 
-export function RelHandicapControl({ a, b, value, onChange, matchNumber, playersPerSide, isFirst }: RelHandicapControlProps) {
-  const { side, n, even, caption, showStepper } = relHandicapView(value, a.name, b.name);
+export function RelHandicapControl({ a, b, value, onChange, matchNumber, playersPerSide, strokeIndex, holeCount, isFirst }: RelHandicapControlProps) {
+  const { side, n, even, caption, showStepper } = relHandicapView(value, a.name, b.name, strokeIndex, holeCount);
 
   // Selecting a player keeps the current magnitude (min 1) and points it that way.
   // Switching sides preserves |value| (sign flip).

@@ -745,6 +745,16 @@ export function MatchGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, draftScoringEnabled, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
 
+  // The applied course's stroke index + hole count, read from the DRAFT schema so the
+  // Handicaps caption tracks a course change live. Absent (no course / index-less
+  // course) → the sequential 1..n fallback, matching the scoring engine (which reads
+  // the same snapshotted handicap_index in server/lib/matchPlay).
+  const courseMeta = configDraft.course.scorecardSchema as
+    | { units?: { count?: number; metadata?: { handicap_index?: number[] } } }
+    | null;
+  const courseStrokeIndex = courseMeta?.units?.metadata?.handicap_index;
+  const courseHoleCount = courseMeta?.units?.count;
+
   // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
   // The dirty check's reference point AND the optimistic-concurrency base, captured
   // in ONE shot from the same render's mirror + the SERVER-produced hash.
@@ -2110,6 +2120,8 @@ export function MatchGameView() {
                 // players read their team color; an unassigned player gets undefined →
                 // the neutral palette (honest). Same source the Matches panel + overview use.
                 teamColorOf={teamColorOf}
+                strokeIndex={courseStrokeIndex}
+                holeCount={courseHoleCount}
               />
             </ChecklistRow>
             )}
@@ -2945,11 +2957,18 @@ function HandicapsSection({
   nameOf,
   colorOf,
   teamColorOf,
+  strokeIndex,
+  holeCount,
 }: {
   draft: DraftMatch[];
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
+  /** The applied course's stroke index + hole count (from the game's scorecard
+   *  schema), so the per-match "gets strokes on holes …" caption names the real
+   *  allocation. Absent / index-less course → sequential 1..n (the engine's fallback). */
+  strokeIndex?: number[];
+  holeCount?: number;
   /** A player's TEAM color from their roster assignment (`teamOfUser`), the same
    *  source the overview uses (`sideColor`/`teamOfSide`) — so the handicap avatars
    *  match every other team-avatar surface (Rhinos red / Phoenix purple). A player
@@ -2992,6 +3011,8 @@ function HandicapsSection({
           value={d.handicap}
           matchNumber={i + 1}
           playersPerSide={d.playersPerSide}
+          strokeIndex={strokeIndex}
+          holeCount={holeCount}
           isFirst={idx === 0}
           onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
         />

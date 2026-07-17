@@ -36,6 +36,22 @@ describe("relHandicapView (the §8 reveal view-model)", () => {
     expect(v.caption).toMatch(/^Bob gets strokes on hole \d+$/); // singular, no trailing 's'
   });
 
+  it("names the STROKE-INDEX holes, not sequential 1..n, when a course index is given", () => {
+    // Stroke index over 4 holes: SI 1 is hole 3, SI 2 is hole 1, SI 3 is hole 4, SI 4 is
+    // hole 2. 2 strokes fall on the two LOWEST-index holes → SI 1 (hole 3) + SI 2 (hole 1).
+    const idx = [2, 4, 1, 3];
+    const v = relHandicapView(-2, "Ann", "Bob", idx, 4);
+    expect(v.holes).toEqual([1, 3]); // NOT [1, 2] — the sequential fallback (the bug)
+    expect(v.caption).toBe("Ann gets strokes on holes 1, 3");
+  });
+
+  it("falls back to sequential 1..n for an index-less course (matches the engine)", () => {
+    // No index passed (or an index-less/muni course) → holes 1..n, exactly what
+    // strokeHoles + the scoring engine do when the snapshot has no handicap_index.
+    const v = relHandicapView(-3, "Ann", "Bob");
+    expect(v.holes).toEqual([1, 2, 3]);
+  });
+
   it("clamps magnitude to ±18 and rounds, preserving side", () => {
     expect(relHandicapView(25, "Ann", "Bob").n).toBe(18);
     expect(relHandicapView(25, "Ann", "Bob").side).toBe("b");
