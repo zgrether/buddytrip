@@ -49,7 +49,18 @@ async function readGameConfigHash(
     // fingerprint. That silently broke BOTH consumers — cross-device sync never saw
     // a matchup change (CLAUDE.md #16 claims it does), and saveConfig's concurrency
     // check would pass while another device's pairings were being clobbered.
-    supabase.from("game_matches").select("id, play_group_id, match_number, display_order, side_a, side_b").eq("game_id", gameId).order("id", { ascending: true }),
+    // `point_value` (the per-match override) MUST be selected — the third instance of
+    // "everything the RPC writes must be in the hash" (after the `.from("matches")` and
+    // game_delegates gaps). Before migration 084, a point_value change went through the
+    // clean-replace, which minted a fresh `id` (which IS hashed), so the change was
+    // caught cross-device BY ACCIDENT via id churn. 084's in-place field write keeps the
+    // id stable, removing that accidental coverage — so without point_value here a stale
+    // device could silently revert an override past the concurrency check. It's semantic
+    // content (not a re-minted timestamp), so no churn trap like game_delegates had.
+    // handicap_strokes needs no addition — it's already hashed directly via the
+    // game_participants + play_groups selects above, so the in-place handicap write moves
+    // the hash on its own.
+    supabase.from("game_matches").select("id, play_group_id, match_number, display_order, side_a, side_b, point_value").eq("game_id", gameId).order("id", { ascending: true }),
     // `game_delegates` — the LAST field save_game_config writes that the hash didn't
     // see, so a cross-device delegate change (incl. 083's mid-round add) was invisible
     // to BOTH consumers, same class as the `.from("matches")` bug above.

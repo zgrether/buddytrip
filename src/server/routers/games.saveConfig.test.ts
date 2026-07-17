@@ -221,6 +221,27 @@ describe("configHash — determinism (the concurrency check rides on this)", () 
     expect(await hashOf(gameId)).not.toBe(before);
   });
 
+  it("MOVES on an in-place POINT OVERRIDE change — point_value is in the fan-out now", async () => {
+    // 084's in-place field write keeps match ids STABLE, so a point_value change no
+    // longer churns the id (which is hashed) — the pre-084 accidental coverage. Without
+    // point_value in the select, a stale device could silently revert an override past
+    // the concurrency check. This is the guard that it's now hashed directly.
+    const gameId = await newGame("Hash sees point override");
+    await goLive(gameId); // one match: owner vs member, override null
+    const before = await hashOf(gameId);
+    // A draft mirroring the live match, changing ONLY the override → structure-clean →
+    // the IN-PLACE path (stable id). This is the exact case that lost hash coverage.
+    const base: ConfigDraft = {
+      ...(await draftOf(gameId)),
+      matches: [{ matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null }],
+    };
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: before,
+      payload: configDraftToPayload({ ...base, matches: [{ ...base.matches[0], pointValue: 7 }] }, base),
+    });
+    expect(await hashOf(gameId)).not.toBe(before);
+  });
+
   it("does NOT churn when the SAME delegate set is re-granted (created_at/granted_by excluded)", async () => {
     // The churn trap: save_game_config DELETE+INSERTs the whole delegate list on every
     // org save, re-minting granted_by (auth.uid()) and created_at (now()). Hashing
