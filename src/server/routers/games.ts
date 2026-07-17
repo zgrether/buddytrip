@@ -13,6 +13,7 @@ import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
+import { COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { computeConfigHash } from "@/lib/configHash";
 
@@ -799,6 +800,9 @@ export const gamesRouter = router({
           modifiers: z.record(z.string(), z.record(z.string(), z.unknown())),
           pointsTotal: z.number().nullable(),
           pointsDistribution: z.unknown().nullable(),
+          // competition_format (086) — non-golf's structure label. Optional: only
+          // non-golf sends it; golf formats omit it and the RPC COALESCE-preserves.
+          competitionFormat: z.enum(COMPETITION_FORMATS).nullable().optional(),
           courseId: z.string().nullable(),
           backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),

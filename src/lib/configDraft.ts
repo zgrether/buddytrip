@@ -29,6 +29,11 @@ import { evenShare, type PointsDistribution } from "./pointsDistribution";
 import { isMatchPlayFormat } from "./gameRoutes";
 import type { ModifiersMap } from "./modifiers";
 
+/** `games.competition_format` values (non-golf structure). ONE definition shared by the
+ *  draft, the payload, and the `saveConfig` zod so they can't drift. */
+export const COMPETITION_FORMATS = ["head_to_head", "bracket_se", "bracket_de", "best_of_n", "live_results"] as const;
+export type CompetitionFormat = (typeof COMPETITION_FORMATS)[number];
+
 /** A match inside the composite draft. Extends the pairing shape (`DraftMatch`)
  *  with the per-match point-value override (A2b) so Points derives from the draft,
  *  not `serverMatches`. `handicap` is signed: <0 → side A gets |n| strokes, >0 →
@@ -55,6 +60,10 @@ export interface ConfigDraft {
   gameTypeId: string | null;
   name: string;
   rulesForToday: string | null;
+  /** `games.competition_format` — non-golf's structure label (head-to-head / bracket /
+   *  best-of-N / live-results). Null for golf formats. Quiet tier: it recalculates
+   *  nothing (no scoring path reads it), so it's just a drafted scalar like name/rules. */
+  competitionFormat: CompetitionFormat | null;
   /** A draft FIELD (spec §2.7-2): Save commits the config AND goes live / disables
    *  in one action. Not a separate transaction. */
   scoringEnabled: boolean;
@@ -103,6 +112,7 @@ export interface ConfigGameSnapshot {
   game_type_id?: string | null;
   name?: string | null;
   rules_for_today?: string | null;
+  competition_format?: string | null;
   scoring_enabled?: boolean | null;
   entry_mode?: string | null;
   modifiers?: ModifiersMap | null;
@@ -128,6 +138,7 @@ export function configToDraft(
     gameTypeId: game.game_type_id ?? null,
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
+    competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
     scoringEnabled: game.scoring_enabled ?? false,
     entryMode: game.entry_mode ?? "score",
     modifiers: game.modifiers ?? {},
@@ -182,6 +193,8 @@ export interface SaveMatchRow {
 export interface SaveConfigPayload {
   name: string;
   rulesForToday: string | null;
+  /** `games.competition_format` (086) — non-golf's structure label; null for golf. */
+  competitionFormat: CompetitionFormat | null;
   scoringEnabled: boolean;
   entryMode: string;
   modifiers: ModifiersMap;
@@ -193,7 +206,10 @@ export interface SaveConfigPayload {
   backCourseId: string | null;
   scorecardSchema: unknown | null;
   delegates: string[];
-  matches: SaveMatchRow[];
+  /** Match play ONLY. Omitted for non-golf (and, in later P2 phases, rack/stroke) so
+   *  the RPC — which gates its matches block on `payload ? 'matches'` (085) — skips it
+   *  entirely rather than running the clean-replace with an empty set. */
+  matches?: SaveMatchRow[];
   /**
    * Did the match SET (structure: which matches, each side's roster, the shape)
    * change vs the state the draft was seeded from? — NOT whether a per-match FIELD
@@ -211,9 +227,9 @@ export interface SaveConfigPayload {
    * reports True and is refused with scores. A client that under-reports gets its
    * structural edits silently written in-place-only (safe-ish); over-reports gets
    * refused (safe). Was `matchesDirty` — renamed when the structure/field split
-   * landed (migration 084).
+   * landed (migration 084). Optional: absent whenever `matches` is (non-golf).
    */
-  matchesStructureDirty: boolean;
+  matchesStructureDirty?: boolean;
 }
 
 /** Split a signed handicap into per-side stroke counts (<0 → A gets |n|; >0 → B
@@ -268,9 +284,24 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
     distribution = { type: "per_match", value: evenShare(draft.pointsTotal, overrides, filled.length) };
   }
 
+  // The matches keys ride ONLY on a match-play payload — the RPC gates its matches
+  // block on `payload ? 'matches'`, so omitting them for a non-match format (non-golf
+  // here; rack/stroke in later phases) makes it skip that block instead of running the
+  // clean-replace against an empty set. Course keys stay (null is a harmless no-op for a
+  // course-less format — same value, no COURSE_LOCKED trip).
+  const matchKeys = isMatchPlayFormat(draft.gameTypeId)
+    ? {
+        matches,
+        // ONLY structure gates the clean-replace — a field-only edit (handicap / point
+        // override) reports false and the RPC writes it in place.
+        matchesStructureDirty: baseline ? !matchesStructureEqual(draft.matches, baseline.matches) : true,
+      }
+    : {};
+
   return {
     name: draft.name.trim(),
     rulesForToday: draft.rulesForToday?.trim() || null,
+    competitionFormat: draft.competitionFormat,
     scoringEnabled: draft.scoringEnabled,
     entryMode: draft.entryMode,
     modifiers: draft.modifiers,
@@ -280,10 +311,7 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
     backCourseId: draft.course.backId,
     scorecardSchema: draft.course.scorecardSchema,
     delegates: [...draft.delegates].sort(),
-    matches,
-    // ONLY structure gates the clean-replace now — a field-only edit (handicap /
-    // point override) reports false and the RPC writes it in place.
-    matchesStructureDirty: baseline ? !matchesStructureEqual(draft.matches, baseline.matches) : true,
+    ...matchKeys,
   };
 }
 
@@ -345,6 +373,7 @@ export function configDraftsEqual(a: ConfigDraft, b: ConfigDraft): boolean {
   return (
     a.name.trim() === b.name.trim() &&
     (a.rulesForToday?.trim() || "") === (b.rulesForToday?.trim() || "") &&
+    a.competitionFormat === b.competitionFormat &&
     a.scoringEnabled === b.scoringEnabled &&
     a.entryMode === b.entryMode &&
     a.pointsTotal === b.pointsTotal &&
