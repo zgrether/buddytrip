@@ -9,6 +9,7 @@ import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
+import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -272,9 +273,32 @@ export function NonGolfGameView() {
 
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
-  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+  // Confirm-on-leave: the whole page is ONE draft (commits only on Save), so a
+  // back-press with unsaved edits is a silent data-loss path. `guardDirty` /
+  // `handleCancelConfig` are wired through latest-refs (synced in the effect below)
+  // because `guardDirty` reads `showConfig`, which this hook returns — a direct pass
+  // would be circular.
+  const dirtyRef = useRef(false);
+  const discardRef = useRef<() => void>(() => {});
+  const {
+    open: showConfig,
+    openConfig,
+    closeConfig,
+    confirmingClose,
+    confirmDiscard,
+    cancelClose,
+  } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
+    isDirty: () => dirtyRef.current,
+    onDiscard: () => discardRef.current(),
+  });
+  // Gate the guard on the overlay being OPEN + editable — the scoreboard underneath
+  // (and a member's read-only view) must never trap a back-press.
+  const guardDirty = showConfig && canEdit && dirty;
+  useEffect(() => {
+    dirtyRef.current = guardDirty;
+    discardRef.current = handleCancelConfig;
   });
 
   async function refreshGame() {
@@ -334,6 +358,7 @@ export function NonGolfGameView() {
   // This matches the rack page, which already renders the config view directly.
   if (showConfig && canEdit && competitionId) {
     return (
+      <>
       <NonGolfConfigurationView
         hideHeader={inPanel}
         subtitle={typeName}
@@ -371,6 +396,15 @@ export function NonGolfGameView() {
           />
         }
       />
+      {confirmingClose && (
+        <DiscardChangesPrompt
+          onDiscard={confirmDiscard}
+          onKeepEditing={cancelClose}
+          onSave={() => { cancelClose(); void handleSaveConfig(); }}
+          saving={saveConfigM.isPending}
+        />
+      )}
+      </>
     );
   }
 
