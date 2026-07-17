@@ -42,7 +42,6 @@ import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, buildDecidedFromOutcomes, matchState, strokeHoles, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
@@ -460,17 +459,21 @@ export function MatchGameView() {
   // here because the settings lock is derived ~240 lines above the composite memo.
   // configDraft reads THIS, so there is exactly one definition.
   const draftScoringEnabled = scoringDraft ?? scoringEnabled;
-  // #501: game-altering config (matches/course/points/handicaps/modifiers) freezes
-  // in scoring mode. MatchSetup/HandicapsSection have no read-only mode, so their
-  // rows go non-expandable; GameSetupRows/ModifierCards take settingsEditable directly.
-  //
-  // Follows the DRAFT (migration 082): staging Setup unlocks the rows immediately, so
-  // one atomic Save disables AND re-configures. This was only safe once 082 landed —
-  // 081's true→false branch disabled and RETURNed early WITHOUT writing config, so
-  // unlocking on a staged Setup would have silently dropped every edit riding that
-  // same payload. 082 lets the branch fall through, under the existing course/matches
-  // freeze guards. Don't repoint this back at the server flag without re-reading them.
-  const settingsEditable = canEdit && !draftScoringEnabled;
+  // ── Freeze redesign: locks key on SCORES existing, not scoring mode (084). ────
+  // scoring_enabled is a pure visibility flag now; the real question is "is there
+  // entered data to protect." Three tiers (spec §0):
+  //   • Quiet  (name/delegate/rules)      — never locked.
+  //   • Warned (Total Points / Point Distribution / Handicaps / Modifiers) — editable
+  //            even with scores; results just recalculate (the section notice says so).
+  //   • Locked (Entry Mode, Matches, Course-in-the-scored-nine) — would ORPHAN entered
+  //            data, so refused. The client renders them locked; the RPC is the
+  //            backstop (HAS_SCORES / ENTRY_MODE_LOCKED / COURSE_LOCKED).
+  const scoresExist = (scoresQ.data?.length ?? 0) > 0 || (outcomesQ.data?.length ?? 0) > 0;
+
+  // The Setup/Scoring toggle no longer gates editing — `settingsEditable` is just the
+  // role gate. Locked-tier rows freeze on `scoresExist` (Course via front/backScored)
+  // individually at their render sites; warned + quiet rows read `settingsEditable`.
+  const settingsEditable = canEdit;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
@@ -629,13 +632,11 @@ export function MatchGameView() {
     // Never mirror before the hash lands: an entry stored with base "" could never
     // be recovered (it would compare unequal to every real hash and delete itself).
     //
-    // Gated on the DRAFT's flag, not the server's: now that staging Setup unlocks the
-    // rows (082), edits made against a still-live game are real drafted work and a
-    // refresh must not lose them. The old server gate existed because the outbox fed
-    // setPairings writes — nothing auto-writes from it any more, it only restores a
-    // draft, so mirroring a staged-Setup game is safe. An untouched live game still
-    // mirrors nothing: its rows are locked, so there's nothing to protect.
-    enabled: !!gameId && !draftScoringEnabled && !!serverHash,
+    // Gated on `canEdit`, not on scoring (084 freeze redesign): a scored/live game
+    // still has editable WARNED rows (points / handicaps / modifiers), so its draft is
+    // real work a refresh must not lose. Nothing auto-writes from the outbox — it only
+    // restores a draft — so mirroring an editable game is always safe.
+    enabled: !!gameId && canEdit && !!serverHash,
   });
 
   // matchId → override, for the game-page projection (per-match award value).
@@ -1908,13 +1909,11 @@ export function MatchGameView() {
               </>
             )}
 
-            {/* #501: live-game lock — the settings below freeze until the owner/
-                delegate flips the toggle above back to Setup. Follows the DRAFT, in
-                lockstep with `settingsEditable`: the banner explains why the rows are
-                frozen, so it has to clear exactly when they unlock or it contradicts
-                them. (082 is what makes staging Setup a real unlock — see
-                `settingsEditable`.) */}
-            {draftScoringEnabled && canEdit && <ScoringLockBanner staged={draftScoringEnabled !== scoringEnabled} />}
+            {/* ScoringLockBanner deleted from the match page (freeze redesign §3.5): the
+                lock no longer follows scoring mode, so a page-level "settings are frozen
+                while live" banner is a lie — a live score-less game is fully editable.
+                Per-row lock treatment + the scores-conditional MATCH SETTINGS notice say
+                what's actually locked/warned. (The component stays for the P2 formats.) */}
 
             {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
                 competition the rosters live on the competition face (the leaderboard
@@ -1952,12 +1951,12 @@ export function MatchGameView() {
               title={matchesTitle}
               subtitle={matchesSubtitle}
               state={matchesState}
-              // #501: non-expandable AND force-collapsed in scoring mode (MatchSetup
-              // has no read-only mode, so it must not render interactively when live).
-              // #512: locked → dim + lock icon (it reads as frozen, not just chevron-less).
-              locked={draftScoringEnabled}
-              expanded={openRows.has("matches") && settingsEditable}
-              onToggle={settingsEditable ? () => toggleRow("matches") : undefined}
+              // LOCKED tier (084): the clean-replace mints fresh UUIDs → orphans
+              // scores, so Matches freezes once ANY score exists — not on scoring mode.
+              // MatchSetup has no read-only mode, so it goes non-expandable when locked.
+              locked={scoresExist}
+              expanded={openRows.has("matches") && canEdit && !scoresExist}
+              onToggle={canEdit && !scoresExist ? () => toggleRow("matches") : undefined}
               testId="row-matches"
             >
               <MatchSetup
@@ -1985,8 +1984,10 @@ export function MatchGameView() {
             {gameQ.data && (
               <EntryModeRow
                 entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
-                canEdit={settingsEditable}
-                locked={draftScoringEnabled}
+                // LOCKED tier (084): switching score↔outcome orphans whichever rows
+                // are entered, so it freezes once ANY score exists.
+                canEdit={canEdit && !scoresExist}
+                locked={scoresExist}
                 onChange={setEntryModeDraft}
               />
             )}
@@ -2007,7 +2008,9 @@ export function MatchGameView() {
                 competitionId={gameCompId}
                 game={draftGameRow}
                 canEdit={settingsEditable}
-                locked={draftScoringEnabled}
+                // LOCKED tier — whole-course lock for now; range-scoping (front locks
+                // only if 1–9 scored, back only if 10–18) lands in the next commit.
+                locked={scoresExist}
                 courseOpen={openRows.has("course")}
                 onOpenCourse={() => toggleRow("course")}
                 onCloseEditor={() => closeRow("course")}
@@ -2032,7 +2035,10 @@ export function MatchGameView() {
                 pointsTotal={configDraft.pointsTotal}
                 defaultTotal={defaultTotal}
                 canEdit={settingsEditable}
-                locked={draftScoringEnabled}
+                // WARNED tier (084): points are an award INPUT — change them with
+                // scores present and the results just recalculate; nothing is orphaned.
+                // Never locked; the MATCH SETTINGS notice carries the "recalculates" warning.
+                locked={false}
                 expanded={openRows.has("config")}
                 onToggle={() => toggleRow("config")}
                 onTotalChange={onPointsTotalChange}
@@ -2051,9 +2057,10 @@ export function MatchGameView() {
               title="Handicaps"
               subtitle={handicapsSubtitle}
               state={handicapsState}
-              // #501: non-expandable AND force-collapsed in scoring mode (HandicapsSection
-              // has no read-only mode). #512: locked → dim + lock icon.
-              locked={draftScoringEnabled}
+              // WARNED tier (084): a handicap is a net-scoring INPUT — the engine
+              // re-derives in-progress holes (084 writes it in place, no orphan). Never
+              // locked on scores. (The prerequisite `disabled` gate below still holds.)
+              locked={false}
               // Task 2c: when the prerequisites aren't met (no course / no matches)
               // the row is VISIBLY disabled (dimmed), not silently unclickable — pass
               // the real toggle but mark it disabled so it reads "not available yet".
@@ -2084,7 +2091,9 @@ export function MatchGameView() {
                 title="Game Modifiers"
                 subtitle={modifiersSubtitle}
                 state={modifiersState}
-                locked={draftScoringEnabled}
+                // WARNED tier (084): modifiers are compute-time inputs (glorious weight,
+                // etc.) — derived, never snapshotted, so changing them recalculates.
+                locked={false}
                 expanded={openRows.has("modifiers")}
                 // Task 3b: modifiers are an EARLY format decision (carry-over, moving
                 // tees); matches (who plays whom) is often decided the day before.
