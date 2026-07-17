@@ -469,20 +469,18 @@ export function MatchGameView() {
   //            data, so refused. The client renders them locked; the RPC is the
   //            backstop (HAS_SCORES / ENTRY_MODE_LOCKED / COURSE_LOCKED).
   const scoresExist = (scoresQ.data?.length ?? 0) > 0 || (outcomesQ.data?.length ?? 0) > 0;
-  // Per-nine set, for Course range-scoping (§2.1): a played FRONT still lets you add a
-  // back nine, so the front and back lock INDEPENDENTLY on which holes are scored.
-  const scoredHoles = useMemo(() => {
-    const s = new Set<number>();
-    for (const e of scoresQ.data ?? []) { const h = Number(e.unit_label); if (h) s.add(h); }
-    for (const e of outcomesQ.data ?? []) { const h = Number(e.hole_number); if (h) s.add(h); }
-    return s;
-  }, [scoresQ.data, outcomesQ.data]);
-  const frontScored = useMemo(() => [...scoredHoles].some((h) => h >= 1 && h <= 9), [scoredHoles]);
-  const backScored = useMemo(() => [...scoredHoles].some((h) => h >= 10 && h <= 18), [scoredHoles]);
+  // Course range-scoping (§2.1's "back still addable") was DESCOPED: composing a back
+  // onto a scored 9-hole front is NOT free. buildComposedCourseSnapshot re-indexes the
+  // front (`si` → `2·si−1`, courseIndex.ts) so the front's stroke allocation — and thus
+  // who won holes 1–9 — changes. That's a warned-tier recompute, not a clean add, and
+  // silently rescoring entered holes is the exact thing this freeze redesign prevents.
+  // So the Course row is a blanket LOCKED tier: any score freezes it, matching the
+  // server's blanket COURSE_LOCKED. (A deliberate add-back-while-scored is a separate,
+  // warned-tier conversation — logged in DEFERRED.md.)
 
   // The Setup/Scoring toggle no longer gates editing — `settingsEditable` is just the
-  // role gate. Locked-tier rows freeze on `scoresExist` (Course via front/backScored)
-  // individually at their render sites; warned + quiet rows read `settingsEditable`.
+  // role gate. Locked-tier rows freeze on `scoresExist` at their render sites; warned +
+  // quiet rows read `settingsEditable`.
   const settingsEditable = canEdit;
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
@@ -745,17 +743,6 @@ export function MatchGameView() {
     }),
     [serverConfigDraft, nameDraft, rulesDraft, draftScoringEnabled, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
-
-  // Course row lock (§2.1 range-scoped). A two-nines course (a composed 18 or a lone
-  // 9-hole front that can still take a back) locks the whole ROW only when BOTH nines
-  // are scored — so a played front can still add/swap the back. A single 18-hole course
-  // has no independent back, so any score locks it. The per-nine clear/swap actions are
-  // gated INSIDE CourseRowContent by frontScored/backScored. Reads the DRAFT course so a
-  // pending front/back change scopes the lock exactly as it will persist.
-  const courseHasBack = !!configDraft.course.backId;
-  const courseCount = ((configDraft.course.scorecardSchema as { units?: { count?: number } } | null)?.units?.count) ?? 0;
-  const courseTwoNines = courseHasBack || (!!configDraft.course.id && courseCount === 9);
-  const courseLocked = courseTwoNines ? frontScored && backScored : scoresExist;
 
   // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
   // The dirty check's reference point AND the optimistic-concurrency base, captured
@@ -1919,10 +1906,10 @@ export function MatchGameView() {
                 )}
 
                 {/* Golf Course — moved up into Game Management (§3.1): an independent
-                    lookup, not the match-by-match spine. LOCKED tier, RANGE-SCOPED
-                    (§2.1): the row locks whole only when every editable nine is scored
-                    (`courseLocked`); a played front can still add/swap the back — the
-                    per-nine gating (`frontScored`/`backScored`) rides into the pickers. */}
+                    lookup, not the match-by-match spine. LOCKED tier: any score freezes
+                    the whole row (server parity with the blanket COURSE_LOCKED). Range-
+                    scoping was descoped — composing a back re-indexes the front, so an
+                    add-back-while-scored is a warned-tier recompute, not a clean add. */}
                 {gameQ.data && (
                   <GameSetupRows
                     slot="course"
@@ -1930,9 +1917,7 @@ export function MatchGameView() {
                     competitionId={gameCompId}
                     game={draftGameRow}
                     canEdit={settingsEditable}
-                    locked={courseLocked}
-                    frontScored={frontScored}
-                    backScored={backScored}
+                    locked={scoresExist}
                     outcomeMode={configDraft.entryMode === "outcome"}
                     courseOpen={openRows.has("course")}
                     onOpenCourse={() => toggleRow("course")}

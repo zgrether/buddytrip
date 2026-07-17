@@ -51,8 +51,6 @@ export function GameSetupRows({
   onRemoveBackNine,
   onClearCourse,
   courseBusy,
-  frontScored = false,
-  backScored = false,
   outcomeMode = false,
 }: {
   tripId: string;
@@ -113,11 +111,6 @@ export function GameSetupRows({
   onClearCourse?: () => void;
   /** Controlled mode: the page's course write is in flight (drives the tee chooser). */
   courseBusy?: boolean;
-  /** Range-scoped course lock (§2.1): scores exist in holes 1–9 / 10–18. The front's
-   *  clear/change and the back's swap/remove disable independently, so a played front
-   *  can still take a back nine. */
-  frontScored?: boolean;
-  backScored?: boolean;
   /** §3.3: outcome-mode match play taps the winner per hole and NEVER reads a
    *  handicap — so the Course row's "Handicaps enabled" subtitle would be a lie. When
    *  true, the subtitle drops the handicaps claim. Default false (score modes gate on
@@ -218,8 +211,6 @@ export function GameSetupRows({
             onRemoveBackNine={onRemoveBackNine}
             onClearCourse={onClearCourse}
             busy={courseBusy}
-            frontScored={frontScored}
-            backScored={backScored}
           />
         </ChecklistRow>
       )}
