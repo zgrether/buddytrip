@@ -127,13 +127,13 @@ describe("configDraftToPayload — derived write", () => {
       { matchNumber: 3, playersPerSide: 1, a: ["u7"], b: [], handicap: 0, pointValue: null }, // half-filled
     ], []);
     const p = configDraftToPayload(d);
-    expect(p.matches.map((m) => m.matchNumber)).toEqual([1, 2]); // #3 dropped
+    expect(p.matches!.map((m) => m.matchNumber)).toEqual([1, 2]); // #3 dropped
   });
 
   it("distributes the signed handicap onto the winning side", () => {
     const p = configDraftToPayload(configToDraft(GAME, MATCHES, []));
-    expect(p.matches[0]).toMatchObject({ strokesA: 2, strokesB: 0 }); // -2 → A gets 2
-    expect(p.matches[1]).toMatchObject({ strokesA: 0, strokesB: 0 }); // even
+    expect(p.matches![0]).toMatchObject({ strokesA: 2, strokesB: 0 }); // -2 → A gets 2
+    expect(p.matches![1]).toMatchObject({ strokesA: 0, strokesB: 0 }); // even
   });
 
   it("recomputes the even share from the FINAL filled-match count", () => {
@@ -221,9 +221,9 @@ describe("configDraftToPayload — derived write", () => {
 
     // And the payload still carries the new field values for the in-place write.
     // handicap = 5 (positive → side B gets the strokes; splitHandicap).
-    expect(configDraftToPayload(hcap, base).matches[0].strokesB).toBe(5);
-    expect(configDraftToPayload(hcap, base).matches[0].strokesA).toBe(0);
-    expect(configDraftToPayload(pts, base).matches[0].pointValue).toBe(9);
+    expect(configDraftToPayload(hcap, base).matches![0].strokesB).toBe(5);
+    expect(configDraftToPayload(hcap, base).matches![0].strokesA).toBe(0);
+    expect(configDraftToPayload(pts, base).matches![0].pointValue).toBe(9);
   });
 
   it("trims name / rules and passes course snapshot through", () => {

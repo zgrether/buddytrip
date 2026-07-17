@@ -13,6 +13,7 @@ import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement } from "@/lib/gameConfig";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
+import { COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { computeConfigHash } from "@/lib/configHash";
 
@@ -25,6 +26,23 @@ import { computeConfigHash } from "@/lib/configHash";
  */
 const GAME_CONFIG_COLS =
   "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode";
+
+/**
+ * The columns each hashed table contributes to `readGameConfigHash`, exported so the
+ * observational guard (`configHash.coverage.test.ts`) can assert schema coverage: every
+ * column of a hashed table must be either HERE or in that test's explicit NOT_HASHED
+ * allowlist — a new column trips the test until someone classifies it. That's the
+ * mechanical form of "everything the RPC writes must be in the hash": four fields went
+ * silent by hand before it (`.from("matches")`, game_delegates, point_value /
+ * handicap_strokes, play_groups.tee_time). Keep these strings ≡ the selects below.
+ */
+export const HASH_COLS = {
+  games: GAME_CONFIG_COLS,
+  game_participants: "user_id, play_group_id, team_id, handicap_strokes",
+  play_groups: "id, display_name, handicap_strokes, tee_time",
+  game_matches: "id, play_group_id, match_number, display_order, side_a, side_b, point_value",
+  game_delegates: "user_id",
+} as const;
 
 /**
  * Compute the config fingerprint — the ONE place the hash is built, so the
@@ -40,15 +58,15 @@ async function readGameConfigHash(
   gameId: string
 ): Promise<string | null> {
   const [gameRes, partsRes, groupsRes, matchesRes, delegatesRes] = await Promise.all([
-    supabase.from("games").select(GAME_CONFIG_COLS).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
-    supabase.from("game_participants").select("user_id, play_group_id, team_id, handicap_strokes").eq("game_id", gameId).order("user_id", { ascending: true }),
+    supabase.from("games").select(HASH_COLS.games).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
+    supabase.from("game_participants").select(HASH_COLS.game_participants).eq("game_id", gameId).order("user_id", { ascending: true }),
     // `tee_time` MUST be selected (085) — the FOURTH "everything the RPC writes must be
     // in the hash" instance (after .from("matches"), game_delegates, point_value).
     // save_game_config's groups clean-replace writes play_groups.tee_time; without it a
     // tee-time-only change would pass the concurrency check and never propagate
     // cross-device. Semantic content, so no churn trap (unlike created_at, which stays
     // out — a clean-replace re-mints it, and `id`, on a REAL grouping change only).
-    supabase.from("play_groups").select("id, display_name, handicap_strokes, tee_time").eq("game_id", gameId).order("id", { ascending: true }),
+    supabase.from("play_groups").select(HASH_COLS.play_groups).eq("game_id", gameId).order("id", { ascending: true }),
     // `game_matches` — NOT "matches" (no such relation exists). The old spelling
     // errored on every call and, because only gameRes.error was checked, the error
     // was swallowed and `[]` was hashed: pairings never contributed to the
@@ -66,7 +84,7 @@ async function readGameConfigHash(
     // handicap_strokes needs no addition — it's already hashed directly via the
     // game_participants + play_groups selects above, so the in-place handicap write moves
     // the hash on its own.
-    supabase.from("game_matches").select("id, play_group_id, match_number, display_order, side_a, side_b, point_value").eq("game_id", gameId).order("id", { ascending: true }),
+    supabase.from("game_matches").select(HASH_COLS.game_matches).eq("game_id", gameId).order("id", { ascending: true }),
     // `game_delegates` — the LAST field save_game_config writes that the hash didn't
     // see, so a cross-device delegate change (incl. 083's mid-round add) was invisible
     // to BOTH consumers, same class as the `.from("matches")` bug above.
@@ -76,7 +94,7 @@ async function readGameConfigHash(
     // those would churn the fingerprint on every save even when the delegate SET is
     // unchanged — false conflicts + phantom cross-device "config changed". user_id is
     // the semantic content and a total order (PK is game_id, user_id).
-    supabase.from("game_delegates").select("user_id").eq("game_id", gameId).order("user_id", { ascending: true }),
+    supabase.from("game_delegates").select(HASH_COLS.game_delegates).eq("game_id", gameId).order("user_id", { ascending: true }),
   ]);
   // Check EVERY query: a child failure must throw, never quietly hash an empty set
   // (that's what hid the bug above).
@@ -778,10 +796,15 @@ export const gamesRouter = router({
           name: z.string().min(1).max(200),
           rulesForToday: z.string().nullable(),
           scoringEnabled: z.boolean(),
-          entryMode: z.string(),
-          modifiers: z.record(z.string(), z.record(z.string(), z.unknown())),
+          // Match play owns these; non-golf omits them (086/P2) — the RPC preserves
+          // entry_mode and defaults modifiers to {}.
+          entryMode: z.string().optional(),
+          modifiers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
           pointsTotal: z.number().nullable(),
           pointsDistribution: z.unknown().nullable(),
+          // competition_format (086) — non-golf's structure label. Optional: only
+          // non-golf sends it; golf formats omit it and the RPC COALESCE-preserves.
+          competitionFormat: z.enum(COMPETITION_FORMATS).nullable().optional(),
           courseId: z.string().nullable(),
           backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),
