@@ -912,7 +912,6 @@ export function RackGameView() {
     return (
       <>
         <GameConfigurationView
-          controlled
           hideHeader={inPanel}
           subtitle="Net stroke play · team rack"
           onBack={closeConfig}

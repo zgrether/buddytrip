@@ -791,9 +791,14 @@ export const gamesRouter = router({
         // mismatch = someone else changed this game since the page opened.
         baseHash: z.string(),
         payload: z.object({
-          // min(1): a game must keep a name — the draft trims, so an emptied field
-          // would otherwise blank the title everywhere on the board.
-          name: z.string().min(1).max(200),
+          // NO min(1): a STANDALONE stroke game (created via /games/new — no competition)
+          // legitimately has an empty name, and its whole page routes through saveConfig
+          // now (P2). The RPC already can't blank a title — `name = COALESCE(NULLIF(
+          // btrim(name),''), name)` PRESERVES the existing name on an empty/whitespace
+          // payload (the "a blank name can never erase the title" invariant). So min(1)
+          // was redundant AND wrongly rejected the go-live save for unnamed standalone
+          // games. Keep the max only.
+          name: z.string().max(200),
           rulesForToday: z.string().nullable(),
           scoringEnabled: z.boolean(),
           // Match play owns these; non-golf omits them (086/P2) — the RPC preserves

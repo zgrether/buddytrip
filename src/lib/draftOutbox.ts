@@ -20,7 +20,7 @@
  * diverged (base === current server fingerprint) — never stale-over-newer.
  */
 
-export type DraftView = "match" | "rack" | "nongolf";
+export type DraftView = "match" | "rack" | "nongolf" | "stroke";
 
 export interface StoredDraft {
   /** The view's serializable draft (DraftMatch[] for match, string[][] for rack). */

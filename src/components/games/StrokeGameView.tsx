@@ -15,11 +15,18 @@ import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
+import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ModifierCards } from "@/components/games/ModifierCards";
+import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, type StrokeConfigDraft } from "@/lib/configDraft";
+import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
+import type { ScorecardSchema } from "@/lib/courseIndex";
+import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { GAME_TYPES } from "@/lib/gameTypes";
+import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
+import type { PointsDistribution } from "@/lib/pointsDistribution";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -109,24 +116,43 @@ export function StrokeGameView() {
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
-  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
-  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+  // (?settings=1). Confirm-on-leave: the whole page is ONE draft (commits on Save), so a
+  // dirty back-press is guarded via latest-refs (guardDirty reads showConfig, which this
+  // hook returns). Deep-link path shares the #619 gap (outbox recovers the draft).
+  const dirtyRef = useRef(false);
+  const discardRef = useRef<() => void>(() => {});
+  const {
+    open: showConfig,
+    openConfig,
+    closeConfig,
+    confirmingClose,
+    confirmDiscard,
+    cancelClose,
+  } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
+    isDirty: () => dirtyRef.current,
+    onDiscard: () => discardRef.current(),
   });
   const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
   const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
-  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap>({});
+  // ── Composite draft SLICES (null/undefined = untouched → tracks the server) ──
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [rulesDraft, setRulesDraft] = useState<string | null>(null);
+  const [scoringDraft, setScoringDraft] = useState<boolean | null>(null);
+  const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
+  const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null | undefined>(undefined);
+  const [pointsDistDraft, setPointsDistDraft] = useState<PointsDistribution | null | undefined>(undefined);
+  const [courseDraft, setCourseDraft] = useState<StrokeConfigDraft["course"] | null>(null);
+  const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
-  // §3: per-player handicap strokes (the same general mutation rack uses — it
-  // sets game_participants.handicap_strokes by user_id; for stroke it no-ops the
-  // re-derive since stroke persists results only at Finish).
-  const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
-  // Phase 2B.1: scoring must be enabled before entries land (universal gate).
-  const enableScoring = trpc.games.enableScoring.useMutation();
-  const disableScoring = trpc.games.disableScoring.useMutation();
+  // Draft-then-save (P2): the whole settings page commits through ONE atomic RPC.
+  const saveConfigM = trpc.games.saveConfig.useMutation();
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -207,10 +233,72 @@ export function StrokeGameView() {
   const activeGameId = urlGameId ?? createdGame?.id;
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
-  // #501: game-altering settings freeze in scoring mode (the page-level Handicaps +
-  // Modifiers drill-downs; GameConfigurationView locks its own rows internally).
-  const settingsEditable = canEdit && !scoringEnabled;
+  // Draft-then-save (P2) lie sweep: NO scoring_enabled lock — every editor (handicaps /
+  // modifiers drill-downs, the settings rows) stays editable in every mode; an edit
+  // stages into the draft and Save commits it (the RPC refuses only the destroys tier —
+  // a course change on a scored game, COURSE_LOCKED). `canEdit` (role) is the only gate.
+  const settingsEditable = canEdit;
   const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
+
+  // ── Draft-then-save (P2) machinery ──────────────────────────────────────────
+  // Per-game delegates (the draft's `delegates` slice) + the participants' strokes as a
+  // { userId → strokes } map — the two inputs configToStrokeDraft folds into the baseline.
+  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: activeGameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!activeGameId });
+  const serverDelegates = useMemo(
+    () => ((orgQ.data ?? []) as { user_id: string }[]).map((d) => d.user_id).sort(),
+    [orgQ.data],
+  );
+  const serverStrokes = useMemo<Record<string, number>>(() => {
+    const m: Record<string, number> = {};
+    for (const p of (gameQ.data?.participants ?? []) as { user_id: string; handicap_strokes: number | null }[]) {
+      m[p.user_id] = effectiveStrokes(p);
+    }
+    return m;
+  }, [gameQ.data]);
+  const serverConfigDraft = useMemo<StrokeConfigDraft>(
+    () => configToStrokeDraft((gameQ.data ?? {}) as Parameters<typeof configToStrokeDraft>[0], serverStrokes, serverDelegates),
+    [gameQ.data, serverStrokes, serverDelegates],
+  );
+
+  const anyTouched =
+    nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
+    pointsTotalDraft !== undefined || pointsDistDraft !== undefined || courseDraft !== null ||
+    strokesDraft !== null || modifiersDraft !== null;
+
+  const configDraft = useMemo<StrokeConfigDraft>(
+    () => ({
+      ...serverConfigDraft,
+      name: nameDraft ?? serverConfigDraft.name,
+      rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
+      scoringEnabled: scoringDraft ?? serverConfigDraft.scoringEnabled,
+      pointsTotal: pointsTotalDraft !== undefined ? pointsTotalDraft : serverConfigDraft.pointsTotal,
+      pointsDistribution: pointsDistDraft !== undefined ? pointsDistDraft : serverConfigDraft.pointsDistribution,
+      delegates: delegatesDraft ?? serverConfigDraft.delegates,
+      course: courseDraft ?? serverConfigDraft.course,
+      strokes: strokesDraft ?? serverConfigDraft.strokes,
+      modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
+    }),
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft],
+  );
+
+  const hashQ = trpc.games.configHash.useQuery(
+    { tripId: tripId!, gameId: activeGameId! },
+    { enabled: !!tripId && !!activeGameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
+  const serverHash = hashQ.data?.hash ?? null;
+
+  const [baseline, setBaseline] = useState<{ draft: StrokeConfigDraft; hash: string } | null>(null);
+  useEffect(() => {
+    if (anyTouched || serverHash === null) return;
+    setBaseline((prev) =>
+      prev && prev.hash === serverHash && strokeDraftsEqual(prev.draft, serverConfigDraft)
+        ? prev
+        : { draft: serverConfigDraft, hash: serverHash },
+    );
+  }, [anyTouched, serverConfigDraft, serverHash]);
+
+  const dirty = anyTouched && !!baseline && !strokeDraftsEqual(configDraft, baseline.draft);
+
   async function refreshGame() {
     await gameQ.refetch();
     if (gameCompetitionId) {
@@ -219,34 +307,162 @@ export function StrokeGameView() {
       utils.games.listByTrip.invalidate({ tripId });
     }
   }
-  async function handleEnable() {
-    if (!tripId || !activeGameId) return;
+  // Setup/Scoring toggle → the scoring draft slice; Save commits it (go-live readiness
+  // re-asserted server-side inside the tx, so the client gate can't be bypassed).
+  function handleEnable() { setScoringDraft(true); }
+  function handleDisable() { setScoringDraft(false); }
+  // §3: per-player handicap strokes → the strokes draft slice (warned/in-place; Save
+  // commits + recomputes). Returns a Promise for HandicapRoster's async contract.
+  const onSetStrokes = (userId: string, strokes: number) => {
+    setStrokesDraft((prev) => ({ ...(prev ?? serverConfigDraft.strokes), [userId]: strokes }));
+    return Promise.resolve();
+  };
+  // Game Modifiers → the modifiers draft slice (no server write until Save).
+  const persistModifiers = (next: ModifiersMap) => setModifiersDraft(next);
+
+  // ── Course ACTIONS stage into the course draft slice (mirrors match/rack). ──
+  const [courseBusy, setCourseBusy] = useState(false);
+  const strokeGameTypeId = (gameQ.data?.game_type_id as string | undefined) ?? "";
+  const applyFrontToDraft = (courseId: string, teeName?: string) => {
+    if (!strokeGameTypeId) return;
+    setCourseBusy(true);
+    void (async () => {
+      try {
+        const course = await utils.courses.getById.fetch({ courseId });
+        const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, strokeGameTypeId, teeName);
+        if (!snap.ok) {
+          setSaveError(snap.reason === "bad_index"
+            ? "That course's stroke index isn't a valid permutation — fix it before use."
+            : "That game type has no scorecard to snapshot onto.");
+          return;
+        }
+        setSaveError(null);
+        setCourseDraft({ id: courseId, backId: null, scorecardSchema: snap.schema });
+      } catch {
+        setSaveError("Couldn’t load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+      }
+    })();
+  };
+  const applyBackToDraft = (backCourseId: string, backTeeName?: string) => {
+    if (!strokeGameTypeId) return;
+    setCourseBusy(true);
+    void (async () => {
+      try {
+        const back = await utils.courses.getById.fetch({ courseId: backCourseId });
+        const res = buildComposedCourseSnapshot(
+          {
+            frontSchema: configDraft.course.scorecardSchema as ScorecardSchema | null,
+            hasBackRef: !!configDraft.course.backId,
+            backCourse: back as unknown as CourseSnapshotInput,
+          },
+          strokeGameTypeId,
+          backTeeName,
+        );
+        if (!res.ok) {
+          setSaveError(res.reason === "back_not_nine"
+            ? "The back nine must be a 9-hole course."
+            : res.reason === "bad_back_index"
+              ? "That course's stroke index isn't a valid permutation — fix it before use."
+              : "This isn’t a 9-hole front — it doesn’t take a back nine.");
+          return;
+        }
+        setSaveError(null);
+        setCourseDraft({ id: configDraft.course.id, backId: backCourseId, scorecardSchema: res.schema });
+      } catch {
+        setSaveError("Couldn’t load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+      }
+    })();
+  };
+  const removeBackNineFromDraft = () => {
+    const frontId = configDraft.course.id;
+    if (!frontId) return;
+    const teeName = ((configDraft.course.scorecardSchema as { units?: { metadata?: { tee?: { name?: string } } } } | null)
+      ?.units?.metadata?.tee?.name ?? "").trim();
+    applyFrontToDraft(frontId, teeName || undefined);
+  };
+  const clearCourseInDraft = () => {
+    setSaveError(null);
+    setCourseDraft({ id: null, backId: null, scorecardSchema: getGameTypeDefinition(strokeGameTypeId)?.scorecardSchema ?? null });
+  };
+
+  // ── Save / Cancel the composite draft ──
+  function resetSlices() {
+    setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
+    setPointsTotalDraft(undefined); setPointsDistDraft(undefined); setCourseDraft(null);
+    setStrokesDraft(null); setModifiersDraft(null);
+  }
+  async function handleSaveConfig() {
+    if (!tripId || !activeGameId || !baseline || !dirty || saveConfigM.isPending) return;
+    setSaveError(null);
     try {
-      await enableScoring.mutateAsync({ tripId, gameId: activeGameId });
-      await refreshGame();
-      // #512 correction: STAY on the settings page — the toggle flips in place (the
-      // now-live banner + locked panels render here). The back arrow still returns to
-      // the game page via the openConfig history entry; no closeConfig() here.
-    } catch {
-      // surfaced via the global error toast
+      await saveConfigM.mutateAsync({ tripId, gameId: activeGameId, baseHash: baseline.hash, payload: strokeDraftToPayload(configDraft) });
+    } catch (e) {
+      setSaveError((e as { message?: string }).message ?? "Couldn’t save your changes — try again.");
+      return;
+    }
+    clearDraftOutbox();
+    resetSlices();
+    setJustSaved(true);
+    await Promise.all([gameQ.refetch(), orgQ.refetch()]);
+    void hashQ.refetch();
+    if (gameCompetitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
     }
   }
-  // §B 2B.3: Disable from Configuration — keep scores, STAY in Configuration.
-  async function handleDisable() {
-    if (!tripId || !activeGameId) return;
-    try {
-      await disableScoring.mutateAsync({ tripId, gameId: activeGameId });
-      await refreshGame();
-    } catch {
-      // surfaced via the global error toast
-    }
+  function handleCancelConfig() {
+    resetSlices();
+    setSaveError(null);
+    setJustSaved(false);
+    clearDraftOutbox();
   }
-  // §3: persist one player's handicap strokes, then refetch so the pips + the
-  // handicap roster reflect it (the live strip nets off the same scIndex).
-  const onSetStrokes = (userId: string, strokes: number) =>
-    setStrokes
-      .mutateAsync({ tripId: tripId!, gameId: activeGameId!, userId, strokes })
-      .then((r) => { void gameQ.refetch(); return r; });
+  useEffect(() => { if (anyTouched) setJustSaved(false); }, [anyTouched]);
+
+  // Feed the overlay's confirm-on-leave guard (gated on the overlay being OPEN + editable).
+  const guardDirty = showConfig && canEdit && dirty;
+  useEffect(() => {
+    dirtyRef.current = guardDirty;
+    discardRef.current = handleCancelConfig;
+  });
+
+  // Draft durability (Layer 2 — hard-teardown outbox), mirroring the WHOLE composite draft.
+  const draftBundle = useMemo(
+    () => ({
+      name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
+      pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, course: courseDraft,
+      strokes: strokesDraft, modifiers: modifiersDraft,
+    }),
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft],
+  );
+  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<typeof draftBundle>({
+    view: "stroke",
+    gameId: activeGameId ?? null,
+    draft: draftBundle,
+    touched: anyTouched,
+    serverFingerprint: serverHash ?? "",
+    enabled: !!activeGameId,
+  });
+  const didRecover = useRef(false);
+  useEffect(() => {
+    if (didRecover.current || !activeGameId || serverHash === null) return;
+    didRecover.current = true;
+    const b = recoverDraft();
+    if (!b) return;
+    if (b.name != null) setNameDraft(b.name);
+    if (b.rules != null) setRulesDraft(b.rules);
+    if (b.scoring != null) setScoringDraft(b.scoring);
+    if (b.delegates != null) setDelegatesDraft(b.delegates);
+    if (b.pointsTotal !== undefined) setPointsTotalDraft(b.pointsTotal);
+    if (b.pointsDist !== undefined) setPointsDistDraft(b.pointsDist);
+    if (b.course != null) setCourseDraft(b.course);
+    if (b.strokes != null) setStrokesDraft(b.strokes);
+    if (b.modifiers != null) setModifiersDraft(b.modifiers);
+  }, [activeGameId, serverHash, recoverDraft]);
 
   // A1 P0 — Game Modifiers, the home stroke play was missing (the match page had
   // it; stroke didn't, yet stroke has functional modifiers — moving_tees /
@@ -257,30 +473,6 @@ export function StrokeGameView() {
   const availableModifiers = GAME_TYPES.find(
     (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
   )?.compatibleModifiers ?? [];
-  const modifiersSeededRef = useRef(false);
-  useEffect(() => {
-    if (modifiersSeededRef.current || !gameQ.data) return;
-    setModifiersDraft(((gameQ.data as { modifiers?: ModifiersMap | null }).modifiers) ?? {});
-    modifiersSeededRef.current = true;
-  }, [gameQ.data]);
-  const updateModifiers = trpc.games.update.useMutation();
-  function persistModifiers(next: ModifiersMap) {
-    if (!tripId || !activeGameId) return;
-    setModifiersDraft(next);
-    const cur = utils.games.getById.getData({ tripId, gameId: activeGameId });
-    if (cur) utils.games.getById.setData({ tripId, gameId: activeGameId }, { ...cur, modifiers: next } as typeof cur);
-    updateModifiers.mutate(
-      { tripId, gameId: activeGameId, modifiers: next },
-      {
-        onSuccess: () => {
-          if (gameCompetitionId) {
-            utils.competitions.faceBootstrap.invalidate({ tripId });
-            utils.games.listByTrip.invalidate({ tripId });
-          }
-        },
-      }
-    );
-  }
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
@@ -454,13 +646,15 @@ export function StrokeGameView() {
   // per-matchup). Reached from the setup hull's Handicaps row AND Configuration.
   // Drives `netStrokeEntries`/`strokeHoles`: the input Phase 1 deferred. ──
   if (game && showHandicaps && settingsEditable) {
+    // The roster reads the DRAFT strokes (not the server) so an unsaved stroke shows.
+    const draftHandicapPlayers = handicapPlayers.map((p) => ({ ...p, strokes: configDraft.strokes[p.id] ?? 0 }));
     return (
       // Drill-down keeps its own header + LOCAL back (setShowHandicaps) — as a panel
       // it covers the bar (fixed) so there's no double-decker and the bar's
       // history-back can't hijack the local back.
       <div className={`flex flex-col ${inPanel ? "fixed inset-0 z-50" : ""}`} style={{ height: "100vh", background: "var(--color-bt-base)" }}>
         <HandicapRoster
-          players={handicapPlayers}
+          players={draftHandicapPlayers}
           holeCount={scUnits.length}
           strokeIndex={scIndex}
           onSetStrokes={onSetStrokes}
@@ -489,7 +683,7 @@ export function StrokeGameView() {
           <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
-          <ModifierCards available={availableModifiers} modifiers={modifiersDraft} onChange={persistModifiers} readOnly={!settingsEditable} />
+          <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={persistModifiers} readOnly={!canEdit} />
         </div>
       </div>
     );
@@ -553,35 +747,74 @@ export function StrokeGameView() {
   // class of bug reported on the non-golf settings page). Matches the rack page.
   if (game && showConfig && gameQ.data && canEdit) {
     return (
-      <GameConfigurationView
-        hideHeader={inPanel}
-        subtitle="Stroke Play"
-        onBack={closeConfig}
-        tripId={tripId}
-        competitionId={gameCompetitionId}
-        game={gameQ.data as unknown as GameRow}
-        canEdit={canEdit}
-        isOwner={isOwner}
-        onChanged={() => void refreshGame()}
-        onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
-        // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
-        onEditWhosPlaying={() => setShowHandicaps(true)}
-        extraRows={
-          availableModifiers.length > 0 ? (
-            <ModifiersRow
-              count={enabledCount(modifiersDraft, availableModifiers)}
-              onClick={() => setShowModifiers(true)}
-              disabled={!settingsEditable}
-              locked={scoringEnabled}
+      <>
+        <GameConfigurationView
+          hideHeader={inPanel}
+          subtitle="Stroke Play"
+          onBack={closeConfig}
+          tripId={tripId}
+          competitionId={gameCompetitionId}
+          game={gameQ.data as unknown as GameRow}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          onChanged={() => void refreshGame()}
+          onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
+          // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
+          onEditWhosPlaying={() => setShowHandicaps(true)}
+          extraRows={
+            availableModifiers.length > 0 ? (
+              // No scoring lock (draft-then-save): the row edits the modifiers draft slice.
+              <ModifiersRow
+                count={enabledCount(configDraft.modifiers, availableModifiers)}
+                onClick={() => setShowModifiers(true)}
+                disabled={!canEdit}
+                locked={false}
+              />
+            ) : undefined
+          }
+          serverScoringEnabled={scoringEnabled}
+          draftScoringEnabled={configDraft.scoringEnabled}
+          nameValue={configDraft.name}
+          onNameChange={setNameDraft}
+          delegateValue={configDraft.delegates[0] ?? null}
+          onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
+          rulesValue={configDraft.rulesForToday}
+          onRulesChange={setRulesDraft}
+          onApplyFront={applyFrontToDraft}
+          onApplyBack={applyBackToDraft}
+          onRemoveBackNine={removeBackNineFromDraft}
+          onClearCourse={clearCourseInDraft}
+          courseBusy={courseBusy}
+          // Stroke = PLACEMENT points (owner sets total + the split); the pair stages
+          // into the draft via FormatPointsPanel's controlled mode.
+          placementPoints={{
+            value: { total: configDraft.pointsTotal, distribution: configDraft.pointsDistribution },
+            onChange: (total, distribution) => { setPointsTotalDraft(total); setPointsDistDraft(distribution); },
+          }}
+          onEnable={handleEnable}
+          onDisable={handleDisable}
+          busy={saveConfigM.isPending}
+          saveBar={
+            <SettingsSaveBar
+              dirty={dirty}
+              saving={saveConfigM.isPending}
+              justSaved={justSaved}
+              error={saveError}
+              onSave={() => void handleSaveConfig()}
+              onCancel={handleCancelConfig}
             />
-          ) : undefined
-        }
-        scoringEnabled={scoringEnabled}
-        onEnable={handleEnable}
-        onDisable={handleDisable}
-        busy={enableScoring.isPending || disableScoring.isPending}
-      />
+          }
+        />
+        {confirmingClose && (
+          <DiscardChangesPrompt
+            onDiscard={confirmDiscard}
+            onKeepEditing={cancelClose}
+            onSave={() => { cancelClose(); void handleSaveConfig(); }}
+            saving={saveConfigM.isPending}
+          />
+        )}
+      </>
     );
   }
 

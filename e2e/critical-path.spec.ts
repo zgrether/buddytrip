@@ -95,19 +95,23 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   await page.getByRole("button", { name: "Start game" }).click();
 
   // 3. Enable scoring → reach the score-entry view. The setup-mode scoreboard is a
-  //    PASS-THROUGH (A2-ux correction): open the ONE settings page via the "set it
-  //    up" button, then flip the Setup/Scoring toggle's Scoring segment. Enabling
-  //    fires enableScoring AND refetches the game (two sequential remote round-trips)
-  //    before scoring_enabled flips. #512 correction: enabling now flips the toggle
-  //    IN PLACE (it no longer auto-navigates) — the "This game is live" lock banner
-  //    appearing is the precise "now live, transition complete" signal (it can't show
-  //    until scoring_enabled has flipped). Then the settings back arrow returns to the
-  //    game page, which is now in scoring mode → the keypad mounts.
+  //    PASS-THROUGH (A2-ux correction): open the ONE settings page via the "set it up"
+  //    button, then flip the Setup/Scoring toggle's Scoring segment. Draft-then-save (P2):
+  //    the toggle STAGES go-live into the page's composite draft — SAVE commits it (one
+  //    atomic save_game_config). The old "scoring-lock-banner" live-lock signal is GONE
+  //    (the P2 lie-sweep removed the frozen-settings lock — settings stay editable when
+  //    live); the "now live, transition complete" signal is now the draft clearing to
+  //    "Saved" after the commit. Wait for it BEFORE leaving — Back on a still-dirty draft
+  //    raises the discard prompt. Then the back arrow returns to the game page, now in
+  //    scoring mode → the keypad mounts.
   await page.getByTestId("setup-go-to-settings").click();
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 20_000 });
   await scoringSeg.click();
-  await expect(page.getByTestId("scoring-lock-banner")).toBeVisible({ timeout: 20_000 });
+  const saveBtn = page.getByTestId("settings-save");
+  await expect(saveBtn).toBeEnabled({ timeout: 20_000 });
+  await saveBtn.click();
+  await expect(page.getByTestId("settings-dirty-hint")).toHaveText("Saved", { timeout: 20_000 });
   await page.getByRole("button", { name: "Back" }).click();
 
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).

@@ -8,9 +8,13 @@ import {
   configToRackDraft,
   rackDraftToPayload,
   rackDraftsEqual,
+  configToStrokeDraft,
+  strokeDraftToPayload,
+  strokeDraftsEqual,
   type ConfigDraft,
   type DraftMatchInput,
   type RackConfigDraft,
+  type StrokeConfigDraft,
 } from "./configDraft";
 
 /**
@@ -338,5 +342,59 @@ describe("rackDraftsEqual — dirty check", () => {
     expect(rackDraftsEqual(base, { ...base, strokes: { ...STROKES, u1: 5 } })).toBe(false);
     expect(rackDraftsEqual(base, { ...base, pointsTotal: 8 })).toBe(false);
     expect(rackDraftsEqual(base, { ...base, course: { ...base.course, id: "course-2" } })).toBe(false);
+  });
+});
+
+// ── Stroke variant (P2) ────────────────────────────────────────────────────────
+const STROKE_GAME = {
+  game_type_id: "gtt_stroke_play",
+  name: "Saturday Round",
+  rules_for_today: null,
+  scoring_enabled: false,
+  points_total: 8,
+  points_distribution: { type: "placement" as const, values: [6, 4, 2] },
+  modifiers: { moving_tees: {} },
+  course_id: "course-1",
+  back_course_id: null,
+  scorecard_schema: { units: { count: 18 } },
+};
+const STROKE_STROKES = { u1: 4, u2: 0 };
+
+describe("configToStrokeDraft — baseline", () => {
+  it("folds strokes + modifiers + course over the base and is stable", () => {
+    const d = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, ["u9"]);
+    expect(d.strokes).toEqual(STROKE_STROKES);
+    expect(d.modifiers).toEqual({ moving_tees: {} });
+    expect(d.course).toEqual({ id: "course-1", backId: null, scorecardSchema: { units: { count: 18 } } });
+    expect(strokeDraftsEqual(d, configToStrokeDraft(STROKE_GAME, STROKE_STROKES, ["u9"]))).toBe(true);
+  });
+});
+
+describe("strokeDraftToPayload — placement passthrough, explicit modifiers, no groups", () => {
+  const base = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, []);
+  it("passes placement points through untouched (owner-authored, not derived)", () => {
+    expect(strokeDraftToPayload(base).pointsDistribution).toEqual({ type: "placement", values: [6, 4, 2] });
+    expect(strokeDraftToPayload(base).pointsTotal).toBe(8);
+  });
+  it("sends modifiers EXPLICITLY (the RPC wipes a missing key to {})", () => {
+    expect(strokeDraftToPayload(base).modifiers).toEqual({ moving_tees: {} });
+  });
+  it("emits every participant's strokes and NO groups/matches keys", () => {
+    const p = strokeDraftToPayload(base);
+    expect(p.participants).toEqual([{ userId: "u1", strokes: 4 }, { userId: "u2", strokes: 0 }]);
+    expect(p).not.toHaveProperty("groups");
+    expect(p).not.toHaveProperty("matches");
+    expect(p.courseId).toBe("course-1");
+  });
+});
+
+describe("strokeDraftsEqual — dirty check", () => {
+  const base = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, []);
+  it("equal to itself; dirty on a stroke, modifier, points, or course change", () => {
+    expect(strokeDraftsEqual(base, base)).toBe(true);
+    expect(strokeDraftsEqual(base, { ...base, strokes: { ...STROKE_STROKES, u1: 6 } })).toBe(false);
+    expect(strokeDraftsEqual(base, { ...base, modifiers: {} })).toBe(false);
+    expect(strokeDraftsEqual(base, { ...base, pointsTotal: 10 } as StrokeConfigDraft)).toBe(false);
+    expect(strokeDraftsEqual(base, { ...base, course: { ...base.course, id: "course-2" } })).toBe(false);
   });
 });

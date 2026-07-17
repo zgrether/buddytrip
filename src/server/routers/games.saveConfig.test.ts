@@ -736,28 +736,20 @@ describe("saveConfig — the payload contract", () => {
     );
     expect(payload).toHaveProperty("backCourseId");
 
-    // TWO layers, and they catch different things. An EMPTY name is stopped at the
-    // zod floor (min(1))...
-    await expect(
-      ctx.caller().games.saveConfig({
+    // The invariant "a blank name can never erase the title" is now enforced SOLELY by
+    // the SQL's COALESCE(NULLIF(btrim(name),''), name) — the redundant zod min(1) was
+    // removed (a standalone stroke game has no name, and its whole page routes through
+    // saveConfig, P2). So BOTH an empty name and a whitespace-only one SAVE FINE and
+    // PRESERVE the title rather than erase it. Assert the outcome that actually matters.
+    for (const blank of ["", "   "]) {
+      await ctx.caller().games.saveConfig({
         tripId,
         gameId,
         baseHash: await hashOf(gameId),
-        payload: { ...payload, name: "" },
-      })
-    ).rejects.toThrow();
-
-    // ...but WHITESPACE sails through zod (length 3), so the SQL's
-    // COALESCE(NULLIF(btrim(...)), name) is the real guard: the save SUCCEEDS and the
-    // title is preserved rather than erased. That's the defence-in-depth working, not
-    // a rejection — assert the outcome that actually matters.
-    await ctx.caller().games.saveConfig({
-      tripId,
-      gameId,
-      baseHash: await hashOf(gameId),
-      payload: { ...payload, name: "   " },
-    });
-    expect((await ctx.caller().games.getById({ tripId, gameId })).name).toBe("Back nine");
+        payload: { ...payload, name: blank },
+      });
+      expect((await ctx.caller().games.getById({ tripId, gameId })).name).toBe("Back nine");
+    }
   });
 
   it("writes the whole page in one shot — name, rules, entry mode, modifiers, points", async () => {

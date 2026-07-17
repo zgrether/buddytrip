@@ -512,6 +512,82 @@ function rackGroupsEqual(a: string[][], b: string[][]): boolean {
   return na.every((g, i) => arraysEqual(g, nb[i]));
 }
 
+// ── Stroke variant ───────────────────────────────────────────────────────────
+
+/**
+ * The STROKE variant: base + course + participant strokes + modifiers. Stroke is net
+ * stroke play — no groupings (its roster is create-only, per the P2 Phase-0 call), and
+ * PLACEMENT points (owner sets total + the placement split; the distribution passes
+ * through, not derived). The one destroys tier is the COURSE (a course change on a scored
+ * game orphans the snapshot the entered scores net against — refused SERVER-side,
+ * COURSE_LOCKED); strokes + modifiers are the warned/in-place tier.
+ *
+ *  - `strokes` — per-participant handicap strokes, keyed by user id.
+ *  - `modifiers` — the round modifiers (`games.modifiers`; stroke has them, rack didn't).
+ *  - `course` — the shared course sub-object.
+ */
+export interface StrokeConfigDraft extends BaseConfigDraft {
+  strokes: Record<string, number>;
+  modifiers: ModifiersMap;
+  course: DraftCourse;
+}
+
+/** Server snapshot → stroke draft baseline. The caller resolves participants → a
+ *  `{ userId → strokes }` map before handing it here (mirrors the rack/match resolvers). */
+export function configToStrokeDraft(
+  game: ConfigGameSnapshot,
+  strokes: Record<string, number>,
+  delegates: string[]
+): StrokeConfigDraft {
+  return {
+    gameTypeId: game.game_type_id ?? null,
+    name: game.name ?? "",
+    rulesForToday: game.rules_for_today ?? null,
+    competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    scoringEnabled: game.scoring_enabled ?? false,
+    pointsTotal: game.points_total ?? null,
+    pointsDistribution: game.points_distribution ?? null,
+    delegates: [...delegates].sort(),
+    strokes: { ...strokes },
+    modifiers: game.modifiers ?? {},
+    course: {
+      id: game.course_id ?? null,
+      backId: game.back_course_id ?? null,
+      scorecardSchema: game.scorecard_schema ?? null,
+    },
+  };
+}
+
+/**
+ * Convert the stroke draft into the atomic RPC payload. Placement points pass THROUGH
+ * (owner-authored, not derived). `modifiers` is sent EXPLICITLY (the RPC defaults a
+ * missing key to `{}`, which would wipe them). `participants[]` carries every roster
+ * member's strokes (the in-place FIELD write). No `groups`/`matches` (the RPC skips both
+ * blocks); the course change is the destroys tier, gated SERVER-side (COURSE_LOCKED).
+ */
+export function strokeDraftToPayload(draft: StrokeConfigDraft): SaveConfigPayload {
+  return {
+    ...baseDraftToPayload(draft, draft.pointsDistribution),
+    modifiers: draft.modifiers,
+    courseId: draft.course.id,
+    backCourseId: draft.course.backId,
+    scorecardSchema: draft.course.scorecardSchema,
+    participants: Object.entries(draft.strokes).map(([userId, strokes]) => ({ userId, strokes })),
+  };
+}
+
+/** Pure whole-page equality for the stroke draft — base + course + strokes + modifiers. */
+export function strokeDraftsEqual(a: StrokeConfigDraft, b: StrokeConfigDraft): boolean {
+  return (
+    baseDraftsEqual(a, b) &&
+    a.course.id === b.course.id &&
+    a.course.backId === b.course.backId &&
+    canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
+    canonical(a.strokes) === canonical(b.strokes) &&
+    canonical(a.modifiers) === canonical(b.modifiers)
+  );
+}
+
 // ── Dirty check ──────────────────────────────────────────────────────────────
 
 /**
