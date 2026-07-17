@@ -88,6 +88,35 @@ export interface BaseConfigDraft {
  *  Warned, so there's nothing here a scored game must lock. */
 export type NonGolfConfigDraft = BaseConfigDraft;
 
+/** The shared course sub-object (id + composed back-nine + snapshotted schema) — the
+ *  same shape match carries, since rack + match both route it through GameSetupRows /
+ *  CourseRowContent. */
+export interface DraftCourse {
+  id: string | null;
+  /** `games.back_course_id` — the composed two-nines 18's BACK course; null otherwise. */
+  backId: string | null;
+  /** Snapshotted `scorecard_schema` (par[] / handicap_index[] frozen in units.metadata). */
+  scorecardSchema: unknown | null;
+}
+
+/**
+ * The RACK variant: the base + rack's structural slice. Rack is net-stroke team play
+ * built from GROUPINGS (carts) + a course, with A2b total-points (owner sets the total;
+ * the per-slot share DERIVES = total ÷ slot count, so it's not stored on the draft — it's
+ * recomputed at payload time like match's even share). No entry_mode toggle, no modifiers.
+ *
+ *  - `groups` — one user-id array per cart, in cart order (the STRUCTURE unit; a
+ *    membership change is refused once scores exist — the coarse HAS_SCORES wall).
+ *  - `strokes` — per-participant handicap strokes, keyed by user id (the FIELD tier:
+ *    in-place, allowed with scores).
+ *  - `course` — the shared course sub-object.
+ */
+export interface RackConfigDraft extends BaseConfigDraft {
+  groups: string[][];
+  strokes: Record<string, number>;
+  course: DraftCourse;
+}
+
 /** The MATCH-PLAY variant: the base + the match structural slice. Every settings row
  *  reads and writes THIS — no row reads `serverMatches` directly (spec §1). */
 export interface ConfigDraft extends BaseConfigDraft {
@@ -250,6 +279,15 @@ export interface SaveConfigPayload {
    * landed (migration 084). Optional: absent whenever `matches` is (non-golf).
    */
   matchesStructureDirty?: boolean;
+  /** RACK GROUPINGS (085) — the structure unit (cart membership + name). Present only
+   *  for rack; the RPC gates its groups block on the key's presence. */
+  groups?: SaveGroupRow[];
+  /** Did the cart membership change vs the seed? True → clean-replace (refused with
+   *  scores — the coarse wall); false/absent → skip. Mirrors `matchesStructureDirty`. */
+  groupsStructureDirty?: boolean;
+  /** Per-participant handicap strokes (FIELD, in-place; rack + stroke). The RPC updates
+   *  existing game_participants by user_id — allowed with scores (warned tier). */
+  participants?: { userId: string; strokes: number }[];
 }
 
 /** Split a signed handicap into per-side stroke counts (<0 → A gets |n|; >0 → B
@@ -364,6 +402,114 @@ export function nonGolfDraftToPayload(draft: NonGolfConfigDraft): SaveConfigPayl
 /** Pure whole-page equality for the non-golf draft (the base fields only). */
 export function nonGolfDraftsEqual(a: NonGolfConfigDraft, b: NonGolfConfigDraft): boolean {
   return baseDraftsEqual(a, b);
+}
+
+// ── Rack variant ─────────────────────────────────────────────────────────────
+
+/** One group the rack RPC writes (085 `groups[]`): membership + optional name. */
+export interface SaveGroupRow {
+  name: string;
+  userIds: string[];
+}
+
+/** Server snapshot → rack draft baseline. The caller (RackGameView) resolves the
+ *  persisted play_groups → an ordered `string[][]` and the participants → a
+ *  `{ userId → strokes }` map before handing them here, so this module stays free of
+ *  play-group plumbing (mirrors `configToDraft`'s pre-resolved matches). */
+export function configToRackDraft(
+  game: ConfigGameSnapshot,
+  groups: string[][],
+  strokes: Record<string, number>,
+  delegates: string[]
+): RackConfigDraft {
+  return {
+    gameTypeId: game.game_type_id ?? null,
+    name: game.name ?? "",
+    rulesForToday: game.rules_for_today ?? null,
+    competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    scoringEnabled: game.scoring_enabled ?? false,
+    pointsTotal: game.points_total ?? null,
+    pointsDistribution: game.points_distribution ?? null,
+    delegates: [...delegates].sort(),
+    groups: groups.map((g) => [...g]),
+    strokes: { ...strokes },
+    course: {
+      id: game.course_id ?? null,
+      backId: game.back_course_id ?? null,
+      scorecardSchema: game.scorecard_schema ?? null,
+    },
+  };
+}
+
+/** Drop empty groups (an unfinished "add cart") and renumber the survivors Group 1..N —
+ *  the persist shape the RPC's `groups[]` path expects. Mirrors `rackGroupDraft.toPersist`
+ *  (kept here too so the pure payload builder has no component dependency). */
+export function rackGroupsToPersist(groups: string[][]): SaveGroupRow[] {
+  return groups.filter((g) => g.length > 0).map((userIds, i) => ({ name: `Group ${i + 1}`, userIds: [...userIds] }));
+}
+
+/**
+ * Convert the rack draft into the atomic RPC payload. The per-slot share is DERIVED
+ * here from `points_total ÷ slotCount` and folded into `points_distribution.value` — the
+ * same establish-and-refresh discipline `configDraftToPayload` uses for match play, so
+ * changing the total or the groups can't leave a stale per-slot award behind.
+ *
+ * `slotCount` is the rack SLOT count (rank-paired 1v1s = `min(grouped-A, grouped-B)`) —
+ * passed in because it needs team membership the pure draft doesn't carry, matching the
+ * SAME divisor `RackTotalPointsControl` uses so the displayed and persisted shares agree.
+ *
+ * `participants[]` carries the full roster's strokes (the in-place FIELD write);
+ * `groupsStructureDirty` reports whether the cart membership changed vs the baseline
+ * (gates the clean-replace, refused with scores).
+ */
+export function rackDraftToPayload(draft: RackConfigDraft, slotCount: number, baseline?: RackConfigDraft): SaveConfigPayload {
+  const persistGroups = rackGroupsToPersist(draft.groups);
+  const roster = persistGroups.flatMap((g) => g.userIds);
+
+  // Derive the per-slot share from the owner-set total (empty overrides → plain
+  // division), establishing it on first setup as well as refreshing it. Non-per_match
+  // (a placement payout) is never authored for rack, so this is the only shape.
+  let distribution = draft.pointsDistribution;
+  if (draft.pointsTotal != null) {
+    distribution = { type: "per_match", value: evenShare(draft.pointsTotal, [], slotCount) };
+  }
+
+  const participants = roster.map((userId) => ({ userId, strokes: draft.strokes[userId] ?? 0 }));
+
+  return {
+    ...baseDraftToPayload(draft, distribution),
+    courseId: draft.course.id,
+    backCourseId: draft.course.backId,
+    scorecardSchema: draft.course.scorecardSchema,
+    groups: persistGroups,
+    groupsStructureDirty: baseline ? !rackGroupsEqual(draft.groups, baseline.groups) : true,
+    participants,
+  };
+}
+
+/** Pure whole-page equality for the rack draft — base fields + course + strokes +
+ *  groupings (drives the Save-enabled gate). */
+export function rackDraftsEqual(a: RackConfigDraft, b: RackConfigDraft): boolean {
+  return (
+    baseDraftsEqual(a, b) &&
+    a.course.id === b.course.id &&
+    a.course.backId === b.course.backId &&
+    canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
+    canonical(a.strokes) === canonical(b.strokes) &&
+    rackGroupsEqual(a.groups, b.groups)
+  );
+}
+
+/** Groupings equality — membership-per-cart, position-sensitive (a reorder renames the
+ *  carts, so it's a structural rebuild). Empty carts are dropped first (an unfinished
+ *  add is never a change); userIds compare order-independently within a cart (a cart is
+ *  a set of players, not a sequence). Drives BOTH the dirty check and
+ *  `groupsStructureDirty`. */
+function rackGroupsEqual(a: string[][], b: string[][]): boolean {
+  const na = a.filter((g) => g.length > 0).map((g) => [...g].sort());
+  const nb = b.filter((g) => g.length > 0).map((g) => [...g].sort());
+  if (na.length !== nb.length) return false;
+  return na.every((g, i) => arraysEqual(g, nb[i]));
 }
 
 // ── Dirty check ──────────────────────────────────────────────────────────────

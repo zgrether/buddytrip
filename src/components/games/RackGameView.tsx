@@ -15,13 +15,18 @@ import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
-import { toPersist as groupsToPersist } from "@/lib/rackGroupDraft";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
+import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
+import { configToRackDraft, rackDraftToPayload, rackDraftsEqual, type RackConfigDraft } from "@/lib/configDraft";
+import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
+import { getGameTypeDefinition } from "@/lib/gameTypes";
+import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
@@ -85,29 +90,43 @@ export function RackGameView() {
   // The scorecard is an OVERLAY over a group's entry view (not a third screen), so
   // the entry stays mounted underneath and dismiss returns with score state intact.
   const [gridOpen, setGridOpen] = useState(false);
-  // Rack settings: both GROUPINGS and HANDICAPS are inline accordions (the rack
-  // equivalents of the 2v2 Matches/Handicaps rows), single-open. `groupDraft` = one
-  // user-id array per group.
+  // Rack settings: GROUPINGS + HANDICAPS are inline accordions (the rack equivalents
+  // of the 2v2 Matches/Handicaps rows), single-open. Draft-then-save (P2): every row
+  // edits ONE composite draft (`configDraft` below) and nothing reaches the server
+  // until Save — no per-collapse persist. `openAccordion` is UI-only now.
   const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | null>(null);
-  const [groupDraft, setGroupDraft] = useState<string[][]>([]);
-  // Has the user actually edited the group draft this open? Only a TOUCHED draft is
-  // persisted on leave — an untouched open (just seeded from the server) never
-  // rewrites, so a seed race can't wipe the persisted groups.
-  const groupingsTouched = useRef(false);
-  // Every builder edit goes through this (marks touched, then updates) — raw
-  // setGroupDraft is only for SEEDING (open / new game), which must not set touched.
-  const editGroupDraft = (next: string[][]) => {
-    groupingsTouched.current = true;
-    setGroupDraft(next);
-  };
-  // Surfaced retry when a groupings persist fails (parity with match's
-  // collapseError) — closes rack's silent-loss gap.
-  const [groupSaveError, setGroupSaveError] = useState(false);
+  // ── Composite draft SLICES (null = untouched → tracks the server). Assembled over
+  //    the server mirror in `configDraft`, mirroring MatchGameView / NonGolfGameView.
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [rulesDraft, setRulesDraft] = useState<string | null>(null);
+  const [scoringDraft, setScoringDraft] = useState<boolean | null>(null);
+  const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
+  // `undefined` = untouched (a drafted total can legitimately be null for "unset").
+  const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null | undefined>(undefined);
+  const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null);
+  const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
+  const [courseDraft, setCourseDraft] = useState<RackConfigDraft["course"] | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
-  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
-  const { open: showConfig, openConfig, closeConfig } = useGameSettingsOverlay({
+  // (?settings=1). Confirm-on-leave: the whole page is ONE draft (commits on Save), so a
+  // dirty back-press is guarded. `guardDirty` / `handleCancelConfig` reach the hook via
+  // latest-refs (guardDirty reads `showConfig`, which the hook returns — a direct pass
+  // would be circular). Deep-link path shares the #619 gap (outbox recovers the draft).
+  const dirtyRef = useRef(false);
+  const discardRef = useRef<() => void>(() => {});
+  const {
+    open: showConfig,
+    openConfig,
+    closeConfig,
+    confirmingClose,
+    confirmDiscard,
+    cancelClose,
+  } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
+    isDirty: () => dirtyRef.current,
+    onDiscard: () => discardRef.current(),
   });
   const [currentHole, setCurrentHole] = useState(1);
   // Rack scores now go through the durable, confirmation-tracked saver (Spec 1a) —
@@ -136,13 +155,18 @@ export function RackGameView() {
     { enabled: !!tripId && !!gid, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
   );
 
+  // Per-game delegates (the draft's `delegates` slice) — same source the non-golf /
+  // match settings pages read.
+  const orgQ = trpc.games.listOrganizers.useQuery({ tripId: tripId!, gameId: gid! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid });
+  const serverDelegates = useMemo(
+    () => ((orgQ.data ?? []) as { user_id: string }[]).map((d) => d.user_id).sort(),
+    [orgQ.data],
+  );
+
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
-  const setFoursomes = trpc.playGroups.setFoursomes.useMutation();
-  // Phase 2B.1: scoring must be enabled before entries land (universal gate).
-  const enableScoring = trpc.games.enableScoring.useMutation();
-  const disableScoring = trpc.games.disableScoring.useMutation();
-  const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
+  // Draft-then-save (P2): the whole settings page commits through ONE atomic RPC.
+  const saveConfigM = trpc.games.saveConfig.useMutation();
   const finishGame = trpc.games.finish.useMutation();
   // #7 correction path (owner/co-admin/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
@@ -302,22 +326,6 @@ export function RackGameView() {
     [rackPlayers, coursePar, perSlotValue]
   );
 
-  // Rack SLOT count = the number of rank-paired 1v1s = min(grouped-A, grouped-B),
-  // mirroring computeRack's `n = min(A.length, B.length)`. Derived from the
-  // GROUPED participants so it grows as the owner builds groups (a 2v2 group → 2
-  // slots) — NOT gated on a full roster and NOT on scores existing (computeRack's
-  // slots need thru>0, so it's 0 during setup). Feeds the settings "Total Points
-  // Available" (points × slots) so it stops reading 0 (Task 3).
-  const rackSlotCount = useMemo(() => {
-    let a = 0;
-    let b = 0;
-    for (const p of participants) {
-      const t = teamOf.get(p.user_id as string);
-      if (t === "A") a += 1;
-      else if (t === "B") b += 1;
-    }
-    return Math.min(a, b);
-  }, [participants, teamOf]);
 
   // Total-points migration — default `points_total` on first setup = players per
   // team (total roster ÷ teams), the SAME formula match play's MatchPointsRow uses
@@ -369,17 +377,89 @@ export function RackGameView() {
     [participants, nameOf, avatarOf, teamOf, teamMeta, handicapOf, rosterOrder]
   );
 
+  // ── Draft-then-save (P2) ─────────────────────────────────────────────────
+  // The persisted play_groups as an ordered string[][] (one user-id array per cart),
+  // and the participants' handicap strokes as a { userId → strokes } map — the two
+  // structural inputs `configToRackDraft` folds into the baseline.
+  const serverGroups = useMemo<string[][]>(
+    () => (groupsQ.data?.groups ?? []).map((grp) =>
+      (groupsQ.data?.participants ?? []).filter((p) => p.play_group_id === grp.id).map((p) => p.user_id as string)),
+    [groupsQ.data],
+  );
+  const serverStrokes = useMemo<Record<string, number>>(() => {
+    const m: Record<string, number> = {};
+    for (const p of participants) m[p.user_id as string] = effectiveStrokes(p as { handicap_strokes: number | null });
+    return m;
+  }, [participants]);
+  const serverConfigDraft = useMemo<RackConfigDraft>(
+    () => configToRackDraft((gameQ.data ?? {}) as Parameters<typeof configToRackDraft>[0], serverGroups, serverStrokes, serverDelegates),
+    [gameQ.data, serverGroups, serverStrokes, serverDelegates],
+  );
+
+  const anyTouched =
+    nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
+    pointsTotalDraft !== undefined || groupsDraft !== null || strokesDraft !== null || courseDraft !== null;
+
+  const configDraft = useMemo<RackConfigDraft>(
+    () => ({
+      ...serverConfigDraft,
+      name: nameDraft ?? serverConfigDraft.name,
+      rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
+      scoringEnabled: scoringDraft ?? serverConfigDraft.scoringEnabled,
+      pointsTotal: pointsTotalDraft !== undefined ? pointsTotalDraft : serverConfigDraft.pointsTotal,
+      delegates: delegatesDraft ?? serverConfigDraft.delegates,
+      groups: groupsDraft ?? serverConfigDraft.groups,
+      strokes: strokesDraft ?? serverConfigDraft.strokes,
+      course: courseDraft ?? serverConfigDraft.course,
+    }),
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft],
+  );
+
+  // The config hash (baseHash for the atomic Save + the concurrency check) — polled on
+  // the same cadence as scores so another device's change is caught. Frozen into the
+  // baseline below the first tick it's read with no local edits pending.
+  const hashQ = trpc.games.configHash.useQuery(
+    { tripId: tripId!, gameId: gid! },
+    { enabled: !!tripId && !!gid, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
+  const serverHash = hashQ.data?.hash ?? null;
+
+  // Frozen baseline (+hash): the dirty reference AND the concurrency base, frozen the
+  // first render with no touched slice, re-frozen after a Save clears them.
+  const [baseline, setBaseline] = useState<{ draft: RackConfigDraft; hash: string } | null>(null);
+  useEffect(() => {
+    if (anyTouched || serverHash === null) return;
+    setBaseline((prev) =>
+      prev && prev.hash === serverHash && rackDraftsEqual(prev.draft, serverConfigDraft)
+        ? prev
+        : { draft: serverConfigDraft, hash: serverHash },
+    );
+  }, [anyTouched, serverConfigDraft, serverHash]);
+
+  // Dirty gated on anyTouched (kills the post-save transient where a refetched server
+  // draft briefly ≠ the stale baseline before it re-seeds).
+  const dirty = anyTouched && !!baseline && !rackDraftsEqual(configDraft, baseline.draft);
+
+  // Rack SLOT count over the DRAFT carts = rank-paired 1v1s = min(grouped-A, grouped-B),
+  // the divisor for the per-slot points share (matches `computeRack`'s n and the payload
+  // derivation). Draft-based so it tracks carts as the owner builds them.
+  const draftSlotCount = useMemo(() => {
+    let a = 0, b = 0;
+    for (const uid of configDraft.groups.flat()) {
+      const t = teamOf.get(uid);
+      if (t === "A") a += 1;
+      else if (t === "B") b += 1;
+    }
+    return Math.min(a, b);
+  }, [configDraft.groups, teamOf]);
+  const draftGroupsAssigned = configDraft.groups.some((g) => g.length > 0);
+
   // ── Handlers ─────────────────────────────────────────────────────────
   // The current persisted groups as a builder draft (one user-id array per group,
   // in group order) — seeds the builder when editing an existing game's groups.
-  const currentGroupDraft = (): string[][] => {
-    const gs = groupsQ.data?.groups ?? [];
-    return gs.map((grp) => participants.filter((p) => p.play_group_id === grp.id).map((p) => p.user_id as string));
-  };
-
-  // Start a rack: create the game (if new) + apply the course, then open the MANUAL
-  // group builder. No auto-assignment — deliberate grouping is the point of this
-  // round (see spec), so the owner builds the carts from an empty state.
+  // Start a rack: create the game (if new) + apply the course, then open settings with
+  // GROUPINGS expanded. No auto-assignment — the owner builds the carts from empty (the
+  // draft's groups slice, seeded from the — empty — server set).
   async function startRack() {
     if (!tripId || !competitionId) return;
     let gameId: string;
@@ -398,103 +478,135 @@ export function RackGameView() {
     }
     await utils.playGroups.listByGame.invalidate({ tripId, gameId });
     setGameId(gameId);
-    setGroupDraft([]); // start empty — the owner builds the groups
-    groupingsTouched.current = false;
     // Land in the settings page with GROUPINGS expanded (the first Settings item).
     setOpenAccordion("groupings");
     openConfig();
   }
 
-  // Persist the built groups. Empty groups (an unfinished "add group") are dropped;
-  // the survivors renumber Group 1..N. Clean-replaces via setFoursomes, then
-  // refreshes the board (incl. faceBootstrap, CLAUDE.md #10).
-  async function saveGroups() {
-    if (!tripId || !gid) return;
-    // try/catch (parity with MatchGameView's persistDraftOnCollapse): a bare
-    // mutateAsync here was a silent loss — a transient failure on close-flush
-    // became an unhandled rejection with the draft already gone from view and no
-    // retry. Now the draft is KEPT (the outbox still holds it) and a retry is
-    // surfaced; success clears both the error and the teardown copy.
-    try {
-      await setFoursomes.mutateAsync({ tripId, gameId: gid, groups: groupsToPersist(groupDraft) });
-      setGroupSaveError(false);
-      clearGroupsOutbox(); // durably persisted → drop the teardown copy
-      await utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
-      if (competitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-        utils.games.listByTrip.invalidate({ tripId });
-      }
-    } catch {
-      setGroupSaveError(true);
-    }
-  }
+  // Accordion toggles — UI-only now. Edits go straight to the composite draft; there's
+  // no persist-on-collapse (Save commits, the outbox covers hard teardown).
+  const toggleGroupings = () => setOpenAccordion((o) => (o === "groupings" ? null : "groupings"));
+  const toggleHandicaps = () => setOpenAccordion((o) => (o === "handicaps" ? null : "handicaps"));
 
-  // Toggle the GROUPINGS accordion (the rack "Matches" builder). Opening seeds the
-  // draft from what's persisted; collapsing persists it (persist-on-collapse, like
-  // the 2v2 match builder), so building groups then collapsing the row saves them.
-  function toggleGroupings() {
-    if (openAccordion === "groupings") {
-      setOpenAccordion(null);
-      if (groupingsTouched.current) void saveGroups();
-    } else {
-      // Restore a hard-teardown draft first (only if the server is unchanged
-      // since it diverged); mark it touched so the flush net persists it.
-      const recovered = recoverGroups();
-      if (recovered && recovered.length > 0) {
-        setGroupDraft(recovered);
-        groupingsTouched.current = true;
-      } else {
-        setGroupDraft(currentGroupDraft());
-        groupingsTouched.current = false;
-      }
-      setOpenAccordion("groupings");
-    }
-  }
-
-  // Toggle the HANDICAPS accordion (inline per-player strokes). Single-open —
-  // opening it collapses Groupings, persisting any in-progress group edits first.
-  function toggleHandicaps() {
-    if (openAccordion === "handicaps") {
-      setOpenAccordion(null);
-    } else {
-      if (openAccordion === "groupings" && groupingsTouched.current) void saveGroups();
-      setOpenAccordion("handicaps");
-    }
-  }
-
-  // Persist the groupings whenever the settings overlay CLOSES by ANY path — the
-  // config Back arrow, the OS/browser back (popstate, page stays mounted), or a
-  // deep-link nav that unmounts the page. Without this, groups built in the
-  // accordion but not explicitly collapsed were lost on leaving settings (the
-  // Back-arrow onBack saved, but an OS back-gesture bypasses it). Mirrors the match
-  // page's close-flush. Guarded on touched (+ !scoringEnabled) so an untouched
-  // close never rewrites and a live game is never written.
-  const flushGroupings = () => {
-    if (scoringEnabled) return;
-    if (openAccordion === "groupings" && groupingsTouched.current) void saveGroups();
+  // Handicaps → the strokes draft slice (the payload clamps 0–18 and nulls 0). Returns a
+  // Promise to satisfy HandicapList's async onSetStrokes contract (no server call here).
+  const onSetStrokes = (userId: string, strokes: number) => {
+    setStrokesDraft((prev) => ({ ...(prev ?? serverConfigDraft.strokes), [userId]: strokes }));
+    return Promise.resolve();
   };
-  const flushRef = useRef(flushGroupings);
-  flushRef.current = flushGroupings;
-  const prevShowConfig = useRef(showConfig);
-  useEffect(() => {
-    const wasOpen = prevShowConfig.current;
-    prevShowConfig.current = showConfig;
-    if (!wasOpen || showConfig) return; // only the true→false transition
-    flushGroupings();
-    if (openAccordion !== null) setOpenAccordion(null);
-    // flushGroupings is a per-render closure; we react to the overlay-close
-    // transition only, so it stays out of the dep list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showConfig, openAccordion]);
-  // Unmount flush — the deep-link/navigate-away teardown the transition effect
-  // can't see (no committed showConfig=false render).
-  useEffect(() => () => flushRef.current(), []);
 
-  const onSetStrokes = (userId: string, strokes: number) =>
-    setStrokes
-      .mutateAsync({ tripId: tripId!, gameId: gid!, userId, strokes })
-      .then(() => utils.playGroups.listByGame.invalidate({ tripId: tripId!, gameId: gid! }));
+  // ── Course ACTIONS stage into the course draft slice (mirrors MatchGameView). ──
+  const [courseBusy, setCourseBusy] = useState(false);
+  const gameTypeId = (gameQ.data?.game_type_id as string | undefined) ?? "";
+  const applyFrontToDraft = (courseId: string, teeName?: string) => {
+    if (!gameTypeId) return;
+    setCourseBusy(true);
+    void (async () => {
+      try {
+        const course = await utils.courses.getById.fetch({ courseId });
+        const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, gameTypeId, teeName);
+        if (!snap.ok) {
+          setSaveError(snap.reason === "bad_index"
+            ? "That course's stroke index isn't a valid permutation — fix it before use."
+            : "That game type has no scorecard to snapshot onto.");
+          return;
+        }
+        setSaveError(null);
+        setCourseDraft({ id: courseId, backId: null, scorecardSchema: snap.schema });
+      } catch {
+        setSaveError("Couldn’t load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+      }
+    })();
+  };
+  const applyBackToDraft = (backCourseId: string, backTeeName?: string) => {
+    if (!gameTypeId) return;
+    setCourseBusy(true);
+    void (async () => {
+      try {
+        const back = await utils.courses.getById.fetch({ courseId: backCourseId });
+        const res = buildComposedCourseSnapshot(
+          {
+            frontSchema: configDraft.course.scorecardSchema as ScorecardSchema | null,
+            hasBackRef: !!configDraft.course.backId,
+            backCourse: back as unknown as CourseSnapshotInput,
+          },
+          gameTypeId,
+          backTeeName,
+        );
+        if (!res.ok) {
+          setSaveError(res.reason === "back_not_nine"
+            ? "The back nine must be a 9-hole course."
+            : res.reason === "bad_back_index"
+              ? "That course's stroke index isn't a valid permutation — fix it before use."
+              : "This isn’t a 9-hole front — it doesn’t take a back nine.");
+          return;
+        }
+        setSaveError(null);
+        setCourseDraft({ id: configDraft.course.id, backId: backCourseId, scorecardSchema: res.schema });
+      } catch {
+        setSaveError("Couldn’t load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+      }
+    })();
+  };
+  const removeBackNineFromDraft = () => {
+    const frontId = configDraft.course.id;
+    if (!frontId) return;
+    const teeName = ((configDraft.course.scorecardSchema as { units?: { metadata?: { tee?: { name?: string } } } } | null)
+      ?.units?.metadata?.tee?.name ?? "").trim();
+    applyFrontToDraft(frontId, teeName || undefined);
+  };
+  const clearCourseInDraft = () => {
+    setSaveError(null);
+    setCourseDraft({ id: null, backId: null, scorecardSchema: getGameTypeDefinition(gameTypeId)?.scorecardSchema ?? null });
+  };
+
+  // ── Save / Cancel the composite draft ──
+  function resetSlices() {
+    setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
+    setPointsTotalDraft(undefined); setGroupsDraft(null); setStrokesDraft(null); setCourseDraft(null);
+  }
+  async function handleSaveConfig() {
+    if (!tripId || !gid || !baseline || !dirty || saveConfigM.isPending) return;
+    setSaveError(null);
+    try {
+      await saveConfigM.mutateAsync({ tripId, gameId: gid, baseHash: baseline.hash, payload: rackDraftToPayload(configDraft, draftSlotCount, baseline.draft) });
+    } catch (e) {
+      setSaveError((e as { message?: string }).message ?? "Couldn’t save your changes — try again.");
+      return;
+    }
+    clearDraftOutbox();
+    resetSlices();
+    setJustSaved(true);
+    // Refetch the config inputs so the baseline re-freezes on the new server state.
+    await Promise.all([gameQ.refetch(), groupsQ.refetch(), orgQ.refetch()]);
+    void hashQ.refetch();
+    if (competitionId) {
+      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+      utils.games.listByTrip.invalidate({ tripId });
+    }
+  }
+  function handleCancelConfig() {
+    resetSlices();
+    setSaveError(null);
+    setJustSaved(false);
+    clearDraftOutbox();
+  }
+  // Any fresh edit clears the "Saved" flag (dirty already masks it, but this keeps the
+  // flag honest so a later Cancel doesn't flash "Saved").
+  useEffect(() => { if (anyTouched) setJustSaved(false); }, [anyTouched]);
+
+  // Feed the overlay's confirm-on-leave guard. Gate on the overlay being OPEN + editable
+  // so the scoreboard underneath (and a member view) never traps a back-press.
+  const guardDirty = showConfig && canEdit && dirty;
+  useEffect(() => {
+    dirtyRef.current = guardDirty;
+    discardRef.current = handleCancelConfig;
+  });
 
   async function finish() {
     if (!tripId || !gid) return;
@@ -557,33 +669,46 @@ export function RackGameView() {
   // (created as a bare games row by add-game). Route it to the setup step instead
   // of the empty play screen — startRack seeds onto the existing game.
   const needsSetup = !!gid && groupsQ.isSuccess && (groupsQ.data?.groups?.length ?? 0) === 0;
-  // Task 2 readiness: rack can't switch to scoring until at least one playing group
-  // exists (players assigned). Mirrors the server enable guard (grouped participants
-  // > 0) so the client toggle and the server refuse agree.
-  const groupsAssigned = (groupsQ.data?.groups?.length ?? 0) > 0;
   // Phase 2B.1: a rack with its groups set must be Enabled before the play screen
   // opens (the score saver server-rejects entries until then).
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
 
-  // Draft durability (Layer 2 — hard-teardown outbox), the rack counterpart to
-  // MatchGameView's. The in-app flush net already persists a built grouping on
-  // every in-app exit; this mirrors the in-progress group draft to localStorage
-  // so a refresh / tab-close / OS-kill / background can't lose it (incomplete
-  // groupings too). `serverFingerprint` is the persisted grouping the draft
-  // diverged from — the no-clobber guard for recover().
-  const groupServerFingerprint = useMemo(
-    () => JSON.stringify(currentGroupDraft()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [groupsQ.data, participants]
+  // Draft durability (Layer 2 — hard-teardown outbox). Mirrors the WHOLE composite draft
+  // (not just groups) to localStorage so a refresh / tab-close / OS-kill can't lose an
+  // in-progress config edit. `serverFingerprint` = the config hash the draft diverged
+  // from (the no-clobber guard: recovery only restores if the server hasn't moved).
+  const draftBundle = useMemo(
+    () => ({
+      name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
+      pointsTotal: pointsTotalDraft, groups: groupsDraft, strokes: strokesDraft, course: courseDraft,
+    }),
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft],
   );
-  const { recover: recoverGroups, clear: clearGroupsOutbox } = useDraftOutbox<string[][]>({
+  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<typeof draftBundle>({
     view: "rack",
     gameId: gid,
-    draft: groupDraft,
-    touched: groupingsTouched.current,
-    serverFingerprint: groupServerFingerprint,
-    enabled: !!gid && !scoringEnabled,
+    draft: draftBundle,
+    touched: anyTouched,
+    serverFingerprint: serverHash ?? "",
+    enabled: !!gid,
   });
+  // Restore a hard-teardown draft ONCE on mount (only when the server is unchanged
+  // since it diverged — the outbox's base guard enforces that).
+  const didRecover = useRef(false);
+  useEffect(() => {
+    if (didRecover.current || !gid || serverHash === null) return;
+    didRecover.current = true;
+    const b = recoverDraft();
+    if (!b) return;
+    if (b.name != null) setNameDraft(b.name);
+    if (b.rules != null) setRulesDraft(b.rules);
+    if (b.scoring != null) setScoringDraft(b.scoring);
+    if (b.delegates != null) setDelegatesDraft(b.delegates);
+    if (b.pointsTotal !== undefined) setPointsTotalDraft(b.pointsTotal);
+    if (b.groups != null) setGroupsDraft(b.groups);
+    if (b.strokes != null) setStrokesDraft(b.strokes);
+    if (b.course != null) setCourseDraft(b.course);
+  }, [gid, serverHash, recoverDraft]);
 
   async function refreshGame() {
     if (!tripId || !gid) return;
@@ -594,27 +719,10 @@ export function RackGameView() {
       utils.games.listByTrip.invalidate({ tripId });
     }
   }
-  async function handleEnable() {
-    if (!tripId || !gid) return;
-    try {
-      await enableScoring.mutateAsync({ tripId, gameId: gid });
-      await refreshGame();
-      // #512 correction: STAY on the settings page — the toggle flips in place. The
-      // back arrow still returns to the game page via the openConfig history entry.
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
-  // §B 2B.3: Disable from Configuration — keep scores, STAY in Configuration.
-  async function handleDisable() {
-    if (!tripId || !gid) return;
-    try {
-      await disableScoring.mutateAsync({ tripId, gameId: gid });
-      await refreshGame();
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
+  // Setup/Scoring toggle → the scoring draft slice; Save commits it (go-live readiness
+  // is re-asserted server-side inside the tx, so the client gate can't be bypassed).
+  function handleEnable() { setScoringDraft(true); }
+  function handleDisable() { setScoringDraft(false); }
 
   // #550: as a PANEL, publish this screen's chrome to the app bar (back/title +
   // owner gear) instead of a second header. Standalone route (no provider) keeps
@@ -757,92 +865,111 @@ export function RackGameView() {
   if (showConfig && gid && gameQ.data && canEdit) {
     const teamA: GroupBuilderTeam = { id: teamIds[0] ?? "A", name: teamMeta.A.name, color: teamMeta.A.color, players: teamRosters.A };
     const teamB: GroupBuilderTeam = { id: teamIds[1] ?? "B", name: teamMeta.B.name, color: teamMeta.B.color, players: teamRosters.B };
-    const groupCount = groupsQ.data?.groups?.length ?? 0;
-    const anyHandicap = handicapPlayers.some((p) => p.strokes > 0);
-    // Settings order (Task 4): GROUPINGS (leading, above Course/Points) → then the
-    // shared Course + "Points per Slot" spine → then the OPTIONS section
-    // { Handicaps, Game Modifiers } via extraRows. GROUPINGS is the rack "Matches"
-    // builder; both accordions stay single-open.
+    const groupCount = configDraft.groups.filter((g) => g.length > 0).length;
+    // Handicaps row reads the DRAFT strokes (not the server) so an unsaved stroke shows.
+    const draftHandicapPlayers = handicapPlayers.map((p) => ({ ...p, strokes: configDraft.strokes[p.id] ?? 0 }));
+    const anyHandicap = draftHandicapPlayers.some((p) => p.strokes > 0);
+    // Settings order: GROUPINGS (leading, above Course/Points) → the shared Course +
+    // "Points per Slot" spine → OPTIONS { Handicaps }. Draft-then-save (P2): every edit
+    // stages into the composite draft; NO scoring-enabled lock (the lie sweep) — a scored
+    // game's groupings change is refused SERVER-side (HAS_SCORES), not client-frozen.
     const groupingsRow = (
       <ChecklistRow
         icon={Users}
         title="Groupings"
-        subtitle={groupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
-        state={groupsAssigned ? "resolved" : "empty"}
-        locked={scoringEnabled}
-        expanded={openAccordion === "groupings" && !scoringEnabled}
-        onToggle={!scoringEnabled ? toggleGroupings : undefined}
+        subtitle={draftGroupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+        state={draftGroupsAssigned ? "resolved" : "empty"}
+        expanded={openAccordion === "groupings"}
+        onToggle={toggleGroupings}
         testId="row-groupings"
       >
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
           Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
         </p>
-        <RackGroupBuilder groups={groupDraft} onChange={editGroupDraft} teamA={teamA} teamB={teamB} />
-        {groupSaveError && (
-          <button
-            type="button"
-            onClick={() => void saveGroups()}
-            className="mt-2 text-left text-[13px]"
-            style={{ color: "var(--color-bt-danger)" }}
-          >
-            Couldn’t save your groups — tap to retry.
-          </button>
-        )}
+        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teamA={teamA} teamB={teamB} />
       </ChecklistRow>
     );
-    // OPTIONS section (extraRows): Handicaps. (Rack has no Game Modifiers — its
-    // format offers none, so that row is correctly absent, like any modifier-less
-    // format.)
+    // OPTIONS section (extraRows): Handicaps. (Rack has no Game Modifiers.)
     const optionRows = (
       <ChecklistRow
         icon={SlidersHorizontal}
         title="Handicaps"
-        subtitle={groupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
+        subtitle={draftGroupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
         state={anyHandicap ? "resolved" : "empty"}
-        locked={scoringEnabled}
-        // Gated until groups exist (the ChecklistRow "not available yet" dim); when
-        // ready, it opens INLINE — the same per-player strokes UI stroke play uses.
-        disabled={!groupsAssigned}
-        expanded={openAccordion === "handicaps" && groupsAssigned && !scoringEnabled}
-        onToggle={groupsAssigned && !scoringEnabled ? toggleHandicaps : undefined}
+        // Gated until a cart exists; opens INLINE (the same per-player strokes UI stroke
+        // play uses). No scoring lock — strokes are the warned (in-place) tier.
+        disabled={!draftGroupsAssigned}
+        expanded={openAccordion === "handicaps" && draftGroupsAssigned}
+        onToggle={draftGroupsAssigned ? toggleHandicaps : undefined}
         testId="row-handicaps"
       >
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
           Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
         </p>
-        <HandicapList players={handicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
+        <HandicapList players={draftHandicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
       </ChecklistRow>
     );
     return (
-      <GameConfigurationView
-        hideHeader={inPanel}
-        subtitle="Net stroke play · team rack"
-        // The close-flush effect persists the groupings on ANY overlay close (incl.
-        // OS back), so Back just closes — no inline save needed here.
-        onBack={closeConfig}
-        tripId={tripId!}
-        competitionId={competitionId ?? null}
-        game={gameQ.data as unknown as GameRow}
-        canEdit={canEdit}
-        isOwner={isOwner}
-        onChanged={() => void refreshGame()}
-        onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-        leadingSettingsRows={groupingsRow}
-        extraRows={optionRows}
-        // Total-points migration: feed the slot count (the divisor for the derived
-        // per-slot value) and the roster-derived default total. Rack labels the
-        // derived field "Points per Slot" (display only — the per_match data model
-        // is unchanged, and the row header is now "Total Points").
-        matchCount={rackSlotCount}
-        defaultPointsTotal={defaultTotal}
-        pointsRowTitle="Points per Slot"
-        scoringEnabled={scoringEnabled}
-        // Task 2: gate the Setup→Scoring toggle on groups being assigned.
-        ready={groupsAssigned}
-        onEnable={handleEnable}
-        onDisable={handleDisable}
-        busy={enableScoring.isPending || disableScoring.isPending}
-      />
+      <>
+        <GameConfigurationView
+          controlled
+          hideHeader={inPanel}
+          subtitle="Net stroke play · team rack"
+          onBack={closeConfig}
+          tripId={tripId!}
+          competitionId={competitionId ?? null}
+          game={gameQ.data as unknown as GameRow}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          onChanged={() => void refreshGame()}
+          onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          leadingSettingsRows={groupingsRow}
+          extraRows={optionRows}
+          // Total-points: the DRAFT slot count is the per-slot divisor; the roster-derived
+          // default total seeds first-setup. Rack labels the derived readout "Points per Slot".
+          matchCount={draftSlotCount}
+          defaultPointsTotal={defaultTotal}
+          pointsRowTitle="Points per Slot"
+          // Draft-then-save controlled wiring:
+          serverScoringEnabled={scoringEnabled}
+          draftScoringEnabled={configDraft.scoringEnabled}
+          nameValue={configDraft.name}
+          onNameChange={setNameDraft}
+          delegateValue={configDraft.delegates[0] ?? null}
+          onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
+          rulesValue={configDraft.rulesForToday}
+          onRulesChange={setRulesDraft}
+          onApplyFront={applyFrontToDraft}
+          onApplyBack={applyBackToDraft}
+          onRemoveBackNine={removeBackNineFromDraft}
+          onClearCourse={clearCourseInDraft}
+          courseBusy={courseBusy}
+          rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
+          // Gate the Setup→Scoring toggle on a drafted cart (mirrors the server enable guard).
+          ready={draftGroupsAssigned}
+          onEnable={handleEnable}
+          onDisable={handleDisable}
+          busy={saveConfigM.isPending}
+          saveBar={
+            <SettingsSaveBar
+              dirty={dirty}
+              saving={saveConfigM.isPending}
+              justSaved={justSaved}
+              error={saveError}
+              onSave={() => void handleSaveConfig()}
+              onCancel={handleCancelConfig}
+            />
+          }
+        />
+        {confirmingClose && (
+          <DiscardChangesPrompt
+            onDiscard={confirmDiscard}
+            onKeepEditing={cancelClose}
+            onSave={() => { cancelClose(); void handleSaveConfig(); }}
+            saving={saveConfigM.isPending}
+          />
+        )}
+      </>
     );
   }
 
