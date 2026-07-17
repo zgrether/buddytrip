@@ -154,7 +154,13 @@ export function MatchPointsRow({
       icon={Scale}
       title="Point Distribution"
       subtitle={anyOverride ? "Custom — some matches overridden" : `Even — ${fmt(even)} per match`}
-      state={anyOverride ? "resolved" : "empty"}
+      // "Not set" ONLY when there are no matches. Once ≥1 match exists the even-share
+      // default is already a valid distribution (fixed even when no override is set) —
+      // there is no "matches exist but distribution unset" state. `matchCount` is the
+      // DRAFT's filled-match count (this row is fed pointsMatches off configDraft), so
+      // it's draft-derived, not serverMatches. (Bug: keying on anyOverride rendered a
+      // 1-match game with points assigned as "not set".)
+      state={matchCount > 0 ? "resolved" : "empty"}
       disabled={!canEdit}
       locked={locked}
       expanded={expanded}
