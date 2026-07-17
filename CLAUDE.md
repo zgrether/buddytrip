@@ -85,6 +85,23 @@ seam, never on a calendar.
 - No task is considered complete until its tests pass
 - CI runs Vitest (full) + the critical-path Playwright E2E on every push via
   GitHub Actions; both are merge-blocking
+- **Shared-remote-DB conventions (learned the hard way, ~6× this refactor).** The
+  server-router suites run against ONE shared REMOTE Supabase project, so latency is
+  real and load-sensitive:
+  - **Seed sequentially, never `Promise.all`.** Parallel `createTrip`/`addTripMember`/
+    `createCompetition` against the shared project race and flake; do them in order.
+  - **Budget 60s, not 30s** — for BOTH `testTimeout` AND `hookTimeout` (`vitest.config.mts`).
+    A `beforeAll` hits the same latency spikes as a test; vitest defaults `hookTimeout` to
+    10s, so under concurrent load setup hooks flake ("Hook timed out in 10000ms") while the
+    60s tests pass. Every new integration suite adds a `beforeAll`, so this is a per-suite
+    tax on the whole run, not a one-off.
+  - **A red integration test under concurrent load is SUSPECT until reproduced in
+    isolation.** Before treating a CI failure as a regression, re-run the failing suite
+    alone (`vitest run <file>`) and check for worktree / shared-fixture contamination — a
+    load-induced timeout looks identical to a real break in the CI log.
+  - **After any behaviour change, grep the tests for assertions of the OLD behaviour
+    before pushing** (e.g. relaxing a zod floor → a test asserting the old rejection).
+    Do it proactively; discovering it as a second red CI run wastes a full ~7-min cycle.
 
 ## Seed Data Rules
 
@@ -129,7 +146,13 @@ If documents conflict with each other → stop and flag, do not silently resolve
 
 These patterns have been established through prior work. Follow them exactly — do not invent alternatives.
 
-1. **Optimistic updates** — TanStack Query `onMutate` with rollback on error
+1. **Optimistic updates** — hand-rolled `utils.<query>.getData` → `setData`, with
+   `invalidate()`/`refetch()` (re-pull server truth) as the "rollback" on error. NOT
+   the `onMutate` + snapshot-restore idiom: `src/components/games/` has **zero**
+   `onMutate` (grep confirms). A mutation reads the cached row, writes an optimistic
+   patch via `setData`, and on failure re-fetches rather than restoring a snapshot.
+   (The whole game-settings surface has since moved to draft-then-save — one atomic
+   `save_game_config` per page, no per-row optimism at all — see #18.)
 2. **TypeScript cache typing** — explicit generics on `queryClient.setQueryData`
 3. **Migration naming** — `NNN_descriptive_name.sql` (sequential, no gaps). The `NNN`
    is COSMETIC: Supabase applies and orders migrations by the full `YYYYMMDDHHMMSS_`
@@ -269,30 +292,59 @@ These patterns have been established through prior work. Follow them exactly —
     unconfirmed local cells (`protectedKeys`) — active enterer wins, dovetailing
     with the outbox (#15). **Any new config field must be included in the
     `configHash` input, or mid-round changes to it won't propagate to other
-    devices.** This is now MECHANICAL, not remembered: the hash-invariant guard
-    (`games.saveConfig.p2.test.ts`, table-driven) asserts, per field the RPC
-    writes, that the hash MOVES on a real change and does NOT churn on an
-    idempotent re-write. **Add a field to `save_game_config` → add a row to that
-    table.** Four fields went silent before the guard existed
-    (`.from("matches")`, `game_delegates`, `point_value`/`handicap_strokes`,
+    devices.** This is now MECHANICAL, not remembered — TWO guards enforce it:
+    (a) the **behavioural** hash-invariant guard (`games.saveConfig.p2.test.ts`,
+    table-driven) asserts, per field the RPC writes, that the hash MOVES on a real
+    change and does NOT churn on an idempotent re-write — **add a field to
+    `save_game_config` → add a row to that table**; (b) the **observational**
+    coverage guard (`configHash.coverage.test.ts`) reads each hashed table's live
+    columns via `select('*')` and asserts every one is in `HASH_COLS ∪ NOT_HASHED`,
+    so a brand-new column can't be silently omitted from the hash. **The invariant,
+    plainly:** *everything the RPC writes must be hashed; every LIST read the hash
+    folds in needs a total order — a column UNIQUE within the `game_id` filter — or
+    two rows can swap and the hash miss it; hash semantic content ONLY, never
+    re-minted provenance (`created_at`, `granted_by`) or an `id` re-minted by a
+    clean-replace on an unchanged set.* Landmine of record: the hash's own read once
+    queried `.from("matches")` — a relation that doesn't exist (match rows live in
+    `game_matches`) — and only `gameRes.error` was checked, so the error was
+    SWALLOWED and `matches: []` folded into every hash for six weeks, silently
+    disabling this cross-device sync AND letting `saveConfig`'s concurrency check pass
+    while pairings were clobbered. Four fields went silent this way before the guards
+    existed (`.from("matches")`, `game_delegates`, `point_value`/`handicap_strokes`,
     `play_groups.tee_time`) — three caught only because someone thought to ask.
-    Hash semantic content ONLY, never re-minted provenance (`created_at`,
-    `granted_by`) or a `id` re-minted by a clean-replace on an unchanged set.
-17. **Modifier config persists only on Game-Modifiers-row COLLAPSE, not
-    per-click.** The Settings "Modifiers" accordion row buffers edits locally
-    while expanded and writes them to `games.modifiers` only when the row
-    **collapses** — not on each toggle/stepper change. This has cost real
-    debugging time twice: a change that looks applied in the UI (the local
-    control reflects it) silently never reaches the server if the row is left
-    open (navigated away, panel closed, etc.) instead of explicitly collapsed.
-    **Don't trust the UI state when verifying a modifier change landed** —
-    confirm via a direct tRPC fetch (`games.getById` and check `.modifiers`),
-    not by eyeballing the still-open accordion. Glorious Finishing Holes is the
-    one modifier where this collapse-persist timing is safe to flip even
-    mid-scoring under the #501 freeze — see the design note in `DEFERRED.md`
-    under "Glorious Finishing Holes — known limitations" (derived-at-read-time,
-    never snapshotted, so a late collapse-triggered write just changes what the
-    next compute returns).
+17. **Modifiers commit on Save (draft slice), NOT on row-collapse.** RETIRED the
+    old "persist only on Game-Modifiers-row COLLAPSE" rule — persist-on-collapse is
+    gone from all four formats (P2). `games.modifiers` is now a slice of the composite
+    draft (`modifiersDraft`), committed atomically by `save_game_config` with the rest
+    of the page; there is no collapse-timing window to lose an edit in. (The old rule's
+    own failure mode — an edit lost because the row was left open — is fixed by this,
+    not just documented.) Still true: Glorious Finishing Holes is the one modifier safe
+    to flip mid-scoring under the #501 freeze — it's derived-at-read-time, never
+    snapshotted, so a late write just changes what the next compute returns (see the
+    design note in `DEFERRED.md` under "Glorious Finishing Holes — known limitations").
+18. **Game settings = draft-then-save (one atomic RPC per page).** All four formats
+    (match / non-golf / rack / stroke) commit their WHOLE settings page through ONE
+    `save_game_config` call — nothing self-persists per row. The shape, per view:
+    format-specific `*ConfigDraft` variants over a shared `BaseConfigDraft`
+    (`src/lib/configDraft.ts`); null-per-slice state assembled OVER a `serverConfigDraft`
+    mirror into one `configDraft` memo; a frozen `{ draft, hash }` baseline (the dirty
+    reference AND the optimistic-concurrency base — ONE `serverHash` value feeds both the
+    outbox `base` and Save's `baseHash`, frozen on the `anyTouched` transition so the
+    ~20s poll can't refresh it mid-edit); `dirty = anyTouched && !<variant>DraftsEqual(...)`;
+    a composite `useDraftOutbox` for hard-teardown durability; gear-path confirm-on-leave
+    (`useGameSettingsOverlay` + shared `DiscardChangesPrompt`). The destroys-tier changes
+    are refused SERVER-side (`HAS_SCORES` for match matchups / rack groupings; `COURSE_LOCKED`
+    for a course change on a scored game) — the client no longer freezes settings by
+    `scoring_enabled` (the "lie sweep" removed that). **THE RULE this produced —
+    every server→draft repoint requires a sweep of everything downstream of it.** When a
+    surface stops reading server state and starts reading the draft, EVERY other reader of
+    that value must move too, or it lies: six lies surfaced on the match page alone (the
+    Save bar said "All changes saved" after Cancel; the Setup/Scoring copy said "the game
+    is live" on a merely-staged flip; `settingsEditable` read the server while the toggle
+    read the draft; `chromeTitle` showed two names for one game at once; `ScoringLockBanner`;
+    and rules-of-the-day's banner promised editability the RPC then refused) — **and the
+    fifth was created by the fix for the fourth.** Enumerate the full downstream reader set
+    before repointing; don't discover them one regression at a time.
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 
@@ -351,12 +403,25 @@ Migrations are committed as files in `supabase/migrations/` and applied to the r
 **The right flow:**
 
 1. Write the migration file locally (`supabase/migrations/YYYYMMDDHHMMSS_NNN_name.sql`).
-2. Apply via the linked CLI so the recorded version matches the filename:
+2. Get it onto the shared DB. **CI's `supabase db push` fires ONLY on push-to-`main`
+   or a PR targeting `main` — a bare feature-branch push applies NOTHING.** So a
+   migration reaches the DB one of two ways: `supabase db push --linked` locally (if you
+   have DB creds — the linked CLI records the version under the filename timestamp), OR by
+   opening a PR to `main`. The old "Or commit and let CI apply it — either is fine" was
+   misleading: committing on a feature branch does nothing until that branch merges or a PR
+   exists (081 sat unapplied for exactly this reason → the live "could not find function
+   save_game_config in the schema cache").
    ```bash
    supabase db push --linked   # applies any new local migrations to remote
    ```
-   (Or commit and let CI apply it. Either is fine — both preserve the filename timestamp.)
-3. Never edit a migration after it's been applied anywhere — write a new one.
+3. **Land a migration on `main` as its OWN PR, BEFORE the feature branch that needs it.**
+   Applying a migration from a long-lived branch leaves `main` behind remote, which
+   **deadlocks every other branch's `db push`** until it merges (happened three times:
+   081 from #609, 083 from #611, 084/085). Migrations here are additive and inert by
+   convention (`ADD COLUMN IF NOT EXISTS`, `CREATE OR REPLACE`, idempotent guards) — which
+   is exactly what makes landing them early safe. So: migration PR first → merge → then the
+   client PR that depends on it.
+4. Never edit a migration after it's been applied anywhere — write a new one.
 
 **If you already applied via MCP** and CI complains about an unknown remote version, fix it by deleting the apply-timestamped row from `supabase_migrations.schema_migrations` (history table only — the schema change itself stays in place because migrations are idempotent: `ADD COLUMN IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`, etc.). CI's next push then sees the local file as new and re-applies it as a no-op.
 

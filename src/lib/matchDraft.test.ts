@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeMatchRow, flushOnOverlayClose, sideMemberIds, type MatchSides, type ServerSide } from "./matchDraft";
+import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeMatchRow, sideMemberIds, type MatchSides, type ServerSide } from "./matchDraft";
 
 // Readiness rework P1b — the ONE match-play readiness threshold, shared by the
 // setup-page Enable gate and the server `isConfigured` so they can't drift.
@@ -146,36 +146,6 @@ describe("sideMemberIds (type-driven side → member ids)", () => {
     const a = sideMemberIds({ type: "play_group", id: "pgA" }, members);
     const b = sideMemberIds({ type: "play_group", id: "pgB" }, members);
     expect(isMatchFilled({ playersPerSide: 2, a, b })).toBe(true); // survives the reopen as a real match
-  });
-});
-
-// Persist-on-CLOSE: closing the settings overlay with a draft editor still open
-// (the "assign matches → tap Back" path) must flush the same write a row-collapse
-// would — otherwise the pairings are dropped and reopening the game shows no
-// matches. flushOnOverlayClose is the pure decision the close effect fires on.
-describe("flushOnOverlayClose (persist-on-overlay-close decision)", () => {
-  it("flushes the draft when the Matches row is open AND was edited", () => {
-    // The exact bug: matches entered, row left open, overlay closed.
-    expect(flushOnOverlayClose("matches", true)).toBe("draft");
-    expect(flushOnOverlayClose("handicaps", true)).toBe("draft");
-  });
-
-  it("does NOT flush the draft for an opened-but-untouched row (no needless churn)", () => {
-    // setPairings clean-replaces (new match ids), so skip it when nothing changed.
-    expect(flushOnOverlayClose("matches", false)).toBeNull();
-    expect(flushOnOverlayClose("handicaps", false)).toBeNull();
-  });
-
-  it("flushes modifiers whenever the Modifiers row is open (idempotent games.update)", () => {
-    expect(flushOnOverlayClose("modifiers", false)).toBe("modifiers");
-    expect(flushOnOverlayClose("modifiers", true)).toBe("modifiers");
-  });
-
-  it("no flush for rows that persist elsewhere or need none, or when nothing is open", () => {
-    expect(flushOnOverlayClose("course", true)).toBeNull(); // persists via its own editor
-    expect(flushOnOverlayClose("config", true)).toBeNull(); // Format·Points saves inline
-    expect(flushOnOverlayClose("players", true)).toBeNull(); // read-only echo
-    expect(flushOnOverlayClose(null, true)).toBeNull(); // overlay closed with no row open
   });
 });
 

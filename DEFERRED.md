@@ -3,7 +3,7 @@
 *Only genuinely open items. Ordered by when they need to happen.*
 *Competition/gaming design detail lives in `COMPETITION_ENGINE.md` — this file
 is the build backlog that points to it.*
-*Last updated: 2026-07-11 (doc reconciliation pass)*
+*Last updated: 2026-07-17 (P3 doc pass — draft-then-save shipped for all four formats)*
 
 > Beta is effectively launched (bbmi.app live, wired up, not yet announced).
 > Real users for the next ~3 months are the golf crew + occasional testers
@@ -310,13 +310,37 @@ that case doesn't have to be re-derived from scratch.*
   between the field write and the recompute leaves `game_results` briefly stale, but
   it's DERIVED — the next save / finish / corrections edit re-derives, and the live
   client view recomputes from scores regardless. Recoverable, not a lost write.
-- **REMOVE THE `matchesDirty` DUAL-READ once the app has shipped** (migration 084).
-  084's RPC reads `COALESCE(matchesStructureDirty, matchesDirty, true)` so an old
-  client (still emitting the pre-split `matchesDirty` key) keeps working during the
-  window between the migration applying (PR-open) and the new app reaching prod. Once
-  the app carrying the `matchesStructureDirty` payload is live everywhere, the
-  `matchesDirty` fallback is dead and should be dropped in a follow-up migration —
-  it's the ONLY thing keeping the retired key alive.
+- **`matchesDirty` DUAL-READ — REMOVED (migration 087, P3.1).** 084 read
+  `COALESCE(matchesStructureDirty, matchesDirty, true)` to keep an old client working
+  during the deploy window. P2 shipped all four formats on the new payload, so nothing
+  emits `matchesDirty` anymore, and 087 dropped the fallback → the gate is now
+  `COALESCE(matchesStructureDirty, true)` (a missing flag still defaults true). Done.
+
+### Open decomposition question — the draft state machine (logged in P3.3, NOT for now)
+
+*Do NOT decompose here. This records where the natural seams are so the question doesn't
+have to be re-derived.* The draft-then-save conversion left two structural costs the model
+change doesn't fully explain:
+
+- **`MatchGameView.tsx` is ~3,127 lines** (was ~2,700 before P1; +427 is draft
+  orchestration + heavy comments, little intra-file duplication). It's the reason every
+  change in there is expensive and it's why the two-store hazard existed at all — the
+  refactor inherited that size, it didn't cause it. The slices are the natural seams for a
+  later decomposition.
+- **The ~8-block draft state machine is copy-pasted across all four parent views**
+  (`serverConfigDraft` memo · `anyTouched` · the `configDraft` assembling memo ·
+  baseline-freeze effect · `dirty` calc · `handleSaveConfig` · `draftBundle`+`useDraftOutbox`
+  +recovery · confirm-on-leave ref wiring). Path A deduped the shared *view*
+  (`GameConfigurationView`) but never extracted a **`useConfigDraft(...)` hook**, so the
+  orchestration lives in 4 near-identical copies. That hook is the single largest
+  avoidable-complexity finding; extracting it is the obvious follow-up (tracked as an issue).
+  Related transition scaffolding still present: the `controlled` discriminant on
+  `GameIdentityHeader`/`GameRulesNote`/`FormatPointsPanel` now has DEAD uncontrolled
+  self-persist branches (every editing caller passes `controlled`), and the go-live /
+  groupings / strokes / points-distribution tRPC mutations
+  (`enableScoring`/`disableScoring`/`setFoursomes`/`setParticipantStrokes`/
+  `setPointsDistribution`) have no live client caller — they survive only as test-setup
+  primitives. De-scaffolding these belongs with the hook extraction, not a blind delete.
 
 ### 2v2 per-individual handicaps
 
