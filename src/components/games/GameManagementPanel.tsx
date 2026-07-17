@@ -27,6 +27,7 @@ export function GameManagementPanel({
   onDisable,
   pending = false,
   staged = false,
+  explainer = true,
   hideLabel = false,
 }: {
   /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
@@ -37,6 +38,12 @@ export function GameManagementPanel({
   onEnable: () => void;
   onDisable: () => void;
   pending?: boolean;
+  /** Freeze redesign §3.5: the toggle is "just a visibility gate" — it doesn't get a
+   *  panel EXPLAINING itself. Pass `explainer={false}` (the match page) to drop the
+   *  descriptive paragraph; the STAGED save-affordance line ("Save to switch…") still
+   *  shows, because that's an action prompt, not an explainer. Other hosts (P2 formats)
+   *  default true and keep the paragraph until they're converted. */
+  explainer?: boolean;
   /** Draft-then-save: `mode` reflects the DRAFT and hasn't been committed yet, so the
    *  copy must not claim a live game that isn't live (or a closed one still open).
    *  The toggle position still follows the draft — it has to answer the tap — but the
@@ -89,18 +96,23 @@ export function GameManagementPanel({
         />
       </div>
 
-      <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-        <PlayCircle size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
-        <span>
-          {staged
-            ? isScoring
-              ? "Not live yet — Save to switch this game to scoring and open it to the crew."
-              : "Still live for the crew — Save to switch this game back to setup. Any entered scores are kept."
-            : isScoring
-              ? "The game is live and open to the crew. Switch back to setup to close it — any entered scores are kept."
-              : "Players can’t access the game while it’s being set up. Switch to scoring when you’ve completed the minimum requirements."}
-        </span>
-      </p>
+      {/* The STAGED line is a save-affordance (what Save will do) and always shows;
+          the NON-staged descriptive paragraph is the "explainer" the toggle doesn't
+          need (§3.5) — suppressed when explainer=false (the match page). */}
+      {(staged || explainer) && (
+        <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          <PlayCircle size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+          <span>
+            {staged
+              ? isScoring
+                ? "Not live yet — Save to switch this game to scoring and open it to the crew."
+                : "Still live for the crew — Save to switch this game back to setup. Any entered scores are kept."
+              : isScoring
+                ? "The game is live and open to the crew. Switch back to setup to close it — any entered scores are kept."
+                : "Players can’t access the game while it’s being set up. Switch to scoring when you’ve completed the minimum requirements."}
+          </span>
+        </p>
+      )}
     </div>
   );
 }

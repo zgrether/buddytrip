@@ -1835,12 +1835,22 @@ export function MatchGameView() {
               />
             )}
 
+            {/* Format explainer — "HOW YOU COMPETE · MATCH PLAY" — at the TOP of the
+                page (freeze redesign resequence §3.1): it frames the whole game before
+                the identity/settings, so it moved above the identity header. */}
+            {gameCompId && gameQ.data && (
+              <div className="mb-2">
+                <GameFormatExplainer
+                  gameTypeId={(gameQ.data as unknown as GameRow).game_type_id}
+                  variant="settings"
+                />
+              </div>
+            )}
+
             {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
-                "Assigned to" frame. Display-first, above the checklist. Competition
-                games only — it re-homes the modal's name/delegate, which were
-                competition-scoped (a standalone game has no delegate/config row).
-                CONTROLLED: name + delegate are draft slices — a live write here would
-                move the config hash out from under our frozen baseHash. */}
+                "Assigned to" frame. Competition games only. CONTROLLED: name + delegate
+                are draft slices — a live write here would move the config hash out from
+                under our frozen baseHash. */}
             {gameCompId && gameQ.data && (
               <GameIdentityHeader
                 tripId={tripId}
@@ -1854,31 +1864,7 @@ export function MatchGameView() {
               />
             )}
 
-            {/* Format explainer — the compact "how you compete" block that pairs
-                directly ABOVE Rules (this is the slot reserved for it). */}
-            {gameCompId && gameQ.data && (
-              <div className="mt-6">
-                <GameFormatExplainer
-                  gameTypeId={(gameQ.data as unknown as GameRow).game_type_id}
-                  variant="settings"
-                />
-              </div>
-            )}
-
-            {/* RULES OF THE DAY — at the TOP (out of the awkward middle zone that
-                disables in scoring mode). Always editable (incl. scoring mode) per
-                the carved-out exception (plain canEdit). A draft slice now — the
-                page's Save persists it, so there's no on-blur commit. */}
-            {gameCompId && gameQ.data && (
-              <GameRulesNote
-                tripId={tripId}
-                game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
-                controlled
-                value={configDraft.rulesForToday ?? ""}
-                onChange={setRulesDraft}
-              />
-            )}
+            {/* RULES OF THE DAY moved to AFTER Match Settings (§3.1) — see below. */}
 
             {/* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control,
                 now on the ONE settings page (this checklist's home) in BOTH directions.
@@ -1904,6 +1890,10 @@ export function MatchGameView() {
                   // The toggle answers the tap from the DRAFT, but until Save lands the
                   // server disagrees — say so rather than claim a live game that isn't.
                   staged={configDraft.scoringEnabled !== scoringEnabled}
+                  // §3.5: the toggle is just a visibility gate — no panel explaining
+                  // itself. Drop the descriptive paragraph; the staged save-affordance
+                  // line still shows (it's an action prompt, not an explainer).
+                  explainer={false}
                   hideLabel
                 />
               </>
@@ -2111,9 +2101,19 @@ export function MatchGameView() {
               </ChecklistRow>
             )}
 
-            {/* (The persist-on-collapse retry button is GONE with the mechanism it
-                retried. Save is the ONE commit and it reports its own failure in the
-                SaveBar above, next to the action that failed.) */}
+            {/* RULES OF THE DAY — relocated to after the settings rows (§3.1). Always
+                editable (QUIET tier — notes, can't rescore a hole). A draft slice; the
+                page's Save persists it. */}
+            {gameCompId && gameQ.data && (
+              <GameRulesNote
+                tripId={tripId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                controlled
+                value={configDraft.rulesForToday ?? ""}
+                onChange={setRulesDraft}
+              />
+            )}
 
             {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
                 ONE home, so the per-game danger ladder lives here too: reset scores /
