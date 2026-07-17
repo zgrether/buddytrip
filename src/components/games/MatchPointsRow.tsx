@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Hash, X } from "lucide-react";
+import { Hash, Scale, X } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
 import { MatchupChips, type SidePlayer } from "@/components/games/MatchSides";
@@ -53,6 +53,7 @@ export interface PointsMatch {
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
 export function MatchPointsRow({
+  part,
   matches,
   pointsTotal,
   defaultTotal,
@@ -63,6 +64,11 @@ export function MatchPointsRow({
   onTotalChange,
   onOverrideChange,
 }: {
+  /** Freeze redesign §3.2: split into TWO rows in different zones.
+   *  - "total" → the bare owner-set number (Game Management; no match dependency).
+   *  - "distribution" → the per-match override panel (Match Settings; needs matches).
+   *  Both render from the same props, so the derived even-share can't drift. */
+  part: "total" | "distribution";
   /** Paired matches only (both sides set) — the award/leaderboard denominator. */
   matches: PointsMatch[];
   /** The owner total in force (null until first setup → `defaultTotal` shows). */
@@ -70,10 +76,11 @@ export function MatchPointsRow({
   /** Players-per-team = total competition players ÷ teams. The first-setup default. */
   defaultTotal: number;
   canEdit: boolean;
-  /** Live-scoring freeze (#512) — read-only + lock icon. */
+  /** Live-scoring freeze (#512) — read-only + lock icon. Warned tier → always false now. */
   locked: boolean;
-  expanded: boolean;
-  onToggle: () => void;
+  /** "distribution" only: the accordion open state (the total row is a control row). */
+  expanded?: boolean;
+  onToggle?: () => void;
   /** The owner stepped the TOTAL. The parent decides what that means. */
   onTotalChange: (next: number) => void;
   /** One match's override set (a number) or cleared (null → back to the even share). */
@@ -105,37 +112,54 @@ export function MatchPointsRow({
     onTotalChange(next);
   };
 
-  const subtitle = (
-    <>
-      Points per match:{" "}
-      <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
-        {anyOverride ? "Custom" : fmt(even)}
-      </span>
-    </>
-  );
+  // ── "total" — the bare owner-set number (Game Management zone). A control row: the
+  //    ± stepper sits where the chevron would; no accordion. Subtitle is the derived
+  //    per-match readout (the immediate consequence of the total).
+  if (part === "total") {
+    return (
+      <ChecklistRow
+        icon={Hash}
+        title="Total Points"
+        subtitle={
+          <>
+            Points per match:{" "}
+            <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
+              {anyOverride ? "Custom" : fmt(even)}
+            </span>
+          </>
+        }
+        state={effectiveTotal > 0 ? "resolved" : "empty"}
+        disabled={!canEdit}
+        locked={locked}
+        testId="row-total-points"
+        control={
+          <Stepper
+            size="inline"
+            value={localTotal}
+            min={0}
+            max={MAX_TOTAL}
+            onChange={locked || !canEdit ? () => {} : (v) => stepTotal(v)}
+            disabled={locked || !canEdit}
+            testId="total-points-stepper"
+          />
+        }
+      />
+    );
+  }
 
+  // ── "distribution" — the per-match override panel (Match Settings zone). The parent
+  //    only renders this once matches exist, so it always has rows to show.
   return (
     <ChecklistRow
-      icon={Hash}
-      title="Total Points"
-      subtitle={subtitle}
-      state={effectiveTotal > 0 ? "resolved" : "empty"}
+      icon={Scale}
+      title="Point Distribution"
+      subtitle={anyOverride ? "Custom — some matches overridden" : `Even — ${fmt(even)} per match`}
+      state={anyOverride ? "resolved" : "empty"}
       disabled={!canEdit}
       locked={locked}
       expanded={expanded}
       onToggle={onToggle}
-      testId="row-total-points"
-      headerControl={
-        <Stepper
-          size="inline"
-          value={localTotal}
-          min={0}
-          max={MAX_TOTAL}
-          onChange={locked || !canEdit ? () => {} : (v) => stepTotal(v)}
-          disabled={locked || !canEdit}
-          testId="total-points-stepper"
-        />
-      }
+      testId="row-point-distribution"
     >
       <div className="flex flex-col" data-testid="points-override-panel">
         {matches.map((m, idx) => (

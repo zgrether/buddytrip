@@ -1878,9 +1878,50 @@ export function MatchGameView() {
                     the toggle matching SETTINGS / OPTIONS (the panel's own caption is
                     suppressed via hideLabel so it isn't double-labeled). */}
                 <ZoneHeader>Game Management</ZoneHeader>
-                {/* The toggle reads the DRAFT (`configDraft.scoringEnabled`), not the
-                    server — flipping it stages the change and Save commits it with the
-                    rest of the config, so the mode you see is the mode you'd save. */}
+
+                {/* Total Points — the bare owner-set number (§3.2 split): NO match
+                    dependency, so it lives here in Game Management, settable before a
+                    single match exists. The per-match Point Distribution is a separate
+                    row down in Match Settings. Competition games only. WARNED tier —
+                    never locked (points are an award input; results recalculate). */}
+                {gameCompId && gameQ.data && (
+                  <MatchPointsRow
+                    part="total"
+                    matches={pointsMatches}
+                    pointsTotal={configDraft.pointsTotal}
+                    defaultTotal={defaultTotal}
+                    canEdit={settingsEditable}
+                    locked={false}
+                    onTotalChange={onPointsTotalChange}
+                    onOverrideChange={onPointsOverrideChange}
+                  />
+                )}
+
+                {/* Golf Course — moved up into Game Management (§3.1): an independent
+                    lookup, not part of the match-by-match spine. LOCKED tier (whole-course
+                    for now; range-scoping lands next). */}
+                {gameQ.data && (
+                  <GameSetupRows
+                    slot="course"
+                    tripId={tripId}
+                    competitionId={gameCompId}
+                    game={draftGameRow}
+                    canEdit={settingsEditable}
+                    locked={scoresExist}
+                    courseOpen={openRows.has("course")}
+                    onOpenCourse={() => toggleRow("course")}
+                    onCloseEditor={() => closeRow("course")}
+                    onChanged={onSetupChanged}
+                    onApplyFront={applyFrontToDraft}
+                    onApplyBack={applyBackToDraft}
+                    onRemoveBackNine={removeBackNineFromDraft}
+                    onClearCourse={clearCourseInDraft}
+                    courseBusy={courseBusy}
+                  />
+                )}
+
+                {/* The Setup/Scoring toggle — pure visibility gate now. Reads the DRAFT
+                    (`configDraft.scoringEnabled`); Save commits the flip with the config. */}
                 <GameManagementPanel
                   mode={configDraft.scoringEnabled ? "scoring" : "setup"}
                   ready={enableReady}
@@ -1931,9 +1972,10 @@ export function MatchGameView() {
               </ChecklistRow>
             )}
 
-            {/* ── Zone 3 — SETTINGS (the required spine that gates Enable scoring):
-                Matches · Course · Format·Points (W-GAMEPAGE-01 §5). ── */}
-            <ZoneHeader>Settings</ZoneHeader>
+            {/* ── MATCH SETTINGS (§3.1): Entry Mode · Matches · Point Distribution ·
+                Handicaps — the per-match spine. The scores-conditional "changing these
+                recalculates results" notice attaches under this header (lands next). ── */}
+            <ZoneHeader>Match Settings</ZoneHeader>
 
             {/* Matches — the pairing builder (the score-entry unit), in place. */}
             <ChecklistRow
@@ -1991,43 +2033,17 @@ export function MatchGameView() {
                 frozen baseHash (the user's own Save would then conflict).
                 `draftGameRow` feeds the row the DRAFT's course state, so it renders
                 the pending front/back/needs-a-back-nine exactly as it will persist. */}
-            {gameQ.data && (
-              <GameSetupRows
-                slot="course"
-                tripId={tripId}
-                competitionId={gameCompId}
-                game={draftGameRow}
-                canEdit={settingsEditable}
-                // LOCKED tier — whole-course lock for now; range-scoping (front locks
-                // only if 1–9 scored, back only if 10–18) lands in the next commit.
-                locked={scoresExist}
-                courseOpen={openRows.has("course")}
-                onOpenCourse={() => toggleRow("course")}
-                onCloseEditor={() => closeRow("course")}
-                onChanged={onSetupChanged}
-                onApplyFront={applyFrontToDraft}
-                onApplyBack={applyBackToDraft}
-                onRemoveBackNine={removeBackNineFromDraft}
-                onClearCourse={clearCourseInDraft}
-                courseBusy={courseBusy}
-              />
-            )}
-
-            {/* Total Points — the A2b spine (Refactor A2b): the owner sets a TOTAL,
-                the per-match value DERIVES (total ÷ matches), and individual matches
-                can be OVERRIDDEN with the remainder redistributing to keep the total
-                locked. Replaces the old inline "Points Per Match" stepper for match
-                play; rack keeps its "Points per Slot" inline control (GameSetupRows).
-                Competition games only (a standalone match has no points). */}
-            {gameQ.data && gameCompId && (
+            {/* Point Distribution — the per-match override panel (§3.2 split, WARNED
+                tier). REQUIRES matches (you distribute ACROSS matches), so it lives here
+                in Match Settings and only renders once a match exists — the Total Points
+                number up in Game Management has no such dependency. */}
+            {gameQ.data && gameCompId && matchesExist && (
               <MatchPointsRow
+                part="distribution"
                 matches={pointsMatches}
                 pointsTotal={configDraft.pointsTotal}
                 defaultTotal={defaultTotal}
                 canEdit={settingsEditable}
-                // WARNED tier (084): points are an award INPUT — change them with
-                // scores present and the results just recalculate; nothing is orphaned.
-                // Never locked; the MATCH SETTINGS notice carries the "recalculates" warning.
                 locked={false}
                 expanded={openRows.has("config")}
                 onToggle={() => toggleRow("config")}
@@ -2035,10 +2051,6 @@ export function MatchGameView() {
                 onOverrideChange={onPointsOverrideChange}
               />
             )}
-
-            {/* ── Zone 4 — OPTIONS (never gate Enable): Handicaps · Modifiers ·
-                Rules of the Day (W-GAMEPAGE-01 §5). ── */}
-            <ZoneHeader>Options</ZoneHeader>
 
             {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
                 resolve (a complete 18) before per-hole strokes can be allocated. */}
