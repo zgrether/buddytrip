@@ -113,6 +113,16 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
     expect((await getById(gameId)).modifiers).toEqual({ moving_tees: {} });
   });
 
+  it("accepts an EMPTY name (standalone stroke) — the RPC preserves the title, never blanks it", async () => {
+    // Standalone stroke games (created via /games/new, no competition) have no name, and
+    // their whole page routes through saveConfig now — so an empty-name payload must be
+    // accepted (zod) and preserve the existing title (RPC COALESCE). Regression: the E2E
+    // critical path is exactly this go-live, and min(1) rejected it.
+    const gameId = await newStrokeGame("Original title");
+    await save(gameId, { name: "" });
+    expect((await getById(gameId)).name).toBe("Original title");
+  });
+
   it("no-op Save is byte-identical — the faithless-mirror guard for stroke", async () => {
     const gameId = await newStrokeGame("Stroke no-op");
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [owner, member] });
