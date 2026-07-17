@@ -53,6 +53,7 @@ export function GameSetupRows({
   courseBusy,
   outcomeMode = false,
   rackPoints,
+  placementPoints,
 }: {
   tripId: string;
   /** Null for a standalone game — the Name·Format·Points editor is competition-
@@ -121,6 +122,12 @@ export function GameSetupRows({
    *  it reports the total to the page's rack draft instead of self-persisting. Omit and
    *  the row keeps its own setPointsTotal/setPointsDistribution mutations (legacy). */
   rackPoints?: { value: number | null; onChange: (total: number) => void };
+  /** Draft-then-save (P2 stroke): flips the PLACEMENT points editor (FormatPointsPanel)
+   *  into controlled mode — reports the total+distribution PAIR to the page's draft. */
+  placementPoints?: {
+    value: { total: number | null; distribution: PointsDistribution | null };
+    onChange: (total: number | null, distribution: PointsDistribution | null) => void;
+  };
 }) {
   // Controlled when the page supplies open-state; else self-manage (the original
   // behavior, kept for every non-checklist consumer).
@@ -295,7 +302,7 @@ export function GameSetupRows({
             onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
             testId="row-format-points"
           >
-            <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} />
+            <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} controlled={placementPoints} />
           </ChecklistRow>
         )
       )}
