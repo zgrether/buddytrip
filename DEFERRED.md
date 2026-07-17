@@ -257,6 +257,23 @@ that case doesn't have to be re-derived from scratch.*
   same guard. The user resets the scores, or drops the match edits and saves the
   disable alone.
 
+- **The warned-field recompute runs OUTSIDE the save transaction** (migration 084 /
+  the `games.saveConfig` handler). A handicap or point-override edit on a scored game
+  writes the field in the RPC, then the tRPC handler calls `computeMatchPlayResults`
+  AFTER the RPC returns — because plpgsql can't call the shared JS engine
+  (`buildDecided`/`matchState`/glorious) without reimplementing and drifting from it
+  (Design A, parity with `matches.setHandicap`/`setPointValue`). Accepted: a crash
+  between the field write and the recompute leaves `game_results` briefly stale, but
+  it's DERIVED — the next save / finish / corrections edit re-derives, and the live
+  client view recomputes from scores regardless. Recoverable, not a lost write.
+- **REMOVE THE `matchesDirty` DUAL-READ once the app has shipped** (migration 084).
+  084's RPC reads `COALESCE(matchesStructureDirty, matchesDirty, true)` so an old
+  client (still emitting the pre-split `matchesDirty` key) keeps working during the
+  window between the migration applying (PR-open) and the new app reaching prod. Once
+  the app carrying the `matchesStructureDirty` payload is live everywhere, the
+  `matchesDirty` fallback is dead and should be dropped in a follow-up migration —
+  it's the ONLY thing keeping the retired key alive.
+
 ### 2v2 per-individual handicaps
 
 The per-match handicap **side selector** (1v1 match play) assigns strokes to a *side*. In 2v2 best ball

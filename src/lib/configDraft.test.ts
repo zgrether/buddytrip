@@ -184,22 +184,46 @@ describe("configDraftToPayload — derived write", () => {
     expect(configDraftToPayload(d).pointsDistribution).toBeNull();
   });
 
-  it("reports matchesDirty against the baseline — false when the match set is untouched", () => {
+  it("matchesStructureDirty is false when the match SET is untouched", () => {
     const base = configToDraft(GAME, MATCHES, []);
     const same = configToDraft(GAME, MATCHES, []);
-    expect(configDraftToPayload(same, base).matchesDirty).toBe(false);
+    expect(configDraftToPayload(same, base).matchesStructureDirty).toBe(false);
     // An edit elsewhere (points) still leaves the MATCH set clean.
     same.pointsTotal = 12;
-    expect(configDraftToPayload(same, base).matchesDirty).toBe(false);
+    expect(configDraftToPayload(same, base).matchesStructureDirty).toBe(false);
   });
 
-  it("reports matchesDirty true on a real match edit, and when no baseline is given", () => {
+  it("matchesStructureDirty is true on a SET change, and when no baseline is given", () => {
     const base = configToDraft(GAME, MATCHES, []);
     const edited = configToDraft(GAME, MATCHES, []);
-    edited.matches[0].a = ["uX"];
-    expect(configDraftToPayload(edited, base).matchesDirty).toBe(true);
-    // No baseline → conservatively claim dirty (the RPC then rewrites).
-    expect(configDraftToPayload(base).matchesDirty).toBe(true);
+    edited.matches[0].a = ["uX"]; // roster changed = structure
+    expect(configDraftToPayload(edited, base).matchesStructureDirty).toBe(true);
+    // No baseline → conservatively claim dirty (the RPC then clean-replaces).
+    expect(configDraftToPayload(base).matchesStructureDirty).toBe(true);
+  });
+
+  // THE SPLIT: a field-only edit (handicap / point override) is NOT structure-dirty —
+  // it persists in place, allowed with scores (warned tier). This is what unblocks
+  // Handicaps + Point Distribution from the HAS_SCORES refusal.
+  it("a handicap or point-override edit is NOT structure-dirty (same set, field differs)", () => {
+    const base = configToDraft(GAME, MATCHES, []);
+    const hcap = configToDraft(GAME, MATCHES, []);
+    hcap.matches[0].handicap = 5; // was -2
+    expect(configDraftToPayload(hcap, base).matchesStructureDirty).toBe(false);
+
+    const pts = configToDraft(GAME, MATCHES, []);
+    pts.matches[0].pointValue = 9;
+    expect(configDraftToPayload(pts, base).matchesStructureDirty).toBe(false);
+
+    // ...but the whole-page dirty check (Save-enabled) STILL sees them as changes.
+    expect(configDraftsEqual(base, hcap)).toBe(false);
+    expect(configDraftsEqual(base, pts)).toBe(false);
+
+    // And the payload still carries the new field values for the in-place write.
+    // handicap = 5 (positive → side B gets the strokes; splitHandicap).
+    expect(configDraftToPayload(hcap, base).matches[0].strokesB).toBe(5);
+    expect(configDraftToPayload(hcap, base).matches[0].strokesA).toBe(0);
+    expect(configDraftToPayload(pts, base).matches[0].pointValue).toBe(9);
   });
 
   it("trims name / rules and passes course snapshot through", () => {
