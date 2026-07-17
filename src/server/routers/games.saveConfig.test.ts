@@ -696,6 +696,33 @@ describe("saveConfig — the STRUCTURE / FIELD split (084 warned tier)", () => {
   });
 });
 
+describe("saveConfig — Total Points settable with zero matches (§5 gate 8)", () => {
+  it("saves a Total on a game with NO matches — the split removed the match dependency", async () => {
+    // §3.2's structural fix: Total Points (the bare number) moved to GAME MANAGEMENT
+    // with NO match dependency, so it's settable before a single match exists. Under
+    // the old single-panel model this couldn't be exercised in isolation — the total
+    // and the per-match distribution were the same control, which is exactly why the
+    // reconcile had to auto-write an even share against a match count it couldn't see.
+    const gameId = await newGame("Total no matches");
+    const draft = await draftOf(gameId); // matches: [] — genuinely no matches
+    expect(draft.matches).toHaveLength(0);
+
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      // Total only; scoringEnabled stays false so no readiness gate fires.
+      payload: configDraftToPayload({ ...draft, pointsTotal: 8 }, draft),
+    });
+
+    const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
+    expect(Number(g.points_total)).toBe(8);
+    // No matches were invented as a side effect of setting the total.
+    const { matches } = (await ctx.caller().matches.listByGame({ tripId, gameId })) as { matches: unknown[] };
+    expect(matches).toHaveLength(0);
+  });
+});
+
 describe("saveConfig — the payload contract", () => {
   it("carries the back nine, and a blank name can never erase the title", async () => {
     const gameId = await newGame("Back nine");
