@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, PlayCircle } from "lucide-react";
+import { Lock, Radio } from "lucide-react";
 
 /**
  * GameManagementPanel (A2-ux) — the canonical **Setup / Scoring** toggle, the
@@ -8,7 +8,8 @@ import { Lock, PlayCircle } from "lucide-react";
  * never on the scoreboard pass-through — flipping there would be a self-destroying
  * control), in BOTH modes, so it's bidirectional:
  *
- *   Game Play:  [ Setup | Scoring ]
+ *   [icon] Game State                     [ Setup | Scoring ]
+ *          <subtitle: current state / what Save will do>
  *
  *  - **Setup mode** (status pending): Setup is the active segment; the **Scoring**
  *    segment is the action — tapping it enables scoring (A2-core's reconciled enable,
@@ -17,8 +18,15 @@ import { Lock, PlayCircle } from "lucide-react";
  *  - **Scoring mode** (live): Scoring is the active segment; the **Setup** segment is
  *    the action — tapping it disables scoring (back to setup, scores kept).
  *
- * One control, one vocabulary (Setup|Scoring) — it retired the old Enabled|Disabled
- * segmented control on the settings page.
+ * Freeze-redesign polish (item B): this row now carries the icon-tile + title +
+ * subtitle grammar every OTHER settings row has (it was the one bare toggle). The
+ * subtitle has THREE states and MUST NEVER assert a server state the server doesn't
+ * hold — this row has produced two lies before (ScoringLockBanner, the old copy):
+ *   - on / on   → "Scoring has been enabled"
+ *   - off / off → "Players can't access scorekeeping"
+ *   - staged (draft ≠ server) → what's true AND what Save will do.
+ * The toggle POSITION follows the draft (it must answer the tap); the SUBTITLE tells
+ * the truth about the server + the pending Save.
  */
 export function GameManagementPanel({
   mode,
@@ -27,8 +35,6 @@ export function GameManagementPanel({
   onDisable,
   pending = false,
   staged = false,
-  explainer = true,
-  hideLabel = false,
 }: {
   /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
   mode: "setup" | "scoring";
@@ -38,48 +44,55 @@ export function GameManagementPanel({
   onEnable: () => void;
   onDisable: () => void;
   pending?: boolean;
-  /** Freeze redesign §3.5: the toggle is "just a visibility gate" — it doesn't get a
-   *  panel EXPLAINING itself. Pass `explainer={false}` (the match page) to drop the
-   *  descriptive paragraph; the STAGED save-affordance line ("Save to switch…") still
-   *  shows, because that's an action prompt, not an explainer. Other hosts (P2 formats)
-   *  default true and keep the paragraph until they're converted. */
-  explainer?: boolean;
   /** Draft-then-save: `mode` reflects the DRAFT and hasn't been committed yet, so the
-   *  copy must not claim a live game that isn't live (or a closed one still open).
+   *  subtitle must not claim a live game that isn't live (or a closed one still open).
    *  The toggle position still follows the draft — it has to answer the tap — but the
-   *  sentence under it says what's actually true and what Save will do. Self-persisting
-   *  hosts (stroke/rack/non-golf) omit this and read exactly as before. */
+   *  subtitle says what's actually true and what Save will do. Self-persisting hosts
+   *  (stroke/rack/non-golf) omit this → never staged → the plain on/off subtitle. */
   staged?: boolean;
-  /** #512: the match settings page renders a peer `GAME MANAGEMENT` section header
-   *  (ZoneHeader) above the panel, so suppress the internal caption there to avoid a
-   *  double label. Other hosts (stroke/rack/non-golf) have no section headers — they
-   *  keep the internal caption as the panel's only label. */
-  hideLabel?: boolean;
 }) {
   const isScoring = mode === "scoring";
   const scoringLocked = !isScoring && !ready;
 
-  // A segment is the ACTIVE indicator when it matches the current mode; otherwise
-  // it's the action button that switches TO that mode.
+  // THREE-state subtitle — the lie class. The plain states describe SERVER truth
+  // (safe because !staged ⟹ draft === server); the staged state names both what's
+  // still true on the server AND the pending Save.
+  const subtitle = staged
+    ? isScoring
+      ? "Not live yet — Save to switch this game to scoring and open it to the crew."
+      : "Still live for the crew — Save to switch this game back to setup. Any entered scores are kept."
+    : isScoring
+      ? "Scoring has been enabled"
+      : "Players can’t access scorekeeping";
+
   return (
     <div
-      className="rounded-2xl p-4 text-left"
+      className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-left"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       data-testid="game-management-panel"
     >
-      {!hideLabel && (
-        <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Game Play
-        </div>
-      )}
+      {/* Icon tile — matches ChecklistRow's 38px tile so the row lines up with its peers. */}
+      <span
+        className="relative flex shrink-0 items-center justify-center"
+        style={{ width: 38, height: 38, borderRadius: 10, background: "var(--color-bt-card-raised)" }}
+      >
+        <Radio size={18} style={{ color: isScoring ? "var(--color-bt-accent)" : "var(--color-bt-text)" }} strokeWidth={1.75} />
+      </span>
 
-      <div className={`${hideLabel ? "" : "mt-2 "}flex gap-1.5 rounded-xl p-1`} style={{ background: "var(--color-bt-card-raised)" }}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span style={{ fontSize: 16.5, fontWeight: 500, color: "var(--color-bt-text)", lineHeight: 1.25 }}>Game State</span>
+        <span style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginTop: 1, lineHeight: 1.35 }} data-testid="game-state-subtitle">
+          {subtitle}
+        </span>
+      </div>
+
+      {/* Content-width toggle (item B: no longer full-width — it dropped in importance). */}
+      <div className="inline-flex shrink-0 gap-1 rounded-xl p-1" style={{ background: "var(--color-bt-card-raised)" }}>
         {/* Setup segment — active in setup mode; the disable action in scoring mode. */}
         <Segment
           testId="mode-setup"
-          label={pending && isScoring ? "Switching…" : "Setup"}
+          label={pending && isScoring ? "…" : "Setup"}
           active={!isScoring}
-          // In scoring mode this is the action (disable → back to setup).
           onClick={isScoring && !pending ? onDisable : undefined}
           disabled={pending}
         />
@@ -87,7 +100,7 @@ export function GameManagementPanel({
             (gated by `ready`, lock-styled until met). */}
         <Segment
           testId="mode-scoring"
-          label={pending && !isScoring ? "Switching…" : "Scoring"}
+          label={pending && !isScoring ? "…" : "Scoring"}
           active={isScoring}
           accent
           locked={scoringLocked}
@@ -95,24 +108,6 @@ export function GameManagementPanel({
           disabled={scoringLocked || pending}
         />
       </div>
-
-      {/* The STAGED line is a save-affordance (what Save will do) and always shows;
-          the NON-staged descriptive paragraph is the "explainer" the toggle doesn't
-          need (§3.5) — suppressed when explainer=false (the match page). */}
-      {(staged || explainer) && (
-        <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          <PlayCircle size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
-          <span>
-            {staged
-              ? isScoring
-                ? "Not live yet — Save to switch this game to scoring and open it to the crew."
-                : "Still live for the crew — Save to switch this game back to setup. Any entered scores are kept."
-              : isScoring
-                ? "The game is live and open to the crew. Switch back to setup to close it — any entered scores are kept."
-                : "Players can’t access the game while it’s being set up. Switch to scoring when you’ve completed the minimum requirements."}
-          </span>
-        </p>
-      )}
     </div>
   );
 }
@@ -154,7 +149,7 @@ function Segment({
       onClick={onClick}
       disabled={disabled || !onClick}
       aria-disabled={disabled || !onClick}
-      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold disabled:cursor-not-allowed"
+      className="flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold disabled:cursor-not-allowed"
       style={style}
       data-testid={testId}
     >

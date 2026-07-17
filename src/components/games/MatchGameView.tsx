@@ -1942,11 +1942,6 @@ export function MatchGameView() {
                   // The toggle answers the tap from the DRAFT, but until Save lands the
                   // server disagrees — say so rather than claim a live game that isn't.
                   staged={configDraft.scoringEnabled !== scoringEnabled}
-                  // §3.5: the toggle is just a visibility gate — no panel explaining
-                  // itself. Drop the descriptive paragraph; the staged save-affordance
-                  // line still shows (it's an action prompt, not an explainer).
-                  explainer={false}
-                  hideLabel
                 />
               </>
             )}

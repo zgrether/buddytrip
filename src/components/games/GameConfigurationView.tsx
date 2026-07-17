@@ -163,7 +163,6 @@ export function GameConfigurationView({
                 onEnable={onEnable}
                 onDisable={onDisable}
                 pending={busy}
-                hideLabel
               />
             </>
           )}
