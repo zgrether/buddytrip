@@ -36,6 +36,7 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 export function CourseRowContent({
   tripId, game, canEdit, onChanged,
   onApplyFront, onApplyBack, onRemoveBackNine, onClearCourse: onClearCourseProp, busy,
+  frontScored = false, backScored = false,
 }: {
   tripId: string;
   game: GameRow;
@@ -51,6 +52,11 @@ export function CourseRowContent({
   onClearCourse?: () => void;
   /** Controlled mode: the parent's write is in flight (drives the tee chooser). */
   busy?: boolean;
+  /** Range-scoped lock (§2.1): the front's clear and the back's swap disable
+   *  independently once their nine has scores — so a played front can still add a
+   *  back, and only the still-empty nine stays editable. */
+  frontScored?: boolean;
+  backScored?: boolean;
 }) {
   // Controlled when the parent supplies the front-apply action (the one every
   // state of this body can reach).
@@ -146,7 +152,7 @@ export function CourseRowContent({
   if (needsBack) {
     return (
       <div className="flex flex-col gap-3" data-testid="course-needs-back">
-        <NineSummary label="Front nine" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
+        <NineSummary label="Front nine" name={frontName} onClear={canEdit && !frontScored ? onClearCourse : undefined} />
         {scorecardHref && <ScorecardPreviewButton onClick={() => router.push(scorecardHref)} />}
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>Add the back nine</span>
@@ -168,8 +174,8 @@ export function CourseRowContent({
     <div className="flex flex-col gap-3" data-testid="course-resolved">
       {twoNines ? (
         <div className="flex flex-col gap-2">
-          <NineSummary label="Front nine" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
-          <NineSummary label="Back nine" name={backName} onClear={canEdit ? onRemoveBack : undefined} />
+          <NineSummary label="Front nine" name={frontName} onClear={canEdit && !frontScored ? onClearCourse : undefined} />
+          <NineSummary label="Back nine" name={backName} onClear={canEdit && !backScored ? onRemoveBack : undefined} />
           {backTeeFallback && (
             <p className="px-1 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }} data-testid="back-tee-fallback">
               {backName} has no {appliedTeeName} tee — its first tee’s yardages are used for the back nine.
@@ -177,7 +183,7 @@ export function CourseRowContent({
           )}
         </div>
       ) : (
-        <NineSummary label="Course" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
+        <NineSummary label="Course" name={frontName} onClear={canEdit && !(frontScored || backScored) ? onClearCourse : undefined} />
       )}
       {scorecardHref && <ScorecardPreviewButton onClick={() => router.push(scorecardHref)} />}
     </div>

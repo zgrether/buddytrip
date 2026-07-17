@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -469,6 +469,16 @@ export function MatchGameView() {
   //            data, so refused. The client renders them locked; the RPC is the
   //            backstop (HAS_SCORES / ENTRY_MODE_LOCKED / COURSE_LOCKED).
   const scoresExist = (scoresQ.data?.length ?? 0) > 0 || (outcomesQ.data?.length ?? 0) > 0;
+  // Per-nine set, for Course range-scoping (§2.1): a played FRONT still lets you add a
+  // back nine, so the front and back lock INDEPENDENTLY on which holes are scored.
+  const scoredHoles = useMemo(() => {
+    const s = new Set<number>();
+    for (const e of scoresQ.data ?? []) { const h = Number(e.unit_label); if (h) s.add(h); }
+    for (const e of outcomesQ.data ?? []) { const h = Number(e.hole_number); if (h) s.add(h); }
+    return s;
+  }, [scoresQ.data, outcomesQ.data]);
+  const frontScored = useMemo(() => [...scoredHoles].some((h) => h >= 1 && h <= 9), [scoredHoles]);
+  const backScored = useMemo(() => [...scoredHoles].some((h) => h >= 10 && h <= 18), [scoredHoles]);
 
   // The Setup/Scoring toggle no longer gates editing — `settingsEditable` is just the
   // role gate. Locked-tier rows freeze on `scoresExist` (Course via front/backScored)
@@ -735,6 +745,17 @@ export function MatchGameView() {
     }),
     [serverConfigDraft, nameDraft, rulesDraft, draftScoringEnabled, entryModeDraft, modifiersDraft, draft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
+
+  // Course row lock (§2.1 range-scoped). A two-nines course (a composed 18 or a lone
+  // 9-hole front that can still take a back) locks the whole ROW only when BOTH nines
+  // are scored — so a played front can still add/swap the back. A single 18-hole course
+  // has no independent back, so any score locks it. The per-nine clear/swap actions are
+  // gated INSIDE CourseRowContent by frontScored/backScored. Reads the DRAFT course so a
+  // pending front/back change scopes the lock exactly as it will persist.
+  const courseHasBack = !!configDraft.course.backId;
+  const courseCount = ((configDraft.course.scorecardSchema as { units?: { count?: number } } | null)?.units?.count) ?? 0;
+  const courseTwoNines = courseHasBack || (!!configDraft.course.id && courseCount === 9);
+  const courseLocked = courseTwoNines ? frontScored && backScored : scoresExist;
 
   // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
   // The dirty check's reference point AND the optimistic-concurrency base, captured
@@ -1898,8 +1919,10 @@ export function MatchGameView() {
                 )}
 
                 {/* Golf Course — moved up into Game Management (§3.1): an independent
-                    lookup, not part of the match-by-match spine. LOCKED tier (whole-course
-                    for now; range-scoping lands next). */}
+                    lookup, not the match-by-match spine. LOCKED tier, RANGE-SCOPED
+                    (§2.1): the row locks whole only when every editable nine is scored
+                    (`courseLocked`); a played front can still add/swap the back — the
+                    per-nine gating (`frontScored`/`backScored`) rides into the pickers. */}
                 {gameQ.data && (
                   <GameSetupRows
                     slot="course"
@@ -1907,7 +1930,10 @@ export function MatchGameView() {
                     competitionId={gameCompId}
                     game={draftGameRow}
                     canEdit={settingsEditable}
-                    locked={scoresExist}
+                    locked={courseLocked}
+                    frontScored={frontScored}
+                    backScored={backScored}
+                    outcomeMode={configDraft.entryMode === "outcome"}
                     courseOpen={openRows.has("course")}
                     onOpenCourse={() => toggleRow("course")}
                     onCloseEditor={() => closeRow("course")}
@@ -1973,9 +1999,45 @@ export function MatchGameView() {
             )}
 
             {/* ── MATCH SETTINGS (§3.1): Entry Mode · Matches · Point Distribution ·
-                Handicaps — the per-match spine. The scores-conditional "changing these
-                recalculates results" notice attaches under this header (lands next). ── */}
+                Handicaps — the per-match spine. ── */}
             <ZoneHeader>Match Settings</ZoneHeader>
+
+            {/* §3.4 notice — ONLY when scores exist. Setup is the common case and stays
+                quiet. The WARNED rows here (Point Distribution, Handicaps, Modifiers)
+                recalculate rather than lose anything; this is the reassurance that lets
+                someone change a handicap mid-round. Locked rows carry their own message
+                and are exempt (the notice sits above them, accepted §3.4). */}
+            {scoresExist && (
+              <p
+                className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] leading-snug"
+                style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)", color: "var(--color-bt-warning)" }}
+                data-testid="match-settings-recalc-notice"
+              >
+                <TriangleAlert size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>Changing these will recalculate results for matches already in play.</span>
+              </p>
+            )}
+
+            {/* Entry Mode (Refactor B3) — score entry (today, default) vs
+                hole-outcome entry (tap who won each hole directly). A "how you'll
+                score this match" decision that sits ABOVE the pairings (§3.1: it
+                decides what the Matches rows even mean — score vs tap-the-winner —
+                and whether Handicaps apply). Independent of Course/Handicaps/Points
+                (which stay visible either way — unused-but-harmless in outcome
+                mode, a deliberate B3 scope boundary). Frozen once scoring starts,
+                same as every other setup-spine row — switching mid-round would
+                orphan whichever rows (score_entries / match_hole_outcomes) are
+                already entered. */}
+            {gameQ.data && (
+              <EntryModeRow
+                entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
+                // LOCKED tier (084): switching score↔outcome orphans whichever rows
+                // are entered, so it freezes once ANY score exists.
+                canEdit={canEdit && !scoresExist}
+                locked={scoresExist}
+                onChange={setEntryModeDraft}
+              />
+            )}
 
             {/* Matches — the pairing builder (the score-entry unit), in place. */}
             <ChecklistRow
@@ -2004,25 +2066,6 @@ export function MatchGameView() {
                 openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
               />
             </ChecklistRow>
-
-            {/* Entry Mode (Refactor B3) — score entry (today, default) vs
-                hole-outcome entry (tap who won each hole directly). A "how you'll
-                score this match" decision, independent of Course/Handicaps/Points
-                (which stay visible either way — unused-but-harmless in outcome
-                mode, a deliberate B3 scope boundary). Frozen once scoring starts,
-                same as every other setup-spine row — switching mid-round would
-                orphan whichever rows (score_entries / match_hole_outcomes) are
-                already entered. */}
-            {gameQ.data && (
-              <EntryModeRow
-                entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
-                // LOCKED tier (084): switching score↔outcome orphans whichever rows
-                // are entered, so it freezes once ANY score exists.
-                canEdit={canEdit && !scoresExist}
-                locked={scoresExist}
-                onChange={setEntryModeDraft}
-              />
-            )}
 
             {/* Course — Handicaps' per-hole stroke allocation needs the course's
                 stroke-index table, so Course resolves before Handicaps (W-9HOLE-01).
@@ -2053,7 +2096,13 @@ export function MatchGameView() {
             )}
 
             {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
-                resolve (a complete 18) before per-hole strokes can be allocated. */}
+                resolve (a complete 18) before per-hole strokes can be allocated.
+                HIDDEN in outcome mode (§3.3): a handicap adjusts gross→net, which
+                decides a hole in SCORE mode only — in outcome mode you tap the winner,
+                so there's no stroke to allocate (Phase 0 confirmed the derivation never
+                reads a handicap in the outcome path). A row that can't do anything is
+                noise. Keyed on the DRAFT entry mode so staging outcome hides it live. */}
+            {configDraft.entryMode !== "outcome" && (
             <ChecklistRow
               icon={SlidersHorizontal}
               title="Handicaps"
@@ -2082,6 +2131,22 @@ export function MatchGameView() {
                 teamColorOf={teamColorOf}
               />
             </ChecklistRow>
+            )}
+
+            {/* RULES OF THE DAY — relocated to after the per-match spine (§3.1), and
+                BEFORE Modifiers: Rules is the QUIET tier (free-text notes, can't
+                rescore a hole), so it reads before the WARNED Modifiers accordion. A
+                draft slice; the page's Save persists it. */}
+            {gameCompId && gameQ.data && (
+              <GameRulesNote
+                tripId={tripId}
+                game={gameQ.data as unknown as GameRow}
+                canEdit={canEdit}
+                controlled
+                value={configDraft.rulesForToday ?? ""}
+                onChange={setRulesDraft}
+              />
+            )}
 
             {/* Modifiers (W-GAMEPAGE-01 §6.5) — config-only "special rules" driven
                 by the format's compatibleModifiers (gameTypes.ts). Hidden entirely
@@ -2111,20 +2176,6 @@ export function MatchGameView() {
                   readOnly={!settingsEditable}
                 />
               </ChecklistRow>
-            )}
-
-            {/* RULES OF THE DAY — relocated to after the settings rows (§3.1). Always
-                editable (QUIET tier — notes, can't rescore a hole). A draft slice; the
-                page's Save persists it. */}
-            {gameCompId && gameQ.data && (
-              <GameRulesNote
-                tripId={tripId}
-                game={gameQ.data as unknown as GameRow}
-                canEdit={canEdit}
-                controlled
-                value={configDraft.rulesForToday ?? ""}
-                onChange={setRulesDraft}
-              />
             )}
 
             {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
