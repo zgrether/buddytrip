@@ -191,6 +191,26 @@ re-score under the new 18-hole index (the front's strokes move). Needs the guard
 the specific `course_id`-unchanged + `back_course_id` null→X transition AND the recompute,
 not the current "units identical" shortcut (the units legitimately differ).
 
+### Rack groupings on a scored game — coarse HAS_SCORES wall (chosen, mirrors matches)
+
+`save_game_config` (mig 085) refuses ANY groupings change (`groupsStructureDirty`) on a
+scored rack game — the whole groupings unit is Locked-tier, mirroring the matches
+clean-replace `HAS_SCORES` refusal. This is a CHOSEN wall, not an inherent one, and it's
+coarser than strictly necessary:
+
+- Rack `score_entries` key to `participant_type='user'` (`participant_id = user_id`), NOT
+  `play_group_id` (`server/lib/rackNStack.ts` filters `participant_type='user'`). So
+  reorganizing groups — moving a player between foursomes, renaming, changing a tee time —
+  re-mints `play_groups.id` but does NOT orphan any score (they follow the user). The ONLY
+  membership edit that truly orphans is **removing a scored participant** from the roster
+  (their `score_entries` would point to a non-participant).
+- So a precise guard would refuse only a scored-participant removal and allow re-grouping /
+  rename / tee-time on a scored game. We deliberately didn't: it would make rack MORE
+  permissive than match play (incoherent), and it keeps both formats' walls as ONE
+  decision — when matches gains upsert-by-identity (deferred), rack rides along with the
+  same precision. Land the model, see how much the coarse wall actually bothers anyone
+  before spending on the fine one. (Zach's call, P2 Phase 1.)
+
 ### `pairings_published_at` ≡ `scoring_enabled` — redundant, collapse is a separable cleanup
 
 Two columns encode ONE concept ("this game is revealed to the crew / open for scoring")
