@@ -782,8 +782,15 @@ export function MatchGameView() {
     // the two can't drift apart. Both freeze on this `anyTouched` transition.
   }, [anyTouched, serverConfigDraft, serverHash, gameQ.data]);
 
-  // Save is enabled iff something really changed (pure whole-page equality).
-  const dirty = !!baseline && !configDraftsEqual(configDraft, baseline.draft);
+  // Save is enabled iff something really changed (pure whole-page equality). Gated on
+  // `anyTouched`: you can only be dirty if you've LOCALLY edited a slice. Without this,
+  // there's a post-save race — `resetSlices` unfreezes the baseline, but the invalidated
+  // `serverConfigDraft` refetches to its NEW value one render BEFORE the frozen baseline
+  // re-seeds, so for that render `configDraft`(new) ≠ `baseline`(stale) reads dirty=true.
+  // That transient fired `if (dirty) setJustSaved(false)` and wiped the "Saved" hint
+  // (the flaky E2E). If nothing is touched, `configDraft` IS the server mirror, so there
+  // is nothing unsaved by definition — dirty is false regardless of the stale baseline.
+  const dirty = anyTouched && !!baseline && !configDraftsEqual(configDraft, baseline.draft);
   // Did a Save actually land in THIS session? The clean state has two very different
   // causes — "your changes were written" and "your changes were thrown away" (Cancel)
   // or simply "you haven't touched anything yet" — and only the first one may claim a
