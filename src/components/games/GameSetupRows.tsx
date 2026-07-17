@@ -52,6 +52,7 @@ export function GameSetupRows({
   onClearCourse,
   courseBusy,
   outcomeMode = false,
+  rackPoints,
 }: {
   tripId: string;
   /** Null for a standalone game — the Name·Format·Points editor is competition-
@@ -116,6 +117,10 @@ export function GameSetupRows({
    *  true, the subtitle drops the handicaps claim. Default false (score modes gate on
    *  the course's stroke-index table, so the handicaps subtitle is honest there). */
   outcomeMode?: boolean;
+  /** Draft-then-save (P2 rack): flips the Total-Points stepper into controlled mode —
+   *  it reports the total to the page's rack draft instead of self-persisting. Omit and
+   *  the row keeps its own setPointsTotal/setPointsDistribution mutations (legacy). */
+  rackPoints?: { value: number | null; onChange: (total: number) => void };
 }) {
   // Controlled when the page supplies open-state; else self-manage (the original
   // behavior, kept for every non-checklist consumer).
@@ -266,6 +271,7 @@ export function GameSetupRows({
                   // a match). Locked → the stepper is disabled (read-only), matching the
                   // gated rows. Otherwise live.
                   disabled={configLocked || !canEdit}
+                  controlled={rackPoints}
                 />
               ) : undefined
             }
@@ -310,22 +316,41 @@ export function GameSetupRows({
  * effect that also seeds the first-setup default (players per team) ONCE.
  */
 function RackTotalPointsControl({
-  tripId, game, slotCount, defaultTotal, disabled,
+  tripId, game, slotCount, defaultTotal, disabled, controlled,
 }: {
   tripId: string;
   game: GameRow;
   slotCount: number;
   defaultTotal: number;
   disabled?: boolean;
+  /** Draft-then-save mode (P2 rack): when passed, the stepper reports the TOTAL via
+   *  `onChange` instead of self-persisting (no setPointsTotal/setPointsDistribution,
+   *  no reconcile writes — the per-slot share is derived at Save time in
+   *  `rackDraftToPayload`). Seeds off `value`; the first-setup default (players ÷
+   *  teams) is folded into the draft ONCE, mirroring the old reconcile seed. */
+  controlled?: { value: number | null; onChange: (total: number) => void };
 }) {
   const gameId = game.id;
   const utils = trpc.useUtils();
   const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setDistM = trpc.games.setPointsDistribution.useMutation();
 
-  const persistedTotal = (game.points_total as number | null) ?? null;
+  const persistedTotal = controlled ? controlled.value : ((game.points_total as number | null) ?? null);
   const persistedPerUnit = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
   const effectiveTotal = persistedTotal ?? defaultTotal;
+
+  // Controlled (draft) mode: report the total to the parent draft, seed the first-setup
+  // default into the draft ONCE (when unset + slots exist), and skip every self-persist.
+  const didSeed = useRef(false);
+  useEffect(() => {
+    if (!controlled || disabled || slotCount === 0) return;
+    if (controlled.value == null && defaultTotal > 0 && !didSeed.current) {
+      didSeed.current = true;
+      controlled.onChange(defaultTotal);
+    }
+    // React to the DATA inputs; onChange is a stable-enough parent setter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlled?.value, defaultTotal, slotCount, disabled]);
 
   // Local total for snappy stepping; re-sync when the persisted/default value
   // changes — render-phase adjust-on-prop-change (no effect; avoids the
@@ -350,6 +375,8 @@ function RackTotalPointsControl({
 
   function onChange(v: number) {
     setValue(v);
+    // Controlled (draft): report the total up; Save derives + persists the share.
+    if (controlled) { controlled.onChange(v); return; }
     const derived = evenShare(v, [], slotCount);
     const next: PointsDistribution = { type: "per_match", value: derived };
     const cur = utils.games.getById.getData({ tripId, gameId });
@@ -372,7 +399,9 @@ function RackTotalPointsControl({
   // loops. Gated on `!disabled` so a non-editing viewer's client never writes.
   const didDefault = useRef(false);
   useEffect(() => {
-    if (disabled || slotCount === 0) return;
+    // Controlled (draft) mode has its own seed-into-draft effect above and never
+    // self-persists — skip the server reconcile entirely.
+    if (controlled || disabled || slotCount === 0) return;
     if (persistedTotal == null) {
       if (defaultTotal > 0 && !didDefault.current) {
         didDefault.current = true;

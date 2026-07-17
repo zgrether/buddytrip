@@ -169,6 +169,34 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
     expect(new Map((data ?? []).map((p) => [p.user_id as string, p.handicap_strokes])).get(owner)).toBe(7);
   });
 
+  it("THE TAXONOMY — on a scored rack every non-structural setting saves; ONLY groupings refuses", async () => {
+    const gameId = await newRackGame("Rack taxonomy");
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], participants: [{ userId: owner, strokes: 0 }] });
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, scoringEnabled: true });
+    await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 5 });
+
+    // Warned/Quiet tiers: name + rules + points + a stroke, ALL in one save, structure
+    // clean → SUCCEEDS on the LIVE scored game (nothing orphaned; results recompute).
+    const s = await scalars(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: {
+        ...s, name: "Renamed live", rulesForToday: "gimmes inside 3ft", pointsTotal: 12,
+        pointsDistribution: { type: "per_match", value: 12 }, scoringEnabled: true,
+        groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false,
+        participants: [{ userId: owner, strokes: 6 }],
+      },
+    });
+    const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
+    expect(g.name).toBe("Renamed live");
+    expect(Number(g.points_total)).toBe(12);
+
+    // Locked tier: ONLY a groupings membership change is refused (the coarse wall).
+    await expect(
+      save(gameId, { groups: [{ name: "G1", userIds: [owner, planner] }], groupsStructureDirty: true, scoringEnabled: true }),
+    ).rejects.toThrow(/groupings/i);
+  });
+
   it("no-op Save is byte-identical — the faithless-mirror guard for rack", async () => {
     const gameId = await newRackGame("Rack no-op");
     await save(gameId, {

@@ -5,8 +5,12 @@ import {
   configDraftsEqual,
   isDraftMatchFilled,
   splitHandicap,
+  configToRackDraft,
+  rackDraftToPayload,
+  rackDraftsEqual,
   type ConfigDraft,
   type DraftMatchInput,
+  type RackConfigDraft,
 } from "./configDraft";
 
 /**
@@ -260,5 +264,79 @@ describe("small pure helpers", () => {
     expect(splitHandicap(-3)).toEqual({ strokesA: 3, strokesB: 0 });
     expect(splitHandicap(3)).toEqual({ strokesA: 0, strokesB: 3 });
     expect(splitHandicap(0)).toEqual({ strokesA: 0, strokesB: 0 });
+  });
+});
+
+// ── Rack variant (P2) ──────────────────────────────────────────────────────────
+const RACK_GAME = {
+  game_type_id: "gtt_rack_n_stack",
+  name: "Team Rack",
+  rules_for_today: null,
+  scoring_enabled: false,
+  points_total: 6,
+  points_distribution: { type: "per_match", value: 1.2 } as const,
+  course_id: "course-1",
+  back_course_id: null,
+  scorecard_schema: { units: { count: 18 } },
+};
+const GROUPS = [["u1", "u2"], ["u3", "u4"]];
+const STROKES = { u1: 3, u3: 0 };
+
+describe("configToRackDraft — baseline", () => {
+  it("folds groups + strokes + course over the base and is stable", () => {
+    const d = configToRackDraft(RACK_GAME, GROUPS, STROKES, ["u9"]);
+    expect(d.groups).toEqual(GROUPS);
+    expect(d.strokes).toEqual(STROKES);
+    expect(d.course).toEqual({ id: "course-1", backId: null, scorecardSchema: { units: { count: 18 } } });
+    expect(d.pointsTotal).toBe(6);
+    expect(d.delegates).toEqual(["u9"]);
+    expect(rackDraftsEqual(d, configToRackDraft(RACK_GAME, GROUPS, STROKES, ["u9"]))).toBe(true);
+  });
+});
+
+describe("rackDraftToPayload — derived per-slot + structure flag", () => {
+  const base = configToRackDraft(RACK_GAME, GROUPS, STROKES, []);
+
+  it("derives the per-slot share from total ÷ slotCount (NOT roster size)", () => {
+    // 2 carts, 4 players, but slotCount = min(A,B) = 2 → 6/2 = 3 (passed in, not roster).
+    const p = rackDraftToPayload(base, 2, base);
+    expect(p.pointsDistribution).toEqual({ type: "per_match", value: 3 });
+  });
+
+  it("emits every grouped participant's strokes (default 0) + names the carts", () => {
+    const p = rackDraftToPayload(base, 2, base);
+    expect(p.groups).toEqual([
+      { name: "Group 1", userIds: ["u1", "u2"] },
+      { name: "Group 2", userIds: ["u3", "u4"] },
+    ]);
+    expect(p.participants).toEqual([
+      { userId: "u1", strokes: 3 }, { userId: "u2", strokes: 0 },
+      { userId: "u3", strokes: 0 }, { userId: "u4", strokes: 0 },
+    ]);
+  });
+
+  it("groupsStructureDirty is false vs an identical baseline, true on a membership change", () => {
+    expect(rackDraftToPayload(base, 2, base).groupsStructureDirty).toBe(false);
+    const moved: RackConfigDraft = { ...base, groups: [["u1", "u3"], ["u2", "u4"]] };
+    expect(rackDraftToPayload(moved, 2, base).groupsStructureDirty).toBe(true);
+  });
+
+  it("drops empty carts (an unfinished add) from the payload", () => {
+    const withEmpty: RackConfigDraft = { ...base, groups: [["u1", "u2"], []] };
+    expect(rackDraftToPayload(withEmpty, 1, base).groups).toEqual([{ name: "Group 1", userIds: ["u1", "u2"] }]);
+  });
+});
+
+describe("rackDraftsEqual — dirty check", () => {
+  const base = configToRackDraft(RACK_GAME, GROUPS, STROKES, []);
+  it("equal to itself; player order WITHIN a cart doesn't matter (a cart is a set)", () => {
+    expect(rackDraftsEqual(base, base)).toBe(true);
+    expect(rackDraftsEqual(base, { ...base, groups: [["u2", "u1"], ["u3", "u4"]] })).toBe(true);
+  });
+  it("dirty on a membership move, a stroke change, a points change, or a course change", () => {
+    expect(rackDraftsEqual(base, { ...base, groups: [["u1", "u3"], ["u2", "u4"]] })).toBe(false);
+    expect(rackDraftsEqual(base, { ...base, strokes: { ...STROKES, u1: 5 } })).toBe(false);
+    expect(rackDraftsEqual(base, { ...base, pointsTotal: 8 })).toBe(false);
+    expect(rackDraftsEqual(base, { ...base, course: { ...base.course, id: "course-2" } })).toBe(false);
   });
 });
