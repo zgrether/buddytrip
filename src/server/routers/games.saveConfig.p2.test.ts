@@ -195,27 +195,29 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
  * previously-accidental ones the structure/field split unmasked.)
  */
 describe("save_game_config — hash invariant: every RPC-written field moves, none churns", () => {
-  const baseGroups: RackGroup[] = [{ name: "One", teeTime: "07:00", userIds: [owner, member] }];
-
-  // Each row's `change` is a real edit to that field. The no-churn re-write is the SAME
-  // resulting config sent structure-CLEAN (`groupsStructureDirty: false`) — the client's
-  // unchanged-save shape. That distinction is the whole point: a structure clean-replace
-  // legitimately re-mints play_groups.id (so it MOVES the hash on a real change), and the
-  // no-churn guarantee applies to re-sending that state without rebuilding.
-  const cases: { field: string; change: () => Parameters<typeof rackPayload>[1] }[] = [
-    { field: "play_groups.display_name", change: () => ({ groups: [{ ...baseGroups[0], name: "Renamed" }], groupsStructureDirty: true }) },
-    { field: "play_groups.tee_time", change: () => ({ groups: [{ ...baseGroups[0], teeTime: "07:30" }], groupsStructureDirty: true }) },
-    { field: "game_participants.play_group_id (membership)", change: () => ({ groups: [{ ...baseGroups[0], userIds: [owner, planner] }], groupsStructureDirty: true }) },
-    { field: "game_participants.handicap_strokes", change: () => ({ groups: baseGroups, groupsStructureDirty: false, participants: [{ userId: owner, strokes: 9 }] }) },
+  // Each row's `change(base)` is a real edit to that field. The no-churn re-write is the
+  // SAME resulting config sent structure-CLEAN (`groupsStructureDirty: false`) — the
+  // client's unchanged-save shape. That distinction is the whole point: a structure
+  // clean-replace legitimately re-mints play_groups.id (so it MOVES the hash on a real
+  // change), and the no-churn guarantee applies to re-sending that state without a
+  // rebuild. `change` takes the base at CALL time — the user ids aren't assigned until
+  // beforeAll, so nothing may capture them at collection time.
+  const cases: { field: string; change: (base: RackGroup[]) => Parameters<typeof rackPayload>[1] }[] = [
+    { field: "play_groups.display_name", change: (b) => ({ groups: [{ ...b[0], name: "Renamed" }], groupsStructureDirty: true }) },
+    { field: "play_groups.tee_time", change: (b) => ({ groups: [{ ...b[0], teeTime: "07:30" }], groupsStructureDirty: true }) },
+    { field: "game_participants.play_group_id (membership)", change: (b) => ({ groups: [{ ...b[0], userIds: [owner, planner] }], groupsStructureDirty: true }) },
+    { field: "game_participants.handicap_strokes", change: (b) => ({ groups: b, groupsStructureDirty: false, participants: [{ userId: owner, strokes: 9 }] }) },
   ];
 
   it.each(cases)("$field — moves on change, no churn on re-write", async ({ change }) => {
+    // Build the base HERE (post-beforeAll) so the user ids are real strings.
+    const baseGroups: RackGroup[] = [{ name: "One", teeTime: "07:00", userIds: [owner, member] }];
     const gameId = await newRackGame("Hash guard");
     await save(gameId, { groups: baseGroups, participants: [{ userId: owner, strokes: 0 }, { userId: member, strokes: 0 }] });
 
     // (1) MOVES — a real change to this field changes the hash.
     const before = await hashOf(gameId);
-    const slice = change();
+    const slice = change(baseGroups);
     await save(gameId, slice);
     const afterChange = await hashOf(gameId);
     expect(afterChange).not.toBe(before);
