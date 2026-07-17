@@ -3021,24 +3021,18 @@ function HandicapsSection({
     // Matches uses, replacing the old gap-3 spacing so the two surfaces read alike.
     <div className="flex flex-col" data-testid="handicaps-section">
       {filled.map(({ d, i }, idx) => (
-        // §8: the per-row "Match N" header is gone — the number rides the control's
-        // left gutter instead (passed below), shown only when there's >1 match.
-        <div
+        // §E: the row rides the shared MatchGridRow (# · A vs B · Even), so the number
+        // is ALWAYS shown (aligns with Matches / Point Distribution) and the separator
+        // is owned by the row, not this wrapper.
+        <RelHandicapControl
           key={i}
-          style={{
-            borderTop: idx > 0 ? "1px solid var(--color-bt-border)" : undefined,
-            paddingTop: idx > 0 ? 14 : 0,
-            paddingBottom: 14,
-          }}
-        >
-          <RelHandicapControl
-            a={{ players: sidePlayers(d.a), name: sideName(d.a) }}
-            b={{ players: sidePlayers(d.b), name: sideName(d.b) }}
-            value={d.handicap}
-            matchNumber={draft.length > 1 ? i + 1 : undefined}
-            onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
-          />
-        </div>
+          a={{ players: sidePlayers(d.a), name: sideName(d.a) }}
+          b={{ players: sidePlayers(d.b), name: sideName(d.b) }}
+          value={d.handicap}
+          matchNumber={i + 1}
+          isFirst={idx === 0}
+          onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
+        />
       ))}
     </div>
   );

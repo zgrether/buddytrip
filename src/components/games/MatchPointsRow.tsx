@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Hash, Scale, X } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
-import { MatchupChips, type SidePlayer } from "@/components/games/MatchSides";
+import { SideChips, type SidePlayer } from "@/components/games/MatchSides";
+import { MatchGridRow } from "@/components/games/MatchGridRow";
 import { evenShare } from "@/lib/pointsDistribution";
 
 /**
@@ -169,31 +170,21 @@ export function MatchPointsRow({
     >
       <div className="flex flex-col" data-testid="points-override-panel">
         {matches.map((m, idx) => (
-          <div
+          <MatchGridRow
             key={m.id}
-            className="flex items-center gap-3"
-            style={{
-              borderTop: idx > 0 ? "1px solid var(--color-bt-border)" : undefined,
-              paddingTop: idx > 0 ? 12 : 0,
-              paddingBottom: 12,
-            }}
-          >
-            <span
-              className="flex flex-shrink-0 items-center justify-center"
-              style={{ width: 18, height: 18, borderRadius: 5, background: "var(--color-bt-card-raised)", fontSize: 10, fontWeight: 800, color: "var(--color-bt-text-dim)" }}
-            >
-              {m.number}
-            </span>
-            <div className="min-w-0 flex-1">
-              <MatchupChips a={m.aPlayers} b={m.bPlayers} />
-            </div>
-            <OverrideField
-              even={even}
-              value={m.pointValue}
-              disabled={locked || !canEdit}
-              onCommit={(v) => onOverrideChange(m.id, v)}
-            />
-          </div>
+            number={m.number}
+            isFirst={idx === 0}
+            sideA={<SideChips players={m.aPlayers} />}
+            sideB={<SideChips players={m.bPlayers} />}
+            value={
+              <OverrideField
+                even={even}
+                value={m.pointValue}
+                disabled={locked || !canEdit}
+                onCommit={(v) => onOverrideChange(m.id, v)}
+              />
+            }
+          />
         ))}
 
         {/* Honest fraction (never rounded): shown when the even share isn't whole and
