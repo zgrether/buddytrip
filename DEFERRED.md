@@ -167,6 +167,30 @@ points shift standings. Converting the formats should carry the draft-then-save
 plumbing but leave the freeze model as-is (or minimal) so the redesign has one place to
 land, not four hardened copies.
 
+### Add a back nine to a scored 9-hole front — warned-tier recompute, descoped
+
+The freeze-redesign spec (§2.1) called for range-scoping the Course lock: a played
+9-hole FRONT would still let you *add* a back nine (its holes have no scores yet). Phase-0
+verification killed it. The premise was "the front's schema slice survives the add-back
+transition, so the front's entered holes are untouched." It does NOT:
+`buildComposedCourseSnapshot` → `composeTwoNines` (`courseIndex.ts`) **re-indexes the
+front** — a standalone 9-hole front stores its stroke index raw (`1..9`), but composing a
+back interleaves the front to odd ranks (`si → 2·si−1`). Par and per-hole yards just slice
+(they survive); the **`handicap_index` changes**, which re-allocates handicap strokes
+across the new 18 and can change who won holes 1–9. That's a warned-tier RECOMPUTE of
+already-entered holes — the exact silent-rescore the freeze redesign exists to prevent —
+not a clean locked-tier add.
+
+**Decision (Zach):** descope it. The Course row is a blanket LOCKED tier — any score
+freezes the whole row, client (`MatchGameView` `locked={scoresExist}`) matching the
+server's blanket `COURSE_LOCKED` (mig 082/084). No migration 085; no client per-nine
+gating (it would offer an add the server refuses — the "client affordance with no server
+backstop" trap). **If revived:** it's a warned-tier feature — allow the add, run
+`computeMatchPlayResults(skipComplete)` after, and surface to the user that holes 1–9 will
+re-score under the new 18-hole index (the front's strokes move). Needs the guard to accept
+the specific `course_id`-unchanged + `back_course_id` null→X transition AND the recompute,
+not the current "units identical" shortcut (the units legitimately differ).
+
 ### `pairings_published_at` ≡ `scoring_enabled` — redundant, collapse is a separable cleanup
 
 Two columns encode ONE concept ("this game is revealed to the crew / open for scoring")

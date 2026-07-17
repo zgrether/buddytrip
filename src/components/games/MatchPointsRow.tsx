@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Hash, X } from "lucide-react";
+import { Hash, Scale, X } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
-import { MatchupChips, type SidePlayer } from "@/components/games/MatchSides";
+import { SideChips, type SidePlayer } from "@/components/games/MatchSides";
+import { MatchGridRow } from "@/components/games/MatchGridRow";
 import { evenShare } from "@/lib/pointsDistribution";
 
 /**
@@ -53,6 +54,7 @@ export interface PointsMatch {
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
 export function MatchPointsRow({
+  part,
   matches,
   pointsTotal,
   defaultTotal,
@@ -63,6 +65,11 @@ export function MatchPointsRow({
   onTotalChange,
   onOverrideChange,
 }: {
+  /** Freeze redesign §3.2: split into TWO rows in different zones.
+   *  - "total" → the bare owner-set number (Game Management; no match dependency).
+   *  - "distribution" → the per-match override panel (Match Settings; needs matches).
+   *  Both render from the same props, so the derived even-share can't drift. */
+  part: "total" | "distribution";
   /** Paired matches only (both sides set) — the award/leaderboard denominator. */
   matches: PointsMatch[];
   /** The owner total in force (null until first setup → `defaultTotal` shows). */
@@ -70,10 +77,11 @@ export function MatchPointsRow({
   /** Players-per-team = total competition players ÷ teams. The first-setup default. */
   defaultTotal: number;
   canEdit: boolean;
-  /** Live-scoring freeze (#512) — read-only + lock icon. */
+  /** Live-scoring freeze (#512) — read-only + lock icon. Warned tier → always false now. */
   locked: boolean;
-  expanded: boolean;
-  onToggle: () => void;
+  /** "distribution" only: the accordion open state (the total row is a control row). */
+  expanded?: boolean;
+  onToggle?: () => void;
   /** The owner stepped the TOTAL. The parent decides what that means. */
   onTotalChange: (next: number) => void;
   /** One match's override set (a number) or cleared (null → back to the even share). */
@@ -105,65 +113,79 @@ export function MatchPointsRow({
     onTotalChange(next);
   };
 
-  const subtitle = (
-    <>
-      Points per match:{" "}
-      <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
-        {anyOverride ? "Custom" : fmt(even)}
-      </span>
-    </>
-  );
+  // ── "total" — the bare owner-set number (Game Management zone). A control row: the
+  //    ± stepper sits where the chevron would; no accordion. Subtitle is the derived
+  //    per-match readout (the immediate consequence of the total).
+  if (part === "total") {
+    return (
+      <ChecklistRow
+        icon={Hash}
+        title="Total Points"
+        subtitle={
+          <>
+            Points per match:{" "}
+            <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
+              {anyOverride ? "Custom" : fmt(even)}
+            </span>
+          </>
+        }
+        state={effectiveTotal > 0 ? "resolved" : "empty"}
+        disabled={!canEdit}
+        locked={locked}
+        testId="row-total-points"
+        control={
+          <Stepper
+            size="inline"
+            value={localTotal}
+            min={0}
+            max={MAX_TOTAL}
+            onChange={locked || !canEdit ? () => {} : (v) => stepTotal(v)}
+            disabled={locked || !canEdit}
+            testId="total-points-stepper"
+          />
+        }
+      />
+    );
+  }
 
+  // ── "distribution" — the per-match override panel (Match Settings zone). The parent
+  //    only renders this once matches exist, so it always has rows to show.
   return (
     <ChecklistRow
-      icon={Hash}
-      title="Total Points"
-      subtitle={subtitle}
-      state={effectiveTotal > 0 ? "resolved" : "empty"}
+      icon={Scale}
+      title="Point Distribution"
+      subtitle={anyOverride ? "Custom — some matches overridden" : `Even — ${fmt(even)} per match`}
+      // "Not set" ONLY when there are no matches. Once ≥1 match exists the even-share
+      // default is already a valid distribution (fixed even when no override is set) —
+      // there is no "matches exist but distribution unset" state. `matchCount` is the
+      // DRAFT's filled-match count (this row is fed pointsMatches off configDraft), so
+      // it's draft-derived, not serverMatches. (Bug: keying on anyOverride rendered a
+      // 1-match game with points assigned as "not set".)
+      state={matchCount > 0 ? "resolved" : "empty"}
       disabled={!canEdit}
       locked={locked}
       expanded={expanded}
       onToggle={onToggle}
-      testId="row-total-points"
-      headerControl={
-        <Stepper
-          size="inline"
-          value={localTotal}
-          min={0}
-          max={MAX_TOTAL}
-          onChange={locked || !canEdit ? () => {} : (v) => stepTotal(v)}
-          disabled={locked || !canEdit}
-          testId="total-points-stepper"
-        />
-      }
+      testId="row-point-distribution"
     >
       <div className="flex flex-col" data-testid="points-override-panel">
         {matches.map((m, idx) => (
-          <div
+          <MatchGridRow
             key={m.id}
-            className="flex items-center gap-3"
-            style={{
-              borderTop: idx > 0 ? "1px solid var(--color-bt-border)" : undefined,
-              paddingTop: idx > 0 ? 12 : 0,
-              paddingBottom: 12,
-            }}
-          >
-            <span
-              className="flex flex-shrink-0 items-center justify-center"
-              style={{ width: 18, height: 18, borderRadius: 5, background: "var(--color-bt-card-raised)", fontSize: 10, fontWeight: 800, color: "var(--color-bt-text-dim)" }}
-            >
-              {m.number}
-            </span>
-            <div className="min-w-0 flex-1">
-              <MatchupChips a={m.aPlayers} b={m.bPlayers} />
-            </div>
-            <OverrideField
-              even={even}
-              value={m.pointValue}
-              disabled={locked || !canEdit}
-              onCommit={(v) => onOverrideChange(m.id, v)}
-            />
-          </div>
+            number={m.number}
+            playersPerSide={m.aPlayers.length}
+            isFirst={idx === 0}
+            sideA={<SideChips players={m.aPlayers} />}
+            sideB={<SideChips players={m.bPlayers} />}
+            value={
+              <OverrideField
+                even={even}
+                value={m.pointValue}
+                disabled={locked || !canEdit}
+                onCommit={(v) => onOverrideChange(m.id, v)}
+              />
+            }
+          />
         ))}
 
         {/* Honest fraction (never rounded): shown when the even share isn't whole and

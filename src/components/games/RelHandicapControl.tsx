@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { strokeHoles } from "@/lib/matchPlay";
 import { Stepper } from "@/components/games/Stepper";
-import { RowNumber } from "@/components/games/RowNumber";
+import { MatchGridRow } from "@/components/games/MatchGridRow";
 import { SideChips, type SidePlayer } from "@/components/games/MatchSides";
 
 /** One side of the handicap control: its players (stacked chips, A2a) + a display
@@ -58,13 +57,23 @@ export interface RelHandicapView {
   /** Even → no stepper (one line, no caption); a side → the centered <Stepper full> reveals. */
   showStepper: boolean;
 }
-export function relHandicapView(value: number, aName: string, bName: string): RelHandicapView {
+export function relHandicapView(
+  value: number,
+  aName: string,
+  bName: string,
+  // The applied course's stroke index (+ hole count) — so the caption names the REAL
+  // holes strokes fall on, matching what the scoring engine does (buildDecided passes
+  // the same index). Omitted / index-less course → strokeHoles' sequential 1..n
+  // fallback, which is also what the engine falls back to, so the two never disagree.
+  strokeIndex?: number[],
+  holeCount?: number,
+): RelHandicapView {
   const clamped = Math.max(-MAX, Math.min(MAX, Math.round(value)));
   const side: "a" | "b" | "even" = clamped < 0 ? "a" : clamped > 0 ? "b" : "even";
   const n = Math.abs(clamped);
   const even = side === "even";
   const recipient = even ? null : side === "a" ? aName : bName;
-  const holes = [...strokeHoles(n)].sort((x, y) => x - y);
+  const holes = [...strokeHoles(n, strokeIndex, holeCount)].sort((x, y) => x - y);
   // Even → no caption (the segment says it); a side → who gets the strokes.
   const caption = even
     ? ""
@@ -77,12 +86,21 @@ interface RelHandicapControlProps {
   b: HandicapSide;
   value: number; // signed, ∈ [−MAX, MAX]
   onChange: (value: number) => void;
-  /** Small left-gutter match number (§8). Omit for a lone match (no number shown). */
-  matchNumber?: number;
+  /** The row's match number (shared MatchGridRow number column — always shown so
+   *  Handicaps aligns with Matches / Point Distribution down the page). */
+  matchNumber: number;
+  /** Drives the 1V1/2V2 shape tag under the number (shared MatchNumberBadge). */
+  playersPerSide: number;
+  /** The applied course's stroke index + hole count, so the "gets strokes on holes …"
+   *  caption names the real allocation (not sequential 1..n) when the course has one. */
+  strokeIndex?: number[];
+  holeCount?: number;
+  /** No top hairline on the first row (MatchGridRow delimits BETWEEN matches). */
+  isFirst?: boolean;
 }
 
-export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHandicapControlProps) {
-  const { side, n, even, caption, showStepper } = relHandicapView(value, a.name, b.name);
+export function RelHandicapControl({ a, b, value, onChange, matchNumber, playersPerSide, strokeIndex, holeCount, isFirst }: RelHandicapControlProps) {
+  const { side, n, even, caption, showStepper } = relHandicapView(value, a.name, b.name, strokeIndex, holeCount);
 
   // Selecting a player keeps the current magnitude (min 1) and points it that way.
   // Switching sides preserves |value| (sign flip).
@@ -97,84 +115,38 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
     onChange(side === "a" ? -mag : mag);
   };
 
-  // Geometric stepper alignment (§8 — measured, NOT a pixel breakpoint). The reveal
-  // is centered under the MIDDLE (Even) column by default (mobile-first: the stepper
-  // is wider than a narrow player column). As a progressive enhancement, when the
-  // selected player's column is wide enough to CONTAIN the stepper
-  // (`playerColumnWidth ≥ stepperWidth`), it snaps to center under that name instead.
-  // The default is centered (textAlign on the wrapper), so `offset` only ever shifts
-  // it sideways under the name — no flash, and the narrow case never moves.
-  const contentRef = useRef<HTMLDivElement>(null);
-  const stepperRef = useRef<HTMLDivElement>(null);
-  const segARef = useRef<HTMLButtonElement>(null);
-  const segBRef = useRef<HTMLButtonElement>(null);
-  const [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (!showStepper) return;
-    const measure = () => {
-      const content = contentRef.current;
-      const stepper = stepperRef.current;
-      const seg = side === "a" ? segARef.current : segBRef.current;
-      if (!content || !stepper || !seg) return;
-      const cRect = content.getBoundingClientRect();
-      const sRect = seg.getBoundingClientRect();
-      const W = cRect.width;
-      const S = stepper.offsetWidth; // the stepper's intrinsic width (inline-block)
-      const colW = sRect.width;
-      const colCenter = sRect.left + sRect.width / 2 - cRect.left;
-      // Snap under the name only when the column can hold the stepper; else stay
-      // centered (offset 0 = under the middle, the default).
-      setOffset(colW >= S ? colCenter - W / 2 : 0);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (contentRef.current) ro.observe(contentRef.current);
-    return () => ro.disconnect();
-  }, [showStepper, side]);
-
+  // Settings polish §E.2: the three-way choice (side A / Even / side B) is unchanged
+  // in BEHAVIOR — the A and B segments stay in the matchup columns (with "vs" between,
+  // via MatchGridRow), and "Even" RELOCATES to the shared value column on the right so
+  // Handicaps lines up with Point Distribution's points field. The stroke stepper
+  // stays exactly as-is, revealed BELOW when a side is chosen — now plainly centered
+  // (the old geometric snap-under-name offset doesn't apply once Even leaves the row).
   return (
-    // The match-number gutter sits LEFT of the match CONTENT column (§8 — no header).
-    // The reveal (stepper + caption) lives INSIDE that content column, so it aligns
-    // under the player columns / matchup — not centered on the whole panel (defect 2).
-    <div className="flex items-start" style={{ gap: 10 }}>
-      {matchNumber != null && (
-        // The shared RowNumber cell (row pattern Phase 1b) — same recessed treatment
-        // as the Matches number column (no DragHandle; handicaps don't reorder). Height
-        // matches the segmented track (44 segment + 2×4 padding) so the number centers
-        // with the segments row, not the whole content column.
-        <RowNumber number={matchNumber} className="flex-shrink-0" style={{ width: 22, height: 52 }} />
-      )}
-      <div ref={contentRef} className="flex min-w-0 flex-1 flex-col">
-        {/* Segmented selector */}
-        <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card)" }}>
-          <Segment selected={side === "a"} onClick={() => pickSide("a")} innerRef={segARef}>
-            {/* The SHARED SideChips (avatar-left PlayerChips) — one chip for a 1v1
-                side, two stacked for 2v2 (A2a: no compound avatar / "Name & …"). The
-                segment wrapper owns the selection surface, so each chip's own surface
-                is stripped to transparent and shows it through. */}
-            <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none" }} />
-          </Segment>
-          <Segment selected={even} onClick={() => onChange(0)} narrow>
-            Even
-          </Segment>
-          <Segment selected={side === "b"} onClick={() => pickSide("b")} innerRef={segBRef}>
-            <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none" }} />
-          </Segment>
-        </div>
-
-        {/* Reveal (§8) — under the matchup (defect 2): Even is JUST the row (no
-            stepper, no caption — the selected Even segment already says it, P3b).
-            Side selected → the centered <Stepper full> (P-B) + a muted recipient
-            caption (NOT teal — teal is the selection fill only). The stepper centers
-            within THIS content column, i.e. under the player columns. */}
-        {showStepper && (
+    <MatchGridRow
+      number={matchNumber}
+      playersPerSide={playersPerSide}
+      isFirst={isFirst}
+      testId="handicap-row"
+      sideA={
+        <SideSegment selected={side === "a"} onClick={() => pickSide("a")}>
+          <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none" }} />
+        </SideSegment>
+      }
+      sideB={
+        <SideSegment selected={side === "b"} onClick={() => pickSide("b")}>
+          <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none" }} />
+        </SideSegment>
+      }
+      value={
+        <Segment selected={even} onClick={() => onChange(0)} narrow>
+          Even
+        </Segment>
+      }
+      below={
+        showStepper ? (
           <>
-            {/* Centered by default (textAlign → under the middle column); the measured
-                `offset` only shifts it under the selected name when that column can
-                hold it (geometric, P3c). inline-block so offsetWidth = the stepper's
-                intrinsic width (the `S` the effect compares against the column). */}
-            <div style={{ marginTop: 12, textAlign: "center" }}>
-              <div ref={stepperRef} style={{ display: "inline-block", transform: `translateX(${offset}px)` }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ display: "inline-block" }}>
                 <Stepper
                   size="full"
                   value={n}
@@ -191,8 +163,20 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
               {caption}
             </div>
           </>
-        )}
-      </div>
+        ) : undefined
+      }
+    />
+  );
+}
+
+/** A full-width selectable side segment (the A / B columns). Wraps the shared Segment
+ *  so the matchup columns fill their grid cell. */
+function SideSegment({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{ width: "100%" }}>
+      <Segment selected={selected} onClick={onClick} fill>
+        {children}
+      </Segment>
     </div>
   );
 }
@@ -205,23 +189,22 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber }: RelHa
  * never shifts layout. `narrow` is the Even segment (no chip, hugs its centered label).
  */
 function Segment({
-  selected, onClick, children, narrow = false, innerRef,
+  selected, onClick, children, narrow = false, fill = false,
 }: {
   selected: boolean;
   onClick: () => void;
   children: React.ReactNode;
   narrow?: boolean;
-  /** The selected player segment is measured against the stepper width (P3c). */
-  innerRef?: React.Ref<HTMLButtonElement>;
+  /** Fill the parent width (the A/B matchup columns own their grid cell). */
+  fill?: boolean;
 }) {
   return (
     <button
-      ref={innerRef}
       type="button"
       onClick={onClick}
       className="flex min-w-0 items-center"
       style={{
-        flex: narrow ? "0 0 auto" : "1 1 0",
+        width: fill ? "100%" : undefined,
         // Player segments left-justify their chips (avatar-left, matching the
         // Matches renderer) instead of floating centered (W4-7); the narrow Even
         // segment keeps its centered label.

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Pencil, UserCircle2, X } from "lucide-react";
+import { Pencil, UserCircle2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { Avatar } from "@/components/Avatar";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -84,10 +85,16 @@ export function GameIdentityHeader({
   }
 
   // ── Assigned to (delegate, owner-gated) ────────────────────────────────────
-  const membersQ = trpc.tripMembers.list.useQuery({ tripId }, { enabled: isOwner });
-  const members = (membersQ.data ?? []) as { memberId: string; displayName: string }[];
-  // Kept enabled in BOTH modes: a controlled parent reads the same query for its
-  // own mirror, so this shares the cache rather than adding a round-trip.
+  // Enabled for ALL viewers, not just the owner: the picker is owner-only, but the
+  // no-delegate DISPLAY needs the OWNER's name for a non-owner viewer ("Assigned to
+  // [owner]"). tripMembers.list is any-member-allowed and cached on most surfaces.
+  const membersQ = trpc.tripMembers.list.useQuery({ tripId });
+  const members = (membersQ.data ?? []) as {
+    memberId: string;
+    displayName: string;
+    role: string;
+    user?: { avatar_icon?: string | null } | null;
+  }[];
   const orgQ = trpc.games.listOrganizers.useQuery({ tripId, gameId });
   const delegateId = controlled
     ? (delegateValue ?? null)
@@ -96,9 +103,21 @@ export function GameIdentityHeader({
   const removeOrg = trpc.games.removeOrganizer.useMutation();
   const [picking, setPicking] = useState(false);
 
+  // The trip Owner — the implicit assignee when no delegate is set. Their NAME frames
+  // the no-delegate display for a non-owner viewer; the OWNER is removed from the
+  // picker list entirely (assigning is "hand it to someone ELSE", and absence = owner).
+  const ownerMember = members.find((m) => m.role === "Owner");
+  const ownerName = ownerMember?.displayName ?? "the owner";
+  const avatarIconFor = (id: string) => members.find((m) => m.memberId === id)?.user?.avatar_icon ?? null;
+  // Everyone assignable — the crew MINUS the owner (no self-assign; absence = owner).
+  const assignable = members.filter((m) => m.memberId !== ownerMember?.memberId);
+
   const delegateName = delegateId
     ? (delegateId === me?.id ? "you" : members.find((m) => m.memberId === delegateId)?.displayName ?? "a delegate")
     : null;
+  // The no-delegate frame: say the PERSON, not the role — "you" to the owner, the
+  // owner's name to anyone else.
+  const assignedLabel = delegateName ?? (isOwner ? "you" : ownerName);
 
   async function assign(next: string | null) {
     setPicking(false);
@@ -149,16 +168,29 @@ export function GameIdentityHeader({
       <div className="mt-1.5">
         {picking ? (
           <div className="flex flex-col gap-1.5 rounded-xl p-2" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
-            <span className="px-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Assign to</span>
-            <button type="button" onClick={() => void assign(null)} className="rounded-lg px-3 py-2 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
-              The owner (you)
-            </button>
-            {members.map((m) => (
-              <button key={m.memberId} type="button" onClick={() => void assign(m.memberId)} className="rounded-lg px-3 py-2 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
-                {m.displayName}
+            {/* Header + close: with the owner gone from the list there's no "pick me"
+                row to back out with, so the panel needs its own × (STYLE_GUIDE §5). */}
+            <div className="flex items-center justify-between">
+              <span className="px-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Assign to</span>
+              <button
+                type="button"
+                onClick={() => setPicking(false)}
+                aria-label="Close"
+                className="flex h-8 w-8 items-center justify-center rounded-full"
+                style={{ color: "var(--color-bt-text-dim)" }}
+                data-testid="assign-close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {/* Only OTHER people — the owner is never in the list (absence = owner). */}
+            {assignable.map((m) => (
+              <button key={m.memberId} type="button" onClick={() => void assign(m.memberId)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
+                <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} sizePx={28} />
+                <span className="truncate">{m.displayName}</span>
               </button>
             ))}
-            {members.length === 0 && <span className="px-3 py-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>No crew to assign yet.</span>}
+            {assignable.length === 0 && <span className="px-3 py-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>No crew to assign yet.</span>}
           </div>
         ) : (
           <button
@@ -169,16 +201,20 @@ export function GameIdentityHeader({
             style={{ color: "var(--color-bt-text-dim)" }}
             data-testid="game-assigned-to"
           >
-            <UserCircle2 size={14} style={{ color: delegateName ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }} />
+            {delegateId
+              ? <Avatar name={assignedLabel} avatarIcon={avatarIconFor(delegateId)} sizePx={22} />
+              : <UserCircle2 size={14} style={{ color: "var(--color-bt-text-dim)" }} />}
             <span>
               Assigned to{" "}
               <span style={{ color: delegateName ? "var(--color-bt-accent)" : "var(--color-bt-text)", fontWeight: 600 }}>
-                {delegateName ?? "the owner"}
+                {assignedLabel}
               </span>
             </span>
-            {isOwner && (delegateName
-              ? <X size={13} style={{ color: "var(--color-bt-text-dim)" }} onClick={(e) => { e.stopPropagation(); void assign(null); }} />
-              : <Check size={13} style={{ color: "var(--color-bt-text-dim)", opacity: 0 }} />)}
+            {/* The × clears a real delegate (→ back to the owner). Absent when already
+                the owner default — there's nothing to clear. */}
+            {isOwner && delegateName && (
+              <X size={13} style={{ color: "var(--color-bt-text-dim)" }} onClick={(e) => { e.stopPropagation(); void assign(null); }} />
+            )}
           </button>
         )}
       </div>

@@ -51,6 +51,7 @@ export function GameSetupRows({
   onRemoveBackNine,
   onClearCourse,
   courseBusy,
+  outcomeMode = false,
 }: {
   tripId: string;
   /** Null for a standalone game — the Name·Format·Points editor is competition-
@@ -110,6 +111,11 @@ export function GameSetupRows({
   onClearCourse?: () => void;
   /** Controlled mode: the page's course write is in flight (drives the tee chooser). */
   courseBusy?: boolean;
+  /** §3.3: outcome-mode match play taps the winner per hole and NEVER reads a
+   *  handicap — so the Course row's "Handicaps enabled" subtitle would be a lie. When
+   *  true, the subtitle drops the handicaps claim. Default false (score modes gate on
+   *  the course's stroke-index table, so the handicaps subtitle is honest there). */
+  outcomeMode?: boolean;
 }) {
   // Controlled when the page supplies open-state; else self-manage (the original
   // behavior, kept for every non-checklist consumer).
@@ -174,10 +180,15 @@ export function GameSetupRows({
         <ChecklistRow
           icon={Flag}
           // §5a Course: the resolved title is the course NAME (single) / shared base
-          // (composed) / tap-nudge fallback. The subtitle stays the HANDICAPS GATE —
-          // never the course name.
+          // (composed) / tap-nudge fallback. The subtitle is the HANDICAPS GATE —
+          // never the course name — EXCEPT in outcome mode (§3.3), where handicaps are
+          // never read, so it describes the course state without the false claim.
           title={courseTitle}
-          subtitle={courseResolved ? "Handicaps enabled" : "Handicaps disabled"}
+          subtitle={
+            outcomeMode
+              ? courseResolved ? "Course set" : "No course"
+              : courseResolved ? "Handicaps enabled" : "Handicaps disabled"
+          }
           state={courseResolved ? "resolved" : "empty"}
           disabled={!canEdit}
           locked={locked}

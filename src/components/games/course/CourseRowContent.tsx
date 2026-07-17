@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Check, X, Table2, ChevronRight } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { gameHref } from "@/lib/gameRoutes";
 import { CourseSearchPanel } from "./CourseSearchPanel";
+import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -56,7 +57,7 @@ export function CourseRowContent({
   // state of this body can reach).
   const controlled = onApplyFront !== undefined;
   const gameId = game.id;
-  const router = useRouter();
+  const [previewOpen, setPreviewOpen] = useState(false);
   // Scorecard preview (Spec 5a) — the empty par/yardage/stroke-index card, read from
   // persisted state, so the owner can confirm the course is set up right. A simple
   // button inside this panel, under the chosen course(s). Golf-only (null → hidden).
@@ -147,12 +148,13 @@ export function CourseRowContent({
     return (
       <div className="flex flex-col gap-3" data-testid="course-needs-back">
         <NineSummary label="Front nine" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
-        {scorecardHref && <ScorecardPreviewButton onClick={() => router.push(scorecardHref)} />}
+        {scorecardHref && <ScorecardPreviewButton onClick={() => setPreviewOpen(true)} />}
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>Add the back nine</span>
           <p className="mb-2 mt-0.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>A 9-hole course needs a back nine to make a full 18.</p>
           <CourseSearchPanel tripId={tripId} gameId={gameId} mode="back" onApply={onPickBack} busy={applying} />
         </div>
+        {previewOpen && <ScorecardPreviewSheet tripId={tripId} gameId={gameId} onClose={() => setPreviewOpen(false)} />}
       </div>
     );
   }
@@ -179,7 +181,8 @@ export function CourseRowContent({
       ) : (
         <NineSummary label="Course" name={frontName} onClear={canEdit ? onClearCourse : undefined} />
       )}
-      {scorecardHref && <ScorecardPreviewButton onClick={() => router.push(scorecardHref)} />}
+      {scorecardHref && <ScorecardPreviewButton onClick={() => setPreviewOpen(true)} />}
+      {previewOpen && <ScorecardPreviewSheet tripId={tripId} gameId={gameId} onClose={() => setPreviewOpen(false)} />}
     </div>
   );
 }

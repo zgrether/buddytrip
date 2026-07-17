@@ -276,10 +276,17 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   // The config landed together with the flip.
   expect(await filledMatchCount(await latestGameId())).toBeGreaterThan(0);
 
-  // #512 correction: enabling flips the toggle IN PLACE (no auto-navigate) — the
-  // "This game is live" lock banner appearing is the "now live" signal. The settings
-  // back arrow then returns to the game page, which is now in scoring mode → overview.
-  await expect(page.getByTestId("scoring-lock-banner")).toBeVisible({ timeout: 20_000 });
+  // "Now live" — the config + the scoring flip landed together. The old
+  // "This game is live" lock banner (the previous signal) was deleted in the freeze
+  // redesign (§3.5: the lock no longer follows scoring mode), so assert the REAL
+  // server state instead. The settings back arrow then returns to the game page,
+  // which is now in scoring mode → overview.
+  await expect
+    .poll(async () => {
+      const { data } = await admin.from("games").select("scoring_enabled").eq("id", await latestGameId()).single();
+      return data?.scoring_enabled;
+    }, { timeout: 15_000 })
+    .toBe(true);
   await page.getByRole("button", { name: "Back" }).click();
 
   // 4. Open the single match (the strip card button) → the per-hole entry view.

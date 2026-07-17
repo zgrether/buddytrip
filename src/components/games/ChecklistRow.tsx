@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { ChevronRight, ChevronDown, Check, X, Lock, type LucideIcon } from "lucide-react";
+import { Collapse } from "@/components/games/Collapse";
 
 /**
  * ChecklistRow — the ONE canonical config-checklist row (W-GAMEPAGE visual pass
@@ -243,13 +244,14 @@ export function ChecklistRow({
             {headerInner}
           </button>
         )}
-        {isOpen && (
-          // No under-header divider — the body is the SAME surface as the header,
-          // so there's no seam to mark; an abrupt border read as a defect.
+        {/* Smooth height animation (grid-rows) instead of an instant mount/unmount —
+            no under-header divider (the body is the SAME surface as the header, so
+            there's no seam to mark). */}
+        <Collapse open={isOpen}>
           <div className="px-3.5 pb-3.5 pt-1">
             {children}
           </div>
-        )}
+        </Collapse>
       </div>
     );
   }

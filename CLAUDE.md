@@ -131,7 +131,15 @@ These patterns have been established through prior work. Follow them exactly —
 
 1. **Optimistic updates** — TanStack Query `onMutate` with rollback on error
 2. **TypeScript cache typing** — explicit generics on `queryClient.setQueryData`
-3. **Migration naming** — `NNN_descriptive_name.sql` (sequential, no gaps)
+3. **Migration naming** — `NNN_descriptive_name.sql` (sequential, no gaps). The `NNN`
+   is COSMETIC: Supabase applies and orders migrations by the full `YYYYMMDDHHMMSS_`
+   timestamp prefix, not the `NNN`. So two branches in flight can each grab the same
+   `NNN` and both merge — main currently carries two `084`s (`084_games_realtime` +
+   `084_save_game_config_structure_field_split`), applied fine because their timestamps
+   differ. **Check `main` for the next free `NNN` before picking one** (it recurs the
+   moment two branches are open). Do NOT rename an already-applied migration to
+   de-dup — CI's `schema_migrations` history check compares filenames and fails on a
+   rename. A dup `NNN` is a cosmetic wart, not a bug; leave applied ones alone.
 4. **RLS INSERT RETURNING split** — separate INSERT and SELECT to avoid RLS race condition
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
 6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
