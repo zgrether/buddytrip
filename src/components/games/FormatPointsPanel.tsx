@@ -26,7 +26,7 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * is what matters, and it's always written atomically. Optimistic via `setData`.
  */
 export function FormatPointsPanel({
-  tripId, game, canEdit, matchCount,
+  tripId, game, canEdit, matchCount, controlled,
 }: {
   tripId: string;
   game: GameRow;
@@ -35,6 +35,14 @@ export function FormatPointsPanel({
    *  readout for match-format games (W-GAMEPAGE-01 §6.2). Derived, not snapshotted:
    *  Total = matchCount × points-per-match, recomputing as matches are added. */
   matchCount?: number;
+  /** Draft-then-save mode (P2): when passed, the panel reports the total+distribution
+   *  PAIR via `onChange` instead of self-persisting, and seeds off `value` (re-syncing
+   *  when it changes — so a Save/Cancel that resets the draft re-seeds the editor).
+   *  Omit and it keeps its own on-change mutations (the stroke/self-persisting path). */
+  controlled?: {
+    value: { total: number | null; distribution: PointsDistribution | null };
+    onChange: (total: number | null, distribution: PointsDistribution | null) => void;
+  };
 }) {
   const gameId = game.id;
   const utils = trpc.useUtils();
@@ -42,12 +50,24 @@ export function FormatPointsPanel({
   const type = GAME_TYPES.find((t) => t.id === game.game_type_id);
   const isMatchPlay = type?.resultStrategy === "match_play" || type?.resultStrategy === "rack_n_stack";
 
-  const dist0 = game.points_distribution;
-  const [perMatchValue, setPerMatchValue] = useState<number>(dist0?.type === "per_match" ? dist0.value : 1);
-  const [total, setTotal] = useState<number>(game.points_total ?? 8);
+  // Seed off the controlled value when drafting, else the persisted game.
+  const seedTotal = controlled ? controlled.value.total : game.points_total;
+  const seedDist = controlled ? controlled.value.distribution : game.points_distribution;
+  const [perMatchValue, setPerMatchValue] = useState<number>(seedDist?.type === "per_match" ? seedDist.value : 1);
+  const [total, setTotal] = useState<number>(seedTotal ?? 8);
   const [placeInputs, setPlaceInputs] = useState<string[]>(
-    dist0?.type === "placement" && dist0.values.length > 0 ? dist0.values.map(String) : [""]
+    seedDist?.type === "placement" && seedDist.values.length > 0 ? seedDist.values.map(String) : [""]
   );
+  // Re-sync the editor when the controlled value changes underneath it (a draft reset on
+  // Save/Cancel) — render-phase adjust-on-prop-change, no effect.
+  const seedKey = controlled ? `${seedTotal}|${JSON.stringify(seedDist)}` : "";
+  const [lastSeed, setLastSeed] = useState(seedKey);
+  if (controlled && seedKey !== lastSeed) {
+    setLastSeed(seedKey);
+    setTotal(seedTotal ?? 8);
+    setPerMatchValue(seedDist?.type === "per_match" ? seedDist.value : 1);
+    setPlaceInputs(seedDist?.type === "placement" && seedDist.values.length > 0 ? seedDist.values.map(String) : [""]);
+  }
 
   const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setDistM = trpc.games.setPointsDistribution.useMutation();
@@ -66,8 +86,10 @@ export function FormatPointsPanel({
     if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
   }
 
-  // Save the total + distribution PAIR together (never one without the other).
+  // Save the total + distribution PAIR together (never one without the other). In
+  // controlled mode this reports to the parent draft instead of persisting.
   async function savePoints(nextDist: PointsDistribution | null, nextTotal: number | null) {
+    if (controlled) { controlled.onChange(nextTotal, nextDist); return; }
     optimisticGame({ points_total: nextTotal, points_distribution: nextDist } as Partial<GameRow>);
     try {
       await setTotalM.mutateAsync({ tripId, gameId, total: nextTotal });

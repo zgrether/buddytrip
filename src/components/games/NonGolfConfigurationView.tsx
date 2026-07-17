@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
+import { useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
-import { ScoringLockBanner } from "@/components/games/ScoringLockBanner";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
 import {
@@ -20,6 +18,8 @@ import {
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
+import type { NonGolfConfigDraft, CompetitionFormat } from "@/lib/configDraft";
+import type { PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
  * NonGolfConfigurationView (W-NONGOLF lifecycle surface) — the non-golf twin of
@@ -50,12 +50,20 @@ export function NonGolfConfigurationView({
   isOwner,
   onChanged,
   onDeleted,
-  scoringEnabled,
-  ready = true,
+  hideHeader = false,
+  draft,
+  onNameChange,
+  onRulesChange,
+  onDelegatesChange,
+  onFormatChange,
+  onPointsTotalChange,
+  onPointsDistChange,
+  serverScoringEnabled,
+  ready,
   onEnable,
   onDisable,
-  busy,
-  hideHeader = false,
+  saving,
+  saveBar,
 }: {
   subtitle: string;
   onBack: () => void;
@@ -65,23 +73,36 @@ export function NonGolfConfigurationView({
   scoringModel: ScoringModel;
   canEdit: boolean;
   isOwner: boolean;
+  /** Server-direct refresh after a Danger-Zone action (reset/delete) — NOT a draft edit. */
   onChanged: () => void;
   onDeleted: () => void;
-  scoringEnabled: boolean;
-  /** Minimum requirements met — gates the toggle's Scoring segment (non-golf is
-   *  ready once points are configured; matches the server `assertGameReady`). */
-  ready?: boolean;
+  /** #550: hide the view's own header (the app bar carries back/title as a panel). */
+  hideHeader?: boolean;
+  /** Draft-then-save (P2): the whole page is controlled off this composite draft; the
+   *  parent (NonGolfGameView) owns it + commits via ONE atomic save_game_config. */
+  draft: NonGolfConfigDraft;
+  onNameChange: (name: string) => void;
+  onRulesChange: (rules: string) => void;
+  onDelegatesChange: (delegates: string[]) => void;
+  onFormatChange: (format: CompetitionFormat | null) => void;
+  onPointsTotalChange: (total: number | null) => void;
+  onPointsDistChange: (dist: PointsDistribution | null) => void;
+  /** The LIVE server flag — the toggle reads the DRAFT (`draft.scoringEnabled`) and
+   *  `staged` is draft ≠ this, so the subtitle never claims a state the server lacks. */
+  serverScoringEnabled: boolean;
+  ready: boolean;
   onEnable: () => void;
   onDisable: () => void;
-  busy: boolean;
-  /** #550: hide the view's own header (the app bar carries back/title as a panel);
-   *  fills the panel height instead of forcing 100vh. Standalone keeps it. */
-  hideHeader?: boolean;
+  saving: boolean;
+  /** The shared SettingsSaveBar, rendered at the top of the column. */
+  saveBar: ReactNode;
 }) {
-  // #501: in scoring mode game-altering settings freeze (competition_format +
-  // points). Rules keeps plain canEdit (the exception), the toggle stays active
-  // (the path back to Setup), and the Danger Zone disables wholesale.
-  const settingsEditable = canEdit && !scoringEnabled;
+  // NO settingsEditable / NO locks (P2 lie sweep): non-golf has no destroys-tier setting,
+  // so every row stays editable in every mode — an edit stages into the draft and Save
+  // commits it (the RPC refuses nothing for non-golf). `canEdit` is the only gate (role),
+  // never scoring_enabled. `ScoringLockBanner` is gone; the format-row/points dimming and
+  // the `settingsEditable` freeze are gone with it.
+  const staged = draft.scoringEnabled !== serverScoringEnabled;
   return (
     <div className={`flex flex-col ${hideHeader ? "h-full" : "min-h-screen"}`} style={{ background: "var(--color-bt-base)" }}>
       {!hideHeader && (
@@ -100,72 +121,72 @@ export function NonGolfConfigurationView({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
-        {/* Non-golf now mirrors the cleaned golf ORDER (Spec 6): identity → explainer
-            → Rules (top) → Game Management → Settings → Danger Zone. Non-golf's rows
-            differ (no course/handicaps/matches; it HAS Competition Format + Game
-            Value), but the grouping + treatment match golf so they read as one page
-            family. Shared primitives (identity, Rules, toggle, Danger Zone, explainer,
-            ZoneHeader) inherit the golf treatment — nothing re-implemented.
-
-            Spacing is owned by SettingsColumn (one home) — the SAME uniform-gap rule
-            golf + match use, so no format's settings look different. Rows carry NO
-            margin of their own. */}
         <SettingsColumn>
-          {/* Identity — name (tap-to-edit) + assigned-to (same as golf). */}
-          <GameIdentityHeader tripId={tripId} game={game} canEdit={canEdit} isOwner={isOwner} />
+          {/* Save bar at the TOP — every row below is a draft edit (matching the golf
+              settings page). */}
+          {saveBar}
 
-          {/* Format explainer — the compact "how you compete" block that pairs directly
-              ABOVE Rules (this is the slot reserved for it). Extra mt-6 for a larger
-              break under the identity header (matches golf + match). */}
+          {/* Identity — controlled: name + assigned-to are draft slices now. */}
+          <GameIdentityHeader
+            tripId={tripId}
+            game={game}
+            canEdit={canEdit}
+            isOwner={isOwner}
+            nameValue={draft.name}
+            onNameChange={onNameChange}
+            delegateValue={draft.delegates[0] ?? null}
+            onDelegateChange={(next) => onDelegatesChange(next ? [next] : [])}
+          />
+
           <div className="mt-6">
             <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
           </div>
 
-          {/* RULES OF THE DAY — at the TOP (matching golf). Saves on blur; the
-              carved-out exception stays editable in scoring mode (notes, not
-              game-altering) — so it keeps plain canEdit. */}
-          <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} />
+          {/* RULES OF THE DAY — controlled draft slice (was save-on-blur). */}
+          <GameRulesNote
+            tripId={tripId}
+            game={game}
+            canEdit={canEdit}
+            controlled
+            value={draft.rulesForToday ?? ""}
+            onChange={onRulesChange}
+          />
 
-          {/* GAME MANAGEMENT — a labeled peer section + the single Setup/Scoring toggle
-              (owner/delegate only). ZoneHeader supplies the caption, so the panel's own
-              caption is suppressed (hideLabel) to avoid a double label — matching golf. */}
           {canEdit && (
             <>
               <ZoneHeader>Game Management</ZoneHeader>
               <GameManagementPanel
-                mode={scoringEnabled ? "scoring" : "setup"}
+                mode={draft.scoringEnabled ? "scoring" : "setup"}
                 ready={ready}
                 onEnable={onEnable}
                 onDisable={onDisable}
-                pending={busy}
+                pending={saving}
+                staged={staged}
               />
             </>
           )}
 
-          {/* #501: live-game lock banner — the settings below are frozen until the
-              owner/delegate flips the toggle above back to Setup (after the toggle,
-              matching golf). */}
-          {scoringEnabled && canEdit && <ScoringLockBanner />}
-
-          {/* SETTINGS — non-golf's real, different content: Competition Format ("how
-              it's played") + Game Value (points-for-the-match). Locked in scoring mode. */}
+          {/* SETTINGS — Competition Format (Quiet: recalculates nothing) + points (Warned:
+              re-derives). Both editable in every mode; no dimming, no lock. */}
           <ZoneHeader>Settings</ZoneHeader>
-          <CompetitionFormatRow tripId={tripId} game={game} canEdit={settingsEditable} locked={scoringEnabled} onChanged={onChanged} />
-          {/* The points payload, by the competition's scoring model. Locked in scoring —
-              #512 Option B: dim the read-only panel so it reads as frozen. */}
+          <CompetitionFormatRow value={draft.competitionFormat} canEdit={canEdit} onChange={onFormatChange} />
           {scoringModel === "match_play" ? (
-            <div style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
-              <MatchValueStepper tripId={tripId} game={game} canEdit={settingsEditable} onChanged={onChanged} />
-            </div>
+            <MatchValueStepper value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
           ) : (
-            <div style={{ opacity: scoringEnabled ? 0.55 : undefined }}>
-              <FormatPointsPanel tripId={tripId} game={game} canEdit={settingsEditable} />
-            </div>
+            <FormatPointsPanel
+              tripId={tripId}
+              game={game}
+              canEdit={canEdit}
+              controlled={{
+                value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
+                onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
+              }}
+            />
           )}
 
-          {/* Per-game danger zone — owner-only (reset scores / reset settings / delete).
-              Dimmed-header + disabled wholesale in scoring mode (#501, shared treatment)
-              — switch to Setup to manage it. */}
+          {/* Danger Zone — owner-only. Its `disabled` is the ONE deliberate SERVER read
+              (not the draft): reset-scores is immediate surgery and must not unlock off a
+              staged toggle. Everything else on this page follows the draft. */}
           {isOwner && (
             <GameDangerZone
               tripId={tripId}
@@ -173,7 +194,7 @@ export function NonGolfConfigurationView({
               competitionId={competitionId}
               onChanged={onChanged}
               onDeleted={onDeleted}
-              disabled={scoringEnabled}
+              disabled={serverScoringEnabled}
             />
           )}
         </SettingsColumn>
@@ -182,32 +203,17 @@ export function NonGolfConfigurationView({
   );
 }
 
-/** Competition-format picker row — its real home (relocated from the Add/Edit
- *  modal). Opens the shared `FormatSheet`; persists via `games.update`, optimistic
- *  on the `getById` cache, then re-seeds the Live face (faceBootstrap, #10). */
+/** Competition-format picker row — CONTROLLED (P2 draft): opens the shared `FormatSheet`
+ *  and reports the pick to the parent draft. No persistence, no lock (Quiet tier). */
 function CompetitionFormatRow({
-  tripId, game, canEdit, locked, onChanged,
+  value, canEdit, onChange,
 }: {
-  tripId: string; game: GameRow; canEdit: boolean; locked?: boolean; onChanged: () => void;
+  value: CompetitionFormat | null;
+  canEdit: boolean;
+  onChange: (format: CompetitionFormat | null) => void;
 }) {
-  const utils = trpc.useUtils();
-  const update = trpc.games.update.useMutation();
   const [open, setOpen] = useState(false);
-  const label = formatLabel(game.competition_format);
-
-  function pick(key: string) {
-    setOpen(false);
-    const cur = utils.games.getById.getData({ tripId, gameId: game.id });
-    if (cur) utils.games.getById.setData({ tripId, gameId: game.id }, { ...cur, competition_format: key } as typeof cur);
-    update
-      .mutateAsync({ tripId, gameId: game.id, competitionFormat: key as never })
-      .then(() => {
-        utils.games.listByTrip.invalidate({ tripId });
-        if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
-        onChanged();
-      })
-      .catch(() => utils.games.getById.invalidate({ tripId, gameId: game.id }));
-  }
+  const label = formatLabel(value);
 
   return (
     <>
@@ -215,9 +221,8 @@ function CompetitionFormatRow({
         type="button"
         onClick={() => canEdit && setOpen(true)}
         disabled={!canEdit}
-        // #512 Option B: live-locked → dim + a lock icon in place of the chevron.
         className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: locked ? 0.55 : undefined }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         data-testid="row-competition-format"
       >
         <div className="flex min-w-0 flex-col">
@@ -228,46 +233,30 @@ function CompetitionFormatRow({
             {label ?? "Choose how it’s played"}
           </span>
         </div>
-        {locked
-          ? <Lock size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-          : <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />}
+        <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
       </button>
       {open && (
-        <FormatSheet current={game.competition_format} onPick={pick} onClose={() => setOpen(false)} />
+        <FormatSheet
+          current={value}
+          onPick={(key) => { setOpen(false); onChange(key as CompetitionFormat); }}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
 }
 
-/** The single-match game-value stepper (match_play scoring model) — the points
- *  for the one Team-A-vs-B match. It writes `games.points_total`, the SAME value
- *  the leaderboard derives the win/lose/tie award from ([total, 0], tie averaged);
- *  no second points mechanism. Optimistic on `getById`, then re-seeds the board. */
+/** The single-match game-value stepper (match_play scoring model) — CONTROLLED (P2
+ *  draft): the points for the one Team-A-vs-B match (`games.points_total`, the value the
+ *  leaderboard derives win/lose/tie from). Reports to the parent draft; Save persists. */
 function MatchValueStepper({
-  tripId, game, canEdit, onChanged,
+  value: total, canEdit, onChange,
 }: {
-  tripId: string; game: GameRow; canEdit: boolean; onChanged: () => void;
+  value: number | null;
+  canEdit: boolean;
+  onChange: (total: number | null) => void;
 }) {
-  const utils = trpc.useUtils();
-  const setTotalM = trpc.games.setPointsTotal.useMutation();
-  // Controlled straight off the persisted value — the optimistic `setData` below
-  // re-renders the parent's getById subscription with the new total, so there's
-  // no local copy to drift (and no resync effect).
-  const value = game.points_total ?? 1;
-
-  function onChange(v: number) {
-    const cur = utils.games.getById.getData({ tripId, gameId: game.id });
-    if (cur) utils.games.getById.setData({ tripId, gameId: game.id }, { ...cur, points_total: v } as typeof cur);
-    setTotalM
-      .mutateAsync({ tripId, gameId: game.id, total: v })
-      .then(() => {
-        utils.games.listByTrip.invalidate({ tripId });
-        if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
-        onChanged();
-      })
-      .catch(() => utils.games.getById.invalidate({ tripId, gameId: game.id }));
-  }
-
+  const value = total ?? 1;
   return (
     <PointStepper
       label="Game value"
