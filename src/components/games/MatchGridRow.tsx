@@ -59,8 +59,11 @@ export function MatchGridRow({
         <span className="text-center" style={{ fontSize: 10, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
         <div className="min-w-0">{sideB}</div>
         <div className="flex items-center justify-end">{value}</div>
+        {/* The reveal sits on a second grid row spanning the matchup columns (sideA ·
+            vs · sideB). sideA and sideB are equal (1fr), so the CENTER of that span is
+            the vs column — the reveal's own inner centering lands it under "vs". */}
+        {below != null && <div style={{ gridColumn: "2 / 5", marginTop: 4 }}>{below}</div>}
       </div>
-      {below != null && <div style={{ marginTop: 8 }}>{below}</div>}
     </div>
   );
 }
