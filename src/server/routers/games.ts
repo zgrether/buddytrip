@@ -796,8 +796,10 @@ export const gamesRouter = router({
           name: z.string().min(1).max(200),
           rulesForToday: z.string().nullable(),
           scoringEnabled: z.boolean(),
-          entryMode: z.string(),
-          modifiers: z.record(z.string(), z.record(z.string(), z.unknown())),
+          // Match play owns these; non-golf omits them (086/P2) — the RPC preserves
+          // entry_mode and defaults modifiers to {}.
+          entryMode: z.string().optional(),
+          modifiers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
           pointsTotal: z.number().nullable(),
           pointsDistribution: z.unknown().nullable(),
           // competition_format (086) — non-golf's structure label. Optional: only

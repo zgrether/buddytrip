@@ -51,9 +51,15 @@ export interface DraftMatchConfig {
   pointValue: number | null;
 }
 
-/** The whole settings page as one editable object. Every settings row reads and
- *  writes THIS — no row reads `serverMatches` directly (spec §1). */
-export interface ConfigDraft {
+/**
+ * The COMMON base every format's draft shares (P2 §8: three variants over one base,
+ * not one shape). These are the format-agnostic settings — identity, rules, the
+ * points pool, delegates, the visibility flag, and non-golf's structure label. Each
+ * format's draft extends this with its own STRUCTURAL slice: match adds matches +
+ * course + entry mode + modifiers (`ConfigDraft`); non-golf adds nothing
+ * (`NonGolfConfigDraft`); rack/stroke will add groups / participant strokes.
+ */
+export interface BaseConfigDraft {
   /** The game's format id — READ-ONLY context, never edited (so it's excluded from
    *  the dirty check). Drives the points model: a match-play draft derives a
    *  `per_match` even share from the total. */
@@ -67,16 +73,28 @@ export interface ConfigDraft {
   /** A draft FIELD (spec §2.7-2): Save commits the config AND goes live / disables
    *  in one action. Not a separate transaction. */
   scoringEnabled: boolean;
-  /** `games.entry_mode` — "score" (gross entry) vs "outcome" (hole winner). */
-  entryMode: string;
-  modifiers: ModifiersMap;
-  matches: DraftMatchConfig[];
   /** `points_total` — the owner-set pool; the per-match even share is derived. */
   pointsTotal: number | null;
   /** The persisted distribution shape (its `.value` is recomputed on Save for
    *  match play; a `placement` array is authored as-is). Null before any points
    *  are set. */
   pointsDistribution: PointsDistribution | null;
+  /** `game_delegates` user ids (per-game organizers). */
+  delegates: string[];
+}
+
+/** Non-golf's draft — the base with NO structural slice (no matches / course /
+ *  groups). Its whole page is name · delegate · rules · format · points, all Quiet or
+ *  Warned, so there's nothing here a scored game must lock. */
+export type NonGolfConfigDraft = BaseConfigDraft;
+
+/** The MATCH-PLAY variant: the base + the match structural slice. Every settings row
+ *  reads and writes THIS — no row reads `serverMatches` directly (spec §1). */
+export interface ConfigDraft extends BaseConfigDraft {
+  /** `games.entry_mode` — "score" (gross entry) vs "outcome" (hole winner). */
+  entryMode: string;
+  modifiers: ModifiersMap;
+  matches: DraftMatchConfig[];
   course: {
     id: string | null;
     /** `games.back_course_id` — the composed two-nines 18's BACK course (W-9HOLE-01);
@@ -196,8 +214,10 @@ export interface SaveConfigPayload {
   /** `games.competition_format` (086) — non-golf's structure label; null for golf. */
   competitionFormat: CompetitionFormat | null;
   scoringEnabled: boolean;
-  entryMode: string;
-  modifiers: ModifiersMap;
+  /** Match play owns these; a format that doesn't (non-golf) omits them — the RPC
+   *  preserves entry_mode (COALESCE) and defaults modifiers to {}. */
+  entryMode?: string;
+  modifiers?: ModifiersMap;
   pointsTotal: number | null;
   pointsDistribution: PointsDistribution | null;
   courseId: string | null;
@@ -284,35 +304,66 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
     distribution = { type: "per_match", value: evenShare(draft.pointsTotal, overrides, filled.length) };
   }
 
-  // The matches keys ride ONLY on a match-play payload — the RPC gates its matches
-  // block on `payload ? 'matches'`, so omitting them for a non-match format (non-golf
-  // here; rack/stroke in later phases) makes it skip that block instead of running the
-  // clean-replace against an empty set. Course keys stay (null is a harmless no-op for a
-  // course-less format — same value, no COURSE_LOCKED trip).
-  const matchKeys = isMatchPlayFormat(draft.gameTypeId)
-    ? {
-        matches,
-        // ONLY structure gates the clean-replace — a field-only edit (handicap / point
-        // override) reports false and the RPC writes it in place.
-        matchesStructureDirty: baseline ? !matchesStructureEqual(draft.matches, baseline.matches) : true,
-      }
-    : {};
+  return {
+    ...baseDraftToPayload(draft, distribution),
+    entryMode: draft.entryMode,
+    modifiers: draft.modifiers,
+    courseId: draft.course.id,
+    backCourseId: draft.course.backId,
+    scorecardSchema: draft.course.scorecardSchema,
+    matches,
+    // ONLY structure gates the clean-replace — a field-only edit (handicap / point
+    // override) reports false and the RPC writes it in place.
+    matchesStructureDirty: baseline ? !matchesStructureEqual(draft.matches, baseline.matches) : true,
+  };
+}
 
+/** The base fields shared by every format's payload. `distribution` is the caller's
+ *  already-resolved `points_distribution` (match play recomputes its even share; other
+ *  formats pass it through). */
+function baseDraftToPayload(draft: BaseConfigDraft, distribution: PointsDistribution | null): SaveConfigPayload {
   return {
     name: draft.name.trim(),
     rulesForToday: draft.rulesForToday?.trim() || null,
     competitionFormat: draft.competitionFormat,
     scoringEnabled: draft.scoringEnabled,
-    entryMode: draft.entryMode,
-    modifiers: draft.modifiers,
     pointsTotal: draft.pointsTotal,
     pointsDistribution: distribution,
-    courseId: draft.course.id,
-    backCourseId: draft.course.backId,
-    scorecardSchema: draft.course.scorecardSchema,
+    courseId: null,
+    backCourseId: null,
+    scorecardSchema: null,
     delegates: [...draft.delegates].sort(),
-    ...matchKeys,
   };
+}
+
+// ── Non-golf variant ─────────────────────────────────────────────────────────
+
+/** Server snapshot → non-golf draft baseline. The lean variant: no matches, no course
+ *  (`configToDraft` needs those; this doesn't). */
+export function configToNonGolfDraft(game: ConfigGameSnapshot, delegates: string[]): NonGolfConfigDraft {
+  return {
+    gameTypeId: game.game_type_id ?? null,
+    name: game.name ?? "",
+    rulesForToday: game.rules_for_today ?? null,
+    competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    scoringEnabled: game.scoring_enabled ?? false,
+    pointsTotal: game.points_total ?? null,
+    pointsDistribution: game.points_distribution ?? null,
+    delegates: [...delegates].sort(),
+  };
+}
+
+/** Non-golf draft → the atomic Save payload. Base fields ONLY — no `matches` (so the
+ *  RPC skips its matches block), no `entryMode`/`modifiers` (the RPC preserves entry_mode
+ *  and defaults modifiers to {} — both no-ops for a format that owns neither), null
+ *  course. A `placement` distribution is authored, so it passes through untouched. */
+export function nonGolfDraftToPayload(draft: NonGolfConfigDraft): SaveConfigPayload {
+  return baseDraftToPayload(draft, draft.pointsDistribution);
+}
+
+/** Pure whole-page equality for the non-golf draft (the base fields only). */
+export function nonGolfDraftsEqual(a: NonGolfConfigDraft, b: NonGolfConfigDraft): boolean {
+  return baseDraftsEqual(a, b);
 }
 
 // ── Dirty check ──────────────────────────────────────────────────────────────
@@ -371,19 +422,27 @@ function arraysEqual(a: string[], b: string[]): boolean {
  */
 export function configDraftsEqual(a: ConfigDraft, b: ConfigDraft): boolean {
   return (
+    baseDraftsEqual(a, b) &&
+    a.entryMode === b.entryMode &&
+    a.course.id === b.course.id &&
+    a.course.backId === b.course.backId &&
+    canonical(a.modifiers) === canonical(b.modifiers) &&
+    canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
+    matchesEqual(a.matches, b.matches)
+  );
+}
+
+/** The base-field equality every variant shares (name/rules/format/scoring/points/
+ *  delegates). Trimmed name/rules, canonical distribution, order-independent delegates. */
+function baseDraftsEqual(a: BaseConfigDraft, b: BaseConfigDraft): boolean {
+  return (
     a.name.trim() === b.name.trim() &&
     (a.rulesForToday?.trim() || "") === (b.rulesForToday?.trim() || "") &&
     a.competitionFormat === b.competitionFormat &&
     a.scoringEnabled === b.scoringEnabled &&
-    a.entryMode === b.entryMode &&
     a.pointsTotal === b.pointsTotal &&
-    a.course.id === b.course.id &&
-    a.course.backId === b.course.backId &&
-    canonical(a.modifiers) === canonical(b.modifiers) &&
     canonical(a.pointsDistribution) === canonical(b.pointsDistribution) &&
-    canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
-    arraysEqual(a.delegates, b.delegates) &&
-    matchesEqual(a.matches, b.matches)
+    arraysEqual(a.delegates, b.delegates)
   );
 }
 
