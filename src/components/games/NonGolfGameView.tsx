@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -8,12 +8,22 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
+import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
-import { useConfigSync } from "@/hooks/useConfigSync";
+import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
+import {
+  configToNonGolfDraft,
+  nonGolfDraftToPayload,
+  nonGolfDraftsEqual,
+  type NonGolfConfigDraft,
+  type CompetitionFormat,
+} from "@/lib/configDraft";
+import type { PointsDistribution } from "@/lib/pointsDistribution";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -114,15 +124,151 @@ export function NonGolfGameView() {
     return gameCells[0]?.teamId;
   }, [gameCells]);
 
+  // SERVER scoring state — drives which PAGE renders (setup placeholder vs scoreboard):
+  // the game's actual visibility follows the server, not a staged toggle. The settings
+  // toggle reads the DRAFT (configDraft.scoringEnabled) + `staged` instead (below).
   const scoringEnabled = (game as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
-  // Non-golf is "ready" to score once points are configured (mirrors the server
-  // `assertGameReady` manual branch: a distribution shape or an owner-set total).
-  const ready = !!game && (game.points_total != null || game.points_distribution != null);
   const typeDef = GAME_TYPES.find((t) => t.id === game?.game_type_id);
   const typeName = typeDef?.name ?? "Game";
 
-  const enableScoring = trpc.games.enableScoring.useMutation();
-  const disableScoring = trpc.games.disableScoring.useMutation();
+  // ── Draft-then-save (P2 non-golf flip) ──────────────────────────────────────
+  // The WHOLE settings page is ONE composite draft (name / delegate / rules / format /
+  // points / the scoring flag), committed atomically via save_game_config on Save —
+  // NOTHING self-persists. A LEAN variant (NonGolfConfigDraft: no matches / course /
+  // groupings), mirroring the match page's model. There are NO locks: non-golf has no
+  // destroys-tier setting (the thesis), so the page is fully editable even while live —
+  // an edit stages, Save commits it.
+  const orgQ = trpc.games.listOrganizers.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { enabled: !!tripId && !!urlGameId },
+  );
+  const serverDelegates = useMemo(
+    () => ((orgQ.data as { user_id: string }[] | undefined) ?? []).map((d) => d.user_id),
+    [orgQ.data],
+  );
+
+  // Draft slices — a scalar sentinel means "untouched, read the server mirror". name/
+  // rules/scoring/delegates use null; format/points can BE null, so they use undefined.
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [rulesDraft, setRulesDraft] = useState<string | null>(null);
+  const [scoringDraft, setScoringDraft] = useState<boolean | null>(null);
+  const [formatDraft, setFormatDraft] = useState<CompetitionFormat | null | undefined>(undefined);
+  const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null | undefined>(undefined);
+  const [pointsDistDraft, setPointsDistDraft] = useState<PointsDistribution | null | undefined>(undefined);
+  const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
+
+  const serverConfigDraft = useMemo<NonGolfConfigDraft>(
+    () => configToNonGolfDraft((game ?? {}) as Parameters<typeof configToNonGolfDraft>[0], serverDelegates),
+    [game, serverDelegates],
+  );
+  const anyTouched =
+    nameDraft !== null || rulesDraft !== null || scoringDraft !== null ||
+    formatDraft !== undefined || pointsTotalDraft !== undefined || pointsDistDraft !== undefined ||
+    delegatesDraft !== null;
+
+  const configDraft = useMemo<NonGolfConfigDraft>(
+    () => ({
+      ...serverConfigDraft,
+      name: nameDraft ?? serverConfigDraft.name,
+      rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
+      scoringEnabled: scoringDraft ?? serverConfigDraft.scoringEnabled,
+      competitionFormat: formatDraft !== undefined ? formatDraft : serverConfigDraft.competitionFormat,
+      pointsTotal: pointsTotalDraft !== undefined ? pointsTotalDraft : serverConfigDraft.pointsTotal,
+      pointsDistribution: pointsDistDraft !== undefined ? pointsDistDraft : serverConfigDraft.pointsDistribution,
+      delegates: delegatesDraft ?? serverConfigDraft.delegates,
+    }),
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
+  );
+
+  // The server config hash — ONE value fed to BOTH the outbox base and Save's baseHash
+  // (P1: recover-vs-discard and conflict-vs-allow must agree on the base).
+  const hashQ = trpc.games.configHash.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { enabled: !!tripId && !!urlGameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
+  );
+  const serverHash = hashQ.data?.hash;
+
+  // Frozen baseline (+hash): the dirty reference AND the concurrency base, frozen the
+  // moment the draft is touched so the ~20s poll can't move it mid-edit.
+  const [baseline, setBaseline] = useState<{ draft: NonGolfConfigDraft; hash: string } | null>(null);
+  useEffect(() => {
+    if (anyTouched) return;
+    if (!game || !serverHash) return;
+    setBaseline((prev) =>
+      prev && prev.hash === serverHash && nonGolfDraftsEqual(prev.draft, serverConfigDraft)
+        ? prev
+        : { draft: serverConfigDraft, hash: serverHash },
+    );
+  }, [anyTouched, serverConfigDraft, serverHash, game]);
+
+  // Dirty gated on anyTouched (P1: kills the post-save transient where a refetched
+  // server draft briefly ≠ the stale baseline before it re-seeds).
+  const dirty = anyTouched && !!baseline && !nonGolfDraftsEqual(configDraft, baseline.draft);
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => { if (dirty) setJustSaved(false); }, [dirty]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveConfigM = trpc.games.saveConfig.useMutation();
+
+  // Hard-teardown durability (localStorage), the shape-agnostic outbox. Base = the SAME
+  // serverHash the baseline freezes on, so restore-vs-discard and Save's conflict check
+  // can't disagree.
+  const draftBundle = useMemo(
+    () => ({ name: nameDraft, rules: rulesDraft, scoring: scoringDraft, format: formatDraft, pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, delegates: delegatesDraft }),
+    [nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
+  );
+  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<typeof draftBundle>({
+    view: "nongolf",
+    gameId: urlGameId,
+    draft: draftBundle,
+    touched: anyTouched,
+    serverFingerprint: serverHash ?? "",
+    enabled: !!urlGameId && canEdit && !!serverHash,
+  });
+
+  function resetSlices() {
+    setNameDraft(null); setRulesDraft(null); setScoringDraft(null);
+    setFormatDraft(undefined); setPointsTotalDraft(undefined); setPointsDistDraft(undefined);
+    setDelegatesDraft(null);
+  }
+  const applyBundle = useCallback((b: typeof draftBundle) => {
+    if (b.name !== null) setNameDraft(b.name);
+    if (b.rules !== null) setRulesDraft(b.rules);
+    if (b.scoring !== null) setScoringDraft(b.scoring);
+    if (b.format !== undefined) setFormatDraft(b.format);
+    if (b.pointsTotal !== undefined) setPointsTotalDraft(b.pointsTotal);
+    if (b.pointsDist !== undefined) setPointsDistDraft(b.pointsDist);
+    if (b.delegates !== null) setDelegatesDraft(b.delegates);
+  }, []);
+  const recoveredRef = useRef(false);
+  useEffect(() => {
+    if (recoveredRef.current || !serverHash) return;
+    recoveredRef.current = true;
+    const r = recoverDraft() as typeof draftBundle | null;
+    if (r) applyBundle(r);
+  }, [serverHash, recoverDraft, applyBundle]);
+
+  async function handleSaveConfig() {
+    if (!tripId || !urlGameId || !baseline || !dirty || saveConfigM.isPending) return;
+    setSaveError(null);
+    try {
+      await saveConfigM.mutateAsync({ tripId, gameId: urlGameId, baseHash: baseline.hash, payload: nonGolfDraftToPayload(configDraft) });
+    } catch (e) {
+      setSaveError((e as { message?: string })?.message || "Couldn’t save your changes.");
+      return;
+    }
+    clearDraftOutbox();
+    resetSlices();
+    setJustSaved(true);
+    await refreshGame();
+    void hashQ.refetch();
+    utils.games.listOrganizers.invalidate({ tripId, gameId: urlGameId });
+  }
+  function handleCancelConfig() {
+    resetSlices();
+    setSaveError(null);
+    setJustSaved(false);
+    clearDraftOutbox();
+  }
 
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
@@ -139,26 +285,11 @@ export function NonGolfGameView() {
       utils.games.listByTrip.invalidate({ tripId });
     }
   }
-  async function handleEnable() {
-    if (!tripId || !urlGameId) return;
-    try {
-      await enableScoring.mutateAsync({ tripId, gameId: urlGameId });
-      await refreshGame();
-      // #512 correction: STAY on the settings page — the toggle flips in place. The
-      // back arrow still returns to the game page via the openConfig history entry.
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
-  async function handleDisable() {
-    if (!tripId || !urlGameId) return;
-    try {
-      await disableScoring.mutateAsync({ tripId, gameId: urlGameId });
-      await refreshGame();
-    } catch {
-      // surfaced via the global error toast
-    }
-  }
+  // The Setup/Scoring toggle is now a DRAFT edit — staging scoring_enabled; Save commits
+  // it WITH the config in one atomic RPC (go-live readiness is re-asserted server-side
+  // inside the tx, so the client gate can't be bypassed).
+  function handleEnable() { setScoringDraft(true); }
+  function handleDisable() { setScoringDraft(false); }
 
   // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear)
   // instead of a second header. Non-golf has no focused entry surface (posted
@@ -215,11 +346,30 @@ export function NonGolfGameView() {
         isOwner={isOwner}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
-        scoringEnabled={scoringEnabled}
-        ready={ready}
+        // Draft-then-save: the whole page is controlled off configDraft; Save commits.
+        draft={configDraft}
+        onNameChange={setNameDraft}
+        onRulesChange={setRulesDraft}
+        onDelegatesChange={setDelegatesDraft}
+        onFormatChange={setFormatDraft}
+        onPointsTotalChange={setPointsTotalDraft}
+        onPointsDistChange={setPointsDistDraft}
+        // The toggle reads the DRAFT; `staged` = draft ≠ the live server flag.
+        serverScoringEnabled={scoringEnabled}
+        ready={configDraft.pointsTotal != null || configDraft.pointsDistribution != null}
         onEnable={handleEnable}
         onDisable={handleDisable}
-        busy={enableScoring.isPending || disableScoring.isPending}
+        saving={saveConfigM.isPending}
+        saveBar={
+          <SettingsSaveBar
+            dirty={dirty}
+            saving={saveConfigM.isPending}
+            justSaved={justSaved}
+            error={saveError}
+            onSave={() => void handleSaveConfig()}
+            onCancel={handleCancelConfig}
+          />
+        }
       />
     );
   }
