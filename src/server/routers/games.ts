@@ -42,7 +42,13 @@ async function readGameConfigHash(
   const [gameRes, partsRes, groupsRes, matchesRes, delegatesRes] = await Promise.all([
     supabase.from("games").select(GAME_CONFIG_COLS).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
     supabase.from("game_participants").select("user_id, play_group_id, team_id, handicap_strokes").eq("game_id", gameId).order("user_id", { ascending: true }),
-    supabase.from("play_groups").select("id, display_name, handicap_strokes").eq("game_id", gameId).order("id", { ascending: true }),
+    // `tee_time` MUST be selected (085) — the FOURTH "everything the RPC writes must be
+    // in the hash" instance (after .from("matches"), game_delegates, point_value).
+    // save_game_config's groups clean-replace writes play_groups.tee_time; without it a
+    // tee-time-only change would pass the concurrency check and never propagate
+    // cross-device. Semantic content, so no churn trap (unlike created_at, which stays
+    // out — a clean-replace re-mints it, and `id`, on a REAL grouping change only).
+    supabase.from("play_groups").select("id, display_name, handicap_strokes, tee_time").eq("game_id", gameId).order("id", { ascending: true }),
     // `game_matches` — NOT "matches" (no such relation exists). The old spelling
     // errored on every call and, because only gameRes.error was checked, the error
     // was swallowed and `[]` was hashed: pairings never contributed to the
@@ -780,18 +786,41 @@ export const gamesRouter = router({
           backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),
           delegates: z.array(z.string()),
-          matches: z.array(
-            z.object({
-              matchNumber: z.number().int(),
-              playersPerSide: z.union([z.literal(1), z.literal(2)]),
-              a: z.array(z.string()),
-              b: z.array(z.string()),
-              strokesA: z.number().int(),
-              strokesB: z.number().int(),
-              pointValue: z.number().nullable(),
-            })
-          ),
-          matchesStructureDirty: z.boolean(),
+          // matches — match play only. Optional (085): a rack/stroke/non-golf payload
+          // omits it, and the RPC gates the whole matches block on the key's presence,
+          // so a missing `matches` no longer defaults into the clean-replace.
+          matches: z
+            .array(
+              z.object({
+                matchNumber: z.number().int(),
+                playersPerSide: z.union([z.literal(1), z.literal(2)]),
+                a: z.array(z.string()),
+                b: z.array(z.string()),
+                strokesA: z.number().int(),
+                strokesB: z.number().int(),
+                pointValue: z.number().nullable(),
+              })
+            )
+            .optional(),
+          matchesStructureDirty: z.boolean().optional(),
+          // groups — rack GROUPINGS (structure): membership + name + tee_time. Present
+          // only for rack. `groupsStructureDirty` gates the clean-replace vs skip.
+          groups: z
+            .array(
+              z.object({
+                name: z.string().max(60).optional(),
+                teeTime: z.string().max(5).nullable().optional(), // "HH:MM"
+                userIds: z.array(z.string().min(1)).min(1).max(6),
+              })
+            )
+            .max(12)
+            .optional(),
+          groupsStructureDirty: z.boolean().optional(),
+          // participants — per-participant handicap strokes (FIELD, in-place). Present
+          // for rack + stroke; the RPC updates existing game_participants by user_id.
+          participants: z
+            .array(z.object({ userId: z.string().min(1), strokes: z.number().int() }))
+            .optional(),
         }),
       })
     )
@@ -829,9 +858,15 @@ export const gamesRouter = router({
         // wrong without telling them what to do about it. Kept DISTINCT from each
         // other so the banner names the right cause (matchups vs course).
         if (msg.includes("HAS_SCORES")) {
+          // Pass through the RPC's own actionable copy so the noun is right —
+          // "matchups" for match play, "groupings" for rack (085). Both name the
+          // Reset-scores affordance; fall back to the match wording defensively.
+          const detail = msg.split("HAS_SCORES:")[1]?.trim();
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "This game already has scores. Reset scores in the game's Danger zone before changing its matchups.",
+            message:
+              detail ||
+              "This game already has scores. Reset scores in the game's Danger zone before changing its matchups.",
           });
         }
         if (msg.includes("COURSE_LOCKED")) {
@@ -864,14 +899,26 @@ export const gamesRouter = router({
         }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Save failed: ${msg}` });
       }
-      // 3 · Re-derive results. A FIELD edit (handicap / point override) on a scored
-      //     game changes a recompute INPUT, and the RPC only WRITES — plpgsql can't
-      //     call the shared JS engine (buildDecided/matchState/glorious). Run it here,
-      //     exactly as matches.setHandicap / setPointValue do (skipComplete freezes a
-      //     complete match). Cheap no-op when no scores exist (early-returns) or on a
-      //     non-match game (no game_matches to process), so it's safe to run for every
-      //     save rather than trying to detect "was this a field change."
-      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+      // 3 · Re-derive results. A FIELD edit (handicap / point override / rack strokes)
+      //     on a scored game changes a recompute INPUT, and the RPC only WRITES —
+      //     plpgsql can't call the shared JS engine. Run it here, DATA-DRIVEN on the
+      //     format's result_strategy (CLAUDE.md #8), exactly as playGroups.setHandicap /
+      //     setParticipantStrokes do. Match play carries its own freeze boundary via
+      //     skipComplete; rack/stroke have no such option, so gate them on status (a
+      //     complete/frozen game is never rewritten — same guard setParticipantStrokes
+      //     uses). Cheap no-op when no scores exist (the computes early-return).
+      const { data: g } = await ctx.supabase
+        .from("games")
+        .select("game_type_id, status")
+        .eq("id", input.gameId)
+        .maybeSingle();
+      const strategy = getGameTypeDefinition(g?.game_type_id as string)?.resultStrategy;
+      if (strategy === "match_play") {
+        await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+      } else if ((g?.status as string | undefined) !== "complete") {
+        if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
+        else if (strategy === "stroke_total") await computeStrokePlayResults(ctx.supabase, input.gameId);
+      }
       return { ok: true };
     }),
 

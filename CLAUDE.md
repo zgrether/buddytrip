@@ -269,7 +269,15 @@ These patterns have been established through prior work. Follow them exactly —
     unconfirmed local cells (`protectedKeys`) — active enterer wins, dovetailing
     with the outbox (#15). **Any new config field must be included in the
     `configHash` input, or mid-round changes to it won't propagate to other
-    devices.**
+    devices.** This is now MECHANICAL, not remembered: the hash-invariant guard
+    (`games.saveConfig.p2.test.ts`, table-driven) asserts, per field the RPC
+    writes, that the hash MOVES on a real change and does NOT churn on an
+    idempotent re-write. **Add a field to `save_game_config` → add a row to that
+    table.** Four fields went silent before the guard existed
+    (`.from("matches")`, `game_delegates`, `point_value`/`handicap_strokes`,
+    `play_groups.tee_time`) — three caught only because someone thought to ask.
+    Hash semantic content ONLY, never re-minted provenance (`created_at`,
+    `granted_by`) or a `id` re-minted by a clean-replace on an unchanged set.
 17. **Modifier config persists only on Game-Modifiers-row COLLAPSE, not
     per-click.** The Settings "Modifiers" accordion row buffers edits locally
     while expanded and writes them to `games.modifiers` only when the row
