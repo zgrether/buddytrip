@@ -28,7 +28,8 @@ import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import type { SidePlayer } from "@/components/games/MatchSides";
 import { DragHandle } from "@/components/games/DragHandle";
-import { RowNumber } from "@/components/games/RowNumber";
+import { MatchNumberBadge } from "@/components/games/MatchNumberBadge";
+import { SegmentedToggle } from "@/components/games/SegmentedToggle";
 import { PlayerChip } from "@/components/games/PlayerChip";
 import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
@@ -2799,24 +2800,10 @@ function MatchSetup({
               )}
               {/* grab — far left, away from the × (reorder isn't next to remove). */}
               <DragHandle onMouseDown={() => setArmedIdx(i)} onMouseUp={() => setArmedIdx(null)} />
-              {/* # — the table index column (separate from grab). A small shape tag
-                  sits under it so a mixed game's 1v1 vs 2v2 cards read at a glance. */}
-              <div className="flex flex-col items-center gap-1">
-                <RowNumber number={i + 1} />
-                <span
-                  style={{
-                    fontSize: 8,
-                    fontWeight: 800,
-                    letterSpacing: "0.03em",
-                    padding: "1px 4px",
-                    borderRadius: 4,
-                    color: d.playersPerSide === 2 ? "#c4b5fd" : "#93c5fd",
-                    background: d.playersPerSide === 2 ? "rgba(167,139,250,0.14)" : "rgba(96,165,250,0.14)",
-                  }}
-                >
-                  {d.playersPerSide === 2 ? "2V2" : "1V1"}
-                </span>
-              </div>
+              {/* # — the table index column (separate from grab), with a 1V1/2V2 shape
+                  tag beneath (the shared MatchNumberBadge, also used by Point
+                  Distribution + Handicaps so the leading column reads the same). */}
+              <MatchNumberBadge number={i + 1} playersPerSide={d.playersPerSide} />
               {sideSlots(d.a, i, "a", d.playersPerSide)}
               <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
               {sideSlots(d.b, i, "b", d.playersPerSide)}
@@ -2930,44 +2917,18 @@ function EntryModeRow({
       locked={locked}
       testId="row-entry-mode"
       control={
-        <div className="flex" style={{ gap: 4, padding: 4, borderRadius: 10, background: "var(--color-bt-card-raised)" }}>
-          <EntryModeSegment label="Score" active={entryMode === "score"} onClick={() => setMode("score")} disabled={disabled} testId="entry-mode-score" />
-          <EntryModeSegment label="Outcome" active={entryMode === "outcome"} onClick={() => setMode("outcome")} disabled={disabled} testId="entry-mode-outcome" />
-        </div>
+        <SegmentedToggle
+          value={entryMode}
+          options={[
+            { value: "score", label: "Score", testId: "entry-mode-score" },
+            { value: "outcome", label: "Outcome", testId: "entry-mode-outcome" },
+          ]}
+          onChange={setMode}
+          disabled={disabled}
+          testId="entry-mode-toggle"
+        />
       }
     />
-  );
-}
-
-function EntryModeSegment({
-  label,
-  active,
-  onClick,
-  disabled,
-  testId,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  disabled: boolean;
-  testId: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed"
-      style={{
-        background: active ? "var(--color-bt-base)" : "transparent",
-        color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-        border: active ? "1px solid var(--color-bt-border)" : "1px solid transparent",
-        opacity: disabled && !active ? 0.6 : 1,
-      }}
-      data-testid={testId}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -3030,6 +2991,7 @@ function HandicapsSection({
           b={{ players: sidePlayers(d.b), name: sideName(d.b) }}
           value={d.handicap}
           matchNumber={i + 1}
+          playersPerSide={d.playersPerSide}
           isFirst={idx === 0}
           onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
         />

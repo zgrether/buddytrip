@@ -173,6 +173,7 @@ export function MatchPointsRow({
           <MatchGridRow
             key={m.id}
             number={m.number}
+            playersPerSide={m.aPlayers.length}
             isFirst={idx === 0}
             sideA={<SideChips players={m.aPlayers} />}
             sideB={<SideChips players={m.bPlayers} />}

@@ -79,11 +79,13 @@ interface RelHandicapControlProps {
   /** The row's match number (shared MatchGridRow number column — always shown so
    *  Handicaps aligns with Matches / Point Distribution down the page). */
   matchNumber: number;
+  /** Drives the 1V1/2V2 shape tag under the number (shared MatchNumberBadge). */
+  playersPerSide: number;
   /** No top hairline on the first row (MatchGridRow delimits BETWEEN matches). */
   isFirst?: boolean;
 }
 
-export function RelHandicapControl({ a, b, value, onChange, matchNumber, isFirst }: RelHandicapControlProps) {
+export function RelHandicapControl({ a, b, value, onChange, matchNumber, playersPerSide, isFirst }: RelHandicapControlProps) {
   const { side, n, even, caption, showStepper } = relHandicapView(value, a.name, b.name);
 
   // Selecting a player keeps the current magnitude (min 1) and points it that way.
@@ -108,6 +110,7 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber, isFirst
   return (
     <MatchGridRow
       number={matchNumber}
+      playersPerSide={playersPerSide}
       isFirst={isFirst}
       testId="handicap-row"
       sideA={
