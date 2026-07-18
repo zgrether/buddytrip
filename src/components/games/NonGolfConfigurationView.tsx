@@ -1,19 +1,20 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { Check, Hash, Scale } from "lucide-react";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
+import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { Stepper } from "@/components/games/Stepper";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
 import {
-  PointStepper,
-  FormatSheet,
+  COMP_FORMATS,
   formatLabel,
   fmtValue,
   type GameRow,
@@ -100,6 +101,9 @@ export function NonGolfConfigurationView({
   // never scoring_enabled. `ScoringLockBanner` is gone; the format-row/points dimming and
   // the `settingsEditable` freeze are gone with it.
   const staged = draft.scoringEnabled !== serverScoringEnabled;
+  // Single-open accordion for the SETTINGS panels (Competition Format dropdown / the
+  // points-model Point Distribution).
+  const [openAccordion, setOpenAccordion] = useState<null | "format" | "distribution">(null);
   return (
     <SettingsSlideOver
       title={draft.name || "Game settings"}
@@ -131,27 +135,17 @@ export function NonGolfConfigurationView({
               matching Match Play's canonical order (cross-format layout consistency
               pass). */}
 
-          {/* GAME MANAGEMENT (Phase 2): Total Points (1st) → Game State (2nd). Non-golf
-              has no course, so the canonical trio is just these two. Points moved UP from
-              the old SETTINGS zone. (The full points-panel redesign is Phase 4.) */}
+          {/* GAME MANAGEMENT: Total Points (1st) → Game State (2nd). Non-golf has no
+              course, so the canonical trio is just these two. P4 standardized the Total
+              Points row to the SAME ChecklistRow + inline stepper the golf formats use
+              (was a bespoke PointStepper block). */}
           <ZoneHeader>Game Management</ZoneHeader>
-          {/* Total Points (1st) — by scoring model: a single match value, or the
-              value + placement split. */}
+          {/* Total Points (1st) — by scoring model: a single match value (win/draw), or
+              the owner-set pool (the placement split is its own row in SETTINGS). */}
           {scoringModel === "match_play" ? (
-            <MatchValueStepper value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
+            <MatchValueRow value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
           ) : (
-            <FormatPointsPanel
-              game={game}
-              canEdit={canEdit}
-              // Non-golf has no outer "Total Points" ChecklistRow (unlike Stroke, which
-              // wraps this same panel) — this panel's own label IS the points row's
-              // title here, so it's set explicitly for cross-format consistency.
-              pointsLabel="Total Points"
-              controlled={{
-                value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
-                onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
-              }}
-            />
+            <TotalPoolRow value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
           )}
           {/* Game State (2nd) — the Setup/Scoring toggle (owner/delegate only). */}
           {canEdit && (
@@ -165,10 +159,40 @@ export function NonGolfConfigurationView({
             />
           )}
 
-          {/* SETTINGS — Competition Format (Quiet: recalculates nothing). Points moved to
-              GAME MANAGEMENT above (Phase 2). Editable in every mode; no dimming, no lock. */}
+          {/* SETTINGS — Competition Format (an inline dropdown now, P4) + the points-model
+              Point Distribution. Both Quiet/Warned; editable in every mode, no lock. */}
           <ZoneHeader>Settings</ZoneHeader>
-          <CompetitionFormatRow value={draft.competitionFormat} canEdit={canEdit} onChange={onFormatChange} />
+          <CompetitionFormatDropdown
+            value={draft.competitionFormat}
+            canEdit={canEdit}
+            onChange={onFormatChange}
+            open={openAccordion === "format"}
+            onToggle={() => setOpenAccordion((o) => (o === "format" ? null : "format"))}
+          />
+          {/* Point Distribution — points model only (the placement split). Match_play's
+              single value carries no distribution. Reads its total from the DRAFT. */}
+          {scoringModel === "points" && (
+            <ChecklistRow
+              icon={Scale}
+              title="Point Distribution"
+              subtitle={draft.pointsDistribution?.type === "placement" ? "Custom placement split — tap to edit" : "Even — tap to set a placement split"}
+              state={draft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
+              disabled={!canEdit}
+              expanded={openAccordion === "distribution"}
+              onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+              testId="row-point-distribution"
+            >
+              <FormatPointsPanel
+                game={game}
+                canEdit={canEdit}
+                part="distribution"
+                controlled={{
+                  value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
+                  onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
+                }}
+              />
+            </ChecklistRow>
+          )}
 
           {/* RULES OF THE DAY — relocated to the BOTTOM (after Settings): a draft slice,
               QUIET tier — matching Match Play's canonical order (cross-format layout
@@ -197,53 +221,77 @@ export function NonGolfConfigurationView({
   );
 }
 
-/** Competition-format picker row — CONTROLLED (P2 draft): opens the shared `FormatSheet`
- *  and reports the pick to the parent draft. No persistence, no lock (Quiet tier). */
-function CompetitionFormatRow({
-  value, canEdit, onChange,
+/** Competition Format — an INLINE dropdown panel (P4; was the `FormatSheet` modal). Lists
+ *  every format so the direction is legible, but only **Head-to-Head / Match** is
+ *  selectable — the rest are disabled placeholders ("Soon") since their engines aren't
+ *  built (DO-NOT: don't implement them). H2H is the DEFAULT: a null value displays as H2H
+ *  selected (non-golf already runs as H2H when unset), so this reserves the shape without
+ *  a creation-time write. CONTROLLED — reports the pick to the parent draft; Save persists. */
+function CompetitionFormatDropdown({
+  value, canEdit, onChange, open, onToggle,
 }: {
   value: CompetitionFormat | null;
   canEdit: boolean;
   onChange: (format: CompetitionFormat | null) => void;
+  open: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const label = formatLabel(value);
-
+  // H2H is the default — a null value reads as head_to_head (the only live option).
+  const effective: CompetitionFormat = value ?? "head_to_head";
+  const RowIcon = COMP_FORMATS.find((f) => f.key === effective)?.Icon ?? Hash;
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => canEdit && setOpen(true)}
-        disabled={!canEdit}
-        className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        data-testid="row-competition-format"
-      >
-        <div className="flex min-w-0 flex-col">
-          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Competition format
-          </span>
-          <span className="truncate text-sm" style={{ color: label ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", marginTop: 2 }}>
-            {label ?? "Choose how it’s played"}
-          </span>
-        </div>
-        <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-      </button>
-      {open && (
-        <FormatSheet
-          current={value}
-          onPick={(key) => { setOpen(false); onChange(key as CompetitionFormat); }}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
+    <ChecklistRow
+      icon={RowIcon}
+      title="Competition Format"
+      subtitle={formatLabel(effective) ?? "Head-to-Head / Match"}
+      state="resolved"
+      disabled={!canEdit}
+      expanded={open}
+      onToggle={onToggle}
+      testId="row-competition-format"
+    >
+      <div className="flex flex-col gap-1.5" data-testid="competition-format-options">
+        {COMP_FORMATS.map((f) => {
+          const enabled = f.key === "head_to_head";
+          const selected = effective === f.key;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              disabled={!enabled || !canEdit}
+              onClick={() => enabled && onChange(f.key as CompetitionFormat)}
+              className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left disabled:cursor-not-allowed"
+              style={{
+                background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+                border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+                opacity: enabled ? 1 : 0.5,
+              }}
+            >
+              <f.Icon size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{f.label}</span>
+                  {enabled
+                    ? selected && <Check size={13} style={{ color: "var(--color-bt-accent)", marginLeft: "auto" }} />
+                    : <span className="ml-auto rounded px-1 py-0.5 text-[9px] font-bold uppercase" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}>Soon</span>}
+                </div>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{f.desc}</p>
+              </div>
+            </button>
+          );
+        })}
+        <p className="px-1 pt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          However it runs, you enter the result by hand — the other formats are coming.
+        </p>
+      </div>
+    </ChecklistRow>
   );
 }
 
-/** The single-match game-value stepper (match_play scoring model) — CONTROLLED (P2
- *  draft): the points for the one Team-A-vs-B match (`games.points_total`, the value the
- *  leaderboard derives win/lose/tie from). Reports to the parent draft; Save persists. */
-function MatchValueStepper({
+/** Total Points — the single game value (match_play scoring model). Standard ChecklistRow
+ *  + inline stepper (P4, matching the golf formats), with the win/draw derivation as the
+ *  subtitle. CONTROLLED — reports `games.points_total` to the parent draft; Save persists. */
+function MatchValueRow({
   value: total, canEdit, onChange,
 }: {
   value: number | null;
@@ -252,20 +300,60 @@ function MatchValueStepper({
 }) {
   const value = total ?? 1;
   return (
-    <PointStepper
-      label="Total Points"
-      caption="POINTS FOR THE MATCH"
-      value={value}
-      onChange={canEdit ? onChange : () => {}}
-      footer={
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Win / Draw
-          </span>
-          <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-bt-text)" }}>
-            Win {fmtValue(value)} · Draw {fmtValue(value / 2)} each
-          </span>
-        </div>
+    <ChecklistRow
+      icon={Hash}
+      title="Total Points"
+      subtitle={<>Win {fmtValue(value)} · Draw {fmtValue(value / 2)} each</>}
+      state={value > 0 ? "resolved" : "empty"}
+      disabled={!canEdit}
+      testId="row-total-points"
+      control={
+        <Stepper
+          size="inline"
+          value={value}
+          min={0}
+          onChange={canEdit ? (v) => onChange(v) : () => {}}
+          disabled={!canEdit}
+          testId="total-points-stepper"
+        />
+      }
+    />
+  );
+}
+
+/** Total Points — the owner-set pool (points scoring model). Standard ChecklistRow +
+ *  inline stepper (P4); the placement split is its own Point Distribution row in SETTINGS.
+ *  CONTROLLED — reports `games.points_total` to the parent draft; Save persists. */
+function TotalPoolRow({
+  value: total, canEdit, onChange,
+}: {
+  value: number | null;
+  canEdit: boolean;
+  onChange: (total: number | null) => void;
+}) {
+  const value = total ?? 8;
+  return (
+    <ChecklistRow
+      icon={Hash}
+      title="Total Points"
+      subtitle={
+        <>
+          Points for this game:{" "}
+          <span style={{ color: value > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{value}</span>
+        </>
+      }
+      state={value > 0 ? "resolved" : "empty"}
+      disabled={!canEdit}
+      testId="row-total-points"
+      control={
+        <Stepper
+          size="inline"
+          value={value}
+          min={0}
+          onChange={canEdit ? (v) => onChange(v) : () => {}}
+          disabled={!canEdit}
+          testId="total-points-stepper"
+        />
       }
     />
   );

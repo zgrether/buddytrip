@@ -78,7 +78,7 @@ const CATEGORY_META: Record<string, { label: string; Icon: LucideIcon }> = {
   other: { label: "Other", Icon: CATEGORY_ICONS.other },
 };
 
-const COMP_FORMATS = [
+export const COMP_FORMATS = [
   { key: "head_to_head", label: "Head-to-Head / Match", desc: "One-off matchup, winner takes the points.", Icon: Swords },
   { key: "bracket_se", label: "Bracket — Single Elimination", desc: "Lose once, you're out.", Icon: ListTree },
   { key: "bracket_de", label: "Bracket — Double Elimination", desc: "Two lives — a losers' bracket.", Icon: ListTree },
