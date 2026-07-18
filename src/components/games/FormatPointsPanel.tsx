@@ -25,7 +25,7 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * is gone — every render site is controlled.)
  */
 export function FormatPointsPanel({
-  game, canEdit, matchCount, controlled,
+  game, canEdit, matchCount, controlled, pointsLabel = "Point value",
 }: {
   game: GameRow;
   canEdit: boolean;
@@ -40,6 +40,12 @@ export function FormatPointsPanel({
     value: { total: number | null; distribution: PointsDistribution | null };
     onChange: (total: number | null, distribution: PointsDistribution | null) => void;
   };
+  /** The placement-branch PointStepper's field label. Defaults to "Point value" (its
+   *  existing text — used as-is by Stroke, whose OUTER "Total Points" ChecklistRow
+   *  already titles this panel, so the inner control keeps its more specific label).
+   *  Non-Golf has no such outer wrapper — this panel's own label IS its points row's
+   *  title there, so it passes "Total Points" explicitly (cross-format consistency). */
+  pointsLabel?: string;
 }) {
   const type = GAME_TYPES.find((t) => t.id === game.game_type_id);
   const isMatchPlay = type?.resultStrategy === "match_play" || type?.resultStrategy === "rack_n_stack";
@@ -130,7 +136,7 @@ export function FormatPointsPanel({
       ) : (
         <>
           <PointStepper
-            label="Point value"
+            label={pointsLabel}
             caption="POINTS FOR THIS GAME"
             value={total}
             onChange={readOnly ? () => {} : onTotal}
