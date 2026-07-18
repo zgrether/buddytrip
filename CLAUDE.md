@@ -520,3 +520,15 @@ snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 3. Committed with a clear message
 4. No TypeScript errors (`npx tsc --noEmit` passes)
 5. No console errors in the browser
+
+## Local Dev Troubleshooting
+
+**Stale `.next` / Turbopack cache replays phantom parse errors — `rm -rf .next` and
+restart the dev server.** After a heavy edit session on a large component (e.g.
+`MatchGameView.tsx`), the dev server can surface persistent syntax/parse errors whose
+line numbers are OFF (usually off-by-one, or pointing at code you already changed) while
+`npx tsc --noEmit` and `eslint` are both CLEAN. That mismatch — the compiler is happy but
+the dev overlay isn't — is the tell that the Turbopack/`.next` cache is stale, NOT that
+your code is broken. Fix: stop the dev server, `rm -rf .next`, start it again. This has
+recurred every heavy-edit session; treat it as a known cache-staleness quirk, not a real
+error to chase. (Trust `tsc`/`eslint` over the dev overlay when they disagree.)

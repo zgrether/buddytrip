@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
@@ -10,6 +10,7 @@ import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
+import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
 
@@ -29,7 +30,6 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * once rack + stroke — its only callers — both converted.)
  */
 export function GameConfigurationView({
-  subtitle,
   onBack,
   tripId,
   competitionId,
@@ -50,7 +50,6 @@ export function GameConfigurationView({
   onEnable,
   onDisable,
   busy,
-  hideHeader = false,
   serverScoringEnabled,
   draftScoringEnabled,
   nameValue,
@@ -68,7 +67,6 @@ export function GameConfigurationView({
   placementPoints,
   saveBar,
 }: {
-  subtitle: string;
   onBack: () => void;
   tripId: string;
   competitionId: string | null;
@@ -107,8 +105,6 @@ export function GameConfigurationView({
   onEnable: () => void;
   onDisable: () => void;
   busy: boolean;
-  /** #550: hide the view's own header — as a panel the app bar carries back/title. */
-  hideHeader?: boolean;
   /** The LIVE server flag — the Danger Zone + the toggle's `staged` read it. The ROWS
    *  read the draft, never this. */
   serverScoringEnabled: boolean;
@@ -138,26 +134,13 @@ export function GameConfigurationView({
   saveBar: ReactNode;
 }) {
   return (
-    <div className={`flex flex-col ${hideHeader ? "h-full" : "min-h-screen"}`} style={{ background: "var(--color-bt-base)" }}>
-      {!hideHeader && (
-        <header
-          className="flex shrink-0 items-center"
-          style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-        >
-          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-          </button>
-          <div className="min-w-0 flex-1 text-center" style={{ marginRight: 36 }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Configuration</div>
-            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
-          </div>
-        </header>
-      )}
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+    <SettingsSlideOver
+      title={nameValue || "Game settings"}
+      onClose={onBack}
+      footer={saveBar}
+      testId="game-settings-slideover"
+    >
         <SettingsColumn>
-          {/* Save bar at the TOP — every row below is a draft edit. */}
-          {saveBar}
 
           {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
               header: it frames the whole game before any settings (cross-format layout
@@ -276,7 +259,6 @@ export function GameConfigurationView({
             />
           )}
         </SettingsColumn>
-      </div>
-    </div>
+    </SettingsSlideOver>
   );
 }

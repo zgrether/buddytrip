@@ -112,7 +112,10 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   await expect(saveBtn).toBeEnabled({ timeout: 20_000 });
   await saveBtn.click();
   await expect(page.getByTestId("settings-dirty-hint")).toHaveText("Saved", { timeout: 20_000 });
-  await page.getByRole("button", { name: "Back" }).click();
+  // Settings now live in a body-portaled slide-over (Settings Overhaul P1) — dismiss it
+  // via the header ✕ ("Close settings"), not the old in-header "Back" arrow (which is the
+  // TopNav back, now behind the shell scrim and unclickable).
+  await page.getByRole("button", { name: "Close settings" }).click();
 
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
   //    Distinct values so the assertion can't pass on par/coincidence. Wait for

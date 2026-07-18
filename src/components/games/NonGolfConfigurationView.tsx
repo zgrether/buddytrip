@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
@@ -10,6 +10,7 @@ import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
+import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
 import {
   PointStepper,
   FormatSheet,
@@ -40,7 +41,6 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  *  - **Rules of the Day**, the **Setup/Scoring** toggle, the **Danger Zone**.
  */
 export function NonGolfConfigurationView({
-  subtitle,
   onBack,
   tripId,
   competitionId,
@@ -50,7 +50,6 @@ export function NonGolfConfigurationView({
   isOwner,
   onChanged,
   onDeleted,
-  hideHeader = false,
   draft,
   onNameChange,
   onRulesChange,
@@ -65,7 +64,6 @@ export function NonGolfConfigurationView({
   saving,
   saveBar,
 }: {
-  subtitle: string;
   onBack: () => void;
   tripId: string;
   competitionId: string;
@@ -76,8 +74,6 @@ export function NonGolfConfigurationView({
   /** Server-direct refresh after a Danger-Zone action (reset/delete) — NOT a draft edit. */
   onChanged: () => void;
   onDeleted: () => void;
-  /** #550: hide the view's own header (the app bar carries back/title as a panel). */
-  hideHeader?: boolean;
   /** Draft-then-save (P2): the whole page is controlled off this composite draft; the
    *  parent (NonGolfGameView) owns it + commits via ONE atomic save_game_config. */
   draft: NonGolfConfigDraft;
@@ -104,27 +100,13 @@ export function NonGolfConfigurationView({
   // the `settingsEditable` freeze are gone with it.
   const staged = draft.scoringEnabled !== serverScoringEnabled;
   return (
-    <div className={`flex flex-col ${hideHeader ? "h-full" : "min-h-screen"}`} style={{ background: "var(--color-bt-base)" }}>
-      {!hideHeader && (
-        <header
-          className="flex shrink-0 items-center"
-          style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-        >
-          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-          </button>
-          <div className="min-w-0 flex-1 text-center" style={{ marginRight: 36 }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Configuration</div>
-            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
-          </div>
-        </header>
-      )}
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+    <SettingsSlideOver
+      title={draft.name || "Game settings"}
+      onClose={onBack}
+      footer={saveBar}
+      testId="game-settings-slideover"
+    >
         <SettingsColumn>
-          {/* Save bar at the TOP — every row below is a draft edit (matching the golf
-              settings page). */}
-          {saveBar}
 
           {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
               header (cross-format layout consistency pass; matches Match Play's
@@ -206,8 +188,7 @@ export function NonGolfConfigurationView({
             />
           )}
         </SettingsColumn>
-      </div>
-    </div>
+    </SettingsSlideOver>
   );
 }
 

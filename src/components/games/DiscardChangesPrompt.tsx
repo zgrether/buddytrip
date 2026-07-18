@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 /**
  * DiscardChangesPrompt (P1.7) — the confirm-on-leave gate, shared across every
  * draft-then-save game settings surface (match / non-golf / rack / stroke).
@@ -24,7 +26,12 @@ export function DiscardChangesPrompt({
   onSave: () => void;
   saving: boolean;
 }) {
-  return (
+  // Portaled to body: the shell it guards is itself body-portaled at z-50, and this
+  // prompt (rendered by the game view, inside the z-30 panel) would otherwise be
+  // z-capped by the panel's stacking context and land UNDER the shell. z-[60] beats
+  // the shell once both live at the body level.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center px-6"
       style={{ background: "rgba(0,0,0,0.5)" }}
@@ -71,6 +78,7 @@ export function DiscardChangesPrompt({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -39,6 +40,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
+import { SettingsSlideOver } from "@/components/games/SettingsSlideOver"; // P1: full-page settings shell
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
@@ -1726,22 +1728,24 @@ export function MatchGameView() {
           }
         };
         return (
+          <SettingsSlideOver
+            title={configDraft.name || "Game settings"}
+            onClose={closeConfig}
+            testId="game-settings-slideover"
+            footer={
+              canEdit ? (
+                <SettingsSaveBar
+                  dirty={dirty}
+                  saving={saving}
+                  justSaved={justSaved}
+                  error={saveError}
+                  onSave={() => void handleSave()}
+                  onCancel={handleCancel}
+                />
+              ) : null
+            }
+          >
           <SettingsColumn className="pb-4">
-            {/* SAVE BAR — the page's ONE commit, at the TOP (spec §2.7). Every row
-                below is a draft edit; nothing reaches the server until this. Save is
-                Primary (STYLE_GUIDE §5, inline — there's no shared <Button>), Cancel
-                is Ghost, and Save enables only when the draft actually differs from
-                the frozen baseline. */}
-            {canEdit && (
-              <SettingsSaveBar
-                dirty={dirty}
-                saving={saving}
-                justSaved={justSaved}
-                error={saveError}
-                onSave={() => void handleSave()}
-                onCancel={handleCancel}
-              />
-            )}
 
             {/* Format explainer — "HOW YOU COMPETE · MATCH PLAY" — at the TOP of the
                 page (freeze redesign resequence §3.1): it frames the whole game before
@@ -2079,6 +2083,7 @@ export function MatchGameView() {
               />
             )}
           </SettingsColumn>
+          </SettingsSlideOver>
         );
       })()}
 
@@ -2897,8 +2902,15 @@ function PlayerSelector({
       ? `Match ${matchIdx + 1} · Side ${slot === "a" ? "A" : "B"} · Player ${memberIdx + 1}`
       : `Match ${matchIdx + 1} · Player ${slot === "a" ? 1 : 2}`;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} data-testid="player-selector">
+  // Portaled to body: this picker is opened from within the settings slide-over,
+  // which is itself body-portaled at z-50. Rendered in-tree it would live inside the
+  // z-30 game-panel host, so its own z-50 is scoped there and it paints UNDERNEATH
+  // the shell (the scrim covers the viewport but the drawer sits on top and the sheet
+  // only shows in the left gap). z-[60] at the body level beats the shell — same fix
+  // DiscardChangesPrompt uses.
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} data-testid="player-selector">
       <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ background: "var(--color-bt-card-float)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 16px 28px", maxHeight: "75vh", overflowY: "auto" }}>
         <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {teamColor && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />}
@@ -2925,7 +2937,8 @@ function PlayerSelector({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
