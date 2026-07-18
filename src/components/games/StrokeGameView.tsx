@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
+import { ChevronLeft, Scale, Settings, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -17,9 +17,11 @@ import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
-import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
+import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ModifierCards } from "@/components/games/ModifierCards";
-import { ModifiersRow } from "@/components/games/ModifiersRow";
+import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
+import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, type StrokeConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
@@ -135,8 +137,9 @@ export function StrokeGameView() {
     isDirty: () => dirtyRef.current,
     onDiscard: () => discardRef.current(),
   });
-  const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
-  const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
+  // GROUP SETTINGS single-open accordion (P3): Point Distribution / Groupings / Handicaps /
+  // Modifiers — all inline panels now (3.3 removed the full-page drill-downs).
+  const [openAccordion, setOpenAccordion] = useState<null | "distribution" | "groupings" | "handicaps" | "modifiers">(null);
   // ── Composite draft SLICES (null/undefined = untouched → tracks the server) ──
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [rulesDraft, setRulesDraft] = useState<string | null>(null);
@@ -146,6 +149,7 @@ export function StrokeGameView() {
   const [pointsDistDraft, setPointsDistDraft] = useState<PointsDistribution | null | undefined>(undefined);
   const [courseDraft, setCourseDraft] = useState<StrokeConfigDraft["course"] | null>(null);
   const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
+  const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null); // P3 3.2 groupings slice
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
 
   const createGame = trpc.games.create.useMutation();
@@ -230,12 +234,18 @@ export function StrokeGameView() {
   const activeGameId = urlGameId ?? createdGame?.id;
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
-  // Draft-then-save (P2) lie sweep: NO scoring_enabled lock — every editor (handicaps /
-  // modifiers drill-downs, the settings rows) stays editable in every mode; an edit
-  // stages into the draft and Save commits it (the RPC refuses only the destroys tier —
-  // a course change on a scored game, COURSE_LOCKED). `canEdit` (role) is the only gate.
-  const settingsEditable = canEdit;
+  // Draft-then-save (P2) lie sweep: NO scoring_enabled lock — every settings row (incl. the
+  // inline handicaps / modifiers panels) stays editable in every mode; an edit stages into
+  // the draft and Save commits it (the RPC refuses only the destroys tier — a course change
+  // on a scored game, COURSE_LOCKED). `canEdit` (role) is the only gate.
   const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
+
+  // P3 3.2 GROUPINGS — teams + assignments (feed the picker's team sections) and the
+  // persisted play_groups (the serverGroups baseline). Team-scoped, gated on the resolved
+  // competition id. Reuses rack's play_groups mechanism (issue path in save_game_config).
+  const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
+  const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
+  const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: urlGameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId });
 
   // ── Draft-then-save (P2) machinery ──────────────────────────────────────────
   // Per-game delegates (the draft's `delegates` slice) + the participants' strokes as a
@@ -252,15 +262,22 @@ export function StrokeGameView() {
     }
     return m;
   }, [gameQ.data]);
+  // The persisted play_groups as an ordered string[][] (one user-id array per group) —
+  // the structural input configToStrokeDraft folds into the baseline (mirrors rack).
+  const serverGroups = useMemo<string[][]>(
+    () => (groupsQ.data?.groups ?? []).map((grp) =>
+      (groupsQ.data?.participants ?? []).filter((p) => p.play_group_id === grp.id).map((p) => p.user_id as string)),
+    [groupsQ.data],
+  );
   const serverConfigDraft = useMemo<StrokeConfigDraft>(
-    () => configToStrokeDraft((gameQ.data ?? {}) as Parameters<typeof configToStrokeDraft>[0], serverStrokes, serverDelegates),
-    [gameQ.data, serverStrokes, serverDelegates],
+    () => configToStrokeDraft((gameQ.data ?? {}) as Parameters<typeof configToStrokeDraft>[0], serverStrokes, serverGroups, serverDelegates),
+    [gameQ.data, serverStrokes, serverGroups, serverDelegates],
   );
 
   const anyTouched =
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
     pointsTotalDraft !== undefined || pointsDistDraft !== undefined || courseDraft !== null ||
-    strokesDraft !== null || modifiersDraft !== null;
+    strokesDraft !== null || modifiersDraft !== null || groupsDraft !== null;
 
   const configDraft = useMemo<StrokeConfigDraft>(
     () => ({
@@ -274,9 +291,36 @@ export function StrokeGameView() {
       course: courseDraft ?? serverConfigDraft.course,
       strokes: strokesDraft ?? serverConfigDraft.strokes,
       modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
+      groups: groupsDraft ?? serverConfigDraft.groups,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
   );
+
+  // P3 3.2 — the group picker's team sections: the GAME ROSTER (create-only participants)
+  // grouped by team, in teamsQ order, plus a neutral "Unassigned" bucket for roster members
+  // not on a team. Only teams with ≥1 rostered player get a section. Players key by user_id
+  // (what the groups draft stores + the RPC's groups[] path expects). This is the N-team
+  // component's N-section input — rack passes the two competition teams; stroke passes its
+  // roster split across however many teams it spans (2–4).
+  const pickerTeams = useMemo<GroupBuilderTeam[]>(() => {
+    const roster = (gameQ.data?.participants ?? []) as { user_id: string; name?: string }[];
+    const teamOfUser = new Map<string, string>();
+    for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) teamOfUser.set(a.user_id, a.team_id);
+    const nameFor = (uid: string, fallback?: string) =>
+      (crew.data ?? []).find((c) => c.user_id === uid)?.displayName ?? fallback ?? "Player";
+    const sections: GroupBuilderTeam[] = [];
+    for (const t of (teamsQ.data ?? []) as { id: string; name: string; color: string }[]) {
+      const players = roster
+        .filter((p) => teamOfUser.get(p.user_id) === t.id)
+        .map((p) => ({ id: p.user_id, name: nameFor(p.user_id, p.name), avatarIcon: null }));
+      if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
+    }
+    const unassigned = roster
+      .filter((p) => !teamOfUser.has(p.user_id))
+      .map((p) => ({ id: p.user_id, name: nameFor(p.user_id, p.name), avatarIcon: null }));
+    if (unassigned.length) sections.push({ id: "__unassigned", name: "Unassigned", color: "var(--color-bt-text-dim)", players: unassigned });
+    return sections;
+  }, [gameQ.data, teamsQ.data, assignQ.data, crew.data]);
 
   async function refreshGame() {
     await gameQ.refetch();
@@ -372,16 +416,16 @@ export function StrokeGameView() {
   function resetSlices() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
     setPointsTotalDraft(undefined); setPointsDistDraft(undefined); setCourseDraft(null);
-    setStrokesDraft(null); setModifiersDraft(null);
+    setStrokesDraft(null); setModifiersDraft(null); setGroupsDraft(null);
   }
   // Draft durability (Layer 2 — hard-teardown outbox), mirroring the WHOLE composite draft.
   const draftBundle = useMemo(
     () => ({
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
       pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, course: courseDraft,
-      strokes: strokesDraft, modifiers: modifiersDraft,
+      strokes: strokesDraft, modifiers: modifiersDraft, groups: groupsDraft,
     }),
-    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft],
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
   );
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name != null) setNameDraft(b.name);
@@ -393,6 +437,7 @@ export function StrokeGameView() {
     if (b.course != null) setCourseDraft(b.course);
     if (b.strokes != null) setStrokesDraft(b.strokes);
     if (b.modifiers != null) setModifiersDraft(b.modifiers);
+    if (b.groups != null) setGroupsDraft(b.groups);
   }, []);
 
   // Draft-then-save lifecycle (baseline / dirty / hash-poll / outbox / Save / Cancel /
@@ -409,7 +454,9 @@ export function StrokeGameView() {
     toPayload: (draft, base) => strokeDraftToPayload(draft, base),
     bundle: draftBundle, applyRecovered: applyBundle, reset: resetSlices,
     onSaved: async () => {
-      await Promise.all([gameQ.refetch(), orgQ.refetch()]);
+      // Refetch play_groups too (P3 3.2) so the groupings baseline (serverGroups) reflects
+      // a committed group change — else the dirty check would re-flag the just-saved edit.
+      await Promise.all([gameQ.refetch(), orgQ.refetch(), groupsQ.refetch()]);
       if (gameCompetitionId) {
         utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
         utils.competitions.faceBootstrap.invalidate({ tripId });
@@ -527,17 +574,16 @@ export function StrokeGameView() {
     }
   }
 
-  // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear)
-  // instead of a second header. The handicaps/modifiers drill-downs keep their own
-  // header + local back (they cover the bar). Standalone route keeps its headers.
+  // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear) instead of
+  // a second header. Handicaps/modifiers are inline panels now (P3 3.3), so there's no
+  // drill-down that covers the bar. Standalone route keeps its headers.
   const inPanel = useInGamePanel();
-  const onDrilldown = !!game && (showHandicaps || showModifiers) && settingsEditable;
   usePublishGameChrome(
     inPanel
       ? {
           title: (gameQ.data?.name as string | undefined)?.trim() || "Stroke Play",
-          onSettings: !!game && canEdit && !showConfig && !onDrilldown && view !== "final" ? openConfig : undefined,
-          hideBottomNav: !!game && scoringEnabled && !showConfig && !onDrilldown && view === "entry" && canScoreStroke,
+          onSettings: !!game && canEdit && !showConfig && view !== "final" ? openConfig : undefined,
+          hideBottomNav: !!game && scoringEnabled && !showConfig && view === "entry" && canScoreStroke,
         }
       : null,
   );
@@ -596,52 +642,11 @@ export function StrokeGameView() {
     if (urlGameId) router.replace(`/trips/${param}/games/new`);
   }
 
-  // ── §3 Handicaps step — per-player ABSOLUTE strokes (stroke is per-player, not
-  // per-matchup). Reached from the setup hull's Handicaps row AND Configuration.
-  // Drives `netStrokeEntries`/`strokeHoles`: the input Phase 1 deferred. ──
-  if (game && showHandicaps && settingsEditable) {
-    // The roster reads the DRAFT strokes (not the server) so an unsaved stroke shows.
-    const draftHandicapPlayers = handicapPlayers.map((p) => ({ ...p, strokes: configDraft.strokes[p.id] ?? 0 }));
-    return (
-      // Drill-down keeps its own header + LOCAL back (setShowHandicaps) — as a panel
-      // it covers the bar (fixed) so there's no double-decker and the bar's
-      // history-back can't hijack the local back.
-      <div className={`flex flex-col ${inPanel ? "fixed inset-0 z-50" : ""}`} style={{ height: "100vh", background: "var(--color-bt-base)" }}>
-        <HandicapRoster
-          players={draftHandicapPlayers}
-          holeCount={scUnits.length}
-          strokeIndex={scIndex}
-          onSetStrokes={onSetStrokes}
-          onDone={() => setShowHandicaps(false)}
-          onBack={() => setShowHandicaps(false)}
-        />
-      </div>
-    );
-  }
-
-  // A1 P0 — Game Modifiers drill-down (mirrors the Handicaps overlay above): the
-  // SAME ModifierCards the match setup page uses, persisted on-change.
-  if (game && showModifiers && settingsEditable) {
-    return (
-      // Drill-down: own header + local back → covers the bar as a panel (see above).
-      <div className={`flex flex-col ${inPanel ? "fixed inset-0 z-50" : ""}`} style={{ height: "100vh", background: "var(--color-bt-base)" }}>
-        <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
-          <button
-            type="button"
-            onClick={() => setShowModifiers(false)}
-            className="flex items-center gap-1 text-sm font-semibold"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} /> Back
-          </button>
-          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>Game Modifiers</h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={persistModifiers} readOnly={!canEdit} />
-        </div>
-      </div>
-    );
-  }
+  // P3 3.3 — Handicaps + Game Modifiers are now INLINE accordion panels inside the
+  // settings page (built in the config-view block below), not full-page drill-downs.
+  // Both edit their draft slice (strokes / modifiers) and commit on Save; nothing
+  // self-persists, so the out-of-band write that moved the config hash (and produced the
+  // false "modified elsewhere" on the next Save) is gone.
 
   // A2-ux correction: setup-mode scoreboard = PASS-THROUGH. A member gets just the
   // themed placeholder (the A2-core gate already withheld the data); the owner/delegate
@@ -700,6 +705,107 @@ export function StrokeGameView() {
   // the viewport so tall content overflowed past the bottom unscrollably (the same
   // class of bug reported on the non-golf settings page). Matches the rack page.
   if (game && showConfig && gameQ.data && canEdit) {
+    // Stroke = PLACEMENT points: the owner sets a total pool + the placement split. Both
+    // halves edit the SAME controlled draft slice (P3 3.1 split) — the bare Total renders
+    // in GAME MANAGEMENT (via GameSetupRows), the placement editor in this "Point
+    // Distribution" row (GROUP SETTINGS). Sharing one controlled object means the two
+    // can't drift. The distribution reads its total FROM THE DRAFT (reconcile-safe).
+    const placementControlled = {
+      value: { total: configDraft.pointsTotal, distribution: configDraft.pointsDistribution },
+      onChange: (total: number | null, distribution: PointsDistribution | null) => {
+        setPointsTotalDraft(total);
+        setPointsDistDraft(distribution);
+      },
+    };
+    // Point Distribution row (GROUP SETTINGS) — the placement editor only (part="distribution").
+    // Requires the total it distributes across; resolved once a pool is set.
+    const pointDistributionRow = (
+      <ChecklistRow
+        icon={Scale}
+        title="Point Distribution"
+        subtitle={
+          configDraft.pointsDistribution?.type === "placement"
+            ? "Custom placement split — tap to edit"
+            : "Even — tap to set a placement split"
+        }
+        state={configDraft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "distribution"}
+        onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+        testId="row-point-distribution"
+      >
+        <FormatPointsPanel
+          game={gameQ.data as unknown as GameRow}
+          canEdit={canEdit}
+          controlled={placementControlled}
+          part="distribution"
+        />
+      </ChecklistRow>
+    );
+    // Groupings row (GROUP SETTINGS, P3 3.2) — optional tee-groups over the create-only
+    // roster, reusing rack's N-team RackGroupBuilder (stroke passes its roster split by
+    // team). A membership change on a scored game is refused server-side (HAS_SCORES).
+    const draftGroupCount = configDraft.groups.filter((g) => g.length > 0).length;
+    const groupingsRow = (
+      <ChecklistRow
+        icon={Users}
+        title="Groupings"
+        subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"} · tap to edit tee groups` : "Optional — group players into tee times"}
+        state={draftGroupCount > 0 ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "groupings"}
+        onToggle={() => setOpenAccordion((o) => (o === "groupings" ? null : "groupings"))}
+        testId="row-groupings"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Group players into tee groups — any mix across teams, up to 4 each. Anyone left out just isn&rsquo;t grouped.
+        </p>
+        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
+      </ChecklistRow>
+    );
+    // Handicaps row (GROUP SETTINGS, P3 3.3) — INLINE per-player strokes (was a full-page
+    // drill-down). Reuses the same HandicapList rack uses, editing the strokes draft slice
+    // via onSetStrokes; commits on Save. The roster reads the DRAFT strokes so an unsaved
+    // edit shows immediately. Stroke handicaps are per-player and don't gate on groupings.
+    const draftHandicapPlayers = handicapPlayers.map((p) => ({ ...p, strokes: configDraft.strokes[p.id] ?? 0 }));
+    const anyHandicap = draftHandicapPlayers.some((p) => p.strokes > 0);
+    const handicapsRow = (
+      <ChecklistRow
+        icon={SlidersHorizontal}
+        title="Handicaps"
+        subtitle={anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player"}
+        state={anyHandicap ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "handicaps"}
+        onToggle={() => setOpenAccordion((o) => (o === "handicaps" ? null : "handicaps"))}
+        testId="row-handicaps"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Strokes come off gross on the hardest holes — a friendly guess, not an official handicap.
+        </p>
+        <HandicapList players={draftHandicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
+      </ChecklistRow>
+    );
+    // Game Modifiers row (P3 3.3) — INLINE ModifierCards panel (was a full-page drill-down
+    // that self-persisted, moving the config hash and causing the false "modified
+    // elsewhere" on the next Save). It now edits the modifiers DRAFT slice (persistModifiers
+    // → setModifiersDraft) and commits on Save — no out-of-band write. Rendered AFTER Rules
+    // via the modifiersRow slot (Match Play's canonical order).
+    const modifierCount = enabledCount(configDraft.modifiers, availableModifiers);
+    const modifiersInlineRow = availableModifiers.length > 0 ? (
+      <ChecklistRow
+        icon={Sparkles}
+        title="Game Modifiers"
+        subtitle={modifierCount > 0 ? `${modifierCount} modifier${modifierCount === 1 ? "" : "s"} added` : "Optional — add special rules"}
+        state={modifierCount > 0 ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "modifiers"}
+        onToggle={() => setOpenAccordion((o) => (o === "modifiers" ? null : "modifiers"))}
+        testId="row-modifiers"
+      >
+        <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={persistModifiers} readOnly={!canEdit} />
+      </ChecklistRow>
+    ) : undefined;
     return (
       <>
         <GameConfigurationView
@@ -709,25 +815,14 @@ export function StrokeGameView() {
           game={gameQ.data as unknown as GameRow}
           canEdit={canEdit}
           isOwner={isOwner}
+          settingsZoneLabel="Group Settings"
+          // GROUP SETTINGS (P3): Point Distribution → Groupings → Handicaps (all inline).
+          leadingSettingsRows={<>{pointDistributionRow}{groupingsRow}{handicapsRow}</>}
           onChanged={() => void refreshGame()}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-          whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
-          // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
-          onEditWhosPlaying={() => setShowHandicaps(true)}
-          // Game Modifiers renders AFTER Rules Of The Day (cross-format layout
-          // consistency pass — matches Match Play's order), so it's a dedicated prop,
-          // not `extraRows` (which stays reserved for pre-Rules OPTIONS content).
-          modifiersRow={
-            availableModifiers.length > 0 ? (
-              // No scoring lock (draft-then-save): the row edits the modifiers draft slice.
-              <ModifiersRow
-                count={enabledCount(configDraft.modifiers, availableModifiers)}
-                onClick={() => setShowModifiers(true)}
-                disabled={!canEdit}
-                locked={false}
-              />
-            ) : undefined
-          }
+          // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —
+          // an inline accordion now (P3 3.3), not a drill-down trigger.
+          modifiersRow={modifiersInlineRow}
           serverScoringEnabled={scoringEnabled}
           draftScoringEnabled={configDraft.scoringEnabled}
           nameValue={configDraft.name}
@@ -741,12 +836,10 @@ export function StrokeGameView() {
           onRemoveBackNine={removeBackNineFromDraft}
           onClearCourse={clearCourseInDraft}
           courseBusy={courseBusy}
-          // Stroke = PLACEMENT points (owner sets total + the split); the pair stages
-          // into the draft via FormatPointsPanel's controlled mode.
-          placementPoints={{
-            value: { total: configDraft.pointsTotal, distribution: configDraft.pointsDistribution },
-            onChange: (total, distribution) => { setPointsTotalDraft(total); setPointsDistDraft(distribution); },
-          }}
+          // Stroke = PLACEMENT points: the bare Total (GAME MANAGEMENT) and the Point
+          // Distribution row (GROUP SETTINGS, above) share this ONE controlled slice so the
+          // split can't drift (P3 3.1).
+          placementPoints={placementControlled}
           onEnable={handleEnable}
           onDisable={handleDisable}
           busy={saving}

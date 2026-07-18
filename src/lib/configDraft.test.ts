@@ -359,19 +359,22 @@ const STROKE_GAME = {
   scorecard_schema: { units: { count: 18 } },
 };
 const STROKE_STROKES = { u1: 4, u2: 0 };
+// P3 3.2 — stroke now carries GROUPINGS (tee-groups over the roster), reusing rack's path.
+const STROKE_GROUPS: string[][] = [["u1", "u2"]];
 
 describe("configToStrokeDraft — baseline", () => {
-  it("folds strokes + modifiers + course over the base and is stable", () => {
-    const d = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, ["u9"]);
+  it("folds strokes + modifiers + course + groups over the base and is stable", () => {
+    const d = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]);
     expect(d.strokes).toEqual(STROKE_STROKES);
     expect(d.modifiers).toEqual({ moving_tees: {} });
     expect(d.course).toEqual({ id: "course-1", backId: null, scorecardSchema: { units: { count: 18 } } });
-    expect(strokeDraftsEqual(d, configToStrokeDraft(STROKE_GAME, STROKE_STROKES, ["u9"]))).toBe(true);
+    expect(d.groups).toEqual([["u1", "u2"]]);
+    expect(strokeDraftsEqual(d, configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]))).toBe(true);
   });
 });
 
-describe("strokeDraftToPayload — placement passthrough, explicit modifiers, no groups", () => {
-  const base = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, []);
+describe("strokeDraftToPayload — placement passthrough, explicit modifiers, groups path (P3 3.2)", () => {
+  const base = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, []);
   it("passes placement points through untouched (owner-authored, not derived)", () => {
     expect(strokeDraftToPayload(base).pointsDistribution).toEqual({ type: "placement", values: [6, 4, 2] });
     expect(strokeDraftToPayload(base).pointsTotal).toBe(8);
@@ -379,23 +382,34 @@ describe("strokeDraftToPayload — placement passthrough, explicit modifiers, no
   it("sends modifiers EXPLICITLY (the RPC wipes a missing key to {})", () => {
     expect(strokeDraftToPayload(base).modifiers).toEqual({ moving_tees: {} });
   });
-  it("emits every participant's strokes and NO groups/matches keys", () => {
+  it("emits every participant's strokes and NO matches key", () => {
     const p = strokeDraftToPayload(base);
     expect(p.participants).toEqual([{ userId: "u1", strokes: 4 }, { userId: "u2", strokes: 0 }]);
-    expect(p).not.toHaveProperty("groups");
     expect(p).not.toHaveProperty("matches");
     expect(p.courseId).toBe("course-1");
+  });
+  it("emits groups via rack's persist shape + reports groupsStructureDirty vs the baseline", () => {
+    // No baseline → conservatively dirty (first save).
+    const first = strokeDraftToPayload(base);
+    expect(first.groups).toEqual([{ name: "Group 1", userIds: ["u1", "u2"] }]);
+    expect(first.groupsStructureDirty).toBe(true);
+    // Unchanged vs baseline → NOT dirty (skips the clean-replace, so no-op save is byte-stable).
+    expect(strokeDraftToPayload(base, base).groupsStructureDirty).toBe(false);
+    // Membership change → dirty (HAS_SCORES-guarded server-side).
+    const moved = { ...base, groups: [["u1"], ["u2"]] };
+    expect(strokeDraftToPayload(moved, base).groupsStructureDirty).toBe(true);
   });
 });
 
 describe("strokeDraftsEqual — dirty check", () => {
-  const base = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, []);
-  it("equal to itself; dirty on a stroke, modifier, points, or course change", () => {
+  const base = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, []);
+  it("equal to itself; dirty on a stroke, modifier, points, course, or groups change", () => {
     expect(strokeDraftsEqual(base, base)).toBe(true);
     expect(strokeDraftsEqual(base, { ...base, strokes: { ...STROKE_STROKES, u1: 6 } })).toBe(false);
     expect(strokeDraftsEqual(base, { ...base, modifiers: {} })).toBe(false);
     expect(strokeDraftsEqual(base, { ...base, pointsTotal: 10 } as StrokeConfigDraft)).toBe(false);
     expect(strokeDraftsEqual(base, { ...base, course: { ...base.course, id: "course-2" } })).toBe(false);
+    expect(strokeDraftsEqual(base, { ...base, groups: [["u1"], ["u2"]] })).toBe(false);
   });
 });
 
@@ -426,7 +440,7 @@ describe("payload delegates — omitted when unchanged, sent on a real change (#
     expect(rackDraftToPayload(rack, 2, rack)).not.toHaveProperty("delegates");
     expect(rackDraftToPayload({ ...rack, delegates: ["u9", "u10"] }, 2, rack).delegates).toEqual(["u10", "u9"]); // builder sorts
 
-    const stroke = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, ["u9"]);
+    const stroke = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]);
     expect(strokeDraftToPayload(stroke, stroke)).not.toHaveProperty("delegates");
     expect(strokeDraftToPayload(stroke)).toHaveProperty("delegates"); // no baseline ⇒ sent
   });

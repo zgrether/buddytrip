@@ -10,7 +10,6 @@ import { composedCourseTitle } from "@/lib/courseProvenance";
 import { CourseRowContent } from "@/components/games/course/CourseRowContent";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { evenShare, type PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
@@ -42,9 +41,7 @@ export function GameSetupRows({
   configLocked = false,
   locked = false,
   courseOpen: courseOpenProp,
-  configOpen: configOpenProp,
   onOpenCourse,
-  onOpenConfig,
   onCloseEditor,
   onApplyFront,
   onApplyBack,
@@ -89,12 +86,12 @@ export function GameSetupRows({
    *  (read-only because the game is live). Distinct from `configLocked` (the readiness
    *  gate that holds Points until a match exists). Default false. */
   locked?: boolean;
-  /** Page-owned one-open state (controlled). Omit → self-managed (uncontrolled). */
+  /** Page-owned one-open state for the COURSE row (controlled). Omit → self-managed
+   *  (uncontrolled). The Points row no longer expands (P3 3.1 split), so there's no
+   *  config-open axis anymore. */
   courseOpen?: boolean;
-  configOpen?: boolean;
-  /** Tapping a row asks the page to open it (which collapses any other row). */
+  /** Tapping the course row asks the page to open it (which collapses any other row). */
   onOpenCourse?: () => void;
-  onOpenConfig?: () => void;
   /** The editor dismissed itself → clear the page's openRow. */
   onCloseEditor?: () => void;
   /** Course ACTION controlled-mode (draft-then-save) — a DIFFERENT axis from the
@@ -129,15 +126,14 @@ export function GameSetupRows({
   };
 }) {
   // Controlled when the page supplies open-state; else self-manage (the original
-  // behavior, kept for every non-checklist consumer).
-  const controlled = courseOpenProp !== undefined || configOpenProp !== undefined;
+  // behavior, kept for every non-checklist consumer). Only the COURSE row expands now —
+  // the Points row is a bare inline stepper since the P3 3.1 split moved the placement
+  // editor out to its own "Point Distribution" row, so the config-open machinery is gone.
+  const controlled = courseOpenProp !== undefined;
   const [courseOpenLocal, setCourseOpenLocal] = useState(false);
-  const [configOpenLocal, setConfigOpenLocal] = useState(false);
   const courseOpen = controlled ? !!courseOpenProp : courseOpenLocal;
-  const configOpen = controlled ? !!configOpenProp : configOpenLocal;
   const openCourse = onOpenCourse ?? (() => setCourseOpenLocal(true));
-  const openConfig = onOpenConfig ?? (() => setConfigOpenLocal(true));
-  const closeEditor = onCloseEditor ?? (() => { setCourseOpenLocal(false); setConfigOpenLocal(false); });
+  const closeEditor = onCloseEditor ?? (() => { setCourseOpenLocal(false); });
 
   // Course resolved = a complete 18 (W-9HOLE-01): a real 18-hole course, or a
   // 9-hole front with a back nine composed in. A lone 9-hole front (schema count
@@ -162,12 +158,6 @@ export function GameSetupRows({
     : namesReady
       ? composedCourseTitle(backId ? [frontName, backName] : [frontName])
       : "Golf Course Selected"; // pre-load: keep the old title until names arrive
-  // Placement (stroke/non-golf) points — UNCHANGED: "Total Points Available" = a
-  // directly-typed per-unit value × matchCount. The total-points inversion below is
-  // rack-specific (match play moved to MatchPointsRow in A2b); placement never
-  // inverts (its owner-set total is Stage-3 distribution-driven, a different model).
-  const rawPerMatch = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
-  const placementPointsTotal = (matchCount ?? 0) * rawPerMatch;
   const ptype = GAME_TYPES.find((t) => t.id === game.game_type_id)?.resultStrategy;
   // Rack is the ONLY remaining consumer of the inline Total-Points row — match play
   // was carved out to MatchPointsRow (A2b). Placement (stroke/non-golf) keeps the
@@ -281,29 +271,99 @@ export function GameSetupRows({
             }
           />
         ) : (
-          // Placement (stroke/non-golf): keep the expandable editor (the split needs
-          // a body). Format picker removed from FormatPointsPanel.
+          // Placement (stroke): BARE Total row (P3 3.1 split). The placement EDITOR moved
+          // OUT to its own "Point Distribution" row (rendered by the page in GROUP
+          // SETTINGS), so this is now just the owner-set pool — an inline stepper control,
+          // no body, mirroring the rack Total row above and match play's "total" part. The
+          // subtitle reads the DRAFT total (placementPoints), never the server row.
           <ChecklistRow
             icon={Hash}
             title="Total Points"
             subtitle={
               <>
-                Total Points Available:{" "}
-                <span style={{ color: rawPerMatch > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>{placementPointsTotal}</span>
+                Points for this game:{" "}
+                <span style={{ color: (placementPoints?.value.total ?? 0) > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", fontWeight: 600 }}>
+                  {placementPoints?.value.total ?? 0}
+                </span>
               </>
             }
-            state={rawPerMatch > 0 ? "resolved" : "empty"}
+            state={(placementPoints?.value.total ?? 0) > 0 ? "resolved" : "empty"}
             disabled={!canEdit}
             locked={locked}
-            expanded={configOpen}
-            onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
-            testId="row-format-points"
-          >
-            {placementPoints && <FormatPointsPanel game={game} canEdit={canEdit} matchCount={matchCount} controlled={placementPoints} />}
-          </ChecklistRow>
+            testId="row-total-points"
+            control={
+              placementPoints ? (
+                <PlacementTotalControl
+                  controlled={placementPoints}
+                  defaultTotal={defaultTotal ?? 8}
+                  disabled={configLocked || !canEdit}
+                />
+              ) : undefined
+            }
+          />
         )
       )}
     </>
+  );
+}
+
+/**
+ * PlacementTotalControl — the bare owner-set pool stepper for STROKE (P3 3.1 split).
+ * Mirrors `RackTotalPointsControl`, but reports the total as HALF of the
+ * total+distribution PAIR: the distribution passes through unchanged (only the pool
+ * moves), so stepping the total can't drop the authored placement split. Draft-then-save
+ * only — reports up via `controlled.onChange`, never self-persists; seeds the first-setup
+ * default into the draft ONCE (matching rack) so the shown value and the draft agree.
+ */
+function PlacementTotalControl({
+  controlled, defaultTotal, disabled,
+}: {
+  controlled: {
+    value: { total: number | null; distribution: PointsDistribution | null };
+    onChange: (total: number | null, distribution: PointsDistribution | null) => void;
+  };
+  defaultTotal: number;
+  disabled?: boolean;
+}) {
+  const effectiveTotal = controlled.value.total ?? defaultTotal;
+
+  // Seed the first-setup default into the draft ONCE (when unset). Preserves the current
+  // distribution (null on first setup). Matches RackTotalPointsControl's seed discipline.
+  const didSeed = useRef(false);
+  useEffect(() => {
+    if (disabled) return;
+    if (controlled.value.total == null && defaultTotal > 0 && !didSeed.current) {
+      didSeed.current = true;
+      controlled.onChange(defaultTotal, controlled.value.distribution);
+    }
+    // React to the data inputs; onChange is a stable-enough parent setter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlled.value.total, defaultTotal, disabled]);
+
+  // Local total for snappy stepping; re-sync when the draft value changes underneath
+  // (render-phase adjust-on-prop-change, no effect — matches RackTotalPointsControl).
+  const [value, setValue] = useState(effectiveTotal);
+  const [lastEffectiveTotal, setLastEffectiveTotal] = useState(effectiveTotal);
+  if (effectiveTotal !== lastEffectiveTotal) {
+    setLastEffectiveTotal(effectiveTotal);
+    setValue(effectiveTotal);
+  }
+
+  function onChange(v: number) {
+    setValue(v);
+    // Report the PAIR — preserve the current distribution, only the total moves.
+    controlled.onChange(v, controlled.value.distribution);
+  }
+
+  return (
+    <Stepper
+      size="inline"
+      value={value}
+      min={0}
+      onChange={disabled ? () => {} : onChange}
+      disabled={disabled}
+      testId="total-points-stepper"
+    />
   );
 }
 

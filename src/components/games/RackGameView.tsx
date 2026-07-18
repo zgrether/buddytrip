@@ -827,7 +827,7 @@ export function RackGameView() {
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
           Add a group per cart, then pick its players from either team — any mix of 1–4. Anyone left out sits this round out.
         </p>
-        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teamA={teamA} teamB={teamB} />
+        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={[teamA, teamB]} />
       </ChecklistRow>
     );
     // Game Modifiers — HIDDEN BY LOGIC, not omitted (Phase 2 gate). Rack's game type
