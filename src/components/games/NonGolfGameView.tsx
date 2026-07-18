@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -13,9 +13,9 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
-import { useDraftOutbox } from "@/hooks/useDraftOutbox";
+import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
-import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
+import { useConfigSync } from "@/hooks/useConfigSync";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import {
   configToNonGolfDraft,
@@ -181,51 +181,12 @@ export function NonGolfGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
   );
 
-  // The server config hash — ONE value fed to BOTH the outbox base and Save's baseHash
-  // (P1: recover-vs-discard and conflict-vs-allow must agree on the base).
-  const hashQ = trpc.games.configHash.useQuery(
-    { tripId: tripId!, gameId: urlGameId! },
-    { enabled: !!tripId && !!urlGameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
-  );
-  const serverHash = hashQ.data?.hash;
-
-  // Frozen baseline (+hash): the dirty reference AND the concurrency base, frozen the
-  // moment the draft is touched so the ~20s poll can't move it mid-edit.
-  const [baseline, setBaseline] = useState<{ draft: NonGolfConfigDraft; hash: string } | null>(null);
-  useEffect(() => {
-    if (anyTouched) return;
-    if (!game || !serverHash) return;
-    setBaseline((prev) =>
-      prev && prev.hash === serverHash && nonGolfDraftsEqual(prev.draft, serverConfigDraft)
-        ? prev
-        : { draft: serverConfigDraft, hash: serverHash },
-    );
-  }, [anyTouched, serverConfigDraft, serverHash, game]);
-
-  // Dirty gated on anyTouched (P1: kills the post-save transient where a refetched
-  // server draft briefly ≠ the stale baseline before it re-seeds).
-  const dirty = anyTouched && !!baseline && !nonGolfDraftsEqual(configDraft, baseline.draft);
-  const [justSaved, setJustSaved] = useState(false);
-  useEffect(() => { if (dirty) setJustSaved(false); }, [dirty]);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const saveConfigM = trpc.games.saveConfig.useMutation();
-
-  // Hard-teardown durability (localStorage), the shape-agnostic outbox. Base = the SAME
-  // serverHash the baseline freezes on, so restore-vs-discard and Save's conflict check
-  // can't disagree.
+  // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
+  // the whole lifecycle off these).
   const draftBundle = useMemo(
     () => ({ name: nameDraft, rules: rulesDraft, scoring: scoringDraft, format: formatDraft, pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, delegates: delegatesDraft }),
     [nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
   );
-  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<typeof draftBundle>({
-    view: "nongolf",
-    gameId: urlGameId,
-    draft: draftBundle,
-    touched: anyTouched,
-    serverFingerprint: serverHash ?? "",
-    enabled: !!urlGameId && canEdit && !!serverHash,
-  });
-
   function resetSlices() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null);
     setFormatDraft(undefined); setPointsTotalDraft(undefined); setPointsDistDraft(undefined);
@@ -240,65 +201,34 @@ export function NonGolfGameView() {
     if (b.pointsDist !== undefined) setPointsDistDraft(b.pointsDist);
     if (b.delegates !== null) setDelegatesDraft(b.delegates);
   }, []);
-  const recoveredRef = useRef(false);
-  useEffect(() => {
-    if (recoveredRef.current || !serverHash) return;
-    recoveredRef.current = true;
-    const r = recoverDraft() as typeof draftBundle | null;
-    if (r) applyBundle(r);
-  }, [serverHash, recoverDraft, applyBundle]);
 
-  async function handleSaveConfig() {
-    if (!tripId || !urlGameId || !baseline || !dirty || saveConfigM.isPending) return;
-    setSaveError(null);
-    try {
-      await saveConfigM.mutateAsync({ tripId, gameId: urlGameId, baseHash: baseline.hash, payload: nonGolfDraftToPayload(configDraft, baseline.draft) });
-    } catch (e) {
-      setSaveError((e as { message?: string })?.message || "Couldn’t save your changes.");
-      return;
-    }
-    clearDraftOutbox();
-    resetSlices();
-    setJustSaved(true);
-    await refreshGame();
-    void hashQ.refetch();
-    utils.games.listOrganizers.invalidate({ tripId, gameId: urlGameId });
-  }
-  function handleCancelConfig() {
-    resetSlices();
-    setSaveError(null);
-    setJustSaved(false);
-    clearDraftOutbox();
-  }
-
-  // The ONE settings overlay — owns open/close/back + the leaderboard deep link
-  // (?settings=1 → land here directly for an owner/delegate of a setup-mode game).
-  // Confirm-on-leave: the whole page is ONE draft (commits only on Save), so a
-  // back-press with unsaved edits is a silent data-loss path. `guardDirty` /
-  // `handleCancelConfig` are wired through latest-refs (synced in the effect below)
-  // because `guardDirty` reads `showConfig`, which this hook returns — a direct pass
-  // would be circular.
+  // The settings overlay stays here (confirm-on-leave refs the shared hook writes below).
   const dirtyRef = useRef(false);
   const discardRef = useRef<() => void>(() => {});
   const {
-    open: showConfig,
-    openConfig,
-    closeConfig,
-    confirmingClose,
-    confirmDiscard,
-    cancelClose,
+    open: showConfig, openConfig, closeConfig, confirmingClose, confirmDiscard, cancelClose,
   } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
     isDirty: () => dirtyRef.current,
     onDiscard: () => discardRef.current(),
   });
-  // Gate the guard on the overlay being OPEN + editable — the scoreboard underneath
-  // (and a member's read-only view) must never trap a back-press.
-  const guardDirty = showConfig && canEdit && dirty;
-  useEffect(() => {
-    dirtyRef.current = guardDirty;
-    discardRef.current = handleCancelConfig;
+
+  // The shared draft-then-save lifecycle (#626): baseline + hash + dirty + outbox +
+  // confirm-on-leave sync + the atomic Save. Format-specific pieces (slices →
+  // serverConfigDraft / configDraft / anyTouched, the pure equal/payload fns, the bundle,
+  // the overlay refs) are passed in.
+  const {
+    dirty, justSaved, saveError, saving, handleSave: handleSaveConfig, handleCancel: handleCancelConfig,
+  } = useConfigDraft<NonGolfConfigDraft, typeof draftBundle>({
+    tripId, gameId: urlGameId, view: "nongolf", canEdit,
+    showConfig, dirtyRef, discardRef,
+    ready: !!game,
+    serverConfigDraft, configDraft, anyTouched,
+    draftsEqual: nonGolfDraftsEqual,
+    toPayload: (draft, base) => nonGolfDraftToPayload(draft, base),
+    bundle: draftBundle, applyRecovered: applyBundle, reset: resetSlices,
+    onSaved: async () => { await refreshGame(); utils.games.listOrganizers.invalidate({ tripId: tripId!, gameId: urlGameId! }); },
   });
 
   async function refreshGame() {
@@ -384,11 +314,11 @@ export function NonGolfGameView() {
         ready={configDraft.pointsTotal != null || configDraft.pointsDistribution != null}
         onEnable={handleEnable}
         onDisable={handleDisable}
-        saving={saveConfigM.isPending}
+        saving={saving}
         saveBar={
           <SettingsSaveBar
             dirty={dirty}
-            saving={saveConfigM.isPending}
+            saving={saving}
             justSaved={justSaved}
             error={saveError}
             onSave={() => void handleSaveConfig()}
@@ -401,7 +331,7 @@ export function NonGolfGameView() {
           onDiscard={confirmDiscard}
           onKeepEditing={cancelClose}
           onSave={() => { cancelClose(); void handleSaveConfig(); }}
-          saving={saveConfigM.isPending}
+          saving={saving}
         />
       )}
       </>

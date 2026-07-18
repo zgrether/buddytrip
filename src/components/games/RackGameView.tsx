@@ -10,7 +10,7 @@ import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { useDraftOutbox } from "@/hooks/useDraftOutbox";
+import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -106,8 +106,7 @@ export function RackGameView() {
   const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null);
   const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
   const [courseDraft, setCourseDraft] = useState<RackConfigDraft["course"] | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [justSaved, setJustSaved] = useState(false);
+  // The settings overlay stays here (confirm-on-leave refs the shared hook writes below).
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1). Confirm-on-leave: the whole page is ONE draft (commits on Save), so a
   // dirty back-press is guarded. `guardDirty` / `handleCancelConfig` reach the hook via
@@ -165,8 +164,6 @@ export function RackGameView() {
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
-  // Draft-then-save (P2): the whole settings page commits through ONE atomic RPC.
-  const saveConfigM = trpc.games.saveConfig.useMutation();
   const finishGame = trpc.games.finish.useMutation();
   // #7 correction path (owner/co-admin/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
@@ -415,31 +412,6 @@ export function RackGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft],
   );
 
-  // The config hash (baseHash for the atomic Save + the concurrency check) — polled on
-  // the same cadence as scores so another device's change is caught. Frozen into the
-  // baseline below the first tick it's read with no local edits pending.
-  const hashQ = trpc.games.configHash.useQuery(
-    { tripId: tripId!, gameId: gid! },
-    { enabled: !!tripId && !!gid, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
-  );
-  const serverHash = hashQ.data?.hash ?? null;
-
-  // Frozen baseline (+hash): the dirty reference AND the concurrency base, frozen the
-  // first render with no touched slice, re-frozen after a Save clears them.
-  const [baseline, setBaseline] = useState<{ draft: RackConfigDraft; hash: string } | null>(null);
-  useEffect(() => {
-    if (anyTouched || serverHash === null) return;
-    setBaseline((prev) =>
-      prev && prev.hash === serverHash && rackDraftsEqual(prev.draft, serverConfigDraft)
-        ? prev
-        : { draft: serverConfigDraft, hash: serverHash },
-    );
-  }, [anyTouched, serverConfigDraft, serverHash]);
-
-  // Dirty gated on anyTouched (kills the post-save transient where a refetched server
-  // draft briefly ≠ the stale baseline before it re-seeds).
-  const dirty = anyTouched && !!baseline && !rackDraftsEqual(configDraft, baseline.draft);
-
   // Rack SLOT count over the DRAFT carts = rank-paired 1v1s = min(grouped-A, grouped-B),
   // the divisor for the per-slot points share (matches `computeRack`'s n and the payload
   // derivation). Draft-based so it tracks carts as the owner builds them.
@@ -569,44 +541,6 @@ export function RackGameView() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
     setPointsTotalDraft(undefined); setGroupsDraft(null); setStrokesDraft(null); setCourseDraft(null);
   }
-  async function handleSaveConfig() {
-    if (!tripId || !gid || !baseline || !dirty || saveConfigM.isPending) return;
-    setSaveError(null);
-    try {
-      await saveConfigM.mutateAsync({ tripId, gameId: gid, baseHash: baseline.hash, payload: rackDraftToPayload(configDraft, draftSlotCount, baseline.draft) });
-    } catch (e) {
-      setSaveError((e as { message?: string }).message ?? "Couldn’t save your changes — try again.");
-      return;
-    }
-    clearDraftOutbox();
-    resetSlices();
-    setJustSaved(true);
-    // Refetch the config inputs so the baseline re-freezes on the new server state.
-    await Promise.all([gameQ.refetch(), groupsQ.refetch(), orgQ.refetch()]);
-    void hashQ.refetch();
-    if (competitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      utils.games.listByTrip.invalidate({ tripId });
-    }
-  }
-  function handleCancelConfig() {
-    resetSlices();
-    setSaveError(null);
-    setJustSaved(false);
-    clearDraftOutbox();
-  }
-  // Any fresh edit clears the "Saved" flag (dirty already masks it, but this keeps the
-  // flag honest so a later Cancel doesn't flash "Saved").
-  useEffect(() => { if (anyTouched) setJustSaved(false); }, [anyTouched]);
-
-  // Feed the overlay's confirm-on-leave guard. Gate on the overlay being OPEN + editable
-  // so the scoreboard underneath (and a member view) never traps a back-press.
-  const guardDirty = showConfig && canEdit && dirty;
-  useEffect(() => {
-    dirtyRef.current = guardDirty;
-    discardRef.current = handleCancelConfig;
-  });
 
   async function finish() {
     if (!tripId || !gid) return;
@@ -684,22 +618,7 @@ export function RackGameView() {
     }),
     [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft],
   );
-  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<typeof draftBundle>({
-    view: "rack",
-    gameId: gid,
-    draft: draftBundle,
-    touched: anyTouched,
-    serverFingerprint: serverHash ?? "",
-    enabled: !!gid,
-  });
-  // Restore a hard-teardown draft ONCE on mount (only when the server is unchanged
-  // since it diverged — the outbox's base guard enforces that).
-  const didRecover = useRef(false);
-  useEffect(() => {
-    if (didRecover.current || !gid || serverHash === null) return;
-    didRecover.current = true;
-    const b = recoverDraft();
-    if (!b) return;
+  const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name != null) setNameDraft(b.name);
     if (b.rules != null) setRulesDraft(b.rules);
     if (b.scoring != null) setScoringDraft(b.scoring);
@@ -708,7 +627,28 @@ export function RackGameView() {
     if (b.groups != null) setGroupsDraft(b.groups);
     if (b.strokes != null) setStrokesDraft(b.strokes);
     if (b.course != null) setCourseDraft(b.course);
-  }, [gid, serverHash, recoverDraft]);
+  }, []);
+
+  // The shared draft-then-save lifecycle (#626) — baseline + hash + dirty + outbox +
+  // confirm-on-leave sync + the atomic Save. Format-specific pieces are passed in.
+  const {
+    dirty, saveError, setSaveError, justSaved, saving, handleSave: handleSaveConfig, handleCancel: handleCancelConfig,
+  } = useConfigDraft<RackConfigDraft, typeof draftBundle>({
+    tripId, gameId: gid, view: "rack", canEdit,
+    showConfig, dirtyRef, discardRef,
+    serverConfigDraft, configDraft, anyTouched,
+    draftsEqual: rackDraftsEqual,
+    toPayload: (draft, base) => rackDraftToPayload(draft, draftSlotCount, base),
+    bundle: draftBundle, applyRecovered: applyBundle, reset: resetSlices,
+    onSaved: async () => {
+      await Promise.all([gameQ.refetch(), groupsQ.refetch(), orgQ.refetch()]);
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+        utils.games.listByTrip.invalidate({ tripId });
+      }
+    },
+  });
 
   async function refreshGame() {
     if (!tripId || !gid) return;
@@ -948,11 +888,11 @@ export function RackGameView() {
           ready={draftGroupsAssigned}
           onEnable={handleEnable}
           onDisable={handleDisable}
-          busy={saveConfigM.isPending}
+          busy={saving}
           saveBar={
             <SettingsSaveBar
               dirty={dirty}
-              saving={saveConfigM.isPending}
+              saving={saving}
               justSaved={justSaved}
               error={saveError}
               onSave={() => void handleSaveConfig()}
@@ -965,7 +905,7 @@ export function RackGameView() {
             onDiscard={confirmDiscard}
             onKeepEditing={cancelClose}
             onSave={() => { cancelClose(); void handleSaveConfig(); }}
-            saving={saveConfigM.isPending}
+            saving={saving}
           />
         )}
       </>
