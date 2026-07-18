@@ -28,6 +28,13 @@ export default defineConfig({
     hookTimeout: 60_000,
     exclude: ["e2e/**", "node_modules/**"],
     globalSetup: ["src/__tests__/helpers/global-setup.ts"],
+    // Mirror Playwright's CI retry (playwright.config.ts: `process.env.CI ? 2 : 0`).
+    // Post-Step-0 the whole suite hits ONE local Supabase PostgREST/Kong, which can
+    // transiently 502 ("invalid response from upstream") under peak concurrency — a
+    // test that would pass on a second attempt. Retry only in CI so local runs still
+    // fail fast (a retry there would mask real failures during TDD); retries fire only
+    // on failure, so the happy path is unaffected. (#638)
+    retry: process.env.CI ? 2 : 0,
   },
   resolve: {
     alias: {
