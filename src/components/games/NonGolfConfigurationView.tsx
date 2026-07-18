@@ -174,7 +174,6 @@ export function NonGolfConfigurationView({
             <MatchValueStepper value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
           ) : (
             <FormatPointsPanel
-              tripId={tripId}
               game={game}
               canEdit={canEdit}
               controlled={{

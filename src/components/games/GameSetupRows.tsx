@@ -118,12 +118,11 @@ export function GameSetupRows({
    *  true, the subtitle drops the handicaps claim. Default false (score modes gate on
    *  the course's stroke-index table, so the handicaps subtitle is honest there). */
   outcomeMode?: boolean;
-  /** Draft-then-save (P2 rack): flips the Total-Points stepper into controlled mode —
-   *  it reports the total to the page's rack draft instead of self-persisting. Omit and
-   *  the row keeps its own setPointsTotal/setPointsDistribution mutations (legacy). */
+  /** The rack Total-Points draft slice — present on the RACK path only; the stepper
+   *  reports the total to the page's rack draft (never self-persists; #626). */
   rackPoints?: { value: number | null; onChange: (total: number) => void };
-  /** Draft-then-save (P2 stroke): flips the PLACEMENT points editor (FormatPointsPanel)
-   *  into controlled mode — reports the total+distribution PAIR to the page's draft. */
+  /** The stroke PLACEMENT points draft slice — present on the STROKE path only; the
+   *  FormatPointsPanel reports the total+distribution PAIR to the page's draft. */
   placementPoints?: {
     value: { total: number | null; distribution: PointsDistribution | null };
     onChange: (total: number | null, distribution: PointsDistribution | null) => void;
@@ -268,10 +267,8 @@ export function GameSetupRows({
             // one match/slot exists — there's nothing to distribute across otherwise
             // (W3-Rack4). Before that the row is a plain pre-match prompt.
             control={
-              slotCount > 0 ? (
+              slotCount > 0 && rackPoints ? (
                 <RackTotalPointsControl
-                  tripId={tripId}
-                  game={game}
                   slotCount={slotCount}
                   defaultTotal={defaultTotal ?? 0}
                   // P3: locked until ≥1 valid match exists (points mean nothing before
@@ -302,7 +299,7 @@ export function GameSetupRows({
             onToggle={configLocked ? undefined : configOpen ? closeEditor : openConfig}
             testId="row-format-points"
           >
-            <FormatPointsPanel tripId={tripId} game={game} canEdit={canEdit} matchCount={matchCount} controlled={placementPoints} />
+            {placementPoints && <FormatPointsPanel game={game} canEdit={canEdit} matchCount={matchCount} controlled={placementPoints} />}
           </ChecklistRow>
         )
       )}
@@ -313,55 +310,43 @@ export function GameSetupRows({
 /**
  * RackTotalPointsControl — the total-points migration's inline stepper for rack
  * (the ONLY remaining consumer of this inline-row shape; match play moved to
- * `MatchPointsRow` in A2b). Same storage trio as A2b, minus overrides: the owner
- * steps the TOTAL (`points_total`, via `setPointsTotal`); the per-slot value
- * DERIVES = total ÷ slot count (`evenShare` with no overrides) and persists to the
- * UNCHANGED `points_distribution.value` (via `setPointsDistribution`) so every
- * downstream reader (award, live projection, the rack game page's own per-slot
- * memo) is untouched. Recomputes live as `slotCount` changes — rack's field GROWS
- * during setup (unlike match play's more-stable match count) — via a reconcile
- * effect that also seeds the first-setup default (players per team) ONCE.
+ * `MatchPointsRow` in A2b). The owner steps the TOTAL; the per-slot value DERIVES =
+ * total ÷ slot count (`evenShare` with no overrides), computed at Save time by
+ * `rackDraftToPayload` and written to the UNCHANGED `points_distribution.value` so
+ * every downstream reader (award, live projection, the rack game page's own per-slot
+ * memo) is untouched. Draft-then-save only (#626): the stepper reports the total to
+ * the page's rack draft and never self-persists; it seeds the first-setup default
+ * (players per team) into the draft ONCE.
  */
 function RackTotalPointsControl({
-  tripId, game, slotCount, defaultTotal, disabled, controlled,
+  slotCount, defaultTotal, disabled, controlled,
 }: {
-  tripId: string;
-  game: GameRow;
   slotCount: number;
   defaultTotal: number;
   disabled?: boolean;
-  /** Draft-then-save mode (P2 rack): when passed, the stepper reports the TOTAL via
-   *  `onChange` instead of self-persisting (no setPointsTotal/setPointsDistribution,
-   *  no reconcile writes — the per-slot share is derived at Save time in
-   *  `rackDraftToPayload`). Seeds off `value`; the first-setup default (players ÷
-   *  teams) is folded into the draft ONCE, mirroring the old reconcile seed. */
-  controlled?: { value: number | null; onChange: (total: number) => void };
+  /** The rack total-points draft slice (#626 — the only mode now): reports the TOTAL
+   *  via `onChange` (the per-slot share is derived at Save time in `rackDraftToPayload`).
+   *  Seeds off `value`; the first-setup default (players ÷ teams) is folded into the
+   *  draft ONCE. */
+  controlled: { value: number | null; onChange: (total: number) => void };
 }) {
-  const gameId = game.id;
-  const utils = trpc.useUtils();
-  const setTotalM = trpc.games.setPointsTotal.useMutation();
-  const setDistM = trpc.games.setPointsDistribution.useMutation();
+  const effectiveTotal = controlled.value ?? defaultTotal;
 
-  const persistedTotal = controlled ? controlled.value : ((game.points_total as number | null) ?? null);
-  const persistedPerUnit = game.points_distribution?.type === "per_match" ? game.points_distribution.value : 0;
-  const effectiveTotal = persistedTotal ?? defaultTotal;
-
-  // Controlled (draft) mode: report the total to the parent draft, seed the first-setup
-  // default into the draft ONCE (when unset + slots exist), and skip every self-persist.
+  // Seed the first-setup default into the draft ONCE (when unset + slots exist).
   const didSeed = useRef(false);
   useEffect(() => {
-    if (!controlled || disabled || slotCount === 0) return;
+    if (disabled || slotCount === 0) return;
     if (controlled.value == null && defaultTotal > 0 && !didSeed.current) {
       didSeed.current = true;
       controlled.onChange(defaultTotal);
     }
     // React to the DATA inputs; onChange is a stable-enough parent setter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controlled?.value, defaultTotal, slotCount, disabled]);
+  }, [controlled.value, defaultTotal, slotCount, disabled]);
 
-  // Local total for snappy stepping; re-sync when the persisted/default value
-  // changes — render-phase adjust-on-prop-change (no effect; avoids the
-  // cascading-render lint trip a plain useEffect sync hit in A2b).
+  // Local total for snappy stepping; re-sync when the draft value changes underneath —
+  // render-phase adjust-on-prop-change (no effect; avoids the cascading-render lint trip
+  // a plain useEffect sync hit in A2b).
   const [value, setValue] = useState(effectiveTotal);
   const [lastEffectiveTotal, setLastEffectiveTotal] = useState(effectiveTotal);
   if (effectiveTotal !== lastEffectiveTotal) {
@@ -369,67 +354,11 @@ function RackTotalPointsControl({
     setValue(effectiveTotal);
   }
 
-  const bumpBoard = () => {
-    utils.games.listByTrip.invalidate({ tripId });
-    // CLAUDE.md #10: the Live face re-seeds child caches from faceBootstrap, so a
-    // points change must invalidate faceBootstrap or the board reads stale until poll.
-    if (game.competition_id) utils.competitions.faceBootstrap.invalidate({ tripId });
-  };
-  const persistDerived = async (total: number) => {
-    const derived = evenShare(total, [], slotCount);
-    await setDistM.mutateAsync({ tripId, gameId, distribution: { type: "per_match", value: derived } });
-  };
-
   function onChange(v: number) {
     setValue(v);
-    // Controlled (draft): report the total up; Save derives + persists the share.
-    if (controlled) { controlled.onChange(v); return; }
-    const derived = evenShare(v, [], slotCount);
-    const next: PointsDistribution = { type: "per_match", value: derived };
-    const cur = utils.games.getById.getData({ tripId, gameId });
-    if (cur) utils.games.getById.setData({ tripId, gameId }, { ...cur, points_total: v, points_distribution: next } as typeof cur);
-    void (async () => {
-      try {
-        await setTotalM.mutateAsync({ tripId, gameId, total: v });
-        await persistDerived(v);
-        bumpBoard();
-      } catch {
-        utils.games.getById.invalidate({ tripId, gameId });
-      }
-    })();
+    // Report the total up; Save derives + persists the per-slot share.
+    controlled.onChange(v);
   }
-
-  // Reconcile: (1) first-setup default — no total yet, slots exist → seed the
-  // players-per-team default ONCE. (2) keep the persisted derived value in sync as
-  // `slotCount` changes (rack's field grows live as the owner adds players). Reacts
-  // to PERSISTED props (not the local optimistic `value`) so it converges and never
-  // loops. Gated on `!disabled` so a non-editing viewer's client never writes.
-  const didDefault = useRef(false);
-  useEffect(() => {
-    // Controlled (draft) mode has its own seed-into-draft effect above and never
-    // self-persists — skip the server reconcile entirely.
-    if (controlled || disabled || slotCount === 0) return;
-    if (persistedTotal == null) {
-      if (defaultTotal > 0 && !didDefault.current) {
-        didDefault.current = true;
-        void (async () => {
-          await setTotalM.mutateAsync({ tripId, gameId, total: defaultTotal });
-          await persistDerived(defaultTotal);
-          bumpBoard();
-        })();
-      }
-      return;
-    }
-    const derived = evenShare(persistedTotal, [], slotCount);
-    if (Math.abs(derived - persistedPerUnit) > 1e-9) {
-      void (async () => {
-        await persistDerived(persistedTotal);
-        bumpBoard();
-      })();
-    }
-    // persistDerived/bumpBoard are stable-enough closures; we react to the DATA inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistedTotal, defaultTotal, slotCount, persistedPerUnit, disabled]);
 
   return (
     <Stepper
