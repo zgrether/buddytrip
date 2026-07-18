@@ -44,16 +44,19 @@ describe("registry", () => {
   });
 });
 
-// Real applicability (glorious_holes is match-play only, reconciled when the scoring
-// engine landed) still exercises all four Modifiers render branches across the golf
-// formats. Maps each format's compatibleModifiers (from gameTypes.ts) through the
-// registry to the control types it renders — locking applicability + registry together.
+// The reconciled modifier matrix (gameTypes.ts) mapped through the registry to the
+// control types each format renders — locking applicability + registry together. Every
+// render branch is still exercised: HIDE (non-golf), CHECKBOX (stroke/rack — moving_tees),
+// BOTH checkbox + checkbox+stepper (match — moving_tees + glorious).
 describe("render-branch matrix (gameTypes.ts → registry)", () => {
   const controlsFor = (id: string) =>
     (GAME_TYPES.find((t) => t.id === id)?.compatibleModifiers ?? []).map((k) => modifierDef(k).controlType);
 
-  it("rack_n_stack → [] (HIDE branch — no modifiers apply)", () => {
-    expect(controlsFor("gtt_rack_n_stack")).toEqual([]);
+  it("non-golf (gtt_manual) → [] (HIDE branch — no modifiers apply)", () => {
+    expect(controlsFor("gtt_manual")).toEqual([]);
+  });
+  it("rack_n_stack → [checkbox] (matrix reconcile — moving_tees now applies; row is live)", () => {
+    expect(controlsFor("gtt_rack_n_stack")).toEqual(["checkbox"]);
   });
   it("stroke_play → [checkbox] (CHECKBOX-only — moving_tees; glorious does NOT apply to stroke)", () => {
     expect(controlsFor("gtt_stroke_play")).toEqual(["checkbox"]);

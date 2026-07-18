@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Users, Settings, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, Users, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
@@ -26,7 +26,8 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { configToRackDraft, rackDraftToPayload, rackDraftsEqual, type RackConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
-import { ModifiersRow } from "@/components/games/ModifiersRow";
+import { ModifierCards } from "@/components/games/ModifierCards";
+import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
@@ -95,7 +96,7 @@ export function RackGameView() {
   // of the 2v2 Matches/Handicaps rows), single-open. Draft-then-save (P2): every row
   // edits ONE composite draft (`configDraft` below) and nothing reaches the server
   // until Save — no per-collapse persist. `openAccordion` is UI-only now.
-  const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | null>(null);
+  const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | "modifiers" | null>(null);
   // ── Composite draft SLICES (null = untouched → tracks the server). Assembled over
   //    the server mirror in `configDraft`, mirroring MatchGameView / NonGolfGameView.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -107,6 +108,7 @@ export function RackGameView() {
   const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null);
   const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
   const [courseDraft, setCourseDraft] = useState<RackConfigDraft["course"] | null>(null);
+  const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null); // matrix reconcile — rack modifiers live
   // The settings overlay stays here (confirm-on-leave refs the shared hook writes below).
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1). Confirm-on-leave: the whole page is ONE draft (commits on Save), so a
@@ -397,7 +399,8 @@ export function RackGameView() {
 
   const anyTouched =
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
-    pointsTotalDraft !== undefined || groupsDraft !== null || strokesDraft !== null || courseDraft !== null;
+    pointsTotalDraft !== undefined || groupsDraft !== null || strokesDraft !== null || courseDraft !== null ||
+    modifiersDraft !== null;
 
   const configDraft = useMemo<RackConfigDraft>(
     () => ({
@@ -410,8 +413,9 @@ export function RackGameView() {
       groups: groupsDraft ?? serverConfigDraft.groups,
       strokes: strokesDraft ?? serverConfigDraft.strokes,
       course: courseDraft ?? serverConfigDraft.course,
+      modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft, modifiersDraft],
   );
 
   // Rack SLOT count over the DRAFT carts = rank-paired 1v1s = min(grouped-A, grouped-B),
@@ -542,6 +546,7 @@ export function RackGameView() {
   function resetSlices() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
     setPointsTotalDraft(undefined); setGroupsDraft(null); setStrokesDraft(null); setCourseDraft(null);
+    setModifiersDraft(null);
   }
 
   async function finish() {
@@ -617,8 +622,9 @@ export function RackGameView() {
     () => ({
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
       pointsTotal: pointsTotalDraft, groups: groupsDraft, strokes: strokesDraft, course: courseDraft,
+      modifiers: modifiersDraft,
     }),
-    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft],
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft, modifiersDraft],
   );
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name != null) setNameDraft(b.name);
@@ -629,6 +635,7 @@ export function RackGameView() {
     if (b.groups != null) setGroupsDraft(b.groups);
     if (b.strokes != null) setStrokesDraft(b.strokes);
     if (b.course != null) setCourseDraft(b.course);
+    if (b.modifiers != null) setModifiersDraft(b.modifiers);
   }, []);
 
   // The shared draft-then-save lifecycle (#626) — baseline + hash + dirty + outbox +
@@ -831,13 +838,26 @@ export function RackGameView() {
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={[teamA, teamB]} />
       </ChecklistRow>
     );
-    // Game Modifiers — HIDDEN BY LOGIC, not omitted (Phase 2 gate). Rack's game type
-    // declares `compatibleModifiers: []`, so `availableModifiers` is empty and the row is
-    // never built — but the wiring is present and keyed on the game type, so a future
-    // rack-compatible modifier would surface the row automatically (its inline editor is
-    // Phase 3 work; the branch is unreachable today). This is the same gated shape stroke
-    // uses, so the two can't drift.
+    // Game Modifiers — LIVE for rack now (matrix reconcile: rack's compatibleModifiers is
+    // ["moving_tees"]). Keyed on the game type, so the row appears iff a modifier applies —
+    // the same gated shape stroke uses, so the two can't drift. Inline ModifierCards panel
+    // editing the modifiers draft slice (built below).
     const availableModifiers = getGameTypeDefinition(gameTypeId)?.compatibleModifiers ?? [];
+    const modifierCount = enabledCount(configDraft.modifiers, availableModifiers);
+    const modifiersInlineRow = availableModifiers.length > 0 ? (
+      <ChecklistRow
+        icon={Sparkles}
+        title="Game Modifiers"
+        subtitle={modifierCount > 0 ? `${modifierCount} modifier${modifierCount === 1 ? "" : "s"} added` : "Optional — add special rules"}
+        state={modifierCount > 0 ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "modifiers"}
+        onToggle={() => setOpenAccordion((o) => (o === "modifiers" ? null : "modifiers"))}
+        testId="row-modifiers"
+      >
+        <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={setModifiersDraft} readOnly={!canEdit} />
+      </ChecklistRow>
+    ) : undefined;
     // OPTIONS section (extraRows): Handicaps.
     const optionRows = (
       <ChecklistRow
@@ -871,14 +891,9 @@ export function RackGameView() {
           onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           leadingSettingsRows={groupingsRow}
           extraRows={optionRows}
-          // Hidden by logic: rack's `compatibleModifiers` is empty, so this is undefined
-          // and no Modifiers row renders. Wired (not omitted) so the row would appear if
-          // the game type ever declared a compatible modifier. onClick is unreachable today.
-          modifiersRow={
-            availableModifiers.length > 0 ? (
-              <ModifiersRow count={0} onClick={() => {}} disabled={!canEdit} locked={false} />
-            ) : undefined
-          }
+          // Game Modifiers — an inline ModifierCards panel (rack's row went live in the
+          // matrix reconcile; edits the modifiers draft slice, committed on Save).
+          modifiersRow={modifiersInlineRow}
           // Total-points: the DRAFT slot count is the per-slot divisor; the roster-derived
           // default total seeds first-setup. Rack labels the derived readout "Points per Slot".
           matchCount={draftSlotCount}

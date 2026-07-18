@@ -103,18 +103,21 @@ export interface DraftCourse {
  * The RACK variant: the base + rack's structural slice. Rack is net-stroke team play
  * built from GROUPINGS (carts) + a course, with A2b total-points (owner sets the total;
  * the per-slot share DERIVES = total ÷ slot count, so it's not stored on the draft — it's
- * recomputed at payload time like match's even share). No entry_mode toggle, no modifiers.
+ * recomputed at payload time like match's even share). No entry_mode toggle.
  *
  *  - `groups` — one user-id array per cart, in cart order (the STRUCTURE unit; a
  *    membership change is refused once scores exist — the coarse HAS_SCORES wall).
  *  - `strokes` — per-participant handicap strokes, keyed by user id (the FIELD tier:
  *    in-place, allowed with scores).
  *  - `course` — the shared course sub-object.
+ *  - `modifiers` — round modifiers (`games.modifiers`). Rack's Moving-tee-boxes row went
+ *    live in the modifier-matrix reconcile, so rack now carries this slice like stroke.
  */
 export interface RackConfigDraft extends BaseConfigDraft {
   groups: string[][];
   strokes: Record<string, number>;
   course: DraftCourse;
+  modifiers: ModifiersMap;
 }
 
 /** The MATCH-PLAY variant: the base + the match structural slice. Every settings row
@@ -455,6 +458,7 @@ export function configToRackDraft(
       backId: game.back_course_id ?? null,
       scorecardSchema: game.scorecard_schema ?? null,
     },
+    modifiers: game.modifiers ?? {},
   };
 }
 
@@ -495,6 +499,9 @@ export function rackDraftToPayload(draft: RackConfigDraft, slotCount: number, ba
 
   return {
     ...baseDraftToPayload(draft, distribution, baseline),
+    // Send modifiers EXPLICITLY (the RPC defaults a missing key to `{}`, which would wipe
+    // them) — rack gained the Moving-tee-boxes row in the matrix reconcile.
+    modifiers: draft.modifiers,
     courseId: draft.course.id,
     backCourseId: draft.course.backId,
     scorecardSchema: draft.course.scorecardSchema,
@@ -505,7 +512,7 @@ export function rackDraftToPayload(draft: RackConfigDraft, slotCount: number, ba
 }
 
 /** Pure whole-page equality for the rack draft — base fields + course + strokes +
- *  groupings (drives the Save-enabled gate). */
+ *  groupings + modifiers (drives the Save-enabled gate). */
 export function rackDraftsEqual(a: RackConfigDraft, b: RackConfigDraft): boolean {
   return (
     baseDraftsEqual(a, b) &&
@@ -513,6 +520,7 @@ export function rackDraftsEqual(a: RackConfigDraft, b: RackConfigDraft): boolean
     a.course.backId === b.course.backId &&
     canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
     canonical(a.strokes) === canonical(b.strokes) &&
+    canonical(a.modifiers) === canonical(b.modifiers) &&
     rackGroupsEqual(a.groups, b.groups)
   );
 }
