@@ -813,7 +813,11 @@ export const gamesRouter = router({
           courseId: z.string().nullable(),
           backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),
-          delegates: z.array(z.string()),
+          // OPTIONAL (088): a payload may OMIT delegates to mean "don't touch" — the RPC
+          // gates the write on `p_payload ? 'delegates'`, matching matches/groups/
+          // participants. Present `[]` still clears; absent preserves. (The client omits it
+          // on an unchanged/unknown delegate set so the phantom-empty is never sent.)
+          delegates: z.array(z.string()).optional(),
           // matches — match play only. Optional (085): a rack/stroke/non-golf payload
           // omits it, and the RPC gates the whole matches block on the key's presence,
           // so a missing `matches` no longer defaults into the clean-replace.
