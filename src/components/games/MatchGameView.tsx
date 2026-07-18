@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useOutcomeSaver } from "@/hooks/useOutcomeSaver";
-import { useDraftOutbox } from "@/hooks/useDraftOutbox";
+import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
@@ -221,9 +221,6 @@ export function MatchGameView() {
   const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null>(null);
   const [courseDraft, setCourseDraft] = useState<ConfigDraft["course"] | null>(null);
   const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
-  // Surfaced when Save fails — the draft is KEPT (edits are never discarded) and
-  // the panel stays open so the reason is readable and the action retryable.
-  const [saveError, setSaveError] = useState<string | null>(null);
   // Once the user TOUCHES the draft in a setup session, the server must never
   // re-derive over it. The seed effect's `draft.length` guard alone is not enough:
   // under concurrent renders its closure can read a stale length and re-seed,
@@ -231,8 +228,6 @@ export function MatchGameView() {
   // race the accordion's instant-open exposed). A ref is always current, so it's
   // the reliable lock. Reset on every fresh seed entry (create / Edit).
   const draftTouched = useRef(false);
-  // One-shot latch for the hard-teardown outbox restore (see the seed effect).
-  const didRecoverRef = useRef(false);
   // The user-edit setter: marks the draft touched, then updates it. Use this for
   // EVERY user edit (picks, reorder, remove, add, handicap); use raw setDraft only
   // for SEEDING (create / resume / Edit), which must NOT set the touched lock.
@@ -614,42 +609,6 @@ export function MatchGameView() {
     }),
     [draft, nameDraft, rulesDraft, scoringDraft, entryModeDraft, modifiersDraft, pointsTotalDraft, courseDraft, delegatesDraft]
   );
-  // The SERVER-produced config hash. Declared here, above the outbox, because the
-  // outbox's `base` and Save's `baseHash` MUST BE ONE VALUE — captured once and fed
-  // to both. Same query + key `useConfigSync` polls, so it shares that cache and
-  // costs no extra round-trip.
-  //
-  // Why one value: they answer two halves of the same question. The outbox's base
-  // decides recover-vs-discard ("did the server move since this draft diverged?");
-  // baseHash decides conflict-vs-allow ("is the state I opened with still current?").
-  // Key them off DIFFERENT fingerprints and they disagree about what the base was —
-  // e.g. a matches-only fingerprint ignores a remote COURSE change, so the outbox
-  // happily restores, the baseline re-seeds to the newer server at mount, Save's
-  // check passes, and the recovered draft silently overwrites the other device.
-  const hashQ = trpc.games.configHash.useQuery(
-    { tripId: tripId!, gameId: gameId! },
-    { enabled: !!tripId && !!gameId, refetchInterval: GAME_SYNC_INTERVAL_MS, refetchIntervalInBackground: false },
-  );
-  const serverHash = hashQ.data?.hash;
-  const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<SettingsDraftBundle | DraftMatch[]>({
-    view: "match",
-    gameId,
-    draft: draftBundle,
-    touched: anyTouched,
-    // The hook tracks this while untouched and freezes it at the first edit —
-    // exactly when `baseline` freezes, off the same query. So the stored base IS the
-    // baseHash the eventual Save is judged against.
-    serverFingerprint: serverHash ?? "",
-    // Never mirror before the hash lands: an entry stored with base "" could never
-    // be recovered (it would compare unequal to every real hash and delete itself).
-    //
-    // Gated on `canEdit`, not on scoring (084 freeze redesign): a scored/live game
-    // still has editable WARNED rows (points / handicaps / modifiers), so its draft is
-    // real work a refresh must not lose. Nothing auto-writes from the outbox — it only
-    // restores a draft — so mirroring an editable game is always safe.
-    enabled: !!gameId && canEdit && !!serverHash,
-  });
-
   // matchId → override, for the game-page projection (per-match award value).
   // DELIBERATELY still keyed off `serverMatches`, not the draft: this feeds the
   // OVERVIEW's header projection, which only renders in scoring mode — where the
@@ -757,50 +716,11 @@ export function MatchGameView() {
   const courseStrokeIndex = courseMeta?.units?.metadata?.handicap_index;
   const courseHoleCount = courseMeta?.units?.count;
 
-  // ── The frozen baseline + baseHash (spec: capture TOGETHER, freeze TOGETHER) ─
-  // The dirty check's reference point AND the optimistic-concurrency base, captured
-  // in ONE shot from the same render's mirror + the SERVER-produced hash.
-  //
-  // Both must freeze the moment the draft is touched. If the ~20s poll refreshed the
-  // baseHash mid-edit, the conflict check would defeat itself: A saves → my poll
-  // lands → my base becomes A's POST-save hash → my Save passes its check → I
-  // silently clobber A. Freezing means my Save is judged against the state I
-  // actually opened with.
-  //
-  // The hash is the server's own (`games.configHash`, declared up with the outbox
-  // because BOTH must key off the same value) — never recomputed client-side,
-  // because `saveConfig` re-derives it via the shared readGameConfigHash and the two
-  // must be byte-identical.
-  const [baseline, setBaseline] = useState<{ draft: ConfigDraft; hash: string } | null>(null);
-  useEffect(() => {
-    if (anyTouched) return; // frozen while dirty — see above
-    if (!gameQ.data || !serverHash) return;
-    setBaseline((prev) =>
-      prev && prev.hash === serverHash && configDraftsEqual(prev.draft, serverConfigDraft)
-        ? prev // no churn — keep the identity stable so `dirty` doesn't thrash
-        : { draft: serverConfigDraft, hash: serverHash },
-    );
-    // `serverHash` (not hashQ.data) — the SAME binding the outbox's base reads, so
-    // the two can't drift apart. Both freeze on this `anyTouched` transition.
-  }, [anyTouched, serverConfigDraft, serverHash, gameQ.data]);
-
-  // Save is enabled iff something really changed (pure whole-page equality). Gated on
-  // `anyTouched`: you can only be dirty if you've LOCALLY edited a slice. Without this,
-  // there's a post-save race — `resetSlices` unfreezes the baseline, but the invalidated
-  // `serverConfigDraft` refetches to its NEW value one render BEFORE the frozen baseline
-  // re-seeds, so for that render `configDraft`(new) ≠ `baseline`(stale) reads dirty=true.
-  // That transient fired `if (dirty) setJustSaved(false)` and wiped the "Saved" hint
-  // (the flaky E2E). If nothing is touched, `configDraft` IS the server mirror, so there
-  // is nothing unsaved by definition — dirty is false regardless of the stale baseline.
-  const dirty = anyTouched && !!baseline && !configDraftsEqual(configDraft, baseline.draft);
-  // Did a Save actually land in THIS session? The clean state has two very different
-  // causes — "your changes were written" and "your changes were thrown away" (Cancel)
-  // or simply "you haven't touched anything yet" — and only the first one may claim a
-  // save happened. Cleared the moment the draft goes dirty again.
-  const [justSaved, setJustSaved] = useState(false);
-  useEffect(() => {
-    if (dirty) setJustSaved(false);
-  }, [dirty]);
+  // The frozen baseline + baseHash, `dirty`, `justSaved`, the config-hash poll, the
+  // hard-teardown outbox, Save/Cancel, and confirm-on-leave all live in the ONE shared
+  // `useConfigDraft` hook now (#626) — its call is further down, after the course
+  // handlers + draftBundle it needs. `dirty` / `saveError` / `justSaved` / `saving` /
+  // `handleSave` / `handleCancel` are destructured there.
 
   // ── Course, drafted (spec §2.2 Design A: the CLIENT pre-computes the snapshot) ─
   // Each handler runs the SAME shared pure derivation the server's applyCourse /
@@ -1093,47 +1013,11 @@ export function MatchGameView() {
     // and matches are always consistent. This gate remains only so the seed reads
     // a loaded game row for its other fields.
     //
-    // Wait for the config HASH too: it's the outbox's base, so recovering before it
-    // lands would compare a stored base against "" — discarding (and deleting) a
-    // perfectly good draft. It batches with the queries above, so this costs nothing
-    // in practice. Gating the WHOLE effect (not just the recover) matters: the server
-    // seed below fills `draft`, and the `draft.length > 0` guard would then stop the
-    // effect ever re-entering to recover.
-    if (gameId && (!gameQ.data || !serverHash)) return;
-    // Hard-teardown recovery (Layer 2): if an outbox draft survived a refresh/kill
-    // AND the server is unchanged since it diverged, restore it. A stale outbox
-    // (server moved on) returns null + clears itself. One-shot — restoring a
-    // NON-matches slice (a name edit, say) leaves `draft` empty, so without this the
-    // effect would re-enter and re-apply the bundle on every server tick.
-    if (!didRecoverRef.current) {
-      didRecoverRef.current = true;
-      const recovered = recoverDraft();
-      if (recovered) {
-        // A bundle written BEFORE the composite outbox stored the bare matches
-        // array — restore it as a matches-only bundle rather than dropping it.
-        const bundle: SettingsDraftBundle = Array.isArray(recovered)
-          ? { matches: recovered, name: null, rules: null, scoring: null, entryMode: null, modifiers: null, pointsTotal: null, course: null, delegates: null }
-          : recovered;
-        if (bundle.name !== null) setNameDraft(bundle.name);
-        if (bundle.rules !== null) setRulesDraft(bundle.rules);
-        if (bundle.scoring !== null) setScoringDraft(bundle.scoring);
-        if (bundle.entryMode !== null) setEntryModeDraft(bundle.entryMode);
-        if (bundle.modifiers !== null) setModifiersDraft(bundle.modifiers);
-        if (bundle.pointsTotal !== null) setPointsTotalDraft(bundle.pointsTotal);
-        if (bundle.course !== null) setCourseDraft(bundle.course);
-        if (bundle.delegates !== null) setDelegatesDraft(bundle.delegates);
-        if (bundle.matches && bundle.matches.length > 0) {
-          // Mark touched so the server seed below never clobbers the restore.
-          draftTouched.current = true;
-          // Normalize `pointValue`: a draft written to localStorage BEFORE the flip
-          // predates that field and recovers as `undefined` — which the Save
-          // payload's `pointValue: number | null` rejects at the zod boundary
-          // (undefined is dropped by JSON, not coerced to null). Default it.
-          setDraft(bundle.matches.map((m) => ({ ...m, pointValue: m.pointValue ?? null })));
-          return;
-        }
-      }
-    }
+    // Hard-teardown recovery is NO LONGER here — it moved to `useConfigDraft`'s own
+    // one-shot (`applyRecovered`, below), which fires on the config hash regardless of
+    // whether settings are open. When it restores a matches slice it sets
+    // `draftTouched.current`, so this seed's guard (top) skips and the restore wins.
+    if (gameId && !gameQ.data) return;
     if (serverMatches.length > 0) {
       setDraft(serverDraftFrom(serverMatches, handicapOf, membersOfSide));
       return;
@@ -1142,7 +1026,7 @@ export function MatchGameView() {
     // valid empty state (the table hides; only "Add match" shows). "+ Add match"
     // grows it from there (build-as-you-go — W-GAMEPAGE-01 §6.1).
     setDraft([]);
-  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data, serverHash, recoverDraft]);
+  }, [cfgOpen, draft.length, serverMatches, handicapOf, membersOfSide, sided, gameId, gameQ.data]);
 
   // (The modifiers seed effect is GONE. It existed because `modifiersDraft` was a
   // server MIRROR that had to be re-synced whenever the row was closed and skipped
@@ -1197,8 +1081,10 @@ export function MatchGameView() {
   // `scoring_enabled` is a DRAFT FIELD, not a separate transaction: Save commits the
   // config AND goes live / disables in the same all-or-nothing write. The RPC asserts
   // readiness POST-write inside its tx, so a not-ready go-live rolls the whole thing
-  // back — no half-configured live game.
-  const saveConfigM = trpc.games.saveConfig.useMutation();
+  // back — no half-configured live game. The mutation + the whole Save/Cancel/baseline/
+  // dirty/outbox lifecycle live in `useConfigDraft` (below); this view supplies only the
+  // match-specific bits (the payload builder, the scoring-flip board cascade, the
+  // matches-aware reset, and the union-bundle recovery).
 
   // The board cascade, run ONLY when Save flips `scoring_enabled`. A config-only
   // save can't change the leaderboard (the game isn't live, so it contributes
@@ -1235,86 +1121,80 @@ export function MatchGameView() {
     setDelegatesDraft(null);
   }
 
-  async function handleSave() {
-    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending) return;
-    setSaveError(null);
-    // `baseline.draft` is what makes matchesDirty honest (an untouched match set
-    // must NOT trigger the RPC's clean-replace — that's what lets a game which kept
-    // its scores through a disable still be edited and re-enabled).
-    const payload = configDraftToPayload(configDraft, baseline.draft);
-    // ONE captured value feeds both the conflict check and the outbox base — if
-    // these could disagree, conflict-vs-allow and recover-vs-discard would too.
-    const baseHash = baseline.hash;
-    // Did THIS save flip the live flag? Decides the cascade below.
-    const scoringFlipped = payload.scoringEnabled !== baseline.draft.scoringEnabled;
-
-    try {
-      await saveConfigM.mutateAsync({ tripId, gameId, baseHash, payload });
-    } catch (e) {
-      // Keep the draft AND the panel open — edits are never discarded on a failed
-      // save. The banner renders the reason (readiness / conflict / course-frozen)
-      // legibly rather than a bare toast.
-      setSaveError((e as { message?: string })?.message || "Couldn’t save your changes.");
-      return;
+  // Restore a hard-teardown draft (Layer 2). Handles BOTH shapes the outbox has stored:
+  // the composite `SettingsDraftBundle` and — for drafts written before the composite —
+  // a bare `DraftMatch[]`. Setting `draftTouched` when matches come back is what makes
+  // the seed effect (above) skip so the restore wins. `pointValue` is defaulted because
+  // a pre-flip draft predates that field and recovers as `undefined`, which the Save
+  // payload's `number | null` rejects at the zod boundary.
+  const applyRecovered = useCallback((recovered: SettingsDraftBundle | DraftMatch[]) => {
+    const bundle: SettingsDraftBundle = Array.isArray(recovered)
+      ? { matches: recovered, name: null, rules: null, scoring: null, entryMode: null, modifiers: null, pointsTotal: null, course: null, delegates: null }
+      : recovered;
+    if (bundle.name !== null) setNameDraft(bundle.name);
+    if (bundle.rules !== null) setRulesDraft(bundle.rules);
+    if (bundle.scoring !== null) setScoringDraft(bundle.scoring);
+    if (bundle.entryMode !== null) setEntryModeDraft(bundle.entryMode);
+    if (bundle.modifiers !== null) setModifiersDraft(bundle.modifiers);
+    if (bundle.pointsTotal !== null) setPointsTotalDraft(bundle.pointsTotal);
+    if (bundle.course !== null) setCourseDraft(bundle.course);
+    if (bundle.delegates !== null) setDelegatesDraft(bundle.delegates);
+    if (bundle.matches && bundle.matches.length > 0) {
+      draftTouched.current = true;
+      setDraft(bundle.matches.map((m) => ({ ...m, pointValue: m.pointValue ?? null })));
     }
+  }, []);
 
-    clearDraftOutbox(); // durably persisted → drop the teardown copy
-    resetSlices(configDraft.matches);
-    setOpenRows(new Set());
-    setJustSaved(true); // the one path that earns "Saved"
-
-    if (scoringFlipped) {
-      // Going live / disabling DOES move the board — run the full cascade. Flip the
-      // cache optimistically first so the banner + locks land without a round-trip.
-      const cur = utils.games.getById.getData({ tripId, gameId });
-      if (cur) {
-        utils.games.getById.setData({ tripId, gameId }, { ...cur, scoring_enabled: payload.scoringEnabled } as typeof cur);
+  // The ONE draft-then-save lifecycle (#626): baseline/baseHash, `dirty`, the config-hash
+  // poll, `justSaved`/`saveError`, the outbox + recovery, atomic Save/Cancel, and the
+  // confirm-on-leave sync. The match-specific bits are the callbacks:
+  //  - `toPayload` folds the frozen baseline in so `matchesDirty` stays honest (an
+  //    untouched match set never triggers the RPC's clean-replace).
+  //  - `reset(committed)` re-seeds the matches slice from the just-SAVED set (no flash)
+  //    on Save vs the SERVER set (discard) on Cancel.
+  //  - `onSaved` runs the scoring-flip board cascade (full vs lean) + the unconditional
+  //    listOrganizers invalidate (delegates aren't in the config hash).
+  const {
+    dirty, saveError, setSaveError, justSaved, saving,
+    handleSave, handleCancel,
+  } = useConfigDraft<ConfigDraft, SettingsDraftBundle | DraftMatch[]>({
+    tripId, gameId, view: "match", canEdit,
+    showConfig: cfgOpen, dirtyRef, discardRef,
+    ready: !!gameQ.data,
+    serverConfigDraft, configDraft, anyTouched,
+    draftsEqual: configDraftsEqual,
+    toPayload: (draft, base) => configDraftToPayload(draft, base),
+    bundle: draftBundle,
+    applyRecovered,
+    reset: (committed) => resetSlices(committed ? configDraft.matches : serverConfigDraft.matches),
+    onSaved: async () => {
+      setOpenRows(new Set());
+      // Did THIS save flip the live flag? The drafted flag vs the server's current one.
+      const scoringFlipped = configDraft.scoringEnabled !== serverConfigDraft.scoringEnabled;
+      if (scoringFlipped) {
+        // Going live / disabling DOES move the board — run the full cascade. Flip the
+        // cache optimistically first so the banner + locks land without a round-trip.
+        const cur = utils.games.getById.getData({ tripId: tripId!, gameId: gameId! });
+        if (cur) {
+          utils.games.getById.setData({ tripId: tripId!, gameId: gameId! }, { ...cur, scoring_enabled: configDraft.scoringEnabled } as typeof cur);
+        }
+        await refreshAfterMatchCountChange();
+      } else {
+        // LEAN: a config-only save can't move the board (the game isn't live) — just
+        // invalidate the two queries this page reads + mark the board stale.
+        // faceBootstrap is the one that actually refreshes the Live face (CLAUDE.md #10).
+        await Promise.all([
+          utils.games.getById.invalidate({ tripId: tripId!, gameId: gameId! }),
+          utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! }),
+        ]);
+        utils.games.listByTrip.invalidate({ tripId: tripId! });
+        if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
       }
-      await refreshAfterMatchCountChange();
-    } else {
-      // LEAN: a config-only save. `saveConfig` returns { ok: true } (the RPC is
-      // RETURNS void), so there are no rows to merge — invalidate the two queries
-      // this page actually reads (both active → they refetch) and mark the board
-      // stale. No scores/leaderboard refetch: the game isn't live, so the board's
-      // numbers can't have moved. faceBootstrap is the one that actually refreshes
-      // the Live face (CLAUDE.md #10) — invalidating only the child is silently
-      // undone by the face's re-seed.
-      await Promise.all([
-        utils.games.getById.invalidate({ tripId, gameId }),
-        utils.matches.listByGame.invalidate({ tripId, gameId }),
-      ]);
-      utils.games.listByTrip.invalidate({ tripId });
-      if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
-    }
-    // Delegates aren't in the config hash (they live in game_delegates, not the
-    // hashed game/participants/matches), and neither cascade above touches
-    // listOrganizers — so a delegate change on ANY save would read stale until
-    // remount (the mirror's `serverDelegates` reads this query). Invalidate it
-    // unconditionally: cheap, and it's the source GameIdentityHeader renders from.
-    utils.games.listOrganizers.invalidate({ tripId, gameId });
-    // The hash moved (we just changed the config) — refetch it so the baseline
-    // re-seeds against the POST-save server state rather than waiting out the poll.
-    void hashQ.refetch();
-    // No closeConfig(): Save stays put. Flipping to scoring re-renders this page in
-    // its locked mode (the user reads the now-live banner); the back arrow leaves.
-  }
-
-  /** Cancel = discard every edit and re-mirror the server. The matches slice seeds
-   *  straight from the mirror (the persisted set) — that IS the discard. */
-  function handleCancel() {
-    resetSlices(serverConfigDraft.matches);
-    setSaveError(null);
-    setJustSaved(false); // discarded, NOT saved — never claim otherwise
-    clearDraftOutbox();
-  }
-
-  // Feed the settings overlay's confirm-on-leave guard (declared above `dirty`).
-  // Only gate while the overlay is actually OPEN and the user can edit — a member's
-  // read-only view, or the game screens underneath, must never trap a back-press.
-  const guardDirty = cfgOpen && canEdit && dirty;
-  useEffect(() => {
-    dirtyRef.current = guardDirty;
-    discardRef.current = handleCancel;
+      // Delegates live in game_delegates (not the config hash), and neither cascade
+      // above touches listOrganizers — so a delegate change would read stale until
+      // remount. Invalidate unconditionally: cheap, and GameIdentityHeader renders from it.
+      utils.games.listOrganizers.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
   });
 
   // The Setup/Scoring toggle is now a DRAFT edit (spec §2.7-2) — flipping it stages
@@ -1855,7 +1735,7 @@ export function MatchGameView() {
             {canEdit && (
               <SettingsSaveBar
                 dirty={dirty}
-                saving={saveConfigM.isPending}
+                saving={saving}
                 justSaved={justSaved}
                 error={saveError}
                 onSave={() => void handleSave()}
@@ -1958,7 +1838,7 @@ export function MatchGameView() {
                   ready={enableReady}
                   onEnable={attemptReady}
                   onDisable={handleDisable}
-                  pending={saveConfigM.isPending}
+                  pending={saving}
                   // The toggle answers the tap from the DRAFT, but until Save lands the
                   // server disagrees — say so rather than claim a live game that isn't.
                   staged={configDraft.scoringEnabled !== scoringEnabled}
@@ -2250,7 +2130,7 @@ export function MatchGameView() {
             cancelClose();
             void handleSave();
           }}
-          saving={saveConfigM.isPending}
+          saving={saving}
         />
       )}
 
