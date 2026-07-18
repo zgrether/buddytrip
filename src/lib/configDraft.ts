@@ -547,13 +547,21 @@ export interface StrokeConfigDraft extends BaseConfigDraft {
   strokes: Record<string, number>;
   modifiers: ModifiersMap;
   course: DraftCourse;
+  /** GROUPINGS (P3 3.2) — tee-groups over the create-only roster, one user-id array per
+   *  group in group order. Optional (a stroke game needn't group its players). Reuses
+   *  rack's `play_groups` data path: the RPC UPSERTS participants (never deletes the
+   *  roster) and reassigns `play_group_id`, so grouping only ORGANIZES the existing
+   *  roster. A membership change is refused once scores exist (HAS_SCORES), like rack. */
+  groups: string[][];
 }
 
 /** Server snapshot → stroke draft baseline. The caller resolves participants → a
- *  `{ userId → strokes }` map before handing it here (mirrors the rack/match resolvers). */
+ *  `{ userId → strokes }` map and play_groups → an ordered `string[][]` before handing
+ *  them here (mirrors the rack/match resolvers). */
 export function configToStrokeDraft(
   game: ConfigGameSnapshot,
   strokes: Record<string, number>,
+  groups: string[][],
   delegates: string[]
 ): StrokeConfigDraft {
   return {
@@ -572,6 +580,7 @@ export function configToStrokeDraft(
       backId: game.back_course_id ?? null,
       scorecardSchema: game.scorecard_schema ?? null,
     },
+    groups: groups.map((g) => [...g]),
   };
 }
 
@@ -590,10 +599,16 @@ export function strokeDraftToPayload(draft: StrokeConfigDraft, baseline?: Stroke
     backCourseId: draft.course.backId,
     scorecardSchema: draft.course.scorecardSchema,
     participants: Object.entries(draft.strokes).map(([userId, strokes]) => ({ userId, strokes })),
+    // GROUPINGS (P3 3.2) — reuse rack's groups[] path: the STRUCTURE unit, clean-replaced
+    // on a real change (refused with scores) and skipped when unchanged. The RPC upserts
+    // the roster union (never deletes), so grouping only ORGANIZES stroke's existing roster.
+    groups: rackGroupsToPersist(draft.groups),
+    groupsStructureDirty: baseline ? !rackGroupsEqual(draft.groups, baseline.groups) : true,
   };
 }
 
-/** Pure whole-page equality for the stroke draft — base + course + strokes + modifiers. */
+/** Pure whole-page equality for the stroke draft — base + course + strokes + modifiers +
+ *  groupings (drives the Save-enabled gate). */
 export function strokeDraftsEqual(a: StrokeConfigDraft, b: StrokeConfigDraft): boolean {
   return (
     baseDraftsEqual(a, b) &&
@@ -601,7 +616,8 @@ export function strokeDraftsEqual(a: StrokeConfigDraft, b: StrokeConfigDraft): b
     a.course.backId === b.course.backId &&
     canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
     canonical(a.strokes) === canonical(b.strokes) &&
-    canonical(a.modifiers) === canonical(b.modifiers)
+    canonical(a.modifiers) === canonical(b.modifiers) &&
+    rackGroupsEqual(a.groups, b.groups)
   );
 }
 

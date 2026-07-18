@@ -22,35 +22,36 @@ export interface GroupBuilderTeam {
 }
 
 /**
- * RackGroupBuilder — manual playing-group assignment for Rack-n-Stack, forked from
- * the 2v2 match-builder's add/remove + player-picker interaction. Presentation-only
- * per the persistence-agnostic pattern (CLAUDE.md #7): the draft (`groups` = arrays
- * of user ids, one array per group) arrives via props and every edit emits through
- * `onChange`; the parent owns tRPC persistence.
+ * RackGroupBuilder — manual playing-group assignment, forked from the 2v2
+ * match-builder's add/remove + player-picker interaction. Presentation-only per the
+ * persistence-agnostic pattern (CLAUDE.md #7): the draft (`groups` = arrays of user
+ * ids, one array per group) arrives via props and every edit emits through `onChange`;
+ * the parent owns tRPC persistence.
  *
- * The one departure from the 2v2 builder is the COMBINED-POOL picker — both teams in
- * ONE bottom sheet, two columns (team A left / team B right) — so a group takes any
- * mix (no forced 2+2). A player already in a group leaves the pool (each player in at
- * most one group). Unassigned players simply stay in the pool: no bench warning — the
- * scoring rack's empty/forfeited slots carry that consequence downstream.
+ * N-TEAM (P3 3.2): the combined-pool picker takes `teams: GroupBuilderTeam[]` — ONE
+ * bottom sheet with a STACKED, labeled section per team (was two hardcoded columns) —
+ * so it works at 2, 3, or 4 teams on a phone (columns don't fit beyond two). Rack is
+ * the 2-team case; stroke passes its game roster split by team (2–4 sections). A group
+ * takes any mix across teams (no forced split). A player already in a group leaves the
+ * pool (each player in at most one group). Unassigned players stay in the pool — no
+ * bench warning; the scoring surface carries that consequence downstream.
  */
 export function RackGroupBuilder({
   groups,
   onChange,
-  teamA,
-  teamB,
+  teams,
 }: {
   groups: string[][];
   onChange: (next: string[][]) => void;
-  teamA: GroupBuilderTeam;
-  teamB: GroupBuilderTeam;
+  /** The teams whose rosters feed the picker, in display order (rack = the 2 competition
+   *  teams; stroke = the game roster grouped by team, 2–4 sections). */
+  teams: GroupBuilderTeam[];
 }) {
   // Which group the combined picker is adding to (null = closed).
   const [pickerFor, setPickerFor] = useState<number | null>(null);
 
   const metaOf = new Map<string, { name: string; color: string }>();
-  for (const p of teamA.players) metaOf.set(p.id, { name: p.name, color: teamA.color });
-  for (const p of teamB.players) metaOf.set(p.id, { name: p.name, color: teamB.color });
+  for (const t of teams) for (const p of t.players) metaOf.set(p.id, { name: p.name, color: t.color });
 
   const assigned = assignedIds(groups);
 
@@ -137,8 +138,7 @@ export function RackGroupBuilder({
 
       {pickerFor !== null && (
         <CombinedPicker
-          teamA={teamA}
-          teamB={teamB}
+          teams={teams}
           assigned={assigned}
           groupFull={(groups[pickerFor]?.length ?? 0) >= MAX_PER_GROUP}
           groupNumber={pickerFor + 1}
@@ -151,9 +151,10 @@ export function RackGroupBuilder({
 }
 
 /**
- * The combined-pool picker — a bottom sheet with BOTH teams as two columns (A left,
- * B right). Available = roster minus everyone already in a group. Tap adds to the
- * open group and the sheet stays up (multi-add up to 4); Done closes.
+ * The combined-pool picker — a bottom sheet with a STACKED, labeled section per team
+ * (P3 3.2 — was two hardcoded columns). Available = a team's roster minus everyone
+ * already in a group. Tap adds to the open group and the sheet stays up (multi-add up
+ * to 4); Done closes. Stacked (not columns) so it stays usable at 3–4 teams on a phone.
  *
  * Containing-block gotcha: RackGroupBuilder renders inside the game PANEL, whose
  * host wrapper is `position: fixed; z-index: 30` (CompetitionFace) — a positioned,
@@ -167,26 +168,24 @@ export function RackGroupBuilder({
  * position/z-index/containing-block at all.
  */
 function CombinedPicker({
-  teamA,
-  teamB,
+  teams,
   assigned,
   groupFull,
   groupNumber,
   onPick,
   onClose,
 }: {
-  teamA: GroupBuilderTeam;
-  teamB: GroupBuilderTeam;
+  teams: GroupBuilderTeam[];
   assigned: Set<string>;
   groupFull: boolean;
   groupNumber: number;
   onPick: (uid: string) => void;
   onClose: () => void;
 }) {
-  const column = (team: GroupBuilderTeam) => {
+  const section = (team: GroupBuilderTeam) => {
     const available = team.players.filter((p) => !assigned.has(p.id));
     return (
-      <div className="min-w-0 flex-1">
+      <div key={team.id} className="min-w-0">
         <div className="flex items-center gap-1.5" style={{ marginBottom: 8 }}>
           <span className="inline-block rounded-full" style={{ width: 9, height: 9, background: team.color }} />
           <span className="truncate" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text)" }}>{team.name}</span>
@@ -235,9 +234,10 @@ function CombinedPicker({
             This group is full (max 4). Remove someone to swap.
           </p>
         )}
-        <div className="flex gap-3">
-          {column(teamA)}
-          {column(teamB)}
+        {/* Stacked labeled sections (P3 3.2) — one per team, top-to-bottom. Works at 2, 3,
+            and 4 teams on a phone where side-by-side columns would not fit. */}
+        <div className="flex flex-col gap-4">
+          {teams.map((team) => section(team))}
         </div>
       </div>
     </div>,

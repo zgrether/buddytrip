@@ -22,6 +22,8 @@ import { ModifierCards } from "@/components/games/ModifierCards";
 import { ModifiersRow } from "@/components/games/ModifiersRow";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
+import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
+import { Users } from "lucide-react";
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, type StrokeConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
@@ -150,6 +152,7 @@ export function StrokeGameView() {
   const [pointsDistDraft, setPointsDistDraft] = useState<PointsDistribution | null | undefined>(undefined);
   const [courseDraft, setCourseDraft] = useState<StrokeConfigDraft["course"] | null>(null);
   const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
+  const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null); // P3 3.2 groupings slice
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
 
   const createGame = trpc.games.create.useMutation();
@@ -241,6 +244,13 @@ export function StrokeGameView() {
   const settingsEditable = canEdit;
   const gameCompetitionId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
 
+  // P3 3.2 GROUPINGS — teams + assignments (feed the picker's team sections) and the
+  // persisted play_groups (the serverGroups baseline). Team-scoped, gated on the resolved
+  // competition id. Reuses rack's play_groups mechanism (issue path in save_game_config).
+  const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
+  const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
+  const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: urlGameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId });
+
   // ── Draft-then-save (P2) machinery ──────────────────────────────────────────
   // Per-game delegates (the draft's `delegates` slice) + the participants' strokes as a
   // { userId → strokes } map — the two inputs configToStrokeDraft folds into the baseline.
@@ -256,15 +266,22 @@ export function StrokeGameView() {
     }
     return m;
   }, [gameQ.data]);
+  // The persisted play_groups as an ordered string[][] (one user-id array per group) —
+  // the structural input configToStrokeDraft folds into the baseline (mirrors rack).
+  const serverGroups = useMemo<string[][]>(
+    () => (groupsQ.data?.groups ?? []).map((grp) =>
+      (groupsQ.data?.participants ?? []).filter((p) => p.play_group_id === grp.id).map((p) => p.user_id as string)),
+    [groupsQ.data],
+  );
   const serverConfigDraft = useMemo<StrokeConfigDraft>(
-    () => configToStrokeDraft((gameQ.data ?? {}) as Parameters<typeof configToStrokeDraft>[0], serverStrokes, serverDelegates),
-    [gameQ.data, serverStrokes, serverDelegates],
+    () => configToStrokeDraft((gameQ.data ?? {}) as Parameters<typeof configToStrokeDraft>[0], serverStrokes, serverGroups, serverDelegates),
+    [gameQ.data, serverStrokes, serverGroups, serverDelegates],
   );
 
   const anyTouched =
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
     pointsTotalDraft !== undefined || pointsDistDraft !== undefined || courseDraft !== null ||
-    strokesDraft !== null || modifiersDraft !== null;
+    strokesDraft !== null || modifiersDraft !== null || groupsDraft !== null;
 
   const configDraft = useMemo<StrokeConfigDraft>(
     () => ({
@@ -278,9 +295,36 @@ export function StrokeGameView() {
       course: courseDraft ?? serverConfigDraft.course,
       strokes: strokesDraft ?? serverConfigDraft.strokes,
       modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
+      groups: groupsDraft ?? serverConfigDraft.groups,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
   );
+
+  // P3 3.2 — the group picker's team sections: the GAME ROSTER (create-only participants)
+  // grouped by team, in teamsQ order, plus a neutral "Unassigned" bucket for roster members
+  // not on a team. Only teams with ≥1 rostered player get a section. Players key by user_id
+  // (what the groups draft stores + the RPC's groups[] path expects). This is the N-team
+  // component's N-section input — rack passes the two competition teams; stroke passes its
+  // roster split across however many teams it spans (2–4).
+  const pickerTeams = useMemo<GroupBuilderTeam[]>(() => {
+    const roster = (gameQ.data?.participants ?? []) as { user_id: string; name?: string }[];
+    const teamOfUser = new Map<string, string>();
+    for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) teamOfUser.set(a.user_id, a.team_id);
+    const nameFor = (uid: string, fallback?: string) =>
+      (crew.data ?? []).find((c) => c.user_id === uid)?.displayName ?? fallback ?? "Player";
+    const sections: GroupBuilderTeam[] = [];
+    for (const t of (teamsQ.data ?? []) as { id: string; name: string; color: string }[]) {
+      const players = roster
+        .filter((p) => teamOfUser.get(p.user_id) === t.id)
+        .map((p) => ({ id: p.user_id, name: nameFor(p.user_id, p.name), avatarIcon: null }));
+      if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
+    }
+    const unassigned = roster
+      .filter((p) => !teamOfUser.has(p.user_id))
+      .map((p) => ({ id: p.user_id, name: nameFor(p.user_id, p.name), avatarIcon: null }));
+    if (unassigned.length) sections.push({ id: "__unassigned", name: "Unassigned", color: "var(--color-bt-text-dim)", players: unassigned });
+    return sections;
+  }, [gameQ.data, teamsQ.data, assignQ.data, crew.data]);
 
   async function refreshGame() {
     await gameQ.refetch();
@@ -376,16 +420,16 @@ export function StrokeGameView() {
   function resetSlices() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
     setPointsTotalDraft(undefined); setPointsDistDraft(undefined); setCourseDraft(null);
-    setStrokesDraft(null); setModifiersDraft(null);
+    setStrokesDraft(null); setModifiersDraft(null); setGroupsDraft(null);
   }
   // Draft durability (Layer 2 — hard-teardown outbox), mirroring the WHOLE composite draft.
   const draftBundle = useMemo(
     () => ({
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
       pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, course: courseDraft,
-      strokes: strokesDraft, modifiers: modifiersDraft,
+      strokes: strokesDraft, modifiers: modifiersDraft, groups: groupsDraft,
     }),
-    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft],
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
   );
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name != null) setNameDraft(b.name);
@@ -397,6 +441,7 @@ export function StrokeGameView() {
     if (b.course != null) setCourseDraft(b.course);
     if (b.strokes != null) setStrokesDraft(b.strokes);
     if (b.modifiers != null) setModifiersDraft(b.modifiers);
+    if (b.groups != null) setGroupsDraft(b.groups);
   }, []);
 
   // Draft-then-save lifecycle (baseline / dirty / hash-poll / outbox / Save / Cancel /
@@ -413,7 +458,9 @@ export function StrokeGameView() {
     toPayload: (draft, base) => strokeDraftToPayload(draft, base),
     bundle: draftBundle, applyRecovered: applyBundle, reset: resetSlices,
     onSaved: async () => {
-      await Promise.all([gameQ.refetch(), orgQ.refetch()]);
+      // Refetch play_groups too (P3 3.2) so the groupings baseline (serverGroups) reflects
+      // a committed group change — else the dirty check would re-flag the just-saved edit.
+      await Promise.all([gameQ.refetch(), orgQ.refetch(), groupsQ.refetch()]);
       if (gameCompetitionId) {
         utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
         utils.competitions.faceBootstrap.invalidate({ tripId });
@@ -741,6 +788,27 @@ export function StrokeGameView() {
         />
       </ChecklistRow>
     );
+    // Groupings row (GROUP SETTINGS, P3 3.2) — optional tee-groups over the create-only
+    // roster, reusing rack's N-team RackGroupBuilder (stroke passes its roster split by
+    // team). A membership change on a scored game is refused server-side (HAS_SCORES).
+    const draftGroupCount = configDraft.groups.filter((g) => g.length > 0).length;
+    const groupingsRow = (
+      <ChecklistRow
+        icon={Users}
+        title="Groupings"
+        subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"} · tap to edit tee groups` : "Optional — group players into tee times"}
+        state={draftGroupCount > 0 ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "groupings"}
+        onToggle={() => setOpenAccordion((o) => (o === "groupings" ? null : "groupings"))}
+        testId="row-groupings"
+      >
+        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
+          Group players into tee groups — any mix across teams, up to 4 each. Anyone left out just isn&rsquo;t grouped.
+        </p>
+        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
+      </ChecklistRow>
+    );
     return (
       <>
         <GameConfigurationView
@@ -751,7 +819,7 @@ export function StrokeGameView() {
           canEdit={canEdit}
           isOwner={isOwner}
           settingsZoneLabel="Group Settings"
-          leadingSettingsRows={pointDistributionRow}
+          leadingSettingsRows={<>{pointDistributionRow}{groupingsRow}</>}
           onChanged={() => void refreshGame()}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
