@@ -59,7 +59,7 @@ export function FormatPointsPanel({
   const seedTotal = controlled.value.total;
   const seedDist = controlled.value.distribution;
   const [perMatchValue, setPerMatchValue] = useState<number>(seedDist?.type === "per_match" ? seedDist.value : 1);
-  const [total, setTotal] = useState<number>(seedTotal ?? 8);
+  const [total, setTotal] = useState<number>(seedTotal ?? 0);
   const [placeInputs, setPlaceInputs] = useState<string[]>(
     seedDist?.type === "placement" && seedDist.values.length > 0 ? seedDist.values.map(String) : [""]
   );

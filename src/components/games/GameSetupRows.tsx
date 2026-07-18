@@ -295,7 +295,7 @@ export function GameSetupRows({
               placementPoints ? (
                 <PlacementTotalControl
                   controlled={placementPoints}
-                  defaultTotal={defaultTotal ?? 8}
+                  defaultTotal={defaultTotal ?? 0}
                   disabled={configLocked || !canEdit}
                 />
               ) : undefined

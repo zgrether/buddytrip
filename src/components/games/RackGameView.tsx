@@ -328,18 +328,6 @@ export function RackGameView() {
   );
 
 
-  // Total-points migration — default `points_total` on first setup = players per
-  // team (total roster ÷ teams), the SAME formula match play's MatchPointsRow uses
-  // (behavior only, no caption). Roster-derived (assignQ), not rackSlotCount — the
-  // default targets the whole-competition rhythm (8/16/32), not this game's
-  // currently-added field.
-  const defaultTotal = useMemo(() => {
-    const totalPlayers = (assignQ.data ?? []).length;
-    const teamCount = teamIds.length;
-    if (teamCount === 0 || totalPlayers === 0) return 0;
-    return Math.round(totalPlayers / teamCount);
-  }, [assignQ.data, teamIds.length]);
-
   // ── Foursome views ───────────────────────────────────────────────────
   const groupViews: FoursomeGroupView[] = useMemo(() => {
     const groups = groupsQ.data?.groups ?? [];
@@ -894,10 +882,10 @@ export function RackGameView() {
           // Game Modifiers — an inline ModifierCards panel (rack's row went live in the
           // matrix reconcile; edits the modifiers draft slice, committed on Save).
           modifiersRow={modifiersInlineRow}
-          // Total-points: the DRAFT slot count is the per-slot divisor; the roster-derived
-          // default total seeds first-setup. Rack labels the derived readout "Points per Slot".
+          // Total-points: the DRAFT slot count is the per-slot divisor. New games default to
+          // 0 (item 2) — no roster-derived default, no auto-seed. Rack labels the derived
+          // readout "Points per Slot".
           matchCount={draftSlotCount}
-          defaultPointsTotal={defaultTotal}
           pointsRowTitle="Points per Slot"
           // Draft-then-save controlled wiring:
           serverScoringEnabled={scoringEnabled}

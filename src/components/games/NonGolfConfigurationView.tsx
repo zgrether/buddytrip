@@ -298,7 +298,7 @@ function MatchValueRow({
   canEdit: boolean;
   onChange: (total: number | null) => void;
 }) {
-  const value = total ?? 1;
+  const value = total ?? 0; // item 2: new games default to 0 (was 1)
   return (
     <ChecklistRow
       icon={Hash}
@@ -331,7 +331,7 @@ function TotalPoolRow({
   canEdit: boolean;
   onChange: (total: number | null) => void;
 }) {
-  const value = total ?? 8;
+  const value = total ?? 0; // item 2: new games default to 0 (was 8)
   return (
     <ChecklistRow
       icon={Hash}

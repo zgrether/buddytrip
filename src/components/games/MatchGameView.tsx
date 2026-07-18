@@ -639,14 +639,6 @@ export function MatchGameView() {
     [orgQ.data]
   );
 
-  // Default total = players per team (total competition players ÷ teams) — the
-  // first-setup default the Total Points row persists (behavior only, §3).
-  const defaultTotal = useMemo(() => {
-    const totalPlayers = (assignQ.data ?? []).length;
-    const teamCount = teams.length;
-    if (teamCount === 0 || totalPlayers === 0) return 0;
-    return Math.round(totalPlayers / teamCount);
-  }, [assignQ.data, teams.length]);
 
   // ── The SERVER MIRROR (Draft-Then-Save P1, spec §1/§2.1) ────────────────────
   // The persisted config as one ConfigDraft. Every untouched slice reads through
@@ -674,15 +666,10 @@ export function MatchGameView() {
       matchInputs,
       serverDelegates
     );
-    // First-setup points default, folded into the MIRROR (not a draft edit) so it
-    // lands in the baseline too — opening settings on a fresh game must not read as
-    // dirty. This REPLACES the deleted reconcile effect's default-seed: the total is
-    // now established by the first Save that happens for another reason (going live
-    // is always one), not auto-persisted the moment the row renders. Competition
-    // games only — a standalone match has no points at all.
-    if (gameCompId && base.pointsTotal == null && defaultTotal > 0) base.pointsTotal = defaultTotal;
+    // No first-setup points default (item 2): new games start at Total Points = 0, not a
+    // roster-derived value. The mirror keeps the server's null → the row reads 0, clean.
     return base;
-  }, [serverMatches, membersOfSide, handicapOf, gameQ.data, serverDelegates, gameCompId, defaultTotal]);
+  }, [serverMatches, membersOfSide, handicapOf, gameQ.data, serverDelegates]);
 
   // ── The COMPOSITE draft — the ONE object every derivation and Save reads ─────
   // Slices OVER the mirror. This is the read seam §1 is about: no settings row may
@@ -1647,7 +1634,7 @@ export function MatchGameView() {
         // 0 even share but a real total, and must still be enable-able. This is the
         // SAME resolved truth the Total Points row shows (total > 0), so the row's
         // state and the gate agree; pointsReady is the family's client-gate extension.
-        const effectiveTotal = (configDraft.pointsTotal ?? null) ?? defaultTotal;
+        const effectiveTotal = configDraft.pointsTotal ?? 0;
         const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(effectiveTotal));
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
@@ -1801,7 +1788,7 @@ export function MatchGameView() {
                     part="total"
                     matches={pointsMatches}
                     pointsTotal={configDraft.pointsTotal}
-                    defaultTotal={defaultTotal}
+                    defaultTotal={0}
                     canEdit={settingsEditable}
                     locked={false}
                     onTotalChange={onPointsTotalChange}
@@ -1969,7 +1956,7 @@ export function MatchGameView() {
                 part="distribution"
                 matches={pointsMatches}
                 pointsTotal={configDraft.pointsTotal}
-                defaultTotal={defaultTotal}
+                defaultTotal={0}
                 canEdit={settingsEditable}
                 locked={false}
                 expanded={openRows.has("config")}
