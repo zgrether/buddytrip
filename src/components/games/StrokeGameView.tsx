@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Scale, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -20,6 +20,8 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { ModifiersRow } from "@/components/games/ModifiersRow";
+import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, type StrokeConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
@@ -137,6 +139,8 @@ export function StrokeGameView() {
   });
   const [showHandicaps, setShowHandicaps] = useState(false); // §3 stroke handicaps step
   const [showModifiers, setShowModifiers] = useState(false); // A1 P0 — stroke modifiers step
+  // GROUP SETTINGS single-open accordion (P3): Point Distribution / Groupings / Handicaps.
+  const [openAccordion, setOpenAccordion] = useState<null | "distribution" | "groupings" | "handicaps">(null);
   // ── Composite draft SLICES (null/undefined = untouched → tracks the server) ──
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [rulesDraft, setRulesDraft] = useState<string | null>(null);
@@ -700,6 +704,43 @@ export function StrokeGameView() {
   // the viewport so tall content overflowed past the bottom unscrollably (the same
   // class of bug reported on the non-golf settings page). Matches the rack page.
   if (game && showConfig && gameQ.data && canEdit) {
+    // Stroke = PLACEMENT points: the owner sets a total pool + the placement split. Both
+    // halves edit the SAME controlled draft slice (P3 3.1 split) — the bare Total renders
+    // in GAME MANAGEMENT (via GameSetupRows), the placement editor in this "Point
+    // Distribution" row (GROUP SETTINGS). Sharing one controlled object means the two
+    // can't drift. The distribution reads its total FROM THE DRAFT (reconcile-safe).
+    const placementControlled = {
+      value: { total: configDraft.pointsTotal, distribution: configDraft.pointsDistribution },
+      onChange: (total: number | null, distribution: PointsDistribution | null) => {
+        setPointsTotalDraft(total);
+        setPointsDistDraft(distribution);
+      },
+    };
+    // Point Distribution row (GROUP SETTINGS) — the placement editor only (part="distribution").
+    // Requires the total it distributes across; resolved once a pool is set.
+    const pointDistributionRow = (
+      <ChecklistRow
+        icon={Scale}
+        title="Point Distribution"
+        subtitle={
+          configDraft.pointsDistribution?.type === "placement"
+            ? "Custom placement split — tap to edit"
+            : "Even — tap to set a placement split"
+        }
+        state={configDraft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
+        disabled={!canEdit}
+        expanded={openAccordion === "distribution"}
+        onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+        testId="row-point-distribution"
+      >
+        <FormatPointsPanel
+          game={gameQ.data as unknown as GameRow}
+          canEdit={canEdit}
+          controlled={placementControlled}
+          part="distribution"
+        />
+      </ChecklistRow>
+    );
     return (
       <>
         <GameConfigurationView
@@ -709,6 +750,8 @@ export function StrokeGameView() {
           game={gameQ.data as unknown as GameRow}
           canEdit={canEdit}
           isOwner={isOwner}
+          settingsZoneLabel="Group Settings"
+          leadingSettingsRows={pointDistributionRow}
           onChanged={() => void refreshGame()}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
@@ -741,12 +784,10 @@ export function StrokeGameView() {
           onRemoveBackNine={removeBackNineFromDraft}
           onClearCourse={clearCourseInDraft}
           courseBusy={courseBusy}
-          // Stroke = PLACEMENT points (owner sets total + the split); the pair stages
-          // into the draft via FormatPointsPanel's controlled mode.
-          placementPoints={{
-            value: { total: configDraft.pointsTotal, distribution: configDraft.pointsDistribution },
-            onChange: (total, distribution) => { setPointsTotalDraft(total); setPointsDistDraft(distribution); },
-          }}
+          // Stroke = PLACEMENT points: the bare Total (GAME MANAGEMENT) and the Point
+          // Distribution row (GROUP SETTINGS, above) share this ONE controlled slice so the
+          // split can't drift (P3 3.1).
+          placementPoints={placementControlled}
           onEnable={handleEnable}
           onDisable={handleDisable}
           busy={saving}

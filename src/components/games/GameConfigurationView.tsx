@@ -40,6 +40,7 @@ export function GameConfigurationView({
   onDeleted,
   whosPlayingLabel,
   onEditWhosPlaying,
+  settingsZoneLabel = "Settings",
   leadingSettingsRows,
   extraRows,
   modifiersRow,
@@ -82,9 +83,13 @@ export function GameConfigurationView({
    *  the format has no post-create roster editor. */
   whosPlayingLabel?: string;
   onEditWhosPlaying?: () => void;
-  /** Format-specific rows leading the SETTINGS section (rack's GROUPINGS). Since Phase 2
-   *  moved Course/Points up into GAME MANAGEMENT, this is now the FIRST content in
-   *  SETTINGS. Additive — every other format omits it. */
+  /** The SETTINGS zone header label. Defaults to "Settings" (rack). Stroke passes
+   *  "Group Settings" (P3) — its zone holds Point Distribution + Groupings + Handicaps,
+   *  mirroring match play's single settings zone. */
+  settingsZoneLabel?: string;
+  /** Format-specific rows leading the SETTINGS section (rack's GROUPINGS; stroke's Point
+   *  Distribution + Groupings). Since Phase 2 moved Course/Points up into GAME MANAGEMENT,
+   *  this is now the FIRST content in SETTINGS. Additive — every other format omits it. */
   leadingSettingsRows?: ReactNode;
   /** Extra SETTINGS rows after `leadingSettingsRows` (rack's Handicaps row) — Phase 2
    *  relocated these here from the deleted OPTIONS zone, so rack's SETTINGS reads
@@ -220,7 +225,7 @@ export function GameConfigurationView({
               here yet (its GROUP SETTINGS restructure is Phase 3). */}
           {(leadingSettingsRows || extraRows) && (
             <>
-              <ZoneHeader>Settings</ZoneHeader>
+              <ZoneHeader>{settingsZoneLabel}</ZoneHeader>
               {leadingSettingsRows}
               {extraRows}
             </>

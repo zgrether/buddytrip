@@ -25,7 +25,7 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * is gone — every render site is controlled.)
  */
 export function FormatPointsPanel({
-  game, canEdit, matchCount, controlled, pointsLabel = "Point value",
+  game, canEdit, matchCount, controlled, pointsLabel = "Point value", part = "both",
 }: {
   game: GameRow;
   canEdit: boolean;
@@ -46,6 +46,12 @@ export function FormatPointsPanel({
    *  Non-Golf has no such outer wrapper — this panel's own label IS its points row's
    *  title there, so it passes "Total Points" explicitly (cross-format consistency). */
   pointsLabel?: string;
+  /** P3 3.1 — the Total/Distribution SPLIT (mirrors `MatchPointsRow`'s `part`). Stroke
+   *  now shows the bare Total in GAME MANAGEMENT and the placement editor in GROUP
+   *  SETTINGS, so it renders this panel TWICE — once per part — off the SAME controlled
+   *  draft slice (so the two can't drift). "both" (default, non-golf) keeps the single
+   *  combined panel. Only the placement branch honors it; match-format is unaffected. */
+  part?: "both" | "total" | "distribution";
 }) {
   const type = GAME_TYPES.find((t) => t.id === game.game_type_id);
   const isMatchPlay = type?.resultStrategy === "match_play" || type?.resultStrategy === "rack_n_stack";
@@ -135,13 +141,20 @@ export function FormatPointsPanel({
         </>
       ) : (
         <>
-          <PointStepper
-            label={pointsLabel}
-            caption="POINTS FOR THIS GAME"
-            value={total}
-            onChange={readOnly ? () => {} : onTotal}
-          />
-          <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={readOnly ? () => {} : onPlaceInputs} placement={placement} />
+          {/* P3 3.1 split: "total" shows only the bare pool stepper, "distribution" only
+              the placement editor (which reads `total` from the DRAFT-seeded value, so it
+              stays reconcile-safe — never a server read). "both" keeps the combined panel. */}
+          {part !== "distribution" && (
+            <PointStepper
+              label={pointsLabel}
+              caption="POINTS FOR THIS GAME"
+              value={total}
+              onChange={readOnly ? () => {} : onTotal}
+            />
+          )}
+          {part !== "total" && (
+            <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={readOnly ? () => {} : onPlaceInputs} placement={placement} />
+          )}
         </>
       )}
     </div>
