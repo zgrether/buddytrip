@@ -120,6 +120,9 @@ export function HandicapList({
               onDecrement={() => bump(p.id, strokes, -1)}
               onIncrement={() => bump(p.id, strokes, 1)}
               formatValue={(n) => (n === 0 ? "SCR" : String(n))}
+              // "SCR" (scratch) is the default/empty reading — render it small + muted, not
+              // the big bold primary number a set handicap gets (item 4).
+              dimValue={strokes === 0}
             />
           </div>
         );

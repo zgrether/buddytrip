@@ -55,6 +55,7 @@ export function Stepper({
   label,
   disabled = false,
   formatValue = String,
+  dimValue = false,
   align,
   testId,
 }: {
@@ -71,6 +72,10 @@ export function Stepper({
   disabled?: boolean;
   /** Display override — default String(value). Roster → "SCR" at 0, etc. */
   formatValue?: (n: number) => string;
+  /** Render the value in a smaller, muted treatment instead of the bold primary number —
+   *  for a "default/empty" reading (the handicap roster's "SCR" scratch state) rather than
+   *  a set value that should read boldly. Default false (the bold number). */
+  dimValue?: boolean;
   /** Override the size's default alignment (center vs right-justified). */
   align?: "center" | "right";
   testId?: string;
@@ -86,7 +91,13 @@ export function Stepper({
     <div className="flex items-center" style={{ gap: dims.gap, justifyContent: justify }} data-testid={testId}>
       <StepBtn dir="dec" px={dims.btn} disabled={disabled || b.atFloor} onClick={dec} />
       <div className="flex flex-col items-center" style={{ minWidth: dims.num + 14 }}>
-        <span style={{ fontSize: dims.num, fontWeight: 700, lineHeight: 1, color: "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
+        <span
+          style={
+            dimValue
+              ? { fontSize: 13, fontWeight: 500, lineHeight: 1, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }
+              : { fontSize: dims.num, fontWeight: 700, lineHeight: 1, color: "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }
+          }
+        >
           {formatValue(value)}
         </span>
         {label && (
