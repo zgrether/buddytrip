@@ -33,10 +33,14 @@ INSERT INTO public.game_type_templates (
 ON CONFLICT (id) DO NOTHING;
 
 -- 2 · Drop the dead pre-engine legacy rows (zero refs — see header audit).
+-- Delete by KEY, not the original remote UUIDs. Mig 024 seeds these four rows
+-- with DEFAULT-generated random ids, so the ids differ per environment — the
+-- previous hardcoded-uuid delete only matched the row ids that happened to be
+-- generated on the prod box, and silently MISSED on any fresh replay (leaving
+-- key='match_play' alive to collide with mig 073's unified insert). Keying on the
+-- stable `key` plus the pre-engine marker (`result_strategy IS NULL`) drops exactly
+-- these four rows in every environment; the engine rows (gtt_stroke_play,
+-- gtt_match_play_singles, …) all carry a non-null result_strategy and are untouched.
 DELETE FROM public.game_type_templates
-WHERE id IN (
-  '4e3d35f0-ff86-46bb-a3a0-e34138dda311', -- skins (legacy)
-  '922cec93-9559-4198-be9f-59b164cb8d6c', -- scramble (legacy)
-  'c5c59abf-dbce-4858-8fc0-0d60b605f609', -- match_play (legacy)
-  'fc5085e3-a2e4-41a2-986a-797bdfc01fcd'  -- stableford (legacy)
-);
+WHERE key IN ('skins', 'scramble', 'match_play', 'stableford')
+  AND result_strategy IS NULL;
