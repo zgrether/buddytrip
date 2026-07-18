@@ -818,7 +818,9 @@ export function StrokeGameView() {
           isOwner={isOwner}
           settingsZoneLabel="Group Settings"
           // GROUP SETTINGS (P3): Point Distribution → Groupings → Handicaps (all inline).
-          leadingSettingsRows={<>{pointDistributionRow}{groupingsRow}{handicapsRow}</>}
+          // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
+          // distribution divides across the groups, so Groupings leads (dependency order).
+          leadingSettingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
           onChanged={() => void refreshGame()}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —
