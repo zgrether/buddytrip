@@ -254,7 +254,11 @@ export interface SaveConfigPayload {
    *  so a composed two-nines 18 round-trips (and clearing the course clears it). */
   backCourseId: string | null;
   scorecardSchema: unknown | null;
-  delegates: string[];
+  /** `game_delegates` user ids. OPTIONAL (#625): OMITTED when the delegate set is
+   *  UNCHANGED vs the baseline (or unknown), so the RPC's `p_payload ? 'delegates'` gate
+   *  (088) PRESERVES it. Sent only on a real change — never the phantom `[]` a save-before-
+   *  `listOrganizers`-resolves would otherwise wipe with. Present `[]` = the user cleared it. */
+  delegates?: string[];
   /** Match play ONLY. Omitted for non-golf (and, in later P2 phases, rack/stroke) so
    *  the RPC — which gates its matches block on `payload ? 'matches'` (085) — skips it
    *  entirely rather than running the clean-replace with an empty set. */
@@ -343,7 +347,7 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
   }
 
   return {
-    ...baseDraftToPayload(draft, distribution),
+    ...baseDraftToPayload(draft, distribution, baseline),
     entryMode: draft.entryMode,
     modifiers: draft.modifiers,
     courseId: draft.course.id,
@@ -356,10 +360,23 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
   };
 }
 
+/** Did the delegate set change vs the baseline? `true` when there's no baseline (first
+ *  save — send it) or the (sorted) lists differ. `false` — including when both are the
+ *  phantom-empty of an unresolved `listOrganizers` — means OMIT the key so the RPC (088)
+ *  preserves the server's delegates rather than wiping them (#625). */
+function delegatesChanged(draft: BaseConfigDraft, baseline?: BaseConfigDraft): boolean {
+  return !baseline || !arraysEqual(draft.delegates, baseline.delegates);
+}
+
 /** The base fields shared by every format's payload. `distribution` is the caller's
  *  already-resolved `points_distribution` (match play recomputes its even share; other
- *  formats pass it through). */
-function baseDraftToPayload(draft: BaseConfigDraft, distribution: PointsDistribution | null): SaveConfigPayload {
+ *  formats pass it through). `delegates` is emitted ONLY when it changed vs the baseline —
+ *  see `delegatesChanged`. */
+function baseDraftToPayload(
+  draft: BaseConfigDraft,
+  distribution: PointsDistribution | null,
+  baseline?: BaseConfigDraft
+): SaveConfigPayload {
   return {
     name: draft.name.trim(),
     rulesForToday: draft.rulesForToday?.trim() || null,
@@ -370,7 +387,7 @@ function baseDraftToPayload(draft: BaseConfigDraft, distribution: PointsDistribu
     courseId: null,
     backCourseId: null,
     scorecardSchema: null,
-    delegates: [...draft.delegates].sort(),
+    ...(delegatesChanged(draft, baseline) ? { delegates: [...draft.delegates].sort() } : {}),
   };
 }
 
@@ -395,8 +412,8 @@ export function configToNonGolfDraft(game: ConfigGameSnapshot, delegates: string
  *  RPC skips its matches block), no `entryMode`/`modifiers` (the RPC preserves entry_mode
  *  and defaults modifiers to {} — both no-ops for a format that owns neither), null
  *  course. A `placement` distribution is authored, so it passes through untouched. */
-export function nonGolfDraftToPayload(draft: NonGolfConfigDraft): SaveConfigPayload {
-  return baseDraftToPayload(draft, draft.pointsDistribution);
+export function nonGolfDraftToPayload(draft: NonGolfConfigDraft, baseline?: NonGolfConfigDraft): SaveConfigPayload {
+  return baseDraftToPayload(draft, draft.pointsDistribution, baseline);
 }
 
 /** Pure whole-page equality for the non-golf draft (the base fields only). */
@@ -477,7 +494,7 @@ export function rackDraftToPayload(draft: RackConfigDraft, slotCount: number, ba
   const participants = roster.map((userId) => ({ userId, strokes: draft.strokes[userId] ?? 0 }));
 
   return {
-    ...baseDraftToPayload(draft, distribution),
+    ...baseDraftToPayload(draft, distribution, baseline),
     courseId: draft.course.id,
     backCourseId: draft.course.backId,
     scorecardSchema: draft.course.scorecardSchema,
@@ -565,9 +582,9 @@ export function configToStrokeDraft(
  * member's strokes (the in-place FIELD write). No `groups`/`matches` (the RPC skips both
  * blocks); the course change is the destroys tier, gated SERVER-side (COURSE_LOCKED).
  */
-export function strokeDraftToPayload(draft: StrokeConfigDraft): SaveConfigPayload {
+export function strokeDraftToPayload(draft: StrokeConfigDraft, baseline?: StrokeConfigDraft): SaveConfigPayload {
   return {
-    ...baseDraftToPayload(draft, draft.pointsDistribution),
+    ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
     modifiers: draft.modifiers,
     courseId: draft.course.id,
     backCourseId: draft.course.backId,
