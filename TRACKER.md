@@ -74,6 +74,13 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
   non-golf scorekeeper), don't build; so R1's registry can accommodate the generic-game case.
 - **Agenda/Lodging -> Bookings** — trip-owner UX simplification, big rework, low marginal value.
 - **Circle / Thread pivot** — top-level object shifts trip -> Circle, trips become threads (post-launch).
+- **Migration squash -> single baseline** (CI/infra, post-September) — replace the ~90-file replay with
+  one dump-generated baseline: faster CI, and the whole not-replayable-from-zero bug class disappears (the
+  044 hardcoded-uuid delete that Step 0's local replay surfaced — see `ENVIRONMENT_AUDIT.md`). Correctly
+  deferred: the right *eventual* answer, the wrong *now* — bigger effort, and it stops CI exercising
+  individual migrations, which is exactly the per-migration replay gate that just caught 044. Keep that
+  gate through the event; baseline once the migration history is stable. The replay bug is both the
+  argument for it and the argument for not-yet.
 
 ---
 
@@ -124,7 +131,11 @@ Retire "hub"; decide whether "face" stays a *navigation* term (`CompetitionFace.
 ## 5 · Open backlog references (issues + docs, not duplicated here)
 
 - GitHub issues hold the hot, actionable set (compatibility gate + add-game UI filter; per-user tee
-  assignment #416; BBMI-replay E2E #419; local-Supabase test-DB eval #420).
+  assignment #416; BBMI-replay E2E #419).
+- **Environment / CI / onboarding:** `ENVIRONMENT_AUDIT.md` is the map (4-surface current-state + tiered
+  target). Tier-1 build issues #632 (README/CONTRIBUTING) · #635 (tooling) · #634 (security) · #633
+  (discipline). Step 0 (local test DB — #420) shipped in #636: CI + local dev now run against an ephemeral
+  local Supabase, not prod.
 - `DEFERRED.md` holds: moving-tee tee-subset selection, desktop side-by-side tee display, and the standing
   pre-launch/v2 backlog.
 - This tracker holds forward *strategy*; it does not re-list every issue.
