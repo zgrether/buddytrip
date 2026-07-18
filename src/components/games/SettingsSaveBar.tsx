@@ -38,7 +38,6 @@ export function SettingsSaveBar({
   /** Close the panel after a successful Save (the draft is already clean). */
   onLeave: () => void;
 }) {
-  const hint = saving ? "Saving…" : dirty ? "Unsaved changes" : "";
   return (
     <div data-testid="settings-save-bar">
       {error && (
@@ -50,15 +49,9 @@ export function SettingsSaveBar({
           {error}
         </p>
       )}
-      {/* Dirty/saving status — a quiet line above the button row (the trip modals have no
-          such hint, but the E2E + the user lean on "Unsaved changes"; "Saved" is gone
-          because a landed save closes the panel). */}
-      {hint && (
-        <p className="mb-1.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="settings-dirty-hint">
-          {hint}
-        </p>
-      )}
-      {/* Cancel (Ghost, auto-width, left) + Save (Primary, fills) — full width, crew/lodging. */}
+      {/* Cancel (Ghost, auto-width, left) + Save (Primary, fills) — full width, crew/lodging.
+          No dirty/saving status line (matching the trip modals): the Save button already
+          reads "Saving…" mid-write, and a landed save closes the panel. */}
       <div className="flex gap-2">
         <button
           type="button"
