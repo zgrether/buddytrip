@@ -26,6 +26,7 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { configToRackDraft, rackDraftToPayload, rackDraftsEqual, type RackConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { ModifiersRow } from "@/components/games/ModifiersRow";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
@@ -829,7 +830,14 @@ export function RackGameView() {
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teamA={teamA} teamB={teamB} />
       </ChecklistRow>
     );
-    // OPTIONS section (extraRows): Handicaps. (Rack has no Game Modifiers.)
+    // Game Modifiers — HIDDEN BY LOGIC, not omitted (Phase 2 gate). Rack's game type
+    // declares `compatibleModifiers: []`, so `availableModifiers` is empty and the row is
+    // never built — but the wiring is present and keyed on the game type, so a future
+    // rack-compatible modifier would surface the row automatically (its inline editor is
+    // Phase 3 work; the branch is unreachable today). This is the same gated shape stroke
+    // uses, so the two can't drift.
+    const availableModifiers = getGameTypeDefinition(gameTypeId)?.compatibleModifiers ?? [];
+    // OPTIONS section (extraRows): Handicaps.
     const optionRows = (
       <ChecklistRow
         icon={SlidersHorizontal}
@@ -862,6 +870,14 @@ export function RackGameView() {
           onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           leadingSettingsRows={groupingsRow}
           extraRows={optionRows}
+          // Hidden by logic: rack's `compatibleModifiers` is empty, so this is undefined
+          // and no Modifiers row renders. Wired (not omitted) so the row would appear if
+          // the game type ever declared a compatible modifier. onClick is unreachable today.
+          modifiersRow={
+            availableModifiers.length > 0 ? (
+              <ModifiersRow count={0} onClick={() => {}} disabled={!canEdit} locked={false} />
+            ) : undefined
+          }
           // Total-points: the DRAFT slot count is the per-slot divisor; the roster-derived
           // default total seeds first-setup. Rack labels the derived readout "Points per Slot".
           matchCount={draftSlotCount}

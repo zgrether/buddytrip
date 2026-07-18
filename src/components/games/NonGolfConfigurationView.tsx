@@ -26,8 +26,9 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * NonGolfConfigurationView (W-NONGOLF lifecycle surface) — the non-golf twin of
  * golf's `GameConfigurationView`: the ONE settings home, reached by the corner
  * gear, carrying the mode toggle + Danger Zone. It mirrors the cleaned golf ORDER
- * (Spec 6): identity → explainer → **Rules (top)** → **Game Management** →
- * **Settings** → Danger Zone — same grouping + treatment, but a **LEAN payload**:
+ * (Phase 2 topology): explainer → identity → **Game Management** (Total Points →
+ * Game State) → **Settings** (Competition Format) → **Rules** → Danger Zone — same
+ * grouping + treatment, but a **LEAN payload**:
  * only what non-golf needs, no golf cruft (no Matches / Course / Handicaps /
  * Modifiers):
  *
@@ -130,24 +131,12 @@ export function NonGolfConfigurationView({
               matching Match Play's canonical order (cross-format layout consistency
               pass). */}
 
-          {canEdit && (
-            <>
-              <ZoneHeader>Game Management</ZoneHeader>
-              <GameManagementPanel
-                mode={draft.scoringEnabled ? "scoring" : "setup"}
-                ready={ready}
-                onEnable={onEnable}
-                onDisable={onDisable}
-                pending={saving}
-                staged={staged}
-              />
-            </>
-          )}
-
-          {/* SETTINGS — Competition Format (Quiet: recalculates nothing) + points (Warned:
-              re-derives). Both editable in every mode; no dimming, no lock. */}
-          <ZoneHeader>Settings</ZoneHeader>
-          <CompetitionFormatRow value={draft.competitionFormat} canEdit={canEdit} onChange={onFormatChange} />
+          {/* GAME MANAGEMENT (Phase 2): Total Points (1st) → Game State (2nd). Non-golf
+              has no course, so the canonical trio is just these two. Points moved UP from
+              the old SETTINGS zone. (The full points-panel redesign is Phase 4.) */}
+          <ZoneHeader>Game Management</ZoneHeader>
+          {/* Total Points (1st) — by scoring model: a single match value, or the
+              value + placement split. */}
           {scoringModel === "match_play" ? (
             <MatchValueStepper value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
           ) : (
@@ -164,6 +153,22 @@ export function NonGolfConfigurationView({
               }}
             />
           )}
+          {/* Game State (2nd) — the Setup/Scoring toggle (owner/delegate only). */}
+          {canEdit && (
+            <GameManagementPanel
+              mode={draft.scoringEnabled ? "scoring" : "setup"}
+              ready={ready}
+              onEnable={onEnable}
+              onDisable={onDisable}
+              pending={saving}
+              staged={staged}
+            />
+          )}
+
+          {/* SETTINGS — Competition Format (Quiet: recalculates nothing). Points moved to
+              GAME MANAGEMENT above (Phase 2). Editable in every mode; no dimming, no lock. */}
+          <ZoneHeader>Settings</ZoneHeader>
+          <CompetitionFormatRow value={draft.competitionFormat} canEdit={canEdit} onChange={onFormatChange} />
 
           {/* RULES OF THE DAY — relocated to the BOTTOM (after Settings): a draft slice,
               QUIET tier — matching Match Play's canonical order (cross-format layout

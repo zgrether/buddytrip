@@ -82,11 +82,13 @@ export function GameConfigurationView({
    *  the format has no post-create roster editor. */
   whosPlayingLabel?: string;
   onEditWhosPlaying?: () => void;
-  /** Format-specific rows at the TOP of the Settings section, before Course/Points
-   *  (rack's GROUPINGS). Additive — every other format omits it. */
+  /** Format-specific rows leading the SETTINGS section (rack's GROUPINGS). Since Phase 2
+   *  moved Course/Points up into GAME MANAGEMENT, this is now the FIRST content in
+   *  SETTINGS. Additive — every other format omits it. */
   leadingSettingsRows?: ReactNode;
-  /** Extra setup rows below the who's-playing drill-down (rack's Handicaps row) —
-   *  OPTIONS-zone content that stays BEFORE Rules Of The Day (matching Match Play's
+  /** Extra SETTINGS rows after `leadingSettingsRows` (rack's Handicaps row) — Phase 2
+   *  relocated these here from the deleted OPTIONS zone, so rack's SETTINGS reads
+   *  Groupings → Handicaps, still BEFORE Rules Of The Day (Match Play's
    *  Handicaps-before-Rules order). NOT for Game Modifiers — use `modifiersRow`. */
   extraRows?: ReactNode;
   /** Game Modifiers row (stroke only — rack has none, Phase 0 confirmed). Rendered
@@ -133,6 +135,29 @@ export function GameConfigurationView({
   /** The shared SettingsSaveBar, rendered at the top of the column. */
   saveBar: ReactNode;
 }) {
+  // Phase 2 topology: the Total-Points and Golf-Course rows move UP into GAME
+  // MANAGEMENT, in that order. GameSetupRows' own "both" order is Course-then-Points,
+  // so we render it in two SLOTS ("config" = Points, "course" = Course) to get the
+  // canonical Total Points → Golf Course sequence. Shared props once, spread into both.
+  const setupRowsProps = {
+    tripId,
+    competitionId,
+    game,
+    canEdit,
+    locked: false,
+    onChanged,
+    matchCount,
+    defaultTotal: defaultPointsTotal,
+    pointsTitle: pointsRowTitle,
+    // Course ACTIONS stage into the draft; points report up (rack stepper / placement panel).
+    onApplyFront,
+    onApplyBack,
+    onRemoveBackNine,
+    onClearCourse,
+    courseBusy,
+    rackPoints,
+    placementPoints,
+  };
   return (
     <SettingsSlideOver
       title={nameValue || "Game settings"}
@@ -168,68 +193,60 @@ export function GameConfigurationView({
               Modifiers + Danger Zone) — see below, matching Match Play's canonical
               order (cross-format layout consistency pass). */}
 
-          {/* GAME MANAGEMENT — the single Setup/Scoring toggle (owner/delegate only). The
-              toggle stages into the draft (`staged` = draft ≠ server). */}
+          {/* GAME MANAGEMENT (Phase 2 canonical order): Total Points (1st) → Golf Course
+              (2nd) → Game State (3rd). Points + Course moved UP here from the old SETTINGS
+              zone; the Setup/Scoring toggle (owner/delegate only) is the third, staging
+              into the draft (`staged` = draft ≠ server). */}
+          <ZoneHeader>Game Management</ZoneHeader>
+          {/* Total Points (1st) — competition-scoped (rack stepper / stroke placement panel). */}
+          {competitionId && <GameSetupRows {...setupRowsProps} slot="config" />}
+          {/* Golf Course (2nd). */}
+          <GameSetupRows {...setupRowsProps} slot="course" />
+          {/* Game State (3rd) — the single Setup/Scoring toggle. */}
           {canEdit && (
+            <GameManagementPanel
+              mode={draftScoringEnabled ? "scoring" : "setup"}
+              ready={ready}
+              onEnable={onEnable}
+              onDisable={onDisable}
+              pending={busy}
+              staged={draftScoringEnabled !== serverScoringEnabled}
+            />
+          )}
+
+          {/* SETTINGS (Phase 2) — format-specific rows only: rack's GROUPINGS
+              (`leadingSettingsRows`) + Handicaps (`extraRows`, moved here from the DELETED
+              OPTIONS zone). Rendered only when a format supplies content — stroke has none
+              here yet (its GROUP SETTINGS restructure is Phase 3). */}
+          {(leadingSettingsRows || extraRows) && (
             <>
-              <ZoneHeader>Game Management</ZoneHeader>
-              <GameManagementPanel
-                mode={draftScoringEnabled ? "scoring" : "setup"}
-                ready={ready}
-                onEnable={onEnable}
-                onDisable={onDisable}
-                pending={busy}
-                staged={draftScoringEnabled !== serverScoringEnabled}
-              />
+              <ZoneHeader>Settings</ZoneHeader>
+              {leadingSettingsRows}
+              {extraRows}
             </>
           )}
 
-          {/* SETTINGS — the required spine: Course + Format·Points (GameSetupRows). */}
-          <ZoneHeader>Settings</ZoneHeader>
-          {/* Format-specific leading rows (rack's GROUPINGS) sit ABOVE the shared spine. */}
-          {leadingSettingsRows}
-          <GameSetupRows
-            tripId={tripId}
-            competitionId={competitionId}
-            game={game}
-            canEdit={canEdit}
-            locked={false}
-            onChanged={onChanged}
-            matchCount={matchCount}
-            defaultTotal={defaultPointsTotal}
-            pointsTitle={pointsRowTitle}
-            // Course ACTIONS stage into the draft; points report up (rack stepper / placement panel).
-            onApplyFront={onApplyFront}
-            onApplyBack={onApplyBack}
-            onRemoveBackNine={onRemoveBackNine}
-            onClearCourse={onClearCourse}
-            courseBusy={courseBusy}
-            rackPoints={rackPoints}
-            placementPoints={placementPoints}
-          />
-
-          {/* OPTIONS — Who's playing · Handicaps + any extra rows (stroke's Modifiers). */}
-          {(onEditWhosPlaying || extraRows) && (
+          {/* OPTIONS — the Who's-playing · Handicaps drill-down (stroke only). Rack has no
+              such drill-down; its Handicaps ride `extraRows` in SETTINGS above, so this
+              zone renders only when a format supplies the drill-down. */}
+          {onEditWhosPlaying && (
             <>
               <ZoneHeader>Options</ZoneHeader>
-              {onEditWhosPlaying && (
-                <button
-                  type="button"
-                  onClick={onEditWhosPlaying}
-                  disabled={!canEdit}
-                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
-                  style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-                >
-                  <div className="flex min-w-0 flex-col">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Who&rsquo;s playing · Handicaps
-                    </span>
-                    <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
-                  </div>
-                  <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-                </button>
-              )}
-              {extraRows}
+              <button
+                type="button"
+                onClick={onEditWhosPlaying}
+                disabled={!canEdit}
+                className="flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-left disabled:opacity-60"
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Who&rsquo;s playing · Handicaps
+                  </span>
+                  <span className="truncate text-sm" style={{ color: "var(--color-bt-text)", marginTop: 2 }}>{whosPlayingLabel}</span>
+                </div>
+                <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+              </button>
             </>
           )}
 
