@@ -58,8 +58,12 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
-enabled = true
+# Disabled for the automated (CI + local test) path — Step 0 of ENVIRONMENT_AUDIT.md.
+# `seed.sql` is a MANUAL dev-data file with \set placeholder UUIDs; it errors when run
+# unattended by `supabase start`, and the test suite doesn't need it (migrations seed the
+# reference tables, and the suites that need courses/catalog_ideas create their own rows).
+# To load dev seed data by hand: `psql "$(supabase status -o env | grep '^DB_URL=' | cut -d\" -f2)" -f supabase/seed.sql` after filling in the UUIDs.
+enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 sql_paths = ["./seed.sql"]
