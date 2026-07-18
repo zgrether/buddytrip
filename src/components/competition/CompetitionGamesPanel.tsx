@@ -31,7 +31,7 @@ export type { GameType };
  * and reconciles the delegate grant.
  *
  * This module also hosts shared scoring-UI bits (ManualPlacementEditor,
- * PlacementEditor, PointStepper, FormatSheet, fmtValue, …) used by the non-golf
+ * PlacementEditor, PointStepper, fmtValue, …) used by the non-golf
  * board + config views and the game-setup pages, plus the `GameRow`/`LBTeamLite`
  * row types and `DND_GAME_KEY`. (The old CompetitionGamesPanel list + RunSheet
  * post/correct modal that lived here were removed once GameSheet became Add-only
@@ -497,58 +497,6 @@ export function PlacementEditor({
         )}
       </div>
     </Field>
-  );
-}
-
-// ── "How's it played?" format sheet ───────────────────────────────────────────
-
-export function FormatSheet({
-  current, onPick, onClose,
-}: {
-  current: string | null; onPick: (k: string) => void; onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center" style={{ background: "var(--color-bt-overlay)" }} onClick={onClose}>
-      <div
-        className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-2xl sm:rounded-2xl"
-        style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
-          <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>How&rsquo;s it played?</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
-            <X size={16} />
-          </button>
-        </div>
-        <div className="flex-1 space-y-2 overflow-y-auto p-4">
-          {COMP_FORMATS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => onPick(f.key)}
-              className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left"
-              style={{
-                background: current === f.key ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                border: `1px solid ${current === f.key ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-              }}
-            >
-              <f.Icon size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{f.label}</span>
-                  <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}>Manual</span>
-                  {current === f.key && <Check size={13} style={{ color: "var(--color-bt-accent)", marginLeft: "auto" }} />}
-                </div>
-                <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{f.desc}</p>
-              </div>
-            </button>
-          ))}
-          <p className="px-1 pt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            However it runs, you can always enter the result by hand — picking a format never leaves you stuck on &ldquo;coming soon.&rdquo;
-          </p>
-        </div>
-      </div>
-    </div>
   );
 }
 
