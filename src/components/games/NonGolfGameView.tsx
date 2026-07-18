@@ -252,7 +252,7 @@ export function NonGolfGameView() {
     if (!tripId || !urlGameId || !baseline || !dirty || saveConfigM.isPending) return;
     setSaveError(null);
     try {
-      await saveConfigM.mutateAsync({ tripId, gameId: urlGameId, baseHash: baseline.hash, payload: nonGolfDraftToPayload(configDraft) });
+      await saveConfigM.mutateAsync({ tripId, gameId: urlGameId, baseHash: baseline.hash, payload: nonGolfDraftToPayload(configDraft, baseline.draft) });
     } catch (e) {
       setSaveError((e as { message?: string })?.message || "Couldn’t save your changes.");
       return;

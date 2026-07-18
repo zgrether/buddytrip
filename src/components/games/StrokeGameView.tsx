@@ -399,7 +399,7 @@ export function StrokeGameView() {
     if (!tripId || !activeGameId || !baseline || !dirty || saveConfigM.isPending) return;
     setSaveError(null);
     try {
-      await saveConfigM.mutateAsync({ tripId, gameId: activeGameId, baseHash: baseline.hash, payload: strokeDraftToPayload(configDraft) });
+      await saveConfigM.mutateAsync({ tripId, gameId: activeGameId, baseHash: baseline.hash, payload: strokeDraftToPayload(configDraft, baseline.draft) });
     } catch (e) {
       setSaveError((e as { message?: string }).message ?? "Couldn’t save your changes — try again.");
       return;

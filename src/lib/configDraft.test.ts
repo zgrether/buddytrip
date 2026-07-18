@@ -398,3 +398,36 @@ describe("strokeDraftsEqual — dirty check", () => {
     expect(strokeDraftsEqual(base, { ...base, course: { ...base.course, id: "course-2" } })).toBe(false);
   });
 });
+
+// ── Delegates omit-when-unchanged (#625) ─────────────────────────────────────────
+// The payload OMITS `delegates` unless it changed vs the baseline, so the RPC (088,
+// key-gated) PRESERVES the server set instead of wiping it with a phantom `[]` (a save
+// before listOrganizers resolves). Present only on a real change; a present `[]` clears.
+describe("payload delegates — omitted when unchanged, sent on a real change (#625)", () => {
+  it("match: unchanged → omitted; changed → sent; no baseline → sent (first save)", () => {
+    const draft = configToDraft(GAME, MATCHES, ["u9"]);
+    const baseline = configToDraft(GAME, MATCHES, ["u9"]);
+    expect(configDraftToPayload(draft, baseline)).not.toHaveProperty("delegates");
+    expect(configDraftToPayload({ ...draft, delegates: ["u9", "u10"] }, baseline).delegates).toEqual(["u10", "u9"]); // builder sorts
+    expect(configDraftToPayload(draft)).toHaveProperty("delegates"); // no baseline ⇒ first save sends it
+  });
+
+  it("the PHANTOM-empty case: baseline [] and draft [] → omitted (the wipe fix)", () => {
+    // orgQ unresolved/errored → both are the empty default → NOT a change → don't touch.
+    const empty = configToDraft(GAME, MATCHES, []);
+    expect(configDraftToPayload(empty, empty)).not.toHaveProperty("delegates");
+    // The user genuinely clearing the one delegate IS a change → present [] (RPC clears).
+    const had = configToDraft(GAME, MATCHES, ["u9"]);
+    expect(configDraftToPayload(empty, had).delegates).toEqual([]);
+  });
+
+  it("holds across the variants (rack + stroke + non-golf share baseDraftToPayload)", () => {
+    const rack = configToRackDraft(RACK_GAME, GROUPS, STROKES, ["u9"]);
+    expect(rackDraftToPayload(rack, 2, rack)).not.toHaveProperty("delegates");
+    expect(rackDraftToPayload({ ...rack, delegates: ["u9", "u10"] }, 2, rack).delegates).toEqual(["u10", "u9"]); // builder sorts
+
+    const stroke = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, ["u9"]);
+    expect(strokeDraftToPayload(stroke, stroke)).not.toHaveProperty("delegates");
+    expect(strokeDraftToPayload(stroke)).toHaveProperty("delegates"); // no baseline ⇒ sent
+  });
+});
