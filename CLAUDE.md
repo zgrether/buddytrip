@@ -396,34 +396,49 @@ the same migration.
 
 ## Migration Workflow
 
-Migrations are committed as files in `supabase/migrations/` and applied to the remote DB by CI's `supabase db push` step. The CLI compares the `supabase_migrations.schema_migrations` history table against local filenames and **fails when they don't match exactly**.
+Migrations are committed as files in `supabase/migrations/`. **CI does NOT apply them to any
+remote DB** — each CI job runs `supabase start`, which boots a fresh LOCAL stack and applies
+the ENTIRE migration history from scratch on every run (Step 0, #636 — the change that took
+CI and local dev off the shared prod project). Two consequences follow:
 
-**Don't apply migrations directly via the Supabase MCP tool** (`apply_migration`, raw `execute_sql` for DDL). It records the migration under the *apply timestamp*, which always differs from the local filename timestamp — guaranteeing the next CI push fails with "Remote migration versions not found in local migrations directory."
+- **Replay-from-zero is now an enforced gate.** A migration that isn't cleanly replayable on
+  an empty DB fails CI immediately — this is what caught the `044` hardcoded-uuid delete
+  (#636; it deleted rows by ids that only existed on the prod box, so a fresh replay missed
+  them and a later migration collided on a UNIQUE key). Keep migrations additive and
+  idempotent (`ADD COLUMN IF NOT EXISTS`, `CREATE OR REPLACE`, guarded inserts) **and
+  reproducible from zero** — no DELETE/UPDATE keyed on environment-specific ids; key on
+  stable columns.
+- **Prod is applied manually, separately from merging.** Merging a PR does NOT push its
+  migration to prod. Apply it to the prod project by hand with `supabase db push --linked`
+  (records the version under the filename timestamp), as its own step around the deploy.
 
-**The right flow:**
+**Don't apply migrations via the Supabase MCP tool** (`apply_migration`, raw `execute_sql`
+for DDL). It records the migration under the *apply timestamp*, which differs from the local
+filename timestamp — so the next `supabase db push --linked` fails with "Remote migration
+versions not found in local migrations directory." (If it happens: delete the
+apply-timestamped row from `supabase_migrations.schema_migrations` — history table only; the
+idempotent schema change stays — then re-push.)
 
-1. Write the migration file locally (`supabase/migrations/YYYYMMDDHHMMSS_NNN_name.sql`).
-2. Get it onto the shared DB. **CI's `supabase db push` fires ONLY on push-to-`main`
-   or a PR targeting `main` — a bare feature-branch push applies NOTHING.** So a
-   migration reaches the DB one of two ways: `supabase db push --linked` locally (if you
-   have DB creds — the linked CLI records the version under the filename timestamp), OR by
-   opening a PR to `main`. The old "Or commit and let CI apply it — either is fine" was
-   misleading: committing on a feature branch does nothing until that branch merges or a PR
-   exists (081 sat unapplied for exactly this reason → the live "could not find function
-   save_game_config in the schema cache").
-   ```bash
-   supabase db push --linked   # applies any new local migrations to remote
-   ```
-3. **Land a migration on `main` as its OWN PR, BEFORE the feature branch that needs it.**
-   Applying a migration from a long-lived branch leaves `main` behind remote, which
-   **deadlocks every other branch's `db push`** until it merges (happened three times:
-   081 from #609, 083 from #611, 084/085). Migrations here are additive and inert by
-   convention (`ADD COLUMN IF NOT EXISTS`, `CREATE OR REPLACE`, idempotent guards) — which
-   is exactly what makes landing them early safe. So: migration PR first → merge → then the
-   client PR that depends on it.
-4. Never edit a migration after it's been applied anywhere — write a new one.
+**The flow:**
 
-**If you already applied via MCP** and CI complains about an unknown remote version, fix it by deleting the apply-timestamped row from `supabase_migrations.schema_migrations` (history table only — the schema change itself stays in place because migrations are idempotent: `ADD COLUMN IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`, etc.). CI's next push then sees the local file as new and re-applies it as a no-op.
+1. Write `supabase/migrations/YYYYMMDDHHMMSS_NNN_name.sql`. The `NNN` is cosmetic (ordering
+   is by the timestamp prefix, not `NNN`); check `main` for the next free `NNN`, since two
+   open branches can grab the same one.
+2. It applies to your LOCAL stack automatically on the next `supabase start` / test run — no
+   push needed to run or test it.
+3. **Land a migration on `main` as its own PR, BEFORE the client code that depends on it, and
+   `supabase db push --linked` it to prod before that code deploys.** The old shared-remote
+   *deadlock* rationale is gone (CI no longer pushes to a shared DB, so a migration on one
+   branch can't leave `main` "behind remote" for anyone else). But the ordering still matters
+   for PROD: the schema must exist in prod before the deploy that reads it — 081 shipped ahead
+   of its push once and produced the live "could not find function save_game_config in the
+   schema cache." Migrations are additive/idempotent, which is what makes landing them early
+   safe.
+4. **Never edit a migration after it's applied to prod — write a new one.** The one
+   exception, set by the `044` fix (#636): a *body-only* change to make a historical migration
+   replay cleanly on a fresh DB is safe — prod already recorded that version and won't re-run
+   it, and a body edit (unlike a rename) doesn't break the filename-based history check. Use
+   it ONLY to restore replayability, never to change what prod already has.
 
 ## Index Creation
 

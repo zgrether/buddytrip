@@ -49,7 +49,9 @@ Migrations are SQL files in [`supabase/migrations/`](supabase/migrations) and ar
   zero (e.g. a delete keyed on environment-specific ids) fails CI immediately. Keep them
   additive and idempotent (`ADD COLUMN IF NOT EXISTS`, `CREATE OR REPLACE`, guarded
   inserts).
-- **Never edit a migration once it's been applied anywhere — write a new one.**
+- **Never edit a migration after it's applied to prod — write a new one.** (The one narrow
+  exception — a body-only fix to make a historical migration replay cleanly from zero — is in
+  [`CLAUDE.md`](CLAUDE.md) → *Migration Workflow*.)
 - **Don't apply migrations via the Supabase MCP tools** — that records them under the
   apply timestamp, which won't match the filename and breaks the CLI's history check.
 - **Applying to prod is manual and separate from merging:** `supabase db push --linked`
