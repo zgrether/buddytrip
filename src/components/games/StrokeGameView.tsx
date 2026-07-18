@@ -715,7 +715,10 @@ export function StrokeGameView() {
           whosPlayingLabel={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"} · per-player strokes`}
           // Keep showConfig set so the handicaps/modifiers drill-downs return HERE.
           onEditWhosPlaying={() => setShowHandicaps(true)}
-          extraRows={
+          // Game Modifiers renders AFTER Rules Of The Day (cross-format layout
+          // consistency pass — matches Match Play's order), so it's a dedicated prop,
+          // not `extraRows` (which stays reserved for pre-Rules OPTIONS content).
+          modifiersRow={
             availableModifiers.length > 0 ? (
               // No scoring lock (draft-then-save): the row edits the modifiers draft slice.
               <ModifiersRow

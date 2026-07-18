@@ -42,6 +42,7 @@ export function GameConfigurationView({
   onEditWhosPlaying,
   leadingSettingsRows,
   extraRows,
+  modifiersRow,
   matchCount,
   defaultPointsTotal,
   pointsRowTitle,
@@ -86,8 +87,15 @@ export function GameConfigurationView({
   /** Format-specific rows at the TOP of the Settings section, before Course/Points
    *  (rack's GROUPINGS). Additive — every other format omits it. */
   leadingSettingsRows?: ReactNode;
-  /** Extra setup rows below the who's-playing drill-down (stroke's Modifiers row). */
+  /** Extra setup rows below the who's-playing drill-down (rack's Handicaps row) —
+   *  OPTIONS-zone content that stays BEFORE Rules Of The Day (matching Match Play's
+   *  Handicaps-before-Rules order). NOT for Game Modifiers — use `modifiersRow`. */
   extraRows?: ReactNode;
+  /** Game Modifiers row (stroke only — rack has none, Phase 0 confirmed). Rendered
+   *  AFTER Rules Of The Day, matching Match Play's canonical order (Rules before
+   *  Modifiers) — kept separate from `extraRows` because the two formats that use
+   *  this component need different relative positions for their "extra" content. */
+  modifiersRow?: ReactNode;
   /** Valid unit count for the Points row's "Total Points Available" readout (rack). */
   matchCount?: number;
   /** Total-points migration: the first-setup default for the owner-set `points_total`. */
@@ -151,6 +159,15 @@ export function GameConfigurationView({
           {/* Save bar at the TOP — every row below is a draft edit. */}
           {saveBar}
 
+          {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
+              header: it frames the whole game before any settings (cross-format layout
+              consistency pass; matches Match Play's canonical order). */}
+          {competitionId && (
+            <div className="mb-2">
+              <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+            </div>
+          )}
+
           {/* IDENTITY: name (tap-to-edit) + assigned-to — draft slices. */}
           {competitionId && (
             <GameIdentityHeader
@@ -164,17 +181,9 @@ export function GameConfigurationView({
             />
           )}
 
-          {/* Format explainer — the compact "how you compete" block above Rules. */}
-          {competitionId && (
-            <div className="mt-6">
-              <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-            </div>
-          )}
-
-          {/* RULES OF THE DAY — at the TOP; a draft slice. */}
-          {competitionId && (
-            <GameRulesNote canEdit={canEdit} value={rulesValue ?? ""} onChange={onRulesChange} />
-          )}
+          {/* RULES OF THE DAY moved to the BOTTOM (after Settings/Options, before
+              Modifiers + Danger Zone) — see below, matching Match Play's canonical
+              order (cross-format layout consistency pass). */}
 
           {/* GAME MANAGEMENT — the single Setup/Scoring toggle (owner/delegate only). The
               toggle stages into the draft (`staged` = draft ≠ server). */}
@@ -240,6 +249,18 @@ export function GameConfigurationView({
               {extraRows}
             </>
           )}
+
+          {/* RULES OF THE DAY — relocated to the BOTTOM (after Settings/Options, before
+              Modifiers): a draft slice, QUIET tier (free-text, can't rescore a hole), so
+              it reads before the WARNED Modifiers accordion — matching Match Play's
+              canonical order (cross-format layout consistency pass). */}
+          {competitionId && (
+            <GameRulesNote canEdit={canEdit} value={rulesValue ?? ""} onChange={onRulesChange} />
+          )}
+
+          {/* Game Modifiers — stroke only (rack has none, Phase 0 confirmed). Sits AFTER
+              Rules Of The Day, matching Match Play's order. */}
+          {modifiersRow}
 
           {/* Per-game danger zone — owner-only. `disabled` reads the LIVE server flag
               (reset-scores is immediate surgery, must not unlock off a staged toggle) —

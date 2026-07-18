@@ -126,6 +126,13 @@ export function NonGolfConfigurationView({
               settings page). */}
           {saveBar}
 
+          {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
+              header (cross-format layout consistency pass; matches Match Play's
+              canonical order). */}
+          <div className="mb-2">
+            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
+          </div>
+
           {/* Identity — controlled: name + assigned-to are draft slices now. */}
           <GameIdentityHeader
             tripId={tripId}
@@ -137,16 +144,9 @@ export function NonGolfConfigurationView({
             onDelegateChange={(next) => onDelegatesChange(next ? [next] : [])}
           />
 
-          <div className="mt-6">
-            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-          </div>
-
-          {/* RULES OF THE DAY — controlled draft slice (was save-on-blur). */}
-          <GameRulesNote
-            canEdit={canEdit}
-            value={draft.rulesForToday ?? ""}
-            onChange={onRulesChange}
-          />
+          {/* RULES OF THE DAY moved to the BOTTOM (after Settings) — see below,
+              matching Match Play's canonical order (cross-format layout consistency
+              pass). */}
 
           {canEdit && (
             <>
@@ -172,12 +172,25 @@ export function NonGolfConfigurationView({
             <FormatPointsPanel
               game={game}
               canEdit={canEdit}
+              // Non-golf has no outer "Total Points" ChecklistRow (unlike Stroke, which
+              // wraps this same panel) — this panel's own label IS the points row's
+              // title here, so it's set explicitly for cross-format consistency.
+              pointsLabel="Total Points"
               controlled={{
                 value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
                 onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
               }}
             />
           )}
+
+          {/* RULES OF THE DAY — relocated to the BOTTOM (after Settings): a draft slice,
+              QUIET tier — matching Match Play's canonical order (cross-format layout
+              consistency pass). */}
+          <GameRulesNote
+            canEdit={canEdit}
+            value={draft.rulesForToday ?? ""}
+            onChange={onRulesChange}
+          />
 
           {/* Danger Zone — owner-only. Its `disabled` is the ONE deliberate SERVER read
               (not the draft): reset-scores is immediate surgery and must not unlock off a
@@ -254,7 +267,7 @@ function MatchValueStepper({
   const value = total ?? 1;
   return (
     <PointStepper
-      label="Game value"
+      label="Total Points"
       caption="POINTS FOR THE MATCH"
       value={value}
       onChange={canEdit ? onChange : () => {}}

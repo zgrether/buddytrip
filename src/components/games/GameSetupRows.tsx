@@ -285,7 +285,7 @@ export function GameSetupRows({
           // a body). Format picker removed from FormatPointsPanel.
           <ChecklistRow
             icon={Hash}
-            title="Points"
+            title="Total Points"
             subtitle={
               <>
                 Total Points Available:{" "}
