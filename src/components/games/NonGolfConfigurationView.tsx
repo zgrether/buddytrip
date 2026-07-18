@@ -129,7 +129,6 @@ export function NonGolfConfigurationView({
           {/* Identity — controlled: name + assigned-to are draft slices now. */}
           <GameIdentityHeader
             tripId={tripId}
-            game={game}
             canEdit={canEdit}
             isOwner={isOwner}
             nameValue={draft.name}
@@ -144,10 +143,7 @@ export function NonGolfConfigurationView({
 
           {/* RULES OF THE DAY — controlled draft slice (was save-on-blur). */}
           <GameRulesNote
-            tripId={tripId}
-            game={game}
             canEdit={canEdit}
-            controlled
             value={draft.rulesForToday ?? ""}
             onChange={onRulesChange}
           />
@@ -174,7 +170,6 @@ export function NonGolfConfigurationView({
             <MatchValueStepper value={draft.pointsTotal} canEdit={canEdit} onChange={onPointsTotalChange} />
           ) : (
             <FormatPointsPanel
-              tripId={tripId}
               game={game}
               canEdit={canEdit}
               controlled={{

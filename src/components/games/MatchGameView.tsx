@@ -1762,7 +1762,6 @@ export function MatchGameView() {
             {gameCompId && gameQ.data && (
               <GameIdentityHeader
                 tripId={tripId}
-                game={gameQ.data as unknown as GameRow}
                 canEdit={canEdit}
                 isOwner={isOwner}
                 nameValue={configDraft.name}
@@ -2021,10 +2020,7 @@ export function MatchGameView() {
                 draft slice; the page's Save persists it. */}
             {gameCompId && gameQ.data && (
               <GameRulesNote
-                tripId={tripId}
-                game={gameQ.data as unknown as GameRow}
                 canEdit={canEdit}
-                controlled
                 value={configDraft.rulesForToday ?? ""}
                 onChange={setRulesDraft}
               />

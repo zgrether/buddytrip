@@ -1,69 +1,25 @@
 "use client";
 
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import { trpc } from "@/lib/trpc-client";
-import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
-
-export interface GameRulesNoteHandle {
-  /** Commit any unsaved text NOW (the page's "Save & exit" calls this before
-   *  navigating). Resolves once the write settles (or immediately if clean). */
-  flush: () => Promise<void>;
-}
-
 /**
  * Zone 3 (W-EDITMODAL-01) — the "rules of the day" freeform note, at the bottom of
  * the game-setup page BELOW the checklist. It's notes, not a task: nothing to
  * "resolve", so it is NOT a ChecklistRow — a plain textarea.
  *
- * TWO MODES, selected by the EXPLICIT `controlled` flag (never inferred from
- * whether `value` happens to be defined — that made the mode a side effect of a
- * value's presence, so a controlled parent whose text was briefly `undefined`
- * would silently fall back to self-persisting and write to the server):
- *  - **Uncontrolled** (default — the Configuration / non-golf / member surfaces):
- *    self-contained, saves on **blur**, and exposes `flush()` so a page's
- *    "Save & exit" can commit before navigating.
- *  - **Controlled** (`controlled` — the draft-then-save match settings page):
- *    the parent owns the text and decides what an edit means. `onChange` reports
- *    every keystroke; the parent updates its draft and the page's single Save
- *    persists it, so NOTHING commits from here.
- * The uncontrolled mode stays until the remaining surfaces convert (P2).
+ * **Controlled only (#626).** The parent owns the text + persistence: `onChange`
+ * reports every keystroke, the parent updates its draft, and the page's single Save
+ * persists it — NOTHING commits from here. Read-only surfaces (a member's view) pass
+ * `value` with no `onChange`. (The old self-persisting `games.update`-on-blur path and
+ * the `flush()` handle are gone — every render site is draft-then-save or read-only.)
  */
-export const GameRulesNote = forwardRef<GameRulesNoteHandle, {
-  tripId: string;
-  game: GameRow;
+export function GameRulesNote({
+  canEdit, value, onChange,
+}: {
   canEdit: boolean;
-  /** Controlled mode: the parent owns the text + persistence. Requires `value`. */
-  controlled?: boolean;
-  /** Controlled mode: the text to show. */
-  value?: string;
-  /** Controlled mode: every edit. */
+  /** The text to show — the parent's draft slice, or a read-only value. */
+  value: string;
+  /** Every edit — omitted on read-only surfaces. */
   onChange?: (next: string) => void;
-}>(function GameRulesNote({ tripId, game, canEdit, controlled: controlledProp, value, onChange }, ref) {
-  const controlled = controlledProp ?? false;
-  const initial = (game.rules_for_today as string | null) ?? "";
-  const [ownText, setOwnText] = useState(initial);
-  const text = controlled ? (value ?? "") : ownText;
-  // The last value we persisted — so flush/blur is a no-op when nothing changed.
-  const savedRef = useRef(initial);
-  const update = trpc.games.update.useMutation();
-  const utils = trpc.useUtils();
-
-  const commit = useCallback(async () => {
-    if (controlled) return; // the parent owns persistence — nothing to flush
-    const next = ownText.trim();
-    if (next === savedRef.current.trim()) return; // nothing changed
-    savedRef.current = ownText;
-    await update.mutateAsync({ tripId, gameId: game.id, rulesForToday: next || null });
-    utils.games.getById.invalidate({ tripId, gameId: game.id });
-  }, [controlled, ownText, tripId, game.id, update, utils]);
-
-  useImperativeHandle(ref, () => ({ flush: () => commit().catch(() => {}) }), [commit]);
-
-  const setText = (next: string) => {
-    if (controlled) onChange?.(next);
-    else setOwnText(next);
-  };
-
+}) {
   return (
     <div className="mt-6">
       {/* #512 §5: label + divider rule, matching the SETTINGS / OPTIONS section
@@ -82,9 +38,8 @@ export const GameRulesNote = forwardRef<GameRulesNoteHandle, {
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
         <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => void commit()}
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
           readOnly={!canEdit}
           rows={3}
           maxLength={2000}
@@ -96,4 +51,4 @@ export const GameRulesNote = forwardRef<GameRulesNoteHandle, {
       </div>
     </div>
   );
-});
+}

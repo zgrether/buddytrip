@@ -155,7 +155,6 @@ export function GameConfigurationView({
           {competitionId && (
             <GameIdentityHeader
               tripId={tripId}
-              game={game}
               canEdit={canEdit}
               isOwner={isOwner}
               nameValue={nameValue}
@@ -174,7 +173,7 @@ export function GameConfigurationView({
 
           {/* RULES OF THE DAY — at the TOP; a draft slice. */}
           {competitionId && (
-            <GameRulesNote tripId={tripId} game={game} canEdit={canEdit} controlled value={rulesValue ?? ""} onChange={onRulesChange} />
+            <GameRulesNote canEdit={canEdit} value={rulesValue ?? ""} onChange={onRulesChange} />
           )}
 
           {/* GAME MANAGEMENT — the single Setup/Scoring toggle (owner/delegate only). The

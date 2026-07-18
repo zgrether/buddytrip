@@ -5,19 +5,18 @@ import { Pencil, UserCircle2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Avatar } from "@/components/Avatar";
-import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
  * Zone 1 (W-EDITMODAL-01) — the IDENTITY header at the top of the game-setup page:
  * *what is this game, and whose is it?* Display-first, NOT a checklist row — the
  * game is already named, so this is display-with-edit, not resolve-from-empty.
  *
- *  - **Name** as the page title, tap-to-edit inline (commit on blur/Enter →
- *    `games.update{name}`). Owner or delegate.
+ *  - **Name** as the page title, tap-to-edit inline (commit on blur/Enter). Owner or
+ *    delegate.
  *  - **"Assigned to: [owner / delegate]"** — the FRAME for the whole page: empty →
  *    the owner fills the checklist; filled → it's that delegate's assignment. The
- *    delegate grant is owner-only (`addOrganizer`/`removeOrganizer`), so non-owners
- *    see it read-only. A delegate landing here reads "… · Assigned to: you".
+ *    delegate grant is owner-only, so non-owners see it read-only. A delegate landing
+ *    here reads "… · Assigned to: you".
  *
  * This is the ONE shared settings-page header — the match checklist renders it
  * directly; stroke/rack render it inside `GameConfigurationView` (the ONE settings
@@ -26,22 +25,18 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  * Setup/Scoring toggle is a standalone `GameManagementPanel` on the settings page,
  * not threaded through this slot.)
  *
- * TWO MODES (mirrors `GameRulesNote` / `CourseRowContent`):
- *  - **Uncontrolled** (default — stroke/rack via `GameConfigurationView`):
- *    self-persisting. The name commits on blur/Enter via `games.update`; the
- *    assignment commits on pick via `addOrganizer`/`removeOrganizer`.
- *  - **Controlled** (pass `nameValue` — the draft-then-save match settings page):
- *    the parent owns both fields and decides what an edit means. Nothing commits
- *    here; the page's single Save persists them. This matters beyond tidiness — a
- *    live write from this header would move the game's config hash out from under
- *    the page's frozen baseHash and make the user's own Save conflict.
+ * **Controlled only (#626).** The parent owns both fields (name + assignment) and
+ * decides what an edit means; nothing commits here — the page's single Save persists
+ * them. This matters beyond tidiness: a live write from this header would move the
+ * game's config hash out from under the page's frozen baseHash and make the user's
+ * own Save conflict. (The old self-persisting `games.update`/`addOrganizer`/
+ * `removeOrganizer` path is gone — every render site is draft-then-save.)
  */
 export function GameIdentityHeader({
-  tripId, game, canEdit, isOwner, children,
+  tripId, canEdit, isOwner, children,
   nameValue, onNameChange, delegateValue, onDelegateChange,
 }: {
   tripId: string;
-  game: GameRow;
   /** Can edit the NAME (owner or delegate). */
   canEdit: boolean;
   /** Can change the ASSIGNMENT (owner-only — matches the server gate). */
@@ -49,39 +44,29 @@ export function GameIdentityHeader({
   /** Mode-controls slot (A2-precursor) — the Game Management panel/toggle mounts
    *  here in A2-ux. Rendered below the assigned-to frame; omitted → nothing renders. */
   children?: React.ReactNode;
-  /** Controlled mode: the name to show. Omit for the self-persisting default. */
-  nameValue?: string;
-  /** Controlled mode: the name was committed (blur/Enter). */
-  onNameChange?: (next: string) => void;
-  /** Controlled mode: the assigned delegate's user id (null = the owner). */
-  delegateValue?: string | null;
-  /** Controlled mode: the assignment changed. */
-  onDelegateChange?: (next: string | null) => void;
+  /** The name to show (the parent's draft slice). */
+  nameValue: string;
+  /** The name was committed (blur/Enter). */
+  onNameChange: (next: string) => void;
+  /** The assigned delegate's user id (null = the owner). */
+  delegateValue: string | null;
+  /** The assignment changed. */
+  onDelegateChange: (next: string | null) => void;
 }) {
-  const gameId = game.id;
   const me = useCurrentUser();
-  const utils = trpc.useUtils();
-  // Controlled when the parent supplies the name — the one field every state of
-  // this header can reach (mirrors CourseRowContent's `onApplyFront` gate).
-  const controlled = nameValue !== undefined;
 
   // ── Name (tap-to-edit inline) ──────────────────────────────────────────────
-  const name = controlled ? nameValue : ((game.name as string | null) ?? "Untitled game");
+  const name = nameValue;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
-  const updateName = trpc.games.update.useMutation();
   useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
 
   function commitName() {
     setEditing(false);
     const next = draft.trim();
     if (!next || next === name) { setDraft(name); return; }
-    if (controlled) { onNameChange?.(next); return; } // the parent owns persistence
-    updateName.mutate(
-      { tripId, gameId, name: next },
-      { onSuccess: () => utils.games.getById.invalidate({ tripId, gameId }) }
-    );
+    onNameChange(next); // the parent owns persistence (Save commits it)
   }
 
   // ── Assigned to (delegate, owner-gated) ────────────────────────────────────
@@ -95,12 +80,7 @@ export function GameIdentityHeader({
     role: string;
     user?: { avatar_icon?: string | null } | null;
   }[];
-  const orgQ = trpc.games.listOrganizers.useQuery({ tripId, gameId });
-  const delegateId = controlled
-    ? (delegateValue ?? null)
-    : (((orgQ.data as { user_id: string }[] | undefined)?.[0]?.user_id) ?? null);
-  const addOrg = trpc.games.addOrganizer.useMutation();
-  const removeOrg = trpc.games.removeOrganizer.useMutation();
+  const delegateId = delegateValue ?? null;
   const [picking, setPicking] = useState(false);
 
   // The trip Owner — the implicit assignee when no delegate is set. Their NAME frames
@@ -119,21 +99,10 @@ export function GameIdentityHeader({
   // owner's name to anyone else.
   const assignedLabel = delegateName ?? (isOwner ? "you" : ownerName);
 
-  async function assign(next: string | null) {
+  function assign(next: string | null) {
     setPicking(false);
     if (next === delegateId) return;
-    if (controlled) { onDelegateChange?.(next); return; } // the parent owns persistence
-    try {
-      if (delegateId) await removeOrg.mutateAsync({ tripId, gameId, userId: delegateId });
-      if (next) await addOrg.mutateAsync({ tripId, gameId, userId: next });
-      utils.games.listOrganizers.setData(
-        { tripId, gameId },
-        next ? ([{ user_id: next, granted_by: null, created_at: null }] as never) : []
-      );
-      utils.games.listOrganizers.invalidate({ tripId, gameId });
-    } catch {
-      utils.games.listOrganizers.invalidate({ tripId, gameId });
-    }
+    onDelegateChange(next); // the parent owns persistence (Save commits it)
   }
 
   return (
@@ -185,7 +154,7 @@ export function GameIdentityHeader({
             </div>
             {/* Only OTHER people — the owner is never in the list (absence = owner). */}
             {assignable.map((m) => (
-              <button key={m.memberId} type="button" onClick={() => void assign(m.memberId)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
+              <button key={m.memberId} type="button" onClick={() => assign(m.memberId)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
                 <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} sizePx={28} />
                 <span className="truncate">{m.displayName}</span>
               </button>
@@ -213,7 +182,7 @@ export function GameIdentityHeader({
             {/* The × clears a real delegate (→ back to the owner). Absent when already
                 the owner default — there's nothing to clear. */}
             {isOwner && delegateName && (
-              <X size={13} style={{ color: "var(--color-bt-text-dim)" }} onClick={(e) => { e.stopPropagation(); void assign(null); }} />
+              <X size={13} style={{ color: "var(--color-bt-text-dim)" }} onClick={(e) => { e.stopPropagation(); assign(null); }} />
             )}
           </button>
         )}

@@ -24,9 +24,11 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  * generic icon + a neutral name with no explainer.
  */
 export function MemberSetupView({
-  tripId,
   game,
 }: {
+  // `tripId` is still accepted for parity with the member-wrapper chain
+  // (MemberNotReady / SetupPlaceholder), but nothing here needs it since the
+  // read-only Rules note stopped self-persisting (#629).
   tripId: string;
   game: GameRow | null | undefined;
 }) {
@@ -88,7 +90,7 @@ export function MemberSetupView({
       {/* Explainer (the star) + read-only Rules of the Day — only when rules exist. */}
       <div className="mt-8 w-full space-y-5">
         <GameFormatExplainer gameTypeId={typeId} variant="member" />
-        {rules && game && <GameRulesNote tripId={tripId} game={game} canEdit={false} />}
+        {rules && game && <GameRulesNote canEdit={false} value={rules} />}
       </div>
     </div>
   );
