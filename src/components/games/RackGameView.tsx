@@ -122,6 +122,7 @@ export function RackGameView() {
     confirmingClose,
     confirmDiscard,
     cancelClose,
+    leave,
   } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
@@ -633,7 +634,7 @@ export function RackGameView() {
   // The shared draft-then-save lifecycle (#626) — baseline + hash + dirty + outbox +
   // confirm-on-leave sync + the atomic Save. Format-specific pieces are passed in.
   const {
-    dirty, saveError, setSaveError, justSaved, saving, handleSave: handleSaveConfig, handleCancel: handleCancelConfig,
+    dirty, saveError, setSaveError, saving, handleSave: handleSaveConfig,
   } = useConfigDraft<RackConfigDraft, typeof draftBundle>({
     tripId, gameId: gid, view: "rack", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -907,10 +908,10 @@ export function RackGameView() {
             <SettingsSaveBar
               dirty={dirty}
               saving={saving}
-              justSaved={justSaved}
               error={saveError}
-              onSave={() => void handleSaveConfig()}
-              onCancel={handleCancelConfig}
+              onSave={handleSaveConfig}
+              onDiscard={confirmDiscard}
+              onLeave={leave}
             />
           }
         />
@@ -918,7 +919,7 @@ export function RackGameView() {
           <DiscardChangesPrompt
             onDiscard={confirmDiscard}
             onKeepEditing={cancelClose}
-            onSave={() => { cancelClose(); void handleSaveConfig(); }}
+            onSave={() => { cancelClose(); void handleSaveConfig().then((ok) => { if (ok) leave(); }); }}
             saving={saving}
           />
         )}

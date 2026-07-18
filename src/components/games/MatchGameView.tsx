@@ -193,6 +193,7 @@ export function MatchGameView() {
     confirmingClose,
     confirmDiscard,
     cancelClose,
+    leave,
   } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
@@ -1157,8 +1158,8 @@ export function MatchGameView() {
   //  - `onSaved` runs the scoring-flip board cascade (full vs lean) + the unconditional
   //    listOrganizers invalidate (delegates aren't in the config hash).
   const {
-    dirty, saveError, setSaveError, justSaved, saving,
-    handleSave, handleCancel,
+    dirty, saveError, setSaveError, saving,
+    handleSave,
   } = useConfigDraft<ConfigDraft, SettingsDraftBundle | DraftMatch[]>({
     tripId, gameId, view: "match", canEdit,
     showConfig: cfgOpen, dirtyRef, discardRef,
@@ -1737,10 +1738,10 @@ export function MatchGameView() {
                 <SettingsSaveBar
                   dirty={dirty}
                   saving={saving}
-                  justSaved={justSaved}
                   error={saveError}
-                  onSave={() => void handleSave()}
-                  onCancel={handleCancel}
+                  onSave={handleSave}
+                  onDiscard={confirmDiscard}
+                  onLeave={leave}
                 />
               ) : null
             }
@@ -2129,7 +2130,7 @@ export function MatchGameView() {
           onKeepEditing={cancelClose}
           onSave={() => {
             cancelClose();
-            void handleSave();
+            void handleSave().then((ok) => { if (ok) leave(); });
           }}
           saving={saving}
         />

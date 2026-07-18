@@ -126,6 +126,16 @@ export function useGameSettingsOverlay({
     doClose();
   }, [doClose]);
 
+  /** Leave UNCONDITIONALLY — the exit-behavior Save path calls this after a successful
+   *  commit (the draft is already clean, so there's nothing to guard). Sets the same
+   *  one-shot force flag as `confirmDiscard` so its `history.back()` isn't re-caught by
+   *  the popstate guard (whose isDirty ref can still read true for a beat post-save). */
+  const leave = useCallback(() => {
+    setConfirmingClose(false);
+    forceRef.current = true;
+    doClose();
+  }, [doClose]);
+
   /** Stay put and keep editing. */
   const cancelClose = useCallback(() => setConfirmingClose(false), []);
 
@@ -138,9 +148,13 @@ export function useGameSettingsOverlay({
         return;
       }
       if (isDirtyRef.current?.()) {
-        // The entry is ALREADY gone (popstate is after the fact), so staying put
-        // means putting one back — otherwise the next back-press leaves the page
-        // and the draft dies with it.
+        // The entry is ALREADY gone (popstate is after the fact), so staying put means
+        // putting one back — otherwise the next back-press leaves the page and the draft
+        // dies with it. This guards the GEAR path (where `open` is `userOpen` state). The
+        // DEEP-LINK path (`?settings=1`) derives `open` from the URL, and this back-press
+        // just stripped the param, so Next's useSearchParams unmounts the panel on the next
+        // render — racing this handler faster than a state pin can catch it (confirmed:
+        // #619's render-ordering race). That leg is tracked in #619, not fixed here.
         window.history.pushState({ btCfg: true }, "");
         setConfirmingClose(true);
         return;
@@ -151,5 +165,5 @@ export function useGameSettingsOverlay({
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  return { open, openConfig, closeConfig, confirmingClose, confirmDiscard, cancelClose };
+  return { open, openConfig, closeConfig, confirmingClose, confirmDiscard, cancelClose, leave };
 }

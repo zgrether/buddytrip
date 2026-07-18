@@ -100,10 +100,10 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   //    the toggle STAGES go-live into the page's composite draft — SAVE commits it (one
   //    atomic save_game_config). The old "scoring-lock-banner" live-lock signal is GONE
   //    (the P2 lie-sweep removed the frozen-settings lock — settings stay editable when
-  //    live); the "now live, transition complete" signal is now the draft clearing to
-  //    "Saved" after the commit. Wait for it BEFORE leaving — Back on a still-dirty draft
-  //    raises the discard prompt. Then the back arrow returns to the game page, now in
-  //    scoring mode → the keypad mounts.
+  //    live); the transition commits on Save, which (exit-behavior alignment) also CLOSES
+  //    the settings panel on success — landing back on the game page, now in scoring mode,
+  //    where the keypad mounts. No separate "Saved" wait or ✕ close needed: the keypad
+  //    visibility below gates on the save having landed + the panel having closed.
   await page.getByTestId("setup-go-to-settings").click();
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 20_000 });
@@ -111,11 +111,8 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   const saveBtn = page.getByTestId("settings-save");
   await expect(saveBtn).toBeEnabled({ timeout: 20_000 });
   await saveBtn.click();
-  await expect(page.getByTestId("settings-dirty-hint")).toHaveText("Saved", { timeout: 20_000 });
-  // Settings now live in a body-portaled slide-over (Settings Overhaul P1) — dismiss it
-  // via the header ✕ ("Close settings"), not the old in-header "Back" arrow (which is the
-  // TopNav back, now behind the shell scrim and unclickable).
-  await page.getByRole("button", { name: "Close settings" }).click();
+  // Save commits + closes the panel; the game page (scoring mode) appears next.
+  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
 
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
   //    Distinct values so the assertion can't pass on par/coincidence. Wait for

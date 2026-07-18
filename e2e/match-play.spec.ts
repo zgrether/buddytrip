@@ -205,15 +205,11 @@ async function saveSettings(page: Page) {
   const save = page.getByTestId("settings-save");
   await expect(save).toBeEnabled({ timeout: 10_000 });
   await save.click();
-  // "Saved" is the ONLY honest signal that a save LANDED. Don't gate on the button
-  // going disabled: it's disabled while the write is in flight too (`!dirty ||
-  // saving`), so that assertion resolves instantly and races the RPC. Nor on the
-  // draft going clean — Cancel lands clean too. The hint is set only on a resolved
-  // mutation, which is exactly what we need to observe here.
-  await expect(page.getByTestId("settings-dirty-hint")).toHaveText("Saved", { timeout: 20_000 });
-  // The bar reports failure inline (readiness / conflict / frozen) rather than via a
-  // toast — assert it stayed quiet so a regression names itself here.
-  await expect(page.getByTestId("settings-save-error")).toBeHidden();
+  // Exit-behavior alignment: Save now COMMITS + CLOSES the panel on success. The panel
+  // going away IS the landed-save signal — a failure keeps it OPEN with the inline error
+  // banner (readiness / conflict / frozen), so the save-bar staying visible would fail
+  // here and name the regression. (Was: wait for the "Saved" hint + a separate ✕ close.)
+  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
 }
 
 /**
@@ -258,6 +254,24 @@ test("dirty settings refuse to leave silently — browser back and the arrow bot
   expect(await filledMatchCount(await latestGameId())).toBe(0);
 });
 
+/**
+ * Exit-behavior alignment: the bottom Cancel button is ALWAYS enabled and means "leave."
+ * On a dirty draft it DISCARDS + CLOSES directly — no confirm prompt (Cancel IS the
+ * decision), unlike the ✕/back which raise the prompt. Nothing is written.
+ */
+test("Cancel button always leaves — discards the draft and closes, no prompt", async ({ page }) => {
+  test.setTimeout(60_000);
+  await driveToSetupWithHandicap(page); // dirty, never-saved draft
+
+  await expect(page.getByTestId("settings-cancel")).toBeEnabled();
+  await page.getByTestId("settings-cancel").click();
+  // No prompt (Cancel decides), the panel closes, and nothing landed.
+  await expect(page.getByTestId("discard-changes-prompt")).toBeHidden();
+  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByTestId("match-pairings")).toBeHidden({ timeout: 10_000 });
+  expect(await filledMatchCount(await latestGameId())).toBe(0);
+});
+
 test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
   test.setTimeout(60_000);
   await driveToSetupWithHandicap(page);
@@ -290,10 +304,8 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
       return data?.scoring_enabled;
     }, { timeout: 15_000 })
     .toBe(true);
-  // Dismiss the slide-over via its ✕ ("Close settings") — the draft is clean ("Saved")
-  // so it closes straight back to the game page (now in scoring mode). The old
-  // in-header "Back" arrow is gone (Settings Overhaul P1).
-  await page.getByRole("button", { name: "Close settings" }).click();
+  // No explicit close: Save already committed AND closed the panel (exit-behavior
+  // alignment), landing back on the game page — now in scoring mode.
 
   // 4. Open the single match (the strip card button) → the per-hole entry view.
   const matchCard = page.getByRole("button", { name: /Match 1.*MP Owner/ });

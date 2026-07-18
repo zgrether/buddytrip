@@ -131,6 +131,7 @@ export function StrokeGameView() {
     confirmingClose,
     confirmDiscard,
     cancelClose,
+    leave,
   } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
@@ -444,8 +445,8 @@ export function StrokeGameView() {
   // confirm-on-leave) — the ONE shared hook (#626). The overlay itself stays above (opened
   // early to publish the app-bar chrome); the hook writes its dirtyRef/discardRef.
   const {
-    dirty, saveError, setSaveError, justSaved, saving,
-    handleSave: handleSaveConfig, handleCancel: handleCancelConfig,
+    dirty, saveError, setSaveError, saving,
+    handleSave: handleSaveConfig,
   } = useConfigDraft<StrokeConfigDraft, typeof draftBundle>({
     tripId, gameId: activeGameId, view: "stroke", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -847,10 +848,10 @@ export function StrokeGameView() {
             <SettingsSaveBar
               dirty={dirty}
               saving={saving}
-              justSaved={justSaved}
               error={saveError}
-              onSave={() => void handleSaveConfig()}
-              onCancel={handleCancelConfig}
+              onSave={handleSaveConfig}
+              onDiscard={confirmDiscard}
+              onLeave={leave}
             />
           }
         />
@@ -858,7 +859,7 @@ export function StrokeGameView() {
           <DiscardChangesPrompt
             onDiscard={confirmDiscard}
             onKeepEditing={cancelClose}
-            onSave={() => { cancelClose(); void handleSaveConfig(); }}
+            onSave={() => { cancelClose(); void handleSaveConfig().then((ok) => { if (ok) leave(); }); }}
             saving={saving}
           />
         )}
