@@ -243,8 +243,11 @@ test("dirty settings refuse to leave silently — browser back and the arrow bot
   await page.getByTestId("discard-prompt-keep").click();
   await expect(prompt).toBeHidden();
 
-  // 2. The in-page arrow → the same gate (nothing popped on this path).
-  await page.getByRole("button", { name: "Back" }).click();
+  // 2. The slide-over's ✕ ("Close settings") → the same gate (nothing popped on this
+  //    path). It routes through the guarded closeConfig, which raises the prompt when
+  //    the draft is dirty. (The old in-header "Back" arrow is gone — Settings Overhaul
+  //    P1 moved settings into a body-portaled slide-over dismissed by the ✕.)
+  await page.getByRole("button", { name: "Close settings" }).click();
   await expect(prompt).toBeVisible({ timeout: 10_000 });
 
   // 3. Discard → the draft is dropped and we actually leave. Nothing was ever
@@ -287,7 +290,10 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
       return data?.scoring_enabled;
     }, { timeout: 15_000 })
     .toBe(true);
-  await page.getByRole("button", { name: "Back" }).click();
+  // Dismiss the slide-over via its ✕ ("Close settings") — the draft is clean ("Saved")
+  // so it closes straight back to the game page (now in scoring mode). The old
+  // in-header "Back" arrow is gone (Settings Overhaul P1).
+  await page.getByRole("button", { name: "Close settings" }).click();
 
   // 4. Open the single match (the strip card button) → the per-hole entry view.
   const matchCard = page.getByRole("button", { name: /Match 1.*MP Owner/ });

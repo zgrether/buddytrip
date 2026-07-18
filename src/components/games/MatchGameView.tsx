@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -2901,8 +2902,15 @@ function PlayerSelector({
       ? `Match ${matchIdx + 1} · Side ${slot === "a" ? "A" : "B"} · Player ${memberIdx + 1}`
       : `Match ${matchIdx + 1} · Player ${slot === "a" ? 1 : 2}`;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} data-testid="player-selector">
+  // Portaled to body: this picker is opened from within the settings slide-over,
+  // which is itself body-portaled at z-50. Rendered in-tree it would live inside the
+  // z-30 game-panel host, so its own z-50 is scoped there and it paints UNDERNEATH
+  // the shell (the scrim covers the viewport but the drawer sits on top and the sheet
+  // only shows in the left gap). z-[60] at the body level beats the shell — same fix
+  // DiscardChangesPrompt uses.
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} data-testid="player-selector">
       <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ background: "var(--color-bt-card-float)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 16px 28px", maxHeight: "75vh", overflowY: "auto" }}>
         <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {teamColor && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />}
@@ -2929,7 +2937,8 @@ function PlayerSelector({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
