@@ -5,11 +5,12 @@
  * §2.7), shared across every format's settings page (match extracted it here in P2 so
  * non-golf/rack/stroke reuse the SAME bar rather than re-implementing it).
  *
- * At the TOP of the page: every row below is a draft edit, so the commit belongs where
- * the user can see it the whole time rather than at the end of a long scroll. Save is
- * **Primary** and Cancel is **Ghost** (STYLE_GUIDE §5, inline-styled — the repo has no
- * shared <Button>). Save is disabled until the draft actually differs from the frozen
- * baseline, so it can't fire a no-op write.
+ * Rendered in the settings slide-over's PINNED BOTTOM footer (SettingsSlideOver) — the
+ * crew/lodging commit idiom — so it's always in reach without hunting the top of a long
+ * scroll. Save is **Primary** and Cancel is **Ghost** (STYLE_GUIDE §5, inline-styled —
+ * the repo has no shared <Button>). Save is disabled until the draft actually differs
+ * from the frozen baseline, so it can't fire a no-op write. (This is a plain row now —
+ * the shell's footer owns the border/padding/background.)
  *
  * On failure the panel STAYS open, the draft is kept, and the reason renders here
  * legibly — the RPC's readiness assert (PRECONDITION_FAILED "finish setting up this
@@ -38,7 +39,16 @@ export function SettingsSaveBar({
   // something false.
   const hint = saving ? "Saving…" : dirty ? "Unsaved changes" : justSaved ? "Saved" : "";
   return (
-    <div className="sticky top-0 z-10 -mx-4 mb-1 px-4 pb-2 pt-2" style={{ background: "var(--color-bt-base)" }} data-testid="settings-save-bar">
+    <div data-testid="settings-save-bar">
+      {error && (
+        <p
+          className="mb-2 rounded-lg px-3 py-2 text-[12.5px] leading-snug"
+          style={{ background: "var(--color-bt-danger-faint)", border: "1px solid var(--color-bt-danger-border)", color: "var(--color-bt-danger)" }}
+          data-testid="settings-save-error"
+        >
+          {error}
+        </p>
+      )}
       <div className="flex items-center gap-2.5">
         <span className="flex-1 truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="settings-dirty-hint">
           {hint}
@@ -82,15 +92,6 @@ export function SettingsSaveBar({
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
-      {error && (
-        <p
-          className="mt-2 rounded-lg px-3 py-2 text-[12.5px] leading-snug"
-          style={{ background: "var(--color-bt-danger-faint)", border: "1px solid var(--color-bt-danger-border)", color: "var(--color-bt-danger)" }}
-          data-testid="settings-save-error"
-        >
-          {error}
-        </p>
-      )}
     </div>
   );
 }

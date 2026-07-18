@@ -290,8 +290,6 @@ export function NonGolfGameView() {
     return (
       <>
       <NonGolfConfigurationView
-        hideHeader={inPanel}
-        subtitle={typeName}
         onBack={closeConfig}
         tripId={tripId}
         competitionId={competitionId}

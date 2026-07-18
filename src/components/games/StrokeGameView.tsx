@@ -702,8 +702,6 @@ export function StrokeGameView() {
     return (
       <>
         <GameConfigurationView
-          hideHeader={inPanel}
-          subtitle="Stroke Play"
           onBack={closeConfig}
           tripId={tripId}
           competitionId={gameCompetitionId}

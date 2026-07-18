@@ -39,6 +39,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
+import { SettingsSlideOver } from "@/components/games/SettingsSlideOver"; // P1: full-page settings shell
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
 import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
@@ -1726,22 +1727,24 @@ export function MatchGameView() {
           }
         };
         return (
+          <SettingsSlideOver
+            title={configDraft.name || "Game settings"}
+            onClose={closeConfig}
+            testId="game-settings-slideover"
+            footer={
+              canEdit ? (
+                <SettingsSaveBar
+                  dirty={dirty}
+                  saving={saving}
+                  justSaved={justSaved}
+                  error={saveError}
+                  onSave={() => void handleSave()}
+                  onCancel={handleCancel}
+                />
+              ) : null
+            }
+          >
           <SettingsColumn className="pb-4">
-            {/* SAVE BAR — the page's ONE commit, at the TOP (spec §2.7). Every row
-                below is a draft edit; nothing reaches the server until this. Save is
-                Primary (STYLE_GUIDE §5, inline — there's no shared <Button>), Cancel
-                is Ghost, and Save enables only when the draft actually differs from
-                the frozen baseline. */}
-            {canEdit && (
-              <SettingsSaveBar
-                dirty={dirty}
-                saving={saving}
-                justSaved={justSaved}
-                error={saveError}
-                onSave={() => void handleSave()}
-                onCancel={handleCancel}
-              />
-            )}
 
             {/* Format explainer — "HOW YOU COMPETE · MATCH PLAY" — at the TOP of the
                 page (freeze redesign resequence §3.1): it frames the whole game before
@@ -2079,6 +2082,7 @@ export function MatchGameView() {
               />
             )}
           </SettingsColumn>
+          </SettingsSlideOver>
         );
       })()}
 
