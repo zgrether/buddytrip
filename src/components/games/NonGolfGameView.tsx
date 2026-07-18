@@ -206,7 +206,7 @@ export function NonGolfGameView() {
   const dirtyRef = useRef(false);
   const discardRef = useRef<() => void>(() => {});
   const {
-    open: showConfig, openConfig, closeConfig, confirmingClose, confirmDiscard, cancelClose,
+    open: showConfig, openConfig, closeConfig, confirmingClose, confirmDiscard, cancelClose, leave,
   } = useGameSettingsOverlay({
     canEdit,
     deepLink: search.get("settings") === "1",
@@ -219,7 +219,7 @@ export function NonGolfGameView() {
   // serverConfigDraft / configDraft / anyTouched, the pure equal/payload fns, the bundle,
   // the overlay refs) are passed in.
   const {
-    dirty, justSaved, saveError, saving, handleSave: handleSaveConfig, handleCancel: handleCancelConfig,
+    dirty, saveError, saving, handleSave: handleSaveConfig,
   } = useConfigDraft<NonGolfConfigDraft, typeof draftBundle>({
     tripId, gameId: urlGameId, view: "nongolf", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -317,10 +317,10 @@ export function NonGolfGameView() {
           <SettingsSaveBar
             dirty={dirty}
             saving={saving}
-            justSaved={justSaved}
             error={saveError}
-            onSave={() => void handleSaveConfig()}
-            onCancel={handleCancelConfig}
+            onSave={handleSaveConfig}
+            onDiscard={confirmDiscard}
+            onLeave={leave}
           />
         }
       />
@@ -328,7 +328,7 @@ export function NonGolfGameView() {
         <DiscardChangesPrompt
           onDiscard={confirmDiscard}
           onKeepEditing={cancelClose}
-          onSave={() => { cancelClose(); void handleSaveConfig(); }}
+          onSave={() => { cancelClose(); void handleSaveConfig().then((ok) => { if (ok) leave(); }); }}
           saving={saving}
         />
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -126,6 +126,19 @@ export function CompetitionFace({
     : undefined;
   const openType = openGame?.game_type_id ?? null;
   const panelOpen = !!openGame && opensAsPanel(openType);
+  // Suppress the game-panel slide-in wipe when the panel opens STRAIGHT into settings
+  // (the deep-link `?settings=1` — the board→setup-game entry). In that case the settings
+  // slide-over covers the panel immediately, so the wipe is just distracting dark motion
+  // behind the overlay (seen through the desktop drawer's translucent scrim — the
+  // "multiple dark backgrounds wiping in" report). Captured ONCE at the panel's rising
+  // edge so a later gear-driven settings toggle can't re-trigger or wrongly suppress the
+  // wipe; the gear path (open the game first, then the gear) keeps its normal slide-in.
+  const prevPanelOpenRef = useRef(false);
+  const suppressPanelWipeRef = useRef(false);
+  if (panelOpen && !prevPanelOpenRef.current) {
+    suppressPanelWipeRef.current = search.get("settings") === "1";
+  }
+  prevPanelOpenRef.current = panelOpen;
   // The bottom nav (z-40, fixed) overlays the panel's bottom (z-30). On surfaces
   // that KEEP the nav (scoreboards — not the nav-hiding score-entry surfaces), pad
   // the panel's scroll by the nav height so its last content clears the nav
@@ -335,7 +348,7 @@ export function CompetitionFace({
           switch off `fixed inset-0` in panel mode via useInGamePanel). */}
       {panelOpen && (
         <div
-          className="fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto game-panel-in"
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto ${suppressPanelWipeRef.current ? "" : "game-panel-in"}`}
           style={{
             background: "var(--color-bt-base)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the

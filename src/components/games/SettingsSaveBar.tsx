@@ -6,38 +6,38 @@
  * non-golf/rack/stroke reuse the SAME bar rather than re-implementing it).
  *
  * Rendered in the settings slide-over's PINNED BOTTOM footer (SettingsSlideOver) — the
- * crew/lodging commit idiom — so it's always in reach without hunting the top of a long
- * scroll. Save is **Primary** and Cancel is **Ghost** (STYLE_GUIDE §5, inline-styled —
- * the repo has no shared <Button>). Save is disabled until the draft actually differs
- * from the frozen baseline, so it can't fire a no-op write. (This is a plain row now —
- * the shell's footer owns the border/padding/background.)
+ * crew/lodging commit idiom. Layout MATCHES the trip-settings modals: **Cancel
+ * left-justified (Ghost, auto-width); Save fills the remaining space (Primary)** — a
+ * full-width two-button row (STYLE_GUIDE §5, inline-styled — the repo has no shared
+ * <Button>).
  *
- * On failure the panel STAYS open, the draft is kept, and the reason renders here
- * legibly — the RPC's readiness assert (PRECONDITION_FAILED "finish setting up this
- * game…"), the optimistic-concurrency CONFLICT, and the course/matches/groupings freeze
- * all arrive as real sentences, so the banner names what to fix.
+ * Exit-behavior alignment: BOTH bottom buttons now CLOSE the panel (like the trip modals),
+ * so neither leaves you "closed but still on the page":
+ *  - **Cancel is ALWAYS enabled** — it means "leave." `onDiscard` discards the draft and
+ *    closes (a no-op reset when clean). Disabled only mid-save.
+ *  - **Save is disabled until dirty** — `onSave` commits and returns whether it LANDED; on
+ *    success the bar calls `onLeave` to close, on failure the panel stays open with the
+ *    inline error below (readiness / concurrency CONFLICT / course-matches-groupings freeze
+ *    all arrive as real sentences here). No "Saved" hint any more — a landed save closes.
  */
 export function SettingsSaveBar({
   dirty,
   saving,
-  justSaved,
   error,
   onSave,
-  onCancel,
+  onDiscard,
+  onLeave,
 }: {
   dirty: boolean;
   saving: boolean;
-  /** A Save actually landed this session — the ONLY state that may claim one did. */
-  justSaved: boolean;
   error: string | null;
-  onSave: () => void;
-  onCancel: () => void;
+  /** Commit the draft; resolves `true` only when the write LANDED. */
+  onSave: () => Promise<boolean>;
+  /** Cancel = discard the draft + close the panel (the "leave" action). */
+  onDiscard: () => void;
+  /** Close the panel after a successful Save (the draft is already clean). */
+  onLeave: () => void;
 }) {
-  // "Clean" is not the same claim as "saved". Cancel DISCARDS the draft and lands clean,
-  // and an untouched page is clean too — neither wrote anything, so neither may say so.
-  // Only a landed Save earns "Saved"; otherwise the label says nothing rather than
-  // something false.
-  const hint = saving ? "Saving…" : dirty ? "Unsaved changes" : justSaved ? "Saved" : "";
   return (
     <div data-testid="settings-save-bar">
       {error && (
@@ -49,18 +49,18 @@ export function SettingsSaveBar({
           {error}
         </p>
       )}
-      <div className="flex items-center gap-2.5">
-        <span className="flex-1 truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="settings-dirty-hint">
-          {hint}
-        </span>
+      {/* Cancel (Ghost, auto-width, left) + Save (Primary, fills) — full width, crew/lodging.
+          No dirty/saving status line (matching the trip modals): the Save button already
+          reads "Saving…" mid-write, and a landed save closes the panel. */}
+      <div className="flex gap-2">
         <button
           type="button"
-          onClick={onCancel}
-          disabled={!dirty || saving}
+          onClick={onDiscard}
+          disabled={saving}
           className="disabled:opacity-40"
           style={{
-            height: 38,
-            padding: "0 14px",
+            height: 40,
+            padding: "0 16px",
             borderRadius: 12,
             background: "transparent",
             color: "var(--color-bt-text-dim)",
@@ -74,12 +74,11 @@ export function SettingsSaveBar({
         </button>
         <button
           type="button"
-          onClick={onSave}
+          onClick={() => { void onSave().then((ok) => { if (ok) onLeave(); }); }}
           disabled={!dirty || saving}
-          className="disabled:opacity-40"
+          className="flex-1 disabled:opacity-40"
           style={{
-            height: 38,
-            padding: "0 18px",
+            height: 40,
             borderRadius: 12,
             background: "var(--color-bt-accent)",
             color: "var(--color-bt-base)",

@@ -119,20 +119,24 @@ export function useConfigDraft<D, B>(params: {
     if (r) applyRecovered(r);
   }, [serverHash, recoverDraft, applyRecovered]);
 
-  async function handleSave() {
-    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending) return;
+  /** Commit the draft. Returns `true` only when the write LANDED — the caller (the save
+   *  bar) closes the panel on success and leaves it open (with the inline error) on
+   *  failure. A no-op call (not dirty / already saving) returns `false`: nothing landed. */
+  async function handleSave(): Promise<boolean> {
+    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending) return false;
     setSaveError(null);
     try {
       await saveConfigM.mutateAsync({ tripId, gameId, baseHash: baseline.hash, payload: toPayload(configDraft, baseline.draft) });
     } catch (e) {
       setSaveError((e as { message?: string })?.message || "Couldn’t save your changes — try again.");
-      return;
+      return false;
     }
     clearDraftOutbox();
     reset(true);
     setJustSaved(true);
     await onSaved?.();
     void hashQ.refetch();
+    return true;
   }
   function handleCancel() {
     reset(false);
