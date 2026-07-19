@@ -298,7 +298,7 @@ function MatchValueRow({
   canEdit: boolean;
   onChange: (total: number | null) => void;
 }) {
-  const value = total ?? 1;
+  const value = total ?? 0; // item 2: new games default to 0 (was 1)
   return (
     <ChecklistRow
       icon={Hash}
@@ -314,6 +314,7 @@ function MatchValueRow({
           min={0}
           onChange={canEdit ? (v) => onChange(v) : () => {}}
           disabled={!canEdit}
+          editable // tap the value → decimal entry (item 1); −/+ stay integer
           testId="total-points-stepper"
         />
       }
@@ -331,7 +332,7 @@ function TotalPoolRow({
   canEdit: boolean;
   onChange: (total: number | null) => void;
 }) {
-  const value = total ?? 8;
+  const value = total ?? 0; // item 2: new games default to 0 (was 8)
   return (
     <ChecklistRow
       icon={Hash}
@@ -352,6 +353,7 @@ function TotalPoolRow({
           min={0}
           onChange={canEdit ? (v) => onChange(v) : () => {}}
           disabled={!canEdit}
+          editable // tap the value → decimal entry (item 1); −/+ stay integer
           testId="total-points-stepper"
         />
       }

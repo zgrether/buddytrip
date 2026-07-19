@@ -22,11 +22,11 @@ import { ModifierCards } from "@/components/games/ModifierCards";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
-import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, type StrokeConfigDraft } from "@/lib/configDraft";
+import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
-import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { fmtValue, type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -720,16 +720,20 @@ export function StrokeGameView() {
     };
     // Point Distribution row (GROUP SETTINGS) — the placement editor only (part="distribution").
     // Requires the total it distributes across; resolved once a pool is set.
+    // Winner-takes-all (item 6) is the DEFAULT: a null / single-place distribution reads
+    // "Winner takes all" (1st gets the whole total), not "Even". A real ≥2-place split
+    // shows its breakdown. Both are valid configured states → always "resolved".
+    const distIsWta = isWinnerTakesAll(configDraft.pointsDistribution);
     const pointDistributionRow = (
       <ChecklistRow
         icon={Scale}
         title="Point Distribution"
         subtitle={
-          configDraft.pointsDistribution?.type === "placement"
-            ? "Custom placement split — tap to edit"
-            : "Even — tap to set a placement split"
+          distIsWta
+            ? "Winner takes all"
+            : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
         }
-        state={configDraft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
+        state="resolved"
         disabled={!canEdit}
         expanded={openAccordion === "distribution"}
         onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
@@ -740,6 +744,7 @@ export function StrokeGameView() {
           canEdit={canEdit}
           controlled={placementControlled}
           part="distribution"
+          winnerTakesAll
         />
       </ChecklistRow>
     );
@@ -818,7 +823,9 @@ export function StrokeGameView() {
           isOwner={isOwner}
           settingsZoneLabel="Group Settings"
           // GROUP SETTINGS (P3): Point Distribution → Groupings → Handicaps (all inline).
-          leadingSettingsRows={<>{pointDistributionRow}{groupingsRow}{handicapsRow}</>}
+          // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
+          // distribution divides across the groups, so Groupings leads (dependency order).
+          leadingSettingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
           onChanged={() => void refreshGame()}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —

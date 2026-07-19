@@ -4,10 +4,11 @@ import { useState } from "react";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { validatePlacement } from "@/lib/gameConfig";
 import {
-  PointStepper, PlacementEditor,
+  PointStepper, PlacementEditor, fmtValue,
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
+import { Plus, Trophy } from "lucide-react";
 
 /**
  * Points accordion body for **placement** (stroke/non-golf) games — the point value
@@ -25,7 +26,7 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * is gone — every render site is controlled.)
  */
 export function FormatPointsPanel({
-  game, canEdit, matchCount, controlled, pointsLabel = "Point value", part = "both",
+  game, canEdit, matchCount, controlled, pointsLabel = "Point value", part = "both", winnerTakesAll = false,
 }: {
   game: GameRow;
   canEdit: boolean;
@@ -52,6 +53,11 @@ export function FormatPointsPanel({
    *  draft slice (so the two can't drift). "both" (default, non-golf) keeps the single
    *  combined panel. Only the placement branch honors it; match-format is unaffected. */
   part?: "both" | "total" | "distribution";
+  /** Winner-takes-all default (item 6, stroke). When true, the placement editor opens
+   *  in winner-takes-all: 1st place holds the WHOLE total (derived live, "Add 2nd place"
+   *  to opt into a real split). A ≤1-place state reports `null` (the WTA sentinel);
+   *  ≥2 places report an explicit split. Default false (non-golf keeps the plain editor). */
+  winnerTakesAll?: boolean;
 }) {
   const type = GAME_TYPES.find((t) => t.id === game.game_type_id);
   const isMatchPlay = type?.resultStrategy === "match_play" || type?.resultStrategy === "rack_n_stack";
@@ -59,7 +65,7 @@ export function FormatPointsPanel({
   const seedTotal = controlled.value.total;
   const seedDist = controlled.value.distribution;
   const [perMatchValue, setPerMatchValue] = useState<number>(seedDist?.type === "per_match" ? seedDist.value : 1);
-  const [total, setTotal] = useState<number>(seedTotal ?? 8);
+  const [total, setTotal] = useState<number>(seedTotal ?? 0);
   const [placeInputs, setPlaceInputs] = useState<string[]>(
     seedDist?.type === "placement" && seedDist.values.length > 0 ? seedDist.values.map(String) : [""]
   );
@@ -98,6 +104,13 @@ export function FormatPointsPanel({
   }
   function onPlaceInputs(next: string[]) {
     setPlaceInputs(next);
+    // Winner-takes-all (item 6): ≤1 payout place IS winner-takes-all → report the null
+    // sentinel (1st = total is materialized at save, never snapshotted here). A real
+    // split needs ≥2 places.
+    if (winnerTakesAll && next.filter((s) => s.trim() !== "").length <= 1) {
+      savePoints(null, total);
+      return;
+    }
     const startedNext = (next[0]?.trim() ?? "") !== "";
     const vals = startedNext ? next.map((s) => Number(s.trim() || "0")) : [];
     const p = validatePlacement(total, vals);
@@ -153,9 +166,57 @@ export function FormatPointsPanel({
             />
           )}
           {part !== "total" && (
-            <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={readOnly ? () => {} : onPlaceInputs} placement={placement} />
+            // WTA vs a real split keys on the SLOT count (placeInputs.length), not filled
+            // slots — "Add 2nd place" opens an empty 2nd input, and the editor must show it
+            // even before it's filled. ≤1 slot = winner-takes-all; ≥2 = the split editor.
+            winnerTakesAll && placeInputs.length <= 1 ? (
+              <WinnerTakesAllRow
+                total={total}
+                readOnly={readOnly}
+                onAddPlace={() => onPlaceInputs([total > 0 ? String(total) : "", ""])}
+              />
+            ) : (
+              <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={readOnly ? () => {} : onPlaceInputs} placement={placement} />
+            )
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/** Winner-takes-all summary (item 6) — the default/degenerate placement: 1st place holds
+ *  the WHOLE total (derived live from `total`, never a stored value). "Add 2nd place" opts
+ *  into a real split (hands off to the multi-place `PlacementEditor`). */
+function WinnerTakesAllRow({ total, readOnly, onAddPlace }: { total: number; readOnly: boolean; onAddPlace: () => void }) {
+  return (
+    <div className="flex flex-col gap-3" data-testid="winner-takes-all">
+      <div
+        className="flex items-center justify-between rounded-lg px-3 py-2.5"
+        style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          <Trophy size={15} style={{ color: "var(--color-bt-accent)" }} />
+          Winner takes all
+        </span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-accent)" }}>
+          {fmtValue(total)} pts
+        </span>
+      </div>
+      <p className="text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        1st place takes the whole pool. Add places to split it across the field.
+      </p>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={onAddPlace}
+          className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+          data-testid="wta-add-place"
+        >
+          <Plus size={12} style={{ color: "var(--color-bt-accent)" }} />
+          Add 2nd place
+        </button>
       )}
     </div>
   );

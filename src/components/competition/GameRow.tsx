@@ -39,12 +39,13 @@ function openScorecardOverlay(pathname: string, gameId: string) {
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
 
-/** "8.5" → "8½", "14" → "14", "0.5" → "½" */
+/** "8.5" → "8½", "14" → "14", "0.5" → "½", "1.25" → "1.25" (other fractions kept
+ *  exact to 2dp — fractional shares must survive display end to end, #585). */
 export function fmtPts(n: number): string {
+  if (Number.isInteger(n)) return String(n);
   const whole = Math.floor(n);
-  const isHalf = Math.abs(n - whole - 0.5) < 0.001;
-  if (!isHalf) return String(whole);
-  return whole === 0 ? "½" : `${whole}½`;
+  if (Math.abs(n - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
+  return String(Math.round(n * 100) / 100);
 }
 
 /** §A1 format icon — the leading glyph that names the game's format, glanceable

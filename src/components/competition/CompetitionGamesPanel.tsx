@@ -166,14 +166,16 @@ export function GameSheet({
       // non-golf: NonGolfConfigurationView), not in the Add modal. A new game is
       // created with sensible defaults so the row is valid without the field: a match
       // game at 0 points-per-match (the C1 default-0 that keeps the Enable gate shut
-      // until set), a placement game at the owner default 8 with no split yet
-      // (FormatPointsPanel reads `points_total ?? 8`).
+      // until set), a placement game at 0 total with no split yet (item 2 — the total
+      // is configured on the settings page; 0 reads as configured, not the old
+      // roster-guess 8, and scales the moment an owner sets it. A placement game's
+      // null distribution is winner-takes-all by default — item 6).
       const createDistribution: PointsDistribution | null = isMatchPlay
         ? { type: "per_match", value: 0 }
         : null;
       const created = (await create.mutateAsync({
         tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
-        pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 8,
+        pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 0,
       })) as { id: string };
       const gameId = created.id;
       // Course / match rows are NOT seeded here — set on the setup pages (A1 P-C / C1).
@@ -598,10 +600,11 @@ export function ordinalShort(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-/** Whole numbers as-is, halves as ½ (0.5 → "½", 1.5 → "1½"). */
+/** Whole numbers as-is, halves as ½ (0.5 → "½", 1.5 → "1½"); other fractions kept
+ *  exact to 2dp (1.25 → "1.25") so fractional shares survive display (#585). */
 export function fmtValue(n: number): string {
+  if (Number.isInteger(n)) return String(n);
   const whole = Math.floor(n);
-  const isHalf = Math.abs(n - whole - 0.5) < 0.001;
-  if (!isHalf) return String(whole);
-  return whole === 0 ? "½" : `${whole}½`;
+  if (Math.abs(n - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
+  return String(Math.round(n * 100) / 100);
 }

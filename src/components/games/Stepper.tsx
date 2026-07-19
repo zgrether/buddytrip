@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Plus, Minus } from "lucide-react";
 
 /**
@@ -55,6 +56,9 @@ export function Stepper({
   label,
   disabled = false,
   formatValue = String,
+  dimValue = false,
+  editable = false,
+  editMax,
   align,
   testId,
 }: {
@@ -71,10 +75,35 @@ export function Stepper({
   disabled?: boolean;
   /** Display override — default String(value). Roster → "SCR" at 0, etc. */
   formatValue?: (n: number) => string;
+  /** Render the value in a smaller, muted treatment instead of the bold primary number —
+   *  for a "default/empty" reading (the handicap roster's "SCR" scratch state) rather than
+   *  a set value that should read boldly. Default false (the bold number). */
+  dimValue?: boolean;
+  /** Tap-to-edit the value as a DECIMAL (item 1 — Total Points). The −/+ buttons still
+   *  step by whole `step`; tapping the number opens a decimal input (min `min`, up to 2
+   *  decimal places, clamped to `editMax` if set — the `max` that bounds the buttons is
+   *  NOT applied to typed entry). Commits on blur / Enter via `onChange`. Default false. */
+  editable?: boolean;
+  /** Optional hard ceiling for TYPED decimal entry (`editable`). Omit → no max on entry. */
+  editMax?: number;
   /** Override the size's default alignment (center vs right-justified). */
   align?: "center" | "right";
   testId?: string;
 }) {
+  const [editStr, setEditStr] = useState<string | null>(null); // non-null = editing
+  const startEdit = () => setEditStr(formatValue(value) === "SCR" ? "" : String(value));
+  const commitEdit = () => {
+    const raw = editStr;
+    setEditStr(null);
+    if (raw == null) return;
+    const t = raw.trim();
+    if (t === "") return; // empty → keep current value
+    let n = Number(t);
+    if (!Number.isFinite(n) || n < min) return; // reject invalid / below the floor
+    if (editMax != null) n = Math.min(editMax, n);
+    n = Math.round(n * 100) / 100; // clamp to 2 decimal places
+    if (n !== value) onChange?.(n);
+  };
   const dims = STEPPER_SIZES[size];
   const justify = (align ?? dims.align) === "right" ? "flex-end" : "center";
 
@@ -86,9 +115,37 @@ export function Stepper({
     <div className="flex items-center" style={{ gap: dims.gap, justifyContent: justify }} data-testid={testId}>
       <StepBtn dir="dec" px={dims.btn} disabled={disabled || b.atFloor} onClick={dec} />
       <div className="flex flex-col items-center" style={{ minWidth: dims.num + 14 }}>
-        <span style={{ fontSize: dims.num, fontWeight: 700, lineHeight: 1, color: "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
-          {formatValue(value)}
-        </span>
+        {editable && editStr !== null ? (
+          <input
+            type="text"
+            inputMode="decimal"
+            autoFocus
+            onFocus={(e) => e.target.select()} // tap → type replaces (not appends)
+            value={editStr}
+            onChange={(e) => setEditStr(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditStr(null); }}
+            data-testid={testId ? `${testId}-input` : undefined}
+            style={{
+              width: dims.num + 30, textAlign: "center", background: "var(--color-bt-base)",
+              border: "1px solid var(--color-bt-accent-border)", borderRadius: 8, padding: "1px 4px", outline: "none",
+              fontSize: dims.num, fontWeight: 700, lineHeight: 1.1, color: "var(--color-bt-text)", fontVariantNumeric: "tabular-nums",
+            }}
+          />
+        ) : (
+          <span
+            onClick={editable && !disabled ? startEdit : undefined}
+            style={{
+              ...(dimValue
+                ? { fontSize: 13, fontWeight: 500, color: "var(--color-bt-text-dim)" }
+                : { fontSize: dims.num, fontWeight: 700, color: "var(--color-bt-text)" }),
+              lineHeight: 1, fontVariantNumeric: "tabular-nums",
+              cursor: editable && !disabled ? "text" : undefined,
+            }}
+          >
+            {formatValue(value)}
+          </span>
+        )}
         {label && (
           <span className="mt-1" style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
             {label}

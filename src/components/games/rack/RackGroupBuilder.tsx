@@ -61,80 +61,81 @@ export function RackGroupBuilder({
   const addPlayer = (gi: number, uid: string) => onChange(assignPlayer(groups, gi, uid));
 
   return (
-    <div className="flex flex-col" data-testid="rack-group-builder">
-      {groups.map((g, i) => (
-        // Hairline-separated group sections (the 2v2 match-builder pattern) — no
-        // nested filled card, so player chips (card-raised) sit cleanly on whatever
-        // surface hosts the builder (the settings accordion panel).
-        <div
-          key={i}
-          style={{
-            paddingTop: i === 0 ? 0 : 12,
-            marginTop: i === 0 ? 0 : 12,
-            borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)",
-          }}
-        >
-          <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: "var(--color-bt-text-dim)" }}>GROUP {i + 1}</span>
-            <button
-              type="button"
-              onClick={() => removeGroup(i)}
-              aria-label={`Remove group ${i + 1}`}
-              className="flex items-center justify-center"
-              style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {g.length > 0 && (
-            <div className="flex flex-col gap-1.5" style={{ marginBottom: 10 }}>
-              {g.map((uid) => {
-                const meta = metaOf.get(uid);
-                return (
-                  <div key={uid} className="flex items-center gap-1.5">
-                    <div className="min-w-0 flex-1">
-                      <PlayerChip name={meta?.name ?? "Player"} teamColor={meta?.color ?? null} />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removePlayer(i, uid)}
-                      aria-label={`Remove ${meta?.name ?? "player"}`}
-                      className="flex items-center justify-center"
-                      style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                );
-              })}
+    <div data-testid="rack-group-builder">
+      {/* 2-column grid (item 7): groupings don't carry the match-row chrome (drag handle,
+          match number, "vs" string), so they pack two-up — denser vertical use, especially
+          at 3–4 groups. Collapses to one column on a narrow phone. Each group is a bordered
+          card (was hairline-separated rows); the "Add group" tile flows as the next grid
+          cell, so odd counts fill the empty slot cleanly. */}
+      <div className="grid grid-cols-2 gap-2.5 max-[380px]:grid-cols-1">
+        {groups.map((g, i) => (
+          <div
+            key={i}
+            className="flex flex-col"
+            style={{ borderRadius: 12, border: "1px solid var(--color-bt-subtle-border)", padding: 12 }}
+          >
+            <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: "var(--color-bt-text-dim)" }}>GROUP {i + 1}</span>
+              <button
+                type="button"
+                onClick={() => removeGroup(i)}
+                aria-label={`Remove group ${i + 1}`}
+                className="flex items-center justify-center"
+                style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+              >
+                <X size={16} />
+              </button>
             </div>
-          )}
 
-          {g.length < MAX_PER_GROUP && (
-            <button
-              type="button"
-              onClick={() => setPickerFor(i)}
-              className="flex w-full items-center justify-center gap-1.5"
-              style={{ height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              <Plus size={15} />
-              <span style={{ fontSize: 14, fontWeight: 500 }}>Add player</span>
-            </button>
-          )}
-        </div>
-      ))}
+            {g.length > 0 && (
+              <div className="flex flex-col gap-1.5" style={{ marginBottom: 10 }}>
+                {g.map((uid) => {
+                  const meta = metaOf.get(uid);
+                  return (
+                    <div key={uid} className="flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1">
+                        <PlayerChip name={meta?.name ?? "Player"} teamColor={meta?.color ?? null} />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePlayer(i, uid)}
+                        aria-label={`Remove ${meta?.name ?? "player"}`}
+                        className="flex items-center justify-center"
+                        style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-      {groups.length < MAX_GROUPS && (
-        <button
-          type="button"
-          onClick={addGroup}
-          className="flex w-full items-center justify-center gap-1.5"
-          style={{ marginTop: groups.length ? 14 : 0, height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
-        >
-          <Plus size={16} /> Add group
-        </button>
-      )}
+            {g.length < MAX_PER_GROUP && (
+              <button
+                type="button"
+                onClick={() => setPickerFor(i)}
+                className="mt-auto flex w-full items-center justify-center gap-1.5"
+                style={{ height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+              >
+                <Plus size={15} />
+                <span style={{ fontSize: 14, fontWeight: 500 }}>Add player</span>
+              </button>
+            )}
+          </div>
+        ))}
+
+        {groups.length < MAX_GROUPS && (
+          <button
+            type="button"
+            onClick={addGroup}
+            className="flex items-center justify-center gap-1.5"
+            style={{ minHeight: 96, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+          >
+            <Plus size={16} /> Add group
+          </button>
+        )}
+      </div>
 
       {pickerFor !== null && (
         <CombinedPicker

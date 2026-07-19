@@ -152,11 +152,11 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "stroke_total",
     scorecardSchema: strokeSchema,
-    // glorious_holes is MATCH-PLAY ONLY (it doubles a hole's match value) — removed
-    // from stroke play when the scoring engine landed (it was inert here). moving_tees
-    // applicability is still provisional (not yet reconciled — a separate call). The
-    // golf formats still happen to exercise all four Modifiers render branches
-    // (hide / checkbox / stepper / both) — locked by modifiers.test.ts.
+    // Modifier matrix (reconciled): moving_tees applies to stroke play (a full round);
+    // glorious_holes does NOT (it doubles a hole's MATCH value — match-play only). The
+    // full matrix — glorious → {match, skins, scramble}; moving_tees → {scramble, stroke,
+    // rack} — is FORWARD-DECLARED for skins/scramble in comments here (those game types
+    // aren't built yet, so there's no def to carry the array; add it when they land).
     compatibleModifiers: ["moving_tees"], // checkbox-only branch
     supportsFreeForAll: true,
     supportsSides: false,
@@ -182,8 +182,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "match_play",
     scorecardSchema: matchPlaySchema,
-    // Union of the former singles+doubles sets. Still the provisional test-matrix
-    // (see DEFERRED's modifier-applicability reconcile) — not final applicability.
+    // Matrix (reconciled): glorious_holes applies to match play (it doubles a hole's
+    // match value); moving_tees is grandfathered here too. (Skins — when built — also
+    // takes glorious, per the matrix; forward-declared in the stroke-play comment above.)
     compatibleModifiers: ["moving_tees", "glorious_holes"],
     supportsFreeForAll: false,
     supportsSides: true,
@@ -203,7 +204,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "rack_n_stack",
     scorecardSchema: rackSchema,
-    compatibleModifiers: [], // hide-the-row branch — no modifiers apply (glorious is match-play hole-win only)
+    // Matrix reconcile: rack plays a full round, so Moving tee boxes applies — its
+    // Modifiers row is now LIVE (was hidden-by-`[]`). Glorious is match-play hole-win
+    // only, so it stays excluded.
+    compatibleModifiers: ["moving_tees"],
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
