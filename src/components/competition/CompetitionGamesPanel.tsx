@@ -166,14 +166,16 @@ export function GameSheet({
       // non-golf: NonGolfConfigurationView), not in the Add modal. A new game is
       // created with sensible defaults so the row is valid without the field: a match
       // game at 0 points-per-match (the C1 default-0 that keeps the Enable gate shut
-      // until set), a placement game at the owner default 8 with no split yet
-      // (FormatPointsPanel reads `points_total ?? 8`).
+      // until set), a placement game at 0 total with no split yet (item 2 — the total
+      // is configured on the settings page; 0 reads as configured, not the old
+      // roster-guess 8, and scales the moment an owner sets it. A placement game's
+      // null distribution is winner-takes-all by default — item 6).
       const createDistribution: PointsDistribution | null = isMatchPlay
         ? { type: "per_match", value: 0 }
         : null;
       const created = (await create.mutateAsync({
         tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
-        pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 8,
+        pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 0,
       })) as { id: string };
       const gameId = created.id;
       // Course / match rows are NOT seeded here — set on the setup pages (A1 P-C / C1).
