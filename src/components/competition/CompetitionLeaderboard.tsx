@@ -258,27 +258,17 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
               border: "1px solid var(--color-bt-border)",
             }}
           >
-            <div className="px-4 pt-3 pb-2">
+            <div className="px-4 pt-3 pb-1">
+              {/* Factual subtitle only — no "first to X" (not calculable in points: the
+                  score accrues open-endedly, there's no clinch ceiling). */}
               <p
                 className="text-[11px] font-semibold uppercase tracking-wider"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                {clincher
-                  ? "Final"
-                  : pointsAvailable > 0
-                  ? `First to ${fmtPts(winNumber)} wins`
-                  : "Competition standings"}
+                {teams.length} {teams.length === 1 ? "team" : "teams"}
               </p>
             </div>
-            <NTeamRankedList
-              teams={teams}
-              teamTotals={teamTotals}
-              pointsAvailable={pointsAvailable}
-              winNumber={winNumber}
-              pointsToClinch={pointsToClinch}
-              clincher={clincher}
-              onEditTeam={onEditTeam}
-            />
+            <NTeamRankedList teams={teams} teamTotals={teamTotals} onEditTeam={onEditTeam} />
           </div>
           <PointsMatrix games={liveGames} teams={teams} cellsByGame={cellsByGame} teamTotals={teamTotals} />
         </>
@@ -414,102 +404,61 @@ function GamesSection({
 function NTeamRankedList({
   teams,
   teamTotals,
-  pointsAvailable,
-  winNumber,
-  pointsToClinch,
-  clincher,
   onEditTeam,
 }: {
   teams: LBTeam[];
   teamTotals: Record<string, number>;
-  pointsAvailable: number;
-  winNumber: number;
-  pointsToClinch: Record<string, number>;
-  clincher: LBTeam | null;
   /** Tap a team name → that team's identity editor (owner / its captain). */
   onEditTeam?: (teamId: string) => void;
 }) {
   const sorted = [...teams].sort(
     (a, b) => (teamTotals[b.id] ?? 0) - (teamTotals[a.id] ?? 0)
   );
+  // Bars are proportional to the LEADER, not a fixed ceiling — points has no clinch total,
+  // so the top team fills the bar and the rest read relative to it (all-zero → empty bars).
+  const leaderTotal = Math.max(0, ...sorted.map((t) => teamTotals[t.id] ?? 0));
 
   return (
-    <div className="px-4 pb-3">
-      {!clincher && pointsAvailable > 0 && (
-        <p
-          className="mb-3 text-[11px]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {fmtPts(pointsAvailable)} pts in play
-        </p>
-      )}
-      <div className="space-y-2">
+    <div className="px-4 pb-4 pt-1">
+      <div className="space-y-2.5">
         {sorted.map((team, idx) => {
           const total = teamTotals[team.id] ?? 0;
-          const barWidth =
-            pointsAvailable > 0
-              ? Math.min(100, (total / pointsAvailable) * 100)
-              : 0;
-          const toGo = pointsToClinch[team.id] ?? winNumber;
-          const hasClinched = toGo <= 0;
+          const barWidth = leaderTotal > 0 ? Math.min(100, (total / leaderTotal) * 100) : 0;
+          const isLeader = idx === 0 && total > 0;
+          const dotName = (
+            <>
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: team.color }} />
+              <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                {team.name}
+              </span>
+            </>
+          );
 
+          // One aligned row: rank · dot + name (fixed width so every bar starts at the same
+          // x) · proportional bar (fills the middle) · score (right-aligned, leader colored).
           return (
             <div key={team.id} className="flex items-center gap-3">
-              {/* Rank */}
-              <span
-                className="w-4 shrink-0 text-[12px] font-semibold tabular-nums"
-                style={{ color: hasClinched ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-              >
+              <span className="w-4 shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                 {idx + 1}
               </span>
-
-              {/* Dot + name — tappable → that team's Rosters/identity editor. */}
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <div className="flex items-center gap-1.5">
-                  {onEditTeam ? (
-                    <button
-                      type="button"
-                      onClick={() => onEditTeam(team.id)}
-                      className="flex min-w-0 items-center gap-1.5 text-left"
-                      data-testid={`comp-team-name-${team.id}`}
-                    >
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: team.color }} />
-                      <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                        {team.name}
-                      </span>
-                    </button>
-                  ) : (
-                    <>
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: team.color }} />
-                      <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                        {team.name}
-                      </span>
-                    </>
-                  )}
-                  {hasClinched && (
-                    <Trophy
-                      size={12}
-                      style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
-                    />
-                  )}
-                </div>
-                {/* Bar */}
-                <div
-                  className="h-1.5 w-full overflow-hidden rounded-full"
-                  style={{ background: "var(--color-bt-card-raised)" }}
+              {onEditTeam ? (
+                <button
+                  type="button"
+                  onClick={() => onEditTeam(team.id)}
+                  className="flex w-[34%] min-w-0 shrink-0 items-center gap-2 text-left"
+                  data-testid={`comp-team-name-${team.id}`}
                 >
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${barWidth}%`, background: team.color }}
-                  />
-                </div>
+                  {dotName}
+                </button>
+              ) : (
+                <div className="flex w-[34%] min-w-0 shrink-0 items-center gap-2">{dotName}</div>
+              )}
+              <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full" style={{ background: "var(--color-bt-card-raised)" }}>
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barWidth}%`, background: team.color }} />
               </div>
-
-              {/* Points — the leader's total is emphasized (larger) so "who's
-                  ahead" reads instantly; trailing teams stay quieter. */}
               <span
-                className={`shrink-0 font-bold tabular-nums ${idx === 0 ? "text-2xl" : "text-base"}`}
-                style={{ color: idx === 0 || hasClinched ? team.color : "var(--color-bt-text)" }}
+                className="w-10 shrink-0 text-right font-bold tabular-nums"
+                style={{ fontSize: isLeader ? 19 : 15, color: isLeader ? team.color : "var(--color-bt-text)" }}
               >
                 {fmtPts(total)}
               </span>

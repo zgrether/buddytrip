@@ -124,6 +124,7 @@ export function CompetitionHero({
         winNumber={winNumber}
         pointsAvailable={pointsAvailable}
         clincher={clincher}
+        scoringModel={scoringModel}
         onEditTeam={onEditTeam}
       />
     );
@@ -395,6 +396,7 @@ export function CollapsedHero({
   winNumber,
   pointsAvailable,
   clincher,
+  scoringModel = "match_play",
   footer,
   onEditTeam,
 }: {
@@ -403,6 +405,10 @@ export function CollapsedHero({
   winNumber: number;
   pointsAvailable: number;
   clincher: LBTeam | null;
+  /** Points cups have no clinch target ("first to X" isn't calculable) — for points the
+   *  collapsed bar drops the target line + the race-bar, showing just the team scores.
+   *  Defaults to match_play (the game-page header usage keeps its behavior). */
+  scoringModel?: ScoringModel;
   /** Optional projected tier INSIDE the same card, as a flush card-raised row —
    *  the game-page header's projection (#533). Omitted on the leaderboard's sticky
    *  bar. */
@@ -412,11 +418,16 @@ export function CollapsedHero({
    *  the names render non-interactive. */
   onEditTeam?: (teamId: string) => void;
 }) {
-  const targetLabel = clincher
-    ? `${clincher.short_name ?? clincher.name} wins`
-    : pointsAvailable > 0
-      ? `First to ${fmtPts(winNumber)} wins`
-      : "No points yet";
+  // "First to X" / clinch is match-play only (a fixed points ceiling makes it calculable);
+  // points accrues open-endedly, so no target. `null` → the collapsed bar shows no target line.
+  const targetLabel =
+    scoringModel === "points"
+      ? null
+      : clincher
+        ? `${clincher.short_name ?? clincher.name} wins`
+        : pointsAvailable > 0
+          ? `First to ${fmtPts(winNumber)} wins`
+          : "No points yet";
   const card: React.CSSProperties = {
     borderRadius: 12,
     // Same two-color TEAM glow as the expanded hero (2-team cup) so the two
@@ -463,13 +474,17 @@ export function CollapsedHero({
           <div className="flex items-center gap-3.5" style={{ marginTop: 5 }}>
             <MiniScore team={a} points={aTotal} />
             <div className="min-w-0 flex-1">
-              <div
-                className="text-center"
-                style={{ fontSize: 11, fontWeight: 500, lineHeight: 1, color: "var(--color-bt-text-dim)" }}
-              >
-                {targetLabel}
-              </div>
-              {pointsAvailable > 0 && a && b && (
+              {targetLabel && (
+                <div
+                  className="text-center"
+                  style={{ fontSize: 11, fontWeight: 500, lineHeight: 1, color: "var(--color-bt-text-dim)" }}
+                >
+                  {targetLabel}
+                </div>
+              )}
+              {/* The race-bar is match-play's clinch viz (share of a fixed total); points has
+                  no ceiling, so it's dropped there (targetLabel is null). */}
+              {targetLabel && pointsAvailable > 0 && a && b && (
                 <div
                   className="relative mt-[7px] flex h-1 w-full overflow-hidden rounded-full"
                   style={{ background: "rgba(148,163,184,0.18)" }}
@@ -500,9 +515,11 @@ export function CollapsedHero({
             <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" onEditTeam={onEditTeam} />
           ))}
         </div>
-        <div className="mt-1.5 text-center">
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{targetLabel}</span>
-        </div>
+        {targetLabel && (
+          <div className="mt-1.5 text-center">
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{targetLabel}</span>
+          </div>
+        )}
       </div>
       {footerBlock}
     </div>
