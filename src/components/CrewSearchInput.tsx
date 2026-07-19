@@ -160,10 +160,10 @@ export function CrewSearchInput({
       {/* Found state */}
       {search.kind === "found" && (
         <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2"
+          className="@container flex items-center gap-2 rounded-lg px-3 py-2"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
         >
-          <Avatar name={displayName(search.user)} avatarIcon={search.user.avatar_icon ?? null} size="sm" />
+          <Avatar name={displayName(search.user)} avatarIcon={search.user.avatar_icon ?? null} size="sm" collapse />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
               {search.user.name ?? search.user.email}

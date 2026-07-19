@@ -149,7 +149,7 @@ export function CrewRow({
         type="button"
         disabled={!editable}
         onClick={editable ? () => onEdit!(m) : undefined}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors disabled:cursor-default"
+        className="@container flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors disabled:cursor-default"
         style={{ background: "transparent" }}
       >
         {/* Avatar — three variants per derived status. Surfaces the
@@ -160,7 +160,7 @@ export function CrewRow({
             Google/OAuth profile photo) so the avatar reflects an in-app
             identity choice, not the third-party login picture. */}
         {status === "placeholder" ? (
-          <PlaceholderAvatar name={m.user?.name ?? m.displayName} />
+          <PlaceholderAvatar name={m.user?.name ?? m.displayName} collapse />
         ) : status === "invited" ? (
           <InvitedAvatar
             name={m.user?.name ?? m.displayName}
@@ -171,6 +171,7 @@ export function CrewRow({
             name={m.user?.name ?? m.displayName}
             avatarIcon={m.user?.avatar_icon ?? null}
             size="md"
+            collapse
           />
         )}
 
@@ -380,11 +381,12 @@ export function YouTile({
         }}
       >
         {/* Identity row */}
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div className="@container flex items-center gap-3 px-4 py-3">
           <Avatar
             name={m.user?.name ?? m.displayName}
             avatarIcon={m.user?.avatar_icon ?? null}
             size="md"
+            collapse
           />
           <div className="min-w-0 flex-1">
             <p

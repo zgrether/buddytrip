@@ -102,8 +102,8 @@ export function HandicapList({
         const strokes = strokesOf(p);
         const hint = strokeHint(strokes, holeCount, strokeIndex);
         return (
-          <div key={p.id} className="flex items-center gap-3 rounded-xl border px-3" style={{ minHeight: 60, padding: "8px 12px", background: raised ? "var(--color-bt-card-raised)" : "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
-            <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.teamColor} sizePx={34} />
+          <div key={p.id} className="@container flex items-center gap-3 rounded-xl border px-3" style={{ minHeight: 60, padding: "8px 12px", background: raised ? "var(--color-bt-card-raised)" : "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
+            <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.teamColor} sizePx={34} collapse collapseAt="dense" />
             <div className="min-w-0 flex-1">
               {/* The avatar carries the team color now (solid disc) — no
                   separate team dot needed. */}

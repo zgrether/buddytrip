@@ -69,7 +69,7 @@ export function OutcomeChoiceRow({
       role="button"
       tabIndex={0}
       onClick={onClick}
-      className="flex w-full items-center gap-3 text-left transition-opacity"
+      className="@container flex w-full items-center gap-3 text-left transition-opacity"
       data-testid={testId}
       style={{
         padding: stacked ? "8px 14px" : 14,
@@ -97,7 +97,7 @@ export function OutcomeChoiceRow({
               <Equal size={14} />
             </span>
           ) : (
-            <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} />
+            <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} collapse />
           )}
           <div className="min-w-0 flex-1">
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>

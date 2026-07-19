@@ -201,10 +201,10 @@ function CombinedPicker({
                 type="button"
                 disabled={groupFull}
                 onClick={() => onPick(p.id)}
-                className="flex w-full items-center gap-2 text-left disabled:opacity-40"
+                className="@container flex w-full items-center gap-2 text-left disabled:opacity-40"
                 style={{ padding: "8px 10px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
-                <Avatar name={p.name} teamColor={team.color} sizePx={28} />
+                <Avatar name={p.name} teamColor={team.color} sizePx={28} collapse collapseAt="chip" />
                 <span className="min-w-0 truncate" style={{ fontSize: 14, color: "var(--color-bt-text)" }}>{p.name}</span>
               </button>
             ))

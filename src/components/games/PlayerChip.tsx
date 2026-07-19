@@ -26,7 +26,7 @@ export function PlayerChip({
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={`flex min-w-0 items-center gap-2 ${className}`}
+      className={`@container flex min-w-0 items-center gap-2 ${className}`}
       style={{
         width: "100%",
         height: 44,
@@ -38,8 +38,9 @@ export function PlayerChip({
       }}
       {...rest}
     >
-      {/* §11 team-colored initial — no avatarIcon. */}
-      <Avatar name={name} teamColor={teamColor} sizePx={30} />
+      {/* §11 team-colored initial — no avatarIcon. Degrades disk→dot→drop under
+          space pressure (chip tier) so the name yields last, not first. */}
+      <Avatar name={name} teamColor={teamColor} sizePx={30} collapse collapseAt="chip" />
       <span
         className="min-w-0 truncate"
         style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}

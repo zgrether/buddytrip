@@ -827,13 +827,13 @@ function PlayerRow({
     <div
       draggable={draggable}
       onDragStart={onDragStart}
-      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`@container flex items-center gap-2.5 rounded-lg px-2.5 py-2 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
       {draggable && (
         <GripVertical size={14} className="hidden flex-shrink-0 lg:block" style={{ color: "var(--color-bt-text-dim)" }} />
       )}
-      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} />
+      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} collapse />
       <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
         {name}
       </span>
@@ -1181,7 +1181,7 @@ function CrewRoster({
                   }}
                 >
                   <div
-                    className="flex items-center gap-3 rounded-lg px-3 py-2"
+                    className="@container flex items-center gap-3 rounded-lg px-3 py-2"
                     style={{
                       background: "var(--color-bt-card-raised)",
                       border: "1px solid var(--color-bt-border)",
@@ -1191,6 +1191,7 @@ function CrewRoster({
                       name={m.displayName}
                       avatarIcon={m.user?.avatar_icon ?? null}
                       size="md"
+                      collapse
                     />
                     <span
                       className="flex-1 truncate text-sm font-medium"
@@ -1955,14 +1956,14 @@ function AddPlayerSheet({
                     key={id}
                     type="button"
                     onClick={() => onPick(id)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left"
+                    className="@container flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left"
                     style={{
                       background: "var(--color-bt-card-raised)",
                       border: "1px solid var(--color-bt-border)",
                     }}
                     data-testid={`teamsheet-add-${id}`}
                   >
-                    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
+                    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" collapse />
                     <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
                       {m.displayName}
                     </span>
@@ -2062,7 +2063,7 @@ function RosterRow({
           : undefined
       }
       onDragEnd={onDragEndRow}
-      className="relative flex items-center gap-2 rounded-lg px-2.5 py-2"
+      className="@container relative flex items-center gap-2 rounded-lg px-2.5 py-2"
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
@@ -2098,7 +2099,7 @@ function RosterRow({
       )}
       {/* Row index — quiet table-number column, like the match pickers. */}
       <RowNumber number={index + 1} className="flex-shrink-0" style={{ width: 16 }} />
-      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} />
+      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} collapse />
       <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
         {name}
       </span>

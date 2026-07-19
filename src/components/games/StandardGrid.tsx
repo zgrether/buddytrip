@@ -588,8 +588,8 @@ export function StandardGrid({
             const rowBg = i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)";
             return (
               <div key={p.id} className="flex" style={{ height: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-                <div className="flex items-center gap-1.5" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
-                  <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={18} />
+                <div className="@container flex items-center gap-1.5" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
+                  <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={18} collapse collapseAt="chip" />
                   <span style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.name}
                   </span>

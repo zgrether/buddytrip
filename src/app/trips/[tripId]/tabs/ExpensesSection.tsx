@@ -920,7 +920,7 @@ export function ExpensesSection({
                   return (
                     <div
                       key={m.user_id}
-                      className="flex items-center justify-between px-3 py-2.5"
+                      className="@container flex items-center justify-between px-3 py-2.5"
                       style={{
                         background: i % 2 === 0
                           ? "var(--color-bt-card)"
@@ -937,6 +937,7 @@ export function ExpensesSection({
                           name={memberName(members, m.user_id)}
                           avatarIcon={m.user?.avatar_icon ?? null}
                           sizePx={22}
+                          collapse
                         />
                         <span className="truncate">
                           {memberName(members, m.user_id)}
