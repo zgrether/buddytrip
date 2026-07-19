@@ -2978,11 +2978,11 @@ function Slot({ player, onTap }: { player: Participant | null; onTap: () => void
 
 function SelectorRow({ name, teamColor, sub, dim, onClick }: { name: string; teamColor?: string | null; sub?: string; dim?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center justify-between gap-2 text-left" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
+    <button onClick={onClick} className="@container flex w-full items-center justify-between gap-2 text-left" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
       <span className="flex min-w-0 items-center gap-2.5">
         {/* §11 team initial, no avatarIcon (closes #477). teamColor is the slot's
             team — correct here: the picker list is constrained to that team. */}
-        <Avatar name={name} teamColor={teamColor} sizePx={30} />
+        <Avatar name={name} teamColor={teamColor} sizePx={30} collapse />
         <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
       </span>
       {sub && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>{sub}</span>}

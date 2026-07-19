@@ -49,8 +49,56 @@ interface AvatarProps {
    * Ignored in competition mode (teamColor wins).
    */
   accent?: boolean;
+  /**
+   * Progressive degradation (opt-in): under horizontal space pressure the
+   * avatar steps down disk → team-color/muted dot → nothing, so the player
+   * NAME never has to truncate first (Zach's design intent). Driven purely by
+   * CSS container queries against the nearest `@container` ancestor — the
+   * PARENT ROW must declare `@container` (a Tailwind class) for this to fire;
+   * with no container ancestor the query never matches and the full disk shows
+   * (safe default). No JS, no ResizeObserver — everywhere it's used inherits it.
+   */
+  collapse?: boolean;
+  /**
+   * Which container-width tier drives `collapse` (default `"row"`). The default
+   * ("row") suits a full-width list row; override per surface:
+   *   - `"row"`   disk→dot ≤280px, dot→drop ≤220px  (full-width list rows)
+   *   - `"dense"` disk→dot ≤300px, dot→drop ≤240px  (rows with heavy fixed
+   *               stat columns eating the name's width — stroke board, grid)
+   *   - `"chip"`  disk→dot ≤130px, dot→drop ≤92px   (chips, grid cells, pills)
+   * Thresholds are the CONTAINER'S width (the `@container` row), not name length
+   * — tuned so the disk yields before names get tight. Ignored unless `collapse`.
+   */
+  collapseAt?: AvatarCollapse;
   className?: string;
 }
+
+/** Container-width tier for {@link Avatar}'s `collapse` degradation. */
+export type AvatarCollapse = "row" | "dense" | "chip";
+
+/**
+ * Literal container-query variant classes per tier (Tailwind scans these
+ * statically, so the px values MUST stay literal here — they can't be built
+ * from a runtime prop). The disk hides at/below the dot threshold; the dot is
+ * hidden by default (so with no `@container` ancestor only the disk shows),
+ * revealed in the band via `@max-[dot]:inline-flex`, then hidden again below
+ * the drop threshold via `@max-[drop]:hidden` (narrower `@max` wins the cascade
+ * — verified in-browser). Below the drop threshold both are hidden = nothing.
+ */
+const COLLAPSE_CLASSES: Record<AvatarCollapse, { disk: string; dot: string }> = {
+  row: {
+    disk: "@max-[280px]:hidden",
+    dot: "hidden @max-[280px]:inline-flex @max-[220px]:hidden",
+  },
+  dense: {
+    disk: "@max-[300px]:hidden",
+    dot: "hidden @max-[300px]:inline-flex @max-[240px]:hidden",
+  },
+  chip: {
+    disk: "@max-[130px]:hidden",
+    dot: "hidden @max-[130px]:inline-flex @max-[92px]:hidden",
+  },
+};
 
 /**
  * Fixed-size presets (numeric). md and lg use these directly; sm is
@@ -84,6 +132,8 @@ export function Avatar({
   sizePx,
   muted = false,
   accent = false,
+  collapse = false,
+  collapseAt = "row",
   className,
 }: AvatarProps) {
   // An explicit sizePx wins over the named preset and disables the
@@ -130,11 +180,21 @@ export function Avatar({
     ? {}
     : { width: circle, height: circle };
 
-  return (
+  // Collapse tier classes (only applied when `collapse`): the disk gets a
+  // `@max-[…]:hidden` so it drops out under the dot threshold; the dot sibling
+  // (below) fills the band, then drops too. Empty otherwise → zero effect on
+  // the 39 non-opted call sites (byte-identical render).
+  const collapseClasses = collapse ? COLLAPSE_CLASSES[collapseAt] : null;
+
+  const disk = (
     <div
       className={`inline-flex flex-shrink-0 items-center justify-center rounded-full ${
         isResponsive ? SM_RESPONSIVE_CLASSES : ""
-      } ${className ?? ""}`}
+      } ${collapseClasses?.disk ?? ""} ${
+        // In collapse mode the caller's className goes on the outer wrapper (the
+        // element the parent lays out); the bare disk keeps it otherwise.
+        collapseClasses ? "" : className ?? ""
+      }`}
       style={{
         ...sizeStyle,
         background,
@@ -159,6 +219,28 @@ export function Avatar({
         </span>
       )}
     </div>
+  );
+
+  if (!collapseClasses) return disk;
+
+  // Degradation mode: disk + a dot sibling, one visible at a time via the tier's
+  // container-query classes. The dot carries the team color (competition) or a
+  // muted neutral (--color-bt-text-dim). It's aria-hidden — the disk owns the
+  // accessible name, and when the disk is hidden the name text beside it (which
+  // this whole feature exists to protect) still identifies the row.
+  const dotColor = competitionMode ? (teamColor as string) : "var(--color-bt-text-dim)";
+  // ~1/3 of the circle, clamped legible — the dot's smaller footprint is what
+  // frees horizontal room for the name.
+  const dotPx = Math.min(12, Math.max(8, Math.round(circle * 0.32)));
+  return (
+    <span className={`inline-flex flex-shrink-0 items-center justify-center ${className ?? ""}`}>
+      {disk}
+      <span
+        aria-hidden="true"
+        className={`flex-shrink-0 rounded-full ${collapseClasses.dot}`}
+        style={{ width: dotPx, height: dotPx, background: dotColor }}
+      />
+    </span>
   );
 }
 

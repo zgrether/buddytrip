@@ -58,7 +58,7 @@ export function StrokeLeaderboard({
             return (
               <div
                 key={r.entityId}
-                className="flex items-center gap-3"
+                className="@container flex items-center gap-3"
                 style={{
                   paddingTop: isFirst ? 0 : 8,
                   paddingBottom: 8,
@@ -70,7 +70,7 @@ export function StrokeLeaderboard({
                 <span className="w-6 flex-shrink-0 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                   {r.started ? ordinalShort(r.position) : "—"}
                 </span>
-                <Avatar name={p?.name ?? "Player"} avatarIcon={p?.avatarIcon ?? null} teamColor={p?.color ?? null} sizePx={30} />
+                <Avatar name={p?.name ?? "Player"} avatarIcon={p?.avatarIcon ?? null} teamColor={p?.color ?? null} sizePx={30} collapse collapseAt="dense" />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                   {p?.name ?? "Player"}
                 </span>

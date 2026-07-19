@@ -154,8 +154,8 @@ export function GameIdentityHeader({
             </div>
             {/* Only OTHER people — the owner is never in the list (absence = owner). */}
             {assignable.map((m) => (
-              <button key={m.memberId} type="button" onClick={() => assign(m.memberId)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
-                <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} sizePx={28} />
+              <button key={m.memberId} type="button" onClick={() => assign(m.memberId)} className="@container flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
+                <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} sizePx={28} collapse collapseAt="chip" />
                 <span className="truncate">{m.displayName}</span>
               </button>
             ))}
