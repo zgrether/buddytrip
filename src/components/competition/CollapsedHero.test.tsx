@@ -46,6 +46,27 @@ describe("CollapsedHero — two-team (match-play) bar", () => {
   });
 });
 
+describe("CollapsedHero — points model drops the 'first to X' target", () => {
+  const teams = [team("a", "Hammer", "HAM", "#f87171"), team("b", "Whack", "WHK", "#c084fc")];
+
+  it("shows the target for match_play (the default game-page usage)", () => {
+    const html = renderToStaticMarkup(
+      <CollapsedHero teams={teams} teamTotals={{ a: 5, b: 12 }} winNumber={78} pointsAvailable={100} clincher={null} scoringModel="match_play" />
+    );
+    expect(html).toContain("First to 78 wins");
+  });
+
+  it("drops the target + race-bar for points (no clinch ceiling — same gate #655 applied to the board)", () => {
+    const html = renderToStaticMarkup(
+      <CollapsedHero teams={teams} teamTotals={{ a: 5, b: 12 }} winNumber={78} pointsAvailable={100} clincher={null} scoringModel="points" />
+    );
+    expect(html).not.toContain("First to");
+    // scores still render — this drops only the match-play target chrome
+    expect(html).toContain(">5<");
+    expect(html).toContain(">12<");
+  });
+});
+
 describe("CollapsedHero — N-team (points cup) bar, not 2-hardcoded", () => {
   const teams = [
     team("a", "Alphas", "ALP", "#f87171"),

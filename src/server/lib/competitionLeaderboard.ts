@@ -3,7 +3,7 @@ import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/co
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { projectedTeamTotals } from "@/lib/gameProjection";
-import { isManualGameType } from "@/lib/gameTypes";
+import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
 import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE, ROSTER_TYPES } from "@/server/lib/gameReadiness";
@@ -69,7 +69,7 @@ export async function computeCompetitionLeaderboard(
   const comp = compRes.data;
   // Scoring-model axis (independent of team count; default match_play). Branches
   // ONLY the non-golf result award below — the hero stays on teams.length.
-  const scoringModel = (comp?.scoring_model as string | null) ?? "match_play";
+  const scoringModel = ((comp?.scoring_model as string | null) ?? "match_play") as ScoringModel;
   // A NON-GOLF MANUAL game (result_strategy NULL) vs a golf game — sourced from
   // the format definitions in code (W-PERF-01), no longer a DB template fetch.
   // Only manual games get the match-play winner-take-all award; golf untouched.
@@ -322,6 +322,9 @@ export async function computeCompetitionLeaderboard(
 
   return {
     teams: teams ?? [],
+    // The cup's scoring model — lets header/hero consumers type-gate match-play
+    // chrome (the "first to X" target line) off for points cups.
+    scoringModel,
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
     games: allGames.map((g) => {
       const rawDist = g.points_distribution as PointsDistribution | null;
