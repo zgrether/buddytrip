@@ -36,6 +36,15 @@ export async function canWriteScore(
 
   const db = ctx.supabase as unknown as SupabaseClient;
 
+  // The game TYPE decides cart-scoping (rack) vs individual (stroke) — NOT whether the
+  // target is grouped (089 made stroke groupings mandatory, so grouped ≠ rack).
+  const { data: gameRow } = await db
+    .from("games")
+    .select("game_type_id")
+    .eq("id", gameId)
+    .maybeSingle();
+  const groupScoped = (gameRow as { game_type_id: string | null } | null)?.game_type_id === "gtt_rack_n_stack";
+
   // This game's matches (empty for stroke + rack). side_a/side_b are jsonb
   // {type,id}; an empty slot stays null.
   const { data: matchRows } = await db
@@ -65,5 +74,6 @@ export async function canWriteScore(
     myPlayGroupId: meRow?.play_group_id ?? null,
     targetPlayGroupId: participantType === "user" ? targetRow?.play_group_id ?? null : null,
     meIsParticipant: !!meRow,
+    groupScoped,
   });
 }

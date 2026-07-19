@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeStrokePlayStandings, netStrokeEntries } from "./strokePlay";
+import { computeStrokePlayStandings, computeStrokeLeaderboard, netStrokeEntries } from "./strokePlay";
 import { strokeHoles } from "./matchPlay";
 
 describe("computeStrokePlayStandings", () => {
@@ -45,6 +45,60 @@ describe("computeStrokePlayStandings", () => {
 
   it("produces exactly one row per participant", () => {
     expect(computeStrokePlayStandings(["a", "b", "c"], [])).toHaveLength(3);
+  });
+});
+
+describe("computeStrokeLeaderboard (surface — to-par, holes-played-relative)", () => {
+  const par = { "1": 4, "2": 4, "3": 3 };
+
+  it("ranks by to-par (best first), computing to-par over SCORED holes only", () => {
+    const lb = computeStrokeLeaderboard(
+      ["a", "b"],
+      [
+        { participant_id: "a", unit_label: "1", value: 5 }, // +1
+        { participant_id: "a", unit_label: "2", value: 4 }, // E  → a: +1 thru 2
+        { participant_id: "b", unit_label: "1", value: 3 }, // −1 → b: −1 thru 1
+      ],
+      par
+    );
+    expect(lb.map((r) => r.entityId)).toEqual(["b", "a"]); // b (−1) leads a (+1)
+    expect(lb.find((r) => r.entityId === "a")).toMatchObject({ totalStrokes: 9, holesPlayed: 2, toPar: 1, position: 2 });
+    expect(lb.find((r) => r.entityId === "b")).toMatchObject({ totalStrokes: 3, holesPlayed: 1, toPar: -1, position: 1 });
+  });
+
+  it("GATE D — a thru-0 late arrival sorts to the BOTTOM (not falsely 'E'-leading) across mixed hole counts", () => {
+    const lb = computeStrokeLeaderboard(
+      ["ontime1", "ontime2", "late"],
+      [
+        // two players ~thru 2, one at +1, one at E; the late arrival has entered nothing.
+        { participant_id: "ontime1", unit_label: "1", value: 5 }, // +1
+        { participant_id: "ontime1", unit_label: "2", value: 4 }, // E → +1 thru 2
+        { participant_id: "ontime2", unit_label: "1", value: 4 }, // E
+        { participant_id: "ontime2", unit_label: "2", value: 4 }, // E → E thru 2
+      ],
+      par
+    );
+    // The started E player leads; the started +1 player next; the thru-0 late arrival LAST,
+    // even though its nominal to-par (0) ties the E player — not-started never outranks started.
+    expect(lb.map((r) => r.entityId)).toEqual(["ontime2", "ontime1", "late"]);
+    const late = lb.find((r) => r.entityId === "late")!;
+    expect(late).toMatchObject({ holesPlayed: 0, toPar: 0, started: false });
+    expect(late.position).toBe(3); // trailing position (after the 2 started players)
+  });
+
+  it("ties share a position; more holes played breaks the display order", () => {
+    const lb = computeStrokeLeaderboard(
+      ["deep", "shallow"],
+      [
+        { participant_id: "deep", unit_label: "1", value: 4 },
+        { participant_id: "deep", unit_label: "2", value: 4 }, // E thru 2
+        { participant_id: "shallow", unit_label: "1", value: 4 }, // E thru 1
+      ],
+      par
+    );
+    // Both at E → share position 1; the deeper round (thru 2) lists first.
+    expect(lb.map((r) => r.entityId)).toEqual(["deep", "shallow"]);
+    expect(lb.every((r) => r.position === 1)).toBe(true);
   });
 });
 

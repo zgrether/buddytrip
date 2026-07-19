@@ -34,7 +34,9 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import type { StrokeStanding } from "@/lib/strokePlay";
+import { computeStrokeLeaderboard, type StrokeStanding } from "@/lib/strokePlay";
+import { StrokeLeaderboard } from "@/components/games/StrokeLeaderboard";
+import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
@@ -113,9 +115,21 @@ export function StrokeGameView() {
   // third base view — so the caller stays mounted underneath and dismiss returns
   // to it with score state intact (#543).
   const [gridOpen, setGridOpen] = useState(false);
-  // Browser/OS back steps out of the scorecard grid back to entry (not the
-  // leaderboard). The grid is the one history-tracked sub-screen over entry.
-  const backFromGrid = useScreenHistory(gridOpen ? 1 : 0, () => setGridOpen(false));
+  // The SURFACE→entry drill (mandatory groupings): null = on the surface (leaderboard +
+  // groupings list); a group id = scoring THAT grouping (one level down). Mirrors rack's
+  // `entryGroupId`. Score entry is no longer the default game tap — you land on the surface.
+  const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
+  // Two history-tracked sub-screens over the surface: group entry (depth 1) and the
+  // scorecard grid over it (depth 2). OS/browser back pops one level at a time — grid →
+  // group → surface — instead of leaving the game (mirrors rack's useScreenHistory).
+  const entryDepth = entryGroupId ? (gridOpen ? 2 : 1) : 0;
+  // OS/browser back pops the deepest open sub-screen (grid, then group) instead of leaving
+  // the game — the in-app back buttons set state directly; this keeps hardware-back in sync.
+  useScreenHistory(entryDepth, () => {
+    if (gridOpen) setGridOpen(false);
+    else if (entryGroupId) setEntryGroupId(null);
+  });
+  const backFromGrid = () => setGridOpen(false);
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
@@ -154,7 +168,10 @@ export function StrokeGameView() {
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
 
   const createGame = trpc.games.create.useMutation();
-  const addParticipants = trpc.games.addParticipants.useMutation();
+  // Auto-group the picked players into a default "Group 1" on Start (mandatory groupings,
+  // 089): the game needs a grouping to go live AND the surface needs a tappable group.
+  // setFoursomes upserts the roster + creates the group atomically (reused from rack).
+  const seedFoursome = trpc.playGroups.setFoursomes.useMutation();
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -565,8 +582,11 @@ export function StrokeGameView() {
     // brand-new standalone game when we arrived WITHOUT one.
     const gameId =
       urlGameId ?? (await createGame.mutateAsync({ tripId, gameTypeId: STROKE_PLAY })).id;
-    await addParticipants.mutateAsync({ tripId, gameId, userIds: selected });
+    // Seed the picked players as "Group 1" (mandatory groupings) — creates the roster AND
+    // the grouping in one call, so the game is go-live-ready and the surface has a group.
+    await seedFoursome.mutateAsync({ tripId, gameId, groups: [{ name: "Group 1", userIds: selected }] });
     setCreatedGame({ id: gameId, participants: toParticipants(selected) });
+    void utils.playGroups.listByGame.invalidate({ tripId, gameId });
     if (urlGameId) {
       void utils.games.getById.invalidate({ tripId, gameId });
     } else {
@@ -575,6 +595,78 @@ export function StrokeGameView() {
     }
   }
 
+  // ── Surface data (mandatory groupings): whole-field leaderboard + the groupings list ──
+  // Computed ABOVE the early returns (rules of hooks). The persisted groupings (id · name ·
+  // tee · members); ungrouped participants aren't in the game (089), so the field = everyone
+  // across these groups.
+  const surfaceGroups = useMemo(
+    () => (groupsQ.data?.groups ?? []).map((grp) => ({
+      id: grp.id as string,
+      name: (grp.display_name as string | null) ?? "Group",
+      teeTime: (grp.tee_time as string | null) ?? null,
+      userIds: (groupsQ.data?.participants ?? []).filter((p) => p.play_group_id === grp.id).map((p) => p.user_id as string),
+    })),
+    [groupsQ.data],
+  );
+  const nameColorOf = useMemo(() => {
+    const m = new Map<string, { name: string; color: string; avatarIcon: string | null }>();
+    (game?.participants ?? []).forEach((p) => m.set(p.id, { name: p.name, color: p.color, avatarIcon: p.avatarIcon ?? null }));
+    return m;
+  }, [game]);
+  const fieldIds = useMemo(() => surfaceGroups.flatMap((g) => g.userIds), [surfaceGroups]);
+  const fieldParticipants = useMemo<Participant[]>(
+    () => fieldIds.map((id, i) => {
+      const meta = nameColorOf.get(id);
+      return {
+        id,
+        name: meta?.name ?? (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player",
+        color: meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+        avatarIcon: meta?.avatarIcon ?? null,
+      };
+    }),
+    [fieldIds, nameColorOf, crew.data],
+  );
+
+  // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
+  // the SAME stroked-holes the server final uses (entryPips), so the surface and the final agree.
+  const parByHole = useMemo(() => Object.fromEntries(scUnits.map((u) => [u.label, u.par ?? 0])), [scUnits]);
+  const netLeaderboardEntries = useMemo(() => {
+    const out: { participant_id: string; unit_label: string; value: number }[] = [];
+    for (const pid of fieldIds) {
+      const holes = values[pid];
+      if (!holes) continue;
+      for (const [label, v] of Object.entries(holes)) {
+        if (v == null) continue;
+        out.push({ participant_id: pid, unit_label: label, value: (v as number) - (entryPips[pid]?.has(label) ? 1 : 0) });
+      }
+    }
+    return out;
+  }, [fieldIds, values, entryPips]);
+  const leaderboardRows = useMemo(
+    () => computeStrokeLeaderboard(fieldIds, netLeaderboardEntries, parByHole),
+    [fieldIds, netLeaderboardEntries, parByHole],
+  );
+
+  // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
+  const groupViews = useMemo<FoursomeGroupView[]>(
+    () => surfaceGroups.map((g) => {
+      const thruVals = g.userIds.map((uid) => Object.keys(values[uid] ?? {}).length);
+      const furthest = thruVals.length ? Math.max(...thruVals) : 0;
+      return {
+        id: g.id,
+        name: g.name,
+        teeLabel: g.teeTime,
+        thru: furthest > 0 ? furthest : null,
+        players: g.userIds.map((uid) => {
+          const p = fieldParticipants.find((fp) => fp.id === uid);
+          return { id: uid, name: p?.name ?? "Player", teamColor: p?.color ?? "var(--color-bt-text-dim)" };
+        }),
+        mine: !!me && g.userIds.includes(me.id),
+      };
+    }),
+    [surfaceGroups, values, fieldParticipants, me],
+  );
+
   // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear) instead of
   // a second header. Handicaps/modifiers are inline panels now (P3 3.3), so there's no
   // drill-down that covers the bar. Standalone route keeps its headers.
@@ -582,9 +674,17 @@ export function StrokeGameView() {
   usePublishGameChrome(
     inPanel
       ? {
-          title: (gameQ.data?.name as string | undefined)?.trim() || "Stroke Play",
-          onSettings: !!game && canEdit && !showConfig && view !== "final" ? openConfig : undefined,
-          hideBottomNav: !!game && scoringEnabled && !showConfig && view === "entry" && canScoreStroke,
+          // In a group's entry the bar names the GROUP (rack's idiom); the surface + settings
+          // name the game.
+          title:
+            ((entryGroupId ? surfaceGroups.find((g) => g.id === entryGroupId)?.name : undefined) ??
+              (gameQ.data?.name as string | undefined)?.trim()) ||
+            "Stroke Play",
+          // Settings gear on the SURFACE only (not inside a group's entry — that view carries
+          // its own onConfig). Absent on the final.
+          onSettings: !!game && canEdit && !showConfig && view !== "final" && !entryGroupId ? openConfig : undefined,
+          // Focused scoring (in a group) hides the bottom nav.
+          hideBottomNav: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
         }
       : null,
   );
@@ -756,7 +856,7 @@ export function StrokeGameView() {
       <ChecklistRow
         icon={Users}
         title="Groupings"
-        subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"} · tap to edit tee groups` : "Optional — group players into tee times"}
+        subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"} · tap to edit tee groups` : "Required — everyone playing must be in a group"}
         state={draftGroupCount > 0 ? "resolved" : "empty"}
         disabled={!canEdit}
         expanded={openAccordion === "groupings"}
@@ -764,7 +864,7 @@ export function StrokeGameView() {
         testId="row-groupings"
       >
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
-          Group players into tee groups — any mix across teams, up to 4 each. Anyone left out just isn&rsquo;t grouped.
+          Group players into tee groups — any mix across teams, up to 4 each. Everyone playing must be in a group; anyone left ungrouped isn&rsquo;t in the game.
         </p>
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
       </ChecklistRow>
@@ -874,17 +974,35 @@ export function StrokeGameView() {
     );
   }
 
+  // The group currently being scored (entryGroupId), and its participants.
+  const entryGroup = surfaceGroups.find((g) => g.id === entryGroupId);
+  const entryParticipants: Participant[] = (entryGroup?.userIds ?? [])
+    .map((id) => fieldParticipants.find((p) => p.id === id))
+    .filter((p): p is Participant => !!p);
+
+  // The first hole a group hasn't fully scored — where its entry opens (mirrors rack's
+  // currentHoleForGroup, scoped to the tapped group instead of the whole round).
+  const currentHoleForGroup = (gid: string) => {
+    const g = surfaceGroups.find((x) => x.id === gid);
+    if (!g) return 1;
+    for (let h = 1; h <= scUnits.length; h++) {
+      if (g.userIds.some((uid) => values[uid]?.[String(h)] == null)) return h;
+    }
+    return scUnits.length;
+  };
+
   // ── Play ──
   if (game) {
-    // The read-only scorecard grid — shared by a non-scorer's landing surface and
-    // the scorer's overlay. onCellTap (jump to a hole's entry) is scorer-only.
+    // The read-only scorecard grid — scoped to the group being scored (entry), else the
+    // whole field (final). onCellTap (jump to a hole) is scorer-only.
+    const gridParticipants = entryGroupId ? entryParticipants : fieldParticipants;
     const scorecardGrid = (
       <StandardGrid
         units={scUnits}
         tee={teeFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof teeFromSchema>[0])}
         teeRows={teeRows}
         gameId={game.id}
-        participants={game.participants}
+        participants={gridParticipants}
         values={values}
         direction="low_wins"
         pips={entryPips}
@@ -895,31 +1013,40 @@ export function StrokeGameView() {
         } : undefined}
       />
     );
-    return (
-      // As a panel: fill BELOW the app bar; standalone: full-screen.
-      <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
-        {!canScoreStroke ? (
-          // #557: a viewer who can't score this game lands on the read-only
-          // scorecard — now as an overlay; dismissing leaves the game (back to the
-          // board), consistent with the "scorecard floats" model.
-          <ScorecardSheet subtitle={courseName ?? undefined} onClose={() => router.back()}>{scorecardGrid}</ScorecardSheet>
-        ) : (
-          <>
-            {view === "final" ? (
-              <FinalStandings
-                participants={game.participants}
-                standings={standings}
-                unitCount={scUnits.length}
-                dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                onScorecard={() => setGridOpen(true)}
-                onPlayAgain={playAgain}
-              />
-            ) : (
+
+    // FINAL — the completed standings over the whole field (reached via Finish from a group's
+    // entry). The scorecard overlays it.
+    if (view === "final") {
+      return (
+        <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
+          <FinalStandings
+            participants={fieldParticipants}
+            standings={standings}
+            unitCount={scUnits.length}
+            dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            onScorecard={() => setGridOpen(true)}
+            onPlayAgain={playAgain}
+          />
+          {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
+        </div>
+      );
+    }
+
+    // ENTRY (one level down) — a grouping is tapped: score just that group. A scorer of the
+    // group gets the keypad; anyone else gets its read-only scorecard. Back → the surface.
+    if (entryGroupId && entryGroup) {
+      const canScoreThisGroup = canEdit || (!!me && entryGroup.userIds.includes(me.id));
+      return (
+        <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
+          {!canScoreThisGroup ? (
+            <ScorecardSheet subtitle={courseName ?? undefined} onClose={() => setEntryGroupId(null)}>{scorecardGrid}</ScorecardSheet>
+          ) : (
+            <>
               <ScoreEntryView
                 hideHeader={inPanel}
-                gameName="Stroke Play"
+                gameName={entryGroup.name}
                 units={scUnits}
-                participants={game.participants}
+                participants={entryParticipants}
                 values={values}
                 direction="low_wins"
                 currentHole={currentHole}
@@ -929,17 +1056,37 @@ export function StrokeGameView() {
                 saveStatus={saveStatus}
                 onRetryCell={retryCell}
                 pips={entryPips}
-                onBack={() => router.back()}
+                onBack={() => setEntryGroupId(null)}
                 onOpenGrid={() => setGridOpen(true)}
                 onConfig={canEdit ? openConfig : undefined}
                 onFinish={handleFinish}
               />
-            )}
-            {/* Scorecard OVERLAY over entry/final — the base stays mounted so
-                dismiss returns with in-progress entry intact (#543). */}
-            {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
-          </>
-        )}
+              {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // SURFACE (landing) — where tapping the game lands (routing fix): the WHOLE-FIELD golf
+    // leaderboard + the groupings as tappable rows. Entry is one level down (tap a grouping).
+    // Everyone sees the board; a scorer taps their group into the keypad, anyone else into
+    // the read-only scorecard.
+    return (
+      <div
+        className={inPanel ? "absolute inset-0 overflow-y-auto" : "fixed inset-0 z-50 overflow-y-auto"}
+        style={{ background: "var(--color-bt-base)" }}
+        data-testid="stroke-surface"
+      >
+        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} />
+        <FoursomeEntry
+          groups={groupViews}
+          onEnter={(id) => {
+            setCurrentHole(currentHoleForGroup(id));
+            setGridOpen(false);
+            setEntryGroupId(id);
+          }}
+        />
       </div>
     );
   }
@@ -978,7 +1125,7 @@ export function StrokeGameView() {
 
       <button
         onClick={start}
-        disabled={selected.length < 2 || createGame.isPending || addParticipants.isPending}
+        disabled={selected.length < 2 || createGame.isPending || seedFoursome.isPending}
         className="mt-5 w-full disabled:opacity-40"
         style={{
           height: 50,

@@ -46,6 +46,11 @@ describe("stroke — the unit is the individual player", () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE, name: "Stroke Perms" });
     gameId = g.id;
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [member, outsider] });
+    // Stroke go-live needs grouped participants (089). Each player gets their OWN
+    // group so the "individual player" unit holds — a shared group would grant
+    // rack-style cart-scoping (scoreUnit keys stroke-vs-rack on play_group_id).
+    await ctx.groupStrokeParticipants(gameId, [member]);
+    await ctx.groupStrokeParticipants(gameId, [outsider]);
     await ctx.caller().games.enableScoring({ tripId, gameId });
   });
 
@@ -80,6 +85,7 @@ describe("stroke — a non-participant member scores nothing", () => {
     gameId = g.id;
     // member + planner are the participants; outsider is deliberately NOT in this game.
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [member, planner] });
+    await ctx.groupStrokeParticipants(gameId, [member, planner]); // stroke go-live needs grouped (089)
     await ctx.caller().games.enableScoring({ tripId, gameId });
   });
 
@@ -184,6 +190,8 @@ describe("delegate — a game-organizer grant scores any unit, but only in THAT 
     gameB = b.id;
     await ctx.caller().games.addParticipants({ tripId, gameId: gameA, userIds: [member, planner] });
     await ctx.caller().games.addParticipants({ tripId, gameId: gameB, userIds: [member, planner] });
+    await ctx.groupStrokeParticipants(gameA, [member, planner]); // stroke go-live needs grouped (089)
+    await ctx.groupStrokeParticipants(gameB, [member, planner]);
     // outsider (a plain member, NOT a participant of either) is delegated to game A only.
     await ctx.admin.from("game_delegates").insert({ game_id: gameA, user_id: outsider });
     await ctx.caller().games.enableScoring({ tripId, gameId: gameA });

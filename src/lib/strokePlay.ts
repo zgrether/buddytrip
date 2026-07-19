@@ -60,6 +60,84 @@ export interface StrokeStanding {
   position: number;
 }
 
+/**
+ * A traditional-golf leaderboard row for the stroke game SURFACE — total strokes +
+ * to-par + holes-played, ranked by to-par (best/lowest first). Extends the standings
+ * shape with the two fields the surface needs (`toPar`, `holesPlayed`) but the live
+ * strip / final don't.
+ */
+export interface StrokeLeaderboardRow {
+  entityId: string;
+  /** Net total strokes over the holes this player has scored. */
+  totalStrokes: number;
+  /** Count of scored holes (the "thru" number). 0 = hasn't started. */
+  holesPlayed: number;
+  /** totalStrokes − Σ par(scored holes) — RELATIVE TO HOLES PLAYED, so a player thru 9
+   *  and a player thru 18 are compared on equal footing (the acceptance-scenario gate D). */
+  toPar: number;
+  /** 1-based rank among STARTED players (ties share). Not-started players all share the
+   *  trailing position and sort to the bottom — a thru-0 late arrival is never "leading". */
+  position: number;
+  started: boolean;
+}
+
+/**
+ * The stroke SURFACE leaderboard (holes-played-relative). Ranks the WHOLE field by
+ * to-par, so it aggregates across every grouping (score_entries aren't group-scoped) and
+ * stays coherent when players are thru different hole counts:
+ *  - to-par is computed over SCORED holes only (net strokes − their par), never a full-
+ *    round par, so a mid-round player isn't penalized for holes not yet played;
+ *  - STARTED players rank by to-par asc (tie-break: more holes played ranks higher);
+ *  - NOT-started players (thru 0) sort to the BOTTOM as "—", never mis-ranked to the top.
+ *
+ * `entries` are NET per-hole entries (participant_id + unit_label + value) — feed them
+ * through `netStrokeEntries` first so the surface agrees with the persisted final (which
+ * nets too). `parByHole` maps a hole's `unit_label` → its par (from the course snapshot).
+ */
+export function computeStrokeLeaderboard(
+  participantIds: string[],
+  entries: { participant_id: string; unit_label: string; value: number }[],
+  parByHole: Record<string, number>
+): StrokeLeaderboardRow[] {
+  const agg = new Map<string, { strokes: number; holes: number; par: number }>();
+  for (const id of participantIds) agg.set(id, { strokes: 0, holes: 0, par: 0 });
+  for (const e of entries) {
+    const a = agg.get(e.participant_id);
+    if (!a) continue; // an entry for a participant not in the field (e.g. ungrouped) is ignored
+    a.strokes += e.value;
+    a.holes += 1;
+    a.par += parByHole[e.unit_label] ?? 0;
+  }
+
+  const rows = participantIds.map((id) => {
+    const a = agg.get(id)!;
+    return {
+      entityId: id,
+      totalStrokes: a.strokes,
+      holesPlayed: a.holes,
+      toPar: a.strokes - a.par,
+      started: a.holes > 0,
+    };
+  });
+
+  const sorted = [...rows].sort((x, y) => {
+    if (x.started !== y.started) return x.started ? -1 : 1; // started before not-started
+    if (!x.started) return x.entityId < y.entityId ? -1 : 1; // stable order for not-started
+    if (x.toPar !== y.toPar) return x.toPar - y.toPar; // lower to-par leads
+    if (x.holesPlayed !== y.holesPlayed) return y.holesPlayed - x.holesPlayed; // more holes ranks higher
+    return x.entityId < y.entityId ? -1 : 1;
+  });
+
+  const startedRows = sorted.filter((r) => r.started);
+  const trailingPos = startedRows.length + 1;
+  return sorted.map((r) => ({
+    ...r,
+    position: r.started
+      ? 1 + startedRows.filter((o) => o.toPar < r.toPar).length
+      : trailingPos,
+  }));
+}
+
 export function computeStrokePlayStandings(
   participantIds: string[],
   entries: StrokeEntry[]

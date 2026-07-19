@@ -88,6 +88,8 @@ describe("games router (Slice A — stroke play)", () => {
   it("finish — computes results, ranks by total, marks complete", async () => {
     const caller = ctx.caller();
     const memberId = ctx.getUser("member").id;
+    // Stroke go-live requires grouped participants (mig 089).
+    await ctx.groupStrokeParticipants(gameId, [ctx.user.id, memberId]);
     await caller.games.enableScoring({ tripId, gameId }); // Phase 2B.1 universal gate
     // owner 4+4 = 8, member 5+6 = 11
     await caller.scores.upsertEntry({ tripId, gameId, participantId: ctx.user.id, unitLabel: "1", value: 4 });

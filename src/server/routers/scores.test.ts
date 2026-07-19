@@ -21,6 +21,7 @@ describe("scores router (Slice A — per-hole entry)", () => {
       .games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Round" });
     gameId = game.id;
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [ownerId, memberId] });
+    await ctx.groupStrokeParticipants(gameId, [ownerId, memberId]); // stroke go-live needs grouped (089)
     // Phase 2B.1: scoring must be enabled before entries land (universal gate).
     await ctx.caller().games.enableScoring({ tripId, gameId });
   });
@@ -100,6 +101,7 @@ describe("scores router (Slice A — per-hole entry)", () => {
       ctx.caller().scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 4 })
     ).rejects.toThrow(/enable scoring/i);
     // Enable → entry is accepted.
+    await ctx.groupStrokeParticipants(g.id, [ownerId, memberId]); // stroke go-live needs grouped (089)
     await ctx.caller().games.enableScoring({ tripId, gameId: g.id });
     const entry = await ctx.caller().scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 4 });
     expect(entry.value).toBe(4);
@@ -108,6 +110,7 @@ describe("scores router (Slice A — per-hole entry)", () => {
   it("Enable sets status:active (A2-core: the toggle owns status; first-score is a no-op fallback)", async () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Goes Live" });
     await ctx.caller().games.addParticipants({ tripId, gameId: g.id, userIds: [ownerId, memberId] });
+    await ctx.groupStrokeParticipants(g.id, [ownerId, memberId]); // stroke go-live needs grouped (089)
     await ctx.caller().games.enableScoring({ tripId, gameId: g.id });
     const before = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", g.id).single();
     expect(before.data?.scoring_enabled).toBe(true);
@@ -125,6 +128,7 @@ describe("scores router (Slice A — per-hole entry)", () => {
   it("Disable reverts active→pending and KEEPS scores; re-enable allows scoring again", async () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Toggled" });
     await ctx.caller().games.addParticipants({ tripId, gameId: g.id, userIds: [ownerId, memberId] });
+    await ctx.groupStrokeParticipants(g.id, [ownerId, memberId]); // stroke go-live needs grouped (089)
     await ctx.caller().games.enableScoring({ tripId, gameId: g.id });
     await ctx.caller().scores.upsertEntry({ tripId, gameId: g.id, participantId: ownerId, unitLabel: "1", value: 4 });
 

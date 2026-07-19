@@ -263,6 +263,35 @@ export class TestContext {
     return groupId;
   }
 
+  /**
+   * Group stroke/rack participants into a play_group so the game reads as READY
+   * (mig 089: stroke + rack go-live requires participants assigned to a PLAYING
+   * GROUP — an ungrouped roster isn't ready). Call AFTER the roster is added
+   * (`games.addParticipants` / `games.create`), BEFORE `games.enableScoring` /
+   * a `scoringEnabled: true` save. The participants must already exist.
+   * Returns the created play_group id (also registered for cleanup).
+   */
+  async groupStrokeParticipants(gameId: string, userIds: string[]): Promise<string> {
+    const groupId = `test-grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const { error: grpErr } = await this.admin.from("play_groups").insert({
+      id: groupId,
+      game_id: gameId,
+      display_name: "Group 1",
+      tee_time: null,
+    });
+    if (grpErr) throw new Error(`Failed to create play group: ${grpErr.message}`);
+    this.trackGroup(groupId);
+
+    const { error: updErr } = await this.admin
+      .from("game_participants")
+      .update({ play_group_id: groupId })
+      .eq("game_id", gameId)
+      .in("user_id", userIds);
+    if (updErr) throw new Error(`Failed to assign play group: ${updErr.message}`);
+
+    return groupId;
+  }
+
   /** Register a trip ID created externally (e.g. via tRPC caller) for cleanup. */
   trackTrip(tripId: string) {
     if (!this._tripIds.includes(tripId)) this._tripIds.push(tripId);

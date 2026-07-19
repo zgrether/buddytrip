@@ -8,14 +8,19 @@
  *   - Member → only the unit they participate in.
  *   - Non-participant member → nothing.
  *
- * The "unit" differs per format (all resolved from `game_matches` +
- * `game_participants`, no format literal):
+ * The "unit" differs per format:
  *   - stroke: the individual player — a member scores only THEIR OWN row.
  *   - 1v1 match: the match (its two user-sides) — a member scores either player
  *     in the match they're in.
  *   - rack: the play_group (cart) — a member scores anyone in their group.
  *   - 2v2 match: the match (its two side play_groups) — a member scores either
  *     side of the match they're in.
+ *
+ * Cart-scoping (rack) vs individual-scoping (stroke) is told by the caller via
+ * `groupScoped`, NOT inferred from whether the target has a play_group. Since 089
+ * made stroke groupings MANDATORY, a grouped target no longer means "rack" — stroke
+ * players are grouped too, but their unit stays the individual. Inferring rack from
+ * `play_group_id != null` would silently let a stroke cart-mate score your row.
  *
  * Deferred (needs a match↔foursome data link that doesn't exist): letting one
  * cart-mate score the OTHER 1v1 match in the same foursome. For now a 1v1 member
@@ -50,6 +55,10 @@ export interface MemberScoreAccessInput {
   targetPlayGroupId: string | null;
   /** Whether the scorer is a participant of this game at all (gates stroke self-scoring). */
   meIsParticipant: boolean;
+  /** Does this FORMAT scope scoring to the play_group (cart)? TRUE for rack — cart-mates
+   *  score each other; FALSE for stroke — the unit is the individual. Set by the caller
+   *  from the game TYPE (rack), never inferred from grouping (stroke is grouped now too). */
+  groupScoped: boolean;
 }
 
 /**
@@ -90,13 +99,15 @@ export function memberCanScoreUnit(input: MemberScoreAccessInput): boolean {
     return users.includes(meId);
   }
 
-  // rack — participantId (a user) is in a play_group (cart). The unit is the
-  // group, so a member scores anyone in the SAME group.
-  if (input.targetPlayGroupId != null) {
+  // rack — the format is cart-scoped (`groupScoped`) and the target user is in a
+  // play_group. The unit is the group, so a member scores anyone in the SAME group.
+  // Gated on `groupScoped` (the game TYPE), NOT on grouping alone — stroke is grouped
+  // now too, and must fall through to the individual check below.
+  if (input.groupScoped && input.targetPlayGroupId != null) {
     return input.myPlayGroupId != null && input.myPlayGroupId === input.targetPlayGroupId;
   }
 
-  // stroke — no group, no match. The unit is the individual: a member scores
-  // only their own row (and must actually be a participant).
+  // stroke — the unit is the individual: a member scores only their own row (and must
+  // actually be a participant), regardless of which group they're in.
   return participantId === meId && input.meIsParticipant;
 }

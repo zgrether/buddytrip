@@ -71,5 +71,8 @@ export async function canWriteOutcome(
     myPlayGroupId: (meRow as { play_group_id: string | null } | null)?.play_group_id ?? null,
     targetPlayGroupId: null,
     meIsParticipant: !!meRow,
+    // Outcomes are match-play only — the match branch authorizes; the rack cart-scope
+    // (`groupScoped`) never applies (targetPlayGroupId is null anyway).
+    groupScoped: false,
   });
 }

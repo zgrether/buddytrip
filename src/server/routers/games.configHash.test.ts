@@ -25,6 +25,8 @@ describe("games.configHash — config change-signal", () => {
     const game = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Round" });
     gameId = game.id;
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [ownerId, memberId] });
+    // Stroke go-live requires grouped participants (mig 089).
+    await ctx.groupStrokeParticipants(gameId, [ownerId, memberId]);
   });
 
   afterAll(async () => {

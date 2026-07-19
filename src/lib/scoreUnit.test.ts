@@ -8,7 +8,7 @@ const userSide = (id: string) => ({ type: "user" as const, id });
 const pgSide = (id: string) => ({ type: "play_group" as const, id });
 
 describe("memberCanScoreUnit — stroke (unit = the individual)", () => {
-  const base = { matches: [] as ScoreUnitMatch[], myPlayGroupId: null, targetPlayGroupId: null };
+  const base = { matches: [] as ScoreUnitMatch[], myPlayGroupId: null, targetPlayGroupId: null, groupScoped: false };
 
   it("a member scores their OWN row", () => {
     expect(
@@ -27,6 +27,18 @@ describe("memberCanScoreUnit — stroke (unit = the individual)", () => {
       memberCanScoreUnit({ ...base, meId: "u1", participantId: "u1", participantType: "user", meIsParticipant: false }),
     ).toBe(false);
   });
+
+  it("GROUPED stroke players do NOT cross-score — a shared play_group is ignored (089/groupScoped=false)", () => {
+    // Since stroke groupings are mandatory now, two stroke players share a play_group. But
+    // stroke's unit stays the INDIVIDUAL: u1 (grouped with u2) still can't score u2's row.
+    expect(
+      memberCanScoreUnit({ matches: [], meId: "u1", participantId: "u2", participantType: "user", myPlayGroupId: "g1", targetPlayGroupId: "g1", meIsParticipant: true, groupScoped: false }),
+    ).toBe(false);
+    // ...but still scores their OWN row within that group.
+    expect(
+      memberCanScoreUnit({ matches: [], meId: "u1", participantId: "u1", participantType: "user", myPlayGroupId: "g1", targetPlayGroupId: "g1", meIsParticipant: true, groupScoped: false }),
+    ).toBe(true);
+  });
 });
 
 describe("memberCanScoreUnit — 1v1 match (unit = the match's two players)", () => {
@@ -35,7 +47,7 @@ describe("memberCanScoreUnit — 1v1 match (unit = the match's two players)", ()
     { side_a: userSide("u1"), side_b: userSide("u2") }, // my match
     { side_a: userSide("u3"), side_b: userSide("u4") }, // cart-mate's match
   ];
-  const base = { matches, myPlayGroupId: null, targetPlayGroupId: null, meIsParticipant: true };
+  const base = { matches, myPlayGroupId: null, targetPlayGroupId: null, meIsParticipant: true, groupScoped: false };
 
   it("a player scores their OWN score in their match", () => {
     expect(memberCanScoreUnit({ ...base, meId: "u1", participantId: "u1", participantType: "user" })).toBe(true);
@@ -56,8 +68,8 @@ describe("memberCanScoreUnit — 1v1 match (unit = the match's two players)", ()
 });
 
 describe("memberCanScoreUnit — rack (unit = the play_group / cart)", () => {
-  // Rack has no game_matches; grouping is via play_group_id.
-  const base = { matches: [] as ScoreUnitMatch[] };
+  // Rack has no game_matches; grouping is via play_group_id. groupScoped=true (cart-scoped).
+  const base = { matches: [] as ScoreUnitMatch[], groupScoped: true };
 
   it("a member scores a cart-mate in the SAME group", () => {
     expect(
@@ -90,7 +102,7 @@ describe("memberCanScoreUnit — 2v2 match (unit = the match's two side groups)"
     { side_a: pgSide("ga"), side_b: pgSide("gb") },
     { side_a: pgSide("gc"), side_b: pgSide("gd") }, // another match
   ];
-  const base = { matches, targetPlayGroupId: null, meIsParticipant: true };
+  const base = { matches, targetPlayGroupId: null, meIsParticipant: true, groupScoped: false };
 
   it("a member scores their OWN side", () => {
     expect(memberCanScoreUnit({ ...base, meId: "u1", participantId: "ga", participantType: "play_group", myPlayGroupId: "ga" })).toBe(true);

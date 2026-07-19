@@ -75,11 +75,20 @@ async function save(gameId: string, over: Partial<StrokePayload>) {
   await ctx.caller().games.saveConfig({ tripId, gameId, baseHash: await hashOf(gameId), payload: await strokePayload(gameId, over) });
 }
 
-/** Arm a scored stroke game: roster + go live + one score. */
+/** Arm a scored stroke game: GROUP the roster (mandatory groupings, 089 — go-live now
+ *  gates on grouped participants, mirroring rack) + go live + one score. The `groups`
+ *  payload creates the participants AND assigns them a play_group in one atomic save. */
 async function armScored(name: string): Promise<string> {
   const gameId = await newStrokeGame(name);
-  await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [owner, member] });
-  await save(gameId, { scoringEnabled: true });
+  await ctx.caller().games.saveConfig({
+    tripId, gameId, baseHash: await hashOf(gameId),
+    payload: {
+      ...(await strokePayload(gameId, {})),
+      groups: [{ name: "G1", userIds: [owner, member] }],
+      groupsStructureDirty: true,
+      scoringEnabled: true,
+    },
+  });
   await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 4 });
   return gameId;
 }
@@ -152,5 +161,25 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
     await expect(
       save(gameId, { courseId: "some-course-id", scorecardSchema: { units: { count: 18 } } }),
     ).rejects.toThrow(/course/i);
+  });
+
+  it("go-live requires GROUPED participants (089 mandatory groupings) — an ungrouped roster is NOT_READY", async () => {
+    const gameId = await newStrokeGame("Stroke grouped readiness");
+    // A bare roster with no playing group: ungrouped = not in the game → go-live refused
+    // (stroke now mirrors rack — grouped-participant readiness).
+    await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [owner, member] });
+    await expect(save(gameId, { scoringEnabled: true })).rejects.toThrow(/setting up/i);
+
+    // Put them in a group → ready → go-live succeeds.
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: {
+        ...(await strokePayload(gameId, {})),
+        groups: [{ name: "G1", userIds: [owner, member] }],
+        groupsStructureDirty: true,
+        scoringEnabled: true,
+      },
+    });
+    expect((await getById(gameId)).scoring_enabled).toBe(true);
   });
 });
