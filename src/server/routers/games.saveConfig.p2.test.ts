@@ -139,17 +139,33 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
     expect(strokesOf.get(member)).toBe(2);
   });
 
-  it("a GROUPINGS change on a scored game is REFUSED (HAS_SCORES, #594) — names 'groupings'", async () => {
-    const gameId = await newRackGame("Rack groups locked");
+  it("GROUPINGS precise guard (089): re-group / grow allowed with scores; only removing a SCORED player refuses", async () => {
+    const gameId = await newRackGame("Rack groups precise guard");
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], participants: [] });
-    // Go live (rack readiness = participants with a play_group) + enter a score.
+    // Go live (readiness = grouped participants) + score OWNER (member stays unscored).
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, scoringEnabled: true });
     await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 5 });
 
-    // A different membership → structure dirty → refused, with the groupings noun.
+    // (ALLOWED) Re-group: swap the UNSCORED member for planner — owner (scored) stays in a group.
+    // Slots are derived + scores key to user_id, so nothing orphans (089 / DEFERRED note).
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, planner] }], groupsStructureDirty: true, scoringEnabled: true });
+
+    // (ALLOWED) GROW the field mid-round: add a second group (the late-arrival case, gate A).
+    await save(gameId, {
+      groups: [{ name: "G1", userIds: [owner, planner] }, { name: "G2", userIds: [member] }],
+      groupsStructureDirty: true, scoringEnabled: true,
+    });
+    const { participants } = (await ctx.caller().playGroups.listByGame({ tripId, gameId })) as {
+      participants: { user_id: string; play_group_id: string | null }[];
+    };
+    expect(participants.filter((p) => p.play_group_id != null).map((p) => p.user_id).sort())
+      .toEqual([owner, planner, member].sort());
+
+    // (REFUSED) Removing OWNER — a player with entered scores — from every group would strand
+    // their scores. This is the ONE change the precise guard still blocks.
     await expect(
-      save(gameId, { groups: [{ name: "G1", userIds: [owner, planner] }], groupsStructureDirty: true, scoringEnabled: true }),
-    ).rejects.toThrow(/groupings/i);
+      save(gameId, { groups: [{ name: "G2", userIds: [member, planner] }], groupsStructureDirty: true, scoringEnabled: true }),
+    ).rejects.toThrow(/scores/i);
   });
 
   it("a per-participant STROKE edit on a scored game SUCCEEDS in place (warned, not refused)", async () => {
@@ -169,7 +185,7 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
     expect(new Map((data ?? []).map((p) => [p.user_id as string, p.handicap_strokes])).get(owner)).toBe(7);
   });
 
-  it("THE TAXONOMY — on a scored rack every non-structural setting saves; ONLY groupings refuses", async () => {
+  it("THE TAXONOMY — on a scored rack every non-structural setting saves; ONLY removing a scored player refuses", async () => {
     const gameId = await newRackGame("Rack taxonomy");
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], participants: [{ userId: owner, strokes: 0 }] });
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, scoringEnabled: true });
@@ -191,10 +207,11 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
     expect(g.name).toBe("Renamed live");
     expect(Number(g.points_total)).toBe(12);
 
-    // Locked tier: ONLY a groupings membership change is refused (the coarse wall).
+    // Locked tier (089 precise guard): a re-group / rename / growth is FINE; the one refusal
+    // left is dropping a SCORED player (owner) from every group — that would strand scores.
     await expect(
-      save(gameId, { groups: [{ name: "G1", userIds: [owner, planner] }], groupsStructureDirty: true, scoringEnabled: true }),
-    ).rejects.toThrow(/groupings/i);
+      save(gameId, { groups: [{ name: "G1", userIds: [member, planner] }], groupsStructureDirty: true, scoringEnabled: true }),
+    ).rejects.toThrow(/scores/i);
   });
 
   it("no-op Save is byte-identical — the faithless-mirror guard for rack", async () => {

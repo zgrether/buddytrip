@@ -6,7 +6,7 @@ import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
-import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE, ROSTER_TYPES } from "@/server/lib/gameReadiness";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
 /** Head-to-head sizing for the team-size-derived per_match formats (rack-n-stack,
@@ -344,8 +344,8 @@ export async function computeCompetitionLeaderboard(
           typeId,
           matchCountByGame.get(gid) ?? 0,
           totalMatchRowsByGame.get(gid) ?? 0,
-          // Rack gates on GROUPED players (manual builder); stroke on all participants.
-          (typeId === RACK_TYPE ? groupedParticipantCountByGame : participantCountByGame).get(gid) ?? 0,
+          // Stroke + rack both gate on GROUPED players (mandatory groupings, 089).
+          ((typeId && ROSTER_TYPES.has(typeId)) ? groupedParticipantCountByGame : participantCountByGame).get(gid) ?? 0,
           hasPoints
         ),
         // Course presence (§ scorecard three-way) — surfaced so the row's
