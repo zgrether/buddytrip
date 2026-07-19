@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
@@ -244,27 +243,10 @@ export function CompetitionFace({
   const scoringModel = competition.scoring_model ?? "match_play";
   return (
     <div className="space-y-4">
-      {/* Rosters entry point (W-TEAMSURFACE-01), gated on scoring_model (R3): a
-          match_play cup is locked at 2 teams — add/delete-team is hidden and
-          per-team roster editing lives in the Edit Team modal (tap a team name),
-          so the button is redundant and removed. POINTS cups (2–N) KEEP it: it's
-          still the only path to add/delete a team (relocating that into
-          competition settings is deferred to Phase B — a known temporary). */}
-      {scoringModel === "points" && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setRostersOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "0.5px solid var(--color-bt-border)" }}
-            data-testid="open-rosters"
-          >
-            <Users size={14} style={{ color: "var(--color-bt-accent)" }} />
-            Rosters
-          </button>
-        </div>
-      )}
-
+      {/* Rosters entry point RELOCATED into competition settings (§2 / the deferred Phase B):
+          the leaderboard header no longer carries a Rosters button. Points cups open the
+          Rosters surface from Settings → "Teams & rosters"; match_play team editing stays a
+          team-name tap → the Edit Team modal (per-team, no add/delete). */}
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
@@ -380,6 +362,9 @@ export function CompetitionFace({
           isOwner={isOwner}
           onClose={() => setSettingsOpen(false)}
           onDeleted={onCompetitionDeleted}
+          // Points cups manage teams from settings now (§2). Opening Rosters closes settings
+          // so the two overlays don't stack. Match-play keeps team-name-tap editing (no row).
+          onOpenRosters={scoringModel === "points" ? () => { setSettingsOpen(false); setRostersOpen(true); } : undefined}
         />
       )}
     </div>

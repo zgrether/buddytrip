@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { ScoringModel } from "@/lib/gameTypes";
+import { Stepper } from "@/components/games/Stepper";
+import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -56,16 +58,19 @@ const SHAPE_OPTIONS: ShapeOption[] = [
 
 /**
  * Create or edit a competition. Create mode opens with the SHAPE chooser (the
- * one meaningful decision — head-to-head vs teams), then name + tagline. The
- * shape writes `scoring_model` and is frozen after creation. Team count is not
- * set here — both shapes seed two teams; the Teams shape adds more via the
- * Rosters surface afterward. Edit mode is name + tagline only (shape is frozen).
+ * one meaningful decision — head-to-head vs teams), then (for the Teams shape) a
+ * team-count picker, then name + tagline. The shape writes `scoring_model` and is
+ * frozen after creation; the picker seeds N default-named teams (Team A…N),
+ * renameable later in the team editor. Head-to-head is locked at 2 teams (no picker).
+ * Edit mode is name + tagline only (shape + team count are frozen — post-creation
+ * team management lives in the team editor).
  */
 export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel }: Props) {
   const isEdit = !!competition;
   const utils = trpc.useUtils();
 
   const [scoringModel, setScoringModel] = useState<ScoringModel>("match_play");
+  const [teamCount, setTeamCount] = useState(2);
   const [name, setName] = useState(competition?.name ?? "");
   const [tagline, setTagline] = useState(competition?.tagline ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +144,8 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       name: trimmedName,
       tagline: tagline.trim() || undefined,
       scoringModel,
+      // Match-play is locked at 2 teams; the picker only applies to the Teams shape.
+      teamCount: scoringModel === "points" ? teamCount : 2,
     });
     onSuccess?.();
   }
@@ -187,6 +194,29 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
                   onSelect={() => setScoringModel(opt.model)}
                 />
               ))}
+            </div>
+          </FieldShell>
+        )}
+
+        {/* Team count — Teams (points) shape only; head-to-head is locked at 2. The picker
+            seeds N default-named teams (Team A…N), renameable later in the team editor. */}
+        {!isEdit && scoringModel === "points" && (
+          <FieldShell label="Teams" required>
+            <div
+              className="flex items-center justify-between rounded-lg px-3 py-2"
+              style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <span className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                Start with {teamCount} teams
+              </span>
+              <Stepper
+                size="inline"
+                value={teamCount}
+                min={2}
+                max={MAX_SEED_TEAMS}
+                onChange={setTeamCount}
+                testId="team-count-stepper"
+              />
             </div>
           </FieldShell>
         )}

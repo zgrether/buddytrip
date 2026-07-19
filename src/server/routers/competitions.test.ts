@@ -37,7 +37,7 @@ describe("competitions router", () => {
     ctx.trackCompetition(comp.id);
   });
 
-  it("create — the shape chooser writes scoring_model (points) + seeds 2 teams", async () => {
+  it("create — the shape chooser writes scoring_model (points) + defaults to 2 teams", async () => {
     const pointsTripId = await ctx.createTrip("Points-shape cup");
     const caller = ctx.caller();
     const comp = await caller.competitions.create({
@@ -48,9 +48,39 @@ describe("competitions router", () => {
     expect(comp.scoring_model).toBe("points");
     ctx.trackCompetition(comp.id);
 
-    // Both shapes seed exactly two placeholder teams; the Teams shape adds more
-    // afterward via the Rosters surface.
-    const teams = await caller.teams.list({ tripId: pointsTripId, competitionId: comp.id });
+    // No teamCount → defaults to 2 (Team A blue + Team B red, unchanged from before the picker).
+    const teams = (await caller.teams.list({ tripId: pointsTripId, competitionId: comp.id })) as Array<{ short_name: string; color: string }>;
+    expect(teams.map((t) => t.short_name).sort()).toEqual(["A", "B"]);
+    expect(new Map(teams.map((t) => [t.short_name, t.color])).get("A")).toBe("#3b82f6");
+    expect(new Map(teams.map((t) => [t.short_name, t.color])).get("B")).toBe("#ef4444");
+  });
+
+  it("create — the team-count picker seeds N default-named teams (§1)", async () => {
+    const bigTripId = await ctx.createTrip("Four-team cup");
+    const caller = ctx.caller();
+    const comp = await caller.competitions.create({
+      tripId: bigTripId,
+      name: "Four Team Cup",
+      scoringModel: "points",
+      teamCount: 4,
+    });
+    ctx.trackCompetition(comp.id);
+    const teams = (await caller.teams.list({ tripId: bigTripId, competitionId: comp.id })) as Array<{ name: string; short_name: string }>;
+    expect(teams.map((t) => t.short_name).sort()).toEqual(["A", "B", "C", "D"]);
+    expect(teams.map((t) => t.name).sort()).toEqual(["Team A", "Team B", "Team C", "Team D"]);
+  });
+
+  it("create — match-play is locked at 2 teams even if a teamCount is sent", async () => {
+    const mpTripId = await ctx.createTrip("Locked head-to-head");
+    const caller = ctx.caller();
+    const comp = await caller.competitions.create({
+      tripId: mpTripId,
+      name: "Head to Head",
+      scoringModel: "match_play",
+      teamCount: 4, // ignored — match-play seeds exactly 2
+    });
+    ctx.trackCompetition(comp.id);
+    const teams = await caller.teams.list({ tripId: mpTripId, competitionId: comp.id });
     expect((teams as Array<{ short_name: string }>).map((t) => t.short_name).sort()).toEqual(["A", "B"]);
   });
 

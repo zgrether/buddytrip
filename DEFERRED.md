@@ -1,5 +1,18 @@
 # BBMI — Deferred Work
 
+### Post-creation team-count spinner (points cups) — deferred (Zach's call)
+
+The create-competition modal has a team-count picker (§1, create-time: seeds N default
+teams). A *post-creation* count spinner (in competition settings, mapping N up/down after
+the fact) was deliberately NOT built — it would duplicate the existing team editor
+(`TeamsPanel` / the Rosters surface, now reached from Settings → "Teams & rosters"), which
+already adds/renames/deletes individual teams and is score-guarded (`teams.delete` refuses
+once the competition has any score, via `assertRosterUnlocked`; it cascades assignments
+otherwise). A count spinner that silently deleted a team on 4→2 is exactly the hazard that
+guard prevents. If a spinner is ever wanted, it must route each removal through
+`teams.delete` (never a bare delete). Until then, post-creation team management is the
+guarded per-team editor.
+
 *Only genuinely open items. Ordered by when they need to happen.*
 *Competition/gaming design detail lives in `COMPETITION_ENGINE.md` — this file
 is the build backlog that points to it.*
