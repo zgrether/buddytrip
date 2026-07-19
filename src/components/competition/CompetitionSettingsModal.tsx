@@ -71,6 +71,9 @@ interface Props {
   onClose: () => void;
   /** Fired after the owner deletes the competition (host resets its flag). */
   onDeleted?: () => void;
+  /** Open the team Rosters surface (add/rename/delete teams + assign players). Provided
+   *  for points cups (§2 — team management's home is settings now); omitted otherwise. */
+  onOpenRosters?: () => void;
 }
 
 const MODEL_DISPLAY: Record<
@@ -88,6 +91,7 @@ export function CompetitionSettingsModal({
   isOwner,
   onClose,
   onDeleted,
+  onOpenRosters,
 }: Props) {
   const utils = trpc.useUtils();
   useModalBackButton(onClose);
@@ -356,6 +360,17 @@ export function CompetitionSettingsModal({
                       subtitle={`${modelCfg.label} · ${modelCfg.shape}`}
                       onClick={() => go("scoring")}
                     />
+                    {/* Team management's home (§2 — relocated off the leaderboard header).
+                        Provided for points cups; opens the Rosters surface. */}
+                    {onOpenRosters && (
+                      <Row
+                        testId="comp-settings-rosters-row"
+                        icon={<Users size={17} />}
+                        title="Teams &amp; rosters"
+                        subtitle="Add, rename, or remove teams and set who plays"
+                        onClick={onOpenRosters}
+                      />
+                    )}
                   </Section>
 
                   {/* Danger zone is the owner's reset/delete hatch — reachable at
