@@ -141,6 +141,7 @@ export function MatchPointsRow({
             max={MAX_TOTAL}
             onChange={locked || !canEdit ? () => {} : (v) => stepTotal(v)}
             disabled={locked || !canEdit}
+            editable // tap the value → decimal entry (item 1); −/+ stay integer
             testId="total-points-stepper"
           />
         }

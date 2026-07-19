@@ -187,10 +187,11 @@ export function fmtToPar(value: number): string {
   return r > 0 ? `+${r}` : `−${Math.abs(r)}`;
 }
 
-/** Format a team point total with a ½ glyph (1.5 → "1½"). */
+/** Format a team point total with a ½ glyph (1.5 → "1½"); other fractions kept
+ *  exact to 2dp (1.25 → "1.25") so fractional shares survive display (#585). */
 export function fmtPoints(p: number): string {
+  if (Number.isInteger(p)) return String(p);
   const whole = Math.floor(p);
-  const half = p - whole >= 0.5;
-  if (half) return whole === 0 ? "½" : `${whole}½`;
-  return String(whole);
+  if (Math.abs(p - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
+  return String(Math.round(p * 100) / 100);
 }

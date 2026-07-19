@@ -314,6 +314,7 @@ function MatchValueRow({
           min={0}
           onChange={canEdit ? (v) => onChange(v) : () => {}}
           disabled={!canEdit}
+          editable // tap the value → decimal entry (item 1); −/+ stay integer
           testId="total-points-stepper"
         />
       }
@@ -352,6 +353,7 @@ function TotalPoolRow({
           min={0}
           onChange={canEdit ? (v) => onChange(v) : () => {}}
           disabled={!canEdit}
+          editable // tap the value → decimal entry (item 1); −/+ stay integer
           testId="total-points-stepper"
         />
       }

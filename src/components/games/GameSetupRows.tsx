@@ -362,6 +362,7 @@ function PlacementTotalControl({
       min={0}
       onChange={disabled ? () => {} : onChange}
       disabled={disabled}
+      editable // tap the value → decimal entry (item 1); −/+ stay integer
       testId="total-points-stepper"
     />
   );
@@ -427,6 +428,7 @@ function RackTotalPointsControl({
       min={0}
       onChange={disabled ? () => {} : onChange}
       disabled={disabled}
+      editable // tap the value → decimal entry (item 1); −/+ stay integer
       testId="points-stepper"
     />
   );

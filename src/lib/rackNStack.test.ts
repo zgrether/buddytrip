@@ -158,10 +158,14 @@ describe("formatters", () => {
     expect(fmtToPar(-2)).toBe("−2");
     expect(fmtToPar(2.4)).toBe("+2"); // projected rounds
   });
-  it("fmtPoints with halves", () => {
+  it("fmtPoints with halves and fractions", () => {
     expect(fmtPoints(0)).toBe("0");
     expect(fmtPoints(2)).toBe("2");
     expect(fmtPoints(1.5)).toBe("1½");
     expect(fmtPoints(0.5)).toBe("½");
+    // Non-half fractions kept exact (#585) — no longer floored.
+    expect(fmtPoints(1.25)).toBe("1.25");
+    expect(fmtPoints(1.75)).toBe("1.75");
+    expect(fmtPoints(0.25)).toBe("0.25");
   });
 });
