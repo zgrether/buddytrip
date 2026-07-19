@@ -35,6 +35,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { computeStrokeLeaderboard, type StrokeStanding } from "@/lib/strokePlay";
+import { allUnitsComplete } from "@/lib/gameCompleteness";
 import { StrokeLeaderboard } from "@/components/games/StrokeLeaderboard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -650,6 +651,16 @@ export function StrokeGameView() {
     [fieldIds, netLeaderboardEntries, parByHole],
   );
 
+  // Game-level finalize gate (just like rack): every player of the LIVE whole field
+  // is thru every hole. Reuses the shipped scoreboard's own rows (no parallel path) —
+  // `holesPlayed` is each player's scored-hole count. Late-added groups add players to
+  // `fieldIds → leaderboardRows` as thru-0 rows, so they re-block until complete.
+  const allGroupsComplete = allUnitsComplete(
+    leaderboardRows.map((r) => r.holesPlayed),
+    scUnits.length,
+  );
+  const strokeFinal = gameQ.data?.status === "complete";
+
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
     () => surfaceGroups.map((g) => {
@@ -1062,7 +1073,14 @@ export function StrokeGameView() {
                 onBack={() => setEntryGroupId(null)}
                 onOpenGrid={() => setGridOpen(true)}
                 onConfig={canEdit ? openConfig : undefined}
-                onFinish={handleFinish}
+                // "Finish" on a group's entry is pure navigation back to the
+                // scoreboard (like rack) — NOT finalize. Finalizing the whole game
+                // is the organizer's game-level action on the scoreboard, gated on
+                // ALL groups complete (multi-grouping fix). Empty subtext so the
+                // shared default ("Saves results · shows final standings") — which
+                // describes the old game-finish behavior — doesn't mislead.
+                onFinish={() => setEntryGroupId(null)}
+                finishSubtext=""
               />
               {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
             </>
@@ -1090,6 +1108,22 @@ export function StrokeGameView() {
             setEntryGroupId(id);
           }}
         />
+        {/* Game-level finalize (just like rack): organizer/owner/delegate only
+            (canEdit → hidden for others, not disabled), and ONLY once every group
+            is complete (all players, all holes, live over the current group set —
+            a mid-round-added group re-blocks it). Never on a group's entry page. */}
+        {canEdit && !strokeFinal && allGroupsComplete && (
+          <div className="px-4 pb-6" data-testid="stroke-finalize">
+            <button
+              onClick={handleFinish}
+              disabled={finishGame.isPending}
+              className="w-full disabled:opacity-40"
+              style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
+            >
+              {finishGame.isPending ? "Finishing…" : "Finish round"}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
