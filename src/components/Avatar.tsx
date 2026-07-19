@@ -283,7 +283,18 @@ export function InvitedAvatar({
   );
 }
 
-/** PlaceholderAvatar — a muted (grey) Avatar IS the placeholder treatment. */
-export function PlaceholderAvatar({ name }: { name: string }) {
-  return <Avatar name={name} muted sizePx={32} />;
+/** PlaceholderAvatar — a muted (grey) Avatar IS the placeholder treatment.
+ *  Forwards `collapse`/`collapseAt` so a placeholder row degrades in lockstep
+ *  with the real-member rows beside it. (InvitedAvatar deliberately does NOT
+ *  forward it — its corner ✉ badge would float over a collapsed dot.) */
+export function PlaceholderAvatar({
+  name,
+  collapse,
+  collapseAt,
+}: {
+  name: string;
+  collapse?: boolean;
+  collapseAt?: AvatarCollapse;
+}) {
+  return <Avatar name={name} muted sizePx={32} collapse={collapse} collapseAt={collapseAt} />;
 }

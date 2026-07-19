@@ -1678,8 +1678,8 @@ export function CoPlannerPanel({
           const canRemove = isOwner && !isSelf && m.role !== "Owner";
           const hasVoted = allVoterIds.has(m.user_id);
           return (
-            <div key={m.user_id ?? m.memberId} className="flex items-center gap-2">
-              <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" />
+            <div key={m.user_id ?? m.memberId} className="@container flex items-center gap-2">
+              <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" collapse />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs" style={{ color: "var(--color-bt-text)" }}>
                   {m.displayName}
