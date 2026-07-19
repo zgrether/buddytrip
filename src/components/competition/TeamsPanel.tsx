@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { TEAM_COLORS } from "@/lib/teamColors";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
@@ -71,17 +72,8 @@ interface Member {
   user?: { avatar_icon?: string | null } | null;
 }
 
-// ── Team color palette (intentional team identity hex per STYLE_GUIDE §7) ───
-const TEAM_COLORS: Array<{ color: string; colorDim: string; label: string }> = [
-  { color: "#3b82f6", colorDim: "#0a1a2a", label: "Blue" },
-  { color: "#22c55e", colorDim: "#0a2a0f", label: "Green" },
-  { color: "#a855f7", colorDim: "#1a0a2a", label: "Purple" },
-  { color: "#06b6d4", colorDim: "#0a1f2a", label: "Cyan" },
-  { color: "#ef4444", colorDim: "#2a0a0a", label: "Red" },
-  { color: "#f59e0b", colorDim: "#2a1f00", label: "Amber" },
-  { color: "#ec4899", colorDim: "#2a0a1a", label: "Pink" },
-  { color: "#f97316", colorDim: "#2a1200", label: "Orange" },
-];
+// Team color palette (intentional team identity hex per STYLE_GUIDE §7) — now the ONE
+// shared source, reused by competition create's auto-seeding (src/lib/teamColors.ts).
 
 // ── Team name suggestion themes ────────────────────────────────────────────
 // Tapping "✨ Suggest a name" reveals these as chips; tapping a chip rolls

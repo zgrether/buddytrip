@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireCompetitionRole } from "../middleware";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
+import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -191,6 +192,9 @@ export const competitionsRouter = router({
         name: z.string().min(2).max(200),
         tagline: z.string().max(500).optional(),
         scoringModel: z.enum(["match_play", "points"]).default("match_play"),
+        // How many default teams to seed (points shape; the create picker, §1). Match-play
+        // is locked at 2. Clamped 2..MAX so a bad client can't over-seed.
+        teamCount: z.number().int().min(2).max(MAX_SEED_TEAMS).default(2),
       })
     )
     .use(requireTripRole("Organizer"))
@@ -230,15 +234,19 @@ export const competitionsRouter = router({
         });
       }
 
-      // Seed two placeholder teams so the bones board's team hero renders
-      // immediately ("Team A / Team B · 0–0"). Teams up front, rosters not — the
-      // team_assignments are built later in the Team Rosters page. Best-effort:
-      // a seed failure doesn't block creation (the team builder can still add
-      // teams), so the competition is usable either way.
-      await ctx.supabase.from("teams").insert([
-        { competition_id: inserted.id, name: "Team A", short_name: "A", color: "#3b82f6", color_dim: "#0a1a2a" },
-        { competition_id: inserted.id, name: "Team B", short_name: "B", color: "#ef4444", color_dim: "#2a0a0a" },
-      ]);
+      // Seed N default-named teams (§1: the create picker drives the count; match-play is
+      // locked at 2) so the board's team hero renders immediately. Names/colors come from
+      // the shared palette (Team A/B/C/D…, renameable later in the team editor). Rosters are
+      // built later in the Team Rosters page. Best-effort: a seed failure doesn't block
+      // creation (the team builder can still add teams), so the competition is usable either way.
+      const teamCount = input.scoringModel === "match_play" ? 2 : input.teamCount;
+      await ctx.supabase.from("teams").insert(
+        Array.from({ length: teamCount }, (_, i) => {
+          const { name, shortName } = seedTeamName(i);
+          const swatch = SEED_TEAM_COLORS[i] ?? SEED_TEAM_COLORS[SEED_TEAM_COLORS.length - 1];
+          return { competition_id: inserted.id, name, short_name: shortName, color: swatch.color, color_dim: swatch.colorDim };
+        }),
+      );
 
       const { data, error } = await ctx.supabase
         .from("competitions")
