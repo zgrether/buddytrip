@@ -191,11 +191,15 @@ export function StrokeGameView() {
     [gameQ.data]
   );
 
-  // The game we're actually scoring: one created/joined this session, or the
-  // ?game we opened once it has a roster. Null → show the pick-players screen.
+  // The game we're configuring/scoring: one created this session, or the ?game we opened.
+  // An EXISTING game (urlGameId) resolves even with an EMPTY roster — players are added via
+  // the grouping builder in settings now (mandatory groupings), so a rosterless competition
+  // game lands on setup/settings, NOT the old pick-2–4-players screen. That pre-screen is
+  // kept ONLY for the standalone /games/new flow (no urlGameId, no competition/teams to build
+  // groups from — its quick-start auto-groups the picked players).
   const game = useMemo<{ id: string; participants: Participant[] } | null>(() => {
     if (createdGame) return createdGame;
-    if (urlGameId && resumeRoster.length > 0) {
+    if (urlGameId) {
       const participants = resumeRoster.map((uid, i) => {
         const name = memberById.get(uid)?.name ?? "Player";
         return { id: uid, name, color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
@@ -314,31 +318,30 @@ export function StrokeGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
   );
 
-  // P3 3.2 — the group picker's team sections: the GAME ROSTER (create-only participants)
-  // grouped by team, in teamsQ order, plus a neutral "Unassigned" bucket for roster members
-  // not on a team. Only teams with ≥1 rostered player get a section. Players key by user_id
-  // (what the groups draft stores + the RPC's groups[] path expects). This is the N-team
-  // component's N-section input — rack passes the two competition teams; stroke passes its
-  // roster split across however many teams it spans (2–4).
+  // The group picker's team sections: the WHOLE trip crew, grouped by their competition team
+  // (via team_assignments), with a neutral bucket for anyone not on a team. This is the full
+  // field to build groups from — the reach the old pick-2–4-players screen had, now that the
+  // grouping builder is the only way players enter the game (the create-only roster is gone).
+  // Robust to a competition with no team assignments yet (everyone falls into the crew bucket)
+  // — assignQ-only would show an empty picker there. The picker filters out anyone already in
+  // a group. Players key by user_id (what the groups draft + the RPC's groups[] path expect).
   const pickerTeams = useMemo<GroupBuilderTeam[]>(() => {
-    const roster = (gameQ.data?.participants ?? []) as { user_id: string; name?: string }[];
     const teamOfUser = new Map<string, string>();
     for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) teamOfUser.set(a.user_id, a.team_id);
-    const nameFor = (uid: string, fallback?: string) =>
-      (crew.data ?? []).find((c) => c.user_id === uid)?.displayName ?? fallback ?? "Player";
+    const crewList = (crew.data ?? []).map((c) => ({
+      id: c.user_id,
+      name: c.displayName ?? c.user?.name ?? "Player",
+      avatarIcon: null as string | null,
+    }));
     const sections: GroupBuilderTeam[] = [];
     for (const t of (teamsQ.data ?? []) as { id: string; name: string; color: string }[]) {
-      const players = roster
-        .filter((p) => teamOfUser.get(p.user_id) === t.id)
-        .map((p) => ({ id: p.user_id, name: nameFor(p.user_id, p.name), avatarIcon: null }));
+      const players = crewList.filter((c) => teamOfUser.get(c.id) === t.id);
       if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
     }
-    const unassigned = roster
-      .filter((p) => !teamOfUser.has(p.user_id))
-      .map((p) => ({ id: p.user_id, name: nameFor(p.user_id, p.name), avatarIcon: null }));
-    if (unassigned.length) sections.push({ id: "__unassigned", name: "Unassigned", color: "var(--color-bt-text-dim)", players: unassigned });
+    const unassigned = crewList.filter((c) => !teamOfUser.has(c.id));
+    if (unassigned.length) sections.push({ id: "__unassigned", name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
     return sections;
-  }, [gameQ.data, teamsQ.data, assignQ.data, crew.data]);
+  }, [teamsQ.data, assignQ.data, crew.data]);
 
   async function refreshGame() {
     await gameQ.refetch();
