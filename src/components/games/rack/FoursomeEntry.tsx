@@ -39,6 +39,7 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
           <button
             key={g.id}
             onClick={() => onEnter(g.id)}
+            data-testid="group-enter-row"
             className="min-w-0 rounded-xl border text-left"
             style={{
               padding: "10px 12px",

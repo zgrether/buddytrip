@@ -114,6 +114,11 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   // Save commits + closes the panel; the game page (scoring mode) appears next.
   await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
 
+  // 3b. Stroke now LANDS on the game SURFACE (leaderboard + groupings), not straight into
+  //     the keypad — score entry is one level down. "Start game" auto-grouped both players
+  //     into a default group; tap it to open that group's score entry.
+  await page.getByTestId("group-enter-row").first().click();
+
   // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
   //    Distinct values so the assertion can't pass on par/coincidence. Wait for
   //    each keypad key to be present before tapping rather than assuming it has
