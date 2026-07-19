@@ -11,6 +11,7 @@ import {
   configToStrokeDraft,
   strokeDraftToPayload,
   strokeDraftsEqual,
+  isWinnerTakesAll,
   type ConfigDraft,
   type DraftMatchInput,
   type RackConfigDraft,
@@ -398,6 +399,44 @@ describe("strokeDraftToPayload — placement passthrough, explicit modifiers, gr
     // Membership change → dirty (HAS_SCORES-guarded server-side).
     const moved = { ...base, groups: [["u1"], ["u2"]] };
     expect(strokeDraftToPayload(moved, base).groupsStructureDirty).toBe(true);
+  });
+});
+
+// ── Winner-takes-all default (item 6) ────────────────────────────────────────────
+describe("winner-takes-all — stroke placement default (item 6)", () => {
+  it("isWinnerTakesAll: null and a single-place split are WTA; ≥2 places are a real split", () => {
+    expect(isWinnerTakesAll(null)).toBe(true);
+    expect(isWinnerTakesAll({ type: "placement", values: [] })).toBe(true);
+    expect(isWinnerTakesAll({ type: "placement", values: [8] })).toBe(true);
+    expect(isWinnerTakesAll({ type: "placement", values: [6, 2] })).toBe(false);
+    expect(isWinnerTakesAll({ type: "per_match", value: 2 })).toBe(false);
+  });
+
+  it("configToStrokeDraft NORMALIZES a persisted single-place split to the null WTA sentinel", () => {
+    const wtaGame = { ...STROKE_GAME, points_total: 8, points_distribution: { type: "placement" as const, values: [8] } };
+    const d = configToStrokeDraft(wtaGame, STROKE_STROKES, STROKE_GROUPS, []);
+    expect(d.pointsDistribution).toBeNull(); // single-place [8] → null (no stale snapshot)
+    // A real ≥2-place split is preserved (STROKE_GAME carries [6,4,2]).
+    expect(configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, []).pointsDistribution)
+      .toEqual({ type: "placement", values: [6, 4, 2] });
+  });
+
+  it("strokeDraftToPayload MATERIALIZES the WTA null default to [total] — derived, not snapshotted", () => {
+    const wta = { ...configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, []), pointsDistribution: null, pointsTotal: 8 };
+    expect(strokeDraftToPayload(wta).pointsDistribution).toEqual({ type: "placement", values: [8] });
+    // Change the total → the winner's share recomputes at save (no stale [8]).
+    expect(strokeDraftToPayload({ ...wta, pointsTotal: 12 }).pointsDistribution).toEqual({ type: "placement", values: [12] });
+    // total==null (never configured) → stays null (nothing to award).
+    expect(strokeDraftToPayload({ ...wta, pointsTotal: null }).pointsDistribution).toBeNull();
+    // A fractional total survives (item 1) — WTA is a single place, no division.
+    expect(strokeDraftToPayload({ ...wta, pointsTotal: 2.5 }).pointsDistribution).toEqual({ type: "placement", values: [2.5] });
+  });
+
+  it("round-trips: a persisted single-place [8] loads to null and re-saves to [8] (stable, not dirty)", () => {
+    const wtaGame = { ...STROKE_GAME, points_total: 8, points_distribution: { type: "placement" as const, values: [8] } };
+    const loaded = configToStrokeDraft(wtaGame, STROKE_STROKES, STROKE_GROUPS, []);
+    expect(strokeDraftsEqual(loaded, loaded)).toBe(true); // no dirty on open
+    expect(strokeDraftToPayload(loaded).pointsDistribution).toEqual({ type: "placement", values: [8] });
   });
 });
 

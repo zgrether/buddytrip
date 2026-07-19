@@ -25,9 +25,23 @@
  * snapshotted), so entering a match can't leave a stale share behind.
  */
 
-import { evenShare, type PointsDistribution } from "./pointsDistribution";
+import { evenShare, isPlacement, type PointsDistribution } from "./pointsDistribution";
 import { isMatchPlayFormat } from "./gameRoutes";
 import type { ModifiersMap } from "./modifiers";
+
+/**
+ * WINNER TAKES ALL (item 6) — stroke/placement's default & degenerate case: one
+ * payout place that holds the WHOLE total. Represented in the DRAFT as `null` OR a
+ * single-place placement (both mean "1st = 100% = the total") — a real split has ≥2
+ * places. The `1st = total` relationship is DERIVED, never a stored snapshot: the
+ * draft carries null, the editor shows the live total, and the total is materialized
+ * into `[total]` only at payload time (`strokeDraftToPayload`) — so changing the
+ * total recomputes the winner's share with no stale value to reconcile (the item-1 /
+ * P1 lesson). The award path's `placement` branch then awards it unchanged.
+ */
+export function isWinnerTakesAll(dist: PointsDistribution | null): boolean {
+  return dist == null || (isPlacement(dist) && dist.values.length <= 1);
+}
 
 /** `games.competition_format` values (non-golf structure). ONE definition shared by the
  *  draft, the payload, and the `saveConfig` zod so they can't drift. */
@@ -579,7 +593,12 @@ export function configToStrokeDraft(
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
-    pointsDistribution: game.points_distribution ?? null,
+    // Winner-takes-all (item 6): a persisted single-place split IS winner-takes-all —
+    // normalize it to the null sentinel so the draft carries no stale snapshot and the
+    // editor re-derives `1st = total` live. A real ≥2-place split passes through.
+    pointsDistribution: isWinnerTakesAll((game.points_distribution ?? null) as PointsDistribution | null)
+      ? null
+      : (game.points_distribution ?? null),
     delegates: [...delegates].sort(),
     strokes: { ...strokes },
     modifiers: game.modifiers ?? {},
@@ -600,8 +619,17 @@ export function configToStrokeDraft(
  * blocks); the course change is the destroys tier, gated SERVER-side (COURSE_LOCKED).
  */
 export function strokeDraftToPayload(draft: StrokeConfigDraft, baseline?: StrokeConfigDraft): SaveConfigPayload {
+  // Winner-takes-all (item 6): the null/single-place default materializes to `[total]`
+  // — the whole pool to 1st — DERIVED from the current total at save time, never a
+  // stored snapshot. The award path's `placement` branch awards it unchanged, so no
+  // award-path change. A real ≥2-place split passes through; total==null (never
+  // configured) stays null (nothing to award).
+  let distribution = draft.pointsDistribution;
+  if (isWinnerTakesAll(distribution) && draft.pointsTotal != null) {
+    distribution = { type: "placement", values: [draft.pointsTotal] };
+  }
   return {
-    ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
+    ...baseDraftToPayload(draft, distribution, baseline),
     modifiers: draft.modifiers,
     courseId: draft.course.id,
     backCourseId: draft.course.backId,
