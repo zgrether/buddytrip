@@ -28,15 +28,19 @@ export function SideChips({
   players,
   chipStyle,
   gap = 6,
+  collapse = true,
 }: {
   players: SidePlayer[];
   chipStyle?: React.CSSProperties;
   gap?: number;
+  /** Forwarded to `PlayerChip` — set `false` in the Handicaps segments, whose
+   *  padded/transparent wrapper otherwise drops the avatar to an empty box (b1). */
+  collapse?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col" style={{ gap }}>
       {players.map((p) => (
-        <PlayerChip key={p.id} name={p.name} teamColor={p.teamColor} style={chipStyle} />
+        <PlayerChip key={p.id} name={p.name} teamColor={p.teamColor} style={chipStyle} collapse={collapse} />
       ))}
     </div>
   );

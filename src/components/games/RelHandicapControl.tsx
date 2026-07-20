@@ -129,12 +129,12 @@ export function RelHandicapControl({ a, b, value, onChange, matchNumber, players
       testId="handicap-row"
       sideA={
         <SideSegment selected={side === "a"} onClick={() => pickSide("a")}>
-          <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none" }} />
+          <SideChips players={a.players} chipStyle={{ background: "transparent", border: "none" }} collapse={false} />
         </SideSegment>
       }
       sideB={
         <SideSegment selected={side === "b"} onClick={() => pickSide("b")}>
-          <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none" }} />
+          <SideChips players={b.players} chipStyle={{ background: "transparent", border: "none" }} collapse={false} />
         </SideSegment>
       }
       value={
