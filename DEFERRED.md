@@ -732,3 +732,48 @@ team attribution is the full long-term model this entry captures.
 
 **Not built for BBMI** — teams are set and stay set for September, and the lock guard prevents the broken
 state. This is the post-launch model for competitions where rosters genuinely change mid-event.
+
+---
+
+## Player withdrawals — incomplete round = a NON-round (all golf formats)
+
+**Deferred / new feature. Not started.** *Enabled-but-not-required by migration 089's precise guard* —
+089 refuses silent removal of a scored participant (the unhandled version of a mid-round dropout); this
+feature is the **handled** version: a Withdrawn status the guard recognizes as legitimate (scores
+preserved, player excluded from ranking) rather than an orphaning delete.
+
+**Trigger (real BBMI scenario):** a player plays a few holes, then can't continue (injury) and rides
+along. He scored some holes but did not complete an eligible round — the system must not corrupt the
+leaderboard or settlement.
+
+**Core ruling (Zach):** *an incomplete round is a NON-round, not a bad score.* 2 holes for 8 strokes is
+**not** "8 vs full par = 64-under" — it means he **did not play an eligible round**, so he is **not
+eligible for points / not ranked.** The scores stay as a record but produce no ranking/placement. The
+trap avoided: naive `strokes − par_for_holes_played` (or a partial total vs a full-round field) would
+rank him nonsensically. Withdrawal = **excluded from ranking**, never **ranked with a partial number.**
+
+**Per-format behavior:**
+- **Match play** — equivalent to a **forfeit**; the opponent/side is credited per match-play forfeit
+  rules. It's an authored stored match, so the outcome resolves to forfeit rather than an incomplete
+  result.
+- **Stroke play** — **pretend he didn't compete**: no scores counted for eligibility, excluded from the
+  ranked leaderboard (not DNF-with-a-number, not last — just absent from standings). Entered holes stay
+  as a record.
+- **Rack-n-stack** — **same as stroke** (shared derived-slots, per-player-scores model, confirmed in the
+  rack-derivation investigation): withdrawn player excluded from his team's ranked list, not eligible.
+
+**Open design questions (for the feature spec, not resolved here):**
+1. **Status vs deletion** — WD is a *status* (scores kept, flagged out of eligibility), not a row delete.
+   Confirm keep-scores-and-flag vs remove.
+2. **Leaderboard display** — WD marker shown-but-not-ranked (golf convention) vs dropped entirely.
+3. **Rack short-handed settlement (the one real math/rules question)** — rack pairs each team's ordered
+   players A[k] vs B[k]; losing a player makes the pairing count uneven. How does a short-handed team
+   settle (missing slot = loss/half? shorter team pairs only its available players? a handicap)? A rules
+   decision, not just code. Stroke/rack-eligibility is per-player-independent; rack *settlement* is
+   relative between teams, so only rack has this.
+4. **Group/cart** — withdrawal ≠ removing him from the cart; the group persists and others keep scoring.
+   "Withdraw" is a player-status change, distinct from a group-membership edit.
+5. **Reversibility** — can WD be undone and the round resumed, or is it final for the round?
+
+**Build order:** 089's guard first (done); this feature later as its own spec with the open questions
+resolved — especially **rack short-handed settlement**, which is genuine rules design.
