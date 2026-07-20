@@ -6,6 +6,7 @@ import { ChevronLeft, Users, Settings, SlidersHorizontal, Sparkles } from "lucid
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
+import { allUnitsComplete } from "@/lib/gameCompleteness";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -1011,7 +1012,9 @@ export function RackGameView() {
 
   // Play screen.
   const final = gameQ.data?.status === "complete";
-  const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
+  // Shared finalize gate: every slot side thru every hole, live over the derived
+  // slot set (mid-round groups re-block). Same check stroke uses.
+  const allThru18 = allUnitsComplete(rack.slots.flatMap((s) => [s.a.thru, s.b.thru]), scUnits.length);
   return (
     // Title-bar (back + name/status + gear) then the GamePageHeader below — the same
     // header pattern the match/stroke game pages use.
