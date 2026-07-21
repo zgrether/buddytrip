@@ -242,18 +242,6 @@ export function StrokeGameView() {
     for (const [uid, n] of strokesOf) m[uid] = new Set([...strokeHoles(n, scIndex)].map(String));
     return m;
   }, [strokesOf, scIndex]);
-  const handicapPlayers: HandicapPlayer[] = useMemo(
-    () =>
-      (game?.participants ?? []).map((p) => ({
-        id: p.id,
-        name: p.name,
-        avatarIcon: null,
-        teamColor: null,
-        strokes: strokesOf.get(p.id) ?? 0,
-      })),
-    [game, strokesOf]
-  );
-
   // The id the saver writes to: the resumed game, else the one created here.
   const activeGameId = urlGameId ?? createdGame?.id;
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
@@ -374,6 +362,39 @@ export function StrokeGameView() {
     if (unassigned.length) sections.push({ id: "__unassigned", name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
     return sections;
   }, [teamsQ.data, assignQ.data, crew.data]);
+
+  // b2: the Handicaps roster is the LIVE DRAFTED FIELD — every player across the CURRENT
+  // draft groups (`configDraft.groups`), NOT the stale create-time `game.participants`
+  // (which capped at the ≤4 pick set and only refreshed on save-and-return). Metadata
+  // (name + team color + icon) comes from `pickerTeams` (the whole crew, grouped by team),
+  // so a group created in the builder populates Handicaps IMMEDIATELY, with team-colored
+  // avatars, no 4-cap, no save round-trip. Strokes seed from the server; the draft overlay
+  // (`draftHandicapPlayers`) shows unsaved edits.
+  const handicapMeta = useMemo(() => {
+    const m = new Map<string, { name: string; color: string | null; avatarIcon: string | null }>();
+    for (const t of pickerTeams) {
+      const teamColor = t.id === "__unassigned" ? null : t.color;
+      for (const p of t.players) m.set(p.id, { name: p.name, color: teamColor, avatarIcon: p.avatarIcon ?? null });
+    }
+    return m;
+  }, [pickerTeams]);
+  const handicapPlayers: HandicapPlayer[] = useMemo(() => {
+    const seen = new Set<string>();
+    const out: HandicapPlayer[] = [];
+    for (const uid of configDraft.groups.flat()) {
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      const meta = handicapMeta.get(uid);
+      out.push({
+        id: uid,
+        name: meta?.name ?? memberById.get(uid)?.name ?? "Player",
+        avatarIcon: meta?.avatarIcon ?? null,
+        teamColor: meta?.color ?? null,
+        strokes: strokesOf.get(uid) ?? 0,
+      });
+    }
+    return out;
+  }, [configDraft.groups, handicapMeta, strokesOf, memberById]);
 
   async function refreshGame() {
     await gameQ.refetch();
