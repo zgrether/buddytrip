@@ -276,6 +276,9 @@ export function MatchGameView() {
   // it's created. id null until chosen.
   const [courseId, setCourseId] = useState<string | null>(null);
   const [courseName, setCourseName] = useState<string | null>(null);
+  // The CoursePicker's chosen tee, carried into handleCreate's applyCourse (A2-tee)
+  // so a new-game course snapshots the SELECTED tee, not just the first one.
+  const [courseTeeName, setCourseTeeName] = useState<string | undefined>(undefined);
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
 
   // game config + pairings are STRUCTURE (kept); scores are STATE (the match
@@ -1042,7 +1045,7 @@ export function MatchGameView() {
     // Snapshot the chosen course's par+index onto the new game (the §0 contract).
     if (courseId) {
       try {
-        await applyCourse.mutateAsync({ tripId, gameId: g.id, courseId });
+        await applyCourse.mutateAsync({ tripId, gameId: g.id, courseId, teeSetName: courseTeeName });
       } catch {
         // Non-fatal: the game still works on the template default par/index.
       }
@@ -1574,9 +1577,10 @@ export function MatchGameView() {
       {coursePickerOpen && (
         <CoursePicker
           onClose={() => setCoursePickerOpen(false)}
-          onApply={({ id, name }) => {
+          onApply={({ id, name, teeName }) => {
             setCourseId(id);
             setCourseName(name);
+            setCourseTeeName(teeName);
             setCoursePickerOpen(false);
           }}
         />
