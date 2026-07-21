@@ -24,7 +24,8 @@ import {
   type NonGolfConfigDraft,
   type CompetitionFormat,
 } from "@/lib/configDraft";
-import type { PointsDistribution } from "@/lib/pointsDistribution";
+import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { validatePlacement } from "@/lib/gameConfig";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -181,6 +182,18 @@ export function NonGolfGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
   );
 
+  // C1: block Save when a STARTED placement split no longer sums to the total (owner
+  // changed Total Points after distributing). Re-derived from the draft, not snapshotted.
+  // null = fine (undistributed / per_match / exact). Server refine is the authority.
+  const distSaveBlock = useMemo(() => {
+    const d = configDraft.pointsDistribution;
+    if (!isPlacement(d) || configDraft.pointsTotal == null) return null;
+    const v = validatePlacement(configDraft.pointsTotal, d.values);
+    return v.saveable
+      ? null
+      : `Point distribution adds up to ${v.allocated}, but the total is ${configDraft.pointsTotal}. Adjust the places so they match.`;
+  }, [configDraft.pointsDistribution, configDraft.pointsTotal]);
+
   // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
   // the whole lifecycle off these).
   const draftBundle = useMemo(
@@ -321,6 +334,7 @@ export function NonGolfGameView() {
             onSave={handleSaveConfig}
             onDiscard={confirmDiscard}
             onLeave={leave}
+            saveDisabledReason={distSaveBlock}
           />
         }
       />

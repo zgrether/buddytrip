@@ -12,6 +12,7 @@ import type { StrokeStanding } from "@/lib/strokePlay";
 import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement } from "@/lib/gameConfig";
+import { isPlacement } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -853,7 +854,24 @@ export const gamesRouter = router({
           participants: z
             .array(z.object({ userId: z.string().min(1), strokes: z.number().int() }))
             .optional(),
-        }),
+        })
+          // C1 defense-in-depth: reject a PARTIAL placement split (values entered but
+          // not summing to the total) BEFORE the RPC — mirrors validatePlacement + the
+          // client Save gate, so the API can't persist what the UI blocks (the payload
+          // carries both fields, so no DB read is needed; the hash invariant is untouched).
+          // Empty values = undistributed = fine; per_match carries no total relationship.
+          .superRefine((p, ctx) => {
+            if (isPlacement(p.pointsDistribution) && p.pointsTotal != null) {
+              const check = validatePlacement(p.pointsTotal, p.pointsDistribution.values);
+              if (!check.saveable) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: ["pointsDistribution"],
+                  message: `Points must total ${p.pointsTotal} exactly — ${check.allocated} allocated, ${check.remaining < 0 ? `${-check.remaining} over` : `${check.remaining} left to place`}.`,
+                });
+              }
+            }
+          }),
       })
     )
     .use(requireGameEdit())

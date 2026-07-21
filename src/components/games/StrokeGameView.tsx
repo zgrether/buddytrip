@@ -29,7 +29,8 @@ import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { fmtValue, type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
-import type { PointsDistribution } from "@/lib/pointsDistribution";
+import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { validatePlacement } from "@/lib/gameConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -335,6 +336,19 @@ export function StrokeGameView() {
       }) as GameRow,
     [gameQ.data, configDraft.name, configDraft.course],
   );
+
+  // C1: block Save when a STARTED placement split no longer sums to the total (e.g.
+  // the owner changed Total Points after distributing). Re-derived from the draft, not
+  // snapshotted. null = fine (undistributed / per_match / exact). The server refine is
+  // the authority; this is the client-side pre-block + the reason shown in the save bar.
+  const distSaveBlock = useMemo(() => {
+    const d = configDraft.pointsDistribution;
+    if (!isPlacement(d) || configDraft.pointsTotal == null) return null;
+    const v = validatePlacement(configDraft.pointsTotal, d.values);
+    return v.saveable
+      ? null
+      : `Point distribution adds up to ${v.allocated}, but the total is ${configDraft.pointsTotal}. Adjust the places so they match.`;
+  }, [configDraft.pointsDistribution, configDraft.pointsTotal]);
 
   // The group picker's team sections: the WHOLE trip crew, grouped by their competition team
   // (via team_assignments), with a neutral bucket for anyone not on a team. This is the full
@@ -990,6 +1004,7 @@ export function StrokeGameView() {
               onSave={handleSaveConfig}
               onDiscard={confirmDiscard}
               onLeave={leave}
+              saveDisabledReason={distSaveBlock}
             />
           }
         />

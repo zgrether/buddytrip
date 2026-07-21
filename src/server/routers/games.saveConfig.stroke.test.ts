@@ -163,6 +163,29 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
     ).rejects.toThrow(/course/i);
   });
 
+  it("C1: a placement split that no longer sums to the total is REJECTED at save", async () => {
+    const gameId = await newStrokeGame("Stroke C1 dist gate");
+    // Valid: 6+4+2 = 12 = total → saves.
+    await save(gameId, { pointsTotal: 12, pointsDistribution: { type: "placement", values: [6, 4, 2] } });
+    expect(Number((await getById(gameId)).points_total)).toBe(12);
+
+    // Change the total to 10 while the split still sums to 12 → the server refine refuses
+    // BEFORE the RPC (mirrors the client Save gate; the payload carries both fields).
+    await expect(
+      save(gameId, { pointsTotal: 10, pointsDistribution: { type: "placement", values: [6, 4, 2] } }),
+    ).rejects.toThrow(/total/i);
+    // Nothing persisted — total is still 12.
+    expect(Number((await getById(gameId)).points_total)).toBe(12);
+
+    // Fixing the split so it sums to the new total saves.
+    await save(gameId, { pointsTotal: 10, pointsDistribution: { type: "placement", values: [6, 3, 1] } });
+    expect(Number((await getById(gameId)).points_total)).toBe(10);
+
+    // An UNDISTRIBUTED split (empty values) under any total still saves (the shell state).
+    await save(gameId, { pointsTotal: 20, pointsDistribution: { type: "placement", values: [] } });
+    expect(Number((await getById(gameId)).points_total)).toBe(20);
+  });
+
   it("go-live requires GROUPED participants (089 mandatory groupings) — an ungrouped roster is NOT_READY", async () => {
     const gameId = await newStrokeGame("Stroke grouped readiness");
     // A bare roster with no playing group: ungrouped = not in the game → go-live refused

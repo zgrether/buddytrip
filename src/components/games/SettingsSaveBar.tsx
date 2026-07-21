@@ -27,6 +27,7 @@ export function SettingsSaveBar({
   onSave,
   onDiscard,
   onLeave,
+  saveDisabledReason,
 }: {
   dirty: boolean;
   saving: boolean;
@@ -37,9 +38,23 @@ export function SettingsSaveBar({
   onDiscard: () => void;
   /** Close the panel after a successful Save (the draft is already clean). */
   onLeave: () => void;
+  /** When set, Save is BLOCKED (disabled) and this reason shows as an amber hint —
+   *  e.g. a points distribution that no longer sums to the total (C1). Distinct from
+   *  `error`, which is a RED post-save failure. Cancel stays enabled (you can leave). */
+  saveDisabledReason?: string | null;
 }) {
+  const blocked = !!saveDisabledReason;
   return (
     <div data-testid="settings-save-bar">
+      {blocked && dirty && !saving && (
+        <p
+          className="mb-2 rounded-lg px-3 py-2 text-[12.5px] leading-snug"
+          style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)", color: "var(--color-bt-warning)" }}
+          data-testid="settings-save-blocked"
+        >
+          {saveDisabledReason}
+        </p>
+      )}
       {error && (
         <p
           className="mb-2 rounded-lg px-3 py-2 text-[12.5px] leading-snug"
@@ -75,7 +90,7 @@ export function SettingsSaveBar({
         <button
           type="button"
           onClick={() => { void onSave().then((ok) => { if (ok) onLeave(); }); }}
-          disabled={!dirty || saving}
+          disabled={!dirty || saving || blocked}
           className="flex-1 disabled:opacity-40"
           style={{
             height: 40,
