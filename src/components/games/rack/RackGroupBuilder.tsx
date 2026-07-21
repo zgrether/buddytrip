@@ -54,6 +54,9 @@ export function RackGroupBuilder({
   for (const t of teams) for (const p of t.players) metaOf.set(p.id, { name: p.name, color: t.color });
 
   const assigned = assignedIds(groups);
+  // D: the pool still to place — hide "Add group" once everyone's grouped (an empty
+  // extra group would strand a slot). Returns as soon as someone is ungrouped again.
+  const unassignedCount = teams.reduce((n, t) => n + t.players.filter((p) => !assigned.has(p.id)).length, 0);
 
   const addGroup = () => onChange(addGroupOp(groups));
   const removeGroup = (i: number) => onChange(removeGroupOp(groups, i));
@@ -125,7 +128,7 @@ export function RackGroupBuilder({
           </div>
         ))}
 
-        {groups.length < MAX_GROUPS && (
+        {groups.length < MAX_GROUPS && unassignedCount > 0 && (
           <button
             type="button"
             onClick={addGroup}
