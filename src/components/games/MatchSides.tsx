@@ -38,7 +38,12 @@ export function SideChips({
   collapse?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col" style={{ gap }}>
+    // `w-full`: fill the parent's inline size. In a grid cell (Point Distribution) or a
+    // block wrapper (MatchupChips) a grid/block child already stretches, so this is a
+    // no-op there; but inside the Handicaps `Segment` BUTTON, SideChips is a flex item
+    // that does NOT fill the main axis by default — it collapsed to ~20px, the avatar
+    // overflowed, and the `min-w-0 truncate` name shrank to zero (the missing-names bug).
+    <div className="flex w-full min-w-0 flex-col" style={{ gap }}>
       {players.map((p) => (
         <PlayerChip key={p.id} name={p.name} teamColor={p.teamColor} style={chipStyle} collapse={collapse} />
       ))}
