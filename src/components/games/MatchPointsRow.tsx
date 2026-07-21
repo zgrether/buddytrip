@@ -170,24 +170,35 @@ export function MatchPointsRow({
       testId="row-point-distribution"
     >
       <div className="flex flex-col" data-testid="points-override-panel">
-        {matches.map((m, idx) => (
-          <MatchGridRow
-            key={m.id}
-            number={m.number}
-            playersPerSide={m.aPlayers.length}
-            isFirst={idx === 0}
-            sideA={<SideChips players={m.aPlayers} />}
-            sideB={<SideChips players={m.bPlayers} />}
-            value={
-              <OverrideField
-                even={even}
-                value={m.pointValue}
-                disabled={locked || !canEdit}
-                onCommit={(v) => onOverrideChange(m.id, v)}
-              />
-            }
-          />
-        ))}
+        {matches.map((m, idx) => {
+          // The even share THIS match would get if it weren't overridden — computed
+          // EXCLUDING its own override (the share it reverts to on ×). For a non-
+          // overridden match this equals the pool `even`; for an overridden one it's the
+          // correct "back to even" value (not the degenerate 0-remaining pool share).
+          const otherOverrides = matches
+            .filter((o) => o.id !== m.id)
+            .map((o) => o.pointValue)
+            .filter((v): v is number => v != null);
+          const revertEven = evenShare(localTotal, otherOverrides, matchCount);
+          return (
+            <MatchGridRow
+              key={m.id}
+              number={m.number}
+              playersPerSide={m.aPlayers.length}
+              isFirst={idx === 0}
+              sideA={<SideChips players={m.aPlayers} />}
+              sideB={<SideChips players={m.bPlayers} />}
+              value={
+                <OverrideField
+                  even={revertEven}
+                  value={m.pointValue}
+                  disabled={locked || !canEdit}
+                  onCommit={(v) => onOverrideChange(m.id, v)}
+                />
+              }
+            />
+          );
+        })}
 
         {/* Honest fraction (never rounded): shown when the even share isn't whole and
             no override is masking it — nudge a divisible total or an override. */}
@@ -201,8 +212,10 @@ export function MatchPointsRow({
   );
 }
 
-/** One match's override input: the even share as a dim default when unset; an amber
- *  value + × reset when overridden. Commits on blur / Enter. */
+/** One match's override control (E): a compact `value · ×` where the value is a TRIGGER —
+ *  tapping it opens a popup with the Total Points picker (decimal tap-entry), which commits
+ *  itself (no blur ambiguity, no inline Save). The even share is the dim default when unset;
+ *  an amber value when overridden. `×` clears the override → back to the even share. */
 function OverrideField({
   even,
   value,
@@ -214,44 +227,15 @@ function OverrideField({
   disabled: boolean;
   onCommit: (value: number | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const isOverridden = value != null;
-  const [draft, setDraft] = useState(isOverridden ? String(value) : "");
-  // Resync when the persisted override changes externally — React's render-phase
-  // "adjust state on prop change" pattern (no effect, no cascading-render lint trip).
-  const [lastValue, setLastValue] = useState(value);
-  if (value !== lastValue) {
-    setLastValue(value);
-    setDraft(value != null ? String(value) : "");
-  }
-
-  const commit = () => {
-    const trimmed = draft.trim();
-    if (trimmed === "") {
-      if (isOverridden) onCommit(null); // cleared → back to the even share
-      return;
-    }
-    const n = Number(trimmed);
-    if (!Number.isFinite(n) || n < 0) {
-      setDraft(isOverridden ? String(value) : ""); // reject → revert
-      return;
-    }
-    if (n !== value) onCommit(n);
-  };
-
   return (
     <div className="flex flex-shrink-0 items-center" style={{ gap: 5, width: 78, justifyContent: "flex-end" }}>
-      <input
-        type="text"
-        inputMode="decimal"
-        value={draft}
-        placeholder={fmt(even)}
+      <button
+        type="button"
         disabled={disabled}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-        data-testid="points-override-input"
+        onClick={() => setOpen(true)}
+        data-testid="points-override-trigger"
         style={{
           width: 48,
           textAlign: "center",
@@ -261,10 +245,12 @@ function OverrideField({
           fontWeight: 700,
           background: isOverridden ? "var(--color-bt-warning-faint)" : "var(--color-bt-base)",
           border: `1px solid ${isOverridden ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
-          color: isOverridden ? "var(--color-bt-warning)" : "var(--color-bt-text)",
-          outline: "none",
+          color: isOverridden ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+          cursor: disabled ? "default" : "pointer",
         }}
-      />
+      >
+        {fmt(isOverridden ? (value as number) : even)}
+      </button>
       <button
         type="button"
         aria-label="Reset to even share"
@@ -276,6 +262,87 @@ function OverrideField({
       >
         <X size={12} />
       </button>
+      {open && !disabled && (
+        <OverridePopup
+          even={even}
+          value={value}
+          onSet={(n) => onCommit(n)}
+          onClear={() => { onCommit(null); setOpen(false); }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The override picker popup (E): a centered card holding the Total Points `Stepper`
+ *  (decimal tap-entry). It COMMITS ITSELF — each step/typed value reports the override up
+ *  via `onSet`; there is no Save button. "Use even share" clears the override; the backdrop
+ *  and "Done" just close (the value is already committed). */
+function OverridePopup({
+  even,
+  value,
+  onSet,
+  onClear,
+  onClose,
+}: {
+  even: number;
+  value: number | null;
+  onSet: (n: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      style={{ background: "rgba(0,0,0,0.55)" }}
+      onClick={onClose}
+      data-testid="points-override-popup"
+    >
+      <div
+        className="w-full max-w-[280px] rounded-2xl p-5"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", boxShadow: "0 12px 32px rgba(0,0,0,0.45)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="mb-1 text-center text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>Match points</p>
+        <p className="mb-4 text-center text-[11.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Even share is {fmt(even)}. Set a custom value, or use the even share.
+        </p>
+        <div className="flex justify-center">
+          <Stepper
+            size="full"
+            value={value ?? even}
+            min={0}
+            max={MAX_TOTAL}
+            editable
+            formatValue={fmt}
+            onChange={onSet}
+            testId="override-stepper"
+          />
+        </div>
+        <div className="mt-5 flex flex-col gap-2">
+          {value != null && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="w-full rounded-xl py-2.5 text-sm font-semibold"
+              style={{ background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+              data-testid="override-use-even"
+            >
+              Use even share ({fmt(even)})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl py-2.5 text-sm font-semibold"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)", border: "none" }}
+            data-testid="override-done"
+          >
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

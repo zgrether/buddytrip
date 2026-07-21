@@ -439,11 +439,17 @@ export function PlacementEditor({
             <span className="w-16 flex-shrink-0 text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {ordinalShort(i + 1)} place
             </span>
-            <input
-              type="number" min={0} value={p}
-              onChange={(e) => { const next = [...placeInputs]; next[i] = e.target.value; setPlaceInputs(next); }}
-              className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+            {/* C2: the app number picker (Stepper) — decimal tap-entry, no browser
+                spinner. An untouched place stays "" in state (Stepper shows 0, but
+                onChange only fires on a real edit), so the undistributed-shell/started
+                semantics the validation depends on are preserved. */}
+            <Stepper
+              size="inline"
+              value={Number(p.trim() || "0")}
+              min={0}
+              editable
+              onChange={(n) => { const next = [...placeInputs]; next[i] = String(n); setPlaceInputs(next); }}
+              testId={`place-input-${i}`}
             />
             <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>pts</span>
             {placeInputs.length > 1 && (
