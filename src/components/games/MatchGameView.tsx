@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -30,7 +30,6 @@ import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import type { SidePlayer } from "@/components/games/MatchSides";
-import { DragHandle } from "@/components/games/DragHandle";
 import { MatchNumberBadge } from "@/components/games/MatchNumberBadge";
 import { SegmentedToggle } from "@/components/games/SegmentedToggle";
 import { PlayerChip } from "@/components/games/PlayerChip";
@@ -2340,6 +2339,29 @@ function NewGame({
 // The two team columns flex (minmax(0,1fr)); the four structural columns are fixed.
 const MATCH_GRID = "24px 22px minmax(0,1fr) auto minmax(0,1fr) 24px";
 
+/** F: up/down reorder arrows for a match row (touch-reliable, replaces DnD). Fills the
+ *  24px leading column; up disabled on the first row, down on the last. */
+function ReorderArrows({ index, count, onMove }: { index: number; count: number; onMove: (dir: -1 | 1) => void }) {
+  const btn = (dir: -1 | 1, disabled: boolean, Icon: typeof ChevronUp, label: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onMove(dir)}
+      className="flex items-center justify-center disabled:opacity-25"
+      style={{ width: 24, height: 15, color: "var(--color-bt-text-dim)" }}
+    >
+      <Icon size={14} />
+    </button>
+  );
+  return (
+    <div className="flex flex-col items-center justify-center" data-testid={`match-reorder-${index}`}>
+      {btn(-1, index === 0, ChevronUp, `Move match ${index + 1} up`)}
+      {btn(1, index === count - 1, ChevronDown, `Move match ${index + 1} down`)}
+    </div>
+  );
+}
+
 function MatchSetup({
   draft,
   setDraft,
@@ -2372,13 +2394,9 @@ function MatchSetup({
   maxMatches: number;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
 }) {
-  // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
-  // the original array (0..length). The accent line shows only once the cursor
-  // crosses a neighbour's midpoint, and never on the dragged card's own two
-  // adjacent slots (a no-op). Drag is armed only while the grip is held so the
-  // slots/stepper inside the card stay tappable.
-  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
-  const [armedIdx, setArmedIdx] = useState<number | null>(null);
+  // F: reorder via up/down ARROWS (touch-reliable), not drag-and-drop — the ends are
+  // disabled (up on the first row, down on the last). Matches only; agenda/roster DnD is
+  // untouched (a future refactor unifies reorder responsively — #517).
   // "＋ Add match" reveals the "Add singles / Add doubles" choice (A2a) so each
   // match's shape is picked when it's added — a game can mix both.
   const [addOpen, setAddOpen] = useState(false);
@@ -2387,24 +2405,15 @@ function MatchSetup({
     setAddOpen(false);
   };
 
-  const reorderTo = (from: number, ins: number) =>
+  // Swap a match with its neighbour (dir −1 up / +1 down); clamped at the ends. The
+  // per-match `pointValue` override rides ON each DraftMatch, so it moves with the row.
+  const moveMatch = (from: number, dir: -1 | 1) =>
     setDraft((prev) => {
-      if (from < 0 || from >= prev.length) return prev;
-      if (ins === from || ins === from + 1) return prev; // own slot — no-op
+      const to = from + dir;
+      if (to < 0 || to >= prev.length) return prev;
       const copy = prev.slice();
-      const [moved] = copy.splice(from, 1);
-      const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
-      copy.splice(target, 0, moved);
+      [copy[from], copy[to]] = [copy[to], copy[from]];
       return copy;
-    });
-
-  const onCardDragOver = (i: number, clientY: number, rect: DOMRect) =>
-    setDragState((s) => {
-      if (!s) return s;
-      const isTop = clientY < rect.top + rect.height / 2;
-      let ins: number | null = isTop ? i : i + 1;
-      if (ins === s.from || ins === s.from + 1) ins = null; // adjacent = no-op, hide line
-      return s.ins === ins ? s : { ...s, ins };
     });
 
   // One member (a single user) as a Participant — for an individual setup slot.
@@ -2471,62 +2480,25 @@ function MatchSetup({
 
       <div className="flex flex-col">
         {draft.map((d, i) => {
-          const dragging = dragState?.from === i;
-          const dropIndicator: "top" | "bottom" | null =
-            dragState?.ins === i
-              ? "top"
-              : i === draft.length - 1 && dragState?.ins === draft.length
-                ? "bottom"
-                : null;
           return (
             <div
               key={i}
-              draggable={armedIdx === i}
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                setDragState({ from: i, ins: null });
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                onCardDragOver(i, e.clientY, e.currentTarget.getBoundingClientRect());
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
-                setDragState(null);
-                setArmedIdx(null);
-              }}
-              onDragEnd={() => {
-                setDragState(null);
-                setArmedIdx(null);
-              }}
               // The match is one flat grid ROW (no frame, no "MATCH N" band). The
-              // four structural columns (grab │ # │ vs │ ×) center against the team
+              // four structural columns (reorder │ # │ vs │ ×) center against the team
               // columns, which hold one chip (1v1) or two stacked chips (2v2). A
               // hairline separator above every match but the first delimits them —
               // quiet in 1v1, load-bearing in 2v2 (it makes the 2-row match read as
               // one unit).
               className="grid items-center"
-              style={{ position: "relative", gridTemplateColumns: MATCH_GRID, gap: 8, padding: "10px 0", opacity: dragging ? 0.4 : 1, borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
+              style={{ gridTemplateColumns: MATCH_GRID, gap: 8, padding: "10px 0", borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
             >
-              {dropIndicator && (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    left: 2,
-                    right: 2,
-                    [dropIndicator === "top" ? "top" : "bottom"]: -1,
-                    height: 2,
-                    borderRadius: 2,
-                    background: "var(--color-bt-accent)",
-                    boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-              {/* grab — far left, away from the × (reorder isn't next to remove). */}
-              <DragHandle onMouseDown={() => setArmedIdx(i)} onMouseUp={() => setArmedIdx(null)} />
+              {/* reorder — up/down arrows, far left, away from the × (reorder isn't next
+                  to remove). Ends disabled: up on the first row, down on the last (F). */}
+              <ReorderArrows
+                index={i}
+                count={draft.length}
+                onMove={(dir) => moveMatch(i, dir)}
+              />
               {/* # — the table index column (separate from grab), with a 1V1/2V2 shape
                   tag beneath (the shared MatchNumberBadge, also used by Point
                   Distribution + Handicaps so the leading column reads the same). */}
