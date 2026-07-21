@@ -319,6 +319,23 @@ export function StrokeGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
   );
 
+  // The game row as the DRAFT sees it — the inline course row renders course/tee
+  // state from `game.course_id`/`scorecard_schema`, so it must reflect the PENDING
+  // pick, not the unchanged server row (Cluster A1). Without this the selection was
+  // written to `courseDraft` but the picker kept rendering the stale server course
+  // and visibly "spat back". Mirrors Match's `draftGameRow` (the working reference).
+  const draftGameRow = useMemo(
+    () =>
+      ({
+        ...(gameQ.data as unknown as GameRow),
+        name: configDraft.name,
+        course_id: configDraft.course.id,
+        back_course_id: configDraft.course.backId,
+        scorecard_schema: configDraft.course.scorecardSchema,
+      }) as GameRow,
+    [gameQ.data, configDraft.name, configDraft.course],
+  );
+
   // The group picker's team sections: the WHOLE trip crew, grouped by their competition team
   // (via team_assignments), with a neutral bucket for anyone not on a team. This is the full
   // field to build groups from — the reach the old pick-2–4-players screen had, now that the
@@ -932,7 +949,7 @@ export function StrokeGameView() {
           onBack={closeConfig}
           tripId={tripId}
           competitionId={gameCompetitionId}
-          game={gameQ.data as unknown as GameRow}
+          game={draftGameRow}
           canEdit={canEdit}
           isOwner={isOwner}
           settingsZoneLabel="Group Settings"

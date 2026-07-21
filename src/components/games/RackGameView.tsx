@@ -86,7 +86,9 @@ export function RackGameView() {
   const { canEdit, isOwner, loading: roleLoading } = useGameEditAccess(tripId, gid);
   const [mode, setMode] = useState<RackMode>("current");
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
-  const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
+  // Carries the CoursePicker's selected TEE too (A2-tee) — dropping it left a
+  // new-game course applied on its first tee regardless of the tee the owner chose.
+  const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string; teeName?: string } | null>(null);
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   // The tapped group's scorecard: "entry" (score keypad) vs "grid" (the read grid,
   // opened by the top-right scorecard icon).
@@ -407,6 +409,23 @@ export function RackGameView() {
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, groupsDraft, strokesDraft, courseDraft, modifiersDraft],
   );
 
+  // The game row as the DRAFT sees it — the inline course row renders course/tee
+  // state from `game.course_id`/`scorecard_schema`, so it must reflect the PENDING
+  // pick, not the unchanged server row (Cluster A1). Without this the selection was
+  // written to `courseDraft` but the picker kept rendering the stale server course
+  // and visibly "spat back". Mirrors Match's `draftGameRow` (the working reference).
+  const draftGameRow = useMemo(
+    () =>
+      ({
+        ...(gameQ.data as unknown as GameRow),
+        name: configDraft.name,
+        course_id: configDraft.course.id,
+        back_course_id: configDraft.course.backId,
+        scorecard_schema: configDraft.course.scorecardSchema,
+      }) as GameRow,
+    [gameQ.data, configDraft.name, configDraft.course],
+  );
+
   // Rack SLOT count over the DRAFT carts = rank-paired 1v1s = min(grouped-A, grouped-B),
   // the divisor for the per-slot points share (matches `computeRack`'s n and the payload
   // derivation). Draft-based so it tracks carts as the owner builds them.
@@ -438,7 +457,7 @@ export function RackGameView() {
     }
     if (pendingCourse) {
       try {
-        await applyCourse.mutateAsync({ tripId, gameId, courseId: pendingCourse.id });
+        await applyCourse.mutateAsync({ tripId, gameId, courseId: pendingCourse.id, teeSetName: pendingCourse.teeName });
       } catch {
         /* template default par/index still applies */
       }
@@ -873,7 +892,7 @@ export function RackGameView() {
           onBack={closeConfig}
           tripId={tripId!}
           competitionId={competitionId ?? null}
-          game={gameQ.data as unknown as GameRow}
+          game={draftGameRow}
           canEdit={canEdit}
           isOwner={isOwner}
           onChanged={() => void refreshGame()}
