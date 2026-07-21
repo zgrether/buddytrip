@@ -16,6 +16,7 @@ import { Avatar } from "@/components/Avatar";
 export function PlayerChip({
   name,
   teamColor,
+  collapse = true,
   className = "",
   style,
   ...rest
@@ -23,6 +24,12 @@ export function PlayerChip({
   name: string;
   /** Drives the team-colored initial. Omit/null → Avatar's neutral fallback. */
   teamColor?: string | null;
+  /** Progressive avatar degradation under width pressure (#657). Default ON for the
+   *  tight match 2-col slot. Set `false` where the chip is nested inside a padded,
+   *  surface-stripped wrapper (the Handicaps segments) — there the chip-tier DROP
+   *  threshold collapses the avatar to nothing and leaves an empty box (the b1
+   *  regression). Off → the disk always renders. */
+  collapse?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -40,7 +47,7 @@ export function PlayerChip({
     >
       {/* §11 team-colored initial — no avatarIcon. Degrades disk→dot→drop under
           space pressure (chip tier) so the name yields last, not first. */}
-      <Avatar name={name} teamColor={teamColor} sizePx={30} collapse collapseAt="chip" />
+      <Avatar name={name} teamColor={teamColor} sizePx={30} collapse={collapse} collapseAt="chip" />
       <span
         className="min-w-0 truncate"
         style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}
