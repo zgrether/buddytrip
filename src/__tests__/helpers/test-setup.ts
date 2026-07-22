@@ -20,6 +20,7 @@ import { appRouter } from "../../server/router";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import type { AuthData, SharedUser } from "./global-setup";
+import { withSeedRetry } from "./seedRetry";
 
 // ---------------------------------------------------------------------------
 // Env
@@ -161,15 +162,18 @@ export class TestContext {
   /** Create a trip with the primary user as Owner. */
   async createTrip(title = "Test Trip"): Promise<string> {
     const tripId = `test-trip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error: tripErr } = await this.admin
-      .from("trips")
-      .insert({ id: tripId, title });
-    if (tripErr) throw new Error(`Failed to create trip: ${tripErr.message}`);
+    await withSeedRetry(
+      () => this.admin.from("trips").insert({ id: tripId, title }),
+      "Failed to create trip"
+    );
 
-    const { error: memberErr } = await this.admin
-      .from("trip_members")
-      .insert({ trip_id: tripId, user_id: this.user.id, role: "Owner", status: "in" });
-    if (memberErr) throw new Error(`Failed to add trip member: ${memberErr.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin
+          .from("trip_members")
+          .insert({ trip_id: tripId, user_id: this.user.id, role: "Owner", status: "in" }),
+      "Failed to add trip member"
+    );
 
     this._tripIds.push(tripId);
     return tripId;
@@ -182,10 +186,13 @@ export class TestContext {
     tripRole: "Owner" | "Organizer" | "Member" = "Member"
   ) {
     const user = this.getUser(role);
-    const { error } = await this.admin
-      .from("trip_members")
-      .insert({ trip_id: tripId, user_id: user.id, role: tripRole, status: "in" });
-    if (error) throw new Error(`Failed to add trip member: ${error.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin
+          .from("trip_members")
+          .insert({ trip_id: tripId, user_id: user.id, role: tripRole, status: "in" }),
+      "Failed to add trip member"
+    );
   }
 
   /** Add a user by userId to a trip (for cases where you have the id directly). */
@@ -194,10 +201,13 @@ export class TestContext {
     userId: string,
     tripRole: "Owner" | "Organizer" | "Member" = "Member"
   ) {
-    const { error } = await this.admin
-      .from("trip_members")
-      .insert({ trip_id: tripId, user_id: userId, role: tripRole, status: "in" });
-    if (error) throw new Error(`Failed to add trip member: ${error.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin
+          .from("trip_members")
+          .insert({ trip_id: tripId, user_id: userId, role: tripRole, status: "in" }),
+      "Failed to add trip member"
+    );
   }
 
   /** Create a competition for a trip. */
@@ -209,17 +219,18 @@ export class TestContext {
     const competitionId = `test-comp-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 6)}`;
-    const { error } = await this.admin
-      .from("competitions")
-      .insert({
-        id: competitionId,
-        trip_id: tripId,
-        name,
-        // Default (omitted) → the DB default 'match_play'. Suites that test the
-        // points/placement award model pass scoringModel:'points' (W-NONGOLF-02).
-        ...(opts.scoringModel ? { scoring_model: opts.scoringModel } : {}),
-      });
-    if (error) throw new Error(`Failed to create competition: ${error.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin.from("competitions").insert({
+          id: competitionId,
+          trip_id: tripId,
+          name,
+          // Default (omitted) → the DB default 'match_play'. Suites that test the
+          // points/placement award model pass scoringModel:'points' (W-NONGOLF-02).
+          ...(opts.scoringModel ? { scoring_model: opts.scoringModel } : {}),
+        }),
+      "Failed to create competition"
+    );
     this._competitionIds.push(competitionId);
     return competitionId;
   }
@@ -231,15 +242,18 @@ export class TestContext {
     opts: { shortName?: string; color?: string; colorDim?: string } = {}
   ): Promise<string> {
     const teamId = `test-team-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error } = await this.admin.from("teams").insert({
-      id: teamId,
-      competition_id: competitionId,
-      name,
-      short_name: opts.shortName ?? name.slice(0, 3).toUpperCase(),
-      color: opts.color ?? "#3b82f6",
-      color_dim: opts.colorDim ?? "#0a1a2a",
-    });
-    if (error) throw new Error(`Failed to create team: ${error.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin.from("teams").insert({
+          id: teamId,
+          competition_id: competitionId,
+          name,
+          short_name: opts.shortName ?? name.slice(0, 3).toUpperCase(),
+          color: opts.color ?? "#3b82f6",
+          color_dim: opts.colorDim ?? "#0a1a2a",
+        }),
+      "Failed to create team"
+    );
     this._teamIds.push(teamId);
     return teamId;
   }
@@ -251,14 +265,17 @@ export class TestContext {
     name: string | null = "Group A"
   ): Promise<string> {
     const groupId = `test-grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error } = await this.admin.from("play_groups").insert({
-      id: groupId,
-      event_id: eventId,
-      name,
-      tee_time: "8:00 AM",
-      player_ids: playerIds,
-    });
-    if (error) throw new Error(`Failed to create play group: ${error.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin.from("play_groups").insert({
+          id: groupId,
+          event_id: eventId,
+          name,
+          tee_time: "8:00 AM",
+          player_ids: playerIds,
+        }),
+      "Failed to create play group"
+    );
     this._groupIds.push(groupId);
     return groupId;
   }
@@ -273,21 +290,31 @@ export class TestContext {
    */
   async groupStrokeParticipants(gameId: string, userIds: string[]): Promise<string> {
     const groupId = `test-grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error: grpErr } = await this.admin.from("play_groups").insert({
-      id: groupId,
-      game_id: gameId,
-      display_name: "Group 1",
-      tee_time: null,
-    });
-    if (grpErr) throw new Error(`Failed to create play group: ${grpErr.message}`);
+    await withSeedRetry(
+      () =>
+        this.admin.from("play_groups").insert({
+          id: groupId,
+          game_id: gameId,
+          display_name: "Group 1",
+          tee_time: null,
+        }),
+      "Failed to create play group"
+    );
     this.trackGroup(groupId);
 
-    const { error: updErr } = await this.admin
-      .from("game_participants")
-      .update({ play_group_id: groupId })
-      .eq("game_id", gameId)
-      .in("user_id", userIds);
-    if (updErr) throw new Error(`Failed to assign play group: ${updErr.message}`);
+    // Idempotent: re-applying the same update sets the same value again — no
+    // uniqueness constraint to collide with, so a plain 502-retry is safe
+    // without the 23505 tell.
+    await withSeedRetry(
+      () =>
+        this.admin
+          .from("game_participants")
+          .update({ play_group_id: groupId })
+          .eq("game_id", gameId)
+          .in("user_id", userIds),
+      "Failed to assign play group",
+      { idempotent: true }
+    );
 
     return groupId;
   }
