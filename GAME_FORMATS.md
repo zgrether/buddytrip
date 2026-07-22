@@ -72,8 +72,9 @@ A format is defined by where it sits on three independent axes:
 *Standard formats* carry external rules-of-golf grounding; *authored formats* are
 BuddyTrip's own inventions and their rules live **here**.
 
-> `⚠️ VERIFY-CODE` **Someday golf formats** — foursomes/alt-shot, four-ball
-> (`group_holes` entry, `match_play`) — have **no `gtt_*` id yet**. Not live formats.
+> **Someday golf formats** — foursomes/alt-shot, four-ball (`group_holes` entry,
+> `match_play`) — confirmed no `gtt_*` id exists (`gameTypes.ts` carries only the four
+> families above). Not live formats.
 
 ---
 
@@ -150,9 +151,11 @@ itself); `×` / "use even share" clears to the derived default (even-share **exc
 match's own override**, so it reverts to the real share, not a degenerate 0). Award per match
 = `point_value ?? even_share`; **team total = `points_total`** (authoritative).
 
-> `⚠️ VERIFY-CODE` **Override redistribution.** Intent: an override holds `total_points`
-> fixed by redistributing the remainder across the other matches (total is the invariant).
-> Confirm the code does exactly this (vs. letting the total float when a match is overridden).
+> **Override redistribution — confirmed.** `evenShare(total, overrides, matchCount)`
+> (`pointsDistribution.ts`) = `(total − Σoverrides) ÷ (matchCount − overrideCount)` — the
+> remainder after subtracting overrides is spread evenly over the rest, so
+> `Σoverrides + (matchCount − overrideCount) × evenShare = total` always. `total_points`
+> is held fixed exactly as intended.
 
 **Modifiers.** `moving_tees`, `glorious_holes` (doubles a hole's match value).
 
@@ -162,8 +165,9 @@ standard match-play concepts. **Glorious Holes is not a special case** — it's 
 simply contributes 2 toward holes-up). A halved hole changes nothing; a **halved/tied match
 splits its `point_value`** evenly between the sides.
 
-> `⚠️ VERIFY-CODE` Confirm the code implements the standard halved-match **points split**.
-> (Not a ruling — the rule is standard match play; this is a code-conformance check.)
+> **Halved-match points split — confirmed.** `writeTeamMatchPoints`
+> (`server/lib/matchPlay.ts`): a `halve` result awards `value / 2` to each side's team
+> (`value` = the match's own override, else the even share) — exactly the standard split.
 
 **Relationships.** Rack borrows match's **finalization model**.
 
@@ -188,15 +192,18 @@ named person). The surplus player still plays and enters scores (counts for thei
 they're excluded from **match settlement** only, and the UI marks their scores "not in play."
 `total_points` distributes evenly across the pairable slots (i.e. total ÷ `min(A,B)`).
 
-> `⚠️ VERIFY-CODE` **Confirm rack settles this way (2A):** even distribution of `total_points`
-> over `min(grouped-A, grouped-B)`, worst-surplus slots unpaired. This is the intended rule;
-> if `computeRack` diverges, that's a delta to fix in code.
+> **Rack settlement (2A) — confirmed.** `computeRack` (`lib/rackNStack.ts`): `n =
+> Math.min(A.length, B.length)`; each team is sorted ascending by net-to-par (best
+> first) before pairing, and the surplus is `(A.length > B.length ? A : B).slice(n)` —
+> the tail of the sorted (i.e. worst-scoring) array, taken by position, never by
+> identity. Matches 2A exactly.
 
-> `⚠️ VERIFY-CODE / possible leak` **Per-slot overrides in rack.** Rack's intent is **pure
-> even-share** (total ÷ matches), with per-slot overrides *not* part of its design — the
-> override concept is **match-only** (the 2v1). A code read suggests rack may carry the same
-> `point_value` override model as match. **Confirm:** is a per-slot override intended for rack,
-> or did a match-concept leak in? If unintended → delta (remove from rack).
+> **Per-slot overrides in rack — confirmed NOT present, no leak.** `game_matches` (the
+> table `point_value` overrides live on) is never read or written anywhere in rack's code
+> path — `computeRackNStackResults` (`server/lib/rackNStack.ts`) awards a single uniform
+> `value` (the even share from `points_distribution`) per won slot, and no rack UI
+> component references `game_matches`/`point_value`/`MatchPointsRow`. Rack's points model
+> is pure even-share, exactly as designed; the suspected leak does not exist in code.
 
 > **DEFERRED FEATURE — no withdrawal mechanism today.** There is currently no way to mark a
 > player withdrawn. Standing workaround: **enter a score for anyone who can't play** so the
@@ -247,17 +254,22 @@ placement array to fall out of sync.
 
 ## 10 · Open items (consolidated)
 
-**Rulings owed — NONE.** All live-format intent is now decided: stroke team-aggregate (sum of
+**Rulings owed — NONE.** All live-format intent is decided: stroke team-aggregate (sum of
 team net strokes), match settlement (standard match play; glorious = transparent ×2), rack
-short-handed (2A). Canon is gated only on the code checks below.
+short-handed (2A).
 
-**Code checks before full canon (`⚠️ VERIFY-CODE`) — confirm code matches stated intent, else
-file a delta:**
-- §6 — override redistribution holds `total_points` fixed.
-- §6 — halved/tied match splits `point_value` (standard).
-- §7 — rack settles as 2A (even over `min(grouped-A, grouped-B)`, worst-surplus unpaired).
-- §7 — **whether rack carries per-slot overrides** (intended, or a match-concept leak?) — the
-  one check that may surface a real **bug** rather than just confirm conformance.
+**Code checks — ALL CONFIRMED, no deltas.** Every `⚠️ VERIFY-CODE` item was checked against
+the live code and matches stated intent exactly:
+- §6 — override redistribution holds `total_points` fixed (`evenShare`, `pointsDistribution.ts`).
+- §6 — halved/tied match splits `point_value` (`writeTeamMatchPoints`, `server/lib/matchPlay.ts`).
+- §7 — rack settles as 2A: even over `min(grouped-A, grouped-B)`, worst-surplus unpaired
+  (`computeRack`, `lib/rackNStack.ts`).
+- §7 — rack carries **no** per-slot overrides — confirmed no leak (`game_matches`/`point_value`
+  is unreferenced anywhere in rack's code path).
+- §3 — someday golf formats (foursomes, four-ball) confirmed absent from `gameTypes.ts`.
+
+**This doc is now fully canon** — no open `⚠️ VERIFY-CODE` or `⚠️ RULING-NEEDED` markers remain
+for any live format.
 
 **Deferred features** (undesigned; do NOT block canon of live formats): player-withdrawals (all formats);
 non-golf engines (bracket/best-of-N/live-results); someday golf formats (foursomes, four-ball).
