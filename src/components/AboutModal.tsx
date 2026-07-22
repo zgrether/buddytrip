@@ -229,8 +229,8 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
             <AboutLink
               icon={<Shield size={15} />}
               label="Privacy"
-              sub="Working on a policy — coming soon."
-              disabled
+              sub="How we handle your data"
+              href="/privacy"
             />
           </div>
 

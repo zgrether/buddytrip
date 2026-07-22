@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Newspaper, MessageCircle, Megaphone, ChevronDown, ChevronLeft, Settings, Table2 } from "lucide-react";
+import { Newspaper, MessageCircle, ChevronDown, ChevronLeft, Settings, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
@@ -85,10 +85,9 @@ export const TopNav: FC<TopNavProps> = ({
   const currentTripId = params?.tripId ?? null;
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherHovered, setSwitcherHovered] = useState(false);
-  // FeedbackModal lives at the TopNav level so the same modal is reachable
-  // from the title-bar megaphone AND from the AboutModal "Send feedback"
-  // row (which opens via UserMenu → AboutModal → onOpenFeedback). One
-  // form, two entry points.
+  // FeedbackModal lives at the TopNav level so it's reachable from the
+  // AboutModal "Send feedback" row (via UserMenu → AboutModal →
+  // onOpenFeedback).
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // Drives the breadcrumb label + Owner pill. TanStack dedupes against the
@@ -297,28 +296,6 @@ export const TopNav: FC<TopNavProps> = ({
         {/* Quick Game moved OUT of the app header (trip/competition-scoped chrome)
             to the user's dashboard, where a scratch game belongs — it's a
             user-level action, not trip context. See the dashboard strip. */}
-
-        {/* Feedback — beta-only outbound channel. Slight teal resting bg
-            so it reads as a distinct CTA in the tool cluster without
-            overwhelming the bar. White icon + text against the teal fill.
-            No badge: feedback is outbound, an unread dot reads as the
-            wrong signal. */}
-        <ToolButton
-          icon={Megaphone}
-          label="Feedback"
-          count={0}
-          badgeBg="var(--color-bt-accent)"
-          iconColor="white"
-          restingBg="var(--color-bt-accent-faint)"
-          restingBorder="1px solid var(--color-bt-accent-border)"
-          labelColor="white"
-          onClick={() => {
-            onDismissPanels?.();
-            setFeedbackOpen(true);
-          }}
-          ariaLabel="Send feedback"
-          testId="feedback-button"
-        />
 
         {/* Divider between tools and identity. */}
         <span
