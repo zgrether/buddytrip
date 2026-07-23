@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Providers } from "@/lib/providers";
 import { SiteFooter } from "@/components/SiteFooter";
 import "./globals.css";
@@ -16,8 +16,23 @@ export const metadata: Metadata = {
       { url: '/favicon.svg', type: 'image/svg+xml' },
       { url: '/favicon.png', type: 'image/png' },
     ],
-    apple: '/apple-touch-icon-precomposed.png',
+    // Proper brand-mark touch icon (PWA Phase 1) — replaces the old
+    // precomposed file, which stays on disk for legacy crawler requests.
+    apple: '/apple-touch-icon.png',
   },
+  // iOS standalone (Home Screen) identity — without this, an added-to-home
+  // BuddyTrip opens as a plain Safari bookmark instead of a standalone app.
+  appleWebApp: {
+    capable: true,
+    title: "BuddyTrip",
+  },
+};
+
+// Browser/OS chrome color (PWA Phase 1). #0a0e1a = --color-bt-base dark —
+// a meta tag can't read CSS variables, and the app is dark-mode-forced, so
+// the single dark value is correct (no white flash on standalone launch).
+export const viewport: Viewport = {
+  themeColor: "#0a0e1a",
 };
 
 export default function RootLayout({
