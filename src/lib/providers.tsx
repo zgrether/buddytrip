@@ -12,6 +12,7 @@ import { ThemeProvider } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/Toaster";
+import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
 import { showToast } from "@/lib/toast";
 
 /**
@@ -100,6 +101,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <QueryClientProvider client={queryClient}>
             {children}
             <Toaster />
+            <ServiceWorkerRegistration />
           </QueryClientProvider>
         </trpc.Provider>
       </AuthProvider>
