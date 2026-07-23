@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember } from "../middleware";
 
 export const expensesRouter = router({
   // -----------------------------------------------------------------------
@@ -114,7 +114,9 @@ export const expensesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // updateSplits — Owner only (isOwner)
+  // updateSplits — Owner (any receipt), OR a Member editing a receipt THEY
+  // paid for (paid_by_user_id === self) — same "own receipt" exception as
+  // `remove`, so a mistyped self-logged receipt can be fixed, not just deleted.
   // Also supports updating the expense title and amount.
   // -----------------------------------------------------------------------
   updateSplits: authedProcedure
@@ -135,8 +137,23 @@ export const expensesRouter = router({
         ),
       })
     )
-    .use(requireTripRole("Owner"))
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      if (ctx.tripRole !== "Owner") {
+        const { data: existing } = await ctx.supabase
+          .from("expenses")
+          .select("paid_by_user_id")
+          .eq("id", input.expenseId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+        if (!existing || existing.paid_by_user_id !== ctx.user!.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only edit a receipt you paid for",
+          });
+        }
+      }
+
       // Update expense fields if provided
       if (input.title !== undefined || input.amount !== undefined || input.date !== undefined || input.paidByUserId !== undefined) {
         const updates: Record<string, unknown> = {};
@@ -235,12 +252,30 @@ export const expensesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner or Organizer (canEdit)
+  // remove — Owner or Organizer (canEdit), OR a Member removing a receipt
+  // THEY paid for (paid_by_user_id === self) — so a mistyped self-logged
+  // receipt isn't stuck forever waiting on an Owner/Organizer.
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), expenseId: z.string() }))
-    .use(requireTripRole("Organizer"))
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      const isStaff = ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
+      if (!isStaff) {
+        const { data: existing } = await ctx.supabase
+          .from("expenses")
+          .select("paid_by_user_id")
+          .eq("id", input.expenseId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+        if (!existing || existing.paid_by_user_id !== ctx.user!.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only remove a receipt you paid for",
+          });
+        }
+      }
+
       // Delete splits first
       await ctx.supabase
         .from("expense_splits")

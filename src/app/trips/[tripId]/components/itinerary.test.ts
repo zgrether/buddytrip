@@ -567,11 +567,28 @@ describe("summarizeLodging", () => {
         name: "Beach House",
         sleeps: "8",
         address: "1 Ocean Dr",
+        link: null,
         checkIn: "2026-06-17",
         checkOut: "2026-06-19",
         nights: 2,
       },
     ]);
+  });
+
+  it("passes through a valid http(s) listing link", () => {
+    const stays = summarizeLodging([
+      lodgingItem({ id: "l1", link: "https://www.vrbo.com/123456" }),
+    ]);
+    expect(stays[0].link).toBe("https://www.vrbo.com/123456");
+  });
+
+  it("link is null when unset or not a valid http(s) URL", () => {
+    const [unset, junk] = summarizeLodging([
+      lodgingItem({ id: "unset", link: null }),
+      lodgingItem({ id: "junk", title: "Junk", link: "not-a-url" }),
+    ]);
+    expect(unset.link).toBeNull();
+    expect(junk.link).toBeNull();
   });
 
   it("orders multiple properties by check-in date (handles mid-trip moves)", () => {
