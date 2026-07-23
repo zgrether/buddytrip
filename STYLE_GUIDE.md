@@ -247,6 +247,65 @@ stack — order them by priority.
 
 ---
 
+### Transient system message (app-level strip)
+
+A third surface category: neither **chrome** (the persistent app frame) nor
+**page structure** (content panels). A thin, dismissible, app-level strip for
+messages about the *app itself* — install prompts, notification permission
+state, connectivity. Distinct from the **Nudge banner** above, which is
+*tab-level*, about trip **content**, and rendered as a rounded card inside the
+content column. A transient system message is full-bleed and chrome-adjacent.
+
+```
+Container:
+  placement:     in normal document flow, directly below the top app bar and
+                 ABOVE all page content — full-bleed width (no side margins,
+                 no border radius). It scrolls away with the page: never
+                 fixed/sticky, never covers content, never collides with the
+                 bottom nav or in-page action bars.
+  background:    var(--color-bt-card)               ← chrome surface
+  border:        border-bottom 1px solid var(--color-bt-border)
+                 (no shadow — chrome-style separation, per Section 1)
+  padding:       px-4 py-2.5
+  layout:        flex items-center gap-3
+  min-height:    44px (single-line touch target)
+
+Icon square (optional):
+  size:          h-7 w-7 rounded-lg, flex-shrink-0
+  background:    var(--color-bt-accent-faint)   ← informational / action tone
+              OR var(--color-bt-warning-faint)  ← blocked / attention tone
+  color:         var(--color-bt-accent) OR var(--color-bt-warning) (matches bg)
+  icon size:     14
+
+Message:
+  font:          text-[13px] leading-snug font-medium
+  color:         var(--color-bt-text)
+  detail line:   text-[11px] leading-snug, var(--color-bt-text-dim), mt-0.5
+
+Action (optional, ONE max):
+  a Small Secondary button (Section 5) or an accent text link.
+  NEVER a Primary teal fill — the strip must not outshout page CTAs.
+
+Dismiss (required):
+  X icon button, h-7 w-7 rounded-full, var(--color-bt-text-dim),
+  right-aligned, aria-label "Dismiss".
+```
+
+**Behavior rules (part of the pattern, not per-feature):**
+- Every transient system message MUST be dismissible; dismissal MUST persist
+  (localStorage) with a **decay window** (suppressed for a period, may return
+  once) — never permanently gone by default, never undismissable.
+- Never shown on a user's first load — gate on engagement.
+- One strip at a time — if multiple qualify, show only the highest-priority.
+
+**Use for:** PWA install prompt, notification-permission state, connectivity
+or app-update notices.
+
+**Do NOT use for:** trip-content alerts (Nudge banner), errors (danger
+tokens), success confirmations (toast).
+
+---
+
 ### Sample callout (empty-state EXAMPLE frame)
 
 Used in tab empty states to show "what this'll look like once populated." Replaces the older dim/ghost-row treatment which read as half-broken data. Implementation lives in [`src/components/SampleSection.tsx`](src/components/SampleSection.tsx) and exports three primitives:
