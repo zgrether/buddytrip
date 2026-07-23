@@ -70,7 +70,7 @@ describe("expenses router", () => {
     expect(result.success).toBe(true);
   });
 
-  it("updateSplits — member cannot update splits", async () => {
+  it("updateSplits — member cannot update splits on a receipt paid by someone else", async () => {
     const member = ctx.getUser("member");
     const caller = ctx.callerAs("member");
     await expect(
@@ -80,6 +80,41 @@ describe("expenses router", () => {
         splits: [{ userId: member.id, amount: 0 }],
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("updateSplits — a member CAN edit a receipt they paid for (title, amount, and splits)", async () => {
+    const member = ctx.getUser("member");
+    const memberCaller = ctx.callerAs("member");
+    const ownExpId = genId("exp");
+    await memberCaller.expenses.create({
+      tripId,
+      id: ownExpId,
+      title: "Typo'd receiptt",
+      amount: 30,
+      paidByUserId: member.id,
+      splitAmong: [{ userId: member.id }, { userId: ctx.user.id }],
+    });
+
+    const result = await memberCaller.expenses.updateSplits({
+      tripId,
+      expenseId: ownExpId,
+      title: "Fixed receipt",
+      amount: 35,
+      splits: [
+        { userId: member.id, amount: 20 },
+        { userId: ctx.user.id, amount: 15 },
+      ],
+    });
+    expect(result.success).toBe(true);
+
+    const list = await ctx.caller().expenses.list({ tripId });
+    const exp = list.find((e: { id: string }) => e.id === ownExpId);
+    expect(exp?.title).toBe("Fixed receipt");
+    expect(exp?.amount).toBe(35);
+    expect(exp?.splits.find((s: { user_id: string }) => s.user_id === member.id)?.amount).toBe(20);
+
+    // Clean up
+    await memberCaller.expenses.remove({ tripId, expenseId: ownExpId });
   });
 
   it("optOut — member can opt out of an expense", async () => {
@@ -179,5 +214,48 @@ describe("expenses router", () => {
     // Verify the expense is actually gone (not just a silent no-op)
     const list = await caller.expenses.list({ tripId });
     expect(list.find((e: { id: string }) => e.id === expenseId)).toBeUndefined();
+  });
+
+  it("remove — a member can remove a receipt they paid for", async () => {
+    const member = ctx.getUser("member");
+    const memberCaller = ctx.callerAs("member");
+    const ownExpId = genId("exp");
+    await memberCaller.expenses.create({
+      tripId,
+      id: ownExpId,
+      title: "Member's own receipt",
+      amount: 25,
+      paidByUserId: member.id,
+      splitAmong: [{ userId: member.id }],
+    });
+
+    const result = await memberCaller.expenses.remove({ tripId, expenseId: ownExpId });
+    expect(result.success).toBe(true);
+
+    const list = await ctx.caller().expenses.list({ tripId });
+    expect(list.find((e: { id: string }) => e.id === ownExpId)).toBeUndefined();
+  });
+
+  it("remove — a member CANNOT remove a receipt paid by someone else", async () => {
+    const caller = ctx.caller();
+    const othersExpId = genId("exp");
+    await caller.expenses.create({
+      tripId,
+      id: othersExpId,
+      title: "Owner's receipt",
+      amount: 40,
+      paidByUserId: ctx.user.id,
+      splitAmong: [{ userId: ctx.user.id }],
+    });
+
+    const memberCaller = ctx.callerAs("member");
+    await expect(
+      memberCaller.expenses.remove({ tripId, expenseId: othersExpId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    // Confirm it's still there, then clean up.
+    const list = await caller.expenses.list({ tripId });
+    expect(list.find((e: { id: string }) => e.id === othersExpId)).toBeDefined();
+    await caller.expenses.remove({ tripId, expenseId: othersExpId });
   });
 });

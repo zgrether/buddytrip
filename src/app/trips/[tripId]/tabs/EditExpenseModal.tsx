@@ -17,16 +17,19 @@ export function EditExpenseModal({
   expense,
   members,
   tripId,
-  isOwner,
+  canEditFields,
   canDelete,
   onClose,
 }: {
   expense: ExpenseItem;
   members: ExpenseMember[];
   tripId: string;
-  /** Owner — can edit splits/fields (expenses.updateSplits is Owner-only). */
-  isOwner: boolean;
-  /** Owner or Organizer — can delete the receipt (expenses.remove is Organizer+). */
+  /** Owner, or the Member who paid for THIS receipt — can edit its fields/splits
+   *  (expenses.updateSplits allows Owner, or a Member editing their own
+   *  paid_by_user_id). */
+  canEditFields: boolean;
+  /** Owner/Organizer, or the Member who paid for THIS receipt (expenses.remove
+   *  allows Owner/Organizer, or a Member removing their own paid_by_user_id). */
   canDelete: boolean;
   onClose: () => void;
 }) {
@@ -292,7 +295,7 @@ export function EditExpenseModal({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Description"
-                disabled={!isOwner}
+                disabled={!canEditFields}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               />
@@ -303,7 +306,7 @@ export function EditExpenseModal({
                 value={amount}
                 onChange={setAmount}
                 className="w-full"
-                disabled={!isOwner}
+                disabled={!canEditFields}
               />
             </div>
           </div>
@@ -314,7 +317,7 @@ export function EditExpenseModal({
                 <select
                   value={paidByUserId}
                   onChange={(e) => setPaidByUserId(e.target.value)}
-                  disabled={!isOwner}
+                  disabled={!canEditFields}
                   className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
                 >
@@ -333,7 +336,7 @@ export function EditExpenseModal({
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>Date <span className="lowercase">(optional)</span></label>
               <DatePicker
                 mode="single"
-                disabled={!isOwner}
+                disabled={!canEditFields}
                 accent={DOMAIN_COLORS.receipts.color}
                 accentFaint={DOMAIN_COLORS.receipts.faint}
                 value={date ? parseLocalDate(date) : null}
@@ -350,7 +353,7 @@ export function EditExpenseModal({
           includedIds={includedIds}
           overrides={overrides}
           optedOutIds={optedOutIds}
-          isOwnerEditing={isOwner}
+          isOwnerEditing={canEditFields}
           mode={splitMode}
           onModeChange={handleModeChange}
           onToggle={handleToggle}
@@ -393,16 +396,16 @@ export function EditExpenseModal({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className={`rounded-lg border px-4 py-2 text-sm font-medium ${isOwner ? "" : "flex-1"}`}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium ${canEditFields ? "" : "flex-1"}`}
               style={{
                 borderColor: "var(--color-bt-border)",
                 color: "var(--color-bt-text-dim)",
                 background: "transparent",
               }}
             >
-              {isOwner ? "Cancel" : "Close"}
+              {canEditFields ? "Cancel" : "Close"}
             </button>
-            {isOwner && (
+            {canEditFields && (
               <button
                 disabled={updateSplits.isPending || includedIds.length === 0 || !title.trim() || amountNum <= 0 || !isDirty}
                 onClick={handleSave}

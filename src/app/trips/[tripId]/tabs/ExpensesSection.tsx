@@ -743,22 +743,27 @@ export function ExpensesSection({
                   ? computeUserShare(expense, currentUser.id)
                   : null;
                 const paidByYou = !!currentUser && expense.paid_by_user_id === currentUser.id;
+                // A plain Member can't edit fields/splits (still Owner-only —
+                // expenses.updateSplits), but CAN open the row to delete a
+                // receipt they paid for (expenses.remove now allows that).
+                const canOpen = canEdit || paidByYou;
 
                 return (
                   <div
                     key={expense.id}
                     data-testid={`expense-row-${expense.id}`}
-                    // Whole row is the edit affordance (canEdit = Owner or
-                    // Organizer). Tap opens the editor where splits/fields are
-                    // changed and the receipt can be deleted — no inline
+                    // Whole row is the open affordance (canEdit = Owner or
+                    // Organizer; a Member gets it too for their OWN receipt,
+                    // delete-only). Tap opens the editor where splits/fields
+                    // are changed and the receipt can be deleted — no inline
                     // pencil/trash clutter. A native drag never fires click,
                     // and the opt-out button stops propagation, so neither
                     // collides with the row tap.
-                    onClick={canEdit ? () => setEditingExpense(expense) : undefined}
-                    role={canEdit ? "button" : undefined}
-                    tabIndex={canEdit ? 0 : undefined}
+                    onClick={canOpen ? () => setEditingExpense(expense) : undefined}
+                    role={canOpen ? "button" : undefined}
+                    tabIndex={canOpen ? 0 : undefined}
                     onKeyDown={
-                      canEdit
+                      canOpen
                         ? (e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
@@ -768,7 +773,7 @@ export function ExpensesSection({
                         : undefined
                     }
                     className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${
-                      canEdit
+                      canOpen
                         ? "cursor-pointer transition-shadow hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
                         : ""
                     }`}
@@ -993,8 +998,16 @@ export function ExpensesSection({
           expense={editingExpense}
           members={members}
           tripId={tripId}
-          isOwner={isOwner}
-          canDelete={canEdit}
+          // Owner, or the Member who paid for this specific receipt — same
+          // "own receipt" exception on both edit and delete (expenses.ts).
+          canEditFields={
+            isOwner ||
+            (!!currentUser && editingExpense.paid_by_user_id === currentUser.id)
+          }
+          canDelete={
+            canEdit ||
+            (!!currentUser && editingExpense.paid_by_user_id === currentUser.id)
+          }
           onClose={() => setEditingExpense(null)}
         />
       )}

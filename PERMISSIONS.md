@@ -130,8 +130,8 @@ who's in, what they're called, what role they hold — is the Owner's.
 | View expenses | ✓ | ✓ | ✓ | `list` |
 | Add an expense / receipt | ✓ | ✓ | ✓ | `create` **(any member)** |
 | Opt self in / out of a split | ✓ | ✓ | ✓ | `optOut` *(self)* |
-| Edit a receipt's splits | ✓ | — | — | `updateSplits` *(Owner)* |
-| Remove an expense | ✓ | ✓ | — | `remove` |
+| Edit a receipt's fields/splits | ✓ | — | **paid_by_user_id = self** | `updateSplits` *(Owner any receipt, or a Member editing one they paid for — same own-receipt exception as remove)* |
+| Remove an expense | ✓ | ✓ | **paid_by_user_id = self** | `remove` *(Owner/Organizer any receipt, or a Member removing one they paid for — so a mistyped self-logged receipt isn't stuck waiting on staff)* |
 
 ### Competition — `competitions`, `teams`, `teamAssignments`
 
