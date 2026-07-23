@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { useNewsUnreadCount } from "./NewsPanel";
 import { useGameChrome } from "./games/GameChrome";
+import { InstallBanner } from "./pwa/InstallBanner";
 
 /**
  * App title bar — two zones:
@@ -115,6 +116,7 @@ export const TopNav: FC<TopNavProps> = ({
   const gameChrome = useGameChrome();
 
   return (
+    <>
     <header
       className="@container sticky top-0 z-40 flex h-14 items-center justify-between"
       style={{
@@ -328,6 +330,11 @@ export const TopNav: FC<TopNavProps> = ({
         />
       </Suspense>
     </header>
+    {/* Transient system message (STYLE_GUIDE) — a SIBLING of the sticky bar,
+        in normal flow, so it sits directly below the bar, scrolls away with
+        the page, and never covers content or fights the bottom nav. */}
+    <InstallBanner />
+    </>
   );
 };
 
