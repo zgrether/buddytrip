@@ -680,49 +680,68 @@ function formatStayMeta(stay: LodgingStay): string {
 function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
   return (
     <div className="flex flex-wrap gap-2.5">
-      {stays.map((stay) => (
-        <div
-          key={stay.id}
-          className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-          style={{
-            flex: "1 1 240px",
-            minWidth: 0,
-            background: "var(--color-bt-card)",
-          }}
-        >
-          <span
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
-            style={{ color: "var(--color-bt-planning)", background: PLANNING_TILE_BG }}
-          >
-            <Home size={17} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              {stay.name}
-            </p>
-            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {formatStayMeta(stay)}
-            </p>
-          </div>
-          {stay.address && (
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stay.address)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-shrink-0 items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[12.5px] font-semibold"
-              style={{
-                color: "var(--color-bt-planning)",
-                background: PLANNING_BTN_BG,
-                border: `1px solid ${PLANNING_BTN_BORDER}`,
-              }}
-              aria-label={`Directions to ${stay.name}`}
+      {stays.map((stay) => {
+        const info = (
+          <>
+            <span
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
+              style={{ color: "var(--color-bt-planning)", background: PLANNING_TILE_BG }}
             >
-              <MapPin size={13} />
-              <span className="hidden sm:inline">Directions</span>
-            </a>
-          )}
-        </div>
-      ))}
+              <Home size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                {stay.name}
+              </p>
+              <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                {formatStayMeta(stay)}
+              </p>
+            </div>
+          </>
+        );
+        return (
+          <div
+            key={stay.id}
+            className="flex items-stretch overflow-hidden rounded-xl"
+            style={{ flex: "1 1 240px", minWidth: 0, background: "var(--color-bt-card)" }}
+          >
+            {/* Whole tile (aside from the Directions rail) opens the listing link
+                when one exists — the "-> VRBO" link added on the Lodging tab. */}
+            {stay.link ? (
+              <a
+                href={stay.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--color-bt-hover)]"
+                aria-label={`Open listing for ${stay.name}`}
+              >
+                {info}
+              </a>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5">{info}</div>
+            )}
+            {stay.address && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stay.address)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                // Full tile-height tappable area (matches the house icon's footprint
+                // on the left) rather than a small centered pill — easier to hit.
+                className="flex flex-shrink-0 items-center gap-1.5 px-3 text-[12.5px] font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{
+                  color: "var(--color-bt-planning)",
+                  background: PLANNING_BTN_BG,
+                  borderLeft: `1px solid ${PLANNING_BTN_BORDER}`,
+                }}
+                aria-label={`Directions to ${stay.name}`}
+              >
+                <MapPin size={13} />
+                <span className="hidden sm:inline">Directions</span>
+              </a>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

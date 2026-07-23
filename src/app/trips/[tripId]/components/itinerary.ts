@@ -33,6 +33,8 @@ export interface ItineraryLogisticsItem {
   /** Sleeps capacity, free text (e.g. "8"). */
   sleeps?: string | null;
   address?: string | null;
+  /** Listing URL (VRBO / Airbnb / hotels.com / etc.), as entered on the Lodging tab. */
+  link?: string | null;
   /** Check-in / check-out dates, stored as text, treated as YYYY-MM-DD. */
   check_in_date?: string | null;
   check_out_date?: string | null;
@@ -332,6 +334,8 @@ export interface LodgingStay {
   /** Sleeps capacity, free text (e.g. "8") — comes from `sleeps`. null when unset. */
   sleeps: string | null;
   address: string | null;
+  /** Listing URL, when it's a valid http(s) link — comes from `link`. null otherwise. */
+  link: string | null;
   /** YYYY-MM-DD */
   checkIn: string;
   /** YYYY-MM-DD, or null when no check-out date is set. */
@@ -369,6 +373,7 @@ export function summarizeLodging(
       name: item.title || "Lodging",
       sleeps: item.sleeps?.trim() || null,
       address: item.address ?? null,
+      link: item.link?.startsWith("http://") || item.link?.startsWith("https://") ? item.link : null,
       checkIn,
       checkOut,
       nights: checkOut ? nightsBetween(checkIn, checkOut) : null,
