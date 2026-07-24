@@ -345,6 +345,15 @@ These patterns have been established through prior work. Follow them exactly —
     and rules-of-the-day's banner promised editability the RPC then refused) — **and the
     fifth was created by the fix for the fourth.** Enumerate the full downstream reader set
     before repointing; don't discover them one regression at a time.
+19. **`useRealtimeGame` is wired into all four game views (Match/Rack/Stroke/Non-golf).**
+    It pushes config changes (the five tables `games.configHash` fingerprints — `games`,
+    `game_matches`, `game_participants`, `play_groups`, `game_delegates`, all published in
+    migration 084) live via a `game:{gameId}` channel, pure-invalidating the game's read
+    queries on any event. The `configHash` poll (#16, `useConfigSync`/`useConfigDraft`,
+    ~20s) stays wired in **all four views too, deliberately** — it is the reconnect/
+    dead-zone backstop for a socket drop, a backgrounded tab, or a network handoff (not an
+    edge case on a golf course). **Do not remove the poll as "redundant" with Realtime —
+    the redundancy is the point.** (Source: `DATA_FRESHNESS_AUDIT.md` §8-F5.)
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 
