@@ -4,6 +4,7 @@ import {
   QueryClient,
   QueryClientProvider,
   MutationCache,
+  QueryCache,
 } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import { Toaster } from "@/components/Toaster";
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
 import { PwaEngagementTracker } from "@/components/pwa/PwaEngagementTracker";
 import { showToast } from "@/lib/toast";
+import { handleAuthExpiry, isUnauthorizedError } from "@/lib/authExpiry";
 
 /**
  * A mutation failed because the request never reached a server (dead zone / bad
@@ -64,6 +66,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
             if (suppressed) return;
             if (isConnectivityError(error)) {
               showToast("Couldn't save — check your connection. We'll keep your data.");
+            }
+          },
+        }),
+        // A query that comes back UNAUTHORIZED (401) means the session died
+        // out from under an in-flight poll. handleAuthExpiry self-heals a
+        // recoverable session (one refresh) or, if it's truly gone, redirects
+        // to /login so the poll loop tears down instead of firing forever
+        // against a dead session (the mid-round silent-freeze bug).
+        queryCache: new QueryCache({
+          onError: (error) => {
+            if (isUnauthorizedError(error)) {
+              void handleAuthExpiry();
             }
           },
         }),
