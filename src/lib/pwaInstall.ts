@@ -27,6 +27,7 @@ export interface DismissalRecord {
 
 export type BannerState =
   | { kind: "install"; platform: "ios" | "android" }
+  | { kind: "enable" } // installed, notifications not yet granted — offer to turn on
   | { kind: "blocked" }
   | null;
 
@@ -92,9 +93,20 @@ export function resolveBannerState(input: {
   engaged: boolean;
   dismissal: DismissalRecord | null;
   notificationPermission: NotificationPermissionState;
+  /** Whether Web Push is configured server-side (VAPID keys present). The
+   *  enable prompt only shows when a subscribe could actually succeed. */
+  pushConfigured: boolean;
   now: number;
 }): BannerState {
-  const { platform, standalone, engaged, dismissal, notificationPermission, now } = input;
+  const {
+    platform,
+    standalone,
+    engaged,
+    dismissal,
+    notificationPermission,
+    pushConfigured,
+    now,
+  } = input;
 
   // Desktop / unknown platforms never see the banner.
   if (platform === "other") return null;
@@ -105,9 +117,15 @@ export function resolveBannerState(input: {
 
   if (!standalone) return { kind: "install", platform };
 
-  // Installed. Denied must not be silent (top future support ticket);
-  // "default" stays hidden until push exists to enable; granted = done.
+  // Installed (Phase 2 notification states):
+  //  - denied  → blocked, must not be silent (top future support ticket).
+  //  - default → offer to enable, but only when push is actually configured
+  //              (no VAPID keys → nothing to subscribe to → stay hidden).
+  //  - granted → done, nothing to show.
   if (notificationPermission === "denied") return { kind: "blocked" };
+  if (notificationPermission === "default" && pushConfigured) {
+    return { kind: "enable" };
+  }
   return null;
 }
 

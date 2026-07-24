@@ -30,6 +30,7 @@
     "react-remove-scroll": "^2.7.2",
     "resend": "^6.10.0",
     "superjson": "^2.2.6",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -38,6 +39,7 @@
     "@types/node": "^20",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
+    "@types/web-push": "^3.6.4",
     "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",

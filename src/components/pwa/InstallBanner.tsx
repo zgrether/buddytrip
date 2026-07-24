@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { BellOff, Share, Smartphone, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Bell, BellOff, Share, Smartphone, X } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
+import { subscribeBrowser } from "@/lib/pushClient";
 import {
   clearCapturedInstallPrompt,
   detectNotificationPermission,
@@ -19,66 +21,63 @@ import {
 } from "@/lib/pwaInstall";
 
 /**
- * PWA install / notification-state banner (Phase 1) — a **transient
- * system message** per the STYLE_GUIDE pattern: full-bleed strip in
- * normal flow directly below the top app bar (mounted as TopNav's
- * sibling, so it scrolls away and never covers content), chrome-style
- * border separation, required dismiss with persisted decaying
- * dismissal, engagement-gated, one at a time.
+ * PWA install / notification banner — a **transient system message** per the
+ * STYLE_GUIDE pattern: full-bleed strip below the top app bar (TopNav's
+ * sibling), chrome-style border, dismissible with decaying dismissal,
+ * engagement-gated, one at a time.
  *
  * States (resolved in src/lib/pwaInstall.ts — pure + unit-tested):
- *  - install/android — real one-tap Install via the root-captured
- *    `beforeinstallprompt` (src/lib/pwaInstall.ts); instructional Chrome-menu
- *    fallback whenever no prompt is available (never fired, or consumed by a
- *    prior dismissal — the common post-dismiss state).
- *  - install/ios — instructional only (iOS install cannot be triggered
- *    programmatically): Share → Add to Home Screen, share glyph inline.
- *  - blocked — installed but Notification.permission === "denied";
- *    informational (unfixable in-app) but deliberately not silent.
- *  - hidden — desktop, unengaged, dismissed-and-decaying, installed with
- *    permission granted, or installed with permission still "default"
- *    (that state stays stubbed until the push phase ships an enable
- *    action that actually does something).
- *
- * The prompt is captured at app root BEFORE hydration (the banner mounts too
- * late to catch it itself); this component reads it from the store and
- * subscribes so a prompt that arrives after mount still lights up the button.
+ *  - install/android · install/ios — not installed; Android one-tap Install via
+ *    the root-captured beforeinstallprompt (instructional Chrome-menu fallback),
+ *    iOS instructional Share → Add to Home Screen.
+ *  - enable — installed, Notification.permission === "default" AND push is
+ *    configured: offer to turn on notifications. Requests permission + subscribes
+ *    on the Enable tap (a USER GESTURE — never on load).
+ *  - blocked — installed but permission === "denied": settings message
+ *    (unfixable in-app, deliberately not silent).
+ *  - hidden — desktop, unengaged, dismissed-and-decaying, granted, or default
+ *    with push unconfigured.
  */
-
 export function InstallBanner() {
   const [state, setState] = useState<BannerState>(null);
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
+  const [enabling, setEnabling] = useState(false);
+
+  const pushStatus = trpc.notifications.status.useQuery(undefined, {
+    staleTime: Infinity,
+  });
+  const subscribeMut = trpc.notifications.subscribe.useMutation();
+  const pushConfigured = pushStatus.data?.configured ?? false;
+
+  const syncState = useCallback(() => {
+    setInstallPrompt(getCapturedInstallPrompt());
+    setState(
+      resolveBannerState({
+        platform: detectPlatform(),
+        standalone: detectStandalone(),
+        engaged: isEngaged(),
+        dismissal: readDismissal(),
+        notificationPermission: detectNotificationPermission(),
+        pushConfigured,
+        now: Date.now(),
+      })
+    );
+  }, [pushConfigured]);
 
   useEffect(() => {
-    // Re-resolve BOTH the visibility state and the captured prompt on every
-    // PWA-state change (engagement flip, prompt capture/clear) so a banner that
-    // mounted before the user engaged still appears once they do. Values depend
-    // on browser-only APIs (UA, matchMedia, storage, window global), so this
-    // resolves after mount, not during render.
-    const sync = () => {
-      setInstallPrompt(getCapturedInstallPrompt());
-      setState(
-        resolveBannerState({
-          platform: detectPlatform(),
-          standalone: detectStandalone(),
-          engaged: isEngaged(),
-          dismissal: readDismissal(),
-          notificationPermission: detectNotificationPermission(),
-          now: Date.now(),
-        })
-      );
-    };
-    sync();
-    const unsubscribe = subscribePwaState(sync);
+    // Re-resolve on every PWA-state change (engagement flip, prompt
+    // capture/clear) AND whenever push config resolves. Browser-only reads, so
+    // this runs after mount, not during render.
+    syncState();
+    const unsubscribe = subscribePwaState(syncState);
     const onInstalled = () => setState(null);
     window.addEventListener("appinstalled", onInstalled);
-
     return () => {
       unsubscribe();
       window.removeEventListener("appinstalled", onInstalled);
     };
-  }, []);
+  }, [syncState]);
 
   if (!state) return null;
 
@@ -91,25 +90,46 @@ export function InstallBanner() {
     if (!installPrompt) return;
     await installPrompt.prompt();
     const { outcome } = await installPrompt.userChoice;
-    // The event is single-use whatever the outcome — clear it so a DISMISSED
-    // prompt falls back to the instructional copy instead of a dead button
-    // (Chrome won't re-fire beforeinstallprompt for a long window). The store
-    // notifies subscribers, so this component's installPrompt goes null.
+    // Single-use event: clear whatever the outcome so a DISMISSED prompt falls
+    // back to the instructional copy, not a dead button.
     clearCapturedInstallPrompt();
     if (outcome === "accepted") {
-      // Suppress the tab-context banner while the user moves to the
-      // installed app (standalone detection owns the state from there).
       recordDismissal();
       setState(null);
     }
   };
 
+  // Enable notifications — permission request on THIS user gesture, then
+  // subscribe. Granted → banner hides (resolve → null); denied or an
+  // Android-13 OS-level block → resolve → blocked (settings message).
+  const enable = async () => {
+    if (enabling) return;
+    setEnabling(true);
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") {
+        const sub = await subscribeBrowser();
+        if (sub) await subscribeMut.mutateAsync(sub);
+      }
+    } catch {
+      // Non-fatal — re-resolve surfaces the correct state below.
+    } finally {
+      setEnabling(false);
+      syncState();
+    }
+  };
+
+  const kind = state.kind;
   const affordance = installAffordance(state, installPrompt != null);
-  const blocked = state.kind === "blocked";
+
+  // Icon + tone per state.
+  const tone = kind === "blocked" ? "warning" : "accent";
+  const Icon = kind === "blocked" ? BellOff : kind === "enable" ? Bell : Smartphone;
 
   return (
     <div
       data-testid="pwa-banner"
+      data-state={kind}
       className="flex min-h-[44px] items-center gap-3 px-4 py-2.5"
       style={{
         background: "var(--color-bt-card)",
@@ -119,24 +139,45 @@ export function InstallBanner() {
       <span
         className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
         style={{
-          background: blocked
-            ? "var(--color-bt-warning-faint)"
-            : "var(--color-bt-accent-faint)",
-          color: blocked ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
+          background:
+            tone === "warning"
+              ? "var(--color-bt-warning-faint)"
+              : "var(--color-bt-accent-faint)",
+          color:
+            tone === "warning" ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
         }}
       >
-        {blocked ? <BellOff size={14} /> : <Smartphone size={14} />}
+        <Icon size={14} />
       </span>
 
       <div className="min-w-0 flex-1">
-        {blocked ? (
+        {kind === "blocked" && (
           <p
             className="text-[13px] font-medium leading-snug"
             style={{ color: "var(--color-bt-text)" }}
           >
             Notifications are blocked — check your phone&apos;s settings
           </p>
-        ) : (
+        )}
+
+        {kind === "enable" && (
+          <>
+            <p
+              className="text-[13px] font-medium leading-snug"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Turn on notifications
+            </p>
+            <p
+              className="mt-0.5 text-[11px] leading-snug"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Get scores, results and cup alerts
+            </p>
+          </>
+        )}
+
+        {kind === "install" && (
           <>
             <p
               className="text-[13px] font-medium leading-snug"
@@ -150,11 +191,7 @@ export function InstallBanner() {
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
                 Tap{" "}
-                <Share
-                  size={11}
-                  className="inline align-[-1px]"
-                  aria-label="Share"
-                />{" "}
+                <Share size={11} className="inline align-[-1px]" aria-label="Share" />{" "}
                 Share, then &ldquo;Add to Home Screen&rdquo;
               </p>
             )}
@@ -170,10 +207,8 @@ export function InstallBanner() {
         )}
       </div>
 
-      {/* Android one-tap install — Small Secondary (never a Primary fill).
-          Only when a live prompt is captured; otherwise the instructional
-          copy above carries the how-to. */}
-      {affordance === "button" && (
+      {/* Android one-tap install — Small Secondary (never a Primary fill). */}
+      {kind === "install" && affordance === "button" && (
         <button
           type="button"
           onClick={install}
@@ -185,6 +220,23 @@ export function InstallBanner() {
           }}
         >
           Install
+        </button>
+      )}
+
+      {/* Enable notifications — Small Secondary; requests permission on tap. */}
+      {kind === "enable" && (
+        <button
+          type="button"
+          onClick={enable}
+          disabled={enabling}
+          className="flex-shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text)",
+            border: "0.5px solid var(--color-bt-border)",
+          }}
+        >
+          {enabling ? "…" : "Enable"}
         </button>
       )}
 

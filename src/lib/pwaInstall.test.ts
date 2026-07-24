@@ -15,6 +15,7 @@ const base = {
   engaged: true,
   dismissal: null,
   notificationPermission: "default" as const,
+  pushConfigured: true,
   now: NOW,
 };
 
@@ -62,8 +63,16 @@ describe("resolveBannerState", () => {
     ).toEqual({ kind: "blocked" });
   });
 
-  it("installed + default permission stays hidden (stubbed until push ships)", () => {
-    expect(resolveBannerState({ ...base, standalone: true })).toBeNull();
+  it("installed + default + push configured → enable prompt (Phase 2)", () => {
+    expect(resolveBannerState({ ...base, standalone: true })).toEqual({
+      kind: "enable",
+    });
+  });
+
+  it("installed + default but push NOT configured → hidden (nothing to subscribe to)", () => {
+    expect(
+      resolveBannerState({ ...base, standalone: true, pushConfigured: false })
+    ).toBeNull();
   });
 
   it("installed + granted → nothing", () => {
