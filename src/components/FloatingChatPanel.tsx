@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { Send, X, ChevronDown, MessageCircle } from "lucide-react";
+import { ChatNotifyToggle } from "./ChatNotifyToggle";
 import {
   RAIL_DEFAULT_WIDTH,
   clampRailWidth,
@@ -555,16 +556,21 @@ function FloatingChatPanelInner({
             style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
           >
             {titleRow}
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              aria-label="Close chat"
-              title="Close"
-            >
-              <X size={16} />
-            </button>
+            {/* Chat notifications toggle inline with ✕ (Push Phase 2) — the
+                same stored preference as the settings screen. */}
+            <div className="ml-auto flex items-center gap-1">
+              <ChatNotifyToggle />
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+                aria-label="Close chat"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
           {/* Channel tabs live BELOW the divider bar (the title's own band). */}
           {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
@@ -625,15 +631,19 @@ function FloatingChatPanelInner({
             style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
           >
             {titleRow}
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-              aria-label="Close chat"
-            >
-              <X size={16} />
-            </button>
+            {/* Chat notifications toggle inline with ✕ (Push Phase 2). */}
+            <div className="ml-auto flex items-center gap-1.5">
+              <ChatNotifyToggle />
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+                aria-label="Close chat"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
           {/* Channel tabs live BELOW the divider bar. */}
           {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
