@@ -45,8 +45,12 @@ self.addEventListener("push", (event) => {
   const title = data.title || "BuddyTrip";
   const options = {
     body: data.body || "",
+    // Large icon in the notification body — full colour is fine here.
     icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    // Status-bar icon — Android uses ONLY the alpha channel and tints it white,
+    // so this MUST be a transparent silhouette. An opaque icon renders as a
+    // solid white square. badge-96.png is the flag on a transparent field.
+    badge: "/badge-96.png",
     // tag coalesces: a newer push with the same tag replaces the old one
     // instead of stacking (e.g. repeated score updates).
     tag: data.tag || undefined,
