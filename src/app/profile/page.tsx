@@ -12,10 +12,12 @@ import {
   IconLogout,
   IconTrash,
   IconArrowLeft,
+  IconBell,
   IconBellRinging,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { showToast } from "@/lib/toast";
+import { subscribeBrowser } from "@/lib/pushClient";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
@@ -354,6 +356,7 @@ export default function ProfilePage() {
                     sub="Saved destinations for future trips"
                     onClick={() => router.push("/profile/archived-ideas")}
                   />
+                  <NotificationEnableRow />
                   <NotificationTestRow />
                 </div>
               </Section>
@@ -527,6 +530,59 @@ function SettingsRow({
         <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
       ) : null)}
     </Tag>
+  );
+}
+
+// ── Notification enable row (Push Phase 2) ─────────────────────────────────
+// Explicit (re)subscribe for THIS install, independent of the install banner.
+// Needed because the banner's enable prompt only shows when permission is
+// "default" — but on Android the notification permission is per-ORIGIN and a
+// WebAPK shares it, so after a prior grant + uninstall/reinstall the permission
+// reads "granted" (no banner) while the new install has no live subscription.
+// This row works in every permission state: requests permission if needed
+// (a no-op prompt when already granted), then subscribes this device.
+function NotificationEnableRow() {
+  const [busy, setBusy] = useState(false);
+  const subscribe = trpc.notifications.subscribe.useMutation();
+
+  const enable = async () => {
+    if (busy) return;
+    if (typeof Notification === "undefined") {
+      showToast("This browser doesn't support notifications.", "info");
+      return;
+    }
+    setBusy(true);
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm === "denied") {
+        showToast("Notifications are blocked — turn them on in your phone's settings.", "info");
+        return;
+      }
+      if (perm !== "granted") {
+        showToast("Notifications weren't enabled.", "info");
+        return;
+      }
+      const sub = await subscribeBrowser();
+      if (!sub) {
+        showToast("Couldn't subscribe on this device.", "info");
+        return;
+      }
+      await subscribe.mutateAsync(sub);
+      showToast("Notifications enabled on this device.", "info");
+    } catch {
+      showToast("Couldn't enable notifications.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SettingsRow
+      icon={<IconBell size={16} stroke={1.75} />}
+      label={busy ? "Enabling…" : "Enable notifications on this device"}
+      sub="Turn on push for this phone or tablet"
+      onClick={enable}
+    />
   );
 }
 
