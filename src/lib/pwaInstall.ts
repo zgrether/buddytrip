@@ -49,11 +49,15 @@ export function installAffordance(
   return hasPrompt ? "button" : "android-instructions";
 }
 
-/** Engagement gate = IN-SESSION: the banner shows once the user has actually
- *  used the app THIS session (a navigation, or ~30s dwell — see ENGAGE_DELAY_MS
- *  + markEngaged). Chosen over return-visit counting so a first-time invited
- *  member (peak motivation) isn't asked to come back N times — while still not
- *  ambushing someone who hasn't seen the app yet. */
+/** Engagement gate: the banner shows once the user has USED the app — a
+ *  navigation, or ~30s dwell (see markEngaged). Earned once, then PERSISTED
+ *  (localStorage), so a returning user is "engaged" from first paint of the
+ *  next session — which is what makes the one-tap Install button reachable
+ *  (beforeinstallprompt fires before any dwell/nav, so it's only claimable when
+ *  engagement is already true at load). Chosen over return-visit counting so a
+ *  first-time invited member at peak motivation isn't asked to come back N
+ *  times — while still not ambushing someone who just landed for the first time
+ *  and hasn't done anything yet. */
 export const ENGAGE_DELAY_MS = 30_000;
 /** Post-dismissal suppression window (~2 weeks). */
 export const DISMISS_DECAY_MS = 14 * 24 * 60 * 60 * 1000;
@@ -129,7 +133,13 @@ export interface BeforeInstallPromptEvent extends Event {
  *  single source of truth. */
 const BIP_GLOBAL = "__btInstallPrompt";
 const PWA_EVENT = "bt:pwa"; // fired on prompt capture/clear AND engagement change
-const ENGAGED_KEY = "bt.pwa.engaged.v1"; // sessionStorage — in-session engagement
+// localStorage (NOT session) — "has this user EVER engaged". Must persist:
+// beforeinstallprompt fires before any dwell/nav on every load, so if the flag
+// reset per session the claim predicate would never be true at fire time and
+// the one-tap button would be unreachable. Persisting means session 2+ is
+// already engaged at fire time → we claim the event → the button works (and
+// stays available after Chrome's native prompt stops volunteering post-dismiss).
+const ENGAGED_KEY = "bt.pwa.engaged.v1";
 const DISMISS_KEY_LITERAL = "bt.pwa.bannerDismiss.v1"; // == DISMISS_KEY below
 
 interface BipWindow {
@@ -164,7 +174,7 @@ export const INSTALL_CAPTURE_SCRIPT = `
       return false;
     } catch(e){ return false; }
   }
-  function engaged(){ try { return sessionStorage.getItem('${ENGAGED_KEY}')==='1'; } catch(e){ return false; } }
+  function engaged(){ try { return localStorage.getItem('${ENGAGED_KEY}')==='1'; } catch(e){ return false; } }
   function standalone(){
     try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || navigator.standalone===true; } catch(e){ return false; }
@@ -210,24 +220,24 @@ export function clearCapturedInstallPrompt(): void {
   window.dispatchEvent(new Event(PWA_EVENT));
 }
 
-/** Whether the user has engaged with the app this session (a navigation or
- *  ~30s dwell). Read synchronously by the capture script too (same key). */
+/** Whether the user has EVER engaged with the app (a navigation or ~30s dwell,
+ *  persisted). Read synchronously by the capture script too (same key). */
 export function isEngaged(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return sessionStorage.getItem(ENGAGED_KEY) === "1";
+    return localStorage.getItem(ENGAGED_KEY) === "1";
   } catch {
     return false;
   }
 }
 
-/** Mark the session engaged (idempotent) and notify subscribers so a mounted
- *  banner re-resolves. A no-op after the first call per session. */
+/** Mark the user engaged (idempotent, persisted) and notify subscribers so a
+ *  mounted banner re-resolves. A no-op after the first-ever call. */
 export function markEngaged(): void {
   if (typeof window === "undefined") return;
   try {
-    if (sessionStorage.getItem(ENGAGED_KEY) === "1") return;
-    sessionStorage.setItem(ENGAGED_KEY, "1");
+    if (localStorage.getItem(ENGAGED_KEY) === "1") return;
+    localStorage.setItem(ENGAGED_KEY, "1");
   } catch {
     return; // no storage → stays un-engaged (banner never shows; acceptable)
   }
