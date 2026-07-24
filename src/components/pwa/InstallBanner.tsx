@@ -3,14 +3,19 @@
 import { useEffect, useState } from "react";
 import { BellOff, Share, Smartphone, X } from "lucide-react";
 import {
+  clearCapturedInstallPrompt,
   detectNotificationPermission,
   detectPlatform,
   detectStandalone,
+  getCapturedInstallPrompt,
+  installAffordance,
+  isEngaged,
   recordDismissal,
-  recordVisit,
   resolveBannerState,
   readDismissal,
+  subscribePwaState,
   type BannerState,
+  type BeforeInstallPromptEvent,
 } from "@/lib/pwaInstall";
 
 /**
@@ -22,9 +27,10 @@ import {
  * dismissal, engagement-gated, one at a time.
  *
  * States (resolved in src/lib/pwaInstall.ts — pure + unit-tested):
- *  - install/android — real one-tap Install via captured
- *    `beforeinstallprompt`; instructional fallback if Chrome hasn't
- *    offered the prompt.
+ *  - install/android — real one-tap Install via the root-captured
+ *    `beforeinstallprompt` (src/lib/pwaInstall.ts); instructional Chrome-menu
+ *    fallback whenever no prompt is available (never fired, or consumed by a
+ *    prior dismissal — the common post-dismiss state).
  *  - install/ios — instructional only (iOS install cannot be triggered
  *    programmatically): Share → Add to Home Screen, share glyph inline.
  *  - blocked — installed but Notification.permission === "denied";
@@ -33,13 +39,11 @@ import {
  *    permission granted, or installed with permission still "default"
  *    (that state stays stubbed until the push phase ships an enable
  *    action that actually does something).
+ *
+ * The prompt is captured at app root BEFORE hydration (the banner mounts too
+ * late to catch it itself); this component reads it from the store and
+ * subscribes so a prompt that arrives after mount still lights up the button.
  */
-
-/** Chrome's install-prompt event — not in the TS DOM lib. */
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
 
 export function InstallBanner() {
   const [state, setState] = useState<BannerState>(null);
@@ -47,34 +51,31 @@ export function InstallBanner() {
     useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    // Capture Chrome's install prompt whenever it fires (often after this
-    // mount). preventDefault suppresses Chrome's own mini-infobar so the
-    // app controls when the prompt shows.
-    const onBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setInstallPrompt(e as BeforeInstallPromptEvent);
+    // Re-resolve BOTH the visibility state and the captured prompt on every
+    // PWA-state change (engagement flip, prompt capture/clear) so a banner that
+    // mounted before the user engaged still appears once they do. Values depend
+    // on browser-only APIs (UA, matchMedia, storage, window global), so this
+    // resolves after mount, not during render.
+    const sync = () => {
+      setInstallPrompt(getCapturedInstallPrompt());
+      setState(
+        resolveBannerState({
+          platform: detectPlatform(),
+          standalone: detectStandalone(),
+          engaged: isEngaged(),
+          dismissal: readDismissal(),
+          notificationPermission: detectNotificationPermission(),
+          now: Date.now(),
+        })
+      );
     };
+    sync();
+    const unsubscribe = subscribePwaState(sync);
     const onInstalled = () => setState(null);
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     window.addEventListener("appinstalled", onInstalled);
 
-    // Hydration-via-effect: the state depends on browser-only APIs (UA,
-    // matchMedia, localStorage), so it MUST resolve after mount — the same
-    // whitelisted case as useGuideDismissed / quick-game.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(
-      resolveBannerState({
-        platform: detectPlatform(),
-        standalone: detectStandalone(),
-        visits: recordVisit(),
-        dismissal: readDismissal(),
-        notificationPermission: detectNotificationPermission(),
-        now: Date.now(),
-      })
-    );
-
     return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      unsubscribe();
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
@@ -90,6 +91,11 @@ export function InstallBanner() {
     if (!installPrompt) return;
     await installPrompt.prompt();
     const { outcome } = await installPrompt.userChoice;
+    // The event is single-use whatever the outcome — clear it so a DISMISSED
+    // prompt falls back to the instructional copy instead of a dead button
+    // (Chrome won't re-fire beforeinstallprompt for a long window). The store
+    // notifies subscribers, so this component's installPrompt goes null.
+    clearCapturedInstallPrompt();
     if (outcome === "accepted") {
       // Suppress the tab-context banner while the user moves to the
       // installed app (standalone detection owns the state from there).
@@ -98,6 +104,7 @@ export function InstallBanner() {
     }
   };
 
+  const affordance = installAffordance(state, installPrompt != null);
   const blocked = state.kind === "blocked";
 
   return (
@@ -137,7 +144,7 @@ export function InstallBanner() {
             >
               Add BuddyTrip to your home screen
             </p>
-            {state.platform === "ios" ? (
+            {affordance === "ios-instructions" && (
               <p
                 className="mt-0.5 text-[11px] leading-snug"
                 style={{ color: "var(--color-bt-text-dim)" }}
@@ -150,7 +157,8 @@ export function InstallBanner() {
                 />{" "}
                 Share, then &ldquo;Add to Home Screen&rdquo;
               </p>
-            ) : installPrompt ? null : (
+            )}
+            {affordance === "android-instructions" && (
               <p
                 className="mt-0.5 text-[11px] leading-snug"
                 style={{ color: "var(--color-bt-text-dim)" }}
@@ -162,8 +170,10 @@ export function InstallBanner() {
         )}
       </div>
 
-      {/* Android one-tap install — Small Secondary (never a Primary fill). */}
-      {state.kind === "install" && state.platform === "android" && installPrompt && (
+      {/* Android one-tap install — Small Secondary (never a Primary fill).
+          Only when a live prompt is captured; otherwise the instructional
+          copy above carries the how-to. */}
+      {affordance === "button" && (
         <button
           type="button"
           onClick={install}

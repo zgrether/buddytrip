@@ -13,6 +13,7 @@ import { trpc } from "@/lib/trpc-client";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/Toaster";
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
+import { PwaEngagementTracker } from "@/components/pwa/PwaEngagementTracker";
 import { showToast } from "@/lib/toast";
 
 /**
@@ -102,6 +103,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             {children}
             <Toaster />
             <ServiceWorkerRegistration />
+            <PwaEngagementTracker />
           </QueryClientProvider>
         </trpc.Provider>
       </AuthProvider>

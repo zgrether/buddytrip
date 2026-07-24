@@ -30,9 +30,35 @@ export type BannerState =
   | { kind: "blocked" }
   | null;
 
-/** Show only from the Nth visit — a banner before the user has seen the
- *  app gets reflex-dismissed. */
-export const MIN_VISITS = 3;
+/** Which install affordance the banner renders, given the resolved state and
+ *  whether a live `beforeinstallprompt` is captured. Pure so the render branch
+ *  (esp. the Android no-prompt fallback — the common state after a dismissal)
+ *  is unit-testable without a DOM. */
+export type InstallAffordance =
+  | "button" // Android with a captured prompt → real one-tap Install
+  | "android-instructions" // Android, no prompt available → Chrome ⋮ menu copy
+  | "ios-instructions" // iOS → Share → Add to Home Screen (never a button)
+  | "none"; // blocked/hidden — no install affordance
+
+export function installAffordance(
+  state: BannerState,
+  hasPrompt: boolean
+): InstallAffordance {
+  if (!state || state.kind !== "install") return "none";
+  if (state.platform === "ios") return "ios-instructions";
+  return hasPrompt ? "button" : "android-instructions";
+}
+
+/** Engagement gate: the banner shows once the user has USED the app — a
+ *  navigation, or ~30s dwell (see markEngaged). Earned once, then PERSISTED
+ *  (localStorage), so a returning user is "engaged" from first paint of the
+ *  next session — which is what makes the one-tap Install button reachable
+ *  (beforeinstallprompt fires before any dwell/nav, so it's only claimable when
+ *  engagement is already true at load). Chosen over return-visit counting so a
+ *  first-time invited member at peak motivation isn't asked to come back N
+ *  times — while still not ambushing someone who just landed for the first time
+ *  and hasn't done anything yet. */
+export const ENGAGE_DELAY_MS = 30_000;
 /** Post-dismissal suppression window (~2 weeks). */
 export const DISMISS_DECAY_MS = 14 * 24 * 60 * 60 * 1000;
 /** After this many dismissals the banner never returns (it "may return
@@ -54,21 +80,26 @@ export function isDismissSuppressed(
  * the foundation, so it wins over permission states; the
  * installed-but-permission-default state is deliberately silent until
  * the push phase ships something the enable button can actually do.
+ *
+ * `engaged` gates the banner on in-session engagement. This is ALSO the exact
+ * predicate the capture script uses to decide whether to `preventDefault()` —
+ * the two MUST agree, or we'd suppress Chrome's native prompt in a state where
+ * our own banner isn't showing (the dead-zone regression).
  */
 export function resolveBannerState(input: {
   platform: PwaPlatform;
   standalone: boolean;
-  visits: number;
+  engaged: boolean;
   dismissal: DismissalRecord | null;
   notificationPermission: NotificationPermissionState;
   now: number;
 }): BannerState {
-  const { platform, standalone, visits, dismissal, notificationPermission, now } = input;
+  const { platform, standalone, engaged, dismissal, notificationPermission, now } = input;
 
   // Desktop / unknown platforms never see the banner.
   if (platform === "other") return null;
-  // Engagement gate — never on the first couple of loads.
-  if (visits < MIN_VISITS) return null;
+  // Engagement gate — never before the user has actually used the app.
+  if (!engaged) return null;
   // Decaying dismissal.
   if (isDismissSuppressed(dismissal, now)) return null;
 
@@ -78,6 +109,139 @@ export function resolveBannerState(input: {
   // "default" stays hidden until push exists to enable; granted = done.
   if (notificationPermission === "denied") return { kind: "blocked" };
   return null;
+}
+
+// ── beforeinstallprompt capture (root-level, earliest possible) ──────────
+//
+// `beforeinstallprompt` fires early in page load — before React hydrates,
+// long before the late-mounting TopNav that hosts the banner. A listener
+// added in the banner's own effect routinely MISSES it, so the Android
+// real-Install button never appears. Instead a tiny inline script
+// (INSTALL_CAPTURE_SCRIPT, injected beforeInteractive in the root layout)
+// owns the ONLY real listeners and stashes the event on a window global;
+// the banner reads it from here and subscribes for late arrivals.
+
+/** Chrome's install-prompt event — not in the TS DOM lib. */
+export interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+/** window global + notification event name + storage keys — MUST match the
+ *  literals baked into INSTALL_CAPTURE_SCRIPT (it runs before this module and
+ *  can't import them). Interpolated into the script string below so there's a
+ *  single source of truth. */
+const BIP_GLOBAL = "__btInstallPrompt";
+const PWA_EVENT = "bt:pwa"; // fired on prompt capture/clear AND engagement change
+// localStorage (NOT session) — "has this user EVER engaged". Must persist:
+// beforeinstallprompt fires before any dwell/nav on every load, so if the flag
+// reset per session the claim predicate would never be true at fire time and
+// the one-tap button would be unreachable. Persisting means session 2+ is
+// already engaged at fire time → we claim the event → the button works (and
+// stays available after Chrome's native prompt stops volunteering post-dismiss).
+const ENGAGED_KEY = "bt.pwa.engaged.v1";
+const DISMISS_KEY_LITERAL = "bt.pwa.bannerDismiss.v1"; // == DISMISS_KEY below
+
+interface BipWindow {
+  [BIP_GLOBAL]?: BeforeInstallPromptEvent | null;
+}
+
+/**
+ * Inline capture script, injected `beforeInteractive` from the root layout so
+ * it runs before hydration and can't miss the event.
+ *
+ * **Conditional `preventDefault()`** (the key contract): claiming the event
+ * suppresses Chrome's OWN native install prompt. We only claim it when our
+ * banner would show the install affordance *right now* — the SAME predicate as
+ * `resolveBannerState`'s gate: engaged, not dismiss-suppressed, not installed.
+ * Otherwise we let Chrome's native prompt through, so there's never a window
+ * with no install affordance (the dead-zone regression: suppressing Chrome
+ * while our banner is still gated out). We only STORE the event when we claimed
+ * it — an un-claimed event is Chrome's to consume, and keeping it would leave a
+ * dead one-tap button.
+ */
+export const INSTALL_CAPTURE_SCRIPT = `
+(function(){
+  var G='${BIP_GLOBAL}';
+  window[G]=null;
+  function notify(){ window.dispatchEvent(new Event('${PWA_EVENT}')); }
+  function suppressed(){
+    try {
+      var raw=localStorage.getItem('${DISMISS_KEY_LITERAL}'); if(!raw) return false;
+      var d=JSON.parse(raw);
+      if(d && d.count>=${MAX_DISMISSALS}) return true;
+      if(d && (Date.now()-d.at)<${DISMISS_DECAY_MS}) return true;
+      return false;
+    } catch(e){ return false; }
+  }
+  function engaged(){ try { return localStorage.getItem('${ENGAGED_KEY}')==='1'; } catch(e){ return false; } }
+  function standalone(){
+    try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || navigator.standalone===true; } catch(e){ return false; }
+  }
+  window.addEventListener('beforeinstallprompt', function(e){
+    // Only claim (and suppress Chrome) when our banner will show it now.
+    if(!standalone() && !suppressed() && engaged()){
+      e.preventDefault();
+      window[G]=e;
+      notify();
+    }
+    // else: let Chrome's native prompt through; don't store (no dead button).
+  });
+  window.addEventListener('appinstalled', function(){
+    window[G]=null;
+    notify();
+  });
+})();
+`;
+
+/** The earliest-captured install prompt, or null if none is available (never
+ *  fired, not claimed because we were gated out, already consumed, or Chrome
+ *  is suppressing it post-dismiss). */
+export function getCapturedInstallPrompt(): BeforeInstallPromptEvent | null {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as BipWindow)[BIP_GLOBAL] ?? null;
+}
+
+/** Subscribe to PWA state changes — prompt capture/clear AND engagement. */
+export function subscribePwaState(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(PWA_EVENT, cb);
+  return () => window.removeEventListener(PWA_EVENT, cb);
+}
+
+/** Clear the captured prompt after `prompt()` resolves — the event is
+ *  single-use (dismissed OR accepted), so a stale reference would leave a dead
+ *  Install button. Clearing makes the banner fall back to the instructional
+ *  copy. Notifies subscribers. */
+export function clearCapturedInstallPrompt(): void {
+  if (typeof window === "undefined") return;
+  (window as unknown as BipWindow)[BIP_GLOBAL] = null;
+  window.dispatchEvent(new Event(PWA_EVENT));
+}
+
+/** Whether the user has EVER engaged with the app (a navigation or ~30s dwell,
+ *  persisted). Read synchronously by the capture script too (same key). */
+export function isEngaged(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(ENGAGED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Mark the user engaged (idempotent, persisted) and notify subscribers so a
+ *  mounted banner re-resolves. A no-op after the first-ever call. */
+export function markEngaged(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (localStorage.getItem(ENGAGED_KEY) === "1") return;
+    localStorage.setItem(ENGAGED_KEY, "1");
+  } catch {
+    return; // no storage → stays un-engaged (banner never shows; acceptable)
+  }
+  window.dispatchEvent(new Event(PWA_EVENT));
 }
 
 // ── Environment detection (browser-only; callers guard for SSR) ──────────
@@ -109,25 +273,10 @@ export function detectNotificationPermission(): NotificationPermissionState {
   return Notification.permission;
 }
 
-// ── Persistence (localStorage; sessionStorage guards the visit count) ─────
+// ── Persistence (localStorage) ────────────────────────────────────────────
 
-const VISITS_KEY = "bt.pwa.visits.v1";
-const SESSION_COUNTED_KEY = "bt.pwa.sessionCounted.v1";
+// Kept in sync with DISMISS_KEY_LITERAL (baked into the capture script above).
 const DISMISS_KEY = "bt.pwa.bannerDismiss.v1";
-
-/** Count at most one visit per browser session; returns the total. */
-export function recordVisit(): number {
-  try {
-    const current = parseInt(localStorage.getItem(VISITS_KEY) ?? "0", 10) || 0;
-    if (sessionStorage.getItem(SESSION_COUNTED_KEY)) return current;
-    sessionStorage.setItem(SESSION_COUNTED_KEY, "1");
-    const next = current + 1;
-    localStorage.setItem(VISITS_KEY, String(next));
-    return next;
-  } catch {
-    return 0; // storage unavailable → treat as unengaged (banner stays hidden)
-  }
-}
 
 export function readDismissal(): DismissalRecord | null {
   try {

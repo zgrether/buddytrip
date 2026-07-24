@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Providers } from "@/lib/providers";
 import { SiteFooter } from "@/components/SiteFooter";
+import { INSTALL_CAPTURE_SCRIPT } from "@/lib/pwaInstall";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -43,6 +45,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
+        {/* Capture beforeinstallprompt at the earliest possible point (before
+            hydration) so the late-mounting install banner never misses it —
+            PWA install follow-up. Runs on every route; the banner itself
+            stays authenticated-only (inside TopNav). */}
+        <Script id="bt-install-capture" strategy="beforeInteractive">
+          {INSTALL_CAPTURE_SCRIPT}
+        </Script>
         <Providers>
           {children}
           {/* Global legal footer — Privacy/Terms on every page incl. pre-auth
