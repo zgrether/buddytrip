@@ -16,6 +16,7 @@ import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useConfigSync } from "@/hooks/useConfigSync";
+import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import {
   configToNonGolfDraft,
@@ -100,6 +101,14 @@ export function NonGolfGameView() {
     if (tripId && competitionId) void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
   }, [utils, tripId, urlGameId, competitionId]);
   useConfigSync(tripId, urlGameId, !!urlGameId, onConfigChanged);
+  // Realtime config push (migration 084): the INSTANT half — another browser sees a
+  // settings change without waiting out the poll above (which is also paused on a
+  // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
+  // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
+  // Non-golf had NO freshness mechanism before this (no score poll — results post via
+  // games.post, not per-hole entries — and its own leaderboard read has no
+  // refetchInterval, DATA_FRESHNESS_AUDIT.md §8-F9), so this is its first one.
+  useRealtimeGame(tripId, urlGameId);
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);
   const gameCells = useMemo(
     () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number; points: number }[])
