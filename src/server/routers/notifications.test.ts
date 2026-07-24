@@ -90,6 +90,27 @@ describe("notifications router", () => {
     expect(memberPrefs.chat).toBe(false);
     await ctx.caller().notifications.setPreference({ key: "chat", enabled: false });
   });
+
+  it("testSend delivers to the caller's own devices EVEN with the category off (bypasses the gate)", async () => {
+    const caller = ctx.caller();
+    // Seed a device and turn scores OFF — a self-test must still fire.
+    await ctx.admin.from("push_subscriptions").insert({
+      id: genId("sub"),
+      user_id: ctx.user.id,
+      endpoint: `https://example.test/ep/${genId("ep")}`,
+      p256dh: "k",
+      auth: "a",
+    });
+    await caller.notifications.setPreference({ key: "scores", enabled: false });
+    sendMock.mockClear();
+    sendMock.mockResolvedValue({ statusCode: 201 });
+
+    const res = await caller.notifications.testSend();
+    expect(res.skippedPreferenceOff).toBe(false); // gate bypassed
+    expect(res.sent).toBeGreaterThanOrEqual(1);
+
+    await caller.notifications.setPreference({ key: "scores", enabled: true });
+  });
 });
 
 // ── gates 4 + 5: send helper respects prefs; dead endpoint pruned ───────────
@@ -126,7 +147,7 @@ describe("sendPush helper", () => {
       sctx.user.id,
       "chat",
       { title: "t", body: "b" },
-      sctx.admin
+      { admin: sctx.admin }
     );
     expect(res.skippedPreferenceOff).toBe(true);
     expect(res.sent).toBe(0);
@@ -142,7 +163,7 @@ describe("sendPush helper", () => {
       sctx.user.id,
       "scores", // default ON
       { title: "t", body: "b" },
-      sctx.admin
+      { admin: sctx.admin }
     );
     expect(res.sent).toBeGreaterThanOrEqual(1);
     expect(sendMock).toHaveBeenCalled();
@@ -157,7 +178,7 @@ describe("sendPush helper", () => {
       sctx.user.id,
       "scores",
       { title: "t", body: "b" },
-      sctx.admin
+      { admin: sctx.admin }
     );
     expect(res.removedDead).toBeGreaterThanOrEqual(1);
 

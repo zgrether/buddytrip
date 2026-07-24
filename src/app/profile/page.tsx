@@ -12,8 +12,10 @@ import {
   IconLogout,
   IconTrash,
   IconArrowLeft,
+  IconBellRinging,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
+import { showToast } from "@/lib/toast";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
@@ -351,8 +353,8 @@ export default function ProfilePage() {
                     label="Idea archive"
                     sub="Saved destinations for future trips"
                     onClick={() => router.push("/profile/archived-ideas")}
-                    lastRow
                   />
+                  <NotificationTestRow />
                 </div>
               </Section>
 
@@ -525,6 +527,39 @@ function SettingsRow({
         <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
       ) : null)}
     </Tag>
+  );
+}
+
+// ── Notification test row (Push Phase 2) ───────────────────────────────────
+// Fires a self-only test push (notifications.testSend → the caller's own
+// devices). Toast reflects the outcome so it's usable from the installed PWA on
+// a phone — the practical way to confirm delivery without a console.
+function NotificationTestRow() {
+  const testSend = trpc.notifications.testSend.useMutation({
+    onSuccess(res) {
+      if (res.notConfigured) {
+        showToast("Push isn't configured on the server yet.", "info");
+      } else if (res.sent > 0) {
+        showToast(`Test notification sent to ${res.sent} device${res.sent === 1 ? "" : "s"}.`, "info");
+      } else {
+        showToast("No devices subscribed — enable notifications first.", "info");
+      }
+    },
+    onError() {
+      showToast("Couldn't send the test notification.");
+    },
+  });
+
+  return (
+    <SettingsRow
+      icon={<IconBellRinging size={16} stroke={1.75} />}
+      label={testSend.isPending ? "Sending…" : "Send test notification"}
+      sub="Check push is working on this device"
+      onClick={() => {
+        if (!testSend.isPending) testSend.mutate();
+      }}
+      lastRow
+    />
   );
 }
 
