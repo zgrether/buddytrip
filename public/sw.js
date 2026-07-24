@@ -1,15 +1,21 @@
-// BuddyTrip service worker — PWA Phase 1: DELIBERATELY minimal.
+// BuddyTrip service worker — DELIBERATELY minimal.
 //
-// This file exists so Web Push can attach to it in a later phase. It does
-// NOTHING else. In particular there is NO fetch handler and NO caching:
-// a service worker is sticky software — a caching SW shipped to 30 phones
-// can serve stale content until forcibly replaced, and users won't know
-// why. Offline support is a separate feature with its own spec; do not
-// add caching here as a side quest.
+// STILL NO CACHING. A caching SW is sticky software that can serve stale
+// content to 30 phones until forcibly replaced — that risk is what the
+// "no caching" rule guards against, and it stays. Offline support is a
+// separate feature with its own spec; do not add caching here.
 //
-// skipWaiting + clients.claim make a future SW update (e.g. the push
-// phase) take effect on the next load instead of idling in "waiting"
-// until every tab closes.
+// The `fetch` handler below is a NO-OP pass-through — it registers the event
+// (required) but NEVER calls respondWith, so every request goes straight to
+// the network unchanged. Zero caching, zero stale-content risk. It exists ONLY
+// because Chrome's Android install-as-app (WebAPK) criteria require the SW to
+// have a fetch handler; without it, Chrome downgrades "Install" to a dumb
+// "Create shortcut" bookmark (which isn't standalone and breaks push). Verified
+// on prod: manifest + icons + active SW were all correct and Chrome still
+// offered only a shortcut — the missing fetch handler was the sole cause.
+//
+// skipWaiting + clients.claim make an SW update take effect on the next load
+// instead of idling in "waiting" until every tab closes.
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -17,6 +23,11 @@ self.addEventListener("install", () => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+// No-op fetch handler — see the header. Do NOT add caching / respondWith here.
+self.addEventListener("fetch", () => {
+  // Intentionally empty: request falls through to the network untouched.
 });
 
 // ── Web Push (Phase 2) ──────────────────────────────────────────────────────
