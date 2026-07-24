@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   resolveBannerState,
   isDismissSuppressed,
+  installAffordance,
   MIN_VISITS,
   DISMISS_DECAY_MS,
+  type BannerState,
 } from "./pwaInstall";
 
 const NOW = 1_800_000_000_000;
@@ -111,5 +113,28 @@ describe("dismissal decay", () => {
 
   it("no dismissal record → not suppressed", () => {
     expect(isDismissSuppressed(null, NOW)).toBe(false);
+  });
+});
+
+describe("installAffordance (render branch — the no-prompt fallback)", () => {
+  const android: BannerState = { kind: "install", platform: "android" };
+  const ios: BannerState = { kind: "install", platform: "ios" };
+
+  it("Android WITH a captured prompt → the real Install button", () => {
+    expect(installAffordance(android, true)).toBe("button");
+  });
+
+  it("Android WITHOUT a prompt → instructional fallback, NOT hidden (the common post-dismiss state)", () => {
+    expect(installAffordance(android, false)).toBe("android-instructions");
+  });
+
+  it("iOS is always instructional — never a button, prompt or not", () => {
+    expect(installAffordance(ios, true)).toBe("ios-instructions");
+    expect(installAffordance(ios, false)).toBe("ios-instructions");
+  });
+
+  it("blocked / hidden states carry no install affordance", () => {
+    expect(installAffordance({ kind: "blocked" }, true)).toBe("none");
+    expect(installAffordance(null, true)).toBe("none");
   });
 });

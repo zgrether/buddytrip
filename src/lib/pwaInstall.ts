@@ -30,6 +30,25 @@ export type BannerState =
   | { kind: "blocked" }
   | null;
 
+/** Which install affordance the banner renders, given the resolved state and
+ *  whether a live `beforeinstallprompt` is captured. Pure so the render branch
+ *  (esp. the Android no-prompt fallback — the common state after a dismissal)
+ *  is unit-testable without a DOM. */
+export type InstallAffordance =
+  | "button" // Android with a captured prompt → real one-tap Install
+  | "android-instructions" // Android, no prompt available → Chrome ⋮ menu copy
+  | "ios-instructions" // iOS → Share → Add to Home Screen (never a button)
+  | "none"; // blocked/hidden — no install affordance
+
+export function installAffordance(
+  state: BannerState,
+  hasPrompt: boolean
+): InstallAffordance {
+  if (!state || state.kind !== "install") return "none";
+  if (state.platform === "ios") return "ios-instructions";
+  return hasPrompt ? "button" : "android-instructions";
+}
+
 /** Show only from the Nth visit — a banner before the user has seen the
  *  app gets reflex-dismissed. */
 export const MIN_VISITS = 3;
@@ -78,6 +97,79 @@ export function resolveBannerState(input: {
   // "default" stays hidden until push exists to enable; granted = done.
   if (notificationPermission === "denied") return { kind: "blocked" };
   return null;
+}
+
+// ── beforeinstallprompt capture (root-level, earliest possible) ──────────
+//
+// `beforeinstallprompt` fires early in page load — before React hydrates,
+// long before the late-mounting TopNav that hosts the banner. A listener
+// added in the banner's own effect routinely MISSES it, so the Android
+// real-Install button never appears. Instead a tiny inline script
+// (INSTALL_CAPTURE_SCRIPT, injected beforeInteractive in the root layout)
+// owns the ONLY real listeners and stashes the event on a window global;
+// the banner reads it from here and subscribes for late arrivals.
+
+/** Chrome's install-prompt event — not in the TS DOM lib. */
+export interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+/** window global + notification event name — MUST match the literals baked
+ *  into INSTALL_CAPTURE_SCRIPT below (that script runs before this module). */
+const BIP_GLOBAL = "__btInstallPrompt";
+const BIP_EVENT = "bt:installprompt";
+
+interface BipWindow {
+  [BIP_GLOBAL]?: BeforeInstallPromptEvent | null;
+}
+
+/**
+ * Inline capture script, injected `beforeInteractive` from the root layout so
+ * it runs before hydration and can't miss the event. Captures + preventDefaults
+ * `beforeinstallprompt` (letting us choose when to prompt), clears on
+ * `appinstalled`, and re-broadcasts both as a `bt:installprompt` event the
+ * React store subscribes to. Kept string-literal (not the typed helpers below)
+ * because it executes standalone in the document, before any module loads.
+ */
+export const INSTALL_CAPTURE_SCRIPT = `
+(function(){
+  window.${BIP_GLOBAL} = null;
+  function notify(){ window.dispatchEvent(new Event('${BIP_EVENT}')); }
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    window.${BIP_GLOBAL} = e;
+    notify();
+  });
+  window.addEventListener('appinstalled', function(){
+    window.${BIP_GLOBAL} = null;
+    notify();
+  });
+})();
+`;
+
+/** The earliest-captured install prompt, or null if none is available
+ *  (never fired, already consumed, or Chrome is suppressing it post-dismiss). */
+export function getCapturedInstallPrompt(): BeforeInstallPromptEvent | null {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as BipWindow)[BIP_GLOBAL] ?? null;
+}
+
+/** Subscribe to capture/clear changes (fired by the inline script + on consume). */
+export function subscribeInstallPrompt(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(BIP_EVENT, cb);
+  return () => window.removeEventListener(BIP_EVENT, cb);
+}
+
+/** Clear the captured prompt after `prompt()` resolves — the event is
+ *  single-use (dismissed OR accepted), so a stale reference would leave a dead
+ *  Install button. Clearing makes the banner fall back to the instructional
+ *  copy. Notifies subscribers. */
+export function clearCapturedInstallPrompt(): void {
+  if (typeof window === "undefined") return;
+  (window as unknown as BipWindow)[BIP_GLOBAL] = null;
+  window.dispatchEvent(new Event(BIP_EVENT));
 }
 
 // ── Environment detection (browser-only; callers guard for SSR) ──────────
