@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
+import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
@@ -621,6 +622,11 @@ export function StrokeGameView() {
     if (tripId && activeGameId) void utils.games.getById.invalidate({ tripId, gameId: activeGameId });
   }, [utils, tripId, activeGameId]);
   useConfigSync(tripId, activeGameId, !!activeGameId, onConfigChanged);
+  // Realtime config push (migration 084): the INSTANT half — another browser sees a
+  // settings change without waiting out the poll above (which is also paused on a
+  // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
+  // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
+  useRealtimeGame(tripId, activeGameId);
 
   function toggle(userId: string) {
     setSelected((prev) =>
