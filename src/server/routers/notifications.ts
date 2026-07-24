@@ -127,25 +127,25 @@ export const notificationsRouter = router({
     }),
 
   /**
-   * DEV/PREVIEW-ONLY — prove the pipe. Sends a real test push to the CALLER's
-   * own devices. Refused in production so it can never reach a real user (the
-   * spec's gate: "remove or gate behind an env flag before it could reach a
-   * real user"). Not a domain event — Phase 3 wires those.
+   * Send a test notification to the CALLER's OWN devices — a permanent
+   * self-service "is push working?" diagnostic (Zach's ruling). It can only
+   * ever reach the caller's own subscriptions, so it's safe to keep enabled in
+   * production — there is no path to notify anyone else. Not a domain event;
+   * Phase 3 wires those. Bypasses the preference gate so the diagnostic always
+   * delivers even if the user has a category toggled off.
    */
   testSend: authedProcedure.mutation(async ({ ctx }) => {
-    if (process.env.NODE_ENV === "production") {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Test send is disabled in production",
-      });
-    }
-    // Uses `scores` (default ON) so an untouched account still receives it.
-    const result = await sendPush(ctx.user.id, "scores", {
-      title: "BuddyTrip",
-      body: "🔔 Test notification — push is working.",
-      url: "/dashboard",
-      tag: "bt-test",
-    });
+    const result = await sendPush(
+      ctx.user.id,
+      "scores",
+      {
+        title: "BuddyTrip",
+        body: "🔔 Test notification — push is working.",
+        url: "/dashboard",
+        tag: "bt-test",
+      },
+      { bypassPreference: true }
+    );
     return result;
   }),
 });

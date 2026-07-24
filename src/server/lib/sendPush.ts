@@ -46,6 +46,16 @@ interface SubRow {
   auth: string;
 }
 
+export interface SendPushOptions {
+  /** Injectable client (tests / server contexts); defaults to service-role admin. */
+  admin?: SupabaseClient;
+  /** Skip the preference gate. ONLY for an explicitly user-requested self-test
+   *  ("send me a test notification") — a diagnostic must deliver even if the
+   *  user has toggled the category off, or it reads as broken. Phase 3 event
+   *  wiring NEVER sets this — automated pushes are always preference-gated. */
+  bypassPreference?: boolean;
+}
+
 /** HTTP status codes from the push service that mean "this endpoint is gone". */
 function isGoneStatus(status: unknown): boolean {
   return status === 404 || status === 410;
@@ -55,9 +65,9 @@ export async function sendPush(
   userId: string,
   typeKey: NotificationKey,
   payload: PushPayload,
-  /** Injectable for tests; defaults to the service-role admin client. */
-  admin: SupabaseClient = createAdminClient()
+  opts: SendPushOptions = {}
 ): Promise<SendPushResult> {
+  const admin = opts.admin ?? createAdminClient();
   const result: SendPushResult = {
     sent: 0,
     skippedPreferenceOff: false,
@@ -67,15 +77,19 @@ export async function sendPush(
 
   try {
     // 1 · Preference gate — the recipient's effective on/off for this type.
-    const { data: userRow } = await admin
-      .from("users")
-      .select("notification_prefs")
-      .eq("id", userId)
-      .maybeSingle();
-    const prefs = (userRow?.notification_prefs ?? null) as NotificationPrefs | null;
-    if (!isTypeEnabled(prefs, typeKey)) {
-      result.skippedPreferenceOff = true;
-      return result;
+    // Skipped only for an explicit self-test (bypassPreference); Phase 3 events
+    // never bypass, so an automated push always respects the user's choice.
+    if (!opts.bypassPreference) {
+      const { data: userRow } = await admin
+        .from("users")
+        .select("notification_prefs")
+        .eq("id", userId)
+        .maybeSingle();
+      const prefs = (userRow?.notification_prefs ?? null) as NotificationPrefs | null;
+      if (!isTypeEnabled(prefs, typeKey)) {
+        result.skippedPreferenceOff = true;
+        return result;
+      }
     }
 
     // 2 · No keys → nothing to send with. Not an error (graceful degrade).
