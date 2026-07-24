@@ -3,7 +3,6 @@ import {
   resolveBannerState,
   isDismissSuppressed,
   installAffordance,
-  MIN_VISITS,
   DISMISS_DECAY_MS,
   type BannerState,
 } from "./pwaInstall";
@@ -13,7 +12,7 @@ const NOW = 1_800_000_000_000;
 const base = {
   platform: "android" as const,
   standalone: false,
-  visits: MIN_VISITS,
+  engaged: true,
   dismissal: null,
   notificationPermission: "default" as const,
   now: NOW,
@@ -32,10 +31,9 @@ describe("resolveBannerState", () => {
     ).toBeNull();
   });
 
-  it("engagement gate: hidden before the Nth visit, shows at N", () => {
-    expect(resolveBannerState({ ...base, visits: 1 })).toBeNull();
-    expect(resolveBannerState({ ...base, visits: MIN_VISITS - 1 })).toBeNull();
-    expect(resolveBannerState({ ...base, visits: MIN_VISITS })).toEqual({
+  it("engagement gate: hidden until the session is engaged, shows once it is", () => {
+    expect(resolveBannerState({ ...base, engaged: false })).toBeNull();
+    expect(resolveBannerState({ ...base, engaged: true })).toEqual({
       kind: "install",
       platform: "android",
     });

@@ -9,11 +9,11 @@ import {
   detectStandalone,
   getCapturedInstallPrompt,
   installAffordance,
+  isEngaged,
   recordDismissal,
-  recordVisit,
   resolveBannerState,
   readDismissal,
-  subscribeInstallPrompt,
+  subscribePwaState,
   type BannerState,
   type BeforeInstallPromptEvent,
 } from "@/lib/pwaInstall";
@@ -51,32 +51,28 @@ export function InstallBanner() {
     useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    // Hydration-via-effect: both the visibility state and the captured prompt
-    // depend on browser-only APIs (UA, matchMedia, localStorage, window
-    // global), so they MUST resolve after mount — the same whitelisted case as
-    // useGuideDismissed / quick-game. The disable covers every setState below.
-    /* eslint-disable react-hooks/set-state-in-effect */
-
-    // Seed from the root-captured prompt, then track capture/clear changes so
-    // a late-firing prompt (or a consume-clear) re-renders the affordance.
-    setInstallPrompt(getCapturedInstallPrompt());
-    const unsubscribe = subscribeInstallPrompt(() =>
-      setInstallPrompt(getCapturedInstallPrompt())
-    );
+    // Re-resolve BOTH the visibility state and the captured prompt on every
+    // PWA-state change (engagement flip, prompt capture/clear) so a banner that
+    // mounted before the user engaged still appears once they do. Values depend
+    // on browser-only APIs (UA, matchMedia, storage, window global), so this
+    // resolves after mount, not during render.
+    const sync = () => {
+      setInstallPrompt(getCapturedInstallPrompt());
+      setState(
+        resolveBannerState({
+          platform: detectPlatform(),
+          standalone: detectStandalone(),
+          engaged: isEngaged(),
+          dismissal: readDismissal(),
+          notificationPermission: detectNotificationPermission(),
+          now: Date.now(),
+        })
+      );
+    };
+    sync();
+    const unsubscribe = subscribePwaState(sync);
     const onInstalled = () => setState(null);
     window.addEventListener("appinstalled", onInstalled);
-
-    setState(
-      resolveBannerState({
-        platform: detectPlatform(),
-        standalone: detectStandalone(),
-        visits: recordVisit(),
-        dismissal: readDismissal(),
-        notificationPermission: detectNotificationPermission(),
-        now: Date.now(),
-      })
-    );
-    /* eslint-enable react-hooks/set-state-in-effect */
 
     return () => {
       unsubscribe();
