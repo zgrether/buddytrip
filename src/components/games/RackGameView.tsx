@@ -13,6 +13,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
+import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -282,6 +283,11 @@ export function RackGameView() {
     void utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
   }, [utils, tripId, gid]);
   useConfigSync(tripId, gid, !!gid, onConfigChanged);
+  // Realtime config push (migration 084): the INSTANT half — another browser sees a
+  // settings change without waiting out the poll above (which is also paused on a
+  // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
+  // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
+  useRealtimeGame(tripId, gid);
 
   // ── Rack read-model (the spec's novelty) ─────────────────────────────
   const participants = useMemo(() => groupsQ.data?.participants ?? [], [groupsQ.data]);
