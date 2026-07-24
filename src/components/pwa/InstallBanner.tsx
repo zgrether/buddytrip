@@ -200,7 +200,7 @@ export function InstallBanner() {
                 className="mt-0.5 text-[11px] leading-snug"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                In Chrome: menu ⋮ → &ldquo;Add to Home screen&rdquo;
+                In Chrome&apos;s settings: Install and create shortcut
               </p>
             )}
           </>
