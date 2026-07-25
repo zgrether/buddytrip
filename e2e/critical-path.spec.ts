@@ -158,6 +158,7 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   // games.configHash has resolved (src/hooks/useConfigDraft.ts) — editing the draft
   // before that first resolves leaves the baseline null for the rest of the
   // session, permanently disabling Save. Wait for it before touching anything.
+  // This exists because of #700; remove it when that's fixed.
   await configHashLoaded;
 
   // 4. Mandatory groupings: expand, add one group, add both crew via the
@@ -188,6 +189,7 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   //    the row's "Ready to play" subtitle (not just visibility, which is true
   //    the whole time) before tapping it again, or the second tap can race
   //    back into settings instead of the stroke surface.
+  //    This exists because of #701; remove it when that's fixed.
   await expect(row).toContainText("Ready to play", { timeout: 20_000 });
   await row.click();
   await page.getByTestId("group-enter-row").first().click();

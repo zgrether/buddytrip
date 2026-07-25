@@ -373,7 +373,7 @@ async function driveToSetupWithHandicapViaPanel(page: Page) {
   // resolved — editing the draft before that first resolves leaves the baseline
   // null for the rest of the session, permanently disabling Save (found live
   // while verifying the stroke version of this migration). Wait for it before
-  // touching anything.
+  // touching anything. This exists because of #700; remove it when that's fixed.
   await configHashLoaded;
 
   // From here down: IDENTICAL to `driveToSetupWithHandicap` from its
@@ -455,6 +455,7 @@ test("match-play spine (competition-attached, real path) — create via board �
   // whole time), same fix as the stroke version, or the tap races back into
   // settings instead of the match overview (reproduced running this file's
   // 4 tests together, not in isolation — a real race, not shared-DB load).
+  // This exists because of #701; remove it when that's fixed.
   const row = page.getByTestId("open-game-panel").filter({ hasText: "E2E Match Spine" });
   await expect(row).toContainText("Ready to play", { timeout: 20_000 });
   await row.click();
