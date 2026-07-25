@@ -323,14 +323,17 @@ function FloatingChatPanelInner({
 
 
   // Mark the active channel read whenever it's shown and new messages arrive.
-  // markRead stamps the server clock; on success it invalidates the readState
-  // query, refreshing readMarks here AND the badge in useChatUnreadCount. That
-  // refresh produces a fresh `displayed` reference which would re-trigger this
-  // effect, so we track the last-marked newest-message timestamp in a ref and
-  // only fire when it actually changes (per channel) — no mutation loop.
+  // markRead stamps the server clock; on success it invalidates readState
+  // (refreshing readMarks here) AND unreadCount (F3 — the badge in
+  // useChatUnreadCount no longer shares a query with this panel, so it needs
+  // its own explicit invalidation to clear on read). The readState refresh
+  // produces a fresh `displayed` reference which would re-trigger this effect,
+  // so we track the last-marked newest-message timestamp in a ref and only
+  // fire when it actually changes (per channel) — no mutation loop.
   const { mutate: markReadMutate } = trpc.messages.markRead.useMutation({
     onSuccess: () => {
       utils.messages.readState.invalidate({ tripId });
+      utils.messages.unreadCount.invalidate({ tripId });
     },
   });
   const lastMarkedRef = useRef<Record<Visibility, string | null>>({
@@ -1084,78 +1087,37 @@ function ChatBody({
 
 /**
  * useChatUnreadCount — total unread across the channels the viewer can see
- * (Crew always; Organizers when Owner/Organizer). Derived from the cached
- * messages lists vs the per-channel last-read timestamps in localStorage.
- * System lifecycle lines never count toward unread.
+ * (Crew always; Organizers when Owner/Organizer). Server-computed
+ * (messages.unreadCount, F3) instead of derived from a fetched messages page —
+ * this hook no longer pulls message rows at all with the panel closed.
+ *
+ * The query's OWN options match news.unreadCount exactly (no override —
+ * global defaults: staleTime 60s, no refetchInterval): same query-key
+ * policy, per queryConfig.ts's F4 lesson, not a second one invented for this
+ * badge. But unlike news, this query also gets INVALIDATED by the realtime
+ * subscription already mounted below (useRealtimeChat.ts) — a deliberate,
+ * one-directional divergence, not drift back toward the pre-F3 client
+ * derivation. Reason: news lagging until the next focus/remount is an
+ * acceptable tradeoff; chat isn't. Live trash talk mid-round is a stated
+ * product feature, and a chat badge that visibly trails the messages it's
+ * counting reads as broken in a way a quiet news badge doesn't. No polling
+ * was added to get this — the invalidation rides the subscription the panel
+ * already requires (see the comment on that hook call, below).
  */
 export function useChatUnreadCount(tripId: string): number {
-  const currentUser = useCurrentUser();
-  const { role } = useTripRole(tripId);
-  const canSeeOrganizers = role === "Owner" || role === "Organizer";
-
-  // Subscribe to realtime here (this hook is always mounted on the trip page).
-  // On every new message it invalidates the cached messages lists, so both the
-  // unread badge and an open FloatingChatPanel refetch and stay live — even
-  // when the panel is closed. The panel deliberately does NOT also subscribe.
+  // Subscribe to realtime here (this hook is always mounted on the trip page,
+  // panel open or closed) — MUST stay here even though the count below no
+  // longer derives from messages.list. The open FloatingChatPanel deliberately
+  // does NOT also subscribe (a single channel avoids a duplicate-topic
+  // collision), so it relies on THIS hook's subscription to keep its own
+  // messages.list cache live via direct cache writes (useRealtimeChat.ts).
+  // Removing this call would silently stop new messages from appearing in an
+  // open panel without a manual refresh.
   useRealtimeChat(tripId, "trip");
 
-  // Share the panel's infinite-query cache EXACTLY (same input + query type)
-  // so the always-mounted badge and an open FloatingChatPanel resolve to ONE
-  // query, not two. Previously this used a separate flat useQuery(limit:50);
-  // TanStack keys an infinite query distinctly from a flat one, so whenever the
-  // panel was open the same messages were fetched twice. We only read the
-  // already-loaded pages here — pagination stays the panel's responsibility.
-  const { data: crewData } = trpc.messages.list.useInfiniteQuery(
-    { tripId, channel: "trip", visibility: "crew", limit: CHAT_PAGE_SIZE },
-    {
-      enabled: !!tripId,
-      getNextPageParam: (lastPage) =>
-        lastPage.length === CHAT_PAGE_SIZE
-          ? lastPage[lastPage.length - 1].created_at
-          : undefined,
-    }
-  );
-  const { data: planningData } = trpc.messages.list.useInfiniteQuery(
-    { tripId, channel: "trip", visibility: "planning", limit: CHAT_PAGE_SIZE },
-    {
-      enabled: !!tripId && canSeeOrganizers,
-      getNextPageParam: (lastPage) =>
-        lastPage.length === CHAT_PAGE_SIZE
-          ? lastPage[lastPage.length - 1].created_at
-          : undefined,
-    }
-  );
-  const crewMessages = crewData?.pages.flat() ?? [];
-  const planningMessages = planningData?.pages.flat() ?? [];
-
-  // Server-backed read state (shared with FloatingChatPanel via the query
-  // cache). markRead in the panel invalidates this query, so the badge reacts
-  // the moment a channel is read — on this device or any other.
-  const { data: readStateData } = trpc.messages.readState.useQuery(
+  const { data } = trpc.messages.unreadCount.useQuery(
     { tripId },
     { enabled: !!tripId }
   );
-  const readMarks: Record<Visibility, string | null> = readStateData ?? {
-    crew: null,
-    planning: null,
-  };
-
-  if (!currentUser?.id) return 0;
-
-  const countChannel = (
-    messages: { user_id: string | null; created_at: string; message_type?: string }[],
-    visibility: Visibility
-  ): number => {
-    const others = messages.filter(
-      (m) => m.user_id !== currentUser.id && m.message_type !== "system"
-    );
-    const lr = readMarks[visibility];
-    if (!lr) return others.length;
-    const threshold = new Date(lr).getTime();
-    return others.filter((m) => new Date(m.created_at).getTime() > threshold).length;
-  };
-
-  const crew = countChannel(crewMessages, "crew");
-  const planning = canSeeOrganizers ? countChannel(planningMessages, "planning") : 0;
-  return crew + planning;
+  return data ?? 0;
 }
