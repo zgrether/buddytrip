@@ -16,8 +16,11 @@ import { draftOutboxPut, draftOutboxClear, draftOutboxRecover, type DraftView } 
  * Contract:
  *  - Mirrors `draft` whenever it changes AND the user has TOUCHED it (an
  *    untouched draft equals the server — nothing to save), while `enabled`
- *    (setup-mode only). `base` = the server fingerprint the draft diverged from,
- *    frozen at first touch, so recover() can reject a stale-over-newer restore.
+ *    (setup-mode only). `base` = `serverFingerprint`, the fingerprint the draft
+ *    diverged from, so recover() can reject a stale-over-newer restore. The
+ *    CALLER owns freezing it (useConfigDraft passes its frozen baseline hash —
+ *    the same value Save sends as `baseHash`); this hook no longer tracks a
+ *    second copy, because when the two disagreed the entry became unrecoverable.
  *  - `pagehide` + `visibilitychange`→hidden commit the CURRENT draft
  *    SYNCHRONOUSLY (an async write wouldn't finish during teardown). pagehide is
  *    the mobile-reliable signal (beforeunload is not); visibilitychange→hidden
@@ -50,23 +53,21 @@ export function useDraftOutbox<T>(opts: {
   enabledRef.current = enabled;
   const gameIdRef = useRef(gameId);
   gameIdRef.current = gameId;
-  // base = the server fingerprint the current draft diverged from. Tracks the
-  // live server fingerprint WHILE untouched (draft == server), then freezes at
-  // the first edit so it records what the edits diverged from.
-  const baseRef = useRef(serverFingerprint);
+  const fingerprintRef = useRef(serverFingerprint);
+  fingerprintRef.current = serverFingerprint;
 
   const draftStr = JSON.stringify(draft);
 
-  // Mirror-on-edit (+ base tracking). Runs after each render where the draft,
-  // touched, or server fingerprint changed.
+  // Mirror-on-edit. `serverFingerprint` IS the base: the caller passes the frozen
+  // baseline hash, which already tracks the server while untouched and freezes at
+  // the first edit — exactly the semantics a local `baseRef` used to reimplement.
+  // That duplicate went wrong when the two disagreed (a draft touched before the
+  // hash resolved kept the ref's "" seed and wrote an unrecoverable entry), so the
+  // ref is gone and there is now ONE source for the base — the same value Save
+  // sends as `baseHash`.
   useEffect(() => {
-    if (!enabled || !gameId) return;
-    if (!touched) {
-      // Still equal to the server — nothing to persist; keep base current.
-      baseRef.current = serverFingerprint;
-      return;
-    }
-    draftOutboxPut(view, gameId, draft, baseRef.current, Date.now());
+    if (!enabled || !gameId || !touched) return;
+    draftOutboxPut(view, gameId, draft, serverFingerprint, Date.now());
     // draft is captured via draftStr in deps; ref not needed here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftStr, touched, serverFingerprint, enabled, gameId, view]);
@@ -76,7 +77,7 @@ export function useDraftOutbox<T>(opts: {
   useEffect(() => {
     const commit = () => {
       if (!enabledRef.current || !gameIdRef.current || !touchedRef.current) return;
-      draftOutboxPut(view, gameIdRef.current, draftRef.current, baseRef.current, Date.now());
+      draftOutboxPut(view, gameIdRef.current, draftRef.current, fingerprintRef.current, Date.now());
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") commit();

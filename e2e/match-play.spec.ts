@@ -363,18 +363,7 @@ async function driveToSetupWithHandicapViaPanel(page: Page) {
   //    screen (the same one the standalone route reaches post-"Create game").
   const row = page.getByTestId("open-game-panel").filter({ hasText: title });
   await expect(row).toBeVisible({ timeout: 20_000 });
-  const configHashLoaded = page.waitForResponse(
-    (r) => r.url().includes("games.configHash") && r.status() === 200,
-    { timeout: 20_000 },
-  );
   await row.click();
-  // useConfigDraft (shared by all 4 formats, src/hooks/useConfigDraft.ts) freezes
-  // its dirty-check baseline only while untouched AND once games.configHash has
-  // resolved — editing the draft before that first resolves leaves the baseline
-  // null for the rest of the session, permanently disabling Save (found live
-  // while verifying the stroke version of this migration). Wait for it before
-  // touching anything. This exists because of #700; remove it when that's fixed.
-  await configHashLoaded;
 
   // From here down: IDENTICAL to `driveToSetupWithHandicap` from its
   // mode-scoring-disabled check onward (duplicated, not shared, per the

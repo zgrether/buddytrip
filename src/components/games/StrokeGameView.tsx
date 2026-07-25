@@ -524,6 +524,11 @@ export function StrokeGameView() {
   } = useConfigDraft<StrokeConfigDraft, typeof draftBundle>({
     tripId, gameId: activeGameId, view: "stroke", canEdit,
     showConfig, dirtyRef, discardRef,
+    // EVERY query feeding serverConfigDraft, not just the game row: the baseline may now
+    // freeze after the first edit, so a half-loaded mirror would become the diff base and
+    // Save would clean-replace groupings the user never touched. groupsQ/orgQ share a tRPC
+    // batch with games.configHash (games.getById is in a different one), so the gap is real.
+    ready: !!gameQ.data && !!groupsQ.data && !!orgQ.data,
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: strokeDraftsEqual,
     toPayload: (draft, base) => strokeDraftToPayload(draft, base),

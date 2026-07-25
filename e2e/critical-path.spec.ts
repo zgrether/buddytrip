@@ -149,17 +149,7 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   //    unconfigured game opens straight into settings (?game=<id>&settings=1).
   const row = page.getByTestId("open-game-panel").filter({ hasText: title });
   await expect(row).toBeVisible({ timeout: 20_000 });
-  const configHashLoaded = page.waitForResponse(
-    (r) => r.url().includes("games.configHash") && r.status() === 200,
-    { timeout: 20_000 },
-  );
   await row.click();
-  // useConfigDraft freezes its dirty-check baseline only while untouched AND once
-  // games.configHash has resolved (src/hooks/useConfigDraft.ts) — editing the draft
-  // before that first resolves leaves the baseline null for the rest of the
-  // session, permanently disabling Save. Wait for it before touching anything.
-  // This exists because of #700; remove it when that's fixed.
-  await configHashLoaded;
 
   // 4. Mandatory groupings: expand, add one group, add both crew via the
   //    CombinedPicker (shared RackGroupBuilder — supports multi-add, closed
@@ -219,4 +209,136 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   await expect(memberCell).toBeVisible({ timeout: 20_000 });
   const [ownerText, memberText] = await Promise.all([ownerCell.textContent(), memberCell.textContent()]);
   expect([ownerText, memberText].sort()).toEqual(["3", "7"]);
+});
+
+// ── Regression: editing settings before games.configHash resolves ──────────────
+//
+// The settings page paints off `games.getById`, which lands in a DIFFERENT tRPC
+// batch from `games.configHash` — so the panel is fully interactive while the
+// hash is still in flight, and GameRow deep-links an unconfigured game straight
+// to `?settings=1`, making that the ordinary path rather than an exotic one.
+//
+// useConfigDraft used to guard its baseline freeze on `anyTouched`, so touching
+// the draft first meant a baseline was NEVER frozen: `dirty` (which requires
+// one) stayed false and Save was dead for the rest of the session, with no error
+// and no self-correction when the hash finally arrived. The draft outbox made it
+// worse — disabled while the hash was pending, its own base ref kept its ""
+// seed, so the mirrored edit could never be recovered and was deleted on reload.
+//
+// Fails on main (Save never enables); passes here. Deliberately asserts BOTH
+// halves: Save recovers AND the outbox entry carries a real fingerprint.
+test("settings edited before configHash resolves still saves (baseline-freeze regression)", async ({ page }) => {
+  test.setTimeout(60_000);
+  const title = "E2E Hash Race";
+  const HASH_DELAY_MS = 4_000;
+
+  // A brand-new game, so its configHash has never been fetched this session —
+  // TanStack serves a cached hash on re-open, which masks the race entirely.
+  await page.goto(`/trips/${tripId}/leaderboard`);
+  // Either affordance opens the modal — which one renders depends on whether the
+  // spine test above already put a game on this board, and both tests must pass
+  // when run alone (`-g`) as well as in file order.
+  const addGame = page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game"));
+  await expect(addGame).toBeVisible({ timeout: 20_000 });
+  await addGame.click();
+  await page.getByRole("button", { name: "Stroke Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
+
+  const row = page.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+
+  // Hold the hash back so the edit below lands inside the window. This also
+  // delays listOrganizers/playGroups, which share its batch — the same coupling
+  // production has, and exactly why `ready` must cover them before a late freeze.
+  await page.route(/games\.configHash/, async (route) => {
+    await new Promise((r) => setTimeout(r, HASH_DELAY_MS));
+    await route.continue();
+  });
+
+  await row.click();
+
+  // Edit immediately — the panel is interactive well before the hash returns.
+  const stepper = page.getByTestId("total-points-stepper");
+  await expect(stepper).toBeVisible({ timeout: 20_000 });
+  await stepper.getByRole("button", { name: "Increase" }).click();
+
+  // THE REGRESSION: Save must become live once the hash lands. On main the
+  // baseline never freezes after a touch, so this never flips and times out.
+  const saveBtn = page.getByTestId("settings-save");
+  await expect(saveBtn).toBeEnabled({ timeout: 25_000 });
+
+  // The outbox half: the mirrored edit must carry the real frozen fingerprint,
+  // not the "" that made it unrecoverable (and got it deleted on reload).
+  const outboxBase = await page.evaluate(() => {
+    const k = Object.keys(localStorage).find((x) => x.startsWith("bt.setupDraft.v1:stroke:"));
+    return k ? (JSON.parse(localStorage.getItem(k) as string) as { base: string }).base : null;
+  });
+  expect(outboxBase).toBeTruthy();
+  expect(outboxBase).not.toBe("");
+
+  // …and the save actually lands (panel closes on a committed save).
+  await page.unroute(/games\.configHash/);
+  await saveBtn.click();
+  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
+
+  // Server truth: the edited value persisted.
+  const { data } = await admin
+    .from("games").select("points_total").eq("trip_id", tripId).eq("name", title).single();
+  expect(Number(data?.points_total)).toBe(1);
+});
+
+// ── Regression: the discard prompt must survive the same load window ───────────
+//
+// `dirty` feeds Save, the outbox AND the confirm-on-leave guard, so the null
+// baseline above silently suppressed the discard prompt too: edit, hit ✕, panel
+// closes, edit gone, no warning. The freeze fix alone would have left that
+// reachable for the duration of the load window — on the highest-traffic path,
+// since GameRow deep-links a not-yet-live game straight to `?settings=1`.
+//
+// The guard therefore reads `unsavedRisk` (touched AND (no baseline yet OR
+// actually diverged)) rather than `dirty`. The asymmetry is the point: a prompt
+// shown unnecessarily costs one tap, a prompt suppressed destroys work, so the
+// unknowable window resolves to "assume dirty". Save still requires a real
+// baseline — being conservative about LEAVING must not make WRITING permissive.
+test("discard prompt still fires when closing during the configHash window", async ({ page }) => {
+  test.setTimeout(60_000);
+  const title = "E2E Hash Race Prompt";
+  const HASH_DELAY_MS = 20_000; // long enough that the ✕ lands inside the window
+
+  await page.goto(`/trips/${tripId}/leaderboard`);
+  const addGame = page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game"));
+  await expect(addGame).toBeVisible({ timeout: 20_000 });
+  await addGame.click();
+  await page.getByRole("button", { name: "Stroke Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
+
+  const row = page.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+
+  await page.route(/games\.configHash/, async (route) => {
+    await new Promise((r) => setTimeout(r, HASH_DELAY_MS));
+    await route.continue();
+  });
+  await row.click();
+
+  const stepper = page.getByTestId("total-points-stepper");
+  await expect(stepper).toBeVisible({ timeout: 20_000 });
+  await stepper.getByRole("button", { name: "Increase" }).click();
+
+  // Still inside the window: Save is legitimately disabled (no concurrency base).
+  await expect(page.getByTestId("settings-save")).toBeDisabled();
+
+  // …but leaving must NOT be silent. Before the guard split, this closed the
+  // panel outright and the edit was gone.
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.getByTestId("discard-changes-prompt")).toBeVisible({ timeout: 10_000 });
+
+  // "Keep editing" leaves us where we were, with the edit intact.
+  await page.getByTestId("discard-prompt-keep").click();
+  await expect(page.getByTestId("discard-changes-prompt")).toBeHidden();
+  await expect(page.getByTestId("total-points-stepper")).toBeVisible();
+
+  await page.unroute(/games\.configHash/);
 });
