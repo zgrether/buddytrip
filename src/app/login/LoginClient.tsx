@@ -86,9 +86,19 @@ function Input({
 // ── Main component ─────────────────────────────────────────────────────
 export default function LoginClient({
   initialMode = "signin",
+  next = null,
 }: {
   initialMode?: "signin" | "signup";
+  /** Same-origin path to return to after auth (already validated by the page).
+   *  Set when an involuntary expiry bounced the user here mid-round. */
+  next?: string | null;
 }) {
+  // Post-auth destination. Falls back to "/" (the home-page smart redirect).
+  const dest = next ?? "/";
+  // Auth flows that leave the app (OAuth, magic link) come back through
+  // /auth/callback, which already honors ?next= — hand it the same destination
+  // so those paths return to the scorecard too, not just password sign-in.
+  const callbackNext = next ? `?next=${encodeURIComponent(next)}` : "";
   const [mode, setMode] = useState<Mode>(initialMode);
   // Tracks which primary panel (signin | signup) opened the magic-link flow
   // so the back button returns to the right place.
@@ -121,7 +131,7 @@ export default function LoginClient({
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${origin}/auth/callback` },
+      options: { redirectTo: `${origin}/auth/callback${callbackNext}` },
     });
   }
 
@@ -133,7 +143,7 @@ export default function LoginClient({
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
-      router.push("/");
+      router.push(dest);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -169,7 +179,7 @@ export default function LoginClient({
         switchMode("confirm-pending");
       } else {
         // Session returned immediately (confirmation disabled in dev)
-        router.push("/");
+        router.push(dest);
         router.refresh();
       }
     } catch (err) {
@@ -188,7 +198,7 @@ export default function LoginClient({
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${origin}/auth/callback` },
+        options: { emailRedirectTo: `${origin}/auth/callback${callbackNext}` },
       });
       if (otpError) throw otpError;
       switchMode("magic-link-sent");

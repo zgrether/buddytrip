@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase";
+import { currentPathAsNext } from "@/lib/nextPath";
 
 /**
  * Involuntary session-expiry recovery.
@@ -62,7 +63,13 @@ export async function handleAuthExpiry(): Promise<void> {
   // Truly expired. Keep the guard latched (we're leaving the page anyway) and
   // hard-nav so all polls unmount. Not router.push: a full load guarantees no
   // observer survives to keep 401-polling.
-  window.location.assign("/login");
+  //
+  // Carry where they were as ?next= so re-auth returns them to their scorecard.
+  // Without it someone bounced mid-round lands on /login, then the dashboard,
+  // and has to renavigate while their group waits on the tee. The value is
+  // validated same-origin (nextPath.ts) — an unchecked next is an open redirect.
+  const next = currentPathAsNext();
+  window.location.assign(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
 }
 
 /** Detects the tRPC/react-query UNAUTHORIZED shape (401) on a query error. */

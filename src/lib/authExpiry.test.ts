@@ -14,9 +14,9 @@ import { isUnauthorizedError } from "./authExpiry";
 // The suite runs in the node environment (no DOM — component tests here use
 // renderToStaticMarkup), so stub a minimal window with just the surface
 // handleAuthExpiry touches.
-function setPath(pathname: string) {
+function setPath(pathname: string, search = "") {
   const assign = vi.fn();
-  vi.stubGlobal("window", { location: { pathname, search: "", assign } });
+  vi.stubGlobal("window", { location: { pathname, search, assign } });
   return assign;
 }
 
@@ -63,7 +63,9 @@ describe("handleAuthExpiry", () => {
     const { handleAuthExpiry: fn } = await import("./authExpiry");
     await fn();
 
-    expect(assign).toHaveBeenCalledWith("/login");
+    expect(assign).toHaveBeenCalledWith(
+      "/login?next=%2Ftrips%2Ft1%2Fleaderboard"
+    );
   });
 
   it("redirects to /login when refresh throws", async () => {
@@ -73,7 +75,21 @@ describe("handleAuthExpiry", () => {
     const { handleAuthExpiry: fn } = await import("./authExpiry");
     await fn();
 
-    expect(assign).toHaveBeenCalledWith("/login");
+    expect(assign).toHaveBeenCalledWith(
+      "/login?next=%2Ftrips%2Ft1%2Fleaderboard"
+    );
+  });
+
+  it("carries the query string through ?next= (the game panel is ?game=)", async () => {
+    const assign = setPath("/trips/t1/games/match/new", "?game=g9");
+    refreshSession.mockResolvedValue({ data: { session: null } });
+
+    const { handleAuthExpiry: fn } = await import("./authExpiry");
+    await fn();
+
+    expect(assign).toHaveBeenCalledWith(
+      "/login?next=%2Ftrips%2Ft1%2Fgames%2Fmatch%2Fnew%3Fgame%3Dg9"
+    );
   });
 
   it("does nothing on a public route (no refresh, no redirect)", async () => {
