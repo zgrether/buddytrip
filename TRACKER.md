@@ -53,8 +53,8 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
   desktop master-detail is still unmapped. *Captured here, not yet an issue.*
 - **Incomplete features** — see §5. That inventory is the input to ranking what's next; it is not itself a
   plan, and it is deliberately unranked.
-- **WS4 — design reconciliation (Zach's pass):** each CD design → hit / shortcut / missed / superseded vs
-  shipped reality. *Unconfirmed whether any of this happened — no artifact found in-repo.*
+- ~~**WS4 — design reconciliation**~~ — **COMPLETE** (closed 2026-07-25, Zach). Any future
+  design-vs-shipped pass gets its own ticket rather than riding this standing item.
 
 ### THE BIG REFACTOR — R1 (format architecture; the 2027-definer)
 
@@ -147,11 +147,14 @@ the rename shipped). One glossary, one home. See `CLAUDE.md` § *Glossary — ra
 *Started-but-unfinished, or built-but-unreachable. Evidence-based (`file:line`), sized S/M/L, and
 **deliberately unranked** — ranking is Zach's call and the sizes are what that call needs.*
 
-**How these were found — and a caveat.** `CLAUDE.md` routes "could be better someday" items to a `// TODO`
-next to the code. **There are zero `TODO`/`FIXME`/`HACK`/`XXX` markers in `src/` or `supabase/`** (verified:
-0 hits). The convention is prescribed but not practiced; the real in-code idiom is a prose deferral note in
-the doc-comment, usually naming the follow-on. This inventory was built from that idiom, from `DEFERRED.md`,
-from open `feature`/`refactor` issues, and from direct code inspection.
+**How these were found.** The in-code idiom for a deferral is a **prose note in the doc-comment**, usually
+naming the follow-on and often pointing at `DEFERRED.md`. There are **zero `TODO`/`FIXME`/`HACK`/`XXX`
+markers** in `src/` or `supabase/` — CLAUDE.md used to prescribe `// TODO` for "someday" items, and that
+rule was **deleted** in the same pass that built this inventory: a prescription with zero adoption that
+nobody intends to adopt reads as authoritative and misleads, which is the never-true failure in §4.
+Consequence worth knowing: prose notes are **not greppable** the way a marker is, so this inventory had to
+be assembled by hand from that idiom, from `DEFERRED.md`, from open `feature`/`refactor` issues, and from
+direct code inspection. Expect the same cost next time.
 
 | # | Item | Built | Missing | Where | Size |
 |---|------|-------|---------|-------|------|
