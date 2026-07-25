@@ -205,6 +205,124 @@ describe("messages router", () => {
     );
   });
 
+  // ── unreadCount — server-side count replacing the client page-scan (F3) ──
+
+  it("unreadCount — zero right after the caller marks crew read", async () => {
+    const trip = await ctx.createTrip("Unread Zero");
+    const owner = ctx.caller();
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "hello" });
+    await owner.messages.markRead({ tripId: trip, visibility: "crew" });
+    const count = await owner.messages.unreadCount({ tripId: trip });
+    expect(count).toBe(0);
+  });
+
+  it("unreadCount — a newer crew message from someone else bumps the count", async () => {
+    const trip = await ctx.createTrip("Unread Some");
+    await ctx.addTripMember(trip, "member", "Member");
+    const owner = ctx.caller();
+    const member = ctx.callerAs("member");
+
+    await owner.messages.markRead({ tripId: trip, visibility: "crew" });
+    expect(await owner.messages.unreadCount({ tripId: trip })).toBe(0);
+
+    await member.messages.send({ tripId: trip, id: genId("msg"), text: "new one" });
+    await member.messages.send({ tripId: trip, id: genId("msg"), text: "and another" });
+
+    expect(await owner.messages.unreadCount({ tripId: trip })).toBe(2);
+  });
+
+  it("unreadCount — never read (null read mark) counts every visible message", async () => {
+    const trip = await ctx.createTrip("Unread Never Read");
+    await ctx.addTripMember(trip, "member", "Member");
+    await ctx.callerAs("member").messages.send({ tripId: trip, id: genId("msg"), text: "a" });
+    await ctx.callerAs("member").messages.send({ tripId: trip, id: genId("msg"), text: "b" });
+
+    const count = await ctx.caller().messages.unreadCount({ tripId: trip });
+    expect(count).toBe(2);
+  });
+
+  it("unreadCount — excludes the caller's own messages", async () => {
+    const trip = await ctx.createTrip("Unread Own Excluded");
+    const owner = ctx.caller();
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "I said this" });
+    const count = await owner.messages.unreadCount({ tripId: trip });
+    expect(count).toBe(0);
+  });
+
+  it("unreadCount — excludes system messages (e.g. the clearChannel marker)", async () => {
+    const trip = await ctx.createTrip("Unread System Excluded");
+    await ctx.addTripMember(trip, "member", "Member");
+    const owner = ctx.caller();
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "to be cleared" });
+    await owner.messages.markRead({ tripId: trip, visibility: "crew" });
+    // clearChannel wipes the message and leaves ONE system marker in its place.
+    await owner.messages.clearChannel({ tripId: trip, visibility: "crew" });
+
+    const count = await ctx.callerAs("member").messages.unreadCount({ tripId: trip });
+    expect(count).toBe(0);
+  });
+
+  it("unreadCount — a plain member's count never includes the Organizers channel", async () => {
+    const trip = await ctx.createTrip("Unread Member No Planning");
+    await ctx.addTripMember(trip, "member", "Member");
+    await ctx.caller().messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "organizers only",
+    });
+    const count = await ctx.callerAs("member").messages.unreadCount({ tripId: trip });
+    expect(count).toBe(0);
+  });
+
+  it("unreadCount — an organizer's count sums unread crew AND planning", async () => {
+    const trip = await ctx.createTrip("Unread Organizer Sums Both");
+    await ctx.addTripMember(trip, "planner", "Organizer");
+    const owner = ctx.caller();
+    const planner = ctx.callerAs("planner");
+
+    await planner.messages.markRead({ tripId: trip, visibility: "crew" });
+    await planner.messages.markRead({ tripId: trip, visibility: "planning" });
+
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew ping" });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "planning ping",
+    });
+
+    expect(await planner.messages.unreadCount({ tripId: trip })).toBe(2);
+  });
+
+  it("unreadCount — chat_visible_from floor excludes messages from before the member joined", async () => {
+    const trip = await ctx.createTrip("Unread Floor Test");
+    const owner = ctx.caller();
+
+    const banter = await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      text: "Banter before you joined",
+    });
+    // Same clock-skew-proof floor derivation as the list() floor test above.
+    const floor = new Date(
+      new Date(banter.created_at as string).getTime() + 1
+    ).toISOString();
+    await ctx.admin.from("trip_members").insert({
+      trip_id: trip,
+      user_id: ctx.getUser("member").id,
+      role: "Member",
+      status: "in",
+      chat_visible_from: floor,
+    });
+
+    // Only this one is visible to (and thus counts as unread for) the member.
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "Welcome aboard" });
+
+    const count = await ctx.callerAs("member").messages.unreadCount({ tripId: trip });
+    expect(count).toBe(1);
+  });
+
   // ── clearChannel — owner-only privacy wipe ─────────────────────────────
 
   it("clearChannel — owner clears one channel without touching the other", async () => {
