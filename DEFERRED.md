@@ -475,45 +475,18 @@ separate near-term patch.
 - Full top-20 golf format matrix fill-out (validated against the taxonomy in
   `COMPETITION_ENGINE.md`, built on demand)
 
-### Point value as competition-level weighting (+ defined/weighted readiness split)
+### ~~Point value as competition-level weighting~~ — superseded, not dropped
 
-*Captured 2026-06-14. Not launch-blocking — the current per-game point value is
-functional; this is a model/UX improvement. When: after the competition face
-ships and the add-game flow is stable.*
-
-**Today:** a game's point value is set on the add-game flow's **Game tab (tab 1)**
-— a per-game field, set when you create the game.
-
-**The insight:** point value isn't really a property of the *game* — it's a
-property of the game's *relationship to the other games*. "How much is Day 1
-Scramble worth" only has a sensible answer once you know what it's worth
-*relative to* Singles, Cornhole, Euchre. It's a **competition-level weighting
-decision**, not a game-level fact like name/format/course. You can't sensibly
-weight a game until the whole slate of games exists.
-
-**The change:** move point value off the per-game tab and into a
-**competition-level "balance the points" step** that shows **all games together**
-— "Scramble 8 · Singles 8 · Cornhole 8 · Euchre 4 — 28 in play, feel right?" That's
-the decision the owner is actually making (relative weighting), shown where it
-makes sense (all games side by side, the balance visible). Much truer than poking
-a number into each game's config in isolation.
-
-**The consequence — "ready" splits into two readinesses:**
-
-- **Defined** — per-game, set early, any order: type, format, name, course,
-  pairings/handicaps. (Tab 1 + most of tab 2.)
-- **Weighted** — competition-level, set late, all games at once: the point balance.
-
-**Go-live requires both:** every game *defined* AND the points *balanced*. The
-existing "Cornhole needs points" state becomes a **competition-level "you haven't
-balanced the points yet"** rather than a per-game nag — more honest (points aren't
-missing on Cornhole specifically; the cup's weighting isn't done).
-
-**Forward-design discipline (cheap insurance, do now even though the build is
-deferred):** point-value-on-tab-1 works for now and can stay. But **don't
-hard-wire "ready = has points"** as load-bearing logic, in either the build or the
-mocks — present/compute readiness so it survives the coming defined/weighted split.
-Build nothing yet, but don't build something that *blocks* the split.
+*Captured 2026-06-14; retired 2026-07-25.* Proposed moving point value off the
+per-game tab into a competition-level "balance the points across all games"
+step, on the premise that no per-game UI showed the games side by side. That
+premise no longer holds — the board (`GameRow.tsx`) already renders every
+game's `N PTS` together, and each is editable independently until
+finalization — so the per-game-field model this entry wanted to replace is
+the shipped, working design, not a placeholder for it. The zero-points
+go-live gate (blocking Setup→Scoring on a 0-point competition game,
+`save_game_config` migration 093) builds directly on the per-game model
+rather than the deferred weighted one.
 
 **Effort:** medium. Touches the add-game flow (remove point value from tab 1), a
 new competition-level balance surface, and the readiness/go-live logic (split
