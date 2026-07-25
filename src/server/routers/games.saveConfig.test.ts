@@ -43,6 +43,14 @@ async function newGame(name: string): Promise<string> {
   return g.id;
 }
 
+/** A game with NO competition (competitionId omitted) — the 093 zero-points gate's
+ *  `!gameCompId ||` short-circuit must leave this path alone entirely. */
+async function newStandaloneGame(name: string): Promise<string> {
+  const g = (await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name })) as { id: string };
+  gameIds.push(g.id);
+  return g.id;
+}
+
 /** The client's exact seed path: server snapshot → draft baseline. */
 async function draftOf(gameId: string): Promise<ConfigDraft> {
   const game = await ctx.caller().games.getById({ tripId, gameId });
@@ -390,6 +398,27 @@ describe("saveConfig — the scoring_enabled state machine", () => {
     const after = await ctx.caller().games.getById({ tripId, gameId });
     expect(after.name).toBe("Renamed while live at 0");
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
+  });
+
+  // The main regression risk of the 093 gate: a STANDALONE game (no competition) has
+  // no points concept at all, so it must go live at 0 points same as always. This was
+  // previously verified only by hand in a browser (PR #707) — that check doesn't run
+  // again on its own. Caught here at the server branch the gate actually lives in,
+  // cheaper than an E2E spine and enough to go red if a future change widens the gate
+  // to cover standalone games.
+  it("a standalone game (no competition) is UNAFFECTED — goes live at 0 points same as always", async () => {
+    const gameId = await newStandaloneGame("Standalone zero points");
+    const seeded = await draftOf(gameId);
+    const paired = onePairedMatch(seeded); // fully paired; pointsTotal untouched (0/null)
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload({ ...paired, scoringEnabled: true }, seeded),
+    });
+    const after = await ctx.caller().games.getById({ tripId, gameId });
+    expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
+    expect((after as { points_total?: number | null }).points_total).toBeFalsy();
   });
 
   it("a live game with NO scores (true→true) writes the FULL config — matchups included", async () => {
