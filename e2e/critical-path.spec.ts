@@ -149,17 +149,7 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   //    unconfigured game opens straight into settings (?game=<id>&settings=1).
   const row = page.getByTestId("open-game-panel").filter({ hasText: title });
   await expect(row).toBeVisible({ timeout: 20_000 });
-  const configHashLoaded = page.waitForResponse(
-    (r) => r.url().includes("games.configHash") && r.status() === 200,
-    { timeout: 20_000 },
-  );
   await row.click();
-  // useConfigDraft freezes its dirty-check baseline only while untouched AND once
-  // games.configHash has resolved (src/hooks/useConfigDraft.ts) — editing the draft
-  // before that first resolves leaves the baseline null for the rest of the
-  // session, permanently disabling Save. Wait for it before touching anything.
-  // This exists because of #700; remove it when that's fixed.
-  await configHashLoaded;
 
   // 4. Mandatory groupings: expand, add one group, add both crew via the
   //    CombinedPicker (shared RackGroupBuilder — supports multi-add, closed
