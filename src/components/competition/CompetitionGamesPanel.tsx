@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -133,7 +134,7 @@ export function GameSheet({
   const isGolf = category === "golf";
 
   // Members for the delegate picker + name resolution.
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, { enabled: canEdit });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, { ...STRUCTURE_QUERY, enabled: canEdit });
 
   const create = trpc.games.create.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();

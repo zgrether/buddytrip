@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Mail, Plus, ShieldCheck, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { TabHeader } from "@/components/TabHeader";
@@ -516,7 +517,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   // Lodging / Schedule / Comp via the same TabProps shape.
   const currentUser = useCurrentUser();
   const tripId = trip.id;
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
 
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);

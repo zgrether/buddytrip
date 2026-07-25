@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Mail, RotateCcw, Send, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { Avatar } from "@/components/Avatar";
 import { InvitedAvatar } from "./CrewRoster";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -84,7 +85,7 @@ export function CrewEmailPanel({
   const tripId = trip.id;
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
 
   // Editable message (autosaves on blur). The caller can override the
   // default seed/reset copy (e.g. the idea zone's planning-vibe invite).

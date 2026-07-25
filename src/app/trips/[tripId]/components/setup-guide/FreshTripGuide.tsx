@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { Building2, Check, Flag, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
 import { CompetitionEnableCard } from "./CompetitionEnableCard";
@@ -75,7 +76,7 @@ export function FreshTripGuide({
   //          its title. Trips can have multiple properties
   //          (lake house → resort), so we surface the earliest one
   //          since that's the trip's opening lodging.
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
   const { data: logistics = [] } = trpc.logistics.list.useQuery({ tripId });
   const { data: schedule = [] } = trpc.schedule.list.useQuery({ tripId });
 

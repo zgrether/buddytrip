@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 
 // Old `/trips/<uuid>` links skip slug resolution and use the id directly.
 // Inlined (not imported from @/lib/slug, which pulls in node crypto and would
@@ -87,7 +88,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // they fire on first render alongside trips.getById. We track their loading
   // states so the page waits for ALL data before rendering — no 2-phase pop-in.
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
   // datePoll IS gated in dataLoading. The poll surface (DatePollCard /
   // FreshTripGuide poll branch) is part of the persisted [tripId] page, so on a
   // trip SWITCH it keeps painting the previous trip's windows for a frame while

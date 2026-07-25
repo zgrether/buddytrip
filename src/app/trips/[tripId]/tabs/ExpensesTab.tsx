@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Receipt } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { ExpensesSection, type ExpenseMember } from "./ExpensesSection";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
@@ -23,7 +24,7 @@ import type { TabProps } from "./types";
  * open the same AddExpenseModal inside ExpensesSection.
  */
 export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id }, STRUCTURE_QUERY);
   const { data: expenses = [] } = trpc.expenses.list.useQuery({ tripId: trip.id });
 
   const [addOpen, setAddOpen] = useState(false);

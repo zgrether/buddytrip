@@ -17,6 +17,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -169,7 +170,7 @@ export function TripSettingsModal({
 
   const { data: members = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
-    { enabled: view === "transfer" },
+    { ...STRUCTURE_QUERY, enabled: view === "transfer" },
   );
   const transferCandidates = members.filter(
     (m) => m.role !== "Owner" && !m.isGuest && m.status === "in",

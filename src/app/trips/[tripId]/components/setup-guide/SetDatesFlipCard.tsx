@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import {
   addMonths,
   applyRangeClick,
@@ -85,7 +86,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   const [confirmReplaceWithPoll, setConfirmReplaceWithPoll] = useState(false);
   const utils = trpc.useUtils();
 
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
   const crewCount = members.length;
 
   const datesSet = !!(trip.start_date && trip.end_date);

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ThumbsUp } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
@@ -53,7 +54,7 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   const [pendingLockWindowId, setPendingLockWindowId] = useState<string | null>(null);
 
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
 
   const windows = useMemo(
     () => sortWindows((poll?.windows ?? []) as PollWindow[]),

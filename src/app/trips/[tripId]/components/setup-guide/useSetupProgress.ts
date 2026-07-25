@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import type { TripData } from "../../tabs/types";
 
 /**
@@ -26,7 +27,7 @@ export interface SetupProgress {
 }
 
 export function useSetupProgress(tripId: string, trip: TripData): SetupProgress {
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
   const { data: logistics = [] } = trpc.logistics.list.useQuery({ tripId });
   const { data: schedule = [] } = trpc.schedule.list.useQuery({ tripId });
 
