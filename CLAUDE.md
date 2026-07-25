@@ -43,6 +43,15 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 - Verify a PR's base is `main` before merging unless intentionally stacking — a
   stacked PR merged into its base branch instead of `main` strands its content
   off `main` (the wrong-base incident that left PR 2's work unshipped)
+- **"Unconfirmed" is a valid, preferred answer.** If you can't point to the code
+  proving a claim, write "unconfirmed" and list it as an open question — in
+  reports, PR descriptions, and commit messages alike.
+- **No impact numbers without shown work.** State expected impact only with a
+  measurement or derivation shown, else "unmeasured" — an inert predicted
+  reduction is worse than no prediction: it gets recorded as verified.
+- **Check findings against in-flight work before reporting.** Before finalizing
+  a report or PR, check it against open branches/PRs and say so explicitly if a
+  finding contradicts or undermines one.
 
 ## Issue Tracking (GitHub issues + `TRACKER.md`)
 
@@ -71,37 +80,36 @@ seam, never on a calendar.
 
 - Every new tRPC router gets a Vitest unit test before the task is considered done
 - Every new database query gets tested against the test DB the suite uses
-- **Critical-path E2E must stay green in CI (merge-blocking).** The one
-  Playwright smoke test (`e2e/critical-path.spec.ts`: auth → stroke game →
-  scores → scorecard) guards that the assembled spine is reachable — the class
-  of break unit tests miss. New screens get E2E coverage **when they touch the
-  critical path**; broader per-screen coverage is added as specific regressions
-  warrant — not up front. (The old "every screen gets an E2E test" rule was
-  aspirational and unmet; this is what's actually enforced.) E2E auth is a
-  `storageState` login as `test-owner` (`e2e/auth.setup.ts`); tests seed a unique
-  trip and tear it down. The 12 older `e2e/*.spec.ts` are a deferred, mock-based
-  set that no project runs yet.
+- **Critical-path E2E must stay green in CI (merge-blocking).** Two Playwright
+  specs run merge-blocking — `e2e/critical-path.spec.ts` (auth → stroke game →
+  scores → scorecard) and `e2e/match-play.spec.ts` — guarding the assembled
+  spine is reachable, the class of break unit tests miss. New screens get E2E
+  coverage **when they touch the critical path**; broader per-screen coverage
+  is added as specific regressions warrant — not up front. (The old "every
+  screen gets an E2E test" rule was aspirational and unmet.) E2E auth is a
+  `storageState` login as `test-owner` (`e2e/auth.setup.ts`); tests seed a
+  unique trip and tear it down. The other 13 `e2e/*.spec.ts` are a deferred,
+  mock-based set no Playwright project runs yet.
 - Tests live next to what they test (`trips.test.ts` alongside `trips.ts`)
 - No task is considered complete until its tests pass
-- CI runs Vitest (full) + the critical-path Playwright E2E on every push via
-  GitHub Actions; both are merge-blocking
-- **Shared-remote-DB conventions (learned the hard way, ~6× this refactor).** The
-  server-router suites run against ONE shared REMOTE Supabase project, so latency is
-  real and load-sensitive:
-  - **Seed sequentially, never `Promise.all`.** Parallel `createTrip`/`addTripMember`/
-    `createCompetition` against the shared project race and flake; do them in order.
-  - **Budget 60s, not 30s** — for BOTH `testTimeout` AND `hookTimeout` (`vitest.config.mts`).
-    A `beforeAll` hits the same latency spikes as a test; vitest defaults `hookTimeout` to
-    10s, so under concurrent load setup hooks flake ("Hook timed out in 10000ms") while the
-    60s tests pass. Every new integration suite adds a `beforeAll`, so this is a per-suite
-    tax on the whole run, not a one-off.
-  - **A red integration test under concurrent load is SUSPECT until reproduced in
-    isolation.** Before treating a CI failure as a regression, re-run the failing suite
-    alone (`vitest run <file>`) and check for worktree / shared-fixture contamination — a
-    load-induced timeout looks identical to a real break in the CI log.
-  - **After any behaviour change, grep the tests for assertions of the OLD behaviour
-    before pushing** (e.g. relaxing a zod floor → a test asserting the old rejection).
-    Do it proactively; discovering it as a second red CI run wastes a full ~7-min cycle.
+- CI runs Vitest (full) + the two merge-blocking Playwright specs on every
+  push via GitHub Actions
+- **Local-stack test conventions (learned the hard way, ~6× this refactor).**
+  CI and local dev both run the server-router suites against an EPHEMERAL LOCAL
+  Supabase (`supabase start`, #636), not a shared remote project — see Migration
+  Workflow below. Still worth following:
+  - **Seed sequentially, never `Promise.all`.** `createTrip`/`addTripMember`/
+    `createCompetition` can still race and flake; do them in order.
+  - **Budget 60s, not 30s** for BOTH `testTimeout` AND `hookTimeout`
+    (`vitest.config.mts`) — Docker/Postgres overhead on CI runners is real enough
+    that vitest's 10s `hookTimeout` default flakes a `beforeAll` under load.
+  - **A red integration test is real until proven otherwise.** The old shared-remote
+    made load timeouts genuinely ambiguous; the ephemeral local stack removes most
+    of that — treat a red CI run as a regression first, re-run in isolation
+    (`vitest run <file>`) only to confirm before calling it noise.
+  - **After any behaviour change, grep tests for assertions of the OLD behaviour
+    before pushing** (e.g. relaxing a zod floor → a test asserting the old
+    rejection) — proactively, not as a second red CI run.
 
 ## Seed Data Rules
 
@@ -130,6 +138,8 @@ seam, never on a calendar.
 | What patterns must CC follow? | This file (`CLAUDE.md`) |
 
 If documents conflict with each other → stop and flag, do not silently resolve.
+`CLAUDE.md` is not exempt from code-is-ground-truth — if this file contradicts
+the code, the code wins and the contradiction gets flagged, not silently followed.
 
 ## Code Conventions
 
@@ -448,6 +458,9 @@ idempotent schema change stays — then re-push.)
    replay cleanly on a fresh DB is safe — prod already recorded that version and won't re-run
    it, and a body edit (unlike a rename) doesn't break the filename-based history check. Use
    it ONLY to restore replayability, never to change what prod already has.
+5. **A migration reversing an earlier decision cites what it reverses** —
+   reference the earlier migration + its comment, and state why the reversal is
+   correct now. The prior comment is evidence, not authority, but it deserves a reply.
 
 ## Index Creation
 
@@ -531,6 +544,10 @@ snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 5. No console errors in the browser
 
 ## Local Dev Troubleshooting
+
+**Confirm the working directory and branch of a dev server before trusting the
+browser** — verify it's up to date with `origin`. An observation from the wrong
+tree is worse than no observation: it already cost one long debugging session.
 
 **Stale `.next` / Turbopack cache replays phantom parse errors — `rm -rf .next` and
 restart the dev server.** After a heavy edit session on a large component (e.g.
