@@ -163,6 +163,11 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   // on the Delete-game danger-zone row sitting underneath the picker portal.
   await page.getByRole("button", { name: "Done", exact: true }).click();
 
+  // 4b. A competition-attached game worth 0 points can't go live (the zero-points
+  // gate, server + client, both formats) — set a real point value first, same as
+  // any real owner now has to before the Scoring segment unlocks.
+  await page.getByTestId("total-points-stepper").getByRole("button", { name: "Increase" }).click();
+
   // 5. Go live and save — one atomic save_game_config (CLAUDE.md #18).
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 20_000 });

@@ -86,6 +86,7 @@ async function armScored(name: string): Promise<string> {
       ...(await strokePayload(gameId, {})),
       groups: [{ name: "G1", userIds: [owner, member] }],
       groupsStructureDirty: true,
+      pointsTotal: 2, // 093: a fresh enable on a competition game needs a real point value.
       scoringEnabled: true,
     },
   });
@@ -191,7 +192,9 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
     // A bare roster with no playing group: ungrouped = not in the game → go-live refused
     // (stroke now mirrors rack — grouped-participant readiness).
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [owner, member] });
-    await expect(save(gameId, { scoringEnabled: true })).rejects.toThrow(/setting up/i);
+    // 093: isolate the GROUPING reason this test is about — give it a real point value
+    // so the zero-points gate can't also fire and steal the assertion.
+    await expect(save(gameId, { pointsTotal: 2, scoringEnabled: true })).rejects.toThrow(/setting up/i);
 
     // Put them in a group → ready → go-live succeeds.
     await ctx.caller().games.saveConfig({
@@ -200,6 +203,7 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
         ...(await strokePayload(gameId, {})),
         groups: [{ name: "G1", userIds: [owner, member] }],
         groupsStructureDirty: true,
+        pointsTotal: 2, // 093: a fresh enable on a competition game needs a real point value.
         scoringEnabled: true,
       },
     });

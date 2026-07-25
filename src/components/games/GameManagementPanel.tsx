@@ -39,6 +39,7 @@ export function GameManagementPanel({
   onDisable,
   pending = false,
   staged = false,
+  blockedReason,
 }: {
   /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
   mode: "setup" | "scoring";
@@ -54,6 +55,11 @@ export function GameManagementPanel({
    *  subtitle says what's actually true and what Save will do. Self-persisting hosts
    *  (stroke/rack/non-golf) omit this → never staged → the plain on/off subtitle. */
   staged?: boolean;
+  /** WHY the Scoring segment is locked (`ready` is false) — e.g. "Set a point value
+   *  before enabling scoring." Rendered adjacent to the toggle, not a toast: a disabled
+   *  control with no stated reason is its own bug (#703's illegible-state family).
+   *  Omit/undefined when the caller has nothing more specific than the Lock icon. */
+  blockedReason?: string | null;
 }) {
   const isScoring = mode === "scoring";
   const scoringLocked = !isScoring && !ready;
@@ -88,6 +94,14 @@ export function GameManagementPanel({
         <span style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginTop: 1, lineHeight: 1.35 }} data-testid="game-state-subtitle">
           {subtitle}
         </span>
+        {scoringLocked && blockedReason && (
+          <span
+            style={{ fontSize: 11.5, color: "var(--color-bt-warning)", marginTop: 2, lineHeight: 1.3 }}
+            data-testid="game-state-blocked-reason"
+          >
+            {blockedReason}
+          </span>
+        )}
       </div>
 
       {/* The shared neutral segmented control — same component + treatment as Entry

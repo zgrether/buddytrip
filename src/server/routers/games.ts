@@ -900,7 +900,15 @@ export const gamesRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "This game is live — reload before editing its settings." });
         }
         if (msg.includes("NOT_READY")) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Finish setting up this game before switching it to scoring." });
+          // 093: the RPC's message after the colon is specific when it has something
+          // specific to say (e.g. the zero-points gate) — pass it through, same
+          // pattern as HAS_SCORES below, rather than flattening every NOT_READY into
+          // the generic "finish setting up" copy.
+          const detail = msg.split("NOT_READY:")[1]?.trim();
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: detail || "Finish setting up this game before switching it to scoring.",
+          });
         }
         // The two freeze boundaries. Each names the ACTUAL affordance — "Reset scores"
         // in the game's Danger zone — rather than restating the condition: this lands

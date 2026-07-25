@@ -43,6 +43,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
+import { pointsReady } from "@/lib/matchDraft";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
 
@@ -1025,6 +1026,17 @@ export function StrokeGameView() {
           // Distribution row (GROUP SETTINGS, above) share this ONE controlled slice so the
           // split can't drift (P3 3.1).
           placementPoints={placementControlled}
+          // Points term of the go-live gate (competition games only) — mirrors Match's
+          // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
+          // no client readiness gate at all before this (server still enforces mandatory
+          // groupings independently; that gap is untouched — out of scope here, tracked
+          // separately) — this adds ONLY the points term, not a general readiness gate.
+          ready={!gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0)}
+          readyBlockedReason={
+            gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+              ? "Set a point value before enabling scoring"
+              : null
+          }
           onEnable={handleEnable}
           onDisable={handleDisable}
           busy={saving}

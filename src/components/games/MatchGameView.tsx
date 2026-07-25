@@ -1643,6 +1643,17 @@ export function MatchGameView() {
         // state and the gate agree; pointsReady is the family's client-gate extension.
         const effectiveTotal = configDraft.pointsTotal ?? 0;
         const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(effectiveTotal));
+        // The C3 points term was already silent about WHY the Scoring segment was locked
+        // — same disabled-with-no-explanation bug #703 records for the settings-load
+        // window. Say why, adjacent to the toggle, in priority order matching the gate's
+        // own && short-circuit.
+        const enableBlockedReason = !allFilled
+          ? "Pair every match before enabling scoring"
+          : !allRosterValid
+            ? "A paired player lost their team — fix the matchups before enabling scoring"
+            : gameCompId && !pointsReady(effectiveTotal)
+              ? "Set a point value before enabling scoring"
+              : null;
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
         // and Handicaps stay LOCKED until a match exists (they attach to a matchup).
@@ -1834,6 +1845,7 @@ export function MatchGameView() {
                 <GameManagementPanel
                   mode={configDraft.scoringEnabled ? "scoring" : "setup"}
                   ready={enableReady}
+                  blockedReason={enableBlockedReason}
                   onEnable={attemptReady}
                   onDisable={handleDisable}
                   pending={saving}

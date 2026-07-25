@@ -48,6 +48,7 @@ export function GameConfigurationView({
   defaultPointsTotal,
   pointsRowTitle,
   ready = true,
+  readyBlockedReason,
   onEnable,
   onDisable,
   busy,
@@ -109,6 +110,8 @@ export function GameConfigurationView({
   pointsRowTitle?: string;
   /** Minimum requirements met — gates the toggle's Scoring segment. */
   ready?: boolean;
+  /** WHY `ready` is false — passed straight through to `GameManagementPanel`. */
+  readyBlockedReason?: string | null;
   onEnable: () => void;
   onDisable: () => void;
   busy: boolean;
@@ -212,6 +215,7 @@ export function GameConfigurationView({
             <GameManagementPanel
               mode={draftScoringEnabled ? "scoring" : "setup"}
               ready={ready}
+              blockedReason={readyBlockedReason}
               onEnable={onEnable}
               onDisable={onDisable}
               pending={busy}
