@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -2432,31 +2432,6 @@ function SortableMatchRow({
   );
 }
 
-/** F: up/down reorder arrows for a match row (touch-reliable, replaces DnD). Fills the
- *  24px leading column; up disabled on the first row, down on the last.
- *  UNUSED as of G (drag handle above supersedes it) — kept until drag + keyboard
- *  sorting are verified end-to-end; removed once confirmed (audit-before-delete). */
-function ReorderArrows({ index, count, onMove }: { index: number; count: number; onMove: (dir: -1 | 1) => void }) {
-  const btn = (dir: -1 | 1, disabled: boolean, Icon: typeof ChevronUp, label: string) => (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onMove(dir)}
-      className="flex items-center justify-center disabled:opacity-25"
-      style={{ width: 24, height: 15, color: "var(--color-bt-text-dim)" }}
-    >
-      <Icon size={14} />
-    </button>
-  );
-  return (
-    <div className="flex flex-col items-center justify-center" data-testid={`match-reorder-${index}`}>
-      {btn(-1, index === 0, ChevronUp, `Move match ${index + 1} up`)}
-      {btn(1, index === count - 1, ChevronDown, `Move match ${index + 1} down`)}
-    </div>
-  );
-}
-
 function MatchSetup({
   draft,
   setDraft,
@@ -2500,22 +2475,11 @@ function MatchSetup({
     setAddOpen(false);
   };
 
-  // Swap a match with its neighbour (dir −1 up / +1 down); clamped at the ends. The
-  // per-match `pointValue` override rides ON each DraftMatch, so it moves with the row.
-  // UNUSED as of G — kept until drag + keyboard sorting are verified (see ReorderArrows).
-  const moveMatch = (from: number, dir: -1 | 1) =>
-    setDraft((prev) => {
-      const to = from + dir;
-      if (to < 0 || to >= prev.length) return prev;
-      const copy = prev.slice();
-      [copy[from], copy[to]] = [copy[to], copy[from]];
-      return copy;
-    });
-
   // G: dnd-kit sensors — PointerSensor covers mouse + touch + pen (one API, no
   // separate touch handling needed); a 4px activation distance avoids arming a
-  // drag on a simple tap. KeyboardSensor is the non-pointer path (arrows come
-  // out only once this is confirmed working).
+  // drag on a simple tap. KeyboardSensor is the non-pointer path — verified
+  // working (keyboard pick-up/move/drop + screen-reader announcements), so the
+  // arrows they replace are gone (audit-before-delete confirmed no other caller).
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
