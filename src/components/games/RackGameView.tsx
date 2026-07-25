@@ -39,6 +39,7 @@ import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRo
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, rackProjectedTeamPoints, type RackPlayer, type RackMode } from "@/lib/rackNStack";
+import { pointsReady } from "@/lib/matchDraft";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -445,6 +446,10 @@ export function RackGameView() {
     return Math.min(a, b);
   }, [configDraft.groups, teamOf]);
   const draftGroupsAssigned = configDraft.groups.some((g) => g.length > 0);
+  // The GAME's own competition_id (not the trip-level `competitionId` above, which a
+  // standalone game inside a competition-bearing trip would still see truthy) — the
+  // precise "is THIS game competition-attached" check the points gate below needs.
+  const gameCompId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
 
   // ── Handlers ─────────────────────────────────────────────────────────
   // The current persisted groups as a builder draft (one user-id array per group,
@@ -931,8 +936,20 @@ export function RackGameView() {
           onClearCourse={clearCourseInDraft}
           courseBusy={courseBusy}
           rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
-          // Gate the Setup→Scoring toggle on a drafted cart (mirrors the server enable guard).
-          ready={draftGroupsAssigned}
+          // Gate the Setup→Scoring toggle on a drafted cart AND (competition games only,
+          // mirroring Match's C3 gate) a real point value — a 0-point competition game can
+          // play a full round and finalize contributing nothing to the cup, invisibly, until
+          // it's too late to fix. Standalone games (gameCompId null) are unaffected — same
+          // `!gameCompId ||` short-circuit shape as Match. `pointsReady` is the SAME truth
+          // GameSetupRows' Points-per-Slot row already reads (row-resolved ⟺ gate satisfied).
+          ready={draftGroupsAssigned && (!gameCompId || pointsReady(configDraft.pointsTotal ?? 0))}
+          readyBlockedReason={
+            !draftGroupsAssigned
+              ? "Add at least one group before enabling scoring"
+              : gameCompId && !pointsReady(configDraft.pointsTotal ?? 0)
+                ? "Set a point value before enabling scoring"
+                : null
+          }
           onEnable={handleEnable}
           onDisable={handleDisable}
           busy={saving}

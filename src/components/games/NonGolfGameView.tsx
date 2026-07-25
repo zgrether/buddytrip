@@ -27,6 +27,7 @@ import {
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { validatePlacement } from "@/lib/gameConfig";
+import { pointsReady } from "@/lib/matchDraft";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -336,7 +337,17 @@ export function NonGolfGameView() {
         onPointsDistChange={setPointsDistDraft}
         // The toggle reads the DRAFT; `staged` = draft ≠ the live server flag.
         serverScoringEnabled={scoringEnabled}
-        ready={configDraft.pointsTotal != null || configDraft.pointsDistribution != null}
+        // Was "configured" (non-null) — a 0-point game satisfied that. Now "nonzero",
+        // mirroring Match's C3 gate: a 0-point competition game can be scored end-to-end
+        // and finalized without moving the standings. `!competitionId ||` for shape-
+        // parity with the other three formats, though this view's settings panel only
+        // ever renders when competitionId is set (see the render gate above).
+        ready={!competitionId || pointsReady(configDraft.pointsTotal ?? 0)}
+        readyBlockedReason={
+          competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+            ? "Set a point value before enabling scoring"
+            : null
+        }
         onEnable={handleEnable}
         onDisable={handleDisable}
         saving={saving}

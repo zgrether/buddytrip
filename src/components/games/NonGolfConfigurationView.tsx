@@ -61,6 +61,7 @@ export function NonGolfConfigurationView({
   onPointsDistChange,
   serverScoringEnabled,
   ready,
+  readyBlockedReason,
   onEnable,
   onDisable,
   saving,
@@ -89,6 +90,8 @@ export function NonGolfConfigurationView({
    *  `staged` is draft ≠ this, so the subtitle never claims a state the server lacks. */
   serverScoringEnabled: boolean;
   ready: boolean;
+  /** WHY `ready` is false — passed straight through to `GameManagementPanel`. */
+  readyBlockedReason?: string | null;
   onEnable: () => void;
   onDisable: () => void;
   saving: boolean;
@@ -152,6 +155,7 @@ export function NonGolfConfigurationView({
             <GameManagementPanel
               mode={draft.scoringEnabled ? "scoring" : "setup"}
               ready={ready}
+              blockedReason={readyBlockedReason}
               onEnable={onEnable}
               onDisable={onDisable}
               pending={saving}
