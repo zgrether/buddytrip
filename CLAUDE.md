@@ -43,6 +43,15 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 - Verify a PR's base is `main` before merging unless intentionally stacking — a
   stacked PR merged into its base branch instead of `main` strands its content
   off `main` (the wrong-base incident that left PR 2's work unshipped)
+- **"Unconfirmed" is a valid, preferred answer.** If you can't point to the code
+  proving a claim, write "unconfirmed" and list it as an open question — in
+  reports, PR descriptions, and commit messages alike.
+- **No impact numbers without shown work.** State expected impact only with a
+  measurement or derivation shown, else "unmeasured" — an inert predicted
+  reduction is worse than no prediction: it gets recorded as verified.
+- **Check findings against in-flight work before reporting.** Before finalizing
+  a report or PR, check it against open branches/PRs and say so explicitly if a
+  finding contradicts or undermines one.
 
 ## Issue Tracking (GitHub issues + `TRACKER.md`)
 
@@ -447,6 +456,9 @@ idempotent schema change stays — then re-push.)
    replay cleanly on a fresh DB is safe — prod already recorded that version and won't re-run
    it, and a body edit (unlike a rename) doesn't break the filename-based history check. Use
    it ONLY to restore replayability, never to change what prod already has.
+5. **A migration reversing an earlier decision cites what it reverses** —
+   reference the earlier migration + its comment, and state why the reversal is
+   correct now. The prior comment is evidence, not authority, but it deserves a reply.
 
 ## Index Creation
 
