@@ -49,6 +49,48 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/invite");
 
   if (!user && !isPublicRoute) {
+    // /api/trpc gets a 401, NOT a 307 (DATA_FRESHNESS_AUDIT.md §8-F1). `fetch`
+    // follows a redirect preserving the method, so the old 307 rendered a full
+    // /login PAGE and handed a tRPC client unparseable HTML — one Edge
+    // invocation plus a complete page render, returning nothing usable
+    // (~1,150 /login renders in one measured 30-minute window, the single
+    // largest CPU line item). The route STAYS in the matcher: middleware is the
+    // confirmed token-refresh path (§6.3) — getUser() above rotates cookies via
+    // setAll for a user whose access token expired while they only polled, and
+    // excluding /api/trpc would delete that, stranding the browser on a
+    // consumed refresh token (Supabase rotates them) = a hard mid-round logout.
+    //
+    // The body is the FULL tRPC error envelope, not a convenience shape. The
+    // client's transformResult() rejects anything whose `error` isn't an object
+    // with a NUMERIC `code`, throwing TransformResultError — which surfaces as a
+    // TRPCClientError with `data: undefined`, so the authExpiry handler's
+    // `data.code === "UNAUTHORIZED"` check would never match and the recovery
+    // would be silently inert. Verified against the installed @trpc/client +
+    // superjson. Shape matches authedProcedure's own UNAUTHORIZED (trpc.ts:100)
+    // so the handler can't tell the two apart. Non-array is deliberate:
+    // httpBatchLink fans a single object out to every op in the batch.
+    if (request.nextUrl.pathname.startsWith("/api/trpc")) {
+      const body = {
+        error: {
+          json: {
+            message: "UNAUTHORIZED",
+            code: -32001, // TRPC_ERROR_CODES_BY_KEY.UNAUTHORIZED
+            data: { code: "UNAUTHORIZED", httpStatus: 401 },
+          },
+        },
+      };
+      // Carry over anything setAll wrote. On a definitively dead session
+      // getUser() → _removeSession() → SIGNED_OUT → setAll writes cookie
+      // DELETIONS onto supabaseResponse; the old redirect discarded them, so the
+      // browser kept re-sending a known-dead token on every request. (A rotated
+      // -cookie refresh can't land here — a successful refresh returns a user.)
+      const res = NextResponse.json(body, { status: 401 });
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        res.cookies.set(cookie);
+      });
+      return res;
+    }
+
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
