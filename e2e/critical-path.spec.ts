@@ -5,13 +5,18 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * Critical-path E2E (the merge-blocking gate) — the GAME-SCORING SPINE, driven
  * through the real UI as the logged-in owner (storageState from auth.setup.ts).
  *
- * Honestly scoped: the trip + crew are SEEDED via the admin client (fast, stable
- * scaffolding — not the thing under test); the spine that's actually walked is
- * **create a stroke-play game → enter scores → the scorecard reflects them**.
+ * Honestly scoped: the trip + crew + a competition (2 seeded teams) are SEEDED
+ * via the admin client (fast, stable scaffolding — not the thing under test);
+ * the spine that's actually walked is **the competition board's "Add a game"
+ * modal → a stroke-play game → enter scores → the scorecard reflects them**.
  * That's the class of break unit tests miss and that's bitten this project:
  * an unreachable setup state, a dead scorecard button, a score that doesn't
  * surface. The fuller competition-run-to-leaderboard walk on real data is the
  * BBMI-replay follow-on (a heavier acceptance test, not this per-push smoke).
+ *
+ * Creation goes through the REAL in-app path (GAME_ROUTES_AUDIT.md §0 FLAG
+ * 1/§3) — the competition board, not the standalone `/games/new` route no UI
+ * links to. See the single test below for the full walk.
  *
  * Runs against the remote project (same model as the vitest suite): a UNIQUE
  * trip per run + full teardown, so reruns never collide and nothing is left.
@@ -25,6 +30,7 @@ let admin: SupabaseClient;
 let tripId: string;
 let ownerId: string;
 let memberId: string;
+let compId: string;
 
 async function ensureUser(email: string, name: string): Promise<string> {
   const { data: list, error } = await admin.auth.admin.listUsers();
@@ -63,6 +69,26 @@ test.beforeAll(async () => {
     { trip_id: tripId, user_id: memberId, role: "Member", status: "in", nickname: "E2E Member" },
   ]);
   if (mErr) throw new Error(`seed members failed: ${mErr.message}`);
+
+  // Competition-attached spine (staged migration off the standalone /games/new
+  // route — GAME_ROUTES_AUDIT.md §0 FLAG 1/§3): the real in-app creation path is
+  // the competition board's "Add a game" modal, which requires an existing
+  // competition (non-optional competitionId prop) with a `points`-compatible
+  // scoring model for Stroke Play to appear in the format picker. Seeded
+  // directly (bypassing competitions.create) so this beforeAll stays a single
+  // fast round-trip; teams are seeded in the SAME shape competitions.create
+  // itself writes (src/lib/teamColors.ts) so the board's zero-teams empty state
+  // never intercepts the games panel.
+  compId = `e2e-comp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const { error: compErr } = await admin.from("competitions").insert({
+    id: compId, trip_id: tripId, name: "E2E Cup", scoring_model: "points", status: "upcoming",
+  });
+  if (compErr) throw new Error(`seed competition failed: ${compErr.message}`);
+  const { error: teamErr } = await admin.from("teams").insert([
+    { competition_id: compId, name: "Team A", short_name: "A", color: "#3b82f6", color_dim: "#0a1a2a" },
+    { competition_id: compId, name: "Team B", short_name: "B", color: "#ef4444", color_dim: "#2a0a0a" },
+  ]);
+  if (teamErr) throw new Error(`seed teams failed: ${teamErr.message}`);
 });
 
 test.afterAll(async () => {
@@ -76,53 +102,98 @@ test.afterAll(async () => {
     await admin.from("game_participants").delete().eq("game_id", g.id);
     await admin.from("games").delete().eq("id", g.id);
   }
+  if (compId) {
+    await admin.from("teams").delete().eq("competition_id", compId);
+    await admin.from("competitions").delete().eq("id", compId);
+  }
   await admin.from("trip_members").delete().eq("trip_id", tripId);
   await admin.from("trips").delete().eq("id", tripId);
 });
 
-test("scoring spine — stroke game: create → enter scores → scorecard reflects them", async ({ page }) => {
-  // Each UI step here is a round-trip to the REMOTE DB (create, enable + a
-  // follow-up game refetch, score writes), so give the whole spine generous
-  // headroom over the 30s default — a slow round-trip shouldn't read as a break.
+// ── Real-user-path spine (GAME_ROUTES_AUDIT.md §0 FLAG 1/§3) ──
+//
+// This creates its game through the REAL in-app path: competition board →
+// "Add a game" → GameSheet modal → tap the new row → panel opens straight into
+// settings → mandatory groupings (RackGroupBuilder, since a modal-created game
+// starts with an EMPTY roster — players are added here, not on a pre-screen) →
+// Save → the panel closes back to the board (the freshly-completed game has
+// nothing else to show yet) → tap the row again → the panel reopens on the
+// stroke surface → group-enter-row → score entry → scorecard assertions.
+//
+// Supersedes the old standalone-route version of this test (`/games/new`, no
+// in-app UI links there — `gameHref()` requires an existing gameId, and the
+// `<Link>` fallback in GameRow is dead for every known format because
+// `opensAsPanel` allowlists them all — see gameRoutes.ts; it also never
+// attached a competition, while every real game is created through this
+// modal, competitionId being a non-optional GameSheet prop). Proven green ×3
+// and red-when-broken (creation + panel-open) before the old test was removed
+// — see the PR description for the coverage-change judgement call this
+// migration made deliberately.
+test("scoring spine (competition-attached, real path) — stroke game: create via board → enter scores → scorecard reflects them", async ({ page }) => {
   test.setTimeout(60_000);
+  const title = "E2E Stroke Spine";
 
-  // 1. New stroke-play game for this trip (owner is authenticated via storageState).
-  await page.goto(`/trips/${tripId}/games/new`);
+  // 1. Competition board → "Add a game" (the empty-state CTA, since this
+  //    competition starts with zero games) → GameSheet modal.
+  await page.goto(`/trips/${tripId}/leaderboard`);
+  await page.getByTestId("comp-games-empty-cta").click();
 
-  // 2. Pick the two crew, start the game.
-  await page.getByRole("button", { name: "E2E Owner", exact: true }).click();
-  await page.getByRole("button", { name: "E2E Member", exact: true }).click();
-  await page.getByRole("button", { name: "Start game" }).click();
+  // 2. Format defaults to the sole points-compatible golf format for this
+  //    competition's scoring_model ("points") — Stroke Play. Click it anyway
+  //    rather than relying on the default selection.
+  await page.getByRole("button", { name: "Stroke Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
 
-  // 3. Enable scoring → reach the score-entry view. The setup-mode scoreboard is a
-  //    PASS-THROUGH (A2-ux correction): open the ONE settings page via the "set it up"
-  //    button, then flip the Setup/Scoring toggle's Scoring segment. Draft-then-save (P2):
-  //    the toggle STAGES go-live into the page's composite draft — SAVE commits it (one
-  //    atomic save_game_config). The old "scoring-lock-banner" live-lock signal is GONE
-  //    (the P2 lie-sweep removed the frozen-settings lock — settings stay editable when
-  //    live); the transition commits on Save, which (exit-behavior alignment) also CLOSES
-  //    the settings panel on success — landing back on the game page, now in scoring mode,
-  //    where the keypad mounts. No separate "Saved" wait or ✕ close needed: the keypad
-  //    visibility below gates on the save having landed + the panel having closed.
-  await page.getByTestId("setup-go-to-settings").click();
+  // 3. The new row appears on the board ("New" section); tap it — a fresh,
+  //    unconfigured game opens straight into settings (?game=<id>&settings=1).
+  const row = page.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  const configHashLoaded = page.waitForResponse(
+    (r) => r.url().includes("games.configHash") && r.status() === 200,
+    { timeout: 20_000 },
+  );
+  await row.click();
+  // useConfigDraft freezes its dirty-check baseline only while untouched AND once
+  // games.configHash has resolved (src/hooks/useConfigDraft.ts) — editing the draft
+  // before that first resolves leaves the baseline null for the rest of the
+  // session, permanently disabling Save. Wait for it before touching anything.
+  await configHashLoaded;
+
+  // 4. Mandatory groupings: expand, add one group, add both crew via the
+  //    CombinedPicker (shared RackGroupBuilder — supports multi-add, closed
+  //    with "Done").
+  await page.getByTestId("row-groupings").click();
+  await page.getByRole("button", { name: "Add group" }).click();
+  await page.getByRole("button", { name: "Add player" }).click();
+  await page.getByRole("button", { name: "E2E Owner" }).click();
+  await page.getByRole("button", { name: "E2E Member" }).click();
+  // exact: true — a substring match on "Done" also hits "This can't be undone."
+  // on the Delete-game danger-zone row sitting underneath the picker portal.
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+
+  // 5. Go live and save — one atomic save_game_config (CLAUDE.md #18).
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 20_000 });
   await scoringSeg.click();
   const saveBtn = page.getByTestId("settings-save");
   await expect(saveBtn).toBeEnabled({ timeout: 20_000 });
   await saveBtn.click();
-  // Save commits + closes the panel; the game page (scoring mode) appears next.
-  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
 
-  // 3b. Stroke now LANDS on the game SURFACE (leaderboard + groupings), not straight into
-  //     the keypad — score entry is one level down. "Start game" auto-grouped both players
-  //     into a default group; tap it to open that group's score entry.
+  // 6. Save on a freshly-completed game closes the WHOLE panel back to the
+  //    board (nothing else was open underneath) — the row reappears there.
+  //    Its settings-vs-surface routing (GameRow's `setupMode`) reads
+  //    `scoringEnabled` off the leaderboard query, which the save's
+  //    invalidate-then-refetch lands a beat after the panel closes — wait for
+  //    the row's "Ready to play" subtitle (not just visibility, which is true
+  //    the whole time) before tapping it again, or the second tap can race
+  //    back into settings instead of the stroke surface.
+  await expect(row).toContainText("Ready to play", { timeout: 20_000 });
+  await row.click();
   await page.getByTestId("group-enter-row").first().click();
 
-  // 4. Enter hole 1 for both players (confirm auto-advances to the next player).
-  //    Distinct values so the assertion can't pass on par/coincidence. Wait for
-  //    each keypad key to be present before tapping rather than assuming it has
-  //    already rendered (the view settles between players on each confirm).
+  // 7. Enter hole 1 for both players — same downstream steps as the standalone
+  //    spine above (shared score-entry UI, entry-path-agnostic).
   const score7 = page.getByRole("button", { name: "Score 7", exact: true });
   await expect(score7).toBeVisible({ timeout: 20_000 });
   await score7.click();
@@ -133,11 +204,17 @@ test("scoring spine — stroke game: create → enter scores → scorecard refle
   await score3.click();
   await page.getByRole("button", { name: "Confirm score" }).click();
 
-  // 5. Open the review scorecard and assert BOTH entered scores surface in the
-  //    EXACT right cells (keyed by participant id = user id, hole "1") — "a score
-  //    shows up where it should". Test-id selectors, not brittle text.
+  // 8. Scorecard reflects both entered scores. Order-agnostic on WHICH participant
+  //    got which value: the picker's click order (Owner, then Member) doesn't
+  //    determine keypad turn order, unlike the standalone spine above where
+  //    "Start game" seeds the roster in pick order. What this proves is
+  //    unchanged from the standalone spine — two distinct entered values land in
+  //    the exact two participant cells, not a shared/wrong/missing one.
   await page.getByRole("button", { name: "Scorecard", exact: true }).click();
-
-  await expect(page.getByTestId(`score-cell-${ownerId}-1`)).toHaveText("7");
-  await expect(page.getByTestId(`score-cell-${memberId}-1`)).toHaveText("3");
+  const ownerCell = page.getByTestId(`score-cell-${ownerId}-1`);
+  const memberCell = page.getByTestId(`score-cell-${memberId}-1`);
+  await expect(ownerCell).toBeVisible({ timeout: 20_000 });
+  await expect(memberCell).toBeVisible({ timeout: 20_000 });
+  const [ownerText, memberText] = await Promise.all([ownerCell.textContent(), memberCell.textContent()]);
+  expect([ownerText, memberText].sort()).toEqual(["3", "7"]);
 });
