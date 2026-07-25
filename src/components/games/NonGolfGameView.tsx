@@ -248,7 +248,9 @@ export function NonGolfGameView() {
   } = useConfigDraft<NonGolfConfigDraft, typeof draftBundle>({
     tripId, gameId: urlGameId, view: "nongolf", canEdit,
     showConfig, dirtyRef, discardRef,
-    ready: !!game,
+    // EVERY query feeding serverConfigDraft (see StrokeGameView's call): the game row plus
+    // orgQ, which backs the delegates slice.
+    ready: !!game && !!orgQ.data,
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: nonGolfDraftsEqual,
     toPayload: (draft, base) => nonGolfDraftToPayload(draft, base),

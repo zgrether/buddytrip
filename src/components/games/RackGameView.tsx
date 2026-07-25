@@ -659,6 +659,9 @@ export function RackGameView() {
   } = useConfigDraft<RackConfigDraft, typeof draftBundle>({
     tripId, gameId: gid, view: "rack", canEdit,
     showConfig, dirtyRef, discardRef,
+    // EVERY query feeding serverConfigDraft (see the note on StrokeGameView's call) — a
+    // baseline frozen on a half-loaded mirror would make Save clean-replace groupings.
+    ready: !!gameQ.data && !!groupsQ.data && !!orgQ.data,
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: rackDraftsEqual,
     toPayload: (draft, base) => rackDraftToPayload(draft, draftSlotCount, base),

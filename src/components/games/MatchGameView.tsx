@@ -1152,7 +1152,11 @@ export function MatchGameView() {
   } = useConfigDraft<ConfigDraft, SettingsDraftBundle | DraftMatch[]>({
     tripId, gameId, view: "match", canEdit,
     showConfig: cfgOpen, dirtyRef, discardRef,
-    ready: !!gameQ.data,
+    // EVERY query feeding serverConfigDraft, not just the game row (see StrokeGameView's
+    // call): matchesQ backs the drafted matches + per-side handicaps, and a baseline frozen
+    // before it lands would diff as a matchup CHANGE — the clean-replace that re-mints match
+    // ids and orphans score rows. orgQ backs the delegates slice.
+    ready: !!gameQ.data && !!matchesQ.data && !!orgQ.data,
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: configDraftsEqual,
     toPayload: (draft, base) => configDraftToPayload(draft, base),
