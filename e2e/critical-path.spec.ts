@@ -220,3 +220,80 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   const [ownerText, memberText] = await Promise.all([ownerCell.textContent(), memberCell.textContent()]);
   expect([ownerText, memberText].sort()).toEqual(["3", "7"]);
 });
+
+// ── Regression: editing settings before games.configHash resolves ──────────────
+//
+// The settings page paints off `games.getById`, which lands in a DIFFERENT tRPC
+// batch from `games.configHash` — so the panel is fully interactive while the
+// hash is still in flight, and GameRow deep-links an unconfigured game straight
+// to `?settings=1`, making that the ordinary path rather than an exotic one.
+//
+// useConfigDraft used to guard its baseline freeze on `anyTouched`, so touching
+// the draft first meant a baseline was NEVER frozen: `dirty` (which requires
+// one) stayed false and Save was dead for the rest of the session, with no error
+// and no self-correction when the hash finally arrived. The draft outbox made it
+// worse — disabled while the hash was pending, its own base ref kept its ""
+// seed, so the mirrored edit could never be recovered and was deleted on reload.
+//
+// Fails on main (Save never enables); passes here. Deliberately asserts BOTH
+// halves: Save recovers AND the outbox entry carries a real fingerprint.
+test("settings edited before configHash resolves still saves (baseline-freeze regression)", async ({ page }) => {
+  test.setTimeout(60_000);
+  const title = "E2E Hash Race";
+  const HASH_DELAY_MS = 4_000;
+
+  // A brand-new game, so its configHash has never been fetched this session —
+  // TanStack serves a cached hash on re-open, which masks the race entirely.
+  await page.goto(`/trips/${tripId}/leaderboard`);
+  // Either affordance opens the modal — which one renders depends on whether the
+  // spine test above already put a game on this board, and both tests must pass
+  // when run alone (`-g`) as well as in file order.
+  const addGame = page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game"));
+  await expect(addGame).toBeVisible({ timeout: 20_000 });
+  await addGame.click();
+  await page.getByRole("button", { name: "Stroke Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
+
+  const row = page.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+
+  // Hold the hash back so the edit below lands inside the window. This also
+  // delays listOrganizers/playGroups, which share its batch — the same coupling
+  // production has, and exactly why `ready` must cover them before a late freeze.
+  await page.route(/games\.configHash/, async (route) => {
+    await new Promise((r) => setTimeout(r, HASH_DELAY_MS));
+    await route.continue();
+  });
+
+  await row.click();
+
+  // Edit immediately — the panel is interactive well before the hash returns.
+  const stepper = page.getByTestId("total-points-stepper");
+  await expect(stepper).toBeVisible({ timeout: 20_000 });
+  await stepper.getByRole("button", { name: "Increase" }).click();
+
+  // THE REGRESSION: Save must become live once the hash lands. On main the
+  // baseline never freezes after a touch, so this never flips and times out.
+  const saveBtn = page.getByTestId("settings-save");
+  await expect(saveBtn).toBeEnabled({ timeout: 25_000 });
+
+  // The outbox half: the mirrored edit must carry the real frozen fingerprint,
+  // not the "" that made it unrecoverable (and got it deleted on reload).
+  const outboxBase = await page.evaluate(() => {
+    const k = Object.keys(localStorage).find((x) => x.startsWith("bt.setupDraft.v1:stroke:"));
+    return k ? (JSON.parse(localStorage.getItem(k) as string) as { base: string }).base : null;
+  });
+  expect(outboxBase).toBeTruthy();
+  expect(outboxBase).not.toBe("");
+
+  // …and the save actually lands (panel closes on a committed save).
+  await page.unroute(/games\.configHash/);
+  await saveBtn.click();
+  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
+
+  // Server truth: the edited value persisted.
+  const { data } = await admin
+    .from("games").select("points_total").eq("trip_id", tripId).eq("name", title).single();
+  expect(Number(data?.points_total)).toBe(1);
+});
