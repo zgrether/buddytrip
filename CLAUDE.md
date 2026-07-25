@@ -138,6 +138,8 @@ seam, never on a calendar.
 | What patterns must CC follow? | This file (`CLAUDE.md`) |
 
 If documents conflict with each other → stop and flag, do not silently resolve.
+`CLAUDE.md` is not exempt from code-is-ground-truth — if this file contradicts
+the code, the code wins and the contradiction gets flagged, not silently followed.
 
 ## Code Conventions
 
