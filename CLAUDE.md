@@ -543,6 +543,10 @@ snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 
 ## Local Dev Troubleshooting
 
+**Confirm the working directory and branch of a dev server before trusting the
+browser** — verify it's up to date with `origin`. An observation from the wrong
+tree is worse than no observation: it already cost one long debugging session.
+
 **Stale `.next` / Turbopack cache replays phantom parse errors — `rm -rf .next` and
 restart the dev server.** After a heavy edit session on a large component (e.g.
 `MatchGameView.tsx`), the dev server can surface persistent syntax/parse errors whose
