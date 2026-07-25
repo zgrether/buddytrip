@@ -283,18 +283,47 @@ that case doesn't have to be re-derived from scratch.*
   under the lock, which every other write path would then have to maintain and which
   false-rejects when stale. Documented in the migration itself; don't "tighten" the
   lock without reading that note.
-- **The outbox `base` and Save's `baseHash` MUST stay ONE value.** Both read the
-  single `serverHash` binding off `games.configHash`, frozen on the same
-  `anyTouched` transition. They answer two halves of one question — recover-vs-discard
-  and conflict-vs-allow — and keying them off different fingerprints makes them
-  disagree about what the base was. This shipped wrong once: the outbox was keyed on a
-  MATCHES fingerprint, so a remote COURSE change left it equal, the outbox restored,
-  the baseline re-seeded to the newer server at mount, Save's check passed, and the
-  recovered draft silently overwrote the other device. **The trap that invites the
-  wrong fix:** the hash is async, and comparing a stored base against `""` while it
-  loads deletes a good outbox entry. Gate on the hash (the outbox's `enabled` requires
-  it; the seed effect waits for it) — never re-key the outbox off something
-  synchronous.
+
+  **Second instance of the same accepted class — the freeze-time window (#700).** The
+  baseline now freezes at the moment `games.configHash` first resolves, which may be
+  AFTER the first edit (before that fix, touching first meant no baseline ever froze and
+  Save was dead for the session). So the recorded base is the server state at
+  hash-arrival, not at t=0 when the edits actually diverged. A change landing from
+  another device inside that gap is therefore adopted as the base instead of raising
+  `CONFLICT` — the same lost-update shape as above, at a different seam. **Bound:** the
+  window is one `games.configHash` round-trip on the FIRST open of a given game in a
+  session (a re-open serves a cached hash and has no window at all), and it requires a
+  second device editing THE SAME game inside those few seconds. Unavoidable in this
+  shape: the t=0 hash was never fetched, so there is nothing truer to freeze on.
+  **Why the obvious alternative was rejected:** gating editability until config + hash
+  resolve closes the window completely, but it spinner-gates a panel open, which
+  `CLAUDE.md` #12 forbids outright ("warm-cache seed = instant paint; never spinner-gate
+  a panel open") — and it would not have repaired the outbox corruption for any edit
+  that slipped through anyway. Don't re-open this by adding a loading gate; if it ever
+  needs closing for real, the honest fix is prefetching the hash with the game row (same
+  batch) so there is no window to freeze inside of, not blocking the UI.
+- **The outbox `base` and Save's `baseHash` MUST stay ONE value.** They answer two
+  halves of one question — recover-vs-discard and conflict-vs-allow — and keying them
+  off different fingerprints makes them disagree about what the base was. This shipped
+  wrong once: the outbox was keyed on a MATCHES fingerprint, so a remote COURSE change
+  left it equal, the outbox restored, the baseline re-seeded to the newer server at
+  mount, Save's check passed, and the recovered draft silently overwrote the other
+  device. **The trap that invites the wrong fix:** the hash is async, and comparing a
+  stored base against `""` while it loads deletes a good outbox entry — never re-key
+  the outbox off something synchronous.
+
+  **Mechanism updated (#700) — read this before trusting the paragraph above.** The
+  rule is unchanged; how it's enforced is not. This used to say "gate on the hash (the
+  outbox's `enabled` requires it)", and that guidance turned out to be self-defeating
+  in exactly the way the trap describes: gating `enabled` on the raw `serverHash` meant
+  that while the hash was pending the outbox was OFF, so its own internal `baseRef`
+  never advanced past its `""` seed — and the entry it later wrote carried `base: ""`,
+  which no real hash can equal, so recovery took the stale branch and DELETED it. The
+  durable layer erased the edit it exists to protect. The two values are now unified at
+  the SOURCE instead of kept in step by gating: `useDraftOutbox` no longer tracks a base
+  of its own, and `useConfigDraft` passes the FROZEN BASELINE HASH as `serverFingerprint`
+  — literally the same value Save sends as `baseHash`. One binding, no second copy to
+  drift. Keep it that way; don't reintroduce a locally-tracked base "for safety."
 - **"No handicap" persists as NULL, not 0.** `save_game_config` writes
   `NULLIF(strokes, 0)`, where the old per-row `setHandicap` wrote a literal `0`. Every
   reader normalises via `effectiveStrokes` (`?? 0`), so the two are behaviourally
