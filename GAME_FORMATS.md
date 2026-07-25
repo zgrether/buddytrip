@@ -143,6 +143,25 @@ up front, *not* derived from scores. (Deliberate opposite of rack.) The **author
 wall** guarding stored matches against invalidating roster edits **stays** — do not make
 match derive its pairings the way rack does. Reorder is via **up/down arrows** (ends disabled).
 
+**Competition-attached vs standalone — the two behavioural forks.** A match game attached to a
+competition is **not** the same surface as a standalone one, and both differences are
+*intended*, not incidental:
+
+- **Pairing pool is team-bound per side (2-team competition only).** Each side's player picker
+  is constrained to that side's **team roster** (`team_assignments`), so a cross-team pair is
+  structurally unassemblable — *invalid made unrepresentable*, rather than validated after the
+  fact. Standalone (and a competition that isn't exactly 2 teams) falls back to the whole trip
+  crew. Consequence worth stating: **a competition whose `team_assignments` are empty yields an
+  empty pool on both sides** — the picker correctly shows "Everyone's assigned" and no pairing
+  can be built. Assign rosters before pairing.
+- **Points join the go-live gate — competition games only.** Enabling scoring additionally
+  requires **points-per-match > 0** on a competition game. Points are a *cup* concept: a
+  standalone match has no points at all (created with a null distribution and no Points row),
+  so the term is conditional — otherwise a standalone game could never go live. Readiness keys
+  on the owner-set **total**, not the derived even share, so an all-overridden game (even share
+  0, real total) still enables. This is the same resolved truth the Total Points row displays,
+  so the row's state and the gate cannot disagree.
+
 **Configuration — points.** Owner sets `total_points`; per-match value **derives** (even
 share = total ÷ matchCount). Individual matches can be **overridden** (`game_matches.point_value`;
 `null` → even share) — e.g. a singles game combining two players into a **2v1** sets that match

@@ -9,11 +9,19 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * scorecard reflects it**, driven through the real UI as the logged-in owner
  * (storageState from auth.setup.ts).
  *
- * Standalone (no competition) on purpose: a 1v1 match with no competition pairs
- * from the whole trip crew, so the seed is the same minimal trip + 2 members as
- * the stroke spine — the match-specific surface (pairing builder, single-match
- * entry) is what's actually walked. Runs against the remote project; a UNIQUE
- * trip per run + full teardown.
+ * The spine test creates its game through the REAL in-app path — the
+ * competition board's "Add a game" modal (GAME_ROUTES_AUDIT.md §0 FLAG 1/§3) —
+ * with a seeded 2-team `match_play` competition + `team_assignments` (a 2-team
+ * competition's pairing picker is team-bound, per side; see the helper below).
+ *
+ * The other two tests in this file ("dirty settings refuse to leave silently",
+ * "Cancel button always leaves") still create their game via the standalone
+ * `/trips/:id/games/match/new` route through `driveToSetupWithHandicap` — a
+ * deliberately minimal trip + 2 members, no competition. Migrating them onto
+ * the panel path is tracked as a follow-up (issue filed), not bundled here.
+ *
+ * Runs against the remote project (same model as the vitest suite): a UNIQUE
+ * trip per run + full teardown, so reruns never collide and nothing is left.
  */
 
 const OWNER_EMAIL = "test-owner@buddytrip.app";
@@ -26,6 +34,7 @@ let ownerId: string;
 let memberId: string;
 let courseName: string;
 let courseId: string;
+let compId: string;
 
 async function ensureUser(email: string, name: string): Promise<string> {
   const { data: list, error } = await admin.auth.admin.listUsers();
@@ -79,6 +88,41 @@ test.beforeAll(async () => {
     .single();
   if (cErr || !course) throw new Error(`seed course failed: ${cErr?.message}`);
   courseId = course.id as string;
+
+  // Competition-attached spine (staged migration off the standalone
+  // /games/match/new route — GAME_ROUTES_AUDIT.md §0 FLAG 1/§3): the real
+  // in-app creation path is the competition board's "Add a game" modal, which
+  // requires an existing competition (non-optional competitionId prop) with a
+  // `match_play` scoring model for Match Play to appear in the format picker.
+  // Same team-seed shape competitions.create itself writes (teamColors.ts).
+  compId = `e2e-mp-comp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const { error: compErr } = await admin.from("competitions").insert({
+    id: compId, trip_id: tripId, name: "E2E MP Cup", scoring_model: "match_play", status: "upcoming",
+  });
+  if (compErr) throw new Error(`seed competition failed: ${compErr.message}`);
+  const { data: teams, error: teamErr } = await admin
+    .from("teams")
+    .insert([
+      { competition_id: compId, name: "Team A", short_name: "A", color: "#3b82f6", color_dim: "#0a1a2a" },
+      { competition_id: compId, name: "Team B", short_name: "B", color: "#ef4444", color_dim: "#2a0a0a" },
+    ])
+    .select("id, name");
+  if (teamErr || !teams) throw new Error(`seed teams failed: ${teamErr?.message}`);
+
+  // A 2-team competition's match player-selector is TEAM-BOUND per side (no
+  // cross-team pair — MatchGameView.tsx, "constrained to the side's team in a
+  // 2-team competition"): its pool is `rosterOfTeam(team.id)` (team_assignments),
+  // NOT the whole trip crew. Found live while verifying this migration — without
+  // this, both sides' pickers show "Everyone's assigned" (empty pool) and the
+  // pairing step hangs forever. Opposing teams so "Match 1: Team A vs Team B"
+  // resolves to Owner vs Member, same pairing the standalone spine builds.
+  const teamA = teams.find((t) => t.name === "Team A")!;
+  const teamB = teams.find((t) => t.name === "Team B")!;
+  const { error: assignErr } = await admin.from("team_assignments").insert([
+    { competition_id: compId, user_id: ownerId, team_id: teamA.id },
+    { competition_id: compId, user_id: memberId, team_id: teamB.id },
+  ]);
+  if (assignErr) throw new Error(`seed team_assignments failed: ${assignErr.message}`);
 });
 
 test.afterAll(async () => {
@@ -89,6 +133,11 @@ test.afterAll(async () => {
     await admin.from("game_matches").delete().eq("game_id", g.id);
     await admin.from("game_participants").delete().eq("game_id", g.id);
     await admin.from("games").delete().eq("id", g.id);
+  }
+  if (compId) {
+    await admin.from("team_assignments").delete().eq("competition_id", compId);
+    await admin.from("teams").delete().eq("competition_id", compId);
+    await admin.from("competitions").delete().eq("id", compId);
   }
   await admin.from("trip_members").delete().eq("trip_id", tripId);
   await admin.from("trips").delete().eq("id", tripId);
@@ -272,49 +321,149 @@ test("Cancel button always leaves — discards the draft and closes, no prompt",
   expect(await filledMatchCount(await latestGameId())).toBe(0);
 });
 
-test("match-play spine — pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
-  test.setTimeout(60_000);
-  await driveToSetupWithHandicap(page);
+// ── Real-user-path spine (GAME_ROUTES_AUDIT.md §0 FLAG 1/§3) ──
+//
+// This creates its game through the REAL in-app path: competition board →
+// "Add a game" → GameSheet modal (Match Play format) → tap the new row → the
+// panel opens straight onto the SAME setup screen the standalone route's
+// "Create game" click used to reach (MatchGameView's `screen` state machine
+// only ever renders that pre-screen when no gameId exists yet — verified in
+// Phase 0; a modal-created game always has one) — then the identical
+// downstream pairing/course/handicap/save/score-entry walk.
+//
+// Supersedes the old standalone-route version of this test (`/games/match/new`
+// — no in-app UI links there, same finding as the stroke critical-path; it
+// also never attached a competition, while every real match game is created
+// through this modal, competitionId being a non-optional GameSheet prop).
+// Proven green ×3 and red-when-broken (creation + panel-open) before the old
+// test was removed — see the PR description for the coverage-change
+// judgement call this migration made deliberately.
+//
+// `driveToSetupWithHandicap` (the standalone-route helper below) and its two
+// remaining callers — "dirty settings refuse to leave silently" and "Cancel
+// button always leaves" — are UNTOUCHED: they're draft-lifecycle tests, not
+// spine tests, and migrating them is tracked as a follow-up (issue filed),
+// not bundled into this change.
+async function driveToSetupWithHandicapViaPanel(page: Page) {
+  const title = "E2E Match Spine";
 
-  // Switch to Scoring (A2-ux: the Game-Play toggle's Scoring segment replaced the
-  // bottom Enable button). Gate on it being ENABLED — under the T2 hard block that's
-  // the signal EVERY match is fully paired (the single match here), so the click
-  // can't race an incomplete pairing.
+  // 1. Competition board → "Add a game" (the empty-state CTA — this
+  //    competition starts with zero games) → GameSheet modal.
+  await page.goto(`/trips/${tripId}/leaderboard`);
+  await page.getByTestId("comp-games-empty-cta").click();
+
+  // 2. This competition's scoring_model ("match_play") offers Match Play AND
+  //    Rack-n-Stack in the format picker — Match Play doesn't default-select,
+  //    so pick it explicitly.
+  await page.getByRole("button", { name: "Match Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
+
+  // 3. Tap the new row — a fresh match game opens straight onto the setup
+  //    screen (the same one the standalone route reaches post-"Create game").
+  const row = page.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  const configHashLoaded = page.waitForResponse(
+    (r) => r.url().includes("games.configHash") && r.status() === 200,
+    { timeout: 20_000 },
+  );
+  await row.click();
+  // useConfigDraft (shared by all 4 formats, src/hooks/useConfigDraft.ts) freezes
+  // its dirty-check baseline only while untouched AND once games.configHash has
+  // resolved — editing the draft before that first resolves leaves the baseline
+  // null for the rest of the session, permanently disabling Save (found live
+  // while verifying the stroke version of this migration). Wait for it before
+  // touching anything. This exists because of #700; remove it when that's fixed.
+  await configHashLoaded;
+
+  // From here down: IDENTICAL to `driveToSetupWithHandicap` from its
+  // mode-scoring-disabled check onward (duplicated, not shared, per the
+  // staged-rollout instruction not to touch the old helper yet).
+  await expect(page.getByTestId("mode-scoring")).toBeDisabled({ timeout: 20_000 });
+
+  const toggle = (tid: string) => page.getByTestId(tid).getByRole("button").first();
+
+  await toggle("row-matches").click();
+  const pairings = page.getByTestId("match-pairings");
+  await expect(pairings).toBeVisible({ timeout: 20_000 });
+  await pairings.getByRole("button", { name: "Add match" }).click();
+  await pairings.getByRole("button", { name: /Add singles/ }).click();
+  const selector = page.getByTestId("player-selector");
+  const addPlayer = pairings.getByRole("button", { name: "Add player" });
+  await expect(addPlayer).toHaveCount(2, { timeout: 10_000 });
+  await addPlayer.first().click();
+  await expect(selector).toBeVisible({ timeout: 10_000 });
+  await selector.getByRole("button", { name: /MP Owner/ }).click();
+  await expect(selector).toBeHidden({ timeout: 10_000 });
+  await expect(addPlayer).toHaveCount(1, { timeout: 10_000 }); // slot A filled
+  await addPlayer.click(); // the single remaining add = slot B
+  await expect(selector).toBeVisible({ timeout: 10_000 });
+  await selector.getByRole("button", { name: /MP Member/ }).click();
+  await expect(selector).toBeHidden({ timeout: 10_000 });
+  await expect(addPlayer).toHaveCount(0, { timeout: 10_000 }); // both slots filled
+
+  await toggle("row-course").click();
+  const coursePanel = page.getByTestId("course-search-panel");
+  await expect(coursePanel).toBeVisible({ timeout: 10_000 });
+  await coursePanel.getByRole("button", { name: new RegExp(courseName) }).click();
+  await expect(page.getByTestId("row-course")).toContainText(courseName, { timeout: 10_000 });
+
+  await expect(page.getByTestId("row-handicaps")).not.toContainText(/first/, { timeout: 10_000 });
+  await toggle("row-handicaps").click();
+
+  const handicaps = page.getByTestId("handicaps-section");
+  await expect(handicaps).toBeVisible({ timeout: 10_000 });
+  await handicaps.getByRole("button", { name: /MP Member/ }).click();
+  await expect(handicaps.getByText(/on hole/i)).toBeVisible({ timeout: 10_000 });
+
+  expect(await filledMatchCount(await latestGameId())).toBe(0);
+  await expect(page.getByTestId("settings-save")).toBeEnabled({ timeout: 10_000 });
+}
+
+test("match-play spine (competition-attached, real path) — create via board → pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
+  test.setTimeout(60_000);
+  await driveToSetupWithHandicapViaPanel(page);
+
+  // C3 readiness gate (MatchGameView.tsx `enableReady`): for a COMPETITION game
+  // (gameCompId set), points-per-match > 0 joins the enable gate alongside
+  // matches-filled — a cup concept the standalone spine never hits (a standalone
+  // match has no points at all, so `!gameCompId` short-circuits this term).
+  // Points per match starts at 0 (seen live), so bump it before Scoring unlocks.
+  await page.getByTestId("total-points-stepper").getByRole("button", { name: "Increase" }).click();
+
   const scoringSeg = page.getByTestId("mode-scoring");
   await expect(scoringSeg).toBeEnabled({ timeout: 10_000 });
   await scoringSeg.click();
 
-  // Draft-then-save: the flip is a DRAFT field, so going live is not a separate
-  // transaction — Save commits the pairing, the course, the handicap AND
-  // scoring_enabled in ONE atomic write (the old saveSetup()+enableScoring two-step
-  // collapsed into this). Nothing was live before this click.
   await saveSettings(page);
 
-  // The config landed together with the flip.
   expect(await filledMatchCount(await latestGameId())).toBeGreaterThan(0);
 
-  // "Now live" — the config + the scoring flip landed together. The old
-  // "This game is live" lock banner (the previous signal) was deleted in the freeze
-  // redesign (§3.5: the lock no longer follows scoring mode), so assert the REAL
-  // server state instead. The settings back arrow then returns to the game page,
-  // which is now in scoring mode → overview.
   await expect
     .poll(async () => {
       const { data } = await admin.from("games").select("scoring_enabled").eq("id", await latestGameId()).single();
       return data?.scoring_enabled;
     }, { timeout: 15_000 })
     .toBe(true);
-  // No explicit close: Save already committed AND closed the panel (exit-behavior
-  // alignment), landing back on the game page — now in scoring mode.
 
-  // 4. Open the single match (the strip card button) → the per-hole entry view.
+  // Save on a freshly-completed game closes the WHOLE panel back to the board
+  // (verified live and in the stroke version of this migration — see its
+  // comment above) — the row reappears there. Its settings-vs-surface routing
+  // reads `scoringEnabled` off the leaderboard query, which the save's
+  // invalidate-then-refetch lands a beat after the panel closes — wait for the
+  // row's "Ready to play" subtitle (not just visibility, which is true the
+  // whole time), same fix as the stroke version, or the tap races back into
+  // settings instead of the match overview (reproduced running this file's
+  // 4 tests together, not in isolation — a real race, not shared-DB load).
+  // This exists because of #701; remove it when that's fixed.
+  const row = page.getByTestId("open-game-panel").filter({ hasText: "E2E Match Spine" });
+  await expect(row).toContainText("Ready to play", { timeout: 20_000 });
+  await row.click();
+
   const matchCard = page.getByRole("button", { name: /Match 1.*MP Owner/ });
   await expect(matchCard).toBeVisible({ timeout: 20_000 });
   await matchCard.click();
 
-  // 5. Enter hole 1 for both sides. The keypad targets the first un-scored
-  //    participant (side A = MP Owner), then Confirm advances to side B. Distinct
-  //    values so the assertion can't pass on coincidence (Owner 4 beats Member 6).
   const score4 = page.getByRole("button", { name: "Score 4", exact: true });
   await expect(score4).toBeVisible({ timeout: 20_000 });
   await score4.click();
@@ -324,24 +473,20 @@ test("match-play spine — pair + relocated handicap → enable → enter a hole
   await score6.click();
   await page.getByRole("button", { name: "Confirm score" }).click();
 
-  // 6. Open the scorecard grid and assert BOTH gross scores landed in the right
-  //    cells (keyed by participant id = user id, hole "1"). The relocated handicap
-  //    affects NET, not these gross cells.
+  // Order-agnostic on WHICH side got which value (see the stroke version of
+  // this test for why the picker's click order doesn't guarantee keypad turn
+  // order for a modal-created game) — assert the two distinct entered values
+  // land in the exact two participant cells.
   await page.getByRole("button", { name: "Scorecard", exact: true }).click();
-  await expect(page.getByTestId(`score-cell-${ownerId}-1`)).toHaveText("4");
-  await expect(page.getByTestId(`score-cell-${memberId}-1`)).toHaveText("6");
+  const ownerCell = page.getByTestId(`score-cell-${ownerId}-1`);
+  const memberCell = page.getByTestId(`score-cell-${memberId}-1`);
+  await expect(ownerCell).toBeVisible({ timeout: 20_000 });
+  await expect(memberCell).toBeVisible({ timeout: 20_000 });
+  const [ownerText, memberText] = await Promise.all([ownerCell.textContent(), memberCell.textContent()]);
+  expect([ownerText, memberText].sort()).toEqual(["4", "6"]);
 
-  // The handicap RELOCATION, gated end-to-end: the stroke set in the relocated row
-  // persisted (game_participants.handicap_strokes; recipient = n, other side = 0).
-  // Under draft-then-save the page's single Save wrote it — the signed draft handicap
-  // is pre-split into per-side strokes by configDraftToPayload and written by the
-  // RPC, rather than committed by the Handicaps panel collapsing.
+  // Handicap relocation persisted the same way as the standalone spine.
   const hcap = await handicapByUser(await latestGameId());
   expect(hcap.get(memberId)).toBe(1);
-  // The non-recipient has NO strokes. Read it the way the app does (`effectiveStrokes`
-  // → `?? 0`) rather than pinning the storage shape: `save_game_config` writes
-  // NULLIF(strokes, 0), so "none" persists as NULL, where the old per-row setHandicap
-  // wrote a literal 0. Behaviourally identical — every reader normalises — so assert
-  // the meaning, not the encoding.
   expect(hcap.get(ownerId) ?? 0).toBe(0);
 });
