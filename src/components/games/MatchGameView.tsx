@@ -3,7 +3,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -2355,8 +2372,70 @@ function NewGame({
 // The two team columns flex (minmax(0,1fr)); the four structural columns are fixed.
 const MATCH_GRID = "24px 22px minmax(0,1fr) auto minmax(0,1fr) 24px";
 
+/** G: drag handle for a match row (dnd-kit, pointer-based → works on touch). The
+ *  hit target is 44×44 — bigger than the 24px leading column it sits in — so it
+ *  overflows the column on purpose (`justifySelf: center`); harmless, since the
+ *  neighbouring cells (# badge, team chips) aren't interactive there. The visual
+ *  grip glyph stays small; only the tappable area is enlarged. */
+function MatchDragHandle({
+  index,
+  attributes,
+  listeners,
+}: {
+  index: number;
+  attributes: ReturnType<typeof useSortable>["attributes"];
+  listeners: ReturnType<typeof useSortable>["listeners"];
+}) {
+  return (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      aria-label={`Reorder match ${index + 1}`}
+      className="flex cursor-grab items-center justify-center active:cursor-grabbing"
+      style={{ width: 44, height: 44, justifySelf: "center", touchAction: "none", color: "var(--color-bt-text-dim)" }}
+    >
+      <GripVertical size={16} />
+    </button>
+  );
+}
+
+/** G: one sortable match row — the whole grid row is the draggable node
+ *  (`setNodeRef`); only the handle (passed back via the render-prop) carries
+ *  the pointer/keyboard listeners, so a drag can only start from the handle. */
+function SortableMatchRow({
+  id,
+  index,
+  children,
+}: {
+  id: string;
+  index: number;
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    gridTemplateColumns: MATCH_GRID,
+    gap: 8,
+    padding: "10px 0",
+    borderTop: index > 0 ? "1px solid var(--color-bt-border)" : undefined,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    position: "relative",
+    zIndex: isDragging ? 1 : undefined,
+    background: isDragging ? "var(--color-bt-card-raised)" : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="grid items-center">
+      {children(<MatchDragHandle index={index} attributes={attributes} listeners={listeners} />)}
+    </div>
+  );
+}
+
 /** F: up/down reorder arrows for a match row (touch-reliable, replaces DnD). Fills the
- *  24px leading column; up disabled on the first row, down on the last. */
+ *  24px leading column; up disabled on the first row, down on the last.
+ *  UNUSED as of G (drag handle above supersedes it) — kept until drag + keyboard
+ *  sorting are verified end-to-end; removed once confirmed (audit-before-delete). */
 function ReorderArrows({ index, count, onMove }: { index: number; count: number; onMove: (dir: -1 | 1) => void }) {
   const btn = (dir: -1 | 1, disabled: boolean, Icon: typeof ChevronUp, label: string) => (
     <button
@@ -2423,6 +2502,7 @@ function MatchSetup({
 
   // Swap a match with its neighbour (dir −1 up / +1 down); clamped at the ends. The
   // per-match `pointValue` override rides ON each DraftMatch, so it moves with the row.
+  // UNUSED as of G — kept until drag + keyboard sorting are verified (see ReorderArrows).
   const moveMatch = (from: number, dir: -1 | 1) =>
     setDraft((prev) => {
       const to = from + dir;
@@ -2431,6 +2511,24 @@ function MatchSetup({
       [copy[from], copy[to]] = [copy[to], copy[from]];
       return copy;
     });
+
+  // G: dnd-kit sensors — PointerSensor covers mouse + touch + pen (one API, no
+  // separate touch handling needed); a 4px activation distance avoids arming a
+  // drag on a simple tap. KeyboardSensor is the non-pointer path (arrows come
+  // out only once this is confirmed working).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  // Sortable ids are positional (`"0"`, `"1"`, …) — valid because nothing else
+  // mutates `draft` mid-drag (the ~20s config-sync poll is the only other
+  // writer, and it doesn't fire between dragstart/dragend of a single gesture).
+  const matchIds = draft.map((_, i) => String(i));
+  const handleMatchDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setDraft((prev) => arrayMove(prev, Number(active.id), Number(over.id)));
+  };
 
   // One member (a single user) as a Participant — for an individual setup slot.
   function memberPart(userId: string | undefined): Participant | null {
@@ -2494,53 +2592,52 @@ function MatchSetup({
         <span />
       </div>
 
-      <div className="flex flex-col">
-        {draft.map((d, i) => {
-          return (
-            <div
-              key={i}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMatchDragEnd}>
+        <SortableContext items={matchIds} strategy={verticalListSortingStrategy}>
+          <div className="flex flex-col">
+            {draft.map((d, i) => (
               // The match is one flat grid ROW (no frame, no "MATCH N" band). The
-              // four structural columns (reorder │ # │ vs │ ×) center against the team
+              // four structural columns (handle │ # │ vs │ ×) center against the team
               // columns, which hold one chip (1v1) or two stacked chips (2v2). A
               // hairline separator above every match but the first delimits them —
               // quiet in 1v1, load-bearing in 2v2 (it makes the 2-row match read as
               // one unit).
-              className="grid items-center"
-              style={{ gridTemplateColumns: MATCH_GRID, gap: 8, padding: "10px 0", borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
-            >
-              {/* reorder — up/down arrows, far left, away from the × (reorder isn't next
-                  to remove). Ends disabled: up on the first row, down on the last (F). */}
-              <ReorderArrows
-                index={i}
-                count={draft.length}
-                onMove={(dir) => moveMatch(i, dir)}
-              />
-              {/* # — the table index column (separate from grab), with a 1V1/2V2 shape
-                  tag beneath (the shared MatchNumberBadge, also used by Point
-                  Distribution + Handicaps so the leading column reads the same). */}
-              <MatchNumberBadge number={i + 1} playersPerSide={d.playersPerSide} />
-              {sideSlots(d.a, i, "a", d.playersPerSide)}
-              <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-              {sideSlots(d.b, i, "b", d.playersPerSide)}
-              {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
-                  red — draft removal is free (no persisted scores) and the open panel
-                  must never read as an error. Far right. Always REMOVES the row —
-                  0 matches is now a valid empty state (the table hides, leaving just
-                  "Add match"), so the last match is deletable, not floor-clamped. */}
-              <button
-                type="button"
-                onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
-                title="Remove match"
-                aria-label={`Remove match ${i + 1}`}
-                className="flex items-center justify-center"
-                style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
+              <SortableMatchRow key={i} id={String(i)} index={i}>
+                {(handle) => (
+                  <>
+                    {/* handle — drag-to-reorder (G), far left, away from the × (reorder
+                        isn't next to remove). Pointer + keyboard both go through it. */}
+                    {handle}
+                    {/* # — the table index column (separate from the handle), with a
+                        1V1/2V2 shape tag beneath (the shared MatchNumberBadge, also used
+                        by Point Distribution + Handicaps so the leading column reads the
+                        same). */}
+                    <MatchNumberBadge number={i + 1} playersPerSide={d.playersPerSide} />
+                    {sideSlots(d.a, i, "a", d.playersPerSide)}
+                    <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
+                    {sideSlots(d.b, i, "b", d.playersPerSide)}
+                    {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
+                        red — draft removal is free (no persisted scores) and the open panel
+                        must never read as an error. Far right. Always REMOVES the row —
+                        0 matches is now a valid empty state (the table hides, leaving just
+                        "Add match"), so the last match is deletable, not floor-clamped. */}
+                    <button
+                      type="button"
+                      onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
+                      title="Remove match"
+                      aria-label={`Remove match ${i + 1}`}
+                      className="flex items-center justify-center"
+                      style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </>
+                )}
+              </SortableMatchRow>
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
         </>
       )}
 
