@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
@@ -86,9 +86,12 @@ export function NonGolfGameView() {
   const competitionId = game?.competition_id ?? (compQ.data?.id as string | undefined) ?? null;
   const scoringModel = ((compQ.data?.scoring_model as ScoringModel | undefined) ?? "match_play") as ScoringModel;
 
+  // STATE query — LEADERBOARD_QUERY is CompetitionLeaderboard's own policy
+  // (queryConfig.ts); this observer previously had no freshness mechanism at
+  // all (no poll, and useRealtimeGame doesn't invalidate this key).
   const lbQ = trpc.competitions.leaderboard.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
-    { enabled: !!tripId && !!competitionId }
+    { ...LEADERBOARD_QUERY, enabled: !!tripId && !!competitionId }
   );
 
   // Config sync: on a config change from another device (modifiers/rules, run
