@@ -32,6 +32,12 @@ deliberate follow-on.
 points at **production** Supabase *and* carries the **RLS-bypassing service-role key**. See
 §1.3.
 
+**Later incident (2026-07-24):** the **third resource fire** — Vercel **Active-CPU** hit 75% of
+the Hobby cap on near-zero traffic. Root cause was middleware **307-ing `/api/trpc` to `/login`**,
+turning every unauthenticated poll tick into a full page render; the fix is a **401**, not a
+matcher change. An initial "backgrounded polling" diagnosis was **wrong** and its fix inert — both
+recorded in **§1.5**.
+
 ---
 
 ## 1. Current-state map
@@ -141,6 +147,79 @@ points at **production** Supabase *and* carries the **RLS-bypassing service-role
   **2 running, 14 deferred** (`playwright.config.ts:33`).
 - **Untracked draft legal docs** — `PRIVACY_POLICY_draft.md` / `TERMS_OF_SERVICE_draft.md`
   duplicate the tracked `src/content/legal/*.md`; clarify which is canonical.
+
+---
+
+### 1.5 Vercel Active-CPU burn — incident + fix (2026-07-24)
+
+**The third resource fire** (after the Disk-IO email and the Supabase-egress scare): Vercel
+warned at **75% of the 4 CPU-hr Hobby Active-CPU allowance** (~3 hrs used, ~1 week left) with
+essentially only Zach + CC generating traffic. Active CPU bills *compute only* — I/O wait (DB
+queries, external calls) is free — so the burn was rendering per request, not slow queries.
+Exceeding the Hobby cap **pauses the feature ~30 days with no mid-cycle buyout**; during a live
+BBMI round that means the app is dead for the rest of the trip. (Pro removes the cliff but not
+the inefficiency, which scales with real users — so it was fixed, not upgraded around.)
+
+**Root cause — a redirect loop, NOT background polling.** `src/middleware.ts` matched
+`/api/trpc` and, for a request with no valid session, returned a **307 to `/login`**. `fetch`
+follows a redirect **preserving the method**, so each failed tRPC call re-issued as a request to
+`/login` and rendered the **entire `/login` page** — an Edge invocation *plus* a full page
+render, returning HTML no tRPC client can parse. The request never reached tRPC, so
+`authedProcedure`'s clean `UNAUTHORIZED` → 401 (`src/server/trpc.ts:98-103`) was never produced
+and the client never learned the session was dead. It just kept polling.
+
+The cost is per *failed tick*, and with the global `retry: 1` each tick costs **two** of them.
+7-day prod runtime logs showed the signature: `games.configHash`, `scores.listByGame`,
+`competitions.leaderboard`, `matchOutcomes.listByGame` all **~93% 307**, with **`/login` topping
+the path list** and **~1,150 `/login` renders in a single 30-minute window**. The sustained burn
+traced to **six open desktop tabs plus CI** — not to phones. (Full derivation:
+`DATA_FRESHNESS_AUDIT.md` §6.4, §8-F1.)
+
+**Correction to the original diagnosis (recorded deliberately).** This was first diagnosed as
+*backgrounded polling* and "fixed" by adding `refetchIntervalInBackground: false` to the
+leaderboard poll. **That was wrong twice over.** The option is optional and **never assigned a
+default** anywhere in `@tanstack/query-core`; its one runtime read is
+`if (this.options.refetchIntervalInBackground || focusManager.isFocused())`
+(`queryObserver.js:215`), so leaving it unset is `undefined` — falsy at that exact `||`, i.e.
+already identical to `false`. Background polling was **already paused**; the commit was inert and
+was dropped. Corroborating evidence the mechanism was never phone-side: a **locked PWA generates
+zero requests**, yet the burn continued. The lesson is the one worth keeping — *a plausible
+mechanism that matches the symptom is not the mechanism.*
+
+**The fix: a 401, not a matcher exclusion.** Middleware now returns a tRPC-shaped
+`UNAUTHORIZED`/401 for `/api/trpc` and keeps the 307 for page routes. An abandoned attempt
+excluded `/api/trpc` from the matcher instead; **that is the one thing this must not do.**
+Middleware is the **confirmed token-refresh path** (`DATA_FRESHNESS_AUDIT.md` §6.3): its
+`getUser()` rotates cookies via `setAll` onto the returned response, which is why a user who only
+polls a leaderboard — never navigating — keeps a live session. Verified empirically: a locked
+Android PWA ~85 minutes past access-token expiry resumed to clean 200s. The remaining paths can't
+replace it (the tRPC context prefers `getClaims()`, which does no refresh; the browser client is
+foreground-only). And because Supabase **rotates** refresh tokens, a server-side refresh whose
+cookies never reach the browser strands it on a *consumed* token — the next refresh fails
+permanently, which is a hard logout mid-round. **`/api/trpc` stays matched; only the failure
+response changed.**
+
+Paired with it, the client now **backs off a dead session** (`authExpiry.ts` + a global
+`QueryCache.onError`): a 401 triggers one `refreshSession()` — self-healing the common
+expired-access-token case — or, if the session is truly gone, navigates to `/login` (carrying
+`?next=`) so the poll loop tears down instead of firing forever. This fixes a real
+**mid-round-expiry bug** independent of cost: before it, an expired session left the leaderboard
+silently frozen on stale scores while the app kept polling, and nobody would know until they
+compared phones. In-flight scores are safe (localStorage outbox, `CLAUDE.md` #15).
+
+**No predicted reduction is recorded here.** The mechanism is understood and the measurements
+above are real, but the post-fix curve has not been observed yet, and the last number this
+section carried was derived from a commit that did nothing. **Checkable-after** (re-read the
+Vercel dashboard): the 307 rate on the four poll endpoints should collapse toward ~0 and `/login`
+should fall off the top of the path list. Those are the observations that would justify a number;
+until then there isn't one. Web Analytics is **not enabled** — the usage breakdown came from
+Observability runtime logs.
+
+**No scheduled work exists** (no `vercel.json`, no crons, no `revalidate` intervals), which is
+part of why a request-driven loop was the only mechanism that fit "3 CPU-hrs on near-zero
+traffic." **Cross-ref §1.3:** a left-open tab polling a *preview* URL burned this same CPU pool
+**and** hit prod Supabase with the service-role key — the two-bill version of the same loop;
+scoping that key to Production closes that half.
 
 ---
 
