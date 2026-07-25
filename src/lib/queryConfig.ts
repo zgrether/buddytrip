@@ -29,7 +29,15 @@
  * Apply this ONLY to structure queries. Do NOT spread it onto a STATE query
  * (scores.listByGame, competitions.leaderboard) — that's the "one blob tuned two
  * ways" trap this split exists to undo: you'd freeze the scores along with the
- * structure.
+ * structure. CONSEQUENCE, not just prohibition: this already happened once
+ * (F4, competitions.leaderboard in GamePageHeader.tsx) — on a route with no
+ * OTHER observer polling that key (e.g. a standalone game route with no
+ * CompetitionLeaderboard mounted), staleTime: Infinity is the query's ONLY
+ * freshness policy, so standings silently FREEZE until an unrelated remount,
+ * while still being presented as live. A comment didn't catch it last time —
+ * before spreading STRUCTURE_QUERY onto any query, grep every OTHER call site
+ * on the same tRPC key first; if even one of them expects live data, none of
+ * them can use this.
  *
  * ── The SERVER half is separate ──
  * This fixes the CLIENT (React Query) half. The trip→live reload ALSO has a server
