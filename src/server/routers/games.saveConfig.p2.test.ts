@@ -74,12 +74,19 @@ type RackParticipant = { userId: string; strokes: number };
 /** Build a full rack payload from the current scalars + the groups/participants slice. */
 async function rackPayload(
   gameId: string,
-  slice: { groups?: RackGroup[]; groupsStructureDirty?: boolean; participants?: RackParticipant[]; scoringEnabled?: boolean },
+  slice: {
+    groups?: RackGroup[]; groupsStructureDirty?: boolean; participants?: RackParticipant[]; scoringEnabled?: boolean;
+    // 093: the zero-points go-live gate needs a real value on a FRESH enable (the
+    // first scoringEnabled:true for a game) — omit on every other call (a re-affirm
+    // doesn't re-check it, and most calls here don't care about points at all).
+    pointsTotal?: number;
+  },
 ) {
   const s = await scalars(gameId);
   return {
     ...s,
     scoringEnabled: slice.scoringEnabled ?? s.scoringEnabled,
+    ...(slice.pointsTotal !== undefined ? { pointsTotal: slice.pointsTotal } : {}),
     ...(slice.groups !== undefined ? { groups: slice.groups, groupsStructureDirty: slice.groupsStructureDirty ?? true } : {}),
     ...(slice.participants !== undefined ? { participants: slice.participants } : {}),
   };
@@ -143,7 +150,8 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
     const gameId = await newRackGame("Rack groups precise guard");
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], participants: [] });
     // Go live (readiness = grouped participants) + score OWNER (member stays unscored).
-    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, scoringEnabled: true });
+    // 093: a fresh enable on a competition game needs a real point value.
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, pointsTotal: 2, scoringEnabled: true });
     await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 5 });
 
     // (ALLOWED) Re-group: swap the UNSCORED member for planner — owner (scored) stays in a group.
@@ -171,7 +179,8 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
   it("a per-participant STROKE edit on a scored game SUCCEEDS in place (warned, not refused)", async () => {
     const gameId = await newRackGame("Rack strokes warned");
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], participants: [{ userId: owner, strokes: 0 }] });
-    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, scoringEnabled: true });
+    // 093: a fresh enable on a competition game needs a real point value.
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, pointsTotal: 2, scoringEnabled: true });
     await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 5 });
 
     // Same groupings (structure clean) + a stroke change → the in-place field path.
@@ -188,7 +197,8 @@ describe("save_game_config — rack GROUPINGS (structure) + PARTICIPANT strokes 
   it("THE TAXONOMY — on a scored rack every non-structural setting saves; ONLY removing a scored player refuses", async () => {
     const gameId = await newRackGame("Rack taxonomy");
     await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], participants: [{ userId: owner, strokes: 0 }] });
-    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, scoringEnabled: true });
+    // 093: a fresh enable on a competition game needs a real point value.
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: false, pointsTotal: 2, scoringEnabled: true });
     await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: owner, participantType: "user", unitLabel: "1", value: 5 });
 
     // Warned/Quiet tiers: name + rules + points + a stroke, ALL in one save, structure

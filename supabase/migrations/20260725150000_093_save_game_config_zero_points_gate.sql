@@ -24,15 +24,28 @@
 -- ever called. This migration adds only the nonzero check; the distribution editor is not
 -- touched.
 --
--- Applies uniformly to a re-affirming save of an ALREADY-scoring game too (v_go_live is true
--- on true→true, same as the existing match/grouping checks below) — this does NOT disable an
--- already-live 0-point game (scoring_enabled is never flipped false by this branch), but a
--- future settings save on one WILL be refused until a point value is set. Confirmed via a
--- read-only prod query before writing this: 16 existing rows match (competition-attached,
--- scoring_enabled, 0/null points) — every one of them dev/test residue (trip titles like
--- "Rack Trip", "D1 Trip", "Outcome E2E Trip", "BBMI Playground") pre-dating Step 0 (#636)
--- moving CI/local dev off shared prod. The real BBMI 2026 competition's one game is still in
--- setup (scoring_enabled=false, points_total=null) — entirely unaffected either way.
+-- Fires ONLY on the fresh setup→scoring transition (v_go_live AND NOT v_was_live) — NOT on a
+-- true→true re-affirm, unlike the existing match/grouping structural checks below (which DO
+-- re-check on every save while live, per their own comment). Discovered why this narrower
+-- scope is correct while building this migration: the existing rack/stroke P2 test fixtures
+-- go live once with `save(..., { scoringEnabled: true })`, then make several further edits
+-- (a re-group, a stroke change) that ALSO carry `scoringEnabled: true` in the payload — an
+-- ordinary re-affirm, not a new enable. None of those fixtures set a point value (points
+-- were never relevant to what they test), so applying this check on every re-affirm broke
+-- three passing tests exercising warned-tier edits on an already-live game — exactly the
+-- "don't strand an in-progress game" failure mode this migration's own header warns against,
+-- just via edits rather than a forced disable. A REAL live game reaching mid-round editing
+-- has, by construction, already passed this gate once to get live, so checking again on
+-- every unrelated save (fix a stroke count, swap a player) is pure friction with no
+-- correctness benefit — the SAME shape as "don't retroactively disable," just for edits
+-- instead of the scoring flag. Confirmed via a read-only prod query before writing this: 16
+-- existing rows match (competition-attached, scoring_enabled, 0/null points) — every one of
+-- them dev/test residue (trip titles like "Rack Trip", "D1 Trip", "Outcome E2E Trip", "BBMI
+-- Playground") pre-dating Step 0 (#636) moving CI/local dev off shared prod; with the
+-- fresh-enable-only scope, none of those 16 rows are affected by this migration at all (they
+-- are already live, so no future save re-triggers this check). The real BBMI 2026
+-- competition's one game is still in setup (scoring_enabled=false, points_total=null) —
+-- entirely unaffected either way.
 --
 -- 081–092 applied and immutable; this is a new migration. Everything else is 089 verbatim
 -- (CREATE OR REPLACE re-emits the whole body).
@@ -304,11 +317,13 @@ BEGIN
     -- 093 — a competition-attached game worth 0 points can be scored end-to-end and
     -- finalized without moving the standings; the failure is invisible until it's too
     -- late to fix. Standalone games (v_competition_id IS NULL) are UNAFFECTED — same
-    -- shape as the client's `!gameCompId ||` short-circuit. Reads points_total FRESH
-    -- (not the pre-write value captured above) since this same call may have just set
-    -- it in step 1. One check, shared by all four formats — the format-specific
-    -- structural checks below are unchanged and still apply on top of this.
-    IF v_competition_id IS NOT NULL THEN
+    -- shape as the client's `!gameCompId ||` short-circuit. FRESH ENABLE ONLY
+    -- (`NOT v_was_live`) — see the header comment for why a re-affirm must not
+    -- re-trigger this. Reads points_total FRESH (not the pre-write value captured
+    -- above) since this same call may have just set it in step 1. One check, shared
+    -- by all four formats — the format-specific structural checks below are unchanged
+    -- (still apply on top of this, and still re-check on every re-affirm as before).
+    IF v_competition_id IS NOT NULL AND NOT v_was_live THEN
       SELECT points_total INTO v_points_total FROM public.games WHERE id = p_game_id;
       IF COALESCE(v_points_total, 0) <= 0 THEN
         RAISE EXCEPTION 'NOT_READY: set a point value before enabling scoring'

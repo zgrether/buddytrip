@@ -319,7 +319,10 @@ describe("saveConfig — optimistic concurrency", () => {
 describe("saveConfig — the scoring_enabled state machine", () => {
   it("go-live is REFUSED and the whole save rolls back when the game isn't ready", async () => {
     const gameId = await newGame("Not ready");
-    const draft = await draftOf(gameId); // no matches, no points → not ready
+    // Isolate the PAIRING reason this test is actually about: give it a real point
+    // value so the 093 zero-points gate (tested separately below) can't also fire and
+    // steal the assertion.
+    const draft = { ...(await draftOf(gameId)), pointsTotal: 2 }; // no matches → not ready
     await expect(
       ctx.caller().games.saveConfig({
         tripId,
@@ -334,6 +337,59 @@ describe("saveConfig — the scoring_enabled state machine", () => {
     const after = await ctx.caller().games.getById({ tripId, gameId });
     expect(after.name).toBe("Not ready");
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
+  });
+
+  // 093: the server-side half of the C3 gate, extended to all four formats. Isolated
+  // the other direction from the test above — matches ARE paired, points are NOT set —
+  // so this proves the points term specifically, not the pairing term.
+  it("go-live is REFUSED on a competition game worth 0 points, even with a full pairing", async () => {
+    const gameId = await newGame("Zero points");
+    const seeded = await draftOf(gameId);
+    const paired = onePairedMatch(seeded); // fully paired; pointsTotal left at its default (0/null)
+    await expect(
+      ctx.caller().games.saveConfig({
+        tripId,
+        gameId,
+        baseHash: await hashOf(gameId),
+        payload: configDraftToPayload({ ...paired, scoringEnabled: true }, seeded),
+      })
+    ).rejects.toThrow(/set a point value/i);
+
+    const after = await ctx.caller().games.getById({ tripId, gameId });
+    expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
+  });
+
+  // 093 scope: the gate fires on a FRESH enable only, never on a true→true re-affirm of
+  // an already-live game — a real live game already passed this gate once to get live,
+  // so re-checking on every unrelated edit (e.g. a name change) would be pure friction.
+  it("a re-affirming save (true→true) on an already-live 0-point game is NOT refused by the points gate", async () => {
+    const gameId = await newGame("Live at zero points, edited after");
+    await goLive(gameId); // goLive sets pointsTotal: 2 to get it live in the first place
+
+    // Bump points back to 0 in a plain re-affirming save (scoringEnabled stays true) —
+    // this itself must succeed, since points aren't re-checked on a re-affirm.
+    const live = await draftOf(gameId);
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload({ ...live, pointsTotal: 0 }, live),
+    });
+    const zeroed = await draftOf(gameId);
+    expect(zeroed.scoringEnabled).toBe(true);
+    expect(zeroed.pointsTotal).toBe(0);
+
+    // A further, wholly unrelated re-save (name change) with scoringEnabled staying true
+    // must ALSO succeed — the 093 gate must not re-fire on this re-affirm either.
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload({ ...zeroed, name: "Renamed while live at 0" }, zeroed),
+    });
+    const after = await ctx.caller().games.getById({ tripId, gameId });
+    expect(after.name).toBe("Renamed while live at 0");
+    expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(true);
   });
 
   it("a live game with NO scores (true→true) writes the FULL config — matchups included", async () => {
