@@ -177,6 +177,14 @@ from open `feature`/`refactor` issues, and from direct code inspection.
 | 20 | **Non-golf declared-outcome visual refresh** | Functional control | Its own mockup pass (#504) | `#504` | M |
 | 21 | **Touch-aware cross-container DnD** | Arrow-based reorder replaced DnD in match setup | Agenda cross-day + roster assign-by-drag still need touch DnD (#517) | `#517` | M |
 | 22 | **Dark-mode lock** | `forcedTheme="dark"`, wiring kept for a toggle | The competition outdoor-mode toggle it was kept for | `src/lib/providers.tsx:109` | S |
+| 23 | **Push: device unsubscribe** | Per-category mute (`setPreference`) works | `notifications.unsubscribe` has **no UI caller** (test-only) — no way to revoke a device subscription; endpoints accumulate | `notifications.ts:64` | S |
+| 24 | **Non-destructive date-poll reopen** | `returnToPoll` preserves windows + votes | No UI reaches it — every clear-dates path calls the **destructive** `unlock`, which deletes zero-vote windows | `datePoll.ts:427` · `DatesSheet.tsx:135` | S |
+| 25 | **Orphaned per-row game-config mutations** | `save_game_config` replaced them | ~17 procedures stranded with zero callers (all `matches` mutations bar `listByGame`, several `games.*`, `playGroups.setParticipantStrokes`). #630 tracks ~6 and **misses ~11** — and lists `setFoursomes`, which has a live caller | `matches.ts` · `games.ts` · `#630` | M |
+| 26 | **Non-golf competition formats** | Head-to-Head; full persistence for all five (mig 086) | `bracket_se` / `bracket_de` / `best_of_n` / `live_results` are hardcoded-disabled "Soon" chips with no engine. **Deliberate** (docblock says don't implement; `GAME_FORMATS.md` §8 agrees) | `NonGolfConfigurationView.tsx:254` | L each |
+| 27 | **News image upload** | Image/GIF block renders from a URL | File upload — despite a working Supabase Storage upload already shipping for lodging photos | `NewsComposer.tsx:737` | M |
+| 28 | **Schedule is drag-only** | Drag-to-schedule + drop targets | No tap path: *"drag an item onto a day"* / per-day drop targets have no tap-to-add. Unactionable on touch, on a mobile-first app | `ScheduleTab.tsx:1271,1341` | M |
+| 29 | **Empty states with no exit** | Correct empty copy | No affordance for a viewer who *can* act: teams panel after structure-lock, points matrix, "no crew to assign", transfer-ownership, news draw block, scorecard-without-course, archived ideas | see PR table | S each |
+| 30 | **Orphaned read procedures** | Implemented + tested | `games.listTypes` (superseded by `gameTypes.ts`) and `competitions.teamAssignmentCounts` have zero callers | `games.ts:225` · `competitions.ts:160` | S |
 
 **Not incomplete features — accepted limitations** (logged so they aren't re-litigated): the
 `save_game_config` lost-update windows, Glorious Holes' `18−N` inertia, `pairings_published_at` redundancy,
