@@ -71,37 +71,36 @@ seam, never on a calendar.
 
 - Every new tRPC router gets a Vitest unit test before the task is considered done
 - Every new database query gets tested against the test DB the suite uses
-- **Critical-path E2E must stay green in CI (merge-blocking).** The one
-  Playwright smoke test (`e2e/critical-path.spec.ts`: auth → stroke game →
-  scores → scorecard) guards that the assembled spine is reachable — the class
-  of break unit tests miss. New screens get E2E coverage **when they touch the
-  critical path**; broader per-screen coverage is added as specific regressions
-  warrant — not up front. (The old "every screen gets an E2E test" rule was
-  aspirational and unmet; this is what's actually enforced.) E2E auth is a
-  `storageState` login as `test-owner` (`e2e/auth.setup.ts`); tests seed a unique
-  trip and tear it down. The 12 older `e2e/*.spec.ts` are a deferred, mock-based
-  set that no project runs yet.
+- **Critical-path E2E must stay green in CI (merge-blocking).** Two Playwright
+  specs run merge-blocking — `e2e/critical-path.spec.ts` (auth → stroke game →
+  scores → scorecard) and `e2e/match-play.spec.ts` — guarding the assembled
+  spine is reachable, the class of break unit tests miss. New screens get E2E
+  coverage **when they touch the critical path**; broader per-screen coverage
+  is added as specific regressions warrant — not up front. (The old "every
+  screen gets an E2E test" rule was aspirational and unmet.) E2E auth is a
+  `storageState` login as `test-owner` (`e2e/auth.setup.ts`); tests seed a
+  unique trip and tear it down. The other 13 `e2e/*.spec.ts` are a deferred,
+  mock-based set no Playwright project runs yet.
 - Tests live next to what they test (`trips.test.ts` alongside `trips.ts`)
 - No task is considered complete until its tests pass
-- CI runs Vitest (full) + the critical-path Playwright E2E on every push via
-  GitHub Actions; both are merge-blocking
-- **Shared-remote-DB conventions (learned the hard way, ~6× this refactor).** The
-  server-router suites run against ONE shared REMOTE Supabase project, so latency is
-  real and load-sensitive:
-  - **Seed sequentially, never `Promise.all`.** Parallel `createTrip`/`addTripMember`/
-    `createCompetition` against the shared project race and flake; do them in order.
-  - **Budget 60s, not 30s** — for BOTH `testTimeout` AND `hookTimeout` (`vitest.config.mts`).
-    A `beforeAll` hits the same latency spikes as a test; vitest defaults `hookTimeout` to
-    10s, so under concurrent load setup hooks flake ("Hook timed out in 10000ms") while the
-    60s tests pass. Every new integration suite adds a `beforeAll`, so this is a per-suite
-    tax on the whole run, not a one-off.
-  - **A red integration test under concurrent load is SUSPECT until reproduced in
-    isolation.** Before treating a CI failure as a regression, re-run the failing suite
-    alone (`vitest run <file>`) and check for worktree / shared-fixture contamination — a
-    load-induced timeout looks identical to a real break in the CI log.
-  - **After any behaviour change, grep the tests for assertions of the OLD behaviour
-    before pushing** (e.g. relaxing a zod floor → a test asserting the old rejection).
-    Do it proactively; discovering it as a second red CI run wastes a full ~7-min cycle.
+- CI runs Vitest (full) + the two merge-blocking Playwright specs on every
+  push via GitHub Actions
+- **Local-stack test conventions (learned the hard way, ~6× this refactor).**
+  CI and local dev both run the server-router suites against an EPHEMERAL LOCAL
+  Supabase (`supabase start`, #636), not a shared remote project — see Migration
+  Workflow below. Still worth following:
+  - **Seed sequentially, never `Promise.all`.** `createTrip`/`addTripMember`/
+    `createCompetition` can still race and flake; do them in order.
+  - **Budget 60s, not 30s** for BOTH `testTimeout` AND `hookTimeout`
+    (`vitest.config.mts`) — Docker/Postgres overhead on CI runners is real enough
+    that vitest's 10s `hookTimeout` default flakes a `beforeAll` under load.
+  - **A red integration test is real until proven otherwise.** The old shared-remote
+    made load timeouts genuinely ambiguous; the ephemeral local stack removes most
+    of that — treat a red CI run as a regression first, re-run in isolation
+    (`vitest run <file>`) only to confirm before calling it noise.
+  - **After any behaviour change, grep tests for assertions of the OLD behaviour
+    before pushing** (e.g. relaxing a zod floor → a test asserting the old
+    rejection) — proactively, not as a second red CI run.
 
 ## Seed Data Rules
 
