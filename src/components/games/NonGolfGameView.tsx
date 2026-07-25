@@ -85,9 +85,12 @@ export function NonGolfGameView() {
   const competitionId = game?.competition_id ?? (compQ.data?.id as string | undefined) ?? null;
   const scoringModel = ((compQ.data?.scoring_model as ScoringModel | undefined) ?? "match_play") as ScoringModel;
 
+  // STATE query — same live poll policy as CompetitionLeaderboard
+  // (queryConfig.ts:29-31); this observer previously had no freshness mechanism
+  // at all (no poll, and useRealtimeGame doesn't invalidate this key).
   const lbQ = trpc.competitions.leaderboard.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
-    { enabled: !!tripId && !!competitionId }
+    { enabled: !!tripId && !!competitionId, refetchInterval: 30_000 }
   );
 
   // Config sync: on a config change from another device (modifiers/rules, run
