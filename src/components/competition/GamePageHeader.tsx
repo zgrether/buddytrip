@@ -1,6 +1,7 @@
 "use client";
 
 import { trpc } from "@/lib/trpc-client";
+import { LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { CollapsedHero, ProjectionRow } from "./CompetitionHero";
 
 /**
@@ -40,12 +41,12 @@ export function GamePageHeader({
   projection?: { perTeam: Record<string, number>; gameName: string; final: boolean };
 }) {
   // STATE query, not STRUCTURE — this is the same live `competitions.leaderboard`
-  // key CompetitionLeaderboard polls; match its policy exactly (queryConfig.ts:29-31)
-  // so standings don't freeze on the standalone game routes where that's the only
-  // observer on this key.
+  // key CompetitionLeaderboard polls; LEADERBOARD_QUERY is that exact policy
+  // (queryConfig.ts) so standings don't freeze on the standalone game routes
+  // where that's the only observer on this key.
   const lb = trpc.competitions.leaderboard.useQuery(
     { tripId: tripId ?? "", competitionId: competitionId ?? "" },
-    { enabled: !!tripId && !!competitionId, refetchInterval: 30_000 }
+    { ...LEADERBOARD_QUERY, enabled: !!tripId && !!competitionId }
   );
   const d = lb.data;
   if (!competitionId || !d || !d.teams?.length) return null;
