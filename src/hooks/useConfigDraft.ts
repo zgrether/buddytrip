@@ -21,19 +21,26 @@ import type { SaveConfigPayload } from "@/lib/configDraft";
  * its outbox `bundle` + `applyRecovered` + `reset`, and an `onSaved` that refetches its own
  * game/child queries (so the baseline re-freezes on the new server state).
  *
- * Invariants preserved verbatim from the hand-rolled copies:
- *  - ONE `serverHash` value feeds BOTH the outbox `base` and Save's `baseHash`, frozen on
- *    the `!anyTouched` transition so the ~20s poll can't move it mid-edit.
+ * Invariants:
+ *  - ONE value feeds BOTH the outbox `base` and Save's `baseHash` — the FROZEN BASELINE's
+ *    hash. (It was the raw `serverHash` with the outbox tracking a second copy of its own;
+ *    #700 is what happens when those two disagree. Don't reintroduce a second copy.) The
+ *    baseline freezes once the draft is touched, so the ~20s poll can't move it mid-edit.
  *  - `dirty = anyTouched && !!baseline && !draftsEqual(configDraft, baseline.draft)` — the
  *    `anyTouched` gate kills the post-save transient (a refetched server draft briefly ≠ the
- *    stale baseline before it re-seeds).
- *  - confirm-on-leave gates on `showConfig && canEdit && dirty` via latest-refs (guardDirty
- *    reads `showConfig`, which the overlay returns — a direct pass would be circular).
+ *    stale baseline before it re-seeds). This is the SAVE gate and it requires a baseline:
+ *    no baseline means no concurrency base, so there is nothing safe to write against.
+ *  - confirm-on-leave gates on `unsavedRisk`, NOT `dirty` — the two are deliberately
+ *    asymmetric, because a needless prompt costs a tap while a missing one destroys work.
+ *    Before the baseline freezes, divergence is unknowable, so leaving assumes the worst
+ *    while saving stays blocked. Wired via latest-refs (guardDirty reads `showConfig`,
+ *    which the overlay returns — a direct pass would be circular). Cancel bypasses this
+ *    ref entirely (the overlay's `confirmDiscard`), so it still always leaves.
  *
  * The settings OVERLAY (`useGameSettingsOverlay`) stays in the view — several views open it
  * early (before `configDraft` exists) to publish the app-bar chrome. The view creates the
  * two latest-refs, passes them to the overlay's `isDirty`/`onDiscard`, and hands the hook
- * `showConfig` + the refs; the hook writes them (guardDirty sync) once `dirty` is known.
+ * `showConfig` + the refs; the hook writes them (guardDirty sync) each render.
  */
 export function useConfigDraft<D, B>(params: {
   tripId: string | undefined;
@@ -111,7 +118,19 @@ export function useConfigDraft<D, B>(params: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyTouched, serverConfigDraft, serverHash, ready]);
 
+  // SAVE gate — requires a real baseline: no baseline means no optimistic-concurrency
+  // base, so there is nothing safe to write against. Unchanged.
   const dirty = anyTouched && !!baseline && !draftsEqual(configDraft, baseline.draft);
+
+  // LEAVE gate — deliberately NOT the same predicate, because the two failures are not
+  // symmetric. A prompt shown unnecessarily costs one tap; a prompt suppressed destroys
+  // the user's edits with no warning. Between the first edit and the baseline freezing we
+  // genuinely cannot tell whether the draft diverges from the server — so assume it does.
+  // (Before the freeze fix above this was permanent; now it is only the load window, but
+  // that window sits on the highest-traffic path: GameRow deep-links a not-yet-live game
+  // straight to `?settings=1`, so an owner's first tap lands here with a cold hash.)
+  // Conservative where it protects, unchanged where it could cause a bad write.
+  const unsavedRisk = anyTouched && (!baseline || !draftsEqual(configDraft, baseline.draft));
 
   const [justSaved, setJustSaved] = useState(false);
   useEffect(() => { if (anyTouched) setJustSaved(false); }, [anyTouched]);
@@ -174,7 +193,13 @@ export function useConfigDraft<D, B>(params: {
   // scoreboard underneath (and a member's read-only view) must never trap a back-press.
   // Written to the view's refs in an effect (not during render) so it stays pure; effects
   // flush before any back-press event can arrive. (The overlay itself lives in the view.)
-  const guardDirty = showConfig && canEdit && dirty;
+  //
+  // Reads `unsavedRisk`, NOT `dirty` — see the note at its definition. This only affects
+  // the GUARDED exits (the ✕ and OS/browser back, which route through `closeConfig`).
+  // Cancel is untouched: it calls the overlay's `confirmDiscard`, which sets the one-shot
+  // force flag and closes directly without ever consulting this ref, so "Cancel always
+  // leaves" keeps its meaning and cannot start prompting.
+  const guardDirty = showConfig && canEdit && unsavedRisk;
   useEffect(() => {
     dirtyRef.current = guardDirty;
     discardRef.current = handleCancel;

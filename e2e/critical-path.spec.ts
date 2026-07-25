@@ -287,3 +287,58 @@ test("settings edited before configHash resolves still saves (baseline-freeze re
     .from("games").select("points_total").eq("trip_id", tripId).eq("name", title).single();
   expect(Number(data?.points_total)).toBe(1);
 });
+
+// ── Regression: the discard prompt must survive the same load window ───────────
+//
+// `dirty` feeds Save, the outbox AND the confirm-on-leave guard, so the null
+// baseline above silently suppressed the discard prompt too: edit, hit ✕, panel
+// closes, edit gone, no warning. The freeze fix alone would have left that
+// reachable for the duration of the load window — on the highest-traffic path,
+// since GameRow deep-links a not-yet-live game straight to `?settings=1`.
+//
+// The guard therefore reads `unsavedRisk` (touched AND (no baseline yet OR
+// actually diverged)) rather than `dirty`. The asymmetry is the point: a prompt
+// shown unnecessarily costs one tap, a prompt suppressed destroys work, so the
+// unknowable window resolves to "assume dirty". Save still requires a real
+// baseline — being conservative about LEAVING must not make WRITING permissive.
+test("discard prompt still fires when closing during the configHash window", async ({ page }) => {
+  test.setTimeout(60_000);
+  const title = "E2E Hash Race Prompt";
+  const HASH_DELAY_MS = 20_000; // long enough that the ✕ lands inside the window
+
+  await page.goto(`/trips/${tripId}/leaderboard`);
+  const addGame = page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game"));
+  await expect(addGame).toBeVisible({ timeout: 20_000 });
+  await addGame.click();
+  await page.getByRole("button", { name: "Stroke Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
+
+  const row = page.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+
+  await page.route(/games\.configHash/, async (route) => {
+    await new Promise((r) => setTimeout(r, HASH_DELAY_MS));
+    await route.continue();
+  });
+  await row.click();
+
+  const stepper = page.getByTestId("total-points-stepper");
+  await expect(stepper).toBeVisible({ timeout: 20_000 });
+  await stepper.getByRole("button", { name: "Increase" }).click();
+
+  // Still inside the window: Save is legitimately disabled (no concurrency base).
+  await expect(page.getByTestId("settings-save")).toBeDisabled();
+
+  // …but leaving must NOT be silent. Before the guard split, this closed the
+  // panel outright and the edit was gone.
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.getByTestId("discard-changes-prompt")).toBeVisible({ timeout: 10_000 });
+
+  // "Keep editing" leaves us where we were, with the edit intact.
+  await page.getByTestId("discard-prompt-keep").click();
+  await expect(page.getByTestId("discard-changes-prompt")).toBeHidden();
+  await expect(page.getByTestId("total-points-stepper")).toBeVisible();
+
+  await page.unroute(/games\.configHash/);
+});
