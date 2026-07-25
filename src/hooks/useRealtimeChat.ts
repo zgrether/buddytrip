@@ -77,14 +77,26 @@ export function useRealtimeChat(
     }
 
     // Full refetch — used only on (re)subscribe to backfill missed inserts.
+    // Also covers the badge (F3 live-badge fix): a reconnect after a socket
+    // drop may have missed inserts that happened while it was down, same as
+    // messages.list. messages.unreadCount takes only {tripId} (it already
+    // sums crew + planning server-side), so ONE invalidation on either
+    // channel's insert refreshes the combined count — no per-visibility
+    // wiring needed. Scoped to channel === "trip": team chat has no unread
+    // badge.
     const invalidate = () => {
       utils.messages.list.invalidate({ tripId, channel, teamId });
+      if (channel === "trip") utils.messages.unreadCount.invalidate({ tripId });
     };
 
-    // Prepend a freshly-inserted row into every matching messages cache
-    // (both the infinite-query pages and the flat-array variants), keyed by
-    // the partition the message belongs to. visibility partitions the trip
-    // channel; team chat is flat and keyed by teamId instead.
+    // Prepend a freshly-inserted row into every matching messages.list cache
+    // (both the infinite-query pages and, defensively, a flat-array shape —
+    // no current consumer creates one, but a cache write is a no-op against a
+    // key that doesn't exist, so this costs nothing to keep). Keyed by the
+    // partition the message belongs to: visibility partitions the trip
+    // channel; team chat is flat and keyed by teamId instead. The unread
+    // COUNT itself is server-computed (F3) and isn't in this cache shape at
+    // all — it's invalidated separately below, not patched here.
     const prepend = (row: MessageRow) => {
       const partialInput =
         channel === "trip"
@@ -137,6 +149,16 @@ export function useRealtimeChat(
         },
         (payload: RealtimePostgresInsertPayload<MessageRow>) => {
           prepend(payload.new);
+          // F3 live-badge fix: an open panel gets the new row via prepend()
+          // above (patched cache, no round-trip); a closed panel has no
+          // messages.list cache to patch, so the badge needs its own signal.
+          // Server excludes the caller's own + system messages from the
+          // count, so invalidating unconditionally (not just for others'
+          // messages) is correct — it just means the sender's own badge
+          // recomputes to the same number it already had.
+          if (channel === "trip") {
+            utils.messages.unreadCount.invalidate({ tripId });
+          }
         }
       )
       .subscribe((status) => {
