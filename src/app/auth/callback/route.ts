@@ -6,6 +6,7 @@ import type {
   User,
 } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
+import { safeNextPath } from "@/lib/nextPath";
 
 /**
  * Auth callback — handles every email/OAuth flow that lands a user back in the
@@ -34,7 +35,17 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = searchParams.get("next");
+  // `next` is validated same-origin, NOT used raw. `${origin}${next}` below looks
+  // safe because it starts from a complete origin, but a value beginning with "@"
+  // turns the origin into USERINFO: "https://bbmi.app" + "@evil.example" parses
+  // as host=evil.example, user=bbmi.app. The link genuinely starts with the real
+  // domain, the victim signs in for real, and the redirect hands them off — an
+  // open redirect on an auth callback, i.e. a credential-phishing vector.
+  // (Verified: //host and /\host ARE neutralized by the origin prefix; "@" is
+  // not.) safeNextPath refuses anything that isn't plainly a rooted relative
+  // path, and an invalid value falls through to the normal destination logic
+  // rather than being repaired.
+  const next = safeNextPath(searchParams.get("next"));
 
   const supabase = await createClient();
 
