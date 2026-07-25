@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { Avatar } from "@/components/Avatar";
 import {
@@ -368,7 +369,7 @@ export function ItineraryPanel({
   );
   const membersQuery = trpc.tripMembers.list.useQuery(
     { tripId },
-    { enabled: !hidden }
+    { ...STRUCTURE_QUERY, enabled: !hidden }
   );
 
   const events = useMemo(() => {

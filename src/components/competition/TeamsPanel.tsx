@@ -321,6 +321,10 @@ export function TeamsPanel({
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
+  // F8 documented exception — deliberately NOT STRUCTURE_QUERY. TeamsPanel is
+  // reachable via RostersOverlay both from CompetitionFace (where
+  // useRealtimeMembers is mounted) AND from MatchGameView's standalone route
+  // (where it isn't) — see useTripRole.ts for the fuller version of this note.
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   // The viewer — to resolve "is the captain of THIS team" for identity editing
   // (PR b2). canEdit is the owner (structure); identity opens to owner OR captain.
@@ -1317,6 +1321,8 @@ export function TeamSheet({
 
   // Roster section data (edit mode). Deduped against any other observer of the
   // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
+  // F8 documented exception — same reason as the tripMembers.list call above
+  // (this component is reachable from a route without useRealtimeMembers).
   const { data: rosterMembers = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
     { enabled: isEdit && showRoster }

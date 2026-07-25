@@ -21,6 +21,7 @@ import {
   Mail,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -1795,7 +1796,7 @@ export default function IdeaZonePanel({
   };
 
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
 
   const ideasTyped = ideas as Idea[];
 

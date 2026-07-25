@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { Avatar } from "@/components/Avatar";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { addDays, differenceInDays } from "@/lib/tripStatus";
@@ -98,7 +99,7 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: logisticsItems = [] } = trpc.logistics.list.useQuery({ tripId });
 

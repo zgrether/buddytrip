@@ -21,6 +21,7 @@ const CHAT_PAGE_SIZE = 50;
 // measured height.
 const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
 import { trpc } from "@/lib/trpc-client";
+import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -257,7 +258,7 @@ function FloatingChatPanelInner({
   // who are actually on the trip. Powers the explainer at the top of that tab.
   const { data: allMembers = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
-    { enabled: canSeeOrganizers }
+    { ...STRUCTURE_QUERY, enabled: canSeeOrganizers }
   );
   const organizers = allMembers.filter(
     (m) => (m.role === "Owner" || m.role === "Organizer") && m.status === "in"

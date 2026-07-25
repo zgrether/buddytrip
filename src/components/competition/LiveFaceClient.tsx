@@ -170,7 +170,7 @@ export function LiveFaceClient({
   // the load critical path).
   const { data: members = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
-    { enabled: chatOpen || newsOpen },
+    { ...STRUCTURE_QUERY, enabled: chatOpen || newsOpen },
   );
 
   let body: React.ReactNode;

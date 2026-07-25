@@ -73,6 +73,13 @@ export function GameIdentityHeader({
   // Enabled for ALL viewers, not just the owner: the picker is owner-only, but the
   // no-delegate DISPLAY needs the OWNER's name for a non-owner viewer ("Assigned to
   // [owner]"). tripMembers.list is any-member-allowed and cached on most surfaces.
+  //
+  // F8 documented exception — deliberately NOT STRUCTURE_QUERY. This header is
+  // rendered inside the standalone game routes (MatchGameView etc.), which do
+  // NOT mount useRealtimeMembers — that subscription only lives on the trip
+  // page and the competition face, and is what makes staleTime: Infinity safe
+  // for this key everywhere else. See useTripRole.ts for the fuller version of
+  // this note.
   const membersQ = trpc.tripMembers.list.useQuery({ tripId });
   const members = (membersQ.data ?? []) as {
     memberId: string;
