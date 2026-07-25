@@ -82,14 +82,31 @@ export function useConfigDraft<D, B>(params: {
   // Frozen baseline (+hash): the dirty reference AND the concurrency base, frozen the moment
   // the draft is touched so the poll can't move it mid-edit; re-frozen (self-healing) while
   // untouched as the server changes underneath.
+  //
+  // The guard is on ALREADY-FROZEN, not on `anyTouched`. It used to be the latter, which meant
+  // a draft touched BEFORE `games.configHash` first resolved could never freeze a baseline at
+  // all: the effect returned early on every subsequent run, so `baseline` stayed null for the
+  // rest of the session, `dirty` stayed false, and Save was dead with no error — unrecoverable
+  // short of a reload (which lost the edit, see the outbox note below). The settings UI paints
+  // off `games.getById`, which lands in a DIFFERENT batch from `games.configHash`, so the panel
+  // is interactive while the hash is still in flight; the exposed path is the common one
+  // (GameRow deep-links an unconfigured game straight to `?settings=1`).
+  //
+  // Freezing LATE is still correct — `serverConfigDraft` is the server mirror, not the user's
+  // edits — and the #18 invariant is unchanged: once `prev` exists and the draft is touched we
+  // return it untouched, so the ~20s poll still can't move a live baseline mid-edit. `ready`
+  // must cover EVERY query feeding the mirror (not just the game row), or the first freeze can
+  // land on a half-loaded mirror and Save would then diff against it — clean-replacing groups
+  // or matches the user never touched.
   const [baseline, setBaseline] = useState<{ draft: D; hash: string } | null>(null);
   useEffect(() => {
-    if (anyTouched || !ready || !serverHash) return;
-    setBaseline((prev) =>
-      prev && prev.hash === serverHash && draftsEqual(prev.draft, serverConfigDraft)
+    if (!ready || !serverHash) return;
+    setBaseline((prev) => {
+      if (prev && anyTouched) return prev; // frozen — the poll must not move it (#18)
+      return prev && prev.hash === serverHash && draftsEqual(prev.draft, serverConfigDraft)
         ? prev
-        : { draft: serverConfigDraft, hash: serverHash },
-    );
+        : { draft: serverConfigDraft, hash: serverHash };
+    });
     // draftsEqual is a stable pure fn; react to the data inputs only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyTouched, serverConfigDraft, serverHash, ready]);
@@ -101,23 +118,31 @@ export function useConfigDraft<D, B>(params: {
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveConfigM = trpc.games.saveConfig.useMutation();
 
-  // Hard-teardown durability (localStorage). Base = the SAME serverHash the baseline freezes
-  // on, so restore-vs-discard and Save's conflict check can't disagree.
+  // Hard-teardown durability (localStorage). Base = the frozen baseline's hash — literally the
+  // SAME value Save sends as `baseHash`, so restore-vs-discard and the conflict check cannot
+  // disagree. (It used to be the raw `serverHash`, tracked independently inside the outbox by
+  // its own ref. Two mechanisms for one concept, and they diverged in exactly the window above:
+  // with the hash unresolved the outbox was disabled, so its ref never advanced past its ""
+  // seed and the edit was mirrored with `base: ""` — a fingerprint no server hash can ever
+  // equal, so recovery took the stale branch and DELETED the entry. The durable layer erased
+  // the very edit it exists to protect. One value, sourced from the baseline, removes that.)
   const { recover: recoverDraft, clear: clearDraftOutbox } = useDraftOutbox<B>({
     view,
     gameId: gameId ?? null,
     draft: bundle,
     touched: anyTouched,
-    serverFingerprint: serverHash ?? "",
-    enabled: !!gameId && !!serverHash,
+    serverFingerprint: baseline?.hash ?? "",
+    enabled: !!gameId && !!baseline,
   });
   const recoveredRef = useRef(false);
   useEffect(() => {
-    if (recoveredRef.current || !serverHash) return;
+    // Gated on the BASELINE (not the raw hash): recovery compares the stored `base` against the
+    // same frozen hash the outbox now writes, so both sides of the comparison share one source.
+    if (recoveredRef.current || !baseline) return;
     recoveredRef.current = true;
     const r = recoverDraft();
     if (r) applyRecovered(r);
-  }, [serverHash, recoverDraft, applyRecovered]);
+  }, [baseline, recoverDraft, applyRecovered]);
 
   /** Commit the draft. Returns `true` only when the write LANDED — the caller (the save
    *  bar) closes the panel on success and leaves it open (with the inline error) on
