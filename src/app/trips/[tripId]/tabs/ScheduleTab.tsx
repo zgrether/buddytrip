@@ -599,6 +599,12 @@ export function ScheduleTab({
     onSettled() {
       utils.schedule.list.invalidate({ tripId });
       utils.games.listByTrip.invalidate({ tripId });
+      // #10: this writes `games.schedule_item_id`, which the faceBootstrap
+      // snapshot carries (it selects `games.*`) and LiveFaceClient re-seeds into
+      // games.listByTrip unconditionally. Without this, linking a game here and
+      // then visiting the competition face re-seeds the stale row — dropping the
+      // link back off this tab until something else refetches.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
 
