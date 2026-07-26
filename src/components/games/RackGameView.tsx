@@ -223,6 +223,21 @@ export function RackGameView() {
   // (team_id, sort_order), so its index IS the canonical order — team A's roster
   // then team B's, each in the order set in the Edit Team modal. The handicap
   // roster derives its display order from this, not from foursome/participant order.
+  //
+  // This trusts ARRAY POSITION and does NOT re-sort — so it depends on EVERY
+  // writer of the `teamAssignments.list` cache ordering identically. That's two
+  // paths, not one: the procedure itself (`listTeamAssignments`) and
+  // `competitions.faceBootstrap`, which seeds this cache via `LiveFaceClient`'s
+  // setData. Rack opens as a panel INSIDE CompetitionFace (CLAUDE.md #12), so
+  // the seeded path is the live one here.
+  //
+  // The bootstrap was missing its `.order()` until the fix that added this note.
+  // That never demonstrably scrambled rack in practice — the planner was serving
+  // the unordered query from an index whose order happens to be the canonical one
+  // — but it was ordering by luck, not by contract, and a seq scan would have
+  // broken it. Both paths now order explicitly and are pinned by
+  // `facebootstrap.ordering.test.ts`. If a THIRD writer of this cache ever
+  // appears, it must order the same way — or re-sort defensively right here.
   const rosterOrder = useMemo(() => {
     const m = new Map<string, number>();
     (assignQ.data ?? []).forEach((a, i) => m.set(a.user_id as string, i));

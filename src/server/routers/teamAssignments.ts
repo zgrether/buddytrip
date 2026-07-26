@@ -20,6 +20,10 @@ export async function listTeamAssignments(
   // team-roster chooser filters this list by team_id, so the per-team relative
   // order is what carries through — grouping by team_id first keeps the raw list
   // tidy too. This single ordered read is what makes the order canonical.
+  //
+  // LOCKSTEP: `competitions.faceBootstrap` runs its OWN copy of this query and
+  // seeds this procedure's cache with the result, so it must order identically.
+  // Change one, change both — `facebootstrap.ordering.test.ts` pins them.
   const { data, error } = await ctx.supabase
     .from("team_assignments")
     .select("*")
