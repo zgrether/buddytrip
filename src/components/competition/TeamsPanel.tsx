@@ -2055,7 +2055,14 @@ function RosterDragHandle({
       {...listeners}
       aria-label={`Reorder ${name}`}
       className="flex flex-shrink-0 cursor-grab items-center justify-center active:cursor-grabbing"
-      style={{ width: 44, height: 44, margin: "-8px -14px", touchAction: "none", color: "var(--color-bt-text-dim)" }}
+      style={{
+        width: 44,
+        height: 44,
+        margin: "-8px -14px",
+        touchAction: "none",
+        color: "var(--color-bt-text-dim)",
+        WebkitTapHighlightColor: "transparent",
+      }}
     >
       <GripVertical size={16} />
     </button>
@@ -2130,7 +2137,7 @@ function rosterRowContent({
           aria-label={captainAriaLabel}
           aria-pressed={isCaptain}
           className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-          style={{ color: isCaptain ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          style={{ color: isCaptain ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
           data-testid="captain-toggle"
         >
           <Star size={15} fill={isCaptain ? "currentColor" : "none"} />
@@ -2158,7 +2165,7 @@ function rosterRowContent({
             disabled={index === 0}
             aria-label={`Move ${name} up`}
             className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
             data-testid="roster-move-up"
           >
             <ChevronUp size={16} />
@@ -2169,7 +2176,7 @@ function rosterRowContent({
             disabled={index === (count ?? 0) - 1}
             aria-label={`Move ${name} down`}
             className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
             data-testid="roster-move-down"
           >
             <ChevronDown size={16} />
@@ -2186,7 +2193,7 @@ function rosterRowContent({
           aria-label={removeAriaLabel}
           title={removeLocked ? "Locked — scoring has started. You can still add players." : undefined}
           className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ color: "var(--color-bt-text-dim)" }}
+          style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
         >
           <X size={14} />
         </button>
@@ -2255,6 +2262,13 @@ function RosterRow({
         // row's visual; the row still occupies its slot so siblings reflow
         // around a stable gap.
         opacity: isDragging ? 0 : 1,
+        // The reported flash: -webkit-tap-highlight-color was never reset
+        // anywhere in this app. Unreset, WebKit/mobile browsers paint a native,
+        // instantaneous highlight on whatever tappable element a touch lands/
+        // releases on — no CSS transition involved, which is why "nothing
+        // moves" and why it only shows on rows the drag's release point landed
+        // on. Reset here and on every button below (their own tap targets).
+        WebkitTapHighlightColor: "transparent",
       }}
     >
       {rosterRowContent({
