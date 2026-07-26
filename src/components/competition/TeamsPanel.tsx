@@ -339,10 +339,19 @@ export function TeamsPanel({
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
-  // F8 documented exception — deliberately NOT STRUCTURE_QUERY. TeamsPanel is
-  // reachable via RostersOverlay both from CompetitionFace (where
-  // useRealtimeMembers is mounted) AND from MatchGameView's standalone route
-  // (where it isn't) — see useTripRole.ts for the fuller version of this note.
+  // CORRECTION to the old F8/#695 note: the "reachable ... from
+  // MatchGameView's standalone route" claim this comment used to make was
+  // false — traced exhaustively during #517's roster-reorder Phase 0.
+  // MatchGameView never renders RostersOverlay/TeamsPanel by any path (it has
+  // its own comment saying rosters are deliberately NOT shown there).
+  // TeamsPanel is reachable ONLY via RostersOverlay from CompetitionFace,
+  // which DOES mount useRealtimeMembers (LiveFaceClient.tsx) — so this
+  // query's only real mount context is already covered. Left on the
+  // inherited (non-STRUCTURE_QUERY) policy for now pending a deliberate look
+  // at promoting it, not because of the old (incorrect) reachability
+  // reasoning — see #695 for the correction and useTripRole.ts's own comment
+  // for the DIFFERENT hook that genuinely is reachable from those standalone
+  // routes (via useGameEditAccess/useCanEditTeam).
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   // The viewer — to resolve "is the captain of THIS team" for identity editing
   // (PR b2). canEdit is the owner (structure); identity opens to owner OR captain.
@@ -1339,8 +1348,15 @@ export function TeamSheet({
 
   // Roster section data (edit mode). Deduped against any other observer of the
   // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
-  // F8 documented exception — same reason as the tripMembers.list call above
-  // (this component is reachable from a route without useRealtimeMembers).
+  // CORRECTION to the old F8/#695 note (see #695 for the full correction):
+  // this one was doubly wrong — not just the wrong reachability claim, but the
+  // wrong COMPONENT. This query lives in TeamSheet (the standalone Edit Team
+  // modal), which is reached DIRECTLY from CompetitionFace's leaderboard
+  // team-name tap — it is NEVER routed through RostersOverlay at all, let
+  // alone reachable from a standalone game route. CompetitionFace mounts
+  // useRealtimeMembers (LiveFaceClient.tsx), so this query's only real mount
+  // context is already covered. Left on the inherited policy for now pending
+  // a deliberate look at promoting it, not for the old (incorrect) reason.
   const { data: rosterMembers = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
     { enabled: isEdit && showRoster }

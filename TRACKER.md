@@ -37,9 +37,12 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
 - **Game settings → draft-then-save** (#609–#652) — all four formats commit one composite draft through one
   atomic `save_game_config`; per-setting freeze redesign; lifecycle extracted into `useConfigDraft`;
   slide-over shell + canonical topology + aligned exit behaviour.
-- **Durability + cross-device freshness** (#543, #563, #590, #684–#696, #702) — per-hole and draft outboxes;
-  config-hash reconcile poll + Realtime on game config; a whole-app fetch audit
-  (`DATA_FRESHNESS_AUDIT.md`) and its cache-policy fixes.
+- **Durability + cross-device freshness** (#543, #563, #590, #684–#696, #702, #715) — per-hole and draft
+  outboxes; config-hash reconcile poll + Realtime on game config; a whole-app fetch audit
+  (`DATA_FRESHNESS_AUDIT.md`) and its cache-policy fixes. Recurring shape worth watching as a set: a table/
+  query with no live-sync coverage, found incidentally by an unrelated task (F8→#695 for `tripMembers.list`
+  route coverage, #715 for `team_assignments` lacking Realtime entirely) — three instances so far, check this
+  set before re-deriving a fourth from scratch.
 - **Platform, infra, planning, security** (#599–#604, #631–#643, #675–#696) — CI and local dev off shared
   prod onto ephemeral local Supabase (Step 0); README/CONTRIBUTING/Node pin; PWA install + web push; travel
   chips, itinerary Arrivals/Departures, lodging receipts, legal pages; tRPC 401 envelope + redirect sweep.
