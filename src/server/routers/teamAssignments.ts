@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember, requireTripRole, requireTeamIdentityEdit } from "../middleware";
 import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
 
 /**
@@ -197,12 +197,26 @@ export const teamAssignmentsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // reorder — set a team's canonical roster order (Owner only). Persists the
-  // drag-reorder from the Edit Team modal. Pure REORDER, not assign: the input
-  // must be exactly the team's current members (a permutation) — we validate
-  // that so reorder can never sneak a player onto/off the team or change
+  // reorder — set a team's canonical roster order (Owner OR that team's captain).
+  // Persists the drag-reorder from the Edit Team modal. Pure REORDER, not assign:
+  // the input must be exactly the team's current members (a permutation) — we
+  // validate that so reorder can never sneak a player onto/off the team or change
   // membership. sort_order = the index in orderedUserIds. Allowed regardless of
   // the roster-removal lock: reordering orphans no one (it's cosmetic order).
+  //
+  // GATE (migration 094) — moved off requireTripRole("Owner") onto the SAME gate
+  // teams.update uses. This reverses a documented decision: PERMISSIONS.md
+  // previously listed reorder alongside assign/remove/setCaptain as owner-only
+  // "roster/structure". The line that matters is membership vs display order —
+  // assign/remove/setCaptain change WHO is on a team or who holds the role;
+  // reorder only changes how an existing, permutation-validated roster is
+  // PRESENTED. A captain already owns team identity (name/short/colour, mig 065),
+  // so ordering is its natural companion. assign/remove/setCaptain are unchanged
+  // and remain owner-only. See migration 094's header for the full reasoning and
+  // the RLS parity that backs this at the database layer.
+  //
+  // requireTeamIdentityEdit scopes to the SPECIFIC teamId in the input — being
+  // captain of some other team does not admit you here.
   // -----------------------------------------------------------------------
   reorder: authedProcedure
     .input(
@@ -213,7 +227,7 @@ export const teamAssignmentsRouter = router({
         orderedUserIds: z.array(z.string()),
       })
     )
-    .use(requireTripRole("Owner"))
+    .use(requireTeamIdentityEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: current, error: readErr } = await ctx.supabase
         .from("team_assignments")
@@ -244,21 +258,39 @@ export const teamAssignmentsRouter = router({
       }
       if (input.orderedUserIds.length === 0) return { success: true };
 
-      // All rows already exist → the upsert resolves to UPDATE on the (comp,user)
-      // PK conflict, setting only sort_order (is_captain + team_id retained).
-      const rows = input.orderedUserIds.map((userId, i) => ({
-        competition_id: input.competitionId,
-        user_id: userId,
-        team_id: input.teamId,
-        sort_order: i,
-      }));
-      const { error } = await ctx.supabase
-        .from("team_assignments")
-        .upsert(rows, { onConflict: "competition_id,user_id" });
-      if (error) {
+      // Plain UPDATEs, deliberately NOT an upsert (changed with mig 094).
+      //
+      // The permutation check above already guarantees every row exists, so an
+      // upsert's INSERT branch was never reachable in practice — but Postgres
+      // evaluates the INSERT policy's WITH CHECK on an
+      // `INSERT ... ON CONFLICT DO UPDATE` regardless of which branch is taken.
+      // team_assignments_insert is Owner/Organizer-only, so the upsert made a
+      // captain's reorder fail with "new row violates row-level security policy"
+      // even though the UPDATE policy admits them. (Caught by
+      // teamAssignments.captainReorder.test.ts, not by reasoning.)
+      //
+      // Widening INSERT to captains was NOT an option — that grants adding
+      // players, precisely the membership power reorder must never confer. An
+      // UPDATE-only write is also just the honest expression of what this
+      // procedure does: it can now never create a row, whatever happens to the
+      // permutation check later.
+      //
+      // Independent single-row writes keyed on the (competition_id, user_id) PK,
+      // so they can't race each other.
+      const results = await Promise.all(
+        input.orderedUserIds.map((userId, i) =>
+          ctx.supabase
+            .from("team_assignments")
+            .update({ sort_order: i })
+            .eq("competition_id", input.competitionId)
+            .eq("user_id", userId)
+        )
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to reorder roster: ${error.message}`,
+          message: `Failed to reorder roster: ${failed.error.message}`,
         });
       }
       return { success: true };

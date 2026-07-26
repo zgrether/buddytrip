@@ -145,7 +145,7 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Delete a team | ✓ | — | — | `teams.delete` *(Owner)* |
 | Assign member to a team | ✓ | ✓ | — | `teamAssignments.assign` |
 | Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
-| Reorder a team's roster (canonical order) | ✓ | — | — | `teamAssignments.reorder` *(Owner)* |
+| **Reorder a team's roster** (canonical order) | ✓ | **—** | **captain of *that* team** | `teamAssignments.reorder` *(Owner or that team's captain — **not** a plain Organizer; same gate as `teams.update`; mig 094)* |
 | Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
 | **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
 | **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **delegate of *that* game** | `games.setManualResults` / `finish` |
@@ -190,19 +190,38 @@ who's in, what they're called, what role they hold — is the Owner's.
 > never gated — they stay visible to all roles. Mid-competition trades are parked in
 > DEFERRED (durable per-score attribution); this lock is the BBMI-safe stance.
 
-> **Team captain — an IDENTITY tier, not a roster grant (mig 064/065).** A team's
-> captain (one per team, `team_assignments.is_captain`, even a plain trip Member)
-> may edit **only their own team's IDENTITY** — name, short name, color
-> (`teams.update`, admitted at both tRPC `requireTeamIdentityEdit` and the `teams`
-> UPDATE RLS). This deliberately **drops Organizer** from identity editing and
-> adds the captain. **Roster/structure stays OWNER-ONLY** — add/remove
-> (`teamAssignments.assign`/`remove`), reorder (`reorder`), and appointing the
-> captain itself (`setCaptain`) are not granted to a captain (a captain can't
-> sub-appoint). Captain-led roster management is parked for the future
-> captain's-draft feature. The client mirrors this exactly: `useCanEditTeam`
-> resolves identity edit = Owner OR this-team's-captain; roster controls gate on
-> `isOwner`. The consolidated Edit Team modal surfaces all three tiers — owner
-> (full), captain (identity editable, roster read-only), member (read-only).
+> **Team captain — IDENTITY plus roster ORDER (mig 064/065, extended by 094).**
+> A team's captain (one per team, `team_assignments.is_captain`, even a plain
+> trip Member) may, **for their own team only**:
+>
+> - edit its **IDENTITY** — name, short name, color (`teams.update`, mig 065); and
+> - set its **roster ORDER** (`teamAssignments.reorder`, mig 094).
+>
+> Both are admitted by the same tRPC gate (`requireTeamIdentityEdit`, scoped to
+> the specific `teamId`) and backed by matching RLS on `teams` and
+> `team_assignments`. Both deliberately **drop Organizer** at the tRPC layer.
+>
+> **MEMBERSHIP stays OWNER-ONLY** — add/remove (`teamAssignments.assign` /
+> `remove`) and appointing the captain itself (`setCaptain`; a captain can't
+> sub-appoint). Captain-led *membership* management — a captain picking who is on
+> the team — remains parked for the future captain's-draft feature.
+>
+> **Why order moved and membership didn't (mig 094).** Until 094 this doc grouped
+> reorder with assign/remove/setCaptain as "roster/structure", owner-only. The
+> line that actually matters is **membership vs display order**: assign, remove
+> and setCaptain change *who is on a team* or *who holds the role*; reorder is
+> validated as a strict permutation of the team's current members, so it can
+> neither add, drop, nor move anyone — it only changes how an existing roster is
+> *presented* in the assignment pickers. A captain who may already rename and
+> recolour their team may also order it. (Reorder is also written as UPDATE-only,
+> never an upsert, so it cannot create a row even if that validation regressed.)
+>
+> The client mirrors this exactly: `useCanEditTeam` resolves identity edit =
+> Owner OR this-team's-captain, and the Edit Team modal splits its roster
+> affordances — drag handles / ↑↓ gate on `canReorder` (owner **or** captain),
+> while ★ captain, × remove and + Add player gate on `canManage` (owner only).
+> Three tiers: owner (full), captain (identity + order; membership read-only),
+> member (read-only).
 
 > **Per-game delegation (Slice D1 §8).** Game edit/configure/enter-results
 > resolves to **`canEdit || isGameDelegate(gameId)`** — trip Owner/Organizer, OR a
