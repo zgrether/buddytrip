@@ -2215,7 +2215,17 @@ function RosterRow({
   removeAriaLabel: string;
   captainAriaLabel: string;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // animateLayoutChanges: false — dnd-kit's default animates EVERY sortable
+  // row whose index changed once a drag ends (wasDragging), independent of
+  // the live drag-transform above. That's a second animation layered on top
+  // of a possibly-still-settling transform, which is what read on device as
+  // the neighbour row re-seating/overlapping right at release. The live
+  // reflow during the drag (still driven by `transform`/`transition` below)
+  // already shows the destination, so nothing needs to animate post-drop.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    animateLayoutChanges: () => false,
+  });
   return (
     <div
       ref={setNodeRef}
