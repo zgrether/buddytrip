@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DragHandle } from "./DragHandle";
 import { RowNumber } from "./RowNumber";
 import { PlayerChip } from "./PlayerChip";
 
@@ -8,17 +7,10 @@ import { PlayerChip } from "./PlayerChip";
 // independent grid cells). The primitives render in isolation (no live screen
 // consumes them yet; visual verification lands in Phases 2/3 when wired in).
 // Rendered via react-dom/server (the test env is node, no RTL).
-
-describe("DragHandle", () => {
-  it("renders the grip and forwards the arm handler (owns no drag state)", () => {
-    const onMouseDown = vi.fn();
-    const el = DragHandle({ onMouseDown }) as React.ReactElement<{ onMouseDown?: () => void }>;
-    expect(el.props.onMouseDown).toBe(onMouseDown); // forwarded, not swallowed
-    const html = renderToStaticMarkup(<DragHandle />);
-    expect(html).toContain("Drag to reorder"); // the grip's aria-label/title
-    expect(html).toContain("cursor-grab");
-  });
-});
+//
+// DragHandle (the native-drag arm-on-mousedown grip) was removed once its only
+// consumer (TeamsPanel's roster reorder) converted to dnd-kit — see the
+// roster-reorder spec. Match reorder made the same move earlier (#711/#712).
 
 describe("RowNumber", () => {
   it("renders the number as a quiet tabular-nums index — no handle", () => {
