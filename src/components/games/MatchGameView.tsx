@@ -6,12 +6,15 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
+  defaultDropAnimation,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -2393,10 +2396,35 @@ function MatchDragHandle({
       {...listeners}
       aria-label={`Reorder match ${index + 1}`}
       className="flex cursor-grab items-center justify-center active:cursor-grabbing"
-      style={{ width: 44, height: 44, justifySelf: "center", touchAction: "none", color: "var(--color-bt-text-dim)" }}
+      style={{
+        width: 44,
+        height: 44,
+        justifySelf: "center",
+        touchAction: "none",
+        color: "var(--color-bt-text-dim)",
+        // TEMP DEBUG — remove before merge. Tints the actual listener-bearing
+        // element so the real hit area is visible against the painted nub.
+        background: "rgba(255, 0, 0, 0.25)",
+      }}
     >
       <GripVertical size={16} />
     </button>
+  );
+}
+
+/** H: a purely visual copy of the handle for the DragOverlay's floating row —
+ *  no `attributes`/`listeners` (nothing to attach: the overlay isn't itself
+ *  draggable, dnd-kit positions it programmatically), same look as the real
+ *  handle so the floating copy reads as "the same row, lifted." */
+function StaticMatchDragHandle() {
+  return (
+    <div
+      aria-hidden
+      className="flex items-center justify-center"
+      style={{ width: 44, height: 44, justifySelf: "center", color: "var(--color-bt-text-dim)" }}
+    >
+      <GripVertical size={16} />
+    </div>
   );
 }
 
@@ -2420,10 +2448,11 @@ function SortableMatchRow({
     borderTop: index > 0 ? "1px solid var(--color-bt-border)" : undefined,
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.6 : 1,
-    position: "relative",
-    zIndex: isDragging ? 1 : undefined,
-    background: isDragging ? "var(--color-bt-card-raised)" : undefined,
+    // Hidden (not dimmed) while dragging — the DragOverlay below is now the
+    // dragged row's visual; showing a translucent duplicate in place reads as
+    // two items. The row still occupies its grid slot (opacity, not display:
+    // none), so neighbours animate around a stable gap, not a reflow.
+    opacity: isDragging ? 0 : 1,
   };
   return (
     <div ref={setNodeRef} style={style} className="grid items-center">
@@ -2488,11 +2517,19 @@ function MatchSetup({
   // mutates `draft` mid-drag (the ~20s config-sync poll is the only other
   // writer, and it doesn't fire between dragstart/dragend of a single gesture).
   const matchIds = draft.map((_, i) => String(i));
+  // H: which row is airborne, for the DragOverlay below. Cleared on both drop
+  // and cancel (e.g. Escape) — a stuck activeId would leave the source hidden
+  // forever with no overlay to show for it.
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const handleMatchDragStart = (event: DragStartEvent) => setActiveId(String(event.active.id));
   const handleMatchDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setDraft((prev) => arrayMove(prev, Number(active.id), Number(over.id)));
+    if (over && active.id !== over.id) {
+      setDraft((prev) => arrayMove(prev, Number(active.id), Number(over.id)));
+    }
+    setActiveId(null);
   };
+  const handleMatchDragCancel = () => setActiveId(null);
 
   // One member (a single user) as a Participant — for an individual setup slot.
   function memberPart(userId: string | undefined): Participant | null {
@@ -2525,6 +2562,43 @@ function MatchSetup({
     );
   };
 
+  // H: one match row's content (handle │ # │ side A │ vs │ side B │ ×) — shared
+  // between the live sortable row and the DragOverlay's floating copy, so the
+  // two can't visually drift apart. `handle` is a render-prop: the live row
+  // passes the REAL interactive handle (attributes/listeners attached); the
+  // overlay passes a plain visual copy (nothing to attach listeners to — the
+  // overlay isn't independently draggable, dnd-kit just positions it).
+  const matchRowContent = (d: DraftMatch, i: number, handle: React.ReactNode) => (
+    <>
+      {/* handle — drag-to-reorder (G), far left, away from the × (reorder
+          isn't next to remove). Pointer + keyboard both go through it. */}
+      {handle}
+      {/* # — the table index column (separate from the handle), with a
+          1V1/2V2 shape tag beneath (the shared MatchNumberBadge, also used
+          by Point Distribution + Handicaps so the leading column reads the
+          same). */}
+      <MatchNumberBadge number={i + 1} playersPerSide={d.playersPerSide} />
+      {sideSlots(d.a, i, "a", d.playersPerSide)}
+      <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
+      {sideSlots(d.b, i, "b", d.playersPerSide)}
+      {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
+          red — draft removal is free (no persisted scores) and the open panel
+          must never read as an error. Far right. Always REMOVES the row —
+          0 matches is now a valid empty state (the table hides, leaving just
+          "Add match"), so the last match is deletable, not floor-clamped. */}
+      <button
+        type="button"
+        onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
+        title="Remove match"
+        aria-label={`Remove match ${i + 1}`}
+        className="flex items-center justify-center"
+        style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
+      >
+        <X size={16} />
+      </button>
+    </>
+  );
+
   // The shared branded header team for a slot: the bound team's name + color in a
   // 2-team competition, else a neutral "Side A/B" (a standalone game has no teams).
   const headerTeam = (slot: "a" | "b") => {
@@ -2556,7 +2630,13 @@ function MatchSetup({
         <span />
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleMatchDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleMatchDragStart}
+        onDragEnd={handleMatchDragEnd}
+        onDragCancel={handleMatchDragCancel}
+      >
         <SortableContext items={matchIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col">
             {draft.map((d, i) => (
@@ -2567,40 +2647,35 @@ function MatchSetup({
               // quiet in 1v1, load-bearing in 2v2 (it makes the 2-row match read as
               // one unit).
               <SortableMatchRow key={i} id={String(i)} index={i}>
-                {(handle) => (
-                  <>
-                    {/* handle — drag-to-reorder (G), far left, away from the × (reorder
-                        isn't next to remove). Pointer + keyboard both go through it. */}
-                    {handle}
-                    {/* # — the table index column (separate from the handle), with a
-                        1V1/2V2 shape tag beneath (the shared MatchNumberBadge, also used
-                        by Point Distribution + Handicaps so the leading column reads the
-                        same). */}
-                    <MatchNumberBadge number={i + 1} playersPerSide={d.playersPerSide} />
-                    {sideSlots(d.a, i, "a", d.playersPerSide)}
-                    <span className="text-center" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-                    {sideSlots(d.b, i, "b", d.playersPerSide)}
-                    {/* Remove = the itinerary-builder "×" dismiss (NOT a trash can), DIM not
-                        red — draft removal is free (no persisted scores) and the open panel
-                        must never read as an error. Far right. Always REMOVES the row —
-                        0 matches is now a valid empty state (the table hides, leaving just
-                        "Add match"), so the last match is deletable, not floor-clamped. */}
-                    <button
-                      type="button"
-                      onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
-                      title="Remove match"
-                      aria-label={`Remove match ${i + 1}`}
-                      className="flex items-center justify-center"
-                      style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)" }}
-                    >
-                      <X size={16} />
-                    </button>
-                  </>
-                )}
+                {(handle) => matchRowContent(d, i, handle)}
               </SortableMatchRow>
             ))}
           </div>
         </SortableContext>
+        {/* H: the floating copy — without it, dnd-kit only animates the source
+            row via CSS transform, which resets to origin on drop THEN
+            transitions into place (the reported snap-back). The overlay is a
+            portal (renders to body), so it needs its own MATCH_GRID + width —
+            sized to the source row's measured width so the columns still line
+            up. defaultDropAnimation animates it from the pointer's last
+            position into the dropped row's final rect — no jump. */}
+        <DragOverlay dropAnimation={defaultDropAnimation}>
+          {activeId !== null && draft[Number(activeId)] ? (
+            <div
+              className="grid items-center"
+              style={{
+                gridTemplateColumns: MATCH_GRID,
+                gap: 8,
+                padding: "10px 8px",
+                borderRadius: 10,
+                background: "var(--color-bt-card-float)",
+                boxShadow: "var(--shadow-floating)",
+              }}
+            >
+              {matchRowContent(draft[Number(activeId)], Number(activeId), <StaticMatchDragHandle />)}
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
         </>
       )}
