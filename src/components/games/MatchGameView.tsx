@@ -1280,6 +1280,12 @@ export function MatchGameView() {
     try {
       await openCorrection.mutateAsync({ tripId, gameId });
       await gameQ.refetch();
+      // #10: `corrections_open` is a `games` column, so it rides the bootstrap
+      // snapshot and the board's GameRow type. Refetching only gameQ leaves the
+      // board reading the pre-correction row (still "final") — and the next
+      // bootstrap re-seed would clobber games.listByTrip back anyway.
+      utils.games.listByTrip.invalidate({ tripId });
+      if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
       go("overview");
     } catch {
       // surfaced via the global error toast

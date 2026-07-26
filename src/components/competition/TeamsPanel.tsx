@@ -385,6 +385,10 @@ export function TeamsPanel({
       utils.teams.list.invalidate({ tripId, competitionId });
       utils.teamAssignments.list.invalidate({ tripId, competitionId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      // #10 — deleting a team changes BOTH snapshotted sets (teams + the
+      // cascade-cleared team_assignments); the child invalidates above are
+      // silently undone by the bootstrap re-seed without this.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
     onSuccess: () => setDeletingTeam(null),
   });
@@ -1375,12 +1379,22 @@ export function TeamSheet({
     onSettled: () => {
       utils.teams.list.invalidate({ tripId, competitionId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      // #10: faceBootstrap snapshots `teams` and LiveFaceClient re-seeds
+      // teams.list from it UNCONDITIONALLY. Invalidating only the child is
+      // silently undone — the re-seed writes the stale bootstrap value back AND
+      // marks it fresh, so no refetch fires. Both, never one.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
   const update = trpc.teams.update.useMutation({
     onSettled: () => {
       utils.teams.list.invalidate({ tripId, competitionId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      // #10 — the reported bug: a colour/name change repainted teams.list but the
+      // stale bootstrap re-seed clobbered it, so the top-right team-colour avatar
+      // (LiveFaceClient's myTeamColor, resolved from boot.teams) needed a hard
+      // refresh to catch up.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
 

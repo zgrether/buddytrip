@@ -619,6 +619,12 @@ export function RackGameView() {
     try {
       await openCorrection.mutateAsync({ tripId, gameId: gid });
       await utils.games.getById.invalidate({ tripId, gameId: gid });
+      // #10: `corrections_open` is a `games` column — snapshotted by the
+      // bootstrap and carried on the board's GameRow. Without these the board
+      // keeps reading the pre-correction row, and the next re-seed undoes any
+      // child invalidate anyway.
+      utils.games.listByTrip.invalidate({ tripId });
+      if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
     } catch {
       // surfaced via the global error toast
     }
