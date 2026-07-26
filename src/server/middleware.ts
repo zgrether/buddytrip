@@ -174,11 +174,21 @@ export function requireCompetitionRole(minRole: CompetitionRole) {
 // ---------------------------------------------------------------------------
 // requireTeamIdentityEdit
 //
-// The captain permission tier (Rosters PR b2). Editing a team's IDENTITY
-// (name / short name / color) is allowed for the trip Owner OR the captain of
-// THAT team (team_assignments.is_captain). STRUCTURE (assign/remove players,
-// create/delete team) stays owner-only and does NOT use this gate — don't widen
-// it. Reads tripId + teamId from rawInput. Chain AFTER authedProcedure.
+// The captain permission tier (Rosters PR b2). Allows the trip Owner OR the
+// captain of THAT team (team_assignments.is_captain). Admits two things:
+//   - team IDENTITY — name / short name / color (`teams.update`, mig 065)
+//   - roster ORDER  — `teamAssignments.reorder` (mig 094)
+//
+// MEMBERSHIP stays owner-only and does NOT use this gate — don't widen it:
+// assign/remove players, appointing the captain (setCaptain), create/delete
+// team. Order was moved onto this gate deliberately (094) because it is display
+// order, not membership: reorder is permutation-validated against the team's
+// current roster, so it cannot add, drop or move anyone. Keep that line — the
+// gate is "identity + presentation of a team you already run", not "roster
+// control". See mig 094's header and PERMISSIONS.md.
+//
+// Reads tripId + teamId from rawInput; scopes to THAT teamId (captaincy of some
+// other team does not admit you). Chain AFTER authedProcedure.
 // ---------------------------------------------------------------------------
 
 export function requireTeamIdentityEdit() {

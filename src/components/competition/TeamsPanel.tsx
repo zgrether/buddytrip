@@ -1685,6 +1685,12 @@ export function TeamSheet({
               team={team}
               teamColor={selectedColor}
               canManage={isOwner}
+              // Reorder is the ONE roster capability a captain has (mig 094 +
+              // teamAssignments.reorder's requireTeamIdentityEdit gate).
+              // `canEditIdentity` is already owner-OR-this-team's-captain, which
+              // is exactly the server gate — so the affordance can't drift from
+              // the permission. Everything else stays `canManage` (owner-only).
+              canReorder={canEditIdentity}
               members={rosterMembers as Member[]}
               assignments={rosterAssignments as Assignment[]}
             />
@@ -1710,6 +1716,7 @@ function TeamSheetRoster({
   team,
   teamColor,
   canManage,
+  canReorder,
   members,
   assignments,
 }: {
@@ -1719,8 +1726,11 @@ function TeamSheetRoster({
   /** The PREVIEW color (the live color-picker selection) — drives the row avatars
    *  so a color pick shows immediately; persists only on Save. */
   teamColor: string;
-  /** Owner only — roster mutations (add/remove/reorder/captain) stay owner-scoped. */
+  /** Owner only — MEMBERSHIP mutations: add / remove / appoint captain. */
   canManage: boolean;
+  /** Owner OR this team's captain — roster ORDER only (mig 094). Split from
+   *  `canManage` deliberately: display order is not membership. */
+  canReorder: boolean;
   members: Member[];
   assignments: Assignment[];
 }) {
@@ -1864,6 +1874,7 @@ function TeamSheetRoster({
                     teamColor={teamColor}
                     isCaptain={!!a.is_captain}
                     canManage={canManage}
+                    canReorder={canReorder}
                     index={i}
                     count={orderedIds.length}
                     removeLocked={removalsLocked}
@@ -1894,6 +1905,7 @@ function TeamSheetRoster({
                 teamColor={teamColor}
                 isCaptain={!!activeAssignment.is_captain}
                 canManage={canManage}
+                canReorder={canReorder}
                 index={activeIndex}
               />
             ) : null}
@@ -2105,6 +2117,7 @@ function rosterRowContent({
   teamColor,
   isCaptain,
   canManage,
+  canReorder,
   index,
   count,
   removeLocked,
@@ -2121,6 +2134,7 @@ function rosterRowContent({
   teamColor: string;
   isCaptain: boolean;
   canManage: boolean;
+  canReorder: boolean;
   index: number;
   count?: number;
   removeLocked?: boolean;
@@ -2134,8 +2148,9 @@ function rosterRowContent({
   return (
     <>
       {/* Grip — arms the drag (dnd-kit's PointerSensor + KeyboardSensor), so the
-          row buttons stay tappable everywhere else. Always visible. */}
-      {canManage && handle}
+          row buttons stay tappable everywhere else. Gated on canReorder (owner OR
+          THIS team's captain, mig 094), not canManage — ordering isn't membership. */}
+      {canReorder && handle}
       {/* Row index — quiet table-number column, like the match pickers. */}
       <RowNumber number={index + 1} className="flex-shrink-0" style={{ width: 16 }} />
       <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={28} collapse />
@@ -2169,9 +2184,10 @@ function rosterRowContent({
         )
       )}
 
-      {/* Reorder ↑↓ (owner) — a second, permanent input path alongside drag
-          (not a fallback slated for removal here). Disabled only at the ends. */}
-      {canManage && (
+      {/* Reorder ↑↓ (owner OR this team's captain) — a second, permanent input
+          path alongside drag (not a fallback slated for removal here). Same
+          canReorder gate as the grip. Disabled only at the ends. */}
+      {canReorder && (
         <div className="flex flex-shrink-0 items-center">
           <button
             type="button"
@@ -2223,6 +2239,7 @@ function RosterRow({
   teamColor,
   isCaptain,
   canManage,
+  canReorder,
   index,
   count,
   removeLocked,
@@ -2242,6 +2259,7 @@ function RosterRow({
   teamColor: string;
   isCaptain: boolean;
   canManage: boolean;
+  canReorder: boolean;
   index: number;
   count: number;
   removeLocked: boolean;
@@ -2292,6 +2310,7 @@ function RosterRow({
         teamColor,
         isCaptain,
         canManage,
+        canReorder,
         index,
         count,
         removeLocked,
@@ -2314,6 +2333,7 @@ function StaticRosterRow({
   teamColor,
   isCaptain,
   canManage,
+  canReorder,
   index,
 }: {
   name: string;
@@ -2321,6 +2341,7 @@ function StaticRosterRow({
   teamColor: string;
   isCaptain: boolean;
   canManage: boolean;
+  canReorder: boolean;
   index: number;
 }) {
   return (
@@ -2335,6 +2356,7 @@ function StaticRosterRow({
         teamColor,
         isCaptain,
         canManage,
+        canReorder,
         index,
       })}
     </div>
