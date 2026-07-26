@@ -8,7 +8,6 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  defaultDropAnimation,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -2396,16 +2395,7 @@ function MatchDragHandle({
       {...listeners}
       aria-label={`Reorder match ${index + 1}`}
       className="flex cursor-grab items-center justify-center active:cursor-grabbing"
-      style={{
-        width: 44,
-        height: 44,
-        justifySelf: "center",
-        touchAction: "none",
-        color: "var(--color-bt-text-dim)",
-        // TEMP DEBUG — remove before merge. Tints the actual listener-bearing
-        // element so the real hit area is visible against the painted nub.
-        background: "rgba(255, 0, 0, 0.25)",
-      }}
+      style={{ width: 44, height: 44, justifySelf: "center", touchAction: "none", color: "var(--color-bt-text-dim)" }}
     >
       <GripVertical size={16} />
     </button>
@@ -2657,9 +2647,16 @@ function MatchSetup({
             transitions into place (the reported snap-back). The overlay is a
             portal (renders to body), so it needs its own MATCH_GRID + width —
             sized to the source row's measured width so the columns still line
-            up. defaultDropAnimation animates it from the pointer's last
-            position into the dropped row's final rect — no jump. */}
-        <DragOverlay dropAnimation={defaultDropAnimation}>
+            up. dropAnimation is explicitly null (not defaultDropAnimation):
+            our sortable ids are positional ("0", "1", …), re-minted every
+            render, so by drop time "the same id" no longer names the same
+            logical row — defaultDropAnimation's "animate to the final rect
+            of this id" then targets the wrong slot, which is what read on
+            device as the overlay flying back toward the source position.
+            The live reflow during the drag already shows the correct
+            destination, so the overlay can just vanish on release — nothing
+            needs to animate. */}
+        <DragOverlay dropAnimation={null}>
           {activeId !== null && draft[Number(activeId)] ? (
             <div
               className="grid items-center"
