@@ -122,10 +122,32 @@ export const competitionsRouter = router({
             .eq("competition_id", competitionId)
             .order("created_at", { ascending: true })
             .then((r) => r.data ?? []),
+          // ORDERING IS LOAD-BEARING — must match `listTeamAssignments`
+          // (teamAssignments.ts) exactly. This payload SEEDS the
+          // `teamAssignments.list` cache (LiveFaceClient.tsx), so the same query
+          // key must hold identically-ordered rows whether it was fetched
+          // directly or seeded from here — consumers that trust array position
+          // (RackGameView's roster order + group-builder pool) can't tell which
+          // writer produced their rows.
+          //
+          // This `.order()` was MISSING here while the procedure had it. That was
+          // a latent contract violation, not an actively-firing bug: measured on
+          // the local stack, the planner serves the unordered form via
+          // `team_assignments_team_sort_idx` (competition_id, team_id, sort_order),
+          // whose index order happens to BE the canonical order — but only while
+          // the competition_id filter stays selective enough to pick that index.
+          // A seq scan (few competitions relative to table size — verified: 400
+          // rows in one competition plans as Seq Scan) returns heap order instead,
+          // and heap order diverges from canonical after any single-row rewrite
+          // (e.g. setCaptain following a reorder — verified in SQL). Making the
+          // ordering explicit removes the dependency on a plan choice.
+          // `facebootstrap.ordering.test.ts` pins the two paths together.
           ctx.supabase
             .from("team_assignments")
             .select("*")
             .eq("competition_id", competitionId)
+            .order("team_id", { ascending: true })
+            .order("sort_order", { ascending: true })
             .then((r) => r.data ?? []),
           ctx.supabase
             .from("games")
