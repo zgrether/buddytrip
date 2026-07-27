@@ -17,6 +17,7 @@ import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useConfigSync } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import {
   configToNonGolfDraft,
@@ -87,7 +88,12 @@ export function NonGolfGameView() {
   const competitionId = game?.competition_id ?? (compQ.data?.id as string | undefined) ?? null;
   const scoringModel = ((compQ.data?.scoring_model as ScoringModel | undefined) ?? "match_play") as ScoringModel;
 
-  // STATE query — LEADERBOARD_QUERY is CompetitionLeaderboard's own policy
+  // Live standings. useRealtimeGame (below) covers this game's CONFIG; this
+  // covers score/lifecycle events across the whole competition, which is what
+  // moves the standings shown here. LEADERBOARD_QUERY is now just the backstop.
+  useRealtimeScoreEvents(tripId, competitionId);
+
+  // STATE query — LEADERBOARD_QUERY is the shared policy for this key
   // (queryConfig.ts); this observer previously had no freshness mechanism at
   // all (no poll, and useRealtimeGame doesn't invalidate this key).
   const lbQ = trpc.competitions.leaderboard.useQuery(

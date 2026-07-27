@@ -2,6 +2,7 @@
 
 import { trpc } from "@/lib/trpc-client";
 import { LEADERBOARD_QUERY } from "@/lib/queryConfig";
+import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { CollapsedHero, ProjectionRow } from "./CompetitionHero";
 
 /**
@@ -40,8 +41,14 @@ export function GamePageHeader({
    *  Omit for stroke or in setup mode (no row 2 renders). */
   projection?: { perTeam: Record<string, number>; gameName: string; final: boolean };
 }) {
+  // Live standings on the game surface too — otherwise this header would sit on
+  // the 5-minute backstop alone. Under the panel model (#12) the board is often
+  // still mounted underneath, subscribed to this same topic; the hook
+  // ref-counts, so that's one shared channel, not two.
+  useRealtimeScoreEvents(tripId, competitionId);
+
   // STATE query, not STRUCTURE — this is the same live `competitions.leaderboard`
-  // key CompetitionLeaderboard polls; LEADERBOARD_QUERY is that exact policy
+  // key CompetitionLeaderboard reads; LEADERBOARD_QUERY is that exact policy
   // (queryConfig.ts) so standings don't freeze on the standalone game routes
   // where that's the only observer on this key.
   const lb = trpc.competitions.leaderboard.useQuery(
