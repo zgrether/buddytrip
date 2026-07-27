@@ -394,11 +394,22 @@ account signs up, the DB does the conversion — there is no app-code path:
 - `on_auth_user_created` (trigger on `auth.users`) → `handle_new_user()`.
 - If a guest row matches the new email, `handle_new_user` nulls the guest's
   email, inserts the real `users` row, and calls
-  `merge_guest_to_real_user(ghost_id, real_id)` to reassign the guest's rows
-  (trip_members, team_assignments, idea_votes, date_poll_votes, expense_splits,
-  messages, expenses.paid_by, quick_info_tiles.created_by, users.created_by,
-  invites.created_by) and delete the guest row. It then marks matching
-  `invites` accepted.
+  `merge_guest_to_real_user(ghost_id, real_id)` to reassign **every** person
+  reference, then delete the guest row. It then marks matching `invites`
+  accepted. Don't maintain the table list here — it drifted once already
+  (this doc still listed only the trip era long after the competition tables
+  were added). **`\sf merge_guest_to_real_user` against the live DB is the
+  source of truth**; as of migration 095 it spans the trip era, the
+  competition/scoring era (incl. `game_delegates` and the `game_matches`
+  side_a/side_b JSONB), and the authorship/audit columns.
+- Signup is **not** the only caller. `ghostCrew.update`'s auto-link branch (an
+  owner pasting an email onto an existing placeholder) merges too, via the
+  `link_guest_to_account` wrapper — the core stays revoked from `authenticated`
+  because it would otherwise be an account-takeover primitive. That branch used
+  to repoint `trip_members` alone, which orphaned 123 competition rows in
+  production (rosters read "Unknown"; scoring stayed gated on the ghost). If you
+  add a third path that links a placeholder to an account, call the merge — do
+  not hand-roll a subset of it.
 - Brand-new emails (no matching guest) skip the merge entirely.
 - Deleting a user is also DB-side: `on_auth_user_deleted` (trigger on
   `auth.users`) → `handle_user_delete()` deletes the matching `public.users`
@@ -412,6 +423,30 @@ signup fail (this exact bug was fixed in migration 023, and migration 024
 dropped the `series.owner_id` reassignment in lockstep with `DROP TABLE series`).
 When you drop a table or a `user_id`/`created_by` column, update this function in
 the same migration.
+
+**ADD a person-referencing table → add it to the merge, in the same migration.**
+The drop rule above existed for years; the add rule didn't, which is exactly how
+this drifted — the competition engine shipped whole eras of `user_id` columns
+that the merge never learned about. This direction fails *silently*, which makes
+it the more dangerous one: the merge ends by DELETEing the guest, so an
+uncovered column is either **cascade-deleted** (`game_delegates`, `news_posts`,
+`chat_reads`, … — data destroyed) or **null'd** (`schedule_items.created_by`,
+`circles.created_by`, … — authorship lost). Nothing errors; you find out later.
+Two specifics worth knowing:
+- **A JSONB person reference needs `jsonb_set`, not `SET col = …`.**
+  `game_matches.side_a/side_b` store `{type,id}` and were invisible to every
+  `UPDATE … SET user_id` in the function.
+- **Any table with a UNIQUE/PK containing `user_id` needs collision handling.**
+  If the guest and the real account both hold that key, a plain UPDATE raises
+  23505 *inside the signup trigger* and signup fails for that user. Migration
+  095 deletes the guest's losing row first (the real account wins) for all nine
+  such tables. Follow that pattern.
+
+To check coverage, diff the function against the schema rather than trusting any
+list: `SELECT table_name, column_name FROM information_schema.columns WHERE
+column_name IN ('user_id','created_by','submitted_by','paid_by_user_id',
+'entity_id','participant_id','granted_by','author_id','confirmed_by')` — plus a
+scan of `jsonb` columns for embedded ids.
 
 ## Migration Workflow
 
