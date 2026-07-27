@@ -290,19 +290,53 @@ export const ghostCrewRouter = router({
             });
           }
 
-          // Swap the trip_members row to point at the existing account. We
-          // preserve the ghost's role and flip status to 'in' (a real
-          // account is Active; guests are always "in" anyway).
-          const { error: linkErr } = await ctx.supabase
-            .from("trip_members")
-            .update({ user_id: existingUser.id, status: "in" })
-            .eq("trip_id", ctx.tripId)
-            .eq("user_id", input.guestUserId);
-
-          if (linkErr) {
+          // FULL MERGE — not just a trip_members swap.
+          //
+          // This branch used to only repoint trip_members at the matched
+          // account and return. That is what produced the reported bug: the
+          // ghost survived in `users` (so no FK error) but stopped being a trip
+          // member, while team_assignments / game_participants / score_entries /
+          // game_results / JSONB match sides all kept pointing at it. The roster
+          // reads `memberById.get(user_id) ?? "Unknown"` off tripMembers.list,
+          // so those slots rendered "Unknown" — and game_participants still
+          // gated scoring for the ghost, so the real person could not enter
+          // scores in a game they were rostered in. Production held 123 such
+          // rows across 2 trips, including 93 real per-hole scores.
+          //
+          // Linking an account is the same job the signup trigger does, so it
+          // now calls the same merge rather than keeping a second, thinner copy
+          // of it. `link_guest_to_account` (mig 095) is the authorized wrapper:
+          // the merge core stays revoked from `authenticated` because it would
+          // otherwise be an account-takeover primitive.
+          //
+          // ORDER MATTERS: the merge moves trip_members itself, and the
+          // wrapper's guard checks the guest is on THIS trip — both of which
+          // require the ghost's membership row to still exist. So merge first,
+          // then set status on the row it just repointed. (Role rides along
+          // untouched, since the merge only rewrites user_id.)
+          const { error: mergeErr } = await ctx.supabase.rpc("link_guest_to_account", {
+            p_trip_id: ctx.tripId,
+            p_ghost_id: input.guestUserId,
+            p_real_id: existingUser.id,
+          });
+          if (mergeErr) {
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: `Failed to link existing account: ${linkErr.message}`,
+              message: `Failed to link existing account: ${mergeErr.message}`,
+            });
+          }
+
+          // A real account is Active; guests are always "in" anyway.
+          const { error: statusErr } = await ctx.supabase
+            .from("trip_members")
+            .update({ status: "in" })
+            .eq("trip_id", ctx.tripId)
+            .eq("user_id", existingUser.id);
+
+          if (statusErr) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Linked the account but failed to set status: ${statusErr.message}`,
             });
           }
 
