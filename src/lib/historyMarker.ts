@@ -52,7 +52,7 @@
  */
 
 /** Which surface pushed an entry. Diagnostic, and it keeps the tags greppable. */
-export type MarkerOwner = "screen" | "modal" | "config" | "panel";
+export type MarkerOwner = "screen" | "modal" | "config" | "panel" | "tab";
 
 export interface HistoryMarker {
   /** Monotonic position among BuddyTrip-owned entries. */
@@ -88,6 +88,30 @@ export function pushMarker(
   };
   if (url === undefined) window.history.pushState(state, "");
   else window.history.pushState(state, "", url);
+  return depth;
+}
+
+/** Who owns the entry currently on top, if anyone. */
+export function readOwner(state: unknown): MarkerOwner | null {
+  return (state as Partial<HistoryMarker> | null | undefined)?.btOwner ?? null;
+}
+
+/**
+ * Rewrite the CURRENT entry's URL, keeping its depth and owner.
+ *
+ * This is the other half of the tab model: the first switch away from Home
+ * `pushMarker`s one sentinel, and every switch after that replaces it, so an
+ * excursion through five tabs costs exactly ONE history entry rather than five.
+ * Depth is preserved deliberately — the entry is the same entry, so any listener
+ * that already claimed a depth against it stays correct.
+ *
+ * Only call this on an entry you own (`readOwner(...) === yours`). Replacing an
+ * entry you did not push would claim someone else's position in the stack.
+ */
+export function replaceMarker(owner: MarkerOwner, extra: Record<string, unknown> | undefined, url: string): number {
+  const depth = readDepth(window.history.state);
+  const state: HistoryMarker & Record<string, unknown> = { ...extra, btDepth: depth, btOwner: owner };
+  window.history.replaceState(state, "", url);
   return depth;
 }
 

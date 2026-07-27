@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { pushMarker, isOwnPop, readDepth, type MarkerOwner } from "./historyMarker";
+import {
+  pushMarker,
+  replaceMarker,
+  isOwnPop,
+  readDepth,
+  readOwner,
+  type MarkerOwner,
+} from "./historyMarker";
 
 /**
  * Ownership of a `popstate`, per listener.
@@ -30,16 +37,31 @@ type Entry = { state: unknown; url: string };
 
 class FakeHistory {
   stack: Entry[] = [{ state: null, url: "/trips/t1/leaderboard" }];
+  /** Cursor, not a top-of-stack pop — the browser KEEPS forward entries after a
+   *  back until something pushes. Modelling that is what makes the forward
+   *  navigation test below meaningful. */
+  i = 0;
   get state() {
-    return this.stack[this.stack.length - 1].state;
+    return this.stack[this.i].state;
   }
   pushState(state: unknown, _title: string, url?: string) {
-    this.stack.push({ state, url: url ?? this.stack[this.stack.length - 1].url });
+    this.stack.length = this.i + 1; // a push truncates the forward entries
+    this.stack.push({ state, url: url ?? this.stack[this.i].url });
+    this.i = this.stack.length - 1;
   }
-  /** Pop, and return the popstate event — carrying the state of the entry we
+  /** Rewrite the current entry in place — no new entry, cursor unmoved. */
+  replaceState(state: unknown, _title: string, url?: string) {
+    this.stack[this.i] = { state, url: url ?? this.stack[this.i].url };
+  }
+  /** Go back, and return the popstate event — carrying the state of the entry we
    *  LAND ON, exactly as the browser does. */
   back(): { state: unknown } {
-    if (this.stack.length > 1) this.stack.pop();
+    if (this.i > 0) this.i -= 1;
+    return { state: this.state };
+  }
+  /** Forward also fires popstate. */
+  forward(): { state: unknown } {
+    if (this.i < this.stack.length - 1) this.i += 1;
     return { state: this.state };
   }
 }
@@ -159,6 +181,106 @@ describe("useScreenHistory — ignores a foreign pop", () => {
 
     const e1 = fake.back();
     expect(isOwnPop(e1, s1)).toBe(true);
+  });
+});
+
+// ── The tab sentinel (Phase 2) ───────────────────────────────────────────────
+
+describe("the tab sentinel", () => {
+  /** What the trip page's `setActiveTab` does: push once, replace thereafter. */
+  function switchTab(tab: string, url: string) {
+    if (readOwner(fake.state) === "tab") return replaceMarker("tab", { btTab: true }, url);
+    return pushMarker("tab", { btTab: true }, url);
+  }
+
+  it("costs ONE history entry for a whole excursion, not one per switch", () => {
+    const before = fake.stack.length;
+
+    switchTab("crew", "/trips/t1?tab=crew");
+    expect(fake.stack.length).toBe(before + 1); // first leave of Home pushes
+
+    switchTab("schedule", "/trips/t1?tab=schedule");
+    switchTab("expenses", "/trips/t1?tab=expenses");
+    expect(fake.stack.length).toBe(before + 1); // ...and nothing after that does
+
+    // One back returns to where the excursion started, not three.
+    fake.back();
+    expect(fake.stack[fake.i].url).toBe("/trips/t1/leaderboard");
+  });
+
+  it("keeps a stable depth across replaces, so layers above stay comparable", () => {
+    const d1 = switchTab("crew", "/trips/t1?tab=crew");
+    const d2 = switchTab("expenses", "/trips/t1?tab=expenses");
+    expect(d2).toBe(d1); // same entry, same position in the stack
+
+    // A modal opened over a tab still resolves ownership correctly.
+    const modal = pushMarker("modal", { modal: true });
+    const e = fake.back();
+    expect(isOwnPop(e, modal)).toBe(true); // modal closes...
+    expect(isOwnPop(e, d2)).toBe(false); // ...and the tab does NOT change
+  });
+
+  it("a modal's pop never changes the tab, because the URL is untouched", () => {
+    switchTab("crew", "/trips/t1?tab=crew");
+    pushMarker("modal", { modal: true }); // modals push the SAME url
+    const urlWithModalOpen = fake.stack[fake.i].url;
+    fake.back();
+    expect(fake.stack[fake.i].url).toBe(urlWithModalOpen); // still ?tab=crew
+  });
+});
+
+// ── Lifecycle semantics Phase 2's sentinel depends on ────────────────────────
+
+describe("reload while nested", () => {
+  it("continues numbering from HISTORY, not from zero", () => {
+    // Drill in, then reload. History is untouched by a reload; every hook's
+    // in-memory claimed depth is gone.
+    open("panel"); // 1
+    open("config", { btCfg: true }); // 2
+    open("modal", { modal: true }); // 3
+    expect(readDepth(fake.state)).toBe(3);
+
+    // The remounting layer pushes again. `pushMarker` reads the CURRENT entry
+    // rather than a module counter, so it claims 4 — above everything already in
+    // history — and its own pop is claimable.
+    const afterReload = open("modal", { modal: true });
+    expect(afterReload).toBe(4);
+    expect(isOwnPop(fake.back(), afterReload)).toBe(true);
+  });
+
+  it("is why depth is derived per-push and not held in a module counter", () => {
+    // Pins the failure mode a module-level counter would produce, so nobody
+    // "simplifies" pushMarker into one later. A fresh page would restart the
+    // counter at 0 and claim 1, while history still holds entries at 1..2.
+    open("panel"); // 1
+    open("config", { btCfg: true }); // 2
+
+    const whatAModuleCounterWouldClaim = 1;
+    const e = fake.back(); // lands on depth 1
+
+    // 1 < 1 is false → nothing claims a real back-press → the browser navigates
+    // away and the open layer is lost with the page.
+    expect(isOwnPop(e, whatAModuleCounterWouldClaim)).toBe(false);
+    // What the current implementation claims instead:
+    expect(isOwnPop(e, 2)).toBe(true);
+  });
+});
+
+describe("forward navigation", () => {
+  it("is claimed by nobody — landing DEEPER is never an owner's pop", () => {
+    const cfg = open("config", { btCfg: true }); // 1
+    const modal = open("modal", { modal: true }); // 2
+
+    fake.back(); // modal closes; the depth-2 entry is still ahead of us
+    const e = fake.forward(); // re-enter it
+
+    // Both tests are false because the landing depth (2) is >= every claim.
+    // Nothing re-opens, which is correct: forward-into-a-layer is not a
+    // supported flow — the layer's React state was already torn down on the way
+    // back, so re-opening from the history entry alone would restore chrome
+    // without content.
+    expect(isOwnPop(e, cfg)).toBe(false);
+    expect(isOwnPop(e, modal)).toBe(false);
   });
 });
 
