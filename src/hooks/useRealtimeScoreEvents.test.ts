@@ -61,7 +61,9 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/lib/trpc-client", () => ({ trpc: { useUtils: () => ({}) } }));
 
-const { acquire, scoreEventsTopic, SCORE_EVENT } = await import("./useRealtimeScoreEvents");
+const { acquire, scoreEventsTopic, SCORE_EVENT, makeScoreEventHandler } = await import(
+  "./useRealtimeScoreEvents"
+);
 
 const TOPIC = scoreEventsTopic("comp-1");
 
@@ -78,6 +80,61 @@ describe("scoreEventsTopic", () => {
     // string, so a change here is a change to the DB contract.
     expect(scoreEventsTopic("comp-1")).toBe("competition_events:comp-1");
     expect(scoreEventsTopic("comp-1").startsWith("competition:")).toBe(false);
+  });
+});
+
+describe("makeScoreEventHandler — what a broadcast is allowed to do to the cache", () => {
+  /** A utils double that records calls and would expose any cache WRITE. */
+  function fakeUtils() {
+    const calls: string[] = [];
+    const spy = (name: string) => ({
+      invalidate: (i?: unknown) => calls.push(`${name}.invalidate(${JSON.stringify(i) ?? ""})`),
+      setData: () => calls.push(`${name}.setData`),
+      setInfiniteData: () => calls.push(`${name}.setInfiniteData`),
+    });
+    return {
+      calls,
+      utils: {
+        competitions: { faceBootstrap: spy("faceBootstrap"), leaderboard: spy("leaderboard") },
+        scores: { listByGame: spy("scores") },
+      },
+    };
+  }
+
+  it("invalidates faceBootstrap AND leaderboard — #10, never the child alone", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+
+    // The bug this pins: invalidating only `leaderboard` is SILENTLY undone,
+    // because LiveFaceClient re-seeds the child from the bootstrap via setData
+    // and marks it fresh, so no refetch fires. With the poll now a 5-minute
+    // backstop, that mistake would leave the board stale for minutes.
+    expect(calls).toContain('faceBootstrap.invalidate({"tripId":"trip-1"})');
+    expect(calls).toContain('leaderboard.invalidate({"tripId":"trip-1","competitionId":"comp-1"})');
+  });
+
+  it("routes the score change through INVALIDATION ONLY — #15, no cache write", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+
+    expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+
+    // THE SAFETY PROPERTY. `reconcileScores(local, server, protectedKeys)` is what
+    // keeps the active enterer's in-flight cells (its own test file covers that);
+    // it only runs on REFETCHED data. Any setData here would bypass it and clobber
+    // the cell someone is mid-entry on — and, because the payload arrives on a
+    // public topic, would also be the moment score data started leaking.
+    // If this fails, do not relax it: remove the write.
+    expect(calls.some((c) => c.includes("setData"))).toBe(false);
+  });
+
+  it("invalidates the whole scores key on a reconnect backfill (unknown game)", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    expect(calls).toContain("scores.invalidate()");
   });
 });
 

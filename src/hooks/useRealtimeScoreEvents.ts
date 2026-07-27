@@ -137,6 +137,49 @@ export function acquire(topic: string, handler: Handler): () => void {
   };
 }
 
+/** The invalidation surface this hook is allowed to touch. Narrow on purpose —
+ *  see `makeScoreEventHandler`. */
+type ScoreEventUtils = {
+  competitions: {
+    faceBootstrap: { invalidate: (i: { tripId: string }) => unknown };
+    leaderboard: { invalidate: (i: { tripId: string; competitionId: string }) => unknown };
+  };
+  scores: {
+    listByGame: { invalidate: (i?: { tripId: string; gameId: string }) => unknown };
+  };
+};
+
+/**
+ * What a broadcast does to the cache. Extracted from the hook so the contract is
+ * testable without a renderer — the rules below are the whole safety argument
+ * for this feature, and "I read the code and it looked right" is not a guard.
+ *
+ * INVALIDATE ONLY. There is deliberately no `setData` here, and adding one would
+ * break CLAUDE.md #15: the view's reconcile (`useScoreSaver.reconcile` →
+ * `reconcileScores(local, server, protectedKeys)`) is what protects the active
+ * enterer's in-flight cells, and it only runs on refetched server data. Writing
+ * the cache directly would bypass it and clobber the cell someone is typing in.
+ */
+export function makeScoreEventHandler(
+  utils: ScoreEventUtils,
+  tripId: string,
+  competitionId: string,
+): Handler {
+  return (gameId) => {
+    // #10 — faceBootstrap IN ADDITION TO the child query, never instead of.
+    // Dropping either leaves a surface stale: the face re-seeds from the
+    // bootstrap, while the standalone game routes read the child key directly.
+    void utils.competitions.faceBootstrap.invalidate({ tripId });
+    void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+
+    // #15 — hand the score change to the view's EXISTING reconcile rather than
+    // applying anything here. On a reconnect backfill (no gameId) we don't know
+    // which game moved while we were away, so invalidate the whole key.
+    if (gameId) void utils.scores.listByGame.invalidate({ tripId, gameId });
+    else void utils.scores.listByGame.invalidate();
+  };
+}
+
 export function useRealtimeScoreEvents(
   tripId: string | undefined,
   competitionId: string | null | undefined,
@@ -145,23 +188,11 @@ export function useRealtimeScoreEvents(
 
   useEffect(() => {
     if (!tripId || !competitionId) return;
-
-    const handler: Handler = (gameId) => {
-      // #10 — faceBootstrap IN ADDITION TO the child query, never instead of.
-      // Dropping either leaves a surface stale: the face re-seeds from the
-      // bootstrap, while the standalone game routes read the child key directly.
-      void utils.competitions.faceBootstrap.invalidate({ tripId });
-      void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-
-      // #15 — hand the score change to the view's EXISTING reconcile rather than
-      // applying anything here. `useScoreSaver.reconcile` builds `protectedKeys`
-      // from its own in-flight + outbox state, so the enterer's cells survive.
-      // On a reconnect backfill (no gameId) we don't know which game moved while
-      // we were away, so invalidate the whole key.
-      if (gameId) void utils.scores.listByGame.invalidate({ tripId, gameId });
-      else void utils.scores.listByGame.invalidate();
-    };
-
+    const handler = makeScoreEventHandler(
+      utils as unknown as ScoreEventUtils,
+      tripId,
+      competitionId,
+    );
     return acquire(scoreEventsTopic(competitionId), handler);
   }, [tripId, competitionId, utils]);
 }
