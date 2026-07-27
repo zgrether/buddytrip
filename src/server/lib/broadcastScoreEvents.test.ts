@@ -51,7 +51,6 @@ let lastStatus = "not attempted";
 /** Skip with a visible reason when Realtime isn't available here. */
 function requireRealtime(t: { skip: (note?: string) => void }): boolean {
   if (realtimeUp) return true;
-  // eslint-disable-next-line no-console
   console.warn(
     `[broadcastScoreEvents] SKIPPED — no Realtime websocket in this environment (${lastStatus}). ` +
       `Static contract still enforced by useRealtimeScoreEvents.contract.test.ts.`,

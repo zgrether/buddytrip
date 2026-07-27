@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { pushMarker, isOwnPop } from "@/lib/historyMarker";
 
 /**
  * useGameSettingsOverlay — the ONE owner of the game settings (configuration)
@@ -86,9 +87,13 @@ export function useGameSettingsOverlay({
   // confirmDiscard's own history.back() re-trips the popstate guard (the draft is
   // still dirty at that instant) and the prompt reappears forever.
   const forceRef = useRef(false);
+  // Depth of the entry `openConfig` pushed, so the popstate listener can tell our
+  // own pop from a layer above us being popped (historyMarker.ts). 0 = we hold no
+  // entry (deep-link path, or never opened by gear).
+  const depthRef = useRef(0);
 
   const openConfig = useCallback(() => {
-    if (typeof window !== "undefined") window.history.pushState({ btCfg: true }, "");
+    if (typeof window !== "undefined") depthRef.current = pushMarker("config", { btCfg: true });
     setUserOpen(true);
   }, []);
 
@@ -141,7 +146,15 @@ export function useGameSettingsOverlay({
 
   // Real back (OS/mouse, or our own history.back()) closes a gear-opened overlay.
   useEffect(() => {
-    const onPop = () => {
+    const onPop = (e: PopStateEvent) => {
+      // Not our entry — a layer ABOVE the overlay was popped (a modal opened over
+      // it, an in-page screen, or the tab sentinel). Passing it through is what
+      // stops the overlay closing on someone else's back-press, AND stops the
+      // dirty-guard below re-pushing an entry that would swallow that back-press.
+      // The deep-link path holds no entry of its own (depth 0) and is unaffected:
+      // it derives `open` from `?settings=1` and is closed by router.back().
+      if (depthRef.current > 0 && !isOwnPop(e, depthRef.current)) return;
+      depthRef.current = 0;
       if (forceRef.current) {
         forceRef.current = false;
         setUserOpen(false);
@@ -155,7 +168,9 @@ export function useGameSettingsOverlay({
         // just stripped the param, so Next's useSearchParams unmounts the panel on the next
         // render — racing this handler faster than a state pin can catch it (confirmed:
         // #619's render-ordering race). That leg is tracked in #619, not fixed here.
-        window.history.pushState({ btCfg: true }, "");
+        // Re-claim a depth for the replacement entry — it is a NEW entry, so the
+        // old one's depth no longer describes where we sit.
+        depthRef.current = pushMarker("config", { btCfg: true });
         setConfirmingClose(true);
         return;
       }

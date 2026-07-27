@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { pushMarker, isOwnPop } from "@/lib/historyMarker";
 
 /**
  * useScreenHistory — sync a linear in-page "screen stack" with browser history, so
@@ -22,6 +23,10 @@ import { useEffect, useRef } from "react";
  */
 export function useScreenHistory(depth: number, onBack: () => void) {
   const pushed = useRef(0);
+  // The depth each pushed level claimed, so a popstate can be tested for
+  // ownership (historyMarker.ts). Parallel to `pushed.current`, which stays the
+  // count of levels we own.
+  const claimed = useRef<number[]>([]);
   const onBackRef = useRef(onBack);
   useEffect(() => {
     onBackRef.current = onBack;
@@ -32,19 +37,26 @@ export function useScreenHistory(depth: number, onBack: () => void) {
   // only re-sync the counter down, never push/pop here.)
   useEffect(() => {
     while (pushed.current < depth) {
-      window.history.pushState({ btScreen: pushed.current + 1 }, "");
+      claimed.current.push(pushMarker("screen", { btScreen: pushed.current + 1 }));
       pushed.current += 1;
     }
-    if (pushed.current > depth) pushed.current = depth;
+    if (pushed.current > depth) {
+      pushed.current = depth;
+      claimed.current.length = depth;
+    }
   }, [depth]);
 
   // OS/browser back (or our own back()) pops one level.
   useEffect(() => {
-    const onPop = () => {
-      if (pushed.current > 0) {
-        pushed.current -= 1;
-        onBackRef.current();
-      }
+    const onPop = (e: PopStateEvent) => {
+      if (pushed.current <= 0) return;
+      // Not our entry — a layer ABOVE us was popped (a modal, the settings
+      // overlay, the game panel, or the tab sentinel). Pass it through to whoever
+      // owns it instead of eating a screen level that is still on screen.
+      if (!isOwnPop(e, claimed.current[claimed.current.length - 1] ?? 0)) return;
+      pushed.current -= 1;
+      claimed.current.pop();
+      onBackRef.current();
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
