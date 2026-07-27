@@ -3,8 +3,6 @@
 import { useState, useMemo, useRef } from "react";
 import {
   ArrowRight,
-  ChevronDown,
-  ChevronUp,
   GripVertical,
   Pencil,
   Plus,
@@ -1303,10 +1301,19 @@ export function TeamSheet({
   const isEdit = !!team;
   const utils = trpc.useUtils();
 
-  // Three-tier gating (mirrors the server). IDENTITY (name/short/color) = owner
-  // OR this team's captain; ROSTER (add/remove/reorder/captain) = owner only.
-  // Create mode has no team yet — only the owner can reach it (the opener gates),
-  // so identity is editable there.
+  // Three-tier gating (mirrors the server). IDENTITY (name/short/colour) AND
+  // roster ORDER = owner OR this team's captain (mig 094); MEMBERSHIP
+  // (add/remove/captain ★) = owner only. Create mode has no team yet — only the
+  // owner can reach it (the opener gates), so identity is editable there.
+  //
+  // #18 CARVE-OUT — this MUST keep reading SERVER state, never a draft.
+  // `useCanEditTeam` resolves captaincy from `teamAssignments.list`, and its
+  // result decides whether the Save/Cancel bar renders at all. If the captain ★
+  // were ever drafted, a staged change here could revoke the current editor's
+  // own rights mid-edit — the modal would delete its own Save button under them.
+  // Keeping ★ immediate (see `orderDraft`) is precisely what lets this stay a
+  // plain server read with no special-casing. Mirrors the Danger Zone's
+  // deliberate server-read in the match settings page.
   const { canEdit: canEditIdentity, isOwner } = useCanEditTeam(
     tripId,
     competitionId,
@@ -1337,9 +1344,11 @@ export function TeamSheet({
   // immediately); only PERSISTED on Save (handleSave reads the same paletteIdx).
   const selectedColor = TEAM_COLORS[paletteIdx]?.color ?? team?.color ?? TEAM_COLORS[0].color;
 
-  // Save is enabled only when the IDENTITY actually changed (edit) — name, short
-  // name, or color — or the required fields are present (create). Roster edits
-  // persist on their own action and are NOT part of this dirty-check.
+  // Save is enabled when the TEAM changed — identity (name / short name / color)
+  // OR roster display order — or, in create mode, once the required fields are
+  // present. Order joined this dirty-check when it became a drafted field; the
+  // MEMBERSHIP actions (add / remove / captain ★) still persist on their own
+  // action and are deliberately NOT part of it (see the rule at `orderDraft`).
   const trimmedName = name.trim();
   const trimmedShort = shortName.trim();
   const identityDirty =
@@ -1348,7 +1357,6 @@ export function TeamSheet({
         trimmedShort.toUpperCase() !== (team.short_name ?? "").toUpperCase() ||
         selectedColor !== team.color
       : true;
-  const canSubmit = !!trimmedName && !!trimmedShort && identityDirty;
 
   // Roster section data (edit mode). Deduped against any other observer of the
   // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
@@ -1369,6 +1377,47 @@ export function TeamSheet({
     { tripId, competitionId },
     { enabled: isEdit && showRoster && !!competitionId }
   );
+
+  // ── Roster ORDER is a drafted field (joins name / short / colour) ──────────
+  // THE RULE: editing the TEAM — name, short name, colour, display order —
+  // drafts and commits on Save. Changing WHO is on it or who leads it — add,
+  // remove, captain ★ — applies immediately.
+  //
+  // Order drafts because it is a presentation field, and because writing it on
+  // every drop cost a server round-trip mid-gesture (up to ~1s on mobile, the
+  // reported settle artifact). The captain ★ deliberately does NOT draft: it is
+  // a GRANT, not a field edit, and drafting it would drag `identityEditable`
+  // (derived from captain state) into a carve-out where a drafted change could
+  // revoke the editor's own rights mid-edit. Leaving it immediate means that
+  // carve-out never has to exist. See the notes at those call sites.
+  //
+  // `null` = untouched, so the roster follows the server. A non-null draft is a
+  // full ordering of THIS team's user_ids.
+  const [orderDraft, setOrderDraft] = useState<string[] | null>(null);
+  // Committed by handleSave, not on drop. Keeps its existing invalidation set
+  // (teamAssignments.list + competitions.leaderboard + faceBootstrap, #10/#719).
+  const { reorder } = useTeamAssignmentMutations(tripId, competitionId);
+
+  // The server's canonical order for this team — the draft's baseline, and what
+  // the roster renders when nothing has been dragged yet.
+  const serverOrderedIds = useMemo(
+    () =>
+      (rosterAssignments as Assignment[])
+        .filter((a) => a.team_id === team?.id)
+        .slice()
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map((a) => a.user_id),
+    [rosterAssignments, team?.id]
+  );
+
+  // Dirty only when the draft actually differs — dragging a row and putting it
+  // back leaves Save disabled, same as retyping the original name.
+  const orderDirty =
+    orderDraft !== null &&
+    (orderDraft.length !== serverOrderedIds.length ||
+      !orderDraft.every((id, i) => id === serverOrderedIds[i]));
+
+  const canSubmit = !!trimmedName && !!trimmedShort && (identityDirty || orderDirty);
 
   // The leaderboard roll-up (competitions.leaderboard) bakes in each team's
   // color / name / short_name, and the board renders from that bootstrap-seeded
@@ -1436,16 +1485,28 @@ export function TeamSheet({
     if (sn.length > 4) return setError("Short name must be 4 characters or fewer");
 
     const palette = TEAM_COLORS[paletteIdx];
+
+    // Option A: two calls, each keeping its own gate. They CANNOT be one atomic
+    // write — sort_order lives on team_assignments, not teams, and reorder is a
+    // permutation-validated bulk update, not a column patch. Since #720 both
+    // sides share requireTeamIdentityEdit(), so a captain can't get one accepted
+    // and the other refused on permissions.
+    //
+    // Identity goes first: it's the cheaper call, and if it fails there's no
+    // point reordering. A partial outcome is possible and is reported as such —
+    // never as success (see the catch below).
     try {
       if (isEdit && team) {
-        await update.mutateAsync({
-          tripId,
-          teamId: team.id,
-          name: trimmed,
-          shortName: sn,
-          color: palette.color,
-          colorDim: palette.colorDim,
-        });
+        if (identityDirty) {
+          await update.mutateAsync({
+            tripId,
+            teamId: team.id,
+            name: trimmed,
+            shortName: sn,
+            color: palette.color,
+            colorDim: palette.colorDim,
+          });
+        }
       } else {
         await create.mutateAsync({
           tripId,
@@ -1456,10 +1517,36 @@ export function TeamSheet({
           colorDim: palette.colorDim,
         });
       }
-      onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save team");
+      // Nothing landed — the plain, pre-existing failure path.
+      return setError(e instanceof Error ? e.message : "Failed to save team");
     }
+
+    // Roster order — skipped entirely when unchanged, so an identity-only edit
+    // fires exactly one request.
+    if (isEdit && team && orderDirty && orderDraft) {
+      try {
+        await reorder.mutateAsync({
+          tripId,
+          competitionId,
+          teamId: team.id,
+          orderedUserIds: orderDraft,
+        });
+      } catch (e) {
+        // PARTIAL FAILURE. Identity is already committed; the order is not.
+        // Stay OPEN and say so precisely — closing here would report success for
+        // a write that half-landed. The identity fields now match the server, so
+        // `identityDirty` is false and Save stays enabled on `orderDirty` alone:
+        // pressing it again retries ONLY the reorder.
+        const why = e instanceof Error ? e.message : "unknown error";
+        return setError(
+          `Saved the team’s details, but couldn’t save the roster order (${why}). Your order is still here — press Save to retry it.`
+        );
+      }
+    }
+
+    setOrderDraft(null);
+    onClose();
   }
 
   return (
@@ -1642,38 +1729,6 @@ export function TeamSheet({
             </p>
           )}
 
-          {identityEditable && (
-            // Cancel reverts the unsaved identity edits (closing discards the local
-            // state, so the color preview reverts). Save persists — enabled only
-            // when something changed (canSubmit).
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={create.isPending || update.isPending}
-                className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-                style={{
-                  background: "transparent",
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-                data-testid="team-cancel"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!canSubmit || create.isPending || update.isPending}
-                className="flex-[2] rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                data-testid="team-save"
-              >
-                {isEdit ? "Save Team" : "Add Team"}
-              </button>
-            </div>
-          )}
-
           {/* Consolidated roster section — the team-management home (edit mode).
               Owner gets full controls; captain/member see it read-only. The
               avatars use the PREVIEW color (selectedColor) so a color pick shows
@@ -1693,9 +1748,65 @@ export function TeamSheet({
               canReorder={canEditIdentity}
               members={rosterMembers as Member[]}
               assignments={rosterAssignments as Assignment[]}
+              // Order is drafted HERE (TeamSheet owns Save); the roster renders
+              // the draft when present and reports drags back up. It never
+              // writes order itself any more.
+              orderedIds={orderDraft ?? serverOrderedIds}
+              onReorder={setOrderDraft}
             />
           )}
         </div>
+
+        {/* Pinned action bar — OUTSIDE the scrollable body above, so it stays put
+            with a 20+ member roster instead of scrolling away with the list
+            (CLAUDE.md #14: bottom controls anchor to the viewport, not the end of
+            the content). The modal is a flex column with a bounded max-height, so
+            `flex-shrink-0` here is exactly the SettingsSlideOver header/scroll/
+            footer shape — reused rather than reinvented.
+            It also has to live BELOW the roster now that Save commits roster
+            order: an action bar above the list would misstate its scope. */}
+        {identityEditable && (
+          <div
+            className="flex flex-shrink-0 gap-2 px-4 py-3"
+            style={{
+              borderTop: "1px solid var(--color-bt-border)",
+              background: "var(--color-bt-card-float)",
+            }}
+          >
+            {/* Cancel discards the whole draft — identity AND order — by closing;
+                the local state dies with the unmount, so nothing is written.
+                It does NOT undo an add, a remove, or a captain change: those are
+                membership acts that applied when tapped. Deliberate, per the
+                rule at `orderDraft`, not an oversight. */}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={create.isPending || update.isPending || reorder.isPending}
+              className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+              style={{
+                background: "transparent",
+                color: "var(--color-bt-text-dim)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+              data-testid="team-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!canSubmit || create.isPending || update.isPending || reorder.isPending}
+              className="flex-[2] rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              data-testid="team-save"
+            >
+              {/* "Save Team" still reads right: order is a property OF the team,
+                  same as its name and colour — which is the whole rule this
+                  modal now follows. */}
+              {isEdit ? "Save Team" : "Add Team"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </ScrollLock>
@@ -1719,6 +1830,8 @@ function TeamSheetRoster({
   canReorder,
   members,
   assignments,
+  orderedIds,
+  onReorder,
 }: {
   tripId: string;
   competitionId: string;
@@ -1733,8 +1846,18 @@ function TeamSheetRoster({
   canReorder: boolean;
   members: Member[];
   assignments: Assignment[];
+  /** CONTROLLED display order (TeamSheet owns the draft + Save). The parent
+   *  passes `orderDraft ?? serverOrderedIds`, so this component renders the
+   *  drafted order without knowing whether one exists. */
+  orderedIds: string[];
+  /** Report a drag result upward. Local state only — NO network call on drop;
+   *  the write happens in TeamSheet's handleSave. */
+  onReorder: (next: string[]) => void;
 }) {
-  const { assign, remove, setCaptain, reorder } = useTeamAssignmentMutations(
+  // `reorder` is deliberately NOT taken here any more — order is committed by
+  // TeamSheet's Save. assign / remove / setCaptain stay immediate (the rule:
+  // membership applies now, team fields commit on Save).
+  const { assign, remove, setCaptain } = useTeamAssignmentMutations(
     tripId,
     competitionId
   );
@@ -1751,18 +1874,22 @@ function TeamSheetRoster({
     return map;
   }, [members]);
 
-  // This team's roster in canonical order — sorted defensively by sort_order in
-  // case the cache array isn't pre-sorted (optimistic patches mutate sort_order,
-  // not array position).
-  const roster = useMemo(
-    () =>
-      assignments
-        .filter((a) => a.team_id === team.id)
-        .slice()
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
-    [assignments, team.id]
-  );
-  const orderedIds = roster.map((a) => a.user_id);
+  // This team's rows, sequenced by the CONTROLLED `orderedIds` (the parent's
+  // draft when one exists, else the server's sort_order). Ordering by the prop
+  // rather than by each row's sort_order is what makes a drag show instantly
+  // without a write — the underlying rows still carry their old sort_order until
+  // Save lands.
+  //
+  // Built from a lookup so it degrades safely: a row whose id isn't in
+  // `orderedIds` (a teammate added on another device mid-draft) is appended
+  // rather than dropped, and an id with no row is skipped.
+  const roster = useMemo(() => {
+    const mine = assignments.filter((a) => a.team_id === team.id);
+    const byId = new Map(mine.map((a) => [a.user_id, a]));
+    const seq = orderedIds.map((id) => byId.get(id)).filter((a): a is Assignment => !!a);
+    const missing = mine.filter((a) => !orderedIds.includes(a.user_id));
+    return [...seq, ...missing];
+  }, [assignments, team.id, orderedIds]);
 
   const unassigned = useMemo(() => {
     const assignedIds = new Set(assignments.map((a) => a.user_id));
@@ -1770,20 +1897,6 @@ function TeamSheetRoster({
   }, [members, assignments]);
 
   const [addSheetOpen, setAddSheetOpen] = useState(false);
-
-  function persistOrder(next: string[]) {
-    if (next.every((id, i) => id === orderedIds[i])) return; // no-op
-    reorder.mutate({ tripId, competitionId, teamId: team.id, orderedUserIds: next });
-  }
-  // ↑↓ buttons: move one slot. The touch fallback — kept as a second, permanent
-  // input path alongside drag (unlike matches, these are NOT scheduled for
-  // removal here — see the roster-reorder spec).
-  function moveTo(userId: string, toIndex: number) {
-    if (toIndex < 0 || toIndex >= orderedIds.length) return;
-    const without = orderedIds.filter((x) => x !== userId);
-    without.splice(toIndex, 0, userId);
-    persistOrder(without);
-  }
 
   // Drag-to-reorder (dnd-kit) — mirrors the match-reorder pattern (#711/#712):
   // PointerSensor (mouse+touch+pen) + KeyboardSensor, a DragOverlay with
@@ -1804,7 +1917,9 @@ function TeamSheetRoster({
     if (over && active.id !== over.id) {
       const from = orderedIds.indexOf(String(active.id));
       const to = orderedIds.indexOf(String(over.id));
-      if (from !== -1 && to !== -1) persistOrder(arrayMove(orderedIds, from, to));
+      // Draft only — no network call on drop. This is what removes the mobile
+      // settle artifact: the gesture no longer waits on a round-trip.
+      if (from !== -1 && to !== -1) onReorder(arrayMove(orderedIds, from, to));
     }
     setActiveId(null);
   };
@@ -1876,11 +1991,16 @@ function TeamSheetRoster({
                     canManage={canManage}
                     canReorder={canReorder}
                     index={i}
-                    count={orderedIds.length}
                     removeLocked={removalsLocked}
-                    onMoveUp={() => moveTo(a.user_id, i - 1)}
-                    onMoveDown={() => moveTo(a.user_id, i + 1)}
+                    // IMMEDIATE, deliberately — not drafted, and Cancel will not
+                    // undo it. Removing someone is a MEMBERSHIP act; only team
+                    // FIELDS (name / short / colour / order) wait for Save.
                     onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
+                    // IMMEDIATE, deliberately — see the #18 carve-out on
+                    // `useCanEditTeam` above. Captaincy is a GRANT, and it feeds
+                    // `identityEditable`; drafting it would let a staged change
+                    // revoke the editor's own Save button mid-edit. Cancel does
+                    // not undo it.
                     onToggleCaptain={() =>
                       setCaptain.mutate({
                         tripId,
@@ -1938,6 +2058,9 @@ function TeamSheetRoster({
           teamName={team.name}
           teamColor={teamColor}
           unassigned={unassigned}
+          // IMMEDIATE, deliberately — adding is a MEMBERSHIP act, so it lands on
+          // tap and Cancel does not undo it. (It also assigns sort_order
+          // server-side as max+1, which a drafted add would have to invent.)
           onPick={(id) => assign.mutate({ tripId, competitionId, userId: id, teamId: team.id })}
           onClose={() => setAddSheetOpen(false)}
         />
@@ -2119,10 +2242,7 @@ function rosterRowContent({
   canManage,
   canReorder,
   index,
-  count,
   removeLocked,
-  onMoveUp,
-  onMoveDown,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
@@ -2136,10 +2256,7 @@ function rosterRowContent({
   canManage: boolean;
   canReorder: boolean;
   index: number;
-  count?: number;
   removeLocked?: boolean;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
   onRemove?: () => void;
   onToggleCaptain?: () => void;
   removeAriaLabel?: string;
@@ -2184,35 +2301,10 @@ function rosterRowContent({
         )
       )}
 
-      {/* Reorder ↑↓ (owner OR this team's captain) — a second, permanent input
-          path alongside drag (not a fallback slated for removal here). Same
-          canReorder gate as the grip. Disabled only at the ends. */}
-      {canReorder && (
-        <div className="flex flex-shrink-0 items-center">
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={index === 0}
-            aria-label={`Move ${name} up`}
-            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
-            data-testid="roster-move-up"
-          >
-            <ChevronUp size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={index === (count ?? 0) - 1}
-            aria-label={`Move ${name} down`}
-            className="flex h-7 w-6 items-center justify-center rounded-lg disabled:opacity-30"
-            style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
-            data-testid="roster-move-down"
-          >
-            <ChevronDown size={16} />
-          </button>
-        </div>
-      )}
+      {/* The ↑↓ arrows are gone. They existed as the touch fallback while
+          reorder used native HTML5 drag, which never fired on touch; dnd-kit's
+          PointerSensor covers touch and KeyboardSensor covers the non-pointer
+          path (verified in #713), so the fallback had no remaining job. */}
 
       {/* Remove × (owner) — disabled once scoring locks removals. */}
       {canManage && (
@@ -2241,10 +2333,7 @@ function RosterRow({
   canManage,
   canReorder,
   index,
-  count,
   removeLocked,
-  onMoveUp,
-  onMoveDown,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
@@ -2261,10 +2350,7 @@ function RosterRow({
   canManage: boolean;
   canReorder: boolean;
   index: number;
-  count: number;
   removeLocked: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onRemove: () => void;
   onToggleCaptain: () => void;
   removeAriaLabel: string;
@@ -2312,10 +2398,7 @@ function RosterRow({
         canManage,
         canReorder,
         index,
-        count,
         removeLocked,
-        onMoveUp,
-        onMoveDown,
         onRemove,
         onToggleCaptain,
         removeAriaLabel,
