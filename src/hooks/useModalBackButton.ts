@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { pushMarker, isOwnPop } from "@/lib/historyMarker";
 
 /**
  * Intercepts the browser/OS back button while a modal is open and calls
@@ -55,8 +56,12 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
     const id = Symbol("modal");
     modalStack.push(id);
 
-    // Push a phantom entry so back has something to pop.
-    window.history.pushState({ modal: true }, "");
+    // Push a phantom entry so back has something to pop. `myDepth` is what makes
+    // the pop testable for ownership (historyMarker.ts) — the modal STACK alone
+    // can't do it, because the stack only knows about modals, and the entry above
+    // us may belong to the settings overlay, an in-page screen, the game panel, or
+    // the tab sentinel.
+    let myDepth = pushMarker("modal", { modal: true });
 
     // Spurious popstate guard: Next.js / React may fire popstate during their
     // own history churn on mount. Until things settle we re-push instead of
@@ -72,22 +77,40 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
     let closedByBack = false;
 
     const handlePopState = (e: PopStateEvent) => {
+      // Consume the one-shot programmatic-pop marker FIRST, whoever we are: it was
+      // set for exactly this pop, and if an ownership check below returns early it
+      // would otherwise stay latched and swallow the NEXT real back-press.
+      const wasProgrammatic = suppressNextPop;
+      if (wasProgrammatic) suppressNextPop = false;
+
       // Only the topmost modal handles a pop. Outer layers bail without
       // stopping propagation so the event reaches the top modal's listener.
       if (modalStack[modalStack.length - 1] !== id) return;
+
+      // Not our entry — something ABOVE this modal was popped (an in-page screen,
+      // the settings overlay, the game panel, or the tab sentinel). Return WITHOUT
+      // stopping propagation so the real owner still hears it. This has to come
+      // before stopImmediatePropagation, or a foreign pop dies here.
+      //
+      // Depth now also covers what `suppressNextPop` was invented for — an inner
+      // modal's cleanup pops its OWN entry, and we land on ours, which reads as
+      // not-our-pop. The flag is kept as the belt to that suspenders, since it
+      // also covers a programmatic pop of an entry we never tagged.
+      if (!isOwnPop(e, myDepth)) return;
 
       // Top modal owns this event — stop Next.js's bubble-phase navigation.
       e.stopImmediatePropagation();
 
       // A programmatic pop from an inner modal's cleanup — not a user action.
-      if (suppressNextPop) {
-        suppressNextPop = false;
-        return;
-      }
+      // Our own phantom is untouched (the inner one was popped), so do NOT
+      // re-push: that would leave this modal holding two entries and needing two
+      // back-presses to close.
+      if (wasProgrammatic) return;
 
       if (!settled) {
-        // Spurious popstate during mount — re-push so the intercept holds.
-        window.history.pushState({ modal: true }, "");
+        // Spurious popstate during mount — re-push so the intercept holds. This IS
+        // a new entry, so re-claim a depth for it.
+        myDepth = pushMarker("modal", { modal: true });
         return;
       }
 

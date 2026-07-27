@@ -7,6 +7,7 @@ import { Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
+import { pushMarker } from "@/lib/historyMarker";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
@@ -22,7 +23,11 @@ export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
  */
 function openGamePanel(pathname: string, gameId: string, settings: boolean) {
   const q = `?game=${gameId}${settings ? "&settings=1" : ""}`;
-  window.history.pushState(null, "", `${pathname}${q}`);
+  // Tagged via pushMarker, not a bare pushState(null): an UNTAGGED entry reads as
+  // depth 0, which makes every marker below it think it sits above them — so
+  // popping this entry would make the settings overlay / a modal / an in-page
+  // screen wrongly claim the pop. See historyMarker.ts.
+  pushMarker("panel", undefined, `${pathname}${q}`);
 }
 
 /**
@@ -34,7 +39,7 @@ function openGamePanel(pathname: string, gameId: string, settings: boolean) {
  * cold deep-link fallback.)
  */
 function openScorecardOverlay(pathname: string, gameId: string) {
-  window.history.pushState(null, "", `${pathname}?scorecard=${gameId}`);
+  pushMarker("panel", undefined, `${pathname}?scorecard=${gameId}`);
 }
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
