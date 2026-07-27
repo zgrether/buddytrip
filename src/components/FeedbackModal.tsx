@@ -493,7 +493,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 // Friendly screen label from the pathname + active tab query param.
 // The trip page keeps its active tab in ?tab=<id> (not a route segment),
 // so the tab must be read from searchParams and passed in here.
-function labelForPath(path: string, tab?: string | null): string {
+export function labelForPath(path: string, tab?: string | null): string {
   if (!path || path === "/") return "Landing";
   if (path.startsWith("/dashboard")) return "Dashboard";
   if (path.startsWith("/profile/archived-ideas")) return "Profile · Archived ideas";

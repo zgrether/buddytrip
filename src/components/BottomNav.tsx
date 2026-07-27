@@ -164,15 +164,24 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
             key={id}
             data-testid={`nav-${id}`}
             onClick={() => {
-              if (pathname === href) return; // already here
+              const goingToTripHome = href === `/trips/${tripId}`;
+              // "Already here" is a PATHNAME match, but since Phase 2 the trip
+              // page's tab lives in the query string — so on `/trips/x?tab=crew`
+              // this used to match and silently do nothing, when the user asked
+              // to go to trip HOME. Fall through in that case and let the trip
+              // page's own sentinel logic put us back on the home tab.
+              const onTripPageSubTab =
+                goingToTripHome && pathname === href && !!window.location.search;
+              if (pathname === href && !onTripPageSubTab) return; // genuinely already here
+
               // Live is a CHILD of trip home (hierarchical, not flat tabs):
               //  - Trip Home: replace → return to THIS trip's home in place.
               //    Deterministic — never router.back(), which could pop to a
               //    previously-visited trip; never push, which would stack a
-              //    duplicate home.
+              //    duplicate home. Still correct with the tab sentinel: replacing
+              //    lands on the bare trip URL, which derives the home tab.
               //  - Live: push → browser-back from Live returns to the trip
               //    home you came from (not the previous trip).
-              const goingToTripHome = href === `/trips/${tripId}`;
               if (goingToTripHome) router.replace(href);
               else router.push(href);
             }}

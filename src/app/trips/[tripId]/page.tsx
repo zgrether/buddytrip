@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
+
+/** The tab ids `?tab=` will honour. `comp` is accepted only so a stale link can
+ *  be recognised and redirected — it is never written by this page. */
+const VALID_TABS = ["home", "crew", "lodging", "schedule", "expenses", "comp"] as const;
 
 // Old `/trips/<uuid>` links skip slug resolution and use the id directly.
 // Inlined (not imported from @/lib/slug, which pulls in node crypto and would
@@ -36,6 +41,7 @@ import { DatesSheet } from "./components/DatesSheet";
 
 function TripDetailBody({ tripId }: { tripId: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   // Initial tab respects `?tab=<id>` so sub-pages (e.g. the event
   // detail page under /trips/[tripId]/events/[eventId]) can route the
@@ -44,20 +50,49 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // `activeTabRaw` is the literal user/URL intent; the effective
   // `activeTab` (derived below) snaps back to "home" when the user
   // doesn't have permission for the requested tab.
-  const [activeTabRaw, setActiveTab] = useState<TabId>(() => {
-    const initial = searchParams.get("tab");
-    const validTabs: TabId[] = [
-      "home",
-      "crew",
-      "lodging",
-      "schedule",
-      "expenses",
-      "comp",
-    ];
-    return (validTabs as string[]).includes(initial ?? "")
-      ? (initial as TabId)
+  // ── Tab state lives in the URL (Phase 2 / IA-1) ───────────────────────────
+  // It used to be `useState` seeded once from `?tab=` and never written back, so
+  // a tab was not a place: no deep link, nothing to share, and back left the trip
+  // entirely instead of stepping to the previous tab (NAV_AUDIT_2.md §1.1).
+  //
+  // Now the URL is the single source of truth and the tab is DERIVED from it —
+  // which means back/forward need no listener of their own. Next syncs a manual
+  // pushState/replaceState into `useSearchParams`, and popstate re-derives.
+  //
+  // History cost is ONE entry per excursion, not one per switch: see `writeTab`.
+  const activeTabRaw: TabId = useMemo(() => {
+    const requested = searchParams.get("tab");
+    return (VALID_TABS as readonly string[]).includes(requested ?? "")
+      ? (requested as TabId)
       : "home";
-  });
+  }, [searchParams]);
+
+  /**
+   * Move to `tab` by rewriting the URL.
+   *
+   * The sentinel model: the FIRST step away from Home pushes one entry;
+   * every switch after that replaces it. So five tab taps cost one history
+   * entry, back from any tab returns to Home, and back from Home leaves the
+   * trip — instead of a stack five deep that the user has to unwind.
+   */
+  const setActiveTab = useCallback(
+    (tab: TabId) => {
+      if (typeof window === "undefined" || tab === activeTabRaw) return;
+      const url = tab === "home" ? pathname : `${pathname}?tab=${tab}`;
+      if (readOwner(window.history.state) === "tab") {
+        // Already on the sentinel — swap its URL, don't stack another entry.
+        replaceMarker("tab", { btTab: true }, url);
+      } else {
+        pushMarker("tab", { btTab: true }, url);
+      }
+      // No router call on purpose. Next syncs a History API write into
+      // `useSearchParams` with NO server round-trip — the same mechanism the game
+      // panel uses for `?game=` (CLAUDE.md #12). Going through `router.replace`
+      // here would re-resolve the RSC and reintroduce exactly the cost this
+      // refactor exists to remove.
+    },
+    [activeTabRaw, pathname],
+  );
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
@@ -204,10 +239,27 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // the escaped Live face at /leaderboard (Stage 3). Any stale `?tab=comp`
   // deep link (e.g. browser-back to an old owner URL, or a sub-page that
   // routes back with tab=comp) redirects onto the face.
+  //
+  // LOOP HAZARD (NAV_AUDIT_2.md §5.4). Now that the tab is derived from the URL,
+  // a redirect keyed on a tab VALUE fires again every time that URL comes back —
+  // and a user pressing back from the face would be bounced forward onto it
+  // forever. Two things prevent it:
+  //   1. `router.replace`, not push: the `?tab=comp` entry is CONSUMED, so back
+  //      from the face lands on whatever preceded it and never re-presents comp.
+  //   2. `writeTab` never emits `?tab=comp` — `goToTab` intercepts comp and
+  //      pushes the face route instead. The only way this URL exists is a stale
+  //      external link, which is a one-shot.
+  // The ref is belt-and-braces against a double-invoke (StrictMode) firing two
+  // replaces for one stale link.
+  const compRedirectedRef = useRef(false);
   useEffect(() => {
-    if (activeTabRaw === "comp") {
-      router.replace(`/trips/${tripId}/leaderboard`);
+    if (activeTabRaw !== "comp") {
+      compRedirectedRef.current = false;
+      return;
     }
+    if (compRedirectedRef.current) return;
+    compRedirectedRef.current = true;
+    router.replace(`/trips/${tripId}/leaderboard`);
   }, [activeTabRaw, tripId, router]);
 
   // ── Loading ───────────────────────────────────────────────────────────────
