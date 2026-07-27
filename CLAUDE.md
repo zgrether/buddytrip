@@ -364,6 +364,49 @@ These patterns have been established through prior work. Follow them exactly —
     dead-zone backstop for a socket drop, a backgrounded tab, or a network handoff (not an
     edge case on a golf course). **Do not remove the poll as "redundant" with Realtime —
     the redundancy is the point.** (Source: `DATA_FRESHNESS_AUDIT.md` §8-F5.)
+20. **Score/lifecycle changes reach the board by DB BROADCAST — and the payload is a
+    SIGNAL, never data.** A trigger (migration 096, `broadcast_score_event`) fires on
+    `score_entries` / `match_hole_outcomes` / `game_results` (I/U/D) and on `games`
+    UPDATEs **guarded by a `WHEN` clause on the three columns that move the board**
+    (`status`, `corrections_open`, `scoring_enabled` — without that guard every settings
+    save would broadcast). It sends `{gameId, competitionId}` on topic
+    `competition_events:{competitionId}`; `useRealtimeScoreEvents` subscribes and
+    invalidates. This replaced the 30s `competitions.leaderboard` poll, which cost
+    ~1,900 req/hour at BBMI scale to mostly learn nothing had happened.
+    - **Broadcast, NOT `postgres_changes`.** Migration 084's exclusion of the score
+      tables from the Realtime publication **still stands** — broadcast needs no
+      publication and lets the DB decide what subscribers are told instead of shipping
+      whole rows over WAL. Do not add score tables to the publication.
+    - **Never put scores, names, or standings in the payload.** The topic is public
+      (`private => false`), so the payload is what an *unauthenticated* listener gets;
+      the client's tRPC refetch is what re-applies auth/RLS. The tempting optimization
+      ("we already have the score in the event, why refetch?") breaks security **and**
+      #15 simultaneously — applying a payload value would clobber the active enterer's
+      in-flight cell. Invalidate-and-refetch is what preserves both; they fail together.
+    - **Invalidate `faceBootstrap` AND `competitions.leaderboard`** (#10 — the child
+      alone is silently undone by the face's re-seed), plus `scores.listByGame`, which
+      routes the change through the view's existing `reconcileScores(..., protectedKeys)`
+      effect. **Alternate trigger, same reconcile — never write a second overlay path.**
+    - **Subscribe on VIEW, not on membership**, and share the channel: the registry in
+      `useRealtimeScoreEvents` is **ref-counted** because under #12 the board stays
+      mounted beneath an open game panel, so two surfaces watch one topic and a naive
+      unmount would `removeChannel` out from under the one still on screen.
+    - **The 5-minute `LEADERBOARD_QUERY` interval is a dead-socket backstop, not the
+      freshness mechanism.** Same reasoning as #19: do not remove it, and do not tune it
+      back down to make the board feel live — if the board feels stale the subscription
+      is broken, and shortening the poll hides that. The ~20s `configHash` poll is
+      untouched by this.
+    - **A broadcast failure must never roll back a write.** Two independent layers:
+      `realtime.send` already swallows its own errors (`RAISE WARNING`), and the trigger
+      body has its own `WHEN OTHERS` handler. Standalone games (~40% of prod) simply
+      early-return — the null-competition path is the COMMON case, not an edge case.
+    - **The topic string is a two-sided contract** between the SQL trigger and
+      `scoreEventsTopic()`, and a mismatch fails SILENTLY — scores still save, the board
+      still renders, live updates just stop. `broadcastScoreEvents.test.ts` imports the
+      constants from the hook and subscribes with a real client to pin it end to end.
+      (It caught exactly this during the build.) Note `competition:{tripId}` is a
+      DIFFERENT, pre-existing topic owned by `useRealtimeCompetition` (competition ROW,
+      keyed by trip) — keep the two prefixes distinct.
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 

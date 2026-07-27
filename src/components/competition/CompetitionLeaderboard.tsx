@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
+import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
@@ -105,15 +106,15 @@ interface Props {
 }
 
 export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, onAddGame, onEditTeam }: Props) {
+  // Live standings: migration 096's trigger broadcasts on every score /
+  // lifecycle write and this invalidates within a tick. LEADERBOARD_QUERY's
+  // interval is now only the dead-socket backstop behind it (5 min), not the
+  // freshness mechanism — see queryConfig.ts.
+  useRealtimeScoreEvents(tripId, competitionId);
+
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
-    {
-      enabled: !!competitionId,
-      // No realtime subscription (D2 scope): refresh on a 30-second interval
-      // so the board updates without a manual reload. A future realtime
-      // invalidation can drop in by cancelling this interval.
-      refetchInterval: 30_000,
-    }
+    { ...LEADERBOARD_QUERY, enabled: !!competitionId }
   );
 
   const data = lb as LeaderboardData | undefined;
