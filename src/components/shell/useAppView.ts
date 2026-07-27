@@ -1,0 +1,86 @@
+"use client";
+
+import { useCallback, useMemo } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
+
+/**
+ * useAppView — the OUTER tab (Home · Trip · Cup · Chat), Phase 3.
+ *
+ * Same model as Phase 2's inner trip sub-tabs, one level up: the tab is DERIVED
+ * from the URL (`?view=`), writes go through the History API, and the first step
+ * away from the default pushes ONE sentinel that every later switch replaces. So
+ * an excursion across all four tabs costs one history entry, back returns to
+ * where it started, and back again leaves.
+ *
+ * ── `?view=` and `?tab=` coexist, and `?tab=` is PRESERVED ───────────────────
+ * `/trips/x?view=trip&tab=crew` is the normal shape: the outer tab says which
+ * context surface you're on, the inner one says where you are inside Trip. They
+ * are independent, so switching `?view=` deliberately carries `?tab=` through
+ * untouched — otherwise checking the Cup and coming back would dump you on the
+ * Trip Home sub-tab every time and you'd lose your place. `writeView` rebuilds
+ * the query string from the CURRENT params rather than replacing it wholesale,
+ * which is what makes that preservation automatic rather than a special case.
+ *
+ * ── Scope: persistent WITHIN a context, not across ───────────────────────────
+ * Trip ↔ Cup ↔ Chat are free — same route, no server round trip. Home is a
+ * navigation, because Home is context-free and lives on `/dashboard` while the
+ * other three are scoped to `/trips/[tripId]`. That is the deliberate trade:
+ * context switches are rare and heavier by nature, and keeping them on a route
+ * boundary is what preserves the anti-flash guarantee (see AppShell).
+ */
+
+export type AppView = "home" | "trip" | "cup" | "chat";
+
+export const APP_VIEWS: readonly AppView[] = ["home", "trip", "cup", "chat"] as const;
+
+/** The view a scoped host shows when `?view=` is absent. */
+const DEFAULT_VIEW: AppView = "trip";
+
+export function useAppView(): {
+  view: AppView;
+  setView: (next: AppView) => void;
+  /** Build the href another surface should link to for a given view. */
+  hrefFor: (next: AppView) => string;
+} {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const view = useMemo<AppView>(() => {
+    const requested = searchParams.get("view");
+    return (APP_VIEWS as readonly string[]).includes(requested ?? "")
+      ? (requested as AppView)
+      : DEFAULT_VIEW;
+  }, [searchParams]);
+
+  /** Current query string with `view` swapped and everything else — notably
+   *  `tab` — carried through. */
+  const urlFor = useCallback(
+    (next: AppView) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === DEFAULT_VIEW) params.delete("view");
+      else params.set("view", next);
+      const q = params.toString();
+      return q ? `${pathname}?${q}` : pathname;
+    },
+    [pathname, searchParams],
+  );
+
+  const setView = useCallback(
+    (next: AppView) => {
+      if (typeof window === "undefined" || next === view) return;
+      const url = urlFor(next);
+      // One sentinel for the whole excursion — see the header. `view` is its own
+      // owner so it can be told apart from the inner `tab` sentinel, which may
+      // already be on the stack from a sub-tab switch.
+      if (readOwner(window.history.state) === "view") {
+        replaceMarker("view", { btView: true }, url);
+      } else {
+        pushMarker("view", { btView: true }, url);
+      }
+    },
+    [view, urlFor],
+  );
+
+  return { view, setView, hrefFor: urlFor };
+}

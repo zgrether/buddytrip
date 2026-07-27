@@ -52,7 +52,7 @@
  */
 
 /** Which surface pushed an entry. Diagnostic, and it keeps the tags greppable. */
-export type MarkerOwner = "screen" | "modal" | "config" | "panel" | "tab";
+export type MarkerOwner = "screen" | "modal" | "config" | "panel" | "tab" | "view";
 
 export interface HistoryMarker {
   /** Monotonic position among BuddyTrip-owned entries. */
