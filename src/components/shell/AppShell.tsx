@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { GameChromeProvider } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
@@ -78,6 +78,36 @@ export function AppShell({
 
   const effectiveView: AppView = hasContext ? view : "home";
 
+  /**
+   * LAZY MOUNT, then keep. A slot is not mounted until its tab is first visited;
+   * after that it stays mounted so returning to it is free.
+   *
+   * Eager-mounting all three was the obvious way to make switching instant, and
+   * it worked — but it made every surface pay for surfaces nobody opened. Two
+   * concrete costs:
+   *
+   *  - A cold `?view=cup` deep link fired the Trip slot's ~18 procedures for a
+   *    tab the user never asked for.
+   *  - `httpBatchLink` batches by tick, and a batch resolves at the speed of its
+   *    SLOWEST member — so more mounted surfaces means more coupling between
+   *    surfaces that have nothing to do with each other. That is what turned
+   *    critical-path.spec.ts:309 red: it holds `games.configHash` for 20s, and
+   *    the settings stepper waits on `games.getById`, its BATCH-MATE, not on the
+   *    hash itself. Verified by capturing the live batch —
+   *    `listOrganizers + getById + matches + scores + matchOutcomes + configHash`.
+   *
+   * So this is not a workaround for a test. Eager mount is a real egress and
+   * latency cost, and lazy mount is the model regardless — it keeps the switch
+   * free where it matters (anything already visited) and stops cold open paying
+   * for the rest.
+   */
+  const [visited, setVisited] = useState<ReadonlySet<AppView>>(
+    () => new Set<AppView>([effectiveView]),
+  );
+  useEffect(() => {
+    setVisited((prev) => (prev.has(effectiveView) ? prev : new Set(prev).add(effectiveView)));
+  }, [effectiveView]);
+
   let body: ReactNode;
   if (peeking) {
     body = <LockedTabExplainer view={peeking} onPickTrip={() => setPeeking(null)} />;
@@ -99,10 +129,12 @@ export function AppShell({
      */
     body = (
       <div key={tripId ?? "no-context"}>
-        <div hidden={effectiveView !== "trip"}>
-          {typeof trip === "function" ? trip({ requestView: select }) : trip}
-        </div>
-        <div hidden={effectiveView !== "cup"}>{cup}</div>
+        {visited.has("trip") && (
+          <div hidden={effectiveView !== "trip"}>
+            {typeof trip === "function" ? trip({ requestView: select }) : trip}
+          </div>
+        )}
+        {visited.has("cup") && <div hidden={effectiveView !== "cup"}>{cup}</div>}
         {/*
          * Chat is CONDITIONALLY RENDERED, not hidden like the other two.
          *
