@@ -36,7 +36,6 @@ interface TripSwitcherProps {
 // every column; we just type the fields we use here.
 type SwitcherTrip = TripStatusFields & {
   id: string;
-  slug?: string;
   title: string;
   start_date: string | null;
   end_date: string | null;
@@ -239,9 +238,9 @@ function TripSwitcherBody({
         <TripSwitcherRow
           key={trip.id}
           trip={trip}
-          isCurrent={trip.id === currentTripId || trip.slug === currentTripId}
+          isCurrent={trip.id === currentTripId}
           isLast={!showDividers && idx === activeTrips.length - 1 && pastTrips.length === 0}
-          onClick={() => onSelectTrip(trip.slug ?? trip.id)}
+          onClick={() => onSelectTrip(trip.id)}
         />
       ))}
 
@@ -250,9 +249,9 @@ function TripSwitcherBody({
         <TripSwitcherRow
           key={trip.id}
           trip={trip}
-          isCurrent={trip.id === currentTripId || trip.slug === currentTripId}
+          isCurrent={trip.id === currentTripId}
           isLast={idx === pastTrips.length - 1}
-          onClick={() => onSelectTrip(trip.slug ?? trip.id)}
+          onClick={() => onSelectTrip(trip.id)}
         />
       ))}
 

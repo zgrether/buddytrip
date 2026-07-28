@@ -2,143 +2,86 @@
 
 import { createContext, useContext, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 
 /**
  * TripIdProvider / useTripId — the ONE place the `/trips/[tripId]` URL param is
- * turned into the canonical trip UUID.
+ * read.
  *
- * ── The canonical form, stated once (the thing whose absence caused the bug) ──
- * The URL layer accepts BOTH a human-friendly slug (`bbmi-2027-a3f9c1`) and a
- * raw trip UUID — old links must keep working and the slug is a display nicety.
- * **Everything below the URL is UUID-only**: tRPC inputs, realtime channel
- * names, and every React Query cache key. The param is resolved to the UUID
- * exactly ONCE, here, at the route boundary; no component downstream re-derives
- * it.
+ * ── Trip identity in a URL is the UUID; there is no second form ─────────────
+ * `/trips/{uuid}` is the only shape the app produces. There is nothing to
+ * resolve: the param IS the canonical id, and everything below the URL (tRPC
+ * inputs, realtime channel names, React Query cache keys) has always been
+ * UUID-only. The param is still funnelled through this one provider — see the
+ * next paragraph for why that matters independently of resolution.
  *
- * ── Why this exists rather than each consumer calling useParams() ────────────
- * It used to be a convention, and the convention broke. Six components had each
- * copied the same `UUID_RE.test(param) ? param : resolveSlug(param)` block, and
- * a seventh — `LiveFaceClient`, the root of the whole Cup subtree — simply read
- * `useParams().tripId` and handed the raw value to `competitions.faceBootstrap`.
- * A slug never matches `trip_members.trip_id`, so the server threw FORBIDDEN and
- * the Cup tab rendered "no competition yet".
+ * This used to accept a slug as well and resolve it here. Slugs were removed
+ * (see CLAUDE.md #21): the generator, the `slug ?? id` navigation fallbacks and
+ * the `trips.resolveSlug` procedure are all gone, so what remains is a param
+ * that is already the id. `trips.slug` itself is dropped in a follow-up PR,
+ * after this code is deployed — a DROP inverts the usual migration ordering
+ * (CLAUDE.md Migration Workflow 3b).
  *
- * That stayed invisible because which form the URL carries depends on the door
- * you came through: the root route redirects to `/trips/<uuid>` (the
- * `bt-last-trip-id` cookie stores the resolved id), while every trip LIST
- * navigates to `/trips/<slug>` (`TripCard`, `ContextRail` both use
- * `slug ?? id`). So Cup worked on app load and broke the moment you picked a
- * trip from a list — and "worked again after a reload" because a reload goes
- * through the root route's UUID redirect.
+ * ── Why the provider survives the resolution it used to wrap ────────────────
+ * Reading the param in one place is worth more than the resolving was. It used
+ * to be a convention that every consumer resolved the param itself, and the
+ * convention broke: six components had each copied the same resolve block, and
+ * a seventh — `LiveFaceClient`, root of the whole Cup subtree — skipped it and
+ * handed the raw param to `competitions.faceBootstrap`. That was invisible for
+ * as long as it was, because which form the URL carried depended on the door
+ * you came through, so Cup worked on app load and broke on the next trip
+ * picked from a list.
  *
- * Pre-refactor this could not happen: the face lived at its own
- * `/trips/[tripId]/leaderboard` route, linked from inside the trip page using
- * the already-resolved UUID. Making the competition a TAB on `/trips/[param]`
- * is what exposed it to the raw param.
- *
- * So: consume `useTripId()`. Do NOT reach for `useParams().tripId` to feed a
- * procedure, a channel name, or a cache key — that is the path this provider
- * exists to close. (Using the raw param to BUILD A URL is fine and correct;
- * that's the display layer, and `rawParam` is exposed for it.)
+ * Removing slugs kills that specific bug, but not the shape of it — a param
+ * read in twelve places is still twelve places to get something wrong the next
+ * time this route's shape changes (Phase 7 will change it). So: consume
+ * `useTripId()`, and do NOT reach for `useParams().tripId` in trip-scoped code.
+ * A source guard in `TripIdProvider.test.ts` fails the build if you do, and a
+ * second guard asserts no call site builds a trip URL from anything but `.id`.
  */
 
-// Inlined rather than imported from @/lib/slug, which pulls in node crypto and
-// would break the client bundle.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface TripIdValue {
-  /** The canonical trip UUID. `undefined` while a slug is still resolving. */
+  /** The canonical trip UUID, or `undefined` if the param isn't one. */
   tripId: string | undefined;
-  /** The raw URL param — slug or uuid. For building URLs ONLY, never for a
-   *  procedure input, channel name, or cache key. */
+  /** The raw URL param, for building URLs. Identical to `tripId` for any URL
+   *  the app produces; they differ only for a malformed/legacy param. */
   rawParam: string;
-  /** A slug lookup is in flight; `tripId` is not known yet. */
+  /**
+   * Always false. Kept so consumers written against the resolving era keep
+   * compiling and reading correctly — there is no asynchronous step any more,
+   * so the id is known on the first render or it is never known.
+   */
   isResolving: boolean;
-  /** The param matched no trip the user can see (deleted / revoked / typo). */
+  /** The param is not a trip UUID — a malformed link, or a legacy slug URL
+   *  someone copied out of the address bar before slugs were removed. Routes
+   *  bounce to /dashboard on this. */
   isError: boolean;
 }
 
 const TripIdContext = createContext<TripIdValue | null>(null);
 
 /**
- * The whole resolution decision, as a pure function so it can be tested
- * directly — in particular the `initialParam === rawParam` guard, which is the
- * thing standing between a trip switch and cross-trip bleed.
+ * The param → id decision, as a pure function so it stays directly testable.
+ * Now trivial; kept as a seam because the URL shape is about to change again
+ * (Phase 7 moves context into a search param), and a named function is a
+ * cheaper place to make that change than twelve call sites.
  */
-export function resolveTripIdValue({
-  rawParam,
-  initialParam,
-  initialTripId,
-  resolvedId,
-  resolveErrored,
-}: {
-  rawParam: string;
-  initialParam: string | null;
-  initialTripId: string | null;
-  resolvedId: string | undefined;
-  resolveErrored: boolean;
-}): TripIdValue {
+export function resolveTripIdValue({ rawParam }: { rawParam: string }): TripIdValue {
   const isId = UUID_RE.test(rawParam);
-  // Trust the server-resolved id ONLY for the exact param it was resolved for.
-  // This component is reused across a client-side trip switch, and
-  // `useParams()` and the RSC payload need not update in the same commit — so
-  // without this check trip A's resolved id could be read under trip B's param
-  // for a render, which is precisely the cross-trip bleed this fix exists to
-  // prevent. Checked, not assumed.
-  const seeded = initialParam === rawParam && !isId ? initialTripId : null;
-
   return {
-    tripId: isId ? rawParam : (seeded ?? resolvedId),
+    tripId: isId ? rawParam : undefined,
     rawParam,
-    isResolving: !isId && !seeded && !resolvedId && !resolveErrored,
-    isError: !isId && !seeded && resolveErrored,
+    isResolving: false,
+    isError: !!rawParam && !isId,
   };
 }
 
-export function TripIdProvider({
-  children,
-  /**
-   * The id the LAYOUT already resolved on the server for this same param.
-   * Passing it down means a slug URL has its canonical id on the very first
-   * client render — no undefined window, no client round trip, and no flash of
-   * a "still resolving" state on any server-rendered navigation. The client
-   * query below is the fallback for when that server resolve was skipped
-   * (unauthed / early), not the normal path.
-   */
-  initialTripId = null,
-  /** The param `initialTripId` was resolved FOR — see `seeded` below. */
-  initialParam = null,
-}: {
-  children: React.ReactNode;
-  initialTripId?: string | null;
-  initialParam?: string | null;
-}) {
+export function TripIdProvider({ children }: { children: React.ReactNode }) {
   const params = useParams<{ tripId?: string }>();
   const rawParam = params?.tripId ?? "";
-  const isId = UUID_RE.test(rawParam);
-  const seeded = initialParam === rawParam && !isId ? initialTripId : null;
 
-  // A UUID param skips the lookup entirely, as does a server-seeded id.
-  // STRUCTURE_QUERY: a slug→id mapping is immutable for the life of the trip,
-  // so this is fetched once and kept — never a per-navigation round trip.
-  const resolved = trpc.trips.resolveSlug.useQuery(
-    { slugOrId: rawParam },
-    { ...STRUCTURE_QUERY, enabled: !!rawParam && !isId && !seeded, retry: false },
-  );
-
-  const value = useMemo<TripIdValue>(
-    () =>
-      resolveTripIdValue({
-        rawParam,
-        initialParam,
-        initialTripId,
-        resolvedId: resolved.data?.id,
-        resolveErrored: resolved.isError,
-      }),
-    [rawParam, initialParam, initialTripId, resolved.data, resolved.isError],
-  );
+  const value = useMemo<TripIdValue>(() => resolveTripIdValue({ rawParam }), [rawParam]);
 
   return <TripIdContext.Provider value={value}>{children}</TripIdContext.Provider>;
 }
@@ -148,7 +91,7 @@ export function TripIdProvider({
  *
  * Throws outside the provider ON PURPOSE: the provider is mounted in
  * `/trips/[tripId]/layout.tsx`, so every trip-scoped surface has it, and a
- * component that can't reach it has no business resolving a trip id from the
+ * component that can't reach it has no business reading a trip id from the
  * URL on its own.
  */
 export function useTripId(): TripIdValue {

@@ -68,23 +68,20 @@ export function LiveFaceClient({
   embedded?: boolean;
 }) {
   /**
-   * The CANONICAL trip UUID, not the raw URL param.
+   * The trip UUID, via the shared provider — never `useParams()` directly.
    *
-   * This read `useParams().tripId` and handed it straight to
-   * `competitions.faceBootstrap` — which is a SLUG whenever the user arrived
-   * from a trip list, and a slug never matches `trip_members.trip_id`. The
-   * server threw FORBIDDEN, `boot` came back undefined, and the whole Cup
-   * subtree rendered "no competition yet" (an owner saw the non-editor
-   * placeholder rather than the create form — the tell). It looked
-   * intermittent because the root route redirects to `/trips/<uuid>`, so Cup
-   * worked on app load and broke on the next trip you picked from a list.
-   * See TripIdProvider for the full chain.
+   * This once read `useParams().tripId` and handed the raw value to
+   * `competitions.faceBootstrap`. Back when trip URLs could carry a slug, that
+   * value was a slug for anyone who arrived from a trip list, it never matched
+   * `trip_members.trip_id`, and the whole Cup subtree rendered "no competition
+   * yet" — an owner seeing the non-editor placeholder instead of the create
+   * form was the tell. Slugs are gone now (CLAUDE.md #21), but the rule that
+   * came out of it stands: read the id from `useTripId()`.
    *
    * Split outer/inner exactly as `TripDetailPage`/`TripDetailBody` does, so
-   * everything below is typed against a RESOLVED `string` and no longer has to
-   * thread `undefined` through ~15 call sites. The layout seeds the provider
-   * with the id it already resolved server-side, so this spinner is only
-   * reachable when that server resolve was skipped (unauthed/early).
+   * everything below is typed against a plain `string` rather than threading
+   * `undefined` through ~15 call sites. The fallback below is reachable only
+   * for a param that isn't a trip UUID at all.
    */
   const { tripId } = useTripId();
 
@@ -112,8 +109,7 @@ function LiveFaceInner({
   embedded: boolean;
 }) {
   // Push competition (name, tagline, roster setup) + membership changes live so
-  // the face re-resolves without a manual refresh. Both take the canonical id —
-  // a realtime channel name keyed by slug would never match the server's.
+  // the face re-resolves without a manual refresh.
   useRealtimeCompetition(tripId);
   useRealtimeMembers(tripId);
 
@@ -370,9 +366,7 @@ function NotSetUpEmptyState() {
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
-  // The raw param, deliberately: this only builds a URL, and the URL layer
-  // accepts either form (keeping the pretty slug in the address bar).
-  const { rawParam: tripId } = useTripId();
+  const { tripId } = useTripId();
   return (
     <div
       className="mt-6 flex flex-col items-center justify-center rounded-xl px-6 py-16 text-center"
