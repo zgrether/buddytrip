@@ -1,0 +1,53 @@
+-- 097 — drop trips.slug
+--
+-- REVERSES migration 031 (`031_trip_slugs`), and with it 032
+-- (`032_trip_slug_code_4char`, which only re-slugged the same column).
+--
+-- 031's comment argued the slug was "a display layer" over a canonical UUID,
+-- with "all readers fall back to the UUID when slug is absent (`slug ?? id`)".
+-- That reasoning deserves a reply rather than silent deletion, because the
+-- fallback is precisely what went wrong: readers written as "prefer the slug if
+-- present" behave as "always use the slug" for any trip that has one, so the
+-- slug became the URL form rather than an optional nicety. A slug never matches
+-- `trip_members.trip_id`, which is what `requireTripMember` compares, so the
+-- competition ("Cup") surface returned FORBIDDEN and rendered "no competition
+-- yet" for any trip opened from a trip list (#741 diagnosed it; #742 removed
+-- the machinery). Slugs are not wanted — see CLAUDE.md #21, which was corrected
+-- in the same change: trip identity in a URL is the id, and there is no second
+-- form.
+--
+-- ORDERING — this is a REMOVAL, so it lands AFTER its code, not before
+-- (CLAUDE.md Migration Workflow 3b). `trips.create` stopped writing this column
+-- in #742, which is deployed to production (commit c0082e09). Running this
+-- while the old code was still live would have failed every trip creation with
+-- "column does not exist".
+--
+-- AUDIT (CLAUDE.md Schema Cleanup Rule — audit-tool output is a starting point,
+-- not a verdict, so this was checked against the live database, not inferred):
+--   * code            — zero references in src; two source guards in
+--                       `TripIdProvider.test.ts` fail the build if any return.
+--   * pg_depend       — one dependent object, the `trips_slug_key` UNIQUE index,
+--                       which DROP COLUMN removes with it.
+--   * functions       — zero function/procedure bodies mention `slug`. This is
+--                       the check that matters most: `merge_guest_to_real_user`
+--                       runs inside the `handle_new_user` signup trigger, and a
+--                       dangling reference there breaks ALL signup (the
+--                       migration-023 class). It is clean.
+--   * views/matviews  — zero definitions mention `slug`.
+--   * triggers        — the only trigger on `trips` is `set_updated_at`, which
+--                       is column-agnostic.
+--   * RLS policies    — no policy expression on `trips` references `slug`.
+--
+-- Data at the time of writing: 73 trips, 6 with a slug, 67 NULL. (Worth
+-- recording because it corrects an assumption made while removing the code:
+-- the column was NOT universally populated. 031 backfilled the rows that
+-- existed on 2026-06-08, and `trips.create` set it thereafter, but trips
+-- inserted by other paths — the E2E suite writes rows directly — never had one.
+-- Irrelevant to the drop; noted so the next reader doesn't inherit the wrong
+-- picture.)
+--
+-- Idempotent (`IF EXISTS`) and replayable from zero: on a fresh database 031
+-- adds and backfills the column, 032 re-slugs it, and this drops it — no
+-- environment-specific ids, nothing keyed to a particular row.
+
+ALTER TABLE public.trips DROP COLUMN IF EXISTS slug;
