@@ -9,8 +9,8 @@ import { useParams, useRouter } from "next/navigation";
  * Phase 3 moved the competition face into the four-tab shell hosted by
  * `/trips/[tripId]`, so this path no longer owns a surface. It is KEPT rather
  * than deleted because it is still referenced from **8 places in the app**
- * (`CompetitionEnableCard`, `TripSettingsModal`, the trip page's `?tab=comp`
- * redirect and its enable card, `BottomNav`, and the three game views'
+ * (`TripSettingsModal`, the trip page's `?tab=comp`
+ * redirect, `BottomNav`, and the three game views'
  * `onDeleted`) and **7 places in the E2E specs**, including both merge-blocking
  * ones. Removing it would have broken all of them at once.
  *

@@ -242,7 +242,23 @@ export function CompetitionFace({
   // settings sub-surface); the hero's gear opens the settings modal.
   const scoringModel = competition.scoring_model ?? "match_play";
   return (
-    <div className="space-y-4">
+    /**
+     * DESKTOP MASTER–DETAIL. With a game open, lg+ splits into
+     * [board | pane] — the board keeps its own scroll and stays interactive
+     * beside the game rather than being covered by it. Below lg it is a single
+     * column and the pane overlays, exactly as before.
+     *
+     * The grid is applied to the SAME element in both cases (just extra `lg:`
+     * classes), so opening a game on desktop reflows rather than remounting the
+     * board — the whole point of the panel idiom.
+     */
+    <div
+      className={
+        panelOpen
+          ? "space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:items-start lg:gap-4 lg:space-y-0"
+          : "space-y-4"
+      }
+    >
       {/* Rosters entry point RELOCATED into competition settings (§2 / the deferred Phase B):
           the leaderboard header no longer carries a Rosters button. Points cups open the
           Rosters surface from Settings → "Teams & rosters"; match_play team editing stays a
@@ -330,9 +346,21 @@ export function CompetitionFace({
           switch off `fixed inset-0` in panel mode via useInGamePanel). */}
       {panelOpen && (
         <div
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto ${suppressPanelWipeRef.current ? "" : "game-panel-in"}`}
+          /**
+           * MOBILE: an overlay layer over the board (`fixed`, below the 56px bar).
+           * DESKTOP (lg+): the SAME state renders as a DETAIL PANE beside the game
+           * list instead — `lg:static` drops it out of the overlay and the parent
+           * grid (below) gives it a column. Phase 5: same URL, same `?game=` state,
+           * two presentations, and NO routing construct — CLAUDE.md #12 forbids one
+           * and the parallel-routes suggestion was made once and was wrong.
+           *
+           * The wipe animation is mobile-only: a pane appearing beside a list has
+           * nothing to slide over.
+           */
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:static lg:z-auto lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the
             // nav-hidden entry surfaces (their CTA anchors to the viewport bottom).
             paddingBottom: navUnderPanel ? "calc(64px + env(safe-area-inset-bottom))" : undefined,

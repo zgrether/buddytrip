@@ -264,8 +264,7 @@ export function FreshTripGuide({
           The Cup tab is now that door, permanently, for everyone. Keeping the
           card would restore exactly the two-entry-points-to-one-object shape the
           nav audit flagged, this time with the second door only visible to
-          editors. `CompetitionEnableCard.tsx` is left on disk unreferenced —
-          deleting it is a separate cleanup, not a nav change. */}
+          editors. `CompetitionEnableCard.tsx` is deleted. */}
 
       {/* Commit bar — appears once there's enough to go; switches Home to the
           itinerary (the guide stays reopenable via the left pill). */}
