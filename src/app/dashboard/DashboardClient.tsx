@@ -8,6 +8,7 @@ import { HelperCards } from "@/components/HelperCards";
 import { FeaturesSection } from "@/components/marketing/FeaturesSection";
 import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 import { trpc } from "@/lib/trpc-client";
+import { AppShell } from "@/components/shell/AppShell";
 import { TopNav } from "@/components/TopNav";
 import { TripCard } from "@/components/TripCard";
 import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
@@ -57,7 +58,7 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   return sections;
 }
 
-export default function DashboardClient() {
+export default function DashboardClient({ lastTripId }: { lastTripId: string | null }) {
   const router = useRouter();
   const [pastExpanded, setPastExpanded] = useState(false);
 
@@ -70,6 +71,29 @@ export default function DashboardClient() {
 
   // ── Partition ──────────────────────────────────────────────────────────────
   const sections = partitionTrips(trips as TripRow[]);
+
+  /**
+   * The context the shell's Trip/Cup/Chat tabs point at while the user is on
+   * Home. Home is context-free, but "the trip you were just in" is not — so the
+   * tabs stay live and go back to it rather than greying out. Locked is then a
+   * genuine first-run state (an account with no trips), not something you hit
+   * every time you glance at your trip list.
+   *
+   * `lastTripId` comes from the server (the same `bt-last-trip-id` cookie the
+   * root route redirects on, IA-2) so there's no hydration mismatch and no
+   * effect. It is VALIDATED against the user's actual trips here: a pointer at a
+   * deleted or revoked trip must not offer tabs that lead nowhere — the same
+   * staleness the root route has its own recovery for.
+   *
+   * No cookie (new device) falls back to the top of the priority sort, which is
+   * what this page already surfaces as most relevant.
+   */
+  const tripRows = trips as TripRow[];
+  const priorityOrder = [...sections.now, ...sections.upcoming, ...sections.idea, ...sections.past];
+  const remoteTripId =
+    (lastTripId && tripRows.some((t) => t.id === lastTripId) ? lastTripId : null) ??
+    priorityOrder[0]?.id ??
+    null;
 
   if (tripsLoading) {
     return (
@@ -87,13 +111,17 @@ export default function DashboardClient() {
     trips.length <= 3 && !(trips as TripRow[]).some((t) => t.myRole === "Owner");
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
-    >
-      {/* News is a trip-scoped broadcast surface — hide it on the
-          dashboard, which spans all trips and has no single trip context. */}
-      <TopNav title="BuddyTrip" hideNews />
+    /**
+     * The dashboard is the HOME tab's host. It is context-free itself, but it
+     * passes the last trip as `remoteTripId` so Trip/Cup/Chat stay live and point
+     * back at it — Home reads as "switch context", not "leave context". Locked
+     * tabs are reserved for a genuinely context-free account (no trips at all).
+     */
+    <AppShell
+      tripId={null}
+      remoteTripId={remoteTripId}
+      topBar={<TopNav title="BuddyTrip" hideTripSwitcher hideNews />}
+      home={
 
       <main
         className="mx-auto max-w-[896px] px-4 pb-24 pt-4"
@@ -249,9 +277,8 @@ export default function DashboardClient() {
           </>
         )}
       </main>
-
-
-    </div>
+      }
+    />
   );
 }
 

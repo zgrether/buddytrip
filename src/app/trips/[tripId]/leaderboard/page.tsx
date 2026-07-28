@@ -1,42 +1,49 @@
-import { createSSRHelpers } from "@/server/trpc-ssr";
-import {
-  LiveFaceClient,
-  type FaceBootstrap,
-} from "@/components/competition/LiveFaceClient";
+"use client";
+
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 
 /**
- * The Live face route (Server Component) — Stage B.
+ * `/trips/[tripId]/leaderboard` — now a DEEP-LINK ALIAS for the Cup tab.
  *
- * Resolves the competition face's single boundary resolve
- * (competitions.faceBootstrap) on the server and hands it to the client face as
- * initialData, so the initial competition state ships WITH the page: the
- * board/guide render populated in the server HTML (zero client round-trip for
- * first paint), and the client reads it as fresh under the 60s staleTime — no
- * mount refetch (one resolve per load, B4). It is the SAME resolver as Stage A,
- * just called server-side via the SSR helpers (B2).
+ * Phase 3 moved the competition face into the four-tab shell hosted by
+ * `/trips/[tripId]`, so this path no longer owns a surface. It is KEPT rather
+ * than deleted because it is still referenced from **8 places in the app**
+ * (`CompetitionEnableCard`, `TripSettingsModal`, the trip page's `?tab=comp`
+ * redirect and its enable card, `BottomNav`, and the three game views'
+ * `onDeleted`) and **7 places in the E2E specs**, including both merge-blocking
+ * ones. Removing it would have broken all of them at once.
  *
- * Interactivity (toggle, controls, go-live) + realtime subscriptions live in
- * LiveFaceClient as client components over this server-rendered initial state
- * (B1) — the natural foundation for the live realtime board (B3).
+ * On push notifications specifically (NAV_AUDIT_2.md §8.5): the only production
+ * `sendPush` caller today is `notifications.testSend`, whose url is `/dashboard`
+ * — so there are ZERO live deep links to this path on anyone's phone right now.
+ * Keeping the alias is what makes that safe to stay true when notifications
+ * Phase 3 wires real events, whichever path it happens to pick.
  *
- * Resolve failures are swallowed (mirrors the trip layout): an unauthed/early
- * request hands down `null`, and the client falls back to its own fetch +
- * loading state rather than tripping the route error boundary.
+ * It normalises with `replace`, not `push`, so it never becomes a history entry
+ * the user can be bounced back onto.
+ *
+ * KNOWN, SEQUENCED REGRESSION: this used to be a Server Component that resolved
+ * `competitions.faceBootstrap` and handed it down as `initialData`, so a cold
+ * deep link painted the board from server HTML with no client round-trip. That
+ * seed does not survive the hop. **Phase 4 owns re-homing it to the trip route**,
+ * where it will cover all four tabs instead of one; until then a cold Cup deep
+ * link pays one extra client fetch.
  */
-export default async function LiveFacePage({
-  params,
-}: {
-  params: Promise<{ tripId: string }>;
-}) {
-  const { tripId } = await params;
+export default function LiveFaceAliasPage() {
+  const { tripId } = useParams<{ tripId: string }>();
+  const router = useRouter();
 
-  let initialBoot: FaceBootstrap | null = null;
-  try {
-    const helpers = await createSSRHelpers();
-    initialBoot = await helpers.competitions.faceBootstrap.fetch({ tripId });
-  } catch {
-    // Auth/membership not ready — the client falls back to its own fetch.
-  }
+  useEffect(() => {
+    if (tripId) router.replace(`/trips/${tripId}?view=cup`);
+  }, [tripId, router]);
 
-  return <LiveFaceClient initialBoot={initialBoot} />;
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div
+        className="h-8 w-8 animate-spin rounded-full border-2"
+        style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+      />
+    </div>
+  );
 }
