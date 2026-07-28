@@ -50,6 +50,89 @@ export async function postSystemMessage(
   }
 }
 
+/**
+ * Shared by unreadCount (total) and unreadCounts (per-channel breakdown) so
+ * the two can't drift — one query, two shapes of the same result. Crew is
+ * always counted; Planning only when the caller is Owner/Organizer (RLS is
+ * the actual security boundary here — this gate is an optimisation that
+ * skips a query that can only return 0 for anyone else, per #732).
+ */
+async function computeUnreadByChannel(ctx: {
+  supabase: import("@supabase/supabase-js").SupabaseClient;
+  tripId: string | null;
+  user: { id: string } | null;
+  tripRole: "Owner" | "Organizer" | "Member" | null;
+}): Promise<{ crew: number; planning: number }> {
+  const canSeeOrganizers = ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
+
+  const [{ data: memberRow }, { data: readRows }] = await Promise.all([
+    ctx.supabase
+      .from("trip_members")
+      .select("chat_visible_from, planning_visible_from")
+      .eq("trip_id", ctx.tripId!)
+      .eq("user_id", ctx.user!.id)
+      .maybeSingle(),
+    ctx.supabase
+      .from("chat_reads")
+      .select("visibility, last_read_at")
+      .eq("trip_id", ctx.tripId!)
+      .eq("user_id", ctx.user!.id),
+  ]);
+
+  const floors = (memberRow ?? {}) as {
+    chat_visible_from?: string | null;
+    planning_visible_from?: string | null;
+  };
+  const readMarks: Record<"crew" | "planning", string | null> = {
+    crew: null,
+    planning: null,
+  };
+  for (const row of (readRows ?? []) as {
+    visibility: string;
+    last_read_at: string;
+  }[]) {
+    if (row.visibility === "crew" || row.visibility === "planning") {
+      readMarks[row.visibility] = row.last_read_at;
+    }
+  }
+
+  // One COUNT per visible channel — others' non-system messages, newer than
+  // my read mark, no older than my visibility floor. Matches the client
+  // derivation this replaces exactly: `m.user_id !== currentUser.id &&
+  // m.message_type !== "system"`, filtered by created_at > lastReadAt.
+  const countChannel = (visibility: "crew" | "planning", floor: string | null | undefined) => {
+    let query = ctx.supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", ctx.tripId!)
+      .eq("channel", "trip")
+      .eq("visibility", visibility)
+      .neq("message_type", "system")
+      .neq("user_id", ctx.user!.id);
+    if (floor) query = query.gte("created_at", floor);
+    const lastReadAt = readMarks[visibility];
+    if (lastReadAt) query = query.gt("created_at", lastReadAt);
+    return query;
+  };
+
+  const [crewResult, planningResult] = await Promise.all([
+    countChannel("crew", floors.chat_visible_from),
+    canSeeOrganizers ? countChannel("planning", floors.planning_visible_from) : null,
+  ]);
+
+  if (crewResult.error || planningResult?.error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to count unread messages",
+    });
+  }
+
+  return {
+    crew: crewResult.count ?? 0,
+    planning: planningResult?.count ?? 0,
+  };
+}
+
 export const messagesRouter = router({
   // -----------------------------------------------------------------------
   // list — Crew chat: any member. Organizers chat: Owner/Organizer only.
@@ -158,79 +241,22 @@ export const messagesRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx }): Promise<number> => {
-      const canSeeOrganizers =
-        ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
+      const { crew, planning } = await computeUnreadByChannel(ctx);
+      return crew + planning;
+    }),
 
-      const [{ data: memberRow }, { data: readRows }] = await Promise.all([
-        ctx.supabase
-          .from("trip_members")
-          .select("chat_visible_from, planning_visible_from")
-          .eq("trip_id", ctx.tripId!)
-          .eq("user_id", ctx.user!.id)
-          .maybeSingle(),
-        ctx.supabase
-          .from("chat_reads")
-          .select("visibility, last_read_at")
-          .eq("trip_id", ctx.tripId!)
-          .eq("user_id", ctx.user!.id),
-      ]);
-
-      const floors = (memberRow ?? {}) as {
-        chat_visible_from?: string | null;
-        planning_visible_from?: string | null;
-      };
-      const readMarks: Record<"crew" | "planning", string | null> = {
-        crew: null,
-        planning: null,
-      };
-      for (const row of (readRows ?? []) as {
-        visibility: string;
-        last_read_at: string;
-      }[]) {
-        if (row.visibility === "crew" || row.visibility === "planning") {
-          readMarks[row.visibility] = row.last_read_at;
-        }
-      }
-
-      // One COUNT per visible channel — others' non-system messages, newer
-      // than my read mark, no older than my visibility floor. Matches the
-      // client derivation this replaces exactly: `m.user_id !== currentUser.id
-      // && m.message_type !== "system"`, filtered by created_at > lastReadAt.
-      const countChannel = (
-        visibility: "crew" | "planning",
-        floor: string | null | undefined
-      ) => {
-        let query = ctx.supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true })
-          .eq("trip_id", ctx.tripId!)
-          .eq("channel", "trip")
-          .eq("visibility", visibility)
-          .neq("message_type", "system")
-          .neq("user_id", ctx.user!.id);
-        if (floor) query = query.gte("created_at", floor);
-        const lastReadAt = readMarks[visibility];
-        if (lastReadAt) query = query.gt("created_at", lastReadAt);
-        return query;
-      };
-
-      const queries = [countChannel("crew", floors.chat_visible_from)];
-      if (canSeeOrganizers) {
-        queries.push(countChannel("planning", floors.planning_visible_from));
-      }
-
-      const results = await Promise.all(queries);
-      let total = 0;
-      for (const { count, error } of results) {
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to count unread messages",
-          });
-        }
-        total += count ?? 0;
-      }
-      return total;
+  // -----------------------------------------------------------------------
+  // unreadCounts — the same computation as unreadCount, broken out per
+  // channel. Powers the Chat tab's per-segment badges (Crew/Planning/News):
+  // a single combined total can't tell the Crew segment's dot from
+  // Planning's. `planning` is already 0 for non-organizers (server-side
+  // gate below, mirroring unreadCount) — the caller never has to filter.
+  // -----------------------------------------------------------------------
+  unreadCounts: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }): Promise<{ crew: number; planning: number }> => {
+      return computeUnreadByChannel(ctx);
     }),
 
   // -----------------------------------------------------------------------

@@ -86,7 +86,10 @@ export function useRealtimeChat(
     // badge.
     const invalidate = () => {
       utils.messages.list.invalidate({ tripId, channel, teamId });
-      if (channel === "trip") utils.messages.unreadCount.invalidate({ tripId });
+      if (channel === "trip") {
+        utils.messages.unreadCount.invalidate({ tripId });
+        utils.messages.unreadCounts.invalidate({ tripId });
+      }
     };
 
     // Prepend a freshly-inserted row into every matching messages.list cache
@@ -158,6 +161,7 @@ export function useRealtimeChat(
           // recomputes to the same number it already had.
           if (channel === "trip") {
             utils.messages.unreadCount.invalidate({ tripId });
+            utils.messages.unreadCounts.invalidate({ tripId });
           }
         }
       )

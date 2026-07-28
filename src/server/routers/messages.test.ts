@@ -373,6 +373,66 @@ describe("messages router", () => {
     expect(await planner.messages.unreadCount({ tripId: trip })).toBe(2);
   });
 
+  // ── unreadCounts — per-channel breakdown (Chat tab segment badges) ──────
+  // Same computation as unreadCount, split into {crew, planning} so the Chat
+  // tab's Crew/Planning segments can each show their own badge. Mutation-
+  // tested against the same caveat #732 documented for unreadCount: RLS
+  // already denies members the planning rows, so a member's `planning: 0`
+  // could mean "filtered" or "nothing posted" — proving via the admin client
+  // that the planning row genuinely exists is what tells the two apart.
+
+  it("unreadCounts — a plain member's breakdown never includes the Organizers channel", async () => {
+    const trip = await ctx.createTrip("UnreadCounts Member No Planning");
+    await ctx.addTripMember(trip, "member", "Member");
+    const sent = await ctx.caller().messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "organizers only",
+    });
+
+    // Prove the planning row genuinely exists via the admin client, so the
+    // member's 0 below means "filtered", not "nothing was posted".
+    const { data: adminRow } = await ctx.admin
+      .from("messages")
+      .select("id")
+      .eq("id", sent.id)
+      .maybeSingle();
+    expect(adminRow).not.toBeNull();
+
+    const counts = await ctx.callerAs("member").messages.unreadCounts({ tripId: trip });
+    expect(counts).toEqual({ crew: 0, planning: 0 });
+  });
+
+  it("unreadCounts — an organizer's breakdown splits crew and planning separately", async () => {
+    const trip = await ctx.createTrip("UnreadCounts Organizer Split");
+    await ctx.addTripMember(trip, "planner", "Organizer");
+    const owner = ctx.caller();
+    const planner = ctx.callerAs("planner");
+
+    await planner.messages.markRead({ tripId: trip, visibility: "crew" });
+    await planner.messages.markRead({ tripId: trip, visibility: "planning" });
+
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew ping" });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "planning ping 1",
+    });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "planning ping 2",
+    });
+
+    expect(await planner.messages.unreadCounts({ tripId: trip })).toEqual({
+      crew: 1,
+      planning: 2,
+    });
+  });
+
   it("unreadCount — chat_visible_from floor excludes messages from before the member joined", async () => {
     const trip = await ctx.createTrip("Unread Floor Test");
     const owner = ctx.caller();
