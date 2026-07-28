@@ -13,7 +13,8 @@ import { test, expect, type Page } from "@playwright/test";
  */
 
 const MOCK_USER_ID = "user-test-001";
-// UUID-shaped so the route param skips slug resolution (used directly).
+// Shape is incidental — the route param IS the trip id, whatever its form
+// (trips.id is text). Slug resolution no longer exists.
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
 const GAME_ID = "game-e2e-001";
 

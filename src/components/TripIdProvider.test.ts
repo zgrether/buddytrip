@@ -3,40 +3,36 @@ import { readFileSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
 import { resolveTripIdValue } from "./TripIdProvider";
 
-const UUID_A = "11111111-2222-4333-8444-555555555555";
+const UUID_ID = "11111111-2222-4333-8444-555555555555";
 
-// ── The param → id decision ────────────────────────────────────────────────
+// ── The param → id mapping ─────────────────────────────────────────────────
 describe("resolveTripIdValue", () => {
-  it("treats a UUID param as the trip id", () => {
-    const v = resolveTripIdValue({ rawParam: UUID_A });
-    expect(v.tripId).toBe(UUID_A);
-    expect(v.isError).toBe(false);
-    expect(v.isResolving).toBe(false);
+  it("passes a UUID-shaped id straight through", () => {
+    expect(resolveTripIdValue({ rawParam: UUID_ID }).tripId).toBe(UUID_ID);
   });
 
-  it("rejects a legacy SLUG param rather than trying to resolve it", () => {
-    // Slugs were removed (CLAUDE.md #21). A slug can now only arrive from a
-    // URL someone copied out of the address bar before the removal, and the
-    // honest answer is "not a trip id" — the route bounces to /dashboard.
-    const v = resolveTripIdValue({ rawParam: "bbmi-2027-a3f9" });
-    expect(v.tripId).toBeUndefined();
-    expect(v.isError).toBe(true);
-  });
-
-  it("rejects a malformed param", () => {
-    expect(resolveTripIdValue({ rawParam: "not-a-uuid" }).isError).toBe(true);
-  });
-
-  it("is not an error for an absent param (the provider mounts before routing settles)", () => {
-    const v = resolveTripIdValue({ rawParam: "" });
-    expect(v.tripId).toBeUndefined();
-    expect(v.isError).toBe(false);
-  });
-
-  it("never reports a resolving state — there is no async step left", () => {
-    for (const p of [UUID_A, "bbmi-2027-a3f9", "", "junk"]) {
-      expect(resolveTripIdValue({ rawParam: p }).isResolving).toBe(false);
+  /**
+   * REGRESSION. An earlier draft of the slug removal replaced the slug
+   * resolver with a UUID regex gate, which rejected every id that doesn't
+   * happen to look like a UUID — and `trips.id` is `text`, not `uuid`
+   * (CLAUDE.md, ID Type Convention). It took out all six merge-blocking
+   * critical-path specs at once, because the E2E suite seeds
+   * `e2e-trip-<ts>-<rand>`. The old `resolveSlug` matched `id.eq.{param}`
+   * for ANY shape, so nothing had ever depended on the id being a UUID.
+   */
+  it("passes a NON-UUID id through unchanged — trips.id is text, not uuid", () => {
+    for (const id of ["e2e-trip-1785267995-a3f9", "trip-new-test-001", "bbmi-2027-a3f9"]) {
+      expect(resolveTripIdValue({ rawParam: id }).tripId).toBe(id);
     }
+  });
+
+  it("reports no id before routing settles", () => {
+    expect(resolveTripIdValue({ rawParam: "" }).tripId).toBeUndefined();
+  });
+
+  it("exposes rawParam identical to tripId (no second form to diverge)", () => {
+    const v = resolveTripIdValue({ rawParam: UUID_ID });
+    expect(v.rawParam).toBe(v.tripId);
   });
 });
 

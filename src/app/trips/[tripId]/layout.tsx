@@ -4,8 +4,6 @@ import { FaceBootSeed } from "@/components/competition/FaceBootSeed";
 import { TripIdProvider } from "@/components/TripIdProvider";
 import type { FaceBootstrap } from "@/components/competition/LiveFaceClient";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Per-trip route layout (Server Component) — the shell's server boundary.
  *
@@ -40,36 +38,33 @@ export default async function TripLayout({
   children: React.ReactNode;
   params: Promise<{ tripId: string }>;
 }) {
-  const { tripId: param } = await params;
-
   /**
-   * The param IS the trip id — `/trips/{uuid}` is the only URL shape the app
-   * produces (CLAUDE.md #21). This used to resolve a slug here before
-   * prefetching, because a slug never matches `trip_members.trip_id` and
-   * prefetching with the raw param threw FORBIDDEN on every list-door entry,
-   * silently swallowed by `allSettled`. Slugs are gone, so the resolve is too;
-   * a param that isn't a UUID is simply not a trip we can prefetch for, and
-   * the client bounces it to /dashboard.
+   * The param IS the trip id — `/trips/{id}` is the only URL shape the app
+   * produces (CLAUDE.md #21). This used to resolve a slug here first, because
+   * a slug never matches `trip_members.trip_id` and prefetching with the raw
+   * param threw FORBIDDEN on every list-door entry, silently swallowed by
+   * `allSettled`. Slugs are gone, so the resolve is too — and NOT replaced by
+   * a shape check: `trips.id` is `text`, so an id that doesn't look like a
+   * UUID is still a perfectly good id. A prefetch for an id the caller can't
+   * see just fails and falls through, exactly as before.
    */
-  const tripId = UUID_RE.test(param) ? param : null;
+  const { tripId } = await params;
 
   let dehydratedState: DehydratedState | undefined = undefined;
   let boot: FaceBootstrap | null = null;
-  if (tripId) {
-    try {
-      const helpers = await createSSRHelpers();
-      // Issued together, awaited once: the added wall-clock is the MAX of the two,
-      // not their sum. `allSettled` so one failure can't discard the other's result.
-      const [, bootResult] = await Promise.allSettled([
-        helpers.competitions.getByTrip.prefetch({ tripId }),
-        helpers.competitions.faceBootstrap.fetch({ tripId }),
-      ]);
-      if (bootResult.status === "fulfilled") boot = bootResult.value as FaceBootstrap;
-      dehydratedState = helpers.dehydrate();
-    } catch {
-      // Auth or membership — fall through to the client, which renders the
-      // right error state.
-    }
+  try {
+    const helpers = await createSSRHelpers();
+    // Issued together, awaited once: the added wall-clock is the MAX of the two,
+    // not their sum. `allSettled` so one failure can't discard the other's result.
+    const [, bootResult] = await Promise.allSettled([
+      helpers.competitions.getByTrip.prefetch({ tripId }),
+      helpers.competitions.faceBootstrap.fetch({ tripId }),
+    ]);
+    if (bootResult.status === "fulfilled") boot = bootResult.value as FaceBootstrap;
+    dehydratedState = helpers.dehydrate();
+  } catch {
+    // Auth or membership — fall through to the client, which renders the
+    // right error state.
   }
 
   return (

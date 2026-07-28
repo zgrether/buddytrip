@@ -7,12 +7,13 @@ import { useParams } from "next/navigation";
  * TripIdProvider / useTripId — the ONE place the `/trips/[tripId]` URL param is
  * read.
  *
- * ── Trip identity in a URL is the UUID; there is no second form ─────────────
- * `/trips/{uuid}` is the only shape the app produces. There is nothing to
- * resolve: the param IS the canonical id, and everything below the URL (tRPC
- * inputs, realtime channel names, React Query cache keys) has always been
- * UUID-only. The param is still funnelled through this one provider — see the
- * next paragraph for why that matters independently of resolution.
+ * ── Trip identity in a URL is the trip id; there is no second form ──────────
+ * `/trips/{id}` is the only shape the app produces. There is nothing to
+ * resolve: the param IS the id that tRPC inputs, realtime channel names and
+ * React Query cache keys already use. (New ids are `crypto.randomUUID()`, but
+ * `trips.id` is `text` — do not assume the shape; see `resolveTripIdValue`.)
+ * The param is still funnelled through this one provider — see the next
+ * paragraph for why that matters independently of resolution.
  *
  * This used to accept a slug as well and resolve it here. Slugs were removed
  * (see CLAUDE.md #21): the generator, the `slug ?? id` navigation fallbacks and
@@ -39,42 +40,40 @@ import { useParams } from "next/navigation";
  * second guard asserts no call site builds a trip URL from anything but `.id`.
  */
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export interface TripIdValue {
-  /** The canonical trip UUID, or `undefined` if the param isn't one. */
+  /** The trip id from the URL. `undefined` only before routing settles. */
   tripId: string | undefined;
-  /** The raw URL param, for building URLs. Identical to `tripId` for any URL
-   *  the app produces; they differ only for a malformed/legacy param. */
-  rawParam: string;
   /**
-   * Always false. Kept so consumers written against the resolving era keep
-   * compiling and reading correctly — there is no asynchronous step any more,
-   * so the id is known on the first render or it is never known.
+   * The same value, under the name URL-building call sites use. Identical to
+   * `tripId` — kept as a distinct name so those call sites keep reading as
+   * "this is the URL layer", not "this is an id I may pass to a procedure".
    */
-  isResolving: boolean;
-  /** The param is not a trip UUID — a malformed link, or a legacy slug URL
-   *  someone copied out of the address bar before slugs were removed. Routes
-   *  bounce to /dashboard on this. */
-  isError: boolean;
+  rawParam: string;
 }
 
 const TripIdContext = createContext<TripIdValue | null>(null);
 
 /**
- * The param → id decision, as a pure function so it stays directly testable.
- * Now trivial; kept as a seam because the URL shape is about to change again
- * (Phase 7 moves context into a search param), and a named function is a
- * cheaper place to make that change than twelve call sites.
+ * The param → id mapping, as a pure function so it stays directly testable.
+ * Now an identity; kept as a seam because the URL shape is about to change
+ * again (Phase 7 moves context into a search param), and a named function is
+ * a cheaper place to make that change than a dozen call sites.
+ *
+ * **Deliberately does NOT validate the shape.** `trips.id` is `text`, not
+ * `uuid` (CLAUDE.md, ID Type Convention) — ids are conventionally UUIDs but
+ * nothing enforces it, and the E2E suite seeds `e2e-trip-<ts>-<rand>`. An
+ * earlier draft of this gated on a UUID regex and broke every one of those
+ * trips, which is exactly the kind of "tightened a type the schema never
+ * promised" mistake the text-id convention exists to warn about.
+ *
+ * Whether the id names a trip you can see is the SERVER's answer, not a
+ * regex's: `requireTripMember` throws FORBIDDEN and `trips.getById` errors,
+ * and the trip page already bounces to /dashboard on that (its stale-pointer
+ * recovery). That path also covers revoked membership and deleted trips —
+ * cases no client-side shape check could ever catch.
  */
 export function resolveTripIdValue({ rawParam }: { rawParam: string }): TripIdValue {
-  const isId = UUID_RE.test(rawParam);
-  return {
-    tripId: isId ? rawParam : undefined,
-    rawParam,
-    isResolving: false,
-    isError: !!rawParam && !isId,
-  };
+  return { tripId: rawParam || undefined, rawParam };
 }
 
 export function TripIdProvider({ children }: { children: React.ReactNode }) {
@@ -87,7 +86,7 @@ export function TripIdProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The canonical trip UUID for the current route.
+ * The trip id for the current route.
  *
  * Throws outside the provider ON PURPOSE: the provider is mounted in
  * `/trips/[tripId]/layout.tsx`, so every trip-scoped surface has it, and a

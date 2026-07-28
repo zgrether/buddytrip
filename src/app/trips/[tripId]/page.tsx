@@ -667,15 +667,14 @@ function TripDetailBody({ tripId }: { tripId: string }) {
 // to resolve inline, five other components had each copied the same block, and
 // a sixth (`LiveFaceClient`) skipped it and broke the whole Cup tab.
 export default function TripDetailPage() {
-  const { tripId, isError } = useTripId();
-  const router = useRouter();
+  const { tripId } = useTripId();
 
-  // Param isn't a trip UUID — a malformed link, or a legacy slug URL copied
-  // out of the address bar before slugs were removed. Bounce to the dashboard,
-  // same as the body's not-found handling.
-  useEffect(() => {
-    if (isError) router.replace("/dashboard");
-  }, [isError, router]);
+  // No client-side validity check: whether this id names a trip you can see is
+  // the server's answer, and `TripDetailBody` already bounces to /dashboard
+  // when `trips.getById` errors (its stale-pointer recovery). That covers a
+  // dead id, a deleted trip and revoked membership alike — a shape check would
+  // have caught only the first, and would wrongly reject non-UUID ids, which
+  // `trips.id` being `text` permits.
 
   if (!tripId) {
     return (
