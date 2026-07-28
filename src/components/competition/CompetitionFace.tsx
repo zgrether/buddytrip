@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { GameActionRow } from "@/components/shell/GameActionRow";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
 import { RostersOverlay } from "./RostersOverlay";
@@ -357,7 +358,7 @@ export function CompetitionFace({
            * The wipe animation is mobile-only: a pane appearing beside a list has
            * nothing to slide over.
            */
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:static lg:z-auto lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          className={`fixed inset-x-0 bottom-0 z-30 overflow-y-auto lg:static lg:z-auto lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
@@ -367,6 +368,14 @@ export function CompetitionFace({
           }}
           data-testid="game-panel"
         >
+          {/* The action row belongs to the GAME SURFACE, so it lives inside the
+              panel rather than at shell level. Shell-level placement coupled a
+              normal-flow row to a FIXED panel through a CSS variable: mounting
+              the row moved the panel's top edge, and the merge-blocking stroke
+              spine timed out on "element is not stable". Inside the panel the
+              row is just the first block of the same scroll context — no
+              cross-element offset, nothing to oscillate. */}
+          <GameActionRow />
           {panelView}
         </div>
       )}
