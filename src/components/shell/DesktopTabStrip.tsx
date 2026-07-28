@@ -29,7 +29,10 @@ export const DesktopTabStrip: FC<{
   hasContext: boolean;
   onSelect: (view: AppView) => void;
   onLockedTap: (view: Exclude<AppView, "home">) => void;
-}> = ({ active, hasContext, onSelect, onLockedTap }) => (
+  /** Combined unread total across the Chat tab's VISIBLE segments only
+   *  (see useChatTabUnread) — 0 renders no badge. */
+  chatUnread?: number;
+}> = ({ active, hasContext, onSelect, onLockedTap, chatUnread = 0 }) => (
   <div
     role="tablist"
     className="hidden h-[46px] shrink-0 items-stretch gap-0.5 px-4 lg:flex"
@@ -58,7 +61,17 @@ export const DesktopTabStrip: FC<{
             opacity: locked ? 0.45 : 1,
           }}
         >
-          <Icon size={16} />
+          <span className="relative inline-flex">
+            <Icon size={16} />
+            {id === "chat" && chatUnread > 0 && (
+              <span
+                data-testid="desktop-tab-chat-unread"
+                className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full"
+                style={{ background: "var(--color-bt-accent)" }}
+                aria-hidden="true"
+              />
+            )}
+          </span>
           {label}
         </button>
       );

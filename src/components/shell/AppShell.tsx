@@ -9,6 +9,7 @@ import { LockedTabExplainer } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { DesktopTabStrip } from "./DesktopTabStrip";
 import { useIsChatColumn } from "./breakpoints";
+import { useChatTabUnread } from "./ChatView";
 
 /**
  * AppShell — the persistent frame for the four-tab navigation (Phase 3).
@@ -79,6 +80,10 @@ export function AppShell({
   const [peeking, setPeeking] = useState<Exclude<AppView, "home"> | null>(null);
   const scoped = !!tripId;
   const hasContext = scoped || !!remoteTripId;
+  // Chat tab badge — reuses the segments' own visibility derivation (see
+  // useChatTabUnread) so the nav badge and what the tab actually shows can't
+  // disagree about which segments count.
+  const chatUnread = useChatTabUnread(tripId);
 
   const select = useCallback(
     (next: AppView) => {
@@ -229,6 +234,7 @@ export function AppShell({
               hasContext={hasContext}
               onSelect={select}
               onLockedTap={(v) => setPeeking(v)}
+              chatUnread={chatUnread}
             />
             <div
               className={chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""}
@@ -255,6 +261,7 @@ export function AppShell({
           hasContext={hasContext}
           onSelect={select}
           onLockedTap={(v) => setPeeking(v as Exclude<AppView, "home">)}
+          chatUnread={chatUnread}
         />
       </div>
     </GameChromeProvider>

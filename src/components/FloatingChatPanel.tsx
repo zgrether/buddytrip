@@ -1142,14 +1142,18 @@ function ChatBody({
  * already requires (see the comment on that hook call, below).
  */
 export function useChatUnreadCount(tripId: string): number {
-  // Subscribe to realtime here (this hook is always mounted on the trip page,
-  // panel open or closed) — MUST stay here even though the count below no
-  // longer derives from messages.list. The open FloatingChatPanel deliberately
-  // does NOT also subscribe (a single channel avoids a duplicate-topic
-  // collision), so it relies on THIS hook's subscription to keep its own
-  // messages.list cache live via direct cache writes (useRealtimeChat.ts).
-  // Removing this call would silently stop new messages from appearing in an
-  // open panel without a manual refresh.
+  // Subscribe to realtime here — MUST stay here even though the count below
+  // no longer derives from messages.list. This hook is mounted via TopNav's
+  // ChatToolButton, which today only renders on the competition Live face
+  // (LiveFaceClient passes onOpenChat; the four-tab trip page's TopNav call
+  // doesn't, since Chat moved to AppShell's tab — see useChatTabUnread in
+  // ChatView.tsx, the equivalent always-mounted subscription holder there).
+  // The open FloatingChatPanel deliberately does NOT also subscribe (a single
+  // channel avoids a duplicate-topic collision), so it relies on whichever of
+  // these two hooks is mounted in its context to keep its own messages.list
+  // cache live via direct cache writes (useRealtimeChat.ts). Removing this
+  // call would silently stop new messages from appearing in an open panel
+  // without a manual refresh.
   useRealtimeChat(tripId, "trip");
 
   const { data } = trpc.messages.unreadCount.useQuery(
@@ -1157,4 +1161,22 @@ export function useChatUnreadCount(tripId: string): number {
     { enabled: !!tripId }
   );
   return data ?? 0;
+}
+
+/**
+ * useChatUnreadCounts — the Crew/Planning breakdown behind the Chat tab's
+ * per-segment badges. Same query posture as useChatUnreadCount (global
+ * defaults, no override) but does NOT itself call useRealtimeChat — AppShell's
+ * useChatTabUnread (ChatView.tsx) is the one always-mounted subscription
+ * holder for the scoped trip session; a second subscription here would
+ * collide on the shared `trip-chat:{tripId}` channel topic.
+ * `planning` is already 0 for non-organizers (server-side gate) — never
+ * subtract or filter it again on the client.
+ */
+export function useChatUnreadCounts(tripId: string): { crew: number; planning: number } {
+  const { data } = trpc.messages.unreadCounts.useQuery(
+    { tripId },
+    { enabled: !!tripId }
+  );
+  return data ?? { crew: 0, planning: 0 };
 }

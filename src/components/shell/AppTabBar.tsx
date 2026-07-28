@@ -64,6 +64,9 @@ export const AppTabBar: FC<{
   onSelect: (view: AppView) => void;
   /** A locked tab was tapped: show its explainer rather than switching. */
   onLockedTap: (view: AppView) => void;
+  /** Combined unread total across the Chat tab's VISIBLE segments only
+   *  (see useChatTabUnread) — 0 renders no badge. */
+  chatUnread?: number;
 }> = (props) => {
   const chrome = useGameChrome();
   // The focused score-entry surfaces publish `hideBottomNav` (CLAUDE.md #13) —
@@ -86,7 +89,8 @@ const TabBar: FC<{
   hasContext: boolean;
   onSelect: (view: AppView) => void;
   onLockedTap: (view: AppView) => void;
-}> = ({ active, hasContext, onSelect, onLockedTap }) => {
+  chatUnread?: number;
+}> = ({ active, hasContext, onSelect, onLockedTap, chatUnread = 0 }) => {
   const navRef = usePublishNavHeight();
 
   return (
@@ -130,7 +134,17 @@ const TabBar: FC<{
                 opacity: locked ? 0.45 : 1,
               }}
             >
-              <Icon size={21} />
+              <span className="relative inline-flex">
+                <Icon size={21} />
+                {id === "chat" && chatUnread > 0 && (
+                  <span
+                    data-testid="app-tab-chat-unread"
+                    className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full"
+                    style={{ background: "var(--color-bt-accent)" }}
+                    aria-hidden="true"
+                  />
+                )}
+              </span>
               <span className="max-w-full truncate px-1 text-[10px] font-medium">{label}</span>
             </button>
           );
