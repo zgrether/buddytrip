@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { MessageCircle, ClipboardList, Newspaper } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -28,8 +28,9 @@ import {
  * Both `FloatingChatPanel` and `NewsPanel` render through their `embedded`
  * branch here — normal flow, no scrim, no drag-resize, no close × (a tab has
  * nothing to close; you leave by choosing another segment). That branch
- * fills whatever height THIS component gives it, so the height math below is
- * load-bearing, not decorative.
+ * fills whatever height THIS component gives it, and inline (see `rootStyle`
+ * below) that's a `position: fixed` box with `top`/`bottom` pinned to the
+ * viewport rather than a calculated height — load-bearing, not decorative.
  */
 export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean }) {
   const { role } = useTripRole(tripId);
@@ -109,37 +110,50 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
     news: { label: "News", Icon: Newspaper, unread: newsUnread },
   };
 
-  // Aside (≥1280): let the grid's `items-stretch` grow this past the floor to
-  // match the Trip/Cup content beside it — a `min-height` floor only. Inline
-  // (mobile, or desktop <1280 where Chat OWNS the tab): a DEFINITE height is
-  // required, not just a floor, or the flex children below (`flex-1 min-h-0`)
-  // have nothing bounded to clip against — the message list never actually
-  // becomes its own scroll container, the whole page scrolls instead, and the
-  // composer ends up wherever the total content height happens to land
-  // instead of pinned to the visible bottom. (The overlay/non-embedded panel
-  // never had this problem — its `fixed inset-x-0 top-14 bottom-0` chrome is
-  // inherently a bounded box; this box is embedded mode's equivalent.)
+  // Aside (≥1280): unchanged — a `min-height` floor lets the grid's
+  // `items-stretch` grow this past it to match the Trip/Cup content beside
+  // it. No viewport-anchoring concerns here; desktop browsers don't have a
+  // dynamic toolbar.
   //
-  // `svh`, not `dvh`: `dvh` tracks the browser's dynamic toolbar LIVE, so a
-  // definite height built from it keeps recalculating as the toolbar
-  // shows/hides mid-scroll — exactly the "scroll to the top, then scroll
-  // again before the tabs settle into place" jitter this is fixing. `svh`
-  // (small viewport height — the size WITH the toolbar shown) is fixed for
-  // the session: slightly less generous once the toolbar auto-hides, but
-  // stable, which matters far more for a box a scroll gesture reaches into.
+  // Inline (mobile, or desktop <1280 where Chat OWNS the tab): NO CALCULATED
+  // SIZE — that was two fixes in a row that each turned out incomplete
+  // (dvh, then svh) because ANY `height`/`min-height` built from a viewport
+  // unit is a SNAPSHOT the browser doesn't keep honest as its dynamic
+  // toolbar shows/hides on scroll (Chrome's address bar collapsing mid-scroll
+  // is exactly what broke it live, even after the dvh->svh fix). The
+  // overlay/non-embedded panel never had ANY of these bugs, for exactly this
+  // reason: its chrome is `position: fixed; top-14; bottom-0` — both EDGES
+  // pinned to the viewport, height left for the browser to resolve natively,
+  // which it keeps correct through toolbar changes with zero JS/CSS math on
+  // our end. This is that same technique, applied to the whole embedded
+  // surface (segment row included) rather than each panel independently —
+  // independently-fixed panels is the ORIGINAL bug this embedded mode
+  // replaced (each one covered ChatView's own segment switcher; see #733).
+  // One fixed box, top/bottom pinned, flexbox does the rest exactly as it
+  // already did — `flex-1 min-h-0` on the panel wrapper below still clips
+  // and scrolls correctly, now against a height the browser computes instead
+  // of one we calculated.
   const chatIsColumn = useIsChatColumn();
-  const heightStyle = chatIsColumn
+  const rootStyle: CSSProperties = chatIsColumn
     ? { minHeight: "calc(100svh - 56px - var(--bt-bottomnav-height, 0px))" }
-    : { height: "calc(100svh - 56px - var(--bt-bottomnav-height, 0px))" };
+    : {
+        position: "fixed",
+        top: 56, // below the sticky 56px top nav (TopNav's own h-14)
+        bottom: "var(--bt-bottomnav-height, 0px)", // above the mobile bottom tab bar
+        left: 0,
+        right: 0,
+        zIndex: 20, // below TopNav/AppTabBar's z-40, above ordinary page content
+        background: "var(--color-bt-base)",
+      };
 
   return (
-    <div data-testid="chat-view" className="flex flex-col" style={heightStyle}>
+    <div data-testid="chat-view" className="flex flex-col" style={rootStyle}>
       {/* Segment switch — contextual page structure, not chrome, so it blends
           with the page background per STYLE_GUIDE §1. Notify toggle sits
           inline at the end of this row (a real per-account preference, not a
           dismiss affordance, so it stays regardless of which segment is
           active) rather than in its own separate row. */}
-      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-3" role="tablist">
+      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-3 pb-3" role="tablist">
         {segments.map((id) => {
           const { label, Icon, unread } = SEGMENT_META[id];
           const selectedTab = activeSegment === id;
