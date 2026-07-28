@@ -8,7 +8,7 @@ import { AppTabBar } from "./AppTabBar";
 import { LockedTabExplainer } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { DesktopTabStrip } from "./DesktopTabStrip";
-import { useIsChatColumn } from "./breakpoints";
+import { useIsChatColumn, chatMountLocation } from "./breakpoints";
 
 /**
  * AppShell — the persistent frame for the four-tab navigation (Phase 3).
@@ -117,7 +117,8 @@ export function AppShell({
   /** What the MAIN column renders. Chat-as-column keeps the content behind it. */
   const mainView: AppView =
     chatIsColumn && effectiveView === "chat" ? lastContentView : effectiveView;
-  const chatAside = chatIsColumn && effectiveView === "chat";
+  const chatMount = chatMountLocation(effectiveView, chatIsColumn);
+  const chatAside = chatMount === "aside";
 
   /**
    * LAZY MOUNT, then keep. A slot is not mounted until its tab is first visited;
@@ -183,15 +184,18 @@ export function AppShell({
         )}
         {visited.has("cup") && <div hidden={mainView !== "cup"}>{cup}</div>}
         {/*
-         * Chat is CONDITIONALLY RENDERED, not hidden like the other two.
-         *
-         * `FloatingChatPanel` and `NewsPanel` render through `createPortal`, so
-         * they are not DOM children of this wrapper — `hidden` sets display:none
-         * here and the portal keeps painting. Their desktop rail is
-         * `fixed inset-x-0 top-14 bottom-0 z-50`, so an "invisible" Chat tab sat
-         * over the whole app and swallowed every click. That is not a subtle
-         * failure: it broke four merge-blocking E2E specs, all reporting the same
-         * `intercepts pointer events`.
+         * Chat is CONDITIONALLY RENDERED, not hidden like the other two — and
+         * mounts at exactly ONE of two locations, decided by the pure
+         * `chatMountLocation` (breakpoints.ts) both sites below read from.
+         * That function makes "never both, never neither while Chat is
+         * active" a structural guarantee instead of two booleans that could
+         * drift apart — the original version of this bug: the desktop drawer
+         * was `position: fixed`, so an "invisible" duplicate still sat over
+         * the whole app and swallowed every click, breaking four
+         * merge-blocking E2E specs (`intercepts pointer events`).
+         * `FloatingChatPanel`/`NewsPanel` no longer render that way when
+         * embedded (see their `embedded` branch — normal flow, no `fixed`,
+         * no portal), but the single-mount-site discipline stays regardless.
          *
          * Mounting on demand costs Chat a remount per visit. Acceptable — it is
          * still no route change, the message pages are already warm from the
@@ -199,9 +203,7 @@ export function AppShell({
          * warm cache. Trip and Cup are not portaled, so they keep staying mounted,
          * which is where the win actually matters.
          */}
-        {/* Chat renders inline only when it OWNS the view. As a side column it is
-            rendered by the layout below instead, so it never appears twice. */}
-        {effectiveView === "chat" && !chatAside && chat}
+        {chatMount === "inline" && chat}
       </div>
     );
   }
@@ -229,6 +231,7 @@ export function AppShell({
               hasContext={hasContext}
               onSelect={select}
               onLockedTap={(v) => setPeeking(v)}
+              tripId={tripId}
             />
             <div
               className={chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""}
@@ -255,6 +258,7 @@ export function AppShell({
           hasContext={hasContext}
           onSelect={select}
           onLockedTap={(v) => setPeeking(v as Exclude<AppView, "home">)}
+          tripId={tripId}
         />
       </div>
     </GameChromeProvider>

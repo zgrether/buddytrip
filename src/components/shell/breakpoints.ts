@@ -54,3 +54,24 @@ export const useIsShellDesktop = () => useMediaMin(SHELL_DESKTOP_PX);
 
 /** Chat renders as a side column rather than replacing the content. */
 export const useIsChatColumn = () => useMediaMin(CHAT_COLUMN_PX);
+
+/**
+ * Where the Chat surface mounts, given the current view and viewport. Pulled
+ * out of `AppShell`'s render so the "exactly one location, never both, never
+ * neither-when-active" contract is a pure function AppShell actually calls
+ * (not logic re-derived in a test, which can drift from the real thing).
+ *
+ * The historical bug this guards: rendering Chat both inline AND in the
+ * aside at once didn't just double-paint it — the aside's floating panel is
+ * `position: fixed`, so an "invisible" duplicate still sat over the whole
+ * app and swallowed every click, breaking four merge-blocking E2E specs.
+ */
+export type ChatMountLocation = "inline" | "aside" | "none";
+
+export function chatMountLocation(
+  effectiveView: "home" | "trip" | "cup" | "chat",
+  chatIsColumn: boolean
+): ChatMountLocation {
+  if (effectiveView !== "chat") return "none";
+  return chatIsColumn ? "aside" : "inline";
+}
