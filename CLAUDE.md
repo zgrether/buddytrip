@@ -412,32 +412,32 @@ These patterns have been established through prior work. Follow them exactly —
       DIFFERENT, pre-existing topic owned by `useRealtimeCompetition` (competition ROW,
       keyed by trip) — keep the two prefixes distinct.
 
-21. **The `/trips/[tripId]` URL param is slug-OR-uuid; everything below the URL is
-    UUID-ONLY, resolved once at the boundary.** The URL layer deliberately accepts
-    BOTH a pretty slug (`bbmi-2027-a3f9c1`) and a raw trip UUID — old links must keep
-    working, and lists navigate to the slug (`TripCard`/`ContextRail` both use
-    `slug ?? id`) while the root route redirects to the UUID (the `bt-last-trip-id`
-    cookie stores the resolved id). **Which form the URL carries therefore depends on
-    the door you came through, and that ambiguity is load-bearing — so it is resolved
-    exactly ONCE**, in `TripIdProvider` (mounted by `/trips/[tripId]/layout.tsx`,
-    seeded with the id the layout already resolved server-side). Every trip-scoped
-    surface reads **`useTripId()`**. tRPC inputs, realtime channel names, and React
-    Query cache keys are UUID-only — `requireTripMember` matches `trip_members.trip_id`
-    exactly and a slug simply throws FORBIDDEN. Using the raw param to BUILD A URL is
-    fine and correct (`rawParam` is exposed for it); using it for anything else is the
-    bug. **Do NOT call `useParams().tripId` in trip-scoped code** — a source guard in
-    `TripIdProvider.test.ts` fails the build if you do, because a convention was what
-    failed here: six components had each copied the same resolve block and the seventh,
-    `LiveFaceClient` (root of the whole Cup subtree), skipped it — so Cup rendered "no
-    competition yet" for any trip opened from a list, and an OWNER saw the non-editor
-    placeholder rather than the create form. It read as intermittent ("works until I
-    switch trips, fixed by a reload") purely because a reload goes through the root
-    route's UUID redirect. Pre-refactor this was impossible: the face had its own
-    `/leaderboard` route linked with the already-resolved UUID; making it a TAB on
-    `/trips/[param]` is what exposed it to the raw param. The server-side half matters
-    too — the layout's `faceBootstrap` prefetch passed the slug and its FORBIDDEN was
-    swallowed by `allSettled`, so every slug entry silently paid a failed server
-    resolve AND a failed client one.
+21. **Trip identity in a URL is the UUID. There is no second form.**
+    `/trips/{uuid}` is the only shape the app produces — no slug, no `slug ?? id`
+    fallback, no resolution step. Everything below the URL was already UUID-only
+    (tRPC inputs, realtime channel names, React Query cache keys); now the URL
+    layer is too, so there is nothing left to collapse. The param is still read in
+    exactly ONE place — `TripIdProvider` (mounted by `/trips/[tripId]/layout.tsx`)
+    — and every trip-scoped surface reads **`useTripId()`**. **Do NOT call
+    `useParams().tripId` in trip-scoped code**: a source guard in
+    `TripIdProvider.test.ts` fails the build if you do. A second guard asserts no
+    call site builds a trip URL from anything but `.id`.
+
+    **This REVERSES what this entry said before, and the reversal is the point.**
+    The previous version described the URL as deliberately slug-OR-uuid and called
+    that ambiguity "load-bearing." It was neither deliberate nor load-bearing: trip
+    URLs originally used the UUID, slugs were added, then judged a poor
+    implementation and removed — but the removal was incomplete, and the app drifted
+    back onto the surviving machinery. #741 met that half-state while fixing a real
+    bug (the Cup tab rendering "no competition yet" for any trip opened from a list,
+    because `LiveFaceClient` handed a slug to a procedure matching
+    `trip_members.trip_id` exactly) and wrote the observed behaviour down as
+    architecture. **Recording an unfinished removal as an intended design is how it
+    becomes permanent** — the next reader follows the doc and preserves it. The bug
+    fix was right; the generalisation was not. Slugs are not wanted: the machinery,
+    the generator (`src/lib/slug.ts`), and the resolver are gone, and
+    `trips.slug` follows in its own PR once the code that writes it is deployed
+    (see Migration Workflow — a DROP inverts the usual ordering).
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 
@@ -562,6 +562,17 @@ idempotent schema change stays — then re-push.)
    of its push once and produced the live "could not find function save_game_config in the
    schema cache." Migrations are additive/idempotent, which is what makes landing them early
    safe.
+3b. **A REMOVAL inverts step 3 — same principle, opposite direction.** Step 3 is written for
+   ADDITIVE schema, where the code needs the column to exist, so the migration goes first. A
+   `DROP COLUMN` / `DROP FUNCTION` reverses the dependency: the code has to stop WRITING the
+   thing before the thing can go, or the deploy boundary breaks in the other direction — drop
+   `trips.slug` while `trips.create` still inserts it and every trip creation fails with
+   "column does not exist" until the new code lands. So for a removal: **land and DEPLOY the
+   code that stops using it FIRST, then the drop migration as its own follow-up PR.** Both
+   halves of the rule are the same idea — the schema and the code must never be in a state
+   where one references something the other hasn't provided — it just points the other way
+   depending on whether you're adding or removing. (Established removing the trip-slug
+   machinery; the drop lands only after the no-slug code is live.)
 4. **Never edit a migration after it's applied to prod — write a new one.** The one
    exception, set by the `044` fix (#636): a *body-only* change to make a historical migration
    replay cleanly on a fresh DB is safe — prod already recorded that version and won't re-run

@@ -4,8 +4,6 @@ import { FaceBootSeed } from "@/components/competition/FaceBootSeed";
 import { TripIdProvider } from "@/components/TripIdProvider";
 import type { FaceBootstrap } from "@/components/competition/LiveFaceClient";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Per-trip route layout (Server Component) — the shell's server boundary.
  *
@@ -40,57 +38,44 @@ export default async function TripLayout({
   children: React.ReactNode;
   params: Promise<{ tripId: string }>;
 }) {
-  const { tripId: param } = await params;
+  /**
+   * The param IS the trip id — `/trips/{id}` is the only URL shape the app
+   * produces (CLAUDE.md #21). This used to resolve a slug here first, because
+   * a slug never matches `trip_members.trip_id` and prefetching with the raw
+   * param threw FORBIDDEN on every list-door entry, silently swallowed by
+   * `allSettled`. Slugs are gone, so the resolve is too — and NOT replaced by
+   * a shape check: `trips.id` is `text`, so an id that doesn't look like a
+   * UUID is still a perfectly good id. A prefetch for an id the caller can't
+   * see just fails and falls through, exactly as before.
+   */
+  const { tripId } = await params;
 
   let dehydratedState: DehydratedState | undefined = undefined;
   let boot: FaceBootstrap | null = null;
-  let canonicalId: string | null = null;
   try {
     const helpers = await createSSRHelpers();
-
-    /**
-     * Resolve the param to the canonical UUID BEFORE prefetching.
-     *
-     * This used to prefetch with the RAW param, which is a slug whenever the
-     * user arrived from a trip list (`TripCard` / `ContextRail` both navigate
-     * to `slug ?? id`). A slug never matches `trip_members.trip_id`, so
-     * `requireTripMember` threw FORBIDDEN on every slug-door entry — and
-     * `allSettled` + the `fulfilled` check swallowed it silently. The symptom
-     * was invisible server-side: `boot` just came back null, the seed became a
-     * no-op, and the client paid a full round trip that ALSO failed (see
-     * TripIdProvider for the whole chain).
-     *
-     * A UUID param skips the lookup, so the common path costs nothing extra;
-     * the slug path trades one server query for the client-side `resolveSlug`
-     * round trip each consumer used to pay separately.
-     */
-    canonicalId = UUID_RE.test(param)
-      ? param
-      : (await helpers.trips.resolveSlug.fetch({ slugOrId: param })).id;
-
     // Issued together, awaited once: the added wall-clock is the MAX of the two,
     // not their sum. `allSettled` so one failure can't discard the other's result.
     const [, bootResult] = await Promise.allSettled([
-      helpers.competitions.getByTrip.prefetch({ tripId: canonicalId }),
-      helpers.competitions.faceBootstrap.fetch({ tripId: canonicalId }),
+      helpers.competitions.getByTrip.prefetch({ tripId }),
+      helpers.competitions.faceBootstrap.fetch({ tripId }),
     ]);
     if (bootResult.status === "fulfilled") boot = bootResult.value as FaceBootstrap;
     dehydratedState = helpers.dehydrate();
   } catch {
-    // Auth, membership, or an unknown slug — fall through to the client, which
-    // renders the right error state (and bounces a dead slug to /dashboard).
+    // Auth or membership — fall through to the client, which renders the
+    // right error state.
   }
 
   return (
     <HydrationBoundary state={dehydratedState}>
-      {/* The ONE resolution point for the URL param → canonical trip UUID.
-          Everything trip-scoped below reads `useTripId()`; nothing re-derives
-          it from `useParams()`. See TripIdProvider. */}
-      <TripIdProvider initialTripId={canonicalId} initialParam={param}>
+      {/* The ONE place the URL param is read. Everything trip-scoped below
+          reads `useTripId()`; nothing re-derives it from `useParams()`.
+          See TripIdProvider. */}
+      <TripIdProvider>
         {/* Explicit seed — the dehydrated state alone does not reach the client
-            cache here; see FaceBootSeed for the evidence and why. Keyed by the
-            CANONICAL id, which is what every client consumer now queries with. */}
-        {canonicalId && <FaceBootSeed tripId={canonicalId} boot={boot} />}
+            cache here; see FaceBootSeed for the evidence and why. */}
+        {tripId && <FaceBootSeed tripId={tripId} boot={boot} />}
         {children}
       </TripIdProvider>
     </HydrationBoundary>

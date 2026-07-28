@@ -654,10 +654,18 @@ defaults false (poll pauses on a hidden tab), Settings early-returns (board
 unmounts), and game entry is a separate route (board unmounts). The only residual
 is the poll running under the add-game/rosters overlays — negligible, left as-is.
 
-### Human-friendly trip URL slugs
+### Human-friendly trip URL slugs — SHIPPED, THEN REMOVED
 
-`/trips/<uuid>` → `/trips/bbmi-2027`. Add `slug text UNIQUE` to `trips`, generate
-from title, backfill, accept slug or ID in route. *(In flight.)*
+`/trips/<uuid>` → `/trips/bbmi-2027`. Built (migrations 031/032 + `src/lib/slug.ts`),
+then judged a poor implementation and removed — but the first removal was
+incomplete: the machinery survived and the app drifted back onto it, which is how
+a `slug ?? id` fallback silently became the URL form for every trip opened from a
+list, and how the Cup tab broke (#741). Finished properly since: generator,
+navigation fallbacks and resolver all gone, with a source guard so a third
+partial removal isn't possible. `trips.slug` drops in its own follow-up PR (a
+DROP inverts the migration ordering — see CLAUDE.md Migration Workflow 3b).
+**Not a candidate for revival** — if pretty URLs are ever wanted again, they
+should be designed rather than resurrected.
 
 ---
 
@@ -674,12 +682,9 @@ from title, backfill, accept slug or ID in route. *(In flight.)*
   cleanup).
 - **Field Mode (outdoor scoring)** — larger tap targets + bumped fonts for
   bright sunlight. Relevant once scorecards exist; pairs naturally with Slice C.
-- **Trip slug hex suffix** — the slug is `slugify(title)-<6hex>` (e.g.
-  `bbmi-2027-a3f9c1`); the random hex tail reads as noise. Aesthetic only, **not
-  a perf lever** — the slug resolves once on trip entry, and deep/game URLs use
-  the UUID, so `resolveSlug` is skipped on game entry (confirmed 2026-06-16
-  while diagnosing slow game entry). If revisited: drop the suffix with a
-  collision check, or use a shorter/cleaner code.
+- ~~**Trip slug hex suffix**~~ — moot: trip slugs were removed entirely. Kept as
+  a pointer for anyone who finds the old `bbmi-2027-a3f9c1` shape in a migration
+  or an old link and wonders what produced it.
 
 ---
 

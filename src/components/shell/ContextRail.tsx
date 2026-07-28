@@ -27,7 +27,6 @@ import { useIsShellDesktop } from "./breakpoints";
 interface TripRow {
   id: string;
   title: string;
-  slug?: string | null;
   locked_destination_location?: string | null;
   location?: string | null;
   myRole?: string | null;
@@ -60,7 +59,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             key={t.id}
             type="button"
             aria-current={current || undefined}
-            onClick={() => router.push(`/trips/${t.slug ?? t.id}`)}
+            onClick={() => router.push(`/trips/${t.id}`)}
             data-testid="rail-trip"
             className="mb-1 flex w-full items-center gap-2.5 rounded-[9px] p-2.5 text-left transition-colors"
             style={{

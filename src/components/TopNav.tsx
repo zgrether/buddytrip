@@ -63,7 +63,6 @@ interface TopNavProps {
 // Minimal shape we read off trips.list for the breadcrumb.
 interface SwitcherTripRow {
   id: string;
-  slug?: string;
   title: string;
   myRole?: string | null;
 }
@@ -101,8 +100,7 @@ export const TopNav: FC<TopNavProps> = ({
   // wordmark (global scope).
   const currentTrip =
     (tripsForSwitcher as SwitcherTripRow[] | undefined)?.find(
-      // The URL param can be a slug or the raw id — match either.
-      (t) => t.id === currentTripId || t.slug === currentTripId
+      (t) => t.id === currentTripId
     ) ?? null;
   const showSwitcher = !hideTripSwitcher && currentTrip != null;
 

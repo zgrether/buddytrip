@@ -658,25 +658,23 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   );
 }
 
-// ── Resolver ──────────────────────────────────────────────────────────────
-// The URL param can be a human-friendly slug (`bbmi-2027-a3f9c1`) or a raw
-// trip UUID (old links). The whole app keys off the canonical UUID — tRPC,
-// realtime channels, cache — so the param is resolved ONCE, in
-// `TripIdProvider` (mounted by this route's layout), and every trip-scoped
-// surface reads `useTripId()`. The slug stays a display-only URL layer.
+// ── Trip id ───────────────────────────────────────────────────────────────
+// The URL param IS the trip UUID (CLAUDE.md #21 — there is no second form).
+// It is still read in exactly ONE place, `TripIdProvider` (mounted by this
+// route's layout), and every trip-scoped surface reads `useTripId()`.
 //
-// This used to do the resolution inline, and five other components had each
-// copied the same block — while a sixth (`LiveFaceClient`) skipped it and
-// broke the whole Cup tab. One resolution point is what stops a seventh.
+// That single read point predates the slug removal and outlives it: this used
+// to resolve inline, five other components had each copied the same block, and
+// a sixth (`LiveFaceClient`) skipped it and broke the whole Cup tab.
 export default function TripDetailPage() {
-  const { tripId, isError } = useTripId();
-  const router = useRouter();
+  const { tripId } = useTripId();
 
-  // Unknown slug (or not a member) → bounce to the dashboard, same as the
-  // body's not-found handling.
-  useEffect(() => {
-    if (isError) router.replace("/dashboard");
-  }, [isError, router]);
+  // No client-side validity check: whether this id names a trip you can see is
+  // the server's answer, and `TripDetailBody` already bounces to /dashboard
+  // when `trips.getById` errors (its stale-pointer recovery). That covers a
+  // dead id, a deleted trip and revoked membership alike — a shape check would
+  // have caught only the first, and would wrongly reject non-UUID ids, which
+  // `trips.id` being `text` permits.
 
   if (!tripId) {
     return (
