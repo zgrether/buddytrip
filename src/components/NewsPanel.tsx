@@ -350,7 +350,10 @@ function NewsPanelInner({
       {titleRow}
       {helpBtn}
       {newPostBtn}
-      {closeBtn(variant)}
+      {/* A tab has nothing to close — you leave by picking another segment.
+          Only the non-embedded overlay caller (the competition Live face)
+          needs a real dismiss. */}
+      {!embedded && closeBtn(variant)}
     </div>
   );
 
