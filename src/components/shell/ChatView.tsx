@@ -72,9 +72,13 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
 
   // Per-segment unread — Crew/Planning from one server-computed breakdown
   // (messages.unreadCountByChannel; `planning` comes back 0 for a caller who
-  // can't see it), News from its own procedure. No realtime here (same
-  // posture as the News badge's v1: refetch-on-focus / the default
-  // staleTime is enough for a low-churn tab switcher — see news.unreadCount).
+  // can't see it), News from its own procedure. No subscription mounted HERE
+  // — AppShell holds the one always-mounted chat realtime subscription for
+  // the whole scoped session, which invalidates this query too (both read
+  // messages.unreadCount/unreadCountByChannel's cache). News stays on its
+  // v1 posture (refetch-on-focus / default staleTime — see news.unreadCount);
+  // chat doesn't, because a chat badge that visibly trails live messages
+  // reads as broken in a way a quiet news badge doesn't.
   const { data: chatUnread } = trpc.messages.unreadCountByChannel.useQuery(
     { tripId },
     { enabled: !!tripId }

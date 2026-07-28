@@ -18,12 +18,18 @@ export const DEFAULT_CHAT_SEGMENT: ChatSegment = "crew";
  * Owner with no one promoted has nobody to plan away from the crew with, so
  * the segment would just be an empty room — it stays hidden even for them
  * until an Organizer exists.
+ *
+ * "Designated" means actually in — `status === "in"`, matching
+ * FloatingChatPanel's own organizers-roster filter. A member merely
+ * `invited` with role Organizer hasn't accepted yet, so they aren't really
+ * on the trip to plan with; counting them would show Planning to the Owner
+ * for an Organizer seat nobody's actually filled.
  */
 export function canSeePlanningSegment(
   myRole: TripRoleValue,
-  members: { role: TripRoleValue }[]
+  members: { role: TripRoleValue; status?: string }[]
 ): boolean {
-  const hasOrganizers = members.some((m) => m.role === "Organizer");
+  const hasOrganizers = members.some((m) => m.role === "Organizer" && m.status === "in");
   return hasOrganizers && (myRole === "Owner" || myRole === "Organizer");
 }
 

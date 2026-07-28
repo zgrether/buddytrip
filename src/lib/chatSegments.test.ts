@@ -8,11 +8,18 @@ import {
 
 describe("canSeePlanningSegment", () => {
   const withOrganizer = [
-    { role: "Owner" as const },
-    { role: "Organizer" as const },
-    { role: "Member" as const },
+    { role: "Owner" as const, status: "in" },
+    { role: "Organizer" as const, status: "in" },
+    { role: "Member" as const, status: "in" },
   ];
-  const noOrganizer = [{ role: "Owner" as const }, { role: "Member" as const }];
+  const noOrganizer = [
+    { role: "Owner" as const, status: "in" },
+    { role: "Member" as const, status: "in" },
+  ];
+  const pendingOrganizerInvite = [
+    { role: "Owner" as const, status: "in" },
+    { role: "Organizer" as const, status: "invited" },
+  ];
 
   it("a plain member never sees Planning, even when organizers exist", () => {
     expect(canSeePlanningSegment("Member", withOrganizer)).toBe(false);
@@ -28,6 +35,12 @@ describe("canSeePlanningSegment", () => {
 
   it("a trip with NO organizers designated hides Planning even from the Owner", () => {
     expect(canSeePlanningSegment("Owner", noOrganizer)).toBe(false);
+  });
+
+  it("a pending (not-yet-accepted) Organizer invite doesn't count as designated", () => {
+    // Regression: role === "Organizer" alone isn't enough — an invited-but-
+    // not-in member hasn't actually joined, so there's no one to plan with.
+    expect(canSeePlanningSegment("Owner", pendingOrganizerInvite)).toBe(false);
   });
 
   it("hides Planning while role is still loading (null)", () => {
