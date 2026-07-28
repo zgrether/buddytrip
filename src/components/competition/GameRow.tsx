@@ -21,13 +21,36 @@ export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
  * and CompetitionFace's derived-open host renders the game's view. Shared by the
  * live GameRow and the compressed CompletedRow so both open the panel identically.
  */
+/**
+ * Build a URL that CHANGES the given params and keeps everything else.
+ *
+ * Rebuilding the query from scratch is what broke the Cup tab: the board lives at
+ * `?view=cup`, and a hand-built `?game=<id>` dropped `view`, so the shell fell
+ * back to the Trip tab and hid the panel it had just opened. Same class of bug as
+ * `?tab=` being clobbered — any writer of this URL has to merge, not replace.
+ */
+function withParams(pathname: string, patch: Record<string, string | null>) {
+  const params = new URLSearchParams(
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) params.delete(k);
+    else params.set(k, v);
+  }
+  const q = params.toString();
+  return q ? `${pathname}?${q}` : pathname;
+}
+
 function openGamePanel(pathname: string, gameId: string, settings: boolean) {
-  const q = `?game=${gameId}${settings ? "&settings=1" : ""}`;
   // Tagged via pushMarker, not a bare pushState(null): an UNTAGGED entry reads as
   // depth 0, which makes every marker below it think it sits above them — so
   // popping this entry would make the settings overlay / a modal / an in-page
   // screen wrongly claim the pop. See historyMarker.ts.
-  pushMarker("panel", undefined, `${pathname}${q}`);
+  pushMarker(
+    "panel",
+    undefined,
+    withParams(pathname, { game: gameId, settings: settings ? "1" : null }),
+  );
 }
 
 /**
@@ -39,7 +62,7 @@ function openGamePanel(pathname: string, gameId: string, settings: boolean) {
  * cold deep-link fallback.)
  */
 function openScorecardOverlay(pathname: string, gameId: string) {
-  pushMarker("panel", undefined, `${pathname}?scorecard=${gameId}`);
+  pushMarker("panel", undefined, withParams(pathname, { scorecard: gameId }));
 }
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────

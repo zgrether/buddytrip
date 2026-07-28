@@ -34,10 +34,15 @@ export type AppView = "home" | "trip" | "cup" | "chat";
 
 export const APP_VIEWS: readonly AppView[] = ["home", "trip", "cup", "chat"] as const;
 
-/** The view a scoped host shows when `?view=` is absent. */
-const DEFAULT_VIEW: AppView = "trip";
-
-export function useAppView(): {
+/**
+ * The view a host shows when `?view=` is absent.
+ *
+ * Parameterised because the two scoped hosts differ: `/trips/[tripId]` defaults
+ * to Trip, while `/trips/[tripId]/leaderboard` — kept as a deep-link alias for
+ * the 8 in-app constructors and 7 E2E references that still point at it —
+ * defaults to Cup. Same shell either way; only the landing tab differs.
+ */
+export function useAppView(defaultView: AppView = "trip"): {
   view: AppView;
   setView: (next: AppView) => void;
   /** Build the href another surface should link to for a given view. */
@@ -50,20 +55,20 @@ export function useAppView(): {
     const requested = searchParams.get("view");
     return (APP_VIEWS as readonly string[]).includes(requested ?? "")
       ? (requested as AppView)
-      : DEFAULT_VIEW;
-  }, [searchParams]);
+      : defaultView;
+  }, [searchParams, defaultView]);
 
   /** Current query string with `view` swapped and everything else — notably
    *  `tab` — carried through. */
   const urlFor = useCallback(
     (next: AppView) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next === DEFAULT_VIEW) params.delete("view");
+      if (next === defaultView) params.delete("view");
       else params.set("view", next);
       const q = params.toString();
       return q ? `${pathname}?${q}` : pathname;
     },
-    [pathname, searchParams],
+    [pathname, searchParams, defaultView],
   );
 
   const setView = useCallback(

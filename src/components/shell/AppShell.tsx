@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { GameChromeProvider } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
 import { AppTabBar } from "./AppTabBar";
 import { LockedTabExplainer } from "./LockedTabExplainer";
@@ -41,15 +42,24 @@ export function AppShell({
   trip,
   cup,
   chat,
+  /** Chrome the host renders above the tabs — the reduced top bar. */
+  topBar,
+  /** Landing tab when `?view=` is absent. `/…/leaderboard` passes "cup". */
+  defaultView = "trip",
 }: {
   tripId: string | null;
-  home: ReactNode;
-  trip?: ReactNode;
+  home?: ReactNode;
+  /** Render prop so trip content can request a tab (HomeTab's "open chat" card
+   *  used to open an overlay; now it selects the Chat tab). A render prop rather
+   *  than a context because exactly one consumer needs it. */
+  trip?: ReactNode | ((api: { requestView: (v: AppView) => void }) => ReactNode);
   cup?: ReactNode;
   chat?: ReactNode;
+  topBar?: ReactNode;
+  defaultView?: AppView;
 }) {
   const router = useRouter();
-  const { view, setView } = useAppView();
+  const { view, setView } = useAppView(defaultView);
   const [peeking, setPeeking] = useState<Exclude<AppView, "home"> | null>(null);
   const hasContext = !!tripId;
 
@@ -89,22 +99,51 @@ export function AppShell({
      */
     body = (
       <div key={tripId ?? "no-context"}>
-        <div hidden={effectiveView !== "trip"}>{trip}</div>
+        <div hidden={effectiveView !== "trip"}>
+          {typeof trip === "function" ? trip({ requestView: select }) : trip}
+        </div>
         <div hidden={effectiveView !== "cup"}>{cup}</div>
-        <div hidden={effectiveView !== "chat"}>{chat}</div>
+        {/*
+         * Chat is CONDITIONALLY RENDERED, not hidden like the other two.
+         *
+         * `FloatingChatPanel` and `NewsPanel` render through `createPortal`, so
+         * they are not DOM children of this wrapper — `hidden` sets display:none
+         * here and the portal keeps painting. Their desktop rail is
+         * `fixed inset-x-0 top-14 bottom-0 z-50`, so an "invisible" Chat tab sat
+         * over the whole app and swallowed every click. That is not a subtle
+         * failure: it broke four merge-blocking E2E specs, all reporting the same
+         * `intercepts pointer events`.
+         *
+         * Mounting on demand costs Chat a remount per visit. Acceptable — it is
+         * still no route change, the message pages are already warm from the
+         * unread-count query (DATA_FRESHNESS_AUDIT F3), and correctness beats a
+         * warm cache. Trip and Cup are not portaled, so they keep staying mounted,
+         * which is where the win actually matters.
+         */}
+        {effectiveView === "chat" && chat}
       </div>
     );
   }
 
   return (
-    <>
-      <div style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 8px)" }}>{body}</div>
-      <AppTabBar
-        active={peeking ?? effectiveView}
-        hasContext={hasContext}
-        onSelect={select}
-        onLockedTap={(v) => setPeeking(v as Exclude<AppView, "home">)}
-      />
-    </>
+    // The provider wraps the BAR as well as the content: TopNav reads
+    // `useGameChrome()` to swap into game mode, so it must sit inside. Hoisting it
+    // here is what lets the game panel (rendered deep inside the Cup tab) publish
+    // its title/back/gear up to a bar the shell owns.
+    <GameChromeProvider>
+      <div
+        className="min-h-screen"
+        style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
+      >
+        {topBar}
+        <div style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 16px)" }}>{body}</div>
+        <AppTabBar
+          active={peeking ?? effectiveView}
+          hasContext={hasContext}
+          onSelect={select}
+          onLockedTap={(v) => setPeeking(v as Exclude<AppView, "home">)}
+        />
+      </div>
+    </GameChromeProvider>
   );
 }

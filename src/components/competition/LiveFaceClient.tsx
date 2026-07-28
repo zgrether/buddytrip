@@ -49,10 +49,23 @@ export type FaceBootstrap =
 
 export function LiveFaceClient({
   initialBoot,
+  embedded = false,
 }: {
   /** Server-prefetched bootstrap (Stage B). null when the server prefetch was
    *  skipped (unauthed/early) — the client then fetches + shows the spinner. */
   initialBoot: FaceBootstrap | null;
+  /**
+   * Hosted inside `AppShell` as the Cup tab (Phase 3) rather than owning the
+   * screen. The shell supplies the app frame — `GameChromeProvider`, the top bar,
+   * the tab bar, and the chat/news surfaces — so this renders BODY ONLY.
+   *
+   * The provider in particular must come from the shell, not from here: `TopNav`
+   * reads `useGameChrome()` to swap into game mode, so the provider has to sit
+   * ABOVE the bar. Rendering a second one here would give the game panel a
+   * provider the bar can't see, and the game's back/title/gear would silently
+   * stop appearing.
+   */
+  embedded?: boolean;
 }) {
   const { tripId } = useParams<{ tripId: string }>();
 
@@ -208,6 +221,11 @@ export function LiveFaceClient({
         isOwner={isOwner}
       />
     );
+  }
+
+  // Embedded (Cup tab): body only — the shell owns the frame. See the prop doc.
+  if (embedded) {
+    return <main className="mx-auto max-w-[1024px] px-3 pt-4">{body}</main>;
   }
 
   return (

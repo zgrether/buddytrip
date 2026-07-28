@@ -2,6 +2,7 @@
 
 import { type FC, useEffect, useRef } from "react";
 import { Home, Calendar, Trophy, MessageCircle, type LucideIcon } from "lucide-react";
+import { useGameChrome } from "@/components/games/GameChrome";
 import type { AppView } from "./useAppView";
 
 /**
@@ -62,6 +63,28 @@ export const AppTabBar: FC<{
   hasContext: boolean;
   onSelect: (view: AppView) => void;
   /** A locked tab was tapped: show its explainer rather than switching. */
+  onLockedTap: (view: AppView) => void;
+}> = (props) => {
+  const chrome = useGameChrome();
+  // The focused score-entry surfaces publish `hideBottomNav` (CLAUDE.md #13) —
+  // match play's score screen, rack's and stroke's group entry. Their exit is the
+  // app-bar back and their CTA anchors to the viewport bottom (#14), so a tab bar
+  // would both crowd the CTA and offer an escape that loses the hole being
+  // entered. The bar this replaces honoured the flag; so does this one.
+  //
+  // Gating HERE rather than inside `TabBar` is deliberate: the height-publishing
+  // effect lives in the inner component, so hiding by unmounting it runs that
+  // effect's cleanup and clears `--bt-bottomnav-height`. An early return after
+  // the hook would leave the variable set and every bottom-anchored surface would
+  // keep padding for a bar that isn't there.
+  if (chrome?.hideBottomNav) return null;
+  return <TabBar {...props} />;
+};
+
+const TabBar: FC<{
+  active: AppView;
+  hasContext: boolean;
+  onSelect: (view: AppView) => void;
   onLockedTap: (view: AppView) => void;
 }> = ({ active, hasContext, onSelect, onLockedTap }) => {
   const navRef = usePublishNavHeight();

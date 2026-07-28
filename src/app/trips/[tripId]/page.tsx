@@ -17,14 +17,12 @@ const VALID_TABS = ["home", "crew", "lodging", "schedule", "expenses", "comp"] a
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { useTripRole } from "@/hooks/useTripRole";
-import { type TabId, TripBottomNav } from "@/components/BottomNav";
+import type { TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
-import { FloatingChatPanel } from "@/components/FloatingChatPanel";
-import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useRealtimeTripData } from "@/hooks/useRealtimeTripData";
@@ -36,6 +34,9 @@ import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { DatesSheet } from "./components/DatesSheet";
+import { AppShell } from "@/components/shell/AppShell";
+import { ChatView } from "@/components/shell/ChatView";
+import { LiveFaceClient } from "@/components/competition/LiveFaceClient";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -43,13 +44,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // Initial tab respects `?tab=<id>` so sub-pages (e.g. the event
-  // detail page under /trips/[tripId]/events/[eventId]) can route the
-  // user back to the comp tab instead of dumping them on Home.
-  //
-  // `activeTabRaw` is the literal user/URL intent; the effective
-  // `activeTab` (derived below) snaps back to "home" when the user
-  // doesn't have permission for the requested tab.
   // ── Tab state lives in the URL (Phase 2 / IA-1) ───────────────────────────
   // It used to be `useState` seeded once from `?tab=` and never written back, so
   // a tab was not a place: no deep link, nothing to share, and back left the trip
@@ -95,18 +89,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   );
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
-  // News + Chat both dock to the right rail, so they're mutually exclusive:
-  // opening one closes the other.
-  const [newsOpen, setNewsOpen] = useState(false);
-  const openChat = () => {
-    setNewsOpen(false);
-    setChatOpen((prev) => !prev);
-  };
-  const openNews = () => {
-    setChatOpen(false);
-    setNewsOpen((prev) => !prev);
-  };
   const [datesSheetOpen, setDatesSheetOpen] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -438,23 +420,24 @@ function TripDetailBody({ tripId }: { tripId: string }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
-    >
-      {/* ── Top nav ────────────────────────────────────────────────────────── */}
-      <TopNav
-        tripId={tripId}
-        onOpenChat={openChat}
-        chatOpen={chatOpen}
-        onOpenNews={openNews}
-        newsOpen={newsOpen}
-        onDismissPanels={() => {
-          setChatOpen(false);
-          setNewsOpen(false);
-        }}
-      />
-
+    /**
+     * The four-tab shell (Phase 3). This route is the SCOPED host: Trip, Cup and
+     * Chat all render here and switching between them is client state — no route
+     * change, no remount, no server round trip. Home is context-free and lives on
+     * /dashboard, so selecting it navigates; see AppShell's scope note.
+     *
+     * The top bar is REDUCED to brand + avatar purely by configuration — the
+     * trip switcher, News and Chat tools all moved into the tab bar, so we simply
+     * stop passing their props. No TopNav change was needed.
+     */
+    <AppShell
+      tripId={tripId}
+      defaultView="trip"
+      topBar={<TopNav tripId={tripId} hideTripSwitcher hideNews />}
+      cup={<LiveFaceClient initialBoot={null} embedded />}
+      chat={<ChatView tripId={tripId} canPost={effectiveCanEdit} />}
+      trip={({ requestView }) => (
+        <>
       {/* ── Trip content ────────────────────────────────────────────────── */}
       {isIdea ? (
         /* Idea phase: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
@@ -495,7 +478,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 onTabChange={(tab) => goToTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
                 compActivated={showComp}
-                onOpenChat={() => setChatOpen(true)}
+                onOpenChat={() => requestView("chat")}
                 onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
               />
             )}
@@ -569,7 +552,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     canEdit={effectiveCanEdit}
                     isOwner={isOwner}
                     onTabChange={(tab) => goToTab(tab as TabId)}
-                    onOpenChat={() => setChatOpen(true)}
+                    onOpenChat={() => requestView("chat")}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}
@@ -598,18 +581,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         </div>
       )}
 
-      {/* Bottom nav's "Live" entry appears as soon as a competition EXISTS
-          (option A — the competition is visible to the whole crew once created;
-          per-game Setup/Scoring handles game-level readiness). The old status
-          gate (visible only once "active") was retired with the GO LIVE control. */}
-      {competition && (
-        <TripBottomNav
-          tripId={tripId}
-          showComp={true}
-          liveLabel={competition.short_name ?? competition.name ?? null}
-        />
-      )}
-
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
         <TripSettingsModal
@@ -634,47 +605,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         />
       )}
 
-      {/* ── Floating crew chat ──────────────────────────────────────────
-          Opened from the chat button in the TopNav. Renders as a side
-          panel on desktop (lg+) and as a bottom sheet on mobile. */}
-      <FloatingChatPanel
-        tripId={tripId}
-        isOpen={chatOpen}
-        ideaStage={isIdea}
-        onClose={() => setChatOpen(false)}
-        memberNames={Object.fromEntries(
-          members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
-        )}
-      />
-
-      {/* ── News panel ──────────────────────────────────────────────────
-          Owner/organizer announcement board. Sibling of chat: docked rail
-          on desktop, bottom sheet on mobile. Opened from the News tool in
-          the TopNav. */}
-      <NewsPanel
-        tripId={tripId}
-        isOpen={newsOpen}
-        onClose={() => setNewsOpen(false)}
-        canPost={role === "Owner" || role === "Organizer"}
-        authors={Object.fromEntries(
-          members.map(
-            (m: {
-              user_id: string | null;
-              memberId: string;
-              displayName: string;
-              role: NewsAuthorMeta["role"];
-              user: { avatar_icon: string | null } | null;
-            }) => [
-              m.user_id ?? m.memberId,
-              {
-                name: m.displayName,
-                role: m.role,
-                avatarIcon: m.user?.avatar_icon ?? null,
-              },
-            ]
-          )
-        )}
-      />
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
       {toast && (
@@ -694,7 +624,9 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           </div>
         </div>
       )}
-    </div>
+        </>
+      )}
+    />
   );
 }
 
