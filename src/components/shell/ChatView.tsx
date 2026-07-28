@@ -119,10 +119,18 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   // instead of pinned to the visible bottom. (The overlay/non-embedded panel
   // never had this problem — its `fixed inset-x-0 top-14 bottom-0` chrome is
   // inherently a bounded box; this box is embedded mode's equivalent.)
+  //
+  // `svh`, not `dvh`: `dvh` tracks the browser's dynamic toolbar LIVE, so a
+  // definite height built from it keeps recalculating as the toolbar
+  // shows/hides mid-scroll — exactly the "scroll to the top, then scroll
+  // again before the tabs settle into place" jitter this is fixing. `svh`
+  // (small viewport height — the size WITH the toolbar shown) is fixed for
+  // the session: slightly less generous once the toolbar auto-hides, but
+  // stable, which matters far more for a box a scroll gesture reaches into.
   const chatIsColumn = useIsChatColumn();
   const heightStyle = chatIsColumn
-    ? { minHeight: "calc(100dvh - 56px - var(--bt-bottomnav-height, 0px))" }
-    : { height: "calc(100dvh - 56px - var(--bt-bottomnav-height, 0px))" };
+    ? { minHeight: "calc(100svh - 56px - var(--bt-bottomnav-height, 0px))" }
+    : { height: "calc(100svh - 56px - var(--bt-bottomnav-height, 0px))" };
 
   return (
     <div data-testid="chat-view" className="flex flex-col" style={heightStyle}>
