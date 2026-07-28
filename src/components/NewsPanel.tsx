@@ -44,6 +44,16 @@ export interface NewsAuthorMeta {
 interface NewsPanelProps {
   tripId: string;
   isOpen: boolean;
+  /**
+   * Rendered as a TAB (AppShell's Chat view) rather than as an overlay.
+   *
+   * A tab must NOT claim a history entry. `useModalBackButton` pushes one on
+   * mount and calls `history.back()` on unmount — right for a modal, corrupting
+   * for a tab: switching away popped an entry the shell never pushed, so repeated
+   * tab switching unwound the stack until the user fell out of the trip entirely
+   * (observed: landing on /dashboard).
+   */
+  embedded?: boolean;
   onClose: () => void;
   /** Owner/organizer — drives the owner empty-state variant and (PR2) compose. */
   canPost: boolean;
@@ -65,11 +75,12 @@ export function useNewsUnreadCount(tripId: string): number {
   return data ?? 0;
 }
 
-export function NewsPanel({ tripId, isOpen, onClose, canPost, authors }: NewsPanelProps) {
+export function NewsPanel({ tripId, isOpen, embedded, onClose, canPost, authors }: NewsPanelProps) {
   if (!isOpen) return null;
   return (
     <NewsPanelInner
       tripId={tripId}
+      embedded={embedded}
       onClose={onClose}
       canPost={canPost}
       authors={authors}
@@ -108,11 +119,12 @@ function relativeTime(iso: string, now: number): string {
 
 function NewsPanelInner({
   tripId,
+  embedded = false,
   onClose,
   canPost,
   authors,
 }: Omit<NewsPanelProps, "isOpen">) {
-  useModalBackButton(onClose);
+  useModalBackButton(onClose, !embedded);
 
   const utils = trpc.useUtils();
   const { data: posts = [], isLoading } = trpc.news.list.useQuery({ tripId });
