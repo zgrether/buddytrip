@@ -373,6 +373,75 @@ describe("messages router", () => {
     expect(await planner.messages.unreadCount({ tripId: trip })).toBe(2);
   });
 
+  // ── unreadCountByChannel — the Chat tab's per-segment breakdown ─────────
+  // `unreadCount` (above) is the summed total; these pin the per-channel
+  // shape it's built from, which the Chat tab's Crew/Planning segment dots
+  // read directly.
+
+  it("unreadCountByChannel — an organizer gets a breakdown, not just a sum", async () => {
+    const trip = await ctx.createTrip("Unread ByChannel Organizer");
+    await ctx.addTripMember(trip, "planner", "Organizer");
+    const owner = ctx.caller();
+    const planner = ctx.callerAs("planner");
+
+    await planner.messages.markRead({ tripId: trip, visibility: "crew" });
+    await planner.messages.markRead({ tripId: trip, visibility: "planning" });
+
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew ping" });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "planning ping",
+    });
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew ping 2" });
+
+    const byChannel = await planner.messages.unreadCountByChannel({ tripId: trip });
+    expect(byChannel).toEqual({ crew: 2, planning: 1 });
+  });
+
+  it("unreadCountByChannel — a plain member's planning share is always 0, even with unread planning messages", async () => {
+    const trip = await ctx.createTrip("Unread ByChannel Member");
+    await ctx.addTripMember(trip, "member", "Member");
+    const owner = ctx.caller();
+    const member = ctx.callerAs("member");
+
+    await member.messages.markRead({ tripId: trip, visibility: "crew" });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "organizers only",
+    });
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "everyone" });
+
+    const byChannel = await member.messages.unreadCountByChannel({ tripId: trip });
+    expect(byChannel).toEqual({ crew: 1, planning: 0 });
+  });
+
+  it("unreadCountByChannel — sums to the same total unreadCount returns", async () => {
+    const trip = await ctx.createTrip("Unread ByChannel Matches Total");
+    await ctx.addTripMember(trip, "planner", "Organizer");
+    const owner = ctx.caller();
+    const planner = ctx.callerAs("planner");
+
+    await planner.messages.markRead({ tripId: trip, visibility: "crew" });
+    await planner.messages.markRead({ tripId: trip, visibility: "planning" });
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew ping" });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "planning ping",
+    });
+
+    const [byChannel, total] = await Promise.all([
+      planner.messages.unreadCountByChannel({ tripId: trip }),
+      planner.messages.unreadCount({ tripId: trip }),
+    ]);
+    expect(byChannel.crew + byChannel.planning).toBe(total);
+  });
+
   it("unreadCount — chat_visible_from floor excludes messages from before the member joined", async () => {
     const trip = await ctx.createTrip("Unread Floor Test");
     const owner = ctx.caller();

@@ -3,6 +3,7 @@
 import { type FC, useEffect, useRef } from "react";
 import { Home, Calendar, Trophy, MessageCircle, type LucideIcon } from "lucide-react";
 import { useGameChrome } from "@/components/games/GameChrome";
+import { useChatTabUnread } from "@/hooks/useChatTabUnread";
 import type { AppView } from "./useAppView";
 
 /**
@@ -64,6 +65,9 @@ export const AppTabBar: FC<{
   onSelect: (view: AppView) => void;
   /** A locked tab was tapped: show its explainer rather than switching. */
   onLockedTap: (view: AppView) => void;
+  /** Drives the Chat tab's unread badge (Crew + Planning + News, combined and
+   *  already visibility-filtered server-side). Null on the context-free host. */
+  tripId?: string | null;
 }> = (props) => {
   const chrome = useGameChrome();
   // The focused score-entry surfaces publish `hideBottomNav` (CLAUDE.md #13) —
@@ -86,8 +90,10 @@ const TabBar: FC<{
   hasContext: boolean;
   onSelect: (view: AppView) => void;
   onLockedTap: (view: AppView) => void;
-}> = ({ active, hasContext, onSelect, onLockedTap }) => {
+  tripId?: string | null;
+}> = ({ active, hasContext, onSelect, onLockedTap, tripId }) => {
   const navRef = usePublishNavHeight();
+  const chatUnread = useChatTabUnread(tripId ?? undefined);
 
   return (
     <nav
@@ -108,6 +114,7 @@ const TabBar: FC<{
         {TABS.map(({ id, label, Icon }) => {
           const locked = !hasContext && id !== "home";
           const selected = active === id;
+          const showBadge = id === "chat" && !locked && chatUnread > 0;
           return (
             <button
               key={id}
@@ -130,7 +137,24 @@ const TabBar: FC<{
                 opacity: locked ? 0.45 : 1,
               }}
             >
-              <Icon size={21} />
+              <span className="relative">
+                <Icon size={21} />
+                {showBadge && (
+                  <span
+                    aria-hidden="true"
+                    data-testid="app-tab-chat-badge"
+                    className="absolute rounded-full"
+                    style={{
+                      top: -2,
+                      right: -4,
+                      width: 8,
+                      height: 8,
+                      background: "var(--color-bt-owner)",
+                      border: "1.5px solid var(--color-bt-card)",
+                    }}
+                  />
+                )}
+              </span>
               <span className="max-w-full truncate px-1 text-[10px] font-medium">{label}</span>
             </button>
           );

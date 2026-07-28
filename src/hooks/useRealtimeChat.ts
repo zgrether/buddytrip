@@ -82,11 +82,15 @@ export function useRealtimeChat(
     // messages.list. messages.unreadCount takes only {tripId} (it already
     // sums crew + planning server-side), so ONE invalidation on either
     // channel's insert refreshes the combined count — no per-visibility
-    // wiring needed. Scoped to channel === "trip": team chat has no unread
-    // badge.
+    // wiring needed. unreadCountByChannel (the Chat tab's per-segment dots)
+    // rides the same invalidation so the two counts can't drift apart.
+    // Scoped to channel === "trip": team chat has no unread badge.
     const invalidate = () => {
       utils.messages.list.invalidate({ tripId, channel, teamId });
-      if (channel === "trip") utils.messages.unreadCount.invalidate({ tripId });
+      if (channel === "trip") {
+        utils.messages.unreadCount.invalidate({ tripId });
+        utils.messages.unreadCountByChannel.invalidate({ tripId });
+      }
     };
 
     // Prepend a freshly-inserted row into every matching messages.list cache
@@ -158,6 +162,7 @@ export function useRealtimeChat(
           // recomputes to the same number it already had.
           if (channel === "trip") {
             utils.messages.unreadCount.invalidate({ tripId });
+            utils.messages.unreadCountByChannel.invalidate({ tripId });
           }
         }
       )

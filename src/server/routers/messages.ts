@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { createAdminClient } from "@/lib/supabase-admin";
+import type { TRPCContext, TripRoleString } from "../trpc";
 
 /**
  * Sub-channel within `messages.channel = 'trip'`:
@@ -48,6 +49,92 @@ export async function postSystemMessage(
   if (error) {
     throw new Error(`postSystemMessage failed: ${error.message}`);
   }
+}
+
+/**
+ * Per-channel unread breakdown (Crew always; Organizers zeroed for
+ * non-Owner/Organizer callers), computed server-side so no badge ever has
+ * to ship message rows to compute an integer (DATA_FRESHNESS_AUDIT.md
+ * §8-F3). The extra work here is forced by chat's shape, not invented
+ * complexity: TWO visibility channels, each with its OWN last_read_at
+ * (chat_reads) and its OWN per-member visibility floor
+ * (chat_visible_from / planning_visible_from on trip_members) — list()
+ * already applies that floor, so a message from before a member
+ * joined/was promoted must not count as unread just because it's newer
+ * than their (null) read mark.
+ *
+ * A plain function, not a procedure, so both `unreadCountByChannel` (the
+ * Chat tab's per-segment dots) and `unreadCount` (the summed total used by
+ * the combined Chat tab / TopNav badges) run the SAME query — they can't
+ * disagree.
+ */
+async function countUnreadByChannel(
+  ctx: TRPCContext & { tripId: string; tripRole: TripRoleString }
+): Promise<{ crew: number; planning: number }> {
+  const canSeeOrganizers = ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
+
+  const [{ data: memberRow }, { data: readRows }] = await Promise.all([
+    ctx.supabase
+      .from("trip_members")
+      .select("chat_visible_from, planning_visible_from")
+      .eq("trip_id", ctx.tripId)
+      .eq("user_id", ctx.user!.id)
+      .maybeSingle(),
+    ctx.supabase
+      .from("chat_reads")
+      .select("visibility, last_read_at")
+      .eq("trip_id", ctx.tripId)
+      .eq("user_id", ctx.user!.id),
+  ]);
+
+  const floors = (memberRow ?? {}) as {
+    chat_visible_from?: string | null;
+    planning_visible_from?: string | null;
+  };
+  const readMarks: Record<"crew" | "planning", string | null> = {
+    crew: null,
+    planning: null,
+  };
+  for (const row of (readRows ?? []) as { visibility: string; last_read_at: string }[]) {
+    if (row.visibility === "crew" || row.visibility === "planning") {
+      readMarks[row.visibility] = row.last_read_at;
+    }
+  }
+
+  // One COUNT per visible channel — others' non-system messages, newer
+  // than my read mark, no older than my visibility floor. Matches the
+  // client derivation this replaced exactly: `m.user_id !== currentUser.id
+  // && m.message_type !== "system"`, filtered by created_at > lastReadAt.
+  const countChannel = (visibility: "crew" | "planning", floor: string | null | undefined) => {
+    let query = ctx.supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", ctx.tripId)
+      .eq("channel", "trip")
+      .eq("visibility", visibility)
+      .neq("message_type", "system")
+      .neq("user_id", ctx.user!.id);
+    if (floor) query = query.gte("created_at", floor);
+    const lastReadAt = readMarks[visibility];
+    if (lastReadAt) query = query.gt("created_at", lastReadAt);
+    return query;
+  };
+
+  const [crewResult, planningResult] = await Promise.all([
+    countChannel("crew", floors.chat_visible_from),
+    canSeeOrganizers
+      ? countChannel("planning", floors.planning_visible_from)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
+
+  if (crewResult.error || planningResult.error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to count unread messages",
+    });
+  }
+
+  return { crew: crewResult.count ?? 0, planning: planningResult.count ?? 0 };
 }
 
 export const messagesRouter = router({
@@ -142,95 +229,32 @@ export const messagesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // unreadCount — total unread across the channels the caller can see (Crew
-  // always; Organizers when Owner/Organizer), computed server-side so the
-  // badge never has to ship message rows to compute an integer
-  // (DATA_FRESHNESS_AUDIT.md §8-F3). Mirrors news.unreadCount's shape and
-  // posture (authedProcedure + requireTripMember, a plain COUNT). The extra
-  // work below is forced by chat's shape, not invented complexity: TWO
-  // visibility channels, each with its OWN last_read_at (chat_reads) and its
-  // OWN per-member visibility floor (chat_visible_from / planning_visible_from
-  // on trip_members) — list() already applies that floor, so a message from
-  // before a member joined/was promoted must not count as unread just
-  // because it's newer than their (null) read mark.
+  // unreadCountByChannel — per-channel unread breakdown (Crew always;
+  // Organizers zeroed for non-Owner/Organizer callers). See
+  // `countUnreadByChannel` above for why this needs two channel-scoped
+  // queries instead of one. Shared with `unreadCount` (the summed total,
+  // used for the combined Chat tab / TopNav badges) and the Chat tab's
+  // per-segment (Crew/Planning) dots — one query, two shapes, so they can't
+  // drift.
+  // -----------------------------------------------------------------------
+  unreadCountByChannel: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(({ ctx }) => countUnreadByChannel(ctx)),
+
+  // -----------------------------------------------------------------------
+  // unreadCount — total unread across the channels the caller can see.
+  // Mirrors news.unreadCount's shape and posture (authedProcedure +
+  // requireTripMember, a plain COUNT) for the combined badges (TopNav,
+  // Chat tab). Sums `countUnreadByChannel` rather than re-querying, so the
+  // total and the per-segment breakdown can never disagree.
   // -----------------------------------------------------------------------
   unreadCount: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx }): Promise<number> => {
-      const canSeeOrganizers =
-        ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
-
-      const [{ data: memberRow }, { data: readRows }] = await Promise.all([
-        ctx.supabase
-          .from("trip_members")
-          .select("chat_visible_from, planning_visible_from")
-          .eq("trip_id", ctx.tripId!)
-          .eq("user_id", ctx.user!.id)
-          .maybeSingle(),
-        ctx.supabase
-          .from("chat_reads")
-          .select("visibility, last_read_at")
-          .eq("trip_id", ctx.tripId!)
-          .eq("user_id", ctx.user!.id),
-      ]);
-
-      const floors = (memberRow ?? {}) as {
-        chat_visible_from?: string | null;
-        planning_visible_from?: string | null;
-      };
-      const readMarks: Record<"crew" | "planning", string | null> = {
-        crew: null,
-        planning: null,
-      };
-      for (const row of (readRows ?? []) as {
-        visibility: string;
-        last_read_at: string;
-      }[]) {
-        if (row.visibility === "crew" || row.visibility === "planning") {
-          readMarks[row.visibility] = row.last_read_at;
-        }
-      }
-
-      // One COUNT per visible channel — others' non-system messages, newer
-      // than my read mark, no older than my visibility floor. Matches the
-      // client derivation this replaces exactly: `m.user_id !== currentUser.id
-      // && m.message_type !== "system"`, filtered by created_at > lastReadAt.
-      const countChannel = (
-        visibility: "crew" | "planning",
-        floor: string | null | undefined
-      ) => {
-        let query = ctx.supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true })
-          .eq("trip_id", ctx.tripId!)
-          .eq("channel", "trip")
-          .eq("visibility", visibility)
-          .neq("message_type", "system")
-          .neq("user_id", ctx.user!.id);
-        if (floor) query = query.gte("created_at", floor);
-        const lastReadAt = readMarks[visibility];
-        if (lastReadAt) query = query.gt("created_at", lastReadAt);
-        return query;
-      };
-
-      const queries = [countChannel("crew", floors.chat_visible_from)];
-      if (canSeeOrganizers) {
-        queries.push(countChannel("planning", floors.planning_visible_from));
-      }
-
-      const results = await Promise.all(queries);
-      let total = 0;
-      for (const { count, error } of results) {
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to count unread messages",
-          });
-        }
-        total += count ?? 0;
-      }
-      return total;
+      const byChannel = await countUnreadByChannel(ctx);
+      return byChannel.crew + byChannel.planning;
     }),
 
   // -----------------------------------------------------------------------
