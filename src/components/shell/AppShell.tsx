@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { GameChromeProvider } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
@@ -139,6 +139,33 @@ export function AppShell({
     chatIsColumn && effectiveView === "chat" ? lastContentView : effectiveView;
   const chatMount = chatMountLocation(effectiveView, chatIsColumn);
   const chatAside = chatMount === "aside";
+
+  /**
+   * Reset scroll on arriving at the Chat tab, INLINE only (mobile, or desktop
+   * <1280 where Chat owns the whole view — not the >=1280 aside, where Trip/
+   * Cup content still owns the document's scroll behind it).
+   *
+   * `?view=` tab switches go through history.pushState/replaceState
+   * (useAppView's setView), which — unlike a real navigation — never resets
+   * scroll. Trip/Cup/Chat all stay mounted in the SAME document (that's the
+   * whole point: no remount, no refetch), so they share ONE window.scrollY.
+   * Trip/Cup tolerate inheriting a stale scroll position because they're
+   * ordinary scrolling pages — landing partway down still shows something
+   * coherent. Chat doesn't: its embedded surface is sized to EXACTLY fill the
+   * viewport slot below the top nav (ChatView's `calc(100svh - 56px - ...)`),
+   * so a leftover nonzero scrollY from whichever tab you were on before shows
+   * the WRONG slice of it — the segment tabs scrolled off the top, or the
+   * composer sitting short of the bottom nav by roughly that same offset.
+   * This was the actual cause of both: "have to scroll to the top and then
+   * scroll again to see the tabs" and "composer initializes above the navbar"
+   * — not a sizing bug in ChatView itself, which the two prior fixes already
+   * addressed and remain correct.
+   */
+  useEffect(() => {
+    if (chatMount === "inline") {
+      window.scrollTo(0, 0);
+    }
+  }, [chatMount]);
 
   /**
    * LAZY MOUNT, then keep. A slot is not mounted until its tab is first visited;
