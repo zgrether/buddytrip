@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { GameChromeProvider } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
@@ -101,12 +101,18 @@ export function AppShell({
    * free where it matters (anything already visited) and stops cold open paying
    * for the rest.
    */
+  // Adjusted DURING render rather than in an effect. React supports this
+  // explicitly ("adjusting state when props change"): the update is applied
+  // before the browser paints, so the newly-visited slot mounts in the same
+  // commit and there is no flash of an empty tab. An effect would paint once
+  // without the slot and once with it; a ref would be an impure render read.
+  // The set only ever grows, so this converges immediately.
   const [visited, setVisited] = useState<ReadonlySet<AppView>>(
     () => new Set<AppView>([effectiveView]),
   );
-  useEffect(() => {
-    setVisited((prev) => (prev.has(effectiveView) ? prev : new Set(prev).add(effectiveView)));
-  }, [effectiveView]);
+  if (!visited.has(effectiveView)) {
+    setVisited(new Set(visited).add(effectiveView));
+  }
 
   let body: ReactNode;
   if (peeking) {
