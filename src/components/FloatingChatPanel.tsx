@@ -547,20 +547,12 @@ function FloatingChatPanelInner({
   // below (no `fixed`, no backdrop): it fills whatever height its caller
   // (ChatView) gives it. Channel tabs stay suppressed (the `!channel` guard
   // on `tabsRow` above) since the shell's segmented control already owns
-  // that choice. The notify toggle is the one control worth keeping — it's
-  // a real per-account preference, not a dismiss affordance.
+  // that choice. The notify toggle moved up into ChatView's own segment row
+  // (inline with Crew/Organizers/News) — it's a single per-account
+  // preference, not per-channel, so it doesn't belong to any one embedded
+  // panel instance.
   if (embedded) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <div
-          className="flex flex-shrink-0 items-center justify-end px-3 py-2"
-          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-        >
-          <ChatNotifyToggle />
-        </div>
-        {body}
-      </div>
-    );
+    return <div className="flex h-full min-h-0 flex-col">{body}</div>;
   }
 
   return (
@@ -1163,14 +1155,18 @@ function ChatBody({
  * already requires (see the comment on that hook call, below).
  */
 export function useChatUnreadCount(tripId: string): number {
-  // Subscribe to realtime here (this hook is always mounted on the trip page,
-  // panel open or closed) — MUST stay here even though the count below no
-  // longer derives from messages.list. The open FloatingChatPanel deliberately
-  // does NOT also subscribe (a single channel avoids a duplicate-topic
-  // collision), so it relies on THIS hook's subscription to keep its own
-  // messages.list cache live via direct cache writes (useRealtimeChat.ts).
-  // Removing this call would silently stop new messages from appearing in an
-  // open panel without a manual refresh.
+  // Subscribe to realtime here — MUST stay even though the count below no
+  // longer derives from messages.list. This hook is mounted via TopNav's
+  // ChatToolButton, which today only renders where `onOpenChat` is passed —
+  // the competition Live face (LiveFaceClient), not the four-tab trip page
+  // (Chat moved to AppShell's own tab there; AppShell.tsx holds the
+  // equivalent always-mounted subscription for that page instead). The open
+  // FloatingChatPanel deliberately does NOT also subscribe (a single channel
+  // avoids a duplicate-topic collision), so it relies on whichever of these
+  // holds the subscription in its context to keep its own messages.list
+  // cache live via direct cache writes (useRealtimeChat.ts). Removing this
+  // call would silently stop new messages from appearing in an open panel
+  // without a manual refresh.
   useRealtimeChat(tripId, "trip");
 
   const { data } = trpc.messages.unreadCount.useQuery(
