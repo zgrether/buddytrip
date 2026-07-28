@@ -547,20 +547,12 @@ function FloatingChatPanelInner({
   // below (no `fixed`, no backdrop): it fills whatever height its caller
   // (ChatView) gives it. Channel tabs stay suppressed (the `!channel` guard
   // on `tabsRow` above) since the shell's segmented control already owns
-  // that choice. The notify toggle is the one control worth keeping — it's
-  // a real per-account preference, not a dismiss affordance.
+  // that choice. The notify toggle moved up into ChatView's own segment row
+  // (inline with Crew/Organizers/News) — it's a single per-account
+  // preference, not per-channel, so it doesn't belong to any one embedded
+  // panel instance.
   if (embedded) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <div
-          className="flex flex-shrink-0 items-center justify-end px-3 py-2"
-          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-        >
-          <ChatNotifyToggle />
-        </div>
-        {body}
-      </div>
-    );
+    return <div className="flex h-full min-h-0 flex-col">{body}</div>;
   }
 
   return (

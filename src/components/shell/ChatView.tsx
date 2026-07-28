@@ -6,7 +6,9 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, useNewsUnreadCount, type NewsAuthorMeta } from "@/components/NewsPanel";
+import { ChatNotifyToggle } from "@/components/ChatNotifyToggle";
 import { useTripRole } from "@/hooks/useTripRole";
+import { useIsChatColumn } from "./breakpoints";
 import {
   DEFAULT_CHAT_SEGMENT,
   canSeePlanningSegment,
@@ -99,24 +101,37 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
 
   const SEGMENT_META: Record<ChatSegment, { label: string; Icon: typeof MessageCircle; unread: number }> = {
     crew: { label: "Crew", Icon: MessageCircle, unread: crewUnread },
-    planning: { label: "Planning", Icon: ClipboardList, unread: planningUnread },
+    // "Organizers" is the established term for this channel everywhere else
+    // (FloatingChatPanel's own internal tabs, the glossary) — `planning` is
+    // only the code-identifier/DB-value; the display string was never meant
+    // to change.
+    planning: { label: "Organizers", Icon: ClipboardList, unread: planningUnread },
     news: { label: "News", Icon: Newspaper, unread: newsUnread },
   };
 
+  // Aside (≥1280): let the grid's `items-stretch` grow this past the floor to
+  // match the Trip/Cup content beside it — a `min-height` floor only. Inline
+  // (mobile, or desktop <1280 where Chat OWNS the tab): a DEFINITE height is
+  // required, not just a floor, or the flex children below (`flex-1 min-h-0`)
+  // have nothing bounded to clip against — the message list never actually
+  // becomes its own scroll container, the whole page scrolls instead, and the
+  // composer ends up wherever the total content height happens to land
+  // instead of pinned to the visible bottom. (The overlay/non-embedded panel
+  // never had this problem — its `fixed inset-x-0 top-14 bottom-0` chrome is
+  // inherently a bounded box; this box is embedded mode's equivalent.)
+  const chatIsColumn = useIsChatColumn();
+  const heightStyle = chatIsColumn
+    ? { minHeight: "calc(100dvh - 56px - var(--bt-bottomnav-height, 0px))" }
+    : { height: "calc(100dvh - 56px - var(--bt-bottomnav-height, 0px))" };
+
   return (
-    // Fills at least the visible viewport below the 56px top bar and above
-    // the bottom tab bar (0 on desktop, where AppTabBar doesn't mount) — the
-    // same box whether this instance OWNS the tab (mobile / <1280 desktop)
-    // or sits in the persistent ≥1280 side column, where grid `items-stretch`
-    // lets it grow past the floor to match the Trip/Cup content beside it.
-    <div
-      data-testid="chat-view"
-      className="flex flex-col"
-      style={{ minHeight: "calc(100dvh - 56px - var(--bt-bottomnav-height, 0px))" }}
-    >
+    <div data-testid="chat-view" className="flex flex-col" style={heightStyle}>
       {/* Segment switch — contextual page structure, not chrome, so it blends
-          with the page background per STYLE_GUIDE §1. */}
-      <div className="flex flex-shrink-0 gap-1 px-4 pt-3" role="tablist">
+          with the page background per STYLE_GUIDE §1. Notify toggle sits
+          inline at the end of this row (a real per-account preference, not a
+          dismiss affordance, so it stays regardless of which segment is
+          active) rather than in its own separate row. */}
+      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-3" role="tablist">
         {segments.map((id) => {
           const { label, Icon, unread } = SEGMENT_META[id];
           const selectedTab = activeSegment === id;
@@ -157,6 +172,9 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
             </button>
           );
         })}
+        <div className="ml-auto flex-shrink-0">
+          <ChatNotifyToggle />
+        </div>
       </div>
 
       {/* Crew and Planning are the SAME panel on different channels — this
