@@ -412,6 +412,33 @@ These patterns have been established through prior work. Follow them exactly —
       DIFFERENT, pre-existing topic owned by `useRealtimeCompetition` (competition ROW,
       keyed by trip) — keep the two prefixes distinct.
 
+21. **The `/trips/[tripId]` URL param is slug-OR-uuid; everything below the URL is
+    UUID-ONLY, resolved once at the boundary.** The URL layer deliberately accepts
+    BOTH a pretty slug (`bbmi-2027-a3f9c1`) and a raw trip UUID — old links must keep
+    working, and lists navigate to the slug (`TripCard`/`ContextRail` both use
+    `slug ?? id`) while the root route redirects to the UUID (the `bt-last-trip-id`
+    cookie stores the resolved id). **Which form the URL carries therefore depends on
+    the door you came through, and that ambiguity is load-bearing — so it is resolved
+    exactly ONCE**, in `TripIdProvider` (mounted by `/trips/[tripId]/layout.tsx`,
+    seeded with the id the layout already resolved server-side). Every trip-scoped
+    surface reads **`useTripId()`**. tRPC inputs, realtime channel names, and React
+    Query cache keys are UUID-only — `requireTripMember` matches `trip_members.trip_id`
+    exactly and a slug simply throws FORBIDDEN. Using the raw param to BUILD A URL is
+    fine and correct (`rawParam` is exposed for it); using it for anything else is the
+    bug. **Do NOT call `useParams().tripId` in trip-scoped code** — a source guard in
+    `TripIdProvider.test.ts` fails the build if you do, because a convention was what
+    failed here: six components had each copied the same resolve block and the seventh,
+    `LiveFaceClient` (root of the whole Cup subtree), skipped it — so Cup rendered "no
+    competition yet" for any trip opened from a list, and an OWNER saw the non-editor
+    placeholder rather than the create form. It read as intermittent ("works until I
+    switch trips, fixed by a reload") purely because a reload goes through the root
+    route's UUID redirect. Pre-refactor this was impossible: the face had its own
+    `/leaderboard` route linked with the already-resolved UUID; making it a TAB on
+    `/trips/[param]` is what exposed it to the raw param. The server-side half matters
+    too — the layout's `faceBootstrap` prefetch passed the slug and its FORBIDDEN was
+    swallowed by `allSettled`, so every slug entry silently paid a failed server
+    resolve AND a failed client one.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative

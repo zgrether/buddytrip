@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -11,11 +11,6 @@ import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
  *  be recognised and redirected — it is never written by this page. */
 const VALID_TABS = ["home", "crew", "lodging", "schedule", "expenses", "comp"] as const;
 
-// Old `/trips/<uuid>` links skip slug resolution and use the id directly.
-// Inlined (not imported from @/lib/slug, which pulls in node crypto and would
-// break the client bundle).
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { useTripRole } from "@/hooks/useTripRole";
 import type { TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
@@ -35,6 +30,7 @@ import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { DatesSheet } from "./components/DatesSheet";
 import { AppShell } from "@/components/shell/AppShell";
+import { useTripId } from "@/components/TripIdProvider";
 import { ChatView } from "@/components/shell/ChatView";
 import { LiveFaceClient } from "@/components/competition/LiveFaceClient";
 
@@ -665,24 +661,22 @@ function TripDetailBody({ tripId }: { tripId: string }) {
 // ── Resolver ──────────────────────────────────────────────────────────────
 // The URL param can be a human-friendly slug (`bbmi-2027-a3f9c1`) or a raw
 // trip UUID (old links). The whole app keys off the canonical UUID — tRPC,
-// realtime channels, cache — so we resolve the param to the id ONCE here and
-// hand the UUID to the body; the slug stays a display-only URL layer. A
-// UUID-shaped param skips the lookup and is used directly.
+// realtime channels, cache — so the param is resolved ONCE, in
+// `TripIdProvider` (mounted by this route's layout), and every trip-scoped
+// surface reads `useTripId()`. The slug stays a display-only URL layer.
+//
+// This used to do the resolution inline, and five other components had each
+// copied the same block — while a sixth (`LiveFaceClient`) skipped it and
+// broke the whole Cup tab. One resolution point is what stops a seventh.
 export default function TripDetailPage() {
-  const { tripId: param } = useParams<{ tripId: string }>();
+  const { tripId, isError } = useTripId();
   const router = useRouter();
-  const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery(
-    { slugOrId: param },
-    { enabled: !isId, retry: false }
-  );
-  const tripId = isId ? param : resolved.data?.id;
 
   // Unknown slug (or not a member) → bounce to the dashboard, same as the
   // body's not-found handling.
   useEffect(() => {
-    if (!isId && resolved.isError) router.replace("/dashboard");
-  }, [isId, resolved.isError, router]);
+    if (isError) router.replace("/dashboard");
+  }, [isError, router]);
 
   if (!tripId) {
     return (

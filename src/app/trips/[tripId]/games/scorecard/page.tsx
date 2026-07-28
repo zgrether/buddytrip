@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import {useRouter, useSearchParams } from "next/navigation";
+import { useTripId } from "@/components/TripIdProvider";
 import { ChevronLeft } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -10,7 +11,6 @@ import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { isGolfFormat } from "@/lib/gameRoutes";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Empty scorecard PREVIEW (Spec 5a) — a course-setup VALIDATOR. Renders the
@@ -26,17 +26,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * leaderboard scorecard icon and the game-settings course row.
  */
 export default function ScorecardPreviewPage() {
-  const { tripId: param } = useParams<{ tripId: string }>();
+  const { tripId } = useTripId();
   const router = useRouter();
   const search = useSearchParams();
   const gameId = search.get("game");
 
-  const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery(
-    { slugOrId: param },
-    { ...STRUCTURE_QUERY, enabled: !isId, retry: false }
-  );
-  const tripId = isId ? param : resolved.data?.id;
 
   // Persisted read (the whole point of a validator): the snapshot as SAVED.
   const gameQ = trpc.games.getById.useQuery(
