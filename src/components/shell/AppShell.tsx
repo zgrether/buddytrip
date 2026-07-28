@@ -9,6 +9,7 @@ import { LockedTabExplainer } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { DesktopTabStrip } from "./DesktopTabStrip";
 import { useIsChatColumn, chatMountLocation } from "./breakpoints";
+import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 /**
  * AppShell — the persistent frame for the four-tab navigation (Phase 3).
@@ -79,6 +80,25 @@ export function AppShell({
   const [peeking, setPeeking] = useState<Exclude<AppView, "home"> | null>(null);
   const scoped = !!tripId;
   const hasContext = scoped || !!remoteTripId;
+
+  /**
+   * The one always-mounted holder of the chat realtime subscription, for the
+   * whole scoped trip session (every tab, not just Chat) — mirrors what
+   * useChatUnreadCount used to provide when the old TopNav Chat button lived
+   * on this page. The four-tab refactor dropped `onOpenChat` from this page's
+   * TopNav call (Chat moved to its own tab), which silently took that
+   * subscription with it: nothing else on the trip page calls
+   * useRealtimeChat, so messages.list and the Chat tab's unread badges
+   * (useChatTabUnread) only ever updated on refetch/refocus, never live.
+   *
+   * Deliberately called HERE, not inside useChatTabUnread — that hook is
+   * called independently from both AppTabBar and DesktopTabStrip (both
+   * always mounted, CSS-toggled by breakpoint), so a subscription living
+   * there would double-subscribe to the same `trip-chat:{tripId}` topic.
+   * AppShell is the one component guaranteed to mount exactly once per
+   * scoped session.
+   */
+  useRealtimeChat(tripId ?? "", "trip");
 
   const select = useCallback(
     (next: AppView) => {
