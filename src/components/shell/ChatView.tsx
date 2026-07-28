@@ -153,7 +153,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           inline at the end of this row (a real per-account preference, not a
           dismiss affordance, so it stays regardless of which segment is
           active) rather than in its own separate row. */}
-      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-3" role="tablist">
+      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-3 pb-3" role="tablist">
         {segments.map((id) => {
           const { label, Icon, unread } = SEGMENT_META[id];
           const selectedTab = activeSegment === id;
