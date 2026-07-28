@@ -358,7 +358,7 @@ export function CompetitionFace({
            * The wipe animation is mobile-only: a pane appearing beside a list has
            * nothing to slide over.
            */
-          className={`fixed inset-x-0 bottom-0 z-30 overflow-y-auto lg:static lg:z-auto lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:static lg:z-auto lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
