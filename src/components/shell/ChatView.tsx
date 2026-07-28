@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle, Newspaper } from "lucide-react";
+import { MessageCircle, ClipboardList, Newspaper } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
+import { useTripRole } from "@/hooks/useTripRole";
 
 /**
  * ChatView — the Chat tab (Phase 3).
@@ -21,8 +22,27 @@ import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
  * another tab, and the panels' own close affordances would otherwise strand the
  * user on an empty surface with no way back.
  */
+type Stream = "crew" | "planning" | "news";
+
 export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean }) {
-  const [stream, setStream] = useState<"chat" | "news">("chat");
+  /**
+   * Three segments: Crew · Planning · News, defaulting to Crew.
+   *
+   * PLANNING IS CONDITIONAL. It only appears for a current Owner/Organizer, so
+   * most crew see Crew · News. `useTripRole` reads tripMembers.list, which
+   * `useRealtimeMembers` invalidates on every trip_members change — so a
+   * newly-designated organizer gets the segment WITHOUT a remount, and a demoted
+   * one loses it immediately. A mount-time read would have left them staring at
+   * the wrong set of segments until they navigated away and back, which is the
+   * same propagation gap the captain grant had.
+   *
+   * If the role flips away while Planning is selected, the selection falls back
+   * to Crew during render — the panel refuses the channel anyway, so without this
+   * the segment bar would highlight a tab showing someone else's content.
+   */
+  const { canEdit: canSeePlanning } = useTripRole(tripId);
+  const [stream, setStream] = useState<Stream>("crew");
+  const activeStream: Stream = stream === "planning" && !canSeePlanning ? "crew" : stream;
 
   // Crew names for authorship. STRUCTURE_QUERY — this is slow-changing roster
   // data, and the Cup tab already holds the same key, so on a warm shell it costs
@@ -57,11 +77,12 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
       <div className="flex gap-1 px-4 pt-3" role="tablist">
         {(
           [
-            ["chat", "Chat", MessageCircle],
+            ["crew", "Crew", MessageCircle],
+            ...(canSeePlanning ? [["planning", "Planning", ClipboardList] as const] : []),
             ["news", "News", Newspaper],
           ] as const
         ).map(([id, label, Icon]) => {
-          const selected = stream === id;
+          const selected = activeStream === id;
           return (
             <button
               key={id}
@@ -83,10 +104,33 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
         })}
       </div>
 
-      <div hidden={stream !== "chat"}>
-        <FloatingChatPanel tripId={tripId} isOpen embedded onClose={noop} memberNames={memberNames} />
+      {/* Crew and Planning are the SAME panel on different channels — the
+          shell's segments drive it via `channel`, so the panel hides its own
+          tabs. Mounted separately (not one panel with a swapped prop) so each
+          keeps its own scroll position and unsent draft. */}
+      <div hidden={activeStream !== "crew"}>
+        <FloatingChatPanel
+          tripId={tripId}
+          isOpen
+          embedded
+          channel="crew"
+          onClose={noop}
+          memberNames={memberNames}
+        />
       </div>
-      <div hidden={stream !== "news"}>
+      {canSeePlanning && (
+        <div hidden={activeStream !== "planning"}>
+          <FloatingChatPanel
+            tripId={tripId}
+            isOpen
+            embedded
+            channel="planning"
+            onClose={noop}
+            memberNames={memberNames}
+          />
+        </div>
+      )}
+      <div hidden={activeStream !== "news"}>
         <NewsPanel tripId={tripId} isOpen embedded onClose={noop} canPost={canPost} authors={authors} />
       </div>
     </div>

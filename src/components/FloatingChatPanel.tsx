@@ -59,6 +59,16 @@ interface FloatingChatPanelProps {
    * out of the trip entirely (observed: landing on /dashboard).
    */
   embedded?: boolean;
+  /**
+   * Drive the channel from OUTSIDE (the shell's Chat segments own the choice).
+   * When set, the panel's own channel tabs are hidden — two controls for one
+   * piece of state is how they drift.
+   *
+   * It is still a REQUEST, not a grant: the derivation below refuses "planning"
+   * for anyone who isn't currently an organizer, so this cannot be used to reach
+   * a channel the caller can't read.
+   */
+  channel?: Visibility;
   onClose: () => void;
   memberNames: Record<string, string>;
 }
@@ -77,13 +87,14 @@ interface FloatingChatPanelProps {
  *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, ideaStage, embedded, onClose, memberNames }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ tripId, isOpen, ideaStage, embedded, channel, onClose, memberNames }: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
     <FloatingChatPanelInner
       tripId={tripId}
       ideaStage={ideaStage}
       embedded={embedded}
+      channel={channel}
       onClose={onClose}
       memberNames={memberNames}
     />
@@ -94,12 +105,14 @@ function FloatingChatPanelInner({
   tripId,
   ideaStage = false,
   embedded = false,
+  channel,
   onClose,
   memberNames,
 }: {
   tripId: string;
   ideaStage?: boolean;
   embedded?: boolean;
+  channel?: Visibility;
   onClose: () => void;
   memberNames: Record<string, string>;
 }) {
@@ -132,12 +145,15 @@ function FloatingChatPanelInner({
 
   // Derived, not stored: non-organizers can never resolve to the planning
   // channel even if they were demoted mid-session with the panel open. The
-  // channel tabs (the only caller of setSelectedChannel) only render for
-  // organizers, so this guard is the single source of truth.
+  // external `channel` prop goes through the SAME guard, so the shell's segments
+  // cannot grant access the role doesn't. `canSeeOrganizers` comes from
+  // useTripRole -> tripMembers.list, which useRealtimeMembers invalidates on any
+  // trip_members change — so a promotion or demotion re-derives live, with no
+  // remount.
   const activeChannel: Visibility = ideaSolo
     ? "planning"
     : canSeeOrganizers
-      ? selectedChannel
+      ? (channel ?? selectedChannel)
       : "crew";
   const setActiveChannel = setSelectedChannel;
 
@@ -458,7 +474,7 @@ function FloatingChatPanelInner({
     </span>
   );
   const tabsRow =
-    canSeeOrganizers && !ideaSolo ? (
+    canSeeOrganizers && !ideaSolo && !channel ? (
       <div className="flex items-center gap-1">
         {([
           { ch: "crew" as const, label: "Crew", unread: crewUnread },
