@@ -7,8 +7,20 @@ import { trpc } from "@/lib/trpc-client";
  * The game-state sync poll cadence. Zach's spec: scores/config reconcile within
  * ~15–30s ("delayed-a-bit is fine; not a live broadcast"). 20s sits in the
  * middle. Used for BOTH the score poll (refetchInterval on scores.listByGame in
- * each view) and this config-hash poll, so — because the tRPC client batches —
- * the two fire on the same tick and coalesce into ONE HTTP round-trip.
+ * each view) and this config-hash poll, so the two fire on the same TICK.
+ *
+ * They no longer coalesce into one HTTP round-trip. `games.configHash` is routed
+ * through its own un-batched link (`providers.tsx`) because `httpBatchLink`
+ * resolves a batch at the speed of its SLOWEST member — so a slow hash was
+ * holding up whatever UI read happened to share its tick (measured: a settings
+ * page paint going from 0.5s to 21s). Two small requests per tick beats
+ * head-of-line blocking on a probe nothing renders from.
+ *
+ * The CADENCE is unaffected — the link changes transport, not scheduling.
+ * Verified on the running app: 9 polls over 161s, intervals 20188/20136/20126/
+ * 20131/20130/20134/20157/20119 ms, unbroken across an offline→online cycle.
+ * This matters because CLAUDE.md #16 and #19 both name this poll as the
+ * dead-socket backstop behind Realtime — it has to keep running.
  */
 export const GAME_SYNC_INTERVAL_MS = 20_000;
 

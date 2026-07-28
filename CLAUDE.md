@@ -296,7 +296,11 @@ These patterns have been established through prior work. Follow them exactly —
     + play_groups + matches, computed ON READ (`configHash.ts`, client-safe 8-hex).
     **Score-derived fields are excluded from the hash on purpose** so entering
     scores never churns it. The client reads the hash on the SAME tick as the score
-    poll (one round-trip via `httpBatchLink`); the full config refetches ONLY on
+    poll (same TICK, but its OWN request — `games.configHash` is routed through an
+    un-batched link in `providers.tsx`, because a batch resolves at the speed of its
+    slowest member and a slow hash was holding up UI reads that merely shared its
+    tick: measured 0.5s → 21s on a settings paint. Cadence is unchanged — the link
+    changes transport, not scheduling); the full config refetches ONLY on
     hash-mismatch. Convergence is SILENT (chat/text are for human comms, not sync).
     Score reconcile (`scoreReconcile.reconcileScores`) overlays server values EXCEPT
     unconfirmed local cells (`protectedKeys`) — active enterer wins, dovetailing
@@ -636,3 +640,14 @@ the dev overlay isn't — is the tell that the Turbopack/`.next` cache is stale,
 your code is broken. Fix: stop the dev server, `rm -rf .next`, start it again. This has
 recurred every heavy-edit session; treat it as a known cache-staleness quirk, not a real
 error to chase. (Trust `tsc`/`eslint` over the dev overlay when they disagree.)
+
+**The INVERSE symptom, same cause: the DOM is missing something you just added.** The
+entry above covers phantom errors for code you already changed; this is the other
+direction — you add an element, prop, or attribute, reload, and the page renders the
+OLD behaviour with no error anywhere. `tsc` and `eslint` are clean, the file on disk is
+correct, and the running page simply predates your edit. **Suspect the bundle before
+the logic**, and prove it in one step: add a throwaway `data-*` attribute and look for
+it in the DOM. If it isn't there, nothing about your logic is being tested — stop the
+dev server, `rm -rf .next`, restart. This has now cost two debugging detours in a single
+session (both times the tell was available immediately), which is why it's written down:
+the instinct is to re-read your own logic, and the logic is fine.

@@ -6,7 +6,6 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
-import { CompetitionEnableCard } from "./CompetitionEnableCard";
 import { DatePollCard } from "../../tabs/components/DatePollCard";
 import {
   LodgingThumbnail,
@@ -256,10 +255,17 @@ export function FreshTripGuide({
         </div>
       )}
 
-      {/* Optional last card — enable a competition (the create entry point now
-          that the Competition tab is gone). Self-hides once one exists or is
-          dismissed. */}
-      {!pollMode && <CompetitionEnableCard tripId={tripId} />}
+      {/* The "Running a competition?" enable card is RETIRED (Phase 3).
+          It existed because the competition surface had no persistent entry: the
+          bottom nav's Live item only appeared once a competition existed, so an
+          owner needed a door and — worse — a plain MEMBER on a trip with no
+          competition had no door at all (NAV_AUDIT_2.md §1.1, IA-7).
+
+          The Cup tab is now that door, permanently, for everyone. Keeping the
+          card would restore exactly the two-entry-points-to-one-object shape the
+          nav audit flagged, this time with the second door only visible to
+          editors. `CompetitionEnableCard.tsx` is left on disk unreferenced —
+          deleting it is a separate cleanup, not a nav change. */}
 
       {/* Commit bar — appears once there's enough to go; switches Home to the
           itinerary (the guide stays reopenable via the left pill). */}
