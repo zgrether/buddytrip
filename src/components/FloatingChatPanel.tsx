@@ -52,11 +52,16 @@ interface FloatingChatPanelProps {
   /**
    * Rendered as a TAB (AppShell's Chat view) rather than as an overlay.
    *
-   * A tab must NOT claim a history entry. `useModalBackButton` pushes one on
-   * mount and calls `history.back()` on unmount, which is right for a modal and
-   * corrupting for a tab: switching away from Chat popped an entry the shell had
-   * not pushed, so repeated tab switching unwound the stack until the user fell
-   * out of the trip entirely (observed: landing on /dashboard).
+   * Two things change. (1) Layout: the return below skips the floating
+   * `fixed`/scrim/drag-resize/× chrome entirely and renders in normal flow,
+   * filling whatever height the caller (`ChatView`) gives it — a tab has
+   * nothing to close or resize; you leave by choosing another segment.
+   * (2) History: a tab must NOT claim a history entry. `useModalBackButton`
+   * pushes one on mount and calls `history.back()` on unmount, which is
+   * right for a modal and corrupting for a tab: switching away from Chat
+   * popped an entry the shell had not pushed, so repeated tab switching
+   * unwound the stack until the user fell out of the trip entirely (observed:
+   * landing on /dashboard).
    */
   embedded?: boolean;
   /**
@@ -534,6 +539,29 @@ function FloatingChatPanelInner({
       loadingOlder={activeQuery.isFetchingNextPage}
     />
   );
+
+  // ── Embedded (the Chat tab's Crew/Planning segments) ──────────────────────
+  // A tab has no scrim to close, no docked-right drawer to drag-resize, and
+  // no × to dismiss — you leave by choosing another segment, not by closing
+  // this surface. Render in normal flow instead of the floating overlay
+  // below (no `fixed`, no backdrop): it fills whatever height its caller
+  // (ChatView) gives it. Channel tabs stay suppressed (the `!channel` guard
+  // on `tabsRow` above) since the shell's segmented control already owns
+  // that choice. The notify toggle is the one control worth keeping — it's
+  // a real per-account preference, not a dismiss affordance.
+  if (embedded) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div
+          className="flex flex-shrink-0 items-center justify-end px-3 py-2"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+        >
+          <ChatNotifyToggle />
+        </div>
+        {body}
+      </div>
+    );
+  }
 
   return (
     <>

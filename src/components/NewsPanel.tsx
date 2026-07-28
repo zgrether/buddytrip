@@ -47,11 +47,15 @@ interface NewsPanelProps {
   /**
    * Rendered as a TAB (AppShell's Chat view) rather than as an overlay.
    *
-   * A tab must NOT claim a history entry. `useModalBackButton` pushes one on
-   * mount and calls `history.back()` on unmount — right for a modal, corrupting
-   * for a tab: switching away popped an entry the shell never pushed, so repeated
-   * tab switching unwound the stack until the user fell out of the trip entirely
-   * (observed: landing on /dashboard).
+   * Two things change. (1) Layout: the return below skips the portal /
+   * `fixed` / scrim / drag-resize / × chrome entirely and renders in normal
+   * flow, filling whatever height the caller (`ChatView`) gives it — a tab
+   * has nothing to close or resize; you leave by choosing another segment.
+   * (2) History: a tab must NOT claim a history entry. `useModalBackButton`
+   * pushes one on mount and calls `history.back()` on unmount — right for a
+   * modal, corrupting for a tab: switching away popped an entry the shell
+   * never pushed, so repeated tab switching unwound the stack until the user
+   * fell out of the trip entirely (observed: landing on /dashboard).
    */
   embedded?: boolean;
   onClose: () => void;
@@ -354,6 +358,19 @@ function NewsPanelInner({
     </div>
   );
 
+  // Embedded header (the Chat tab's News segment) — same actions minus the
+  // title text (the segment button already reads "News") and minus the ×
+  // (see the embedded return below).
+  const embeddedHeader = (
+    <div
+      className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
+      style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+    >
+      {helpBtn}
+      {newPostBtn}
+    </div>
+  );
+
   // Composing is launched from the pinned "New post" title-bar button, which
   // stays visible while the feed scrolls.
   const feedContent = isLoading ? (
@@ -396,6 +413,32 @@ function NewsPanelInner({
         {feedScroll}
       </>
     );
+
+  // ── Embedded (the Chat tab's News segment) ────────────────────────────────
+  // A tab has no scrim to close and no × to dismiss — you leave by choosing
+  // another segment. Render in normal flow (no portal, no `fixed`, no
+  // backdrop, no drag-resize): it fills whatever height its caller
+  // (ChatView) gives it, same as FloatingChatPanel's embedded branch.
+  if (embedded) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {compose ? (
+          <NewsComposer
+            tripId={tripId}
+            variant="desktop"
+            post={compose.mode === "edit" ? compose.post : null}
+            onDone={() => setCompose(null)}
+          />
+        ) : (
+          <>
+            {embeddedHeader}
+            {feedScroll}
+          </>
+        )}
+        <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      </div>
+    );
+  }
 
   return createPortal(
     <>
