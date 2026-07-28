@@ -49,6 +49,16 @@ interface FloatingChatPanelProps {
   /** IDEA stage: everyone on the trip is an Owner/Organizer, so the Crew
    *  channel is redundant — collapse to a single Organizers channel. */
   ideaStage?: boolean;
+  /**
+   * Rendered as a TAB (AppShell's Chat view) rather than as an overlay.
+   *
+   * A tab must NOT claim a history entry. `useModalBackButton` pushes one on
+   * mount and calls `history.back()` on unmount, which is right for a modal and
+   * corrupting for a tab: switching away from Chat popped an entry the shell had
+   * not pushed, so repeated tab switching unwound the stack until the user fell
+   * out of the trip entirely (observed: landing on /dashboard).
+   */
+  embedded?: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
 }
@@ -67,12 +77,13 @@ interface FloatingChatPanelProps {
  *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, ideaStage, onClose, memberNames }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ tripId, isOpen, ideaStage, embedded, onClose, memberNames }: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
     <FloatingChatPanelInner
       tripId={tripId}
       ideaStage={ideaStage}
+      embedded={embedded}
       onClose={onClose}
       memberNames={memberNames}
     />
@@ -82,11 +93,13 @@ export function FloatingChatPanel({ tripId, isOpen, ideaStage, onClose, memberNa
 function FloatingChatPanelInner({
   tripId,
   ideaStage = false,
+  embedded = false,
   onClose,
   memberNames,
 }: {
   tripId: string;
   ideaStage?: boolean;
+  embedded?: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
 }) {
@@ -145,7 +158,7 @@ function FloatingChatPanelInner({
   // mounted on the trip page), not here. A single subscription keeps both the
   // unread badge and this open panel in sync via the shared query cache, and
   // avoids two channels with the same topic colliding on the supabase singleton.
-  useModalBackButton(onClose);
+  useModalBackButton(onClose, !embedded);
 
   const finalSheetHeight = useRef<number>(0);
   const didSheetMove = useRef(false);

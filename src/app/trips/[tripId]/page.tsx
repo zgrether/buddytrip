@@ -100,59 +100,79 @@ function TripDetailBody({ tripId }: { tripId: string }) {
 
   const { role, isOwner, canEdit } = useTripRole(tripId);
 
-  // ── Prefetch all HomeTab queries in parallel with the trip query ──────────
-  // All of these only need tripId (available immediately from the URL), so
-  // they fire on first render alongside trips.getById. We track their loading
-  // states so the page waits for ALL data before rendering — no 2-phase pop-in.
-  const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
-  // datePoll IS gated in dataLoading. The poll surface (DatePollCard /
-  // FreshTripGuide poll branch) is part of the persisted [tripId] page, so on a
-  // trip SWITCH it keeps painting the previous trip's windows for a frame while
-  // datePoll.get re-keys to the new trip. Gating the page on it makes the
-  // spinner cover that re-key window — no cross-trip poll flash. (Costs a small
-  // amount of first-paint time on initial load; worth it to kill the bleed.)
-  const { isLoading: datePollLoading } = trpc.datePoll.get.useQuery({ tripId });
-  // quickInfoTiles feeds the trip-header dock (visible on EVERY tab), so it's
-  // gated too — otherwise the dock flashes the previous trip's tiles on switch.
-  const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
+  // ── Prefetch the tab queries in parallel with the trip query ──────────────
+  // All of these only need tripId (available immediately from the URL), so they
+  // fire on first render alongside trips.getById and warm the caches their tabs
+  // read. They no longer hold up first paint — see `dataLoading` below.
+  trpc.ideas.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
+  // datePoll / quickInfoTiles / schedule / logistics used to GATE first paint, to
+  // stop a trip switch painting the previous trip's poll windows, header tiles or
+  // itinerary for a frame. They no longer do — the route boundary already prevents
+  // that (see the note on `dataLoading`). They stay here as parallel PREFETCHES so
+  // the surfaces that read them are warm, but they hold nothing up.
+  trpc.datePoll.get.useQuery({ tripId });
+  trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
   // The new schema (migration 062) tracks this via `competitions` rather
   // than the dropped trips.event_id column. Phase B will reintroduce the
   // sub-page prefetches (teams/events/groups/scores) once the live
   // leaderboard is rebuilt against the new model.
-  const { data: competition, isLoading: competitionLoading } =
-    trpc.competitions.getByTrip.useQuery({ tripId });
+  const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
 
-  // schedule + logistics ARE gated: they feed the home itinerary (ItineraryView
-  // / FreshTripGuide query them by tripId) which is the default surface on a
-  // trip switch. Gating them makes the spinner cover the re-key window so the
-  // itinerary can't flash the previous trip's lodging / events. They also drive
-  // the tab badge dots. (All these queries fire in parallel, so the added gate
-  // delays first paint only to the slowest one, not their sum.)
-  const { data: prefetchedSchedule = [], isLoading: scheduleLoading } =
-    trpc.schedule.list.useQuery({ tripId });
-  const { data: prefetchedLogistics = [], isLoading: logisticsLoading } =
-    trpc.logistics.list.useQuery({ tripId });
+  // schedule + logistics feed the home itinerary and the tab badge dots. Prefetched
+  // in parallel; no longer part of the paint gate.
+  const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
+  const { data: prefetchedLogistics = [] } = trpc.logistics.list.useQuery({ tripId });
   // Background prefetch for receipts so the Expenses tab reads from cache
   // instead of flashing its loading skeleton for 1–2s on first open. Same
   // queryKey as ExpensesSection's own useQuery, so it hydrates instantly.
   trpc.expenses.list.useQuery({ tripId });
-  // Background prefetch for teams + assignments so the comp tab renders
-  // instantly instead of flashing while the panels fire their own queries.
-  trpc.teams.list.useQuery(
-    { tripId, competitionId: competition?.id ?? "" },
-    { enabled: !!competition?.id }
-  );
-  trpc.teamAssignments.list.useQuery(
-    { tripId, competitionId: competition?.id ?? "" },
-    { enabled: !!competition?.id }
-  );
+  // teams + assignments are NO LONGER prefetched here. They were, so the old comp
+  // tab wouldn't flash while its panels fetched — but they are gated on
+  // `competition?.id`, so they could only fire AFTER competitions.getByTrip
+  // resolved. That dependency was the entire reason the cold open had a third
+  // batch.
+  //
+  // They're redundant now: every consumer (CompetitionFace, TeamsPanel, the four
+  // game views) lives inside the Cup surface, and LiveFaceClient seeds both keys
+  // from `faceBootstrap` — which the trip LAYOUT now resolves on the server. So
+  // the data arrives earlier than this prefetch ever delivered it, without a
+  // client round trip at all.
 
-  const dataLoading = isLoading || ideasLoading || membersLoading
-    || competitionLoading || datePollLoading || tilesLoading
-    || scheduleLoading || logisticsLoading;
+  /**
+   * The paint gate — reduced from EIGHT queries to one (Phase 4 / F2).
+   *
+   * It used to block the entire subtree until ideas + members + datePoll +
+   * tiles + schedule + logistics + competition had ALL resolved, which is what
+   * made a cold open two serialised round trips deep: nothing below could mount
+   * to fire its own queries until the slowest of the eight came back
+   * (DATA_FRESHNESS_AUDIT F2).
+   *
+   * WHY IT CAN GO. The gate's stated purpose was anti-flash on a trip SWITCH —
+   * the page stays mounted while `tripId` changes, so for a frame it could paint
+   * trip A's poll windows / header tiles / itinerary under trip B's header. That
+   * reasoning was measured and found not to hold: with this gate DISABLED, a real
+   * trip switch showed ZERO frames of trip A's content under trip B's header,
+   * because `loading.tsx` covers the navigation and Next tears the segment down
+   * and rebuilds it. The ROUTE BOUNDARY is what prevents the bleed; the gate was
+   * belt-and-braces on top of it. (Supporting: nothing in `src` uses
+   * `keepPreviousData`/`placeholderData` and no surface mirrors a list query into
+   * local state, so a re-key yields `undefined`, not the previous trip's rows.)
+   *
+   * WHAT REMAINS. `trips.getById` still gates, because the page cannot render a
+   * trip it doesn't have — every branch below dereferences `trip`. The other
+   * seven keep their `useQuery` calls (they still prefetch in parallel, warming
+   * the caches their tabs read) but no longer hold the paint.
+   *
+   * IF THE BLEED EVER RETURNS, the fix is NOT to re-add this gate — it is to key
+   * the scoped subtree on `tripId` so a context change forces a fresh tree
+   * (`AppShell` already carries that key, documented as inert while the route
+   * boundary stands). A gate hides the symptom for everyone on every load; the
+   * key removes the cause.
+   */
+  const dataLoading = isLoading;
 
   // Push competition row changes (existence, scoreboard style, name, tagline)
   // live to every crew member — without this they'd see stale data for up to
@@ -245,29 +265,41 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   }, [activeTabRaw, tripId, router]);
 
   // ── Loading ───────────────────────────────────────────────────────────────
-  // Wait for ALL queries (trip + home-tab data) before rendering so every
-  // panel appears at once instead of popping in across two render batches.
-  if (dataLoading) {
+  /**
+   * The SHELL renders immediately; only the trip CONTENT waits.
+   *
+   * This is the other half of the F2 fix. Reducing the gate from eight queries
+   * to one changed nothing measurable on its own, because all eight ride the
+   * SAME batch and therefore resolve together — the gate was never serialising
+   * them. What actually cost a round trip was that the whole subtree, TopNav
+   * included, sat behind the gate: its queries could not even be ISSUED until
+   * trip data came back, which is what made the cold open three batches deep.
+   *
+   * Returning the shell here (rather than a bare spinner) lets TopNav mount and
+   * fire on the FIRST tick, in parallel with the trip batch instead of after it.
+   * Same component at the same position, so when the data lands React reconciles
+   * rather than remounting — the shell does not flash.
+   *
+   * On error the effect above redirects to the dashboard; showing the shell with
+   * a spinner in the meantime beats flashing a dead-end message.
+   */
+  if (dataLoading || error || !trip) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
-        />
-      </div>
-    );
-  }
-
-  // On error/not-found we redirect to the dashboard (effect above); render the
-  // spinner in the meantime rather than flashing a dead-end message.
-  if (error || !trip) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
-        />
-      </div>
+      <AppShell
+        tripId={tripId}
+        defaultView="trip"
+        topBar={<TopNav tripId={tripId} hideTripSwitcher hideNews />}
+        cup={<LiveFaceClient initialBoot={null} embedded />}
+        chat={<ChatView tripId={tripId} canPost={false} />}
+        trip={
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div
+              className="h-8 w-8 animate-spin rounded-full border-2"
+              style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+            />
+          </div>
+        }
+      />
     );
   }
 

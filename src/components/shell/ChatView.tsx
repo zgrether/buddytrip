@@ -84,10 +84,10 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
       </div>
 
       <div hidden={stream !== "chat"}>
-        <FloatingChatPanel tripId={tripId} isOpen onClose={noop} memberNames={memberNames} />
+        <FloatingChatPanel tripId={tripId} isOpen embedded onClose={noop} memberNames={memberNames} />
       </div>
       <div hidden={stream !== "news"}>
-        <NewsPanel tripId={tripId} isOpen onClose={noop} canPost={canPost} authors={authors} />
+        <NewsPanel tripId={tripId} isOpen embedded onClose={noop} canPost={canPost} authors={authors} />
       </div>
     </div>
   );
