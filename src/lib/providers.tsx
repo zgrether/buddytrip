@@ -6,7 +6,7 @@ import {
   MutationCache,
   QueryCache,
 } from "@tanstack/react-query";
-import { httpBatchLink } from "@trpc/client";
+import { httpBatchLink, httpLink, splitLink } from "@trpc/client";
 import { useState } from "react";
 import superjson from "superjson";
 import { ThemeProvider } from "next-themes";
@@ -97,9 +97,41 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
-        httpBatchLink({
-          url: `${getBaseUrl()}/api/trpc`,
-          transformer: superjson,
+        /**
+         * `games.configHash` gets its OWN un-batched link. Everything else keeps
+         * batching.
+         *
+         * WHY. `httpBatchLink` groups every query that fires in the same tick into
+         * one request, and **a batch resolves at the speed of its slowest member**.
+         * `configHash` is a background sync probe (CLAUDE.md #16) — a fingerprint
+         * polled every ~20s to notice another device's config change. Nothing
+         * renders from it. But when it lands in the same tick as the queries a
+         * surface actually needs, its latency becomes that surface's latency.
+         *
+         * Measured, opening a game's settings with `configHash` held for 20s:
+         *   batched together → stepper paints at +21s
+         *   split out        → stepper paints at +0.5s
+         *
+         * The coupling was always latent; it surfaced when the four-tab shell
+         * started mounting a game panel's queries in one render pass instead of
+         * two, which merged them into a single batch. Splitting the probe out
+         * fixes the class rather than restoring the accidental tick ordering that
+         * used to hide it — a slow `configHash` should never be able to hold up a
+         * read someone is waiting on.
+         *
+         * Cost: one extra HTTP request per poll, on a request that was already
+         * going out. Cheap for removing a whole category of head-of-line blocking.
+         */
+        splitLink({
+          condition: (op) => op.path === "games.configHash",
+          true: httpLink({
+            url: `${getBaseUrl()}/api/trpc`,
+            transformer: superjson,
+          }),
+          false: httpBatchLink({
+            url: `${getBaseUrl()}/api/trpc`,
+            transformer: superjson,
+          }),
         }),
       ],
     })
