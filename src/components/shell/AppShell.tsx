@@ -46,6 +46,7 @@ export function AppShell({
   topBar,
   /** Landing tab when `?view=` is absent. `/…/leaderboard` passes "cup". */
   defaultView = "trip",
+  remoteTripId = null,
 }: {
   tripId: string | null;
   home?: ReactNode;
@@ -57,11 +58,24 @@ export function AppShell({
   chat?: ReactNode;
   topBar?: ReactNode;
   defaultView?: AppView;
+  /**
+   * The context a REMOTE host should point at. Set on `/dashboard`, which is
+   * context-free itself but knows which trip the user was last in.
+   *
+   * This is what makes Home read as "switch context" rather than "leave
+   * context": arriving at Home with a trip behind you keeps Trip/Cup/Chat live
+   * and pointing back at it, instead of greying them out. Tapping one navigates
+   * to that trip's scoped host. Locked is then a true FIRST-RUN state — a brand
+   * new account with no trips — rather than a mode you re-enter every time you
+   * glance at your trip list.
+   */
+  remoteTripId?: string | null;
 }) {
   const router = useRouter();
   const { view, setView } = useAppView(defaultView);
   const [peeking, setPeeking] = useState<Exclude<AppView, "home"> | null>(null);
-  const hasContext = !!tripId;
+  const scoped = !!tripId;
+  const hasContext = scoped || !!remoteTripId;
 
   const select = useCallback(
     (next: AppView) => {
@@ -71,12 +85,17 @@ export function AppShell({
         router.push("/dashboard");
         return;
       }
+      // Context lives on another route (the dashboard host): navigate to it.
+      if (!scoped && remoteTripId) {
+        router.push(`/trips/${remoteTripId}?view=${next}`);
+        return;
+      }
       setView(next);
     },
-    [router, setView],
+    [router, setView, scoped, remoteTripId],
   );
 
-  const effectiveView: AppView = hasContext ? view : "home";
+  const effectiveView: AppView = scoped ? view : "home";
 
   /**
    * LAZY MOUNT, then keep. A slot is not mounted until its tab is first visited;
@@ -117,7 +136,7 @@ export function AppShell({
   let body: ReactNode;
   if (peeking) {
     body = <LockedTabExplainer view={peeking} onPickTrip={() => setPeeking(null)} />;
-  } else if (!hasContext) {
+  } else if (!scoped) {
     body = home;
   } else {
     /**
