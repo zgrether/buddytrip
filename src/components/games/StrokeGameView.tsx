@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Scale, Settings, SlidersHorizontal, Sparkles, Users } from "lucide-react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -47,7 +48,6 @@ import { pointsReady } from "@/lib/matchDraft";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STROKE_PLAY = "gtt_stroke_play";
 
 /**
@@ -56,14 +56,14 @@ const STROKE_PLAY = "gtt_stroke_play";
  *
  * Spec 2 Phase 3: a persistence-BOUND composed view, re-HOSTED by both its route
  * wrapper AND the leaderboard's game PANEL (CompetitionFace) — same recipe as
- * MatchGameView/RackGameView/NonGolfGameView. Reads its OWN tripId (useParams) +
+ * MatchGameView/RackGameView/NonGolfGameView. Reads its OWN tripId (useTripId) +
  * gameId (?game=); the back arrow (router.back) pops the ?game= entry and closes
  * the panel. Its scoring "Play" view is a `fixed inset-0` overlay (like match's
  * score sub-screen) — appropriate for focused entry; the setup/settings screens
  * are normal-flow panels.
  */
 export function StrokeGameView() {
-  const { tripId: param } = useParams<{ tripId: string }>();
+  const { tripId, rawParam: param } = useTripId();
   const router = useRouter();
   const search = useSearchParams();
   // Resume an existing game when the leaderboard (or a refresh) lands here with
@@ -72,12 +72,6 @@ export function StrokeGameView() {
   // back, because they live on the original game id this page never loaded.
   const urlGameId = search.get("game");
 
-  const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery(
-    { slugOrId: param },
-    { ...STRUCTURE_QUERY, enabled: !isId, retry: false }
-  );
-  const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
   // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
   // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.

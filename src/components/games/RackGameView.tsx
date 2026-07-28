@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTripId } from "@/components/TripIdProvider";
 import { ChevronLeft, Users, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -45,7 +46,6 @@ import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayC
 import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RACK = "gtt_rack_n_stack";
 
 /** "07:40" → "7:40" (no AM/PM); "" / invalid → null. */
@@ -59,16 +59,13 @@ function teeLabel(t: string | null | undefined): string | null {
  * RackGameView — the rack-n-stack game surface. Spec 2 Phase 2: a persistence-
  * BOUND composed view (owns tRPC/state), re-HOSTED by both its route wrapper AND
  * the leaderboard's game PANEL (CompetitionFace), same recipe as MatchGameView.
- * Reads its OWN tripId (useParams) + gameId (?game=), so no prop threading; the
+ * Reads its OWN tripId (useTripId) + gameId (?game=), so no prop threading; the
  * back arrow (router.back) pops the ?game= entry and closes the panel.
  */
 export function RackGameView() {
-  const { tripId: param } = useParams<{ tripId: string }>();
+  const { tripId } = useTripId();
   const router = useRouter();
   const search = useSearchParams();
-  const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
-  const tripId = isId ? param : resolved.data?.id;
 
   const me = useCurrentUser();
   const utils = trpc.useUtils();

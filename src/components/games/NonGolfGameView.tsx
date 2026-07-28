@@ -2,7 +2,8 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Settings } from "lucide-react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import {useRouter, useSearchParams } from "next/navigation";
+import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
@@ -31,7 +32,6 @@ import { validatePlacement } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function Spinner() {
   return (
@@ -59,17 +59,11 @@ function Spinner() {
  * the panel for free.
  */
 export function NonGolfGameView() {
-  const { tripId: param } = useParams<{ tripId: string }>();
+  const { tripId } = useTripId();
   const router = useRouter();
   const search = useSearchParams();
   const urlGameId = search.get("game");
 
-  const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery(
-    { slugOrId: param },
-    { ...STRUCTURE_QUERY, enabled: !isId, retry: false }
-  );
-  const tripId = isId ? param : resolved.data?.id;
   const utils = trpc.useUtils();
   // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
   // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.

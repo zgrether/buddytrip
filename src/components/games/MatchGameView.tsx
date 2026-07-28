@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTripId } from "@/components/TripIdProvider";
 import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
 import {
   DndContext,
@@ -91,7 +92,6 @@ import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { unconfirmedCount, type Participant, type ScoreValues, type OutcomeValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
 // each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
 const MATCH_PLAY = "gtt_match_play";
@@ -148,7 +148,7 @@ interface SettingsDraftBundle {
  * Spec 2 Phase 1: this is a persistence-BOUND composed VIEW (it owns tRPC/state —
  * NOT one of the pure scorecard primitives that also live in this folder). It is
  * re-HOSTED in two places that both live under `/trips/[tripId]/` and both carry
- * `?game=<id>`, so it reads its OWN tripId (`useParams`) + gameId (`?game=`) in
+ * `?game=<id>`, so it reads its OWN tripId (`useTripId`) + gameId (`?game=`) in
  * both contexts with no prop threading:
  *   1. the route page (`games/match/new/page.tsx`) — a thin wrapper, and
  *   2. the persistent leaderboard's game PANEL (`CompetitionFace`) — a slide-in
@@ -157,13 +157,10 @@ interface SettingsDraftBundle {
  * the panel is opened by a `?game=` history entry, so a back pops it.
  */
 export function MatchGameView() {
-  const { tripId: param } = useParams<{ tripId: string }>();
+  const { tripId } = useTripId();
   const router = useRouter();
   const search = useSearchParams();
 
-  const isId = UUID_RE.test(param);
-  const resolved = trpc.trips.resolveSlug.useQuery({ slugOrId: param }, { ...STRUCTURE_QUERY, enabled: !isId, retry: false });
-  const tripId = isId ? param : resolved.data?.id;
 
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useTripId } from "@/components/TripIdProvider";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -67,10 +67,53 @@ export function LiveFaceClient({
    */
   embedded?: boolean;
 }) {
-  const { tripId } = useParams<{ tripId: string }>();
+  /**
+   * The CANONICAL trip UUID, not the raw URL param.
+   *
+   * This read `useParams().tripId` and handed it straight to
+   * `competitions.faceBootstrap` — which is a SLUG whenever the user arrived
+   * from a trip list, and a slug never matches `trip_members.trip_id`. The
+   * server threw FORBIDDEN, `boot` came back undefined, and the whole Cup
+   * subtree rendered "no competition yet" (an owner saw the non-editor
+   * placeholder rather than the create form — the tell). It looked
+   * intermittent because the root route redirects to `/trips/<uuid>`, so Cup
+   * worked on app load and broke on the next trip you picked from a list.
+   * See TripIdProvider for the full chain.
+   *
+   * Split outer/inner exactly as `TripDetailPage`/`TripDetailBody` does, so
+   * everything below is typed against a RESOLVED `string` and no longer has to
+   * thread `undefined` through ~15 call sites. The layout seeds the provider
+   * with the id it already resolved server-side, so this spinner is only
+   * reachable when that server resolve was skipped (unauthed/early).
+   */
+  const { tripId } = useTripId();
 
+  if (!tripId) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2"
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+        />
+      </div>
+    );
+  }
+
+  return <LiveFaceInner tripId={tripId} initialBoot={initialBoot} embedded={embedded} />;
+}
+
+function LiveFaceInner({
+  tripId,
+  initialBoot,
+  embedded,
+}: {
+  tripId: string;
+  initialBoot: FaceBootstrap | null;
+  embedded: boolean;
+}) {
   // Push competition (name, tagline, roster setup) + membership changes live so
-  // the face re-resolves without a manual refresh.
+  // the face re-resolves without a manual refresh. Both take the canonical id —
+  // a realtime channel name keyed by slug would never match the server's.
   useRealtimeCompetition(tripId);
   useRealtimeMembers(tripId);
 
@@ -327,7 +370,9 @@ function NotSetUpEmptyState() {
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
-  const { tripId } = useParams<{ tripId: string }>();
+  // The raw param, deliberately: this only builds a URL, and the URL layer
+  // accepts either form (keeping the pretty slug in the address bar).
+  const { rawParam: tripId } = useTripId();
   return (
     <div
       className="mt-6 flex flex-col items-center justify-center rounded-xl px-6 py-16 text-center"
