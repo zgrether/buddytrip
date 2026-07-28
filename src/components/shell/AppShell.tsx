@@ -6,6 +6,9 @@ import { GameChromeProvider } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
 import { AppTabBar } from "./AppTabBar";
 import { LockedTabExplainer } from "./LockedTabExplainer";
+import { ContextRail } from "./ContextRail";
+import { DesktopTabStrip } from "./DesktopTabStrip";
+import { useIsChatColumn } from "./breakpoints";
 
 /**
  * AppShell — the persistent frame for the four-tab navigation (Phase 3).
@@ -98,6 +101,25 @@ export function AppShell({
   const effectiveView: AppView = scoped ? view : "home";
 
   /**
+   * On a wide desktop, Chat does not REPLACE the content — it sits beside it in a
+   * 340px column, so the board stays live while you talk (which is what the old
+   * floating panel was working around). The main column therefore has to keep
+   * showing something: the last non-Chat view you were on.
+   *
+   * Below the chat breakpoint, Chat is a full-width tab as on mobile, and this is
+   * unused. See breakpoints.ts for why 1280 and not 1024.
+   */
+  const chatIsColumn = useIsChatColumn();
+  const [lastContentView, setLastContentView] = useState<Exclude<AppView, "home" | "chat">>("trip");
+  if (effectiveView !== "chat" && effectiveView !== "home" && effectiveView !== lastContentView) {
+    setLastContentView(effectiveView as Exclude<AppView, "home" | "chat">);
+  }
+  /** What the MAIN column renders. Chat-as-column keeps the content behind it. */
+  const mainView: AppView =
+    chatIsColumn && effectiveView === "chat" ? lastContentView : effectiveView;
+  const chatAside = chatIsColumn && effectiveView === "chat";
+
+  /**
    * LAZY MOUNT, then keep. A slot is not mounted until its tab is first visited;
    * after that it stays mounted so returning to it is free.
    *
@@ -155,11 +177,11 @@ export function AppShell({
     body = (
       <div key={tripId ?? "no-context"}>
         {visited.has("trip") && (
-          <div hidden={effectiveView !== "trip"}>
+          <div hidden={mainView !== "trip"}>
             {typeof trip === "function" ? trip({ requestView: select }) : trip}
           </div>
         )}
-        {visited.has("cup") && <div hidden={effectiveView !== "cup"}>{cup}</div>}
+        {visited.has("cup") && <div hidden={mainView !== "cup"}>{cup}</div>}
         {/*
          * Chat is CONDITIONALLY RENDERED, not hidden like the other two.
          *
@@ -177,7 +199,9 @@ export function AppShell({
          * warm cache. Trip and Cup are not portaled, so they keep staying mounted,
          * which is where the win actually matters.
          */}
-        {effectiveView === "chat" && chat}
+        {/* Chat renders inline only when it OWNS the view. As a side column it is
+            rendered by the layout below instead, so it never appears twice. */}
+        {effectiveView === "chat" && !chatAside && chat}
       </div>
     );
   }
@@ -193,7 +217,39 @@ export function AppShell({
         style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
       >
         {topBar}
-        <div style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 16px)" }}>{body}</div>
+        {/* ONE tree, reflowed by CSS. The rail and the two tab chromes are
+            `hidden lg:*` / `lg:hidden`, so crossing a breakpoint changes which
+            chrome paints — it never rebuilds the content beneath, which is what
+            keeps scroll, mounted slots and in-flight state across a resize. */}
+        <div className="lg:flex lg:items-stretch">
+          <ContextRail activeTripId={tripId} />
+          <div className="min-w-0 flex-1">
+            <DesktopTabStrip
+              active={peeking ?? effectiveView}
+              hasContext={hasContext}
+              onSelect={select}
+              onLockedTap={(v) => setPeeking(v)}
+            />
+            <div
+              className={chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""}
+              style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 16px)" }}
+            >
+              <div className="min-w-0">{body}</div>
+              {chatAside && (
+                <aside
+                  className="min-w-0 rounded-xl"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                  data-testid="chat-column"
+                >
+                  {chat}
+                </aside>
+              )}
+            </div>
+          </div>
+        </div>
         <AppTabBar
           active={peeking ?? effectiveView}
           hasContext={hasContext}
