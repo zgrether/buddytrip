@@ -290,6 +290,90 @@ describe("assignInDraft — the one-match invariant", () => {
    * draft, ANY single assignment leaves no player in two places. This is what the
    * DB constraint enforces and what `_write_game_side` depends on.
    */
+  /**
+   * #747 — the doubles reorder-within-own-side hole. The removal pass shrinks
+   * `target[slot]` by one BEFORE the 2v2 placement writes `arr[memberIdx] = userId`,
+   * so moving a player already on this side to an EARLIER position shifts their
+   * teammate down into the write and silently drops them:
+   * `{a:[rob,ann]}` + assign ann→memberIdx 0 produced `{a:[ann]}`, losing rob — no
+   * duplicate (so #708's guard never caught it), just a vanished teammate. This
+   * reproduces on main; the fix matches on side membership (captured before the
+   * removal pass can shift anything) instead of trusting the post-removal index.
+   */
+  it("doubles: assigning a player to an EARLIER position of their own side does not drop their teammate", () => {
+    const before = [m(2, ["rob", "ann"], ["bob", "cat"])];
+    const after = assignInDraft(before, 0, "a", 0, "ann");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual(["ann", "rob"]); // swapped, not replaced
+  });
+
+  it("doubles: assigning a player to a LATER position of their own side does not drop their teammate", () => {
+    const before = [m(2, ["rob", "ann"], ["bob", "cat"])];
+    const after = assignInDraft(before, 0, "a", 1, "rob");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual(["ann", "rob"]); // swapped, not replaced
+  });
+
+  it("doubles: moving a player into their own side's still-empty second position is a no-op reorder", () => {
+    const before = [m(2, ["rob"], ["bob", "cat"])];
+    const after = assignInDraft(before, 0, "a", 1, "rob");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual(["rob"]);
+  });
+
+  // ── #747 Phase 0 #3 — the full matrix, singles + doubles alike ─────────────
+  // singles × same-match / cross-match: covered above (regressions 1 & 2, and the
+  // "normal cross-match move" case) — re-asserted here so the matrix is explicit
+  // and any future divergence shows up as ONE failing group, not scattered cases.
+  // singles × same-side-different-position doesn't structurally exist: a singles
+  // side holds exactly one slot, so there is no "other position" to reorder into —
+  // the degenerate case is a self-reassign, asserted as a no-op below.
+  describe("the singles/doubles × same-match/cross-match/same-side-reorder matrix", () => {
+    it("singles × same-match (cross-side): moves, vacates the old side, no duplicate", () => {
+      const after = assignInDraft([m(1, ["rob"], ["ann"])], 0, "b", 0, "rob");
+      expect(duplicatesIn(after)).toEqual([]);
+      expect(after[0]).toEqual({ playersPerSide: 1, a: [], b: ["rob"], handicap: 0 });
+    });
+
+    it("singles × cross-match: moves, clears the vacated match's handicap, no duplicate", () => {
+      const before = [m(1, ["ann"], ["bob"]), m(1, ["rob"], ["dan"], -3)];
+      const after = assignInDraft(before, 0, "a", 0, "rob");
+      expect(duplicatesIn(after)).toEqual([]);
+      expect(after[0].a).toEqual(["rob"]);
+      expect(after[1].a).toEqual([]);
+      expect(after[1].handicap).toBe(0);
+    });
+
+    it("singles × same-side-different-position: N/A — self-reassign to the only slot is a no-op", () => {
+      const before = [m(1, ["rob"], ["ann"])];
+      const after = assignInDraft(before, 0, "a", 0, "rob");
+      expect(after).toEqual(before);
+    });
+
+    it("doubles × same-match (cross-side): moves, bumps the prior occupant, no duplicate", () => {
+      const before = [m(2, ["rob", "ann"], ["bob", "cat"])];
+      const after = assignInDraft(before, 0, "b", 0, "rob");
+      expect(duplicatesIn(after)).toEqual([]);
+      expect(after[0].a).toEqual(["ann"]);
+      expect(after[0].b).toEqual(["rob", "cat"]); // bob bumped to the pool
+    });
+
+    it("doubles × cross-match: moves, leaves the source side short, no duplicate", () => {
+      const before = [m(2, ["cat", "dan"], ["eve", "fay"]), m(2, ["gil", "hal"], ["ivy", "jan"])];
+      const after = assignInDraft(before, 1, "a", 0, "cat");
+      expect(duplicatesIn(after)).toEqual([]);
+      expect(after[0].a).toEqual(["dan"]);
+      expect(after[1].a).toEqual(["cat", "hal"]);
+    });
+
+    it("doubles × same-side-different-position: swaps, never drops the teammate (#747)", () => {
+      const before = [m(2, ["rob", "ann"], ["bob", "cat"])];
+      const after = assignInDraft(before, 0, "a", 0, "ann");
+      expect(duplicatesIn(after)).toEqual([]);
+      expect(after[0].a).toEqual(["ann", "rob"]);
+    });
+  });
+
   it("PROPERTY — no assignment on any draft shape can produce a duplicate", () => {
     const drafts: AM[][] = [
       [m(1, ["rob"], ["ann"])],
