@@ -165,9 +165,34 @@ export function AppShell({
    */
   useRealtimeChat(tripId ?? "", "trip");
 
+  /**
+   * Chat's placement, independent of `effectiveView` (Phase 6): a persistent
+   * 340px side column at/above the chat-column breakpoint, so the board stays
+   * live while you talk, or a resizable bottom sheet below it. Never gated on
+   * which tab is selected — see breakpoints.ts for why 1280 and not 1024, and
+   * `ChatSheet`'s doc comment for why this is what removes the old tablet-width
+   * dead zone rather than moving it.
+   *
+   * Computed here (ahead of `select`) so `select` can read `chatSheetOpen`
+   * without a forward reference.
+   */
+  const chatIsColumn = useIsChatColumn();
+  const chatAside = chatOpen && chatIsColumn;
+  const chatSheetOpen = chatOpen && !chatIsColumn;
+
   const select = useCallback(
     (next: AppView) => {
       setPeeking(null);
+      /**
+       * Tapping a nav tab while the chat SHEET is open used to switch the tab
+       * underneath and leave chat open over it — incoherent, since the scrim
+       * already closes chat on an outside tap and the nav sits above the
+       * scrim (the gap this closes). Scoped to `chatSheetOpen`, not `chatOpen`
+       * outright: the persistent side column (`chatAside`, xl+) is a
+       * deliberate "board stays live while you talk" layout, not a modal, and
+       * switching tabs there must not close it.
+       */
+      if (chatSheetOpen) closeChat();
       // Home is context-free and lives on its own route — see the scope note.
       if (next === "home") {
         router.push("/dashboard");
@@ -180,7 +205,7 @@ export function AppShell({
       }
       setView(next);
     },
-    [router, setView, scoped, remoteTripId],
+    [router, setView, scoped, remoteTripId, chatSheetOpen, closeChat],
   );
 
   /**
@@ -192,18 +217,6 @@ export function AppShell({
    * the host's landing tab instead of honouring an invalid state.
    */
   const effectiveView: AppView = scoped ? (view === "home" ? defaultView : view) : "home";
-
-  /**
-   * Chat's placement, independent of `effectiveView` (Phase 6): a persistent
-   * 340px side column at/above the chat-column breakpoint, so the board stays
-   * live while you talk, or a resizable bottom sheet below it. Never gated on
-   * which tab is selected — see breakpoints.ts for why 1280 and not 1024, and
-   * `ChatSheet`'s doc comment for why this is what removes the old tablet-width
-   * dead zone rather than moving it.
-   */
-  const chatIsColumn = useIsChatColumn();
-  const chatAside = chatOpen && chatIsColumn;
-  const chatSheetOpen = chatOpen && !chatIsColumn;
 
   /**
    * Two-pane Cup → the panes own the scroll, not the body. The SAME predicate

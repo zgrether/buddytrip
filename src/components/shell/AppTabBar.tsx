@@ -32,7 +32,9 @@ import type { LockedExplainerView } from "./LockedTabExplainer";
  * the game panel's bottom padding) keeps working untouched.
  *
  * GRID, not flex, for the bar: four cells must hold their positions regardless
- * of content, and `flex: 1` would let any one cell's content skew widths.
+ * of content, and `flex: 1` would let any one cell's content skew widths. The
+ * grid carries a 5th, 1px column for the hairline divider ahead of Chat
+ * (`repeat(3, 1fr) 1px 1fr`) — a non-interactive spacer, not a fifth cell.
  */
 
 interface TabDef {
@@ -78,9 +80,9 @@ export const AppTabBar: FC<{
   /** A locked tab (or the locked Chat action) was tapped: show its explainer
    *  rather than switching/opening. */
   onLockedTap: (view: LockedExplainerView) => void;
-  /** Whether the chat overlay is currently open — the action cell deepens its
-   *  tint and fills its glyph while open, but never claims `aria-selected`;
-   *  it is not one of the three destinations. */
+  /** Whether the chat overlay is currently open — the action cell fills its
+   *  glyph and switches to the accent color while open, but never claims
+   *  `aria-selected`; it is not one of the three destinations. */
   chatOpen: boolean;
   /** Opens the chat overlay. Never routes through `onSelect` — chat is not a
    *  view, so opening it must not touch `?view=`. */
@@ -138,7 +140,11 @@ const TabBar: FC<{
           one of the mutually-exclusive panels this tablist switches between,
           and it never carries aria-selected. It still lives in the SAME grid
           row for the shared four-column layout. */}
-      <div className="mx-auto grid max-w-2xl grid-cols-4" role="tablist">
+      <div
+        className="mx-auto grid max-w-2xl"
+        style={{ gridTemplateColumns: "repeat(3, 1fr) 1px 1fr" }}
+        role="tablist"
+      >
         {TABS.map(({ id, label, Icon }) => {
           const locked = !hasContext && id !== "home";
           const selected = active === id;
@@ -167,12 +173,19 @@ const TabBar: FC<{
             </button>
           );
         })}
-        {/* The Chat action — tinted region differentiates it from the three
-            destinations at rest; opening it deepens the tint and fills the
-            glyph, which reads as a distinct signal from "this is an action"
-            (a single tint can't carry both). No count badge — a dot instead,
-            same as the other tabs used pre-redesign; a floating pill fights
-            the bar's flat aesthetic. */}
+        {/* Hairline divider — separates the Chat action from the three
+            destinations. A background tint read fine at 390px but became a
+            slab as the bar widens; a divider scales with the bar instead of
+            growing into a colored region. */}
+        <span
+          aria-hidden="true"
+          className="self-center justify-self-center"
+          style={{ width: 1, height: "60%", background: "var(--color-bt-border)" }}
+        />
+        {/* The Chat action — an action, not a destination, so it never carries
+            a tint or `aria-selected`. Open state reads through the glyph
+            alone: filled icon + accent color on both icon and label (the
+            unread dot, unchanged, still marks new activity at rest). */}
         <button
           type="button"
           role="button"
@@ -183,13 +196,6 @@ const TabBar: FC<{
           onClick={() => (chatLocked ? onLockedTap("chat") : onToggleChat())}
           className="relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 transition-colors"
           style={{
-            // Deeper mix while open — "tinted" and "open" have to read as two
-            // different signals, not one tint doing both jobs.
-            background: chatLocked
-              ? undefined
-              : chatOpen
-                ? "color-mix(in srgb, var(--color-bt-accent) 22%, transparent)"
-                : "var(--color-bt-accent-faint)",
             color: chatLocked
               ? "var(--color-bt-text-dim)"
               : chatOpen
