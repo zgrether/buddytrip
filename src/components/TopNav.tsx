@@ -3,8 +3,7 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Newspaper, MessageCircle, ChevronDown } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Newspaper, MessageCircle, ChevronDown, Calendar, Trophy, type LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
 import { FeedbackModal } from "./FeedbackModal";
@@ -12,11 +11,24 @@ import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { useNewsUnreadCount } from "./NewsPanel";
 import { InstallBanner } from "./pwa/InstallBanner";
+import { RAIL_WIDTH_PX } from "./shell/breakpoints";
+import type { AppView } from "./shell/useAppView";
 
 /**
- * App title bar — two zones:
- *   LEFT  = identity / scope  → flag-home anchor + trip-breadcrumb switcher
- *   RIGHT = global tools + me → Board, Chat, and the account avatar
+ * App title bar — three zones at `lg+` (two below it):
+ *   LEFT   = identity / scope     → flag-home anchor + trip-breadcrumb switcher
+ *   MIDDLE = Trip · Cup           → `lg+` ONLY, x-aligned to the rail's right
+ *            edge (`RAIL_WIDTH_PX`) so the column alignment between the rail
+ *            and the content below holds. Absolutely positioned rather than a
+ *            third flex zone, so its width never competes with the left/right
+ *            zones for space — it just sits at a fixed x, like the rail it
+ *            lines up under.
+ *   RIGHT  = global tools + me    → Chat, News, and the account avatar
+ *
+ * Trip/Cup moved here from the separate `DesktopTabStrip` row (Task 4, shell
+ * polish batch) — that row pushed all content down by its own height while
+ * everything else chrome-shaped (mark, chat, profile) lived in this bar. Home
+ * isn't here: at `lg+` it's the persistent rail, not a tab.
  *
  * The host is a container-query context (`@container`), so the responsive
  * collapse below 600px keys off the bar's OWN width — not the viewport —
@@ -26,6 +38,11 @@ import { InstallBanner } from "./pwa/InstallBanner";
  * trip-scoped owner/organizer broadcast surface (the NewsPanel), not a
  * notification stream.
  */
+
+const TOP_NAV_VIEW_TABS: { id: Exclude<AppView, "home">; label: string; Icon: LucideIcon }[] = [
+  { id: "trip", label: "Trip", Icon: Calendar },
+  { id: "cup", label: "Cup", Icon: Trophy },
+];
 
 interface TopNavProps {
   /** Wordmark next to the flag. Always "BuddyTrip" per the design; kept as a
@@ -58,6 +75,15 @@ interface TopNavProps {
    *  account avatar so it reads in the user's team identity instead of teal.
    *  Undefined off competition pages (avatar stays teal). */
   avatarTeamColor?: string | null;
+  /** Trip · Cup (Task 4) — `lg+` only, x-aligned to the rail's right edge.
+   *  Present only when the host has AppShell's tab state to hand it (the
+   *  trip page's `topBar` render prop); absent elsewhere (dashboard,
+   *  profile), where TopNav renders exactly as it did before this. */
+  activeView?: AppView;
+  /** False when no trip is selected — Trip/Cup are ABSENT then (Task 5), not
+   *  dimmed; see the render-site comment. */
+  hasContext?: boolean;
+  onSelectView?: (view: AppView) => void;
 }
 
 // Minimal shape we read off trips.list for the breadcrumb.
@@ -78,6 +104,9 @@ export const TopNav: FC<TopNavProps> = ({
   hideTripSwitcher = false,
   hideNews = false,
   avatarTeamColor,
+  activeView,
+  hasContext = false,
+  onSelectView,
 }) => {
   const router = useRouter();
   const params = useParams<{ tripId?: string }>();
@@ -116,6 +145,7 @@ export const TopNav: FC<TopNavProps> = ({
     <header
       className="@container sticky top-0 z-40 flex h-14 items-center justify-between"
       style={{
+        position: "relative",
         background: "var(--color-bt-nav-bg)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
@@ -123,6 +153,52 @@ export const TopNav: FC<TopNavProps> = ({
         padding: "0 16px",
       }}
     >
+      {/* ── MIDDLE: Trip · Cup — `lg+` only, x-aligned to the rail's right edge ──
+          Absolutely positioned at `left: RAIL_WIDTH_PX` (not a third flex zone)
+          so it sits at a fixed x regardless of how wide the left/right zones
+          are — the same column alignment the rail itself provides below this
+          bar.
+          ABSENT (not dimmed/disabled) with no trip context (Task 5) — the rail
+          IS the picker at `lg+`, and `ContextIntro` already carries the "pick a
+          trip" copy in the body; a third, redundant, dimmed voice would just
+          draw attention away from the one thing on screen that should have
+          weight. This deliberately differs from `AppTabBar`'s mobile locked-tab
+          treatment (dimmed + tappable-to-explain) — that's correct there
+          because the bar is the ONLY navigation on mobile, so tapping a locked
+          tab is the sole discovery path for what it does; neither reason
+          applies here. */}
+      {onSelectView && hasContext && (
+        <div
+          className="absolute inset-y-0 hidden items-center lg:flex"
+          style={{ left: RAIL_WIDTH_PX }}
+          role="tablist"
+        >
+          {TOP_NAV_VIEW_TABS.map(({ id, label, Icon }) => {
+            const selected = activeView === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                data-testid={`desktop-tab-${id}`}
+                onClick={() => onSelectView(id)}
+                className="flex h-full items-center gap-1.5 px-4 text-[13.5px] font-semibold transition-colors"
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  borderBottom: `2px solid ${selected ? "var(--color-bt-accent)" : "transparent"}`,
+                  color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                }}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── LEFT: identity / scope — OR game back + title (#550) ─────────── */}
       {/* Game back/title moved OUT of the bar and into GameActionRow (Phase 6),
           so the top bar means exactly one thing at every depth: brand + avatar. */}

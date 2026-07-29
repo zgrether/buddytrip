@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
 
@@ -68,12 +68,24 @@ export function useAppView(defaultView: AppView = "trip"): {
   }, [searchParams, defaultView]);
 
   /** Current query string with `view` swapped and everything else — notably
-   *  `tab` — carried through. */
+   *  `tab` — carried through. Also drops `game`/`settings`/`scorecard` when
+   *  leaving Cup: those are GameRow's panel/overlay params (`withParams` in
+   *  `GameRow.tsx`), meaningless outside Cup, and leaving them in the URL is
+   *  its own bug — a stale `?game=<id>` surviving a switch to Trip means the
+   *  history entry that supposedly landed on "Trip" is, underneath, still
+   *  carrying a live game-panel reference (see the reachability note this
+   *  fixes alongside, in `AppShell`'s two-pane comment).
+   */
   const urlFor = useCallback(
     (next: AppView) => {
       const params = new URLSearchParams(searchParams.toString());
       if (next === defaultView) params.delete("view");
       else params.set("view", next);
+      if (next !== "cup") {
+        params.delete("game");
+        params.delete("settings");
+        params.delete("scorecard");
+      }
       const q = params.toString();
       return q ? `${pathname}?${q}` : pathname;
     },
@@ -95,6 +107,38 @@ export function useAppView(defaultView: AppView = "trip"): {
     },
     [view, urlFor],
   );
+
+  /**
+   * Self-heal an untagged arrival at a non-default `?view=`.
+   *
+   * `setView`'s push/replace logic only runs on a TAP — it can't tag an entry
+   * someone else wrote. `leaderboard/page.tsx`'s deep-link alias is exactly
+   * that: it has to trigger Next's own `router.replace` to cross from its own
+   * pathname to this one (a raw `history.replaceState` via `pushMarker`
+   * can't reliably drive Next's cross-pathname route-tree transition, and a
+   * same-tick `replaceMarker` call right after `router.replace()` would race
+   * Next's own internal history write and risk being silently overwritten —
+   * Next's replace isn't guaranteed synchronous), so the alias can't tag the
+   * entry itself. This closes the gap from the landing side instead: an
+   * entry with NO owner at all (`readOwner === null` — a raw Next
+   * navigation, not merely "owned by something else") that nonetheless
+   * encodes an explicit non-default view gets retagged in place —
+   * `replaceMarker` keeps the entry's current depth and just stamps
+   * ownership onto it, so this never navigates or adds an entry.
+   *
+   * Scoped to `readOwner === null`, not `!== "view"`: a `"panel"`/`"modal"`/
+   * `"config"`/`"screen"` entry can legitimately carry the SAME `?view=cup`
+   * in its URL (GameRow's `withParams` merges onto whatever's already
+   * there) — retagging those to `"view"` would corrupt their real ownership.
+   * Only a genuinely untagged entry is this gap.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (view === defaultView) return;
+    if (readOwner(window.history.state) !== null) return;
+    const q = searchParams.toString();
+    replaceMarker("view", { btView: true }, q ? `${pathname}?${q}` : pathname);
+  }, [view, defaultView, pathname, searchParams]);
 
   return { view, setView, hrefFor: urlFor };
 }

@@ -121,13 +121,19 @@ export function StrokeGameView() {
   // scorecard grid over it (depth 2). OS/browser back pops one level at a time — grid →
   // group → surface — instead of leaving the game (mirrors rack's useScreenHistory).
   const entryDepth = entryGroupId ? (gridOpen ? 2 : 1) : 0;
-  // OS/browser back pops the deepest open sub-screen (grid, then group) instead of leaving
-  // the game — the in-app back buttons set state directly; this keeps hardware-back in sync.
-  useScreenHistory(entryDepth, () => {
+  // `back()` is the ONE path every in-app breadcrumb/finish/close uses, same as
+  // rack's `back` — captures the hook's returned function rather than mutating
+  // `gridOpen`/`entryGroupId` directly. Mutating state directly (this file's own
+  // prior shape) leaves the pushed history entry un-popped: `useScreenHistory`'s
+  // depth-shrink branch just re-syncs its OWN counter down on the next render, it
+  // does not call `history.back()` for you — so the browser's real stack keeps an
+  // orphaned entry nothing claims. The next hardware back then silently eats that
+  // phantom instead of doing what the user expects (one back press short, every
+  // time an in-app control was used instead of the OS button).
+  const back = useScreenHistory(entryDepth, () => {
     if (gridOpen) setGridOpen(false);
     else if (entryGroupId) setEntryGroupId(null);
   });
-  const backFromGrid = () => setGridOpen(false);
   const [currentHole, setCurrentHole] = useState(1);
   const [standings, setStandings] = useState<StrokeStanding[]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
@@ -1095,7 +1101,7 @@ export function StrokeGameView() {
         saveStatus={saveStatus}
         onCellTap={canScoreStroke ? (label) => {
           setCurrentHole(Number(label) || 1);
-          backFromGrid();
+          back();
         } : undefined}
       />
     );
@@ -1113,7 +1119,7 @@ export function StrokeGameView() {
             onScorecard={() => setGridOpen(true)}
             onPlayAgain={playAgain}
           />
-          {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
+          {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={back}>{scorecardGrid}</ScorecardSheet>}
         </div>
       );
     }
@@ -1125,7 +1131,7 @@ export function StrokeGameView() {
       return (
         <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
           {!canScoreThisGroup ? (
-            <ScorecardSheet subtitle={courseName ?? undefined} onClose={() => setEntryGroupId(null)}>{scorecardGrid}</ScorecardSheet>
+            <ScorecardSheet subtitle={courseName ?? undefined} onClose={back}>{scorecardGrid}</ScorecardSheet>
           ) : (
             <>
               <ScoreEntryView
@@ -1142,7 +1148,7 @@ export function StrokeGameView() {
                 saveStatus={saveStatus}
                 onRetryCell={retryCell}
                 pips={entryPips}
-                onBack={() => setEntryGroupId(null)}
+                onBack={back}
                 onOpenGrid={() => setGridOpen(true)}
                 onConfig={canEdit ? openConfig : undefined}
                 // "Finish" on a group's entry is pure navigation back to the
@@ -1151,10 +1157,10 @@ export function StrokeGameView() {
                 // ALL groups complete (multi-grouping fix). Empty subtext so the
                 // shared default ("Saves results · shows final standings") — which
                 // describes the old game-finish behavior — doesn't mislead.
-                onFinish={() => setEntryGroupId(null)}
+                onFinish={back}
                 finishSubtext=""
               />
-              {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={backFromGrid}>{scorecardGrid}</ScorecardSheet>}
+              {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={back}>{scorecardGrid}</ScorecardSheet>}
             </>
           )}
         </div>

@@ -8,9 +8,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * whichever tab was selected: opening it abandoned wherever you were, and
  * the selected tab lost its `aria-selected` state. This asserts the fix
  * directly — open chat, the underlying tab stays selected; close it, you're
- * back exactly where you were — on BOTH chrome variants (`DesktopTabStrip` +
- * `TopNav`'s toggle at ≥1280, `AppTabBar`'s tinted action cell below it),
- * since they're two different code paths for the same guarantee.
+ * back exactly where you were — on BOTH chrome variants (`TopNav`'s Trip/Cup
+ * tabs + chat toggle at ≥1280, `AppTabBar`'s action cell below it), since
+ * they're two different code paths for the same guarantee.
  *
  * Minimal seed on purpose: this is testing shell/nav behavior, not
  * competition content, so a trip with just the owner as a member is enough —
@@ -63,7 +63,7 @@ test.afterAll(async () => {
   await admin.from("trips").delete().eq("id", tripId);
 });
 
-// ── Desktop (≥1280): DesktopTabStrip + TopNav's toggle + the aside column ──
+// ── Desktop (≥1280): TopNav's Trip/Cup tabs + chat toggle + the aside column ──
 test("desktop: opening chat from Cup keeps Cup selected; closing returns to Cup", async ({ page }) => {
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 1280, height: 800 });

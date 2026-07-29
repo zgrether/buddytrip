@@ -7,7 +7,6 @@ import { useAppView, type AppView } from "./useAppView";
 import { AppTabBar } from "./AppTabBar";
 import { ContextIntro, LockedTabExplainer, type LockedExplainerView } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
-import { DesktopTabStrip } from "./DesktopTabStrip";
 import { ChatSheet } from "./ChatSheet";
 import { useIsChatColumn } from "./breakpoints";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
@@ -68,17 +67,30 @@ export function AppShell({
    *  at/above it — see `chatIsColumn` below. */
   chat?: ReactNode;
   /** Render prop so the top bar can wire up ITS OWN chat toggle (desktop,
-   *  Phase 6) — `chatOpen` is internal state this shell owns, same reasoning
-   *  as `trip`'s render prop above: exactly one consumer (`TopNav`) needs it,
-   *  and it has to come from here since `topBar` is otherwise constructed
-   *  outside this component. `onToggleChat` TOGGLES rather than only opening
-   *  — the desktop aside column has no close × of its own (unlike the mobile
-   *  sheet's scrim/grip/back), so the same control that opens it is the only
-   *  way to close it. `onDismissPanels` also closes chat, so opening the trip
-   *  switcher / user menu doesn't leave chat's scrim trapping them. */
+   *  Phase 6) and Trip/Cup tabs (Task 4) — both are internal state this shell
+   *  owns, same reasoning as `trip`'s render prop above: exactly one
+   *  consumer (`TopNav`) needs them, and it has to come from here since
+   *  `topBar` is otherwise constructed outside this component.
+   *  `onToggleChat` TOGGLES rather than only opening — the desktop aside
+   *  column has no close × of its own (unlike the mobile sheet's
+   *  scrim/grip/back), so the same control that opens it is the only way to
+   *  close it. `onDismissPanels` also closes chat, so opening the trip
+   *  switcher / user menu doesn't leave chat's scrim trapping them.
+   *  `activeView`/`onSelectView` are the SAME `select`/`activeForTabs`
+   *  `AppTabBar` uses below — one tab-switching mechanism, two chrome
+   *  consumers. No locked-tap callback: Trip/Cup are ABSENT with no context
+   *  at `lg+` (Task 5), never dimmed-and-tappable-to-explain the way
+   *  `AppTabBar`'s mobile tabs are — there's nothing for a tap to explain. */
   topBar?:
     | ReactNode
-    | ((api: { chatOpen: boolean; onToggleChat: () => void; onDismissPanels: () => void }) => ReactNode);
+    | ((api: {
+        chatOpen: boolean;
+        onToggleChat: () => void;
+        onDismissPanels: () => void;
+        activeView: AppView;
+        hasContext: boolean;
+        onSelectView: (v: AppView) => void;
+      }) => ReactNode);
   defaultView?: AppView;
   /**
    * The context a REMOTE host should point at. Set on `/dashboard`, which is
@@ -153,9 +165,34 @@ export function AppShell({
    */
   useRealtimeChat(tripId ?? "", "trip");
 
+  /**
+   * Chat's placement, independent of `effectiveView` (Phase 6): a persistent
+   * 340px side column at/above the chat-column breakpoint, so the board stays
+   * live while you talk, or a resizable bottom sheet below it. Never gated on
+   * which tab is selected — see breakpoints.ts for why 1280 and not 1024, and
+   * `ChatSheet`'s doc comment for why this is what removes the old tablet-width
+   * dead zone rather than moving it.
+   *
+   * Computed here (ahead of `select`) so `select` can read `chatSheetOpen`
+   * without a forward reference.
+   */
+  const chatIsColumn = useIsChatColumn();
+  const chatAside = chatOpen && chatIsColumn;
+  const chatSheetOpen = chatOpen && !chatIsColumn;
+
   const select = useCallback(
     (next: AppView) => {
       setPeeking(null);
+      /**
+       * Tapping a nav tab while the chat SHEET is open used to switch the tab
+       * underneath and leave chat open over it — incoherent, since the scrim
+       * already closes chat on an outside tap and the nav sits above the
+       * scrim (the gap this closes). Scoped to `chatSheetOpen`, not `chatOpen`
+       * outright: the persistent side column (`chatAside`, xl+) is a
+       * deliberate "board stays live while you talk" layout, not a modal, and
+       * switching tabs there must not close it.
+       */
+      if (chatSheetOpen) closeChat();
       // Home is context-free and lives on its own route — see the scope note.
       if (next === "home") {
         router.push("/dashboard");
@@ -168,7 +205,7 @@ export function AppShell({
       }
       setView(next);
     },
-    [router, setView, scoped, remoteTripId],
+    [router, setView, scoped, remoteTripId, chatSheetOpen, closeChat],
   );
 
   /**
@@ -180,18 +217,6 @@ export function AppShell({
    * the host's landing tab instead of honouring an invalid state.
    */
   const effectiveView: AppView = scoped ? (view === "home" ? defaultView : view) : "home";
-
-  /**
-   * Chat's placement, independent of `effectiveView` (Phase 6): a persistent
-   * 340px side column at/above the chat-column breakpoint, so the board stays
-   * live while you talk, or a resizable bottom sheet below it. Never gated on
-   * which tab is selected — see breakpoints.ts for why 1280 and not 1024, and
-   * `ChatSheet`'s doc comment for why this is what removes the old tablet-width
-   * dead zone rather than moving it.
-   */
-  const chatIsColumn = useIsChatColumn();
-  const chatAside = chatOpen && chatIsColumn;
-  const chatSheetOpen = chatOpen && !chatIsColumn;
 
   /**
    * Two-pane Cup → the panes own the scroll, not the body. The SAME predicate
@@ -362,22 +387,25 @@ export function AppShell({
             the mobile page scroll. Both work; neither fights the other. */}
         <div className="lg:shrink-0">
           {typeof topBar === "function"
-            ? topBar({ chatOpen, onToggleChat: toggleChat, onDismissPanels: closeChat })
+            ? topBar({
+                chatOpen,
+                onToggleChat: toggleChat,
+                onDismissPanels: closeChat,
+                activeView: activeForTabs,
+                hasContext,
+                onSelectView: select,
+              })
             : topBar}
         </div>
-        {/* ONE tree, reflowed by CSS. The rail and the two tab chromes are
-            `hidden lg:*` / `lg:hidden`, so crossing a breakpoint changes which
-            chrome paints — it never rebuilds the content beneath, which is what
-            keeps scroll, mounted slots and in-flight state across a resize. */}
+        {/* ONE tree, reflowed by CSS. The rail and AppTabBar are `hidden lg:*` /
+            `lg:hidden`, so crossing a breakpoint changes which chrome paints —
+            it never rebuilds the content beneath, which is what keeps scroll,
+            mounted slots and in-flight state across a resize. Trip/Cup's OWN
+            `lg:` chrome swap now lives inside `topBar` (TopNav), not as a
+            second row here — see Task 4. */}
         <div className="lg:flex lg:min-h-0 lg:flex-1 lg:items-stretch">
           <ContextRail activeTripId={tripId} />
           <div className="min-w-0 flex-1 lg:flex lg:min-h-0 lg:flex-col">
-            <DesktopTabStrip
-              active={activeForTabs}
-              hasContext={hasContext}
-              onSelect={select}
-              onLockedTap={(v) => setPeeking(v)}
-            />
             {/*
              * The scroll BOUNDARY. `lg:min-h-0 lg:flex-1` gives this a resolved
              * height inside the bounded column; `lg:overflow-hidden` makes it a

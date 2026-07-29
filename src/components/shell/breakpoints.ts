@@ -9,11 +9,11 @@ import { useEffect, useState } from "react";
  * decision. Both numbers are derived from the widths the layout actually needs,
  * not from taste:
  *
- * ── SHELL (1024px / Tailwind `lg`) — rail + tab strip ────────────────────────
- * The rail is 246px. Below ~1024 the remaining content column drops under
- * ~700px, at which point the trip grids fall back to one column anyway and the
- * rail is costing more than it gives. At 1024 content gets ~760px, which is a
- * genuine two-column surface.
+ * ── SHELL (1024px / Tailwind `lg`) — rail + top-bar tabs ─────────────────────
+ * The rail is `RAIL_WIDTH_PX` (246px). Below ~1024 the remaining content column
+ * drops under ~700px, at which point the trip grids fall back to one column
+ * anyway and the rail is costing more than it gives. At 1024 content gets
+ * ~760px, which is a genuine two-column surface.
  *
  * ── CHAT COLUMN (1280px / Tailwind `xl`) — chat beside the content ───────────
  * The chat column is a fixed 340px. At 1024 that would leave the main column
@@ -34,6 +34,16 @@ import { useEffect, useState } from "react";
  */
 export const SHELL_DESKTOP_PX = 1024;
 export const CHAT_COLUMN_PX = 1280;
+
+/**
+ * The rail's own width (`ContextRail`) — the ONE numeric source, same reasoning
+ * as `CUP_TWO_COL_PX` below: TopNav's Trip/Cup tabs (Task 4, Phase 6) align to
+ * the rail's right edge, so both need this SAME number. Two independently
+ * hand-typed `246`s is exactly the class of bug the comment on `CUP_TWO_COL_PX`
+ * already warns about — one drifting without the other is how a pixel-perfect
+ * alignment quietly stops being pixel-perfect.
+ */
+export const RAIL_WIDTH_PX = 246;
 
 /**
  * ── Cup two-column geometry — the ONE numeric source ─────────────────────────
