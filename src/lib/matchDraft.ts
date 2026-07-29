@@ -157,6 +157,21 @@ export interface AssignableMatch extends MatchSides {
  * described is gone. The target match KEEPS its handicap, which is exactly what the
  * doubles branch already did; singles now agrees rather than being special.
  *
+ * ── #747: the doubles reorder-within-own-side hole ──────────────────────────
+ * The 2v2 placement below reads `target[slot]` and writes `arr[memberIdx] = userId`.
+ * That's fine when `userId` is arriving from elsewhere — but when `userId` is
+ * ALREADY a member of this exact side (just at the other index), the removal pass
+ * above has already shrunk `target[slot]` by one, shifting whoever was after them
+ * down into `memberIdx`'s spot. Writing there by raw index then silently overwrites
+ * — drops — a teammate who never left the side: `{a:[rob,ann]}` + assign
+ * ann→memberIdx 0 produced `{a:[ann]}`, not `{a:[ann,rob]}`.
+ *
+ * The fix matches on side MEMBERSHIP, captured before the removal pass can shift
+ * anything, rather than trusting a post-removal array position: if the mover is
+ * already on this side, it's a reorder (swap with whoever's at the destination),
+ * never a replace. Coming in from elsewhere is unaffected — that's still a genuine
+ * replace, same as singles.
+ *
  * Pure — returns a new draft, never mutates.
  */
 export function assignInDraft<M extends AssignableMatch>(
@@ -167,9 +182,18 @@ export function assignInDraft<M extends AssignableMatch>(
   userId: string,
 ): M[] {
   const next = prev.map((d) => ({ ...d, a: [...d.a], b: [...d.b] }));
+  const target = next[matchIdx];
+  if (!target) return next;
+
+  // Snapshot BEFORE the removal pass can shrink it: is the mover already a
+  // member of THIS exact side, and at which index? `target[slot]` is reassigned
+  // (not mutated) below, so this reference keeps pointing at the pre-removal
+  // array — untouched by anything that follows.
+  const ownSideArr = target[slot];
+  const ownSideIdx = ownSideArr.indexOf(userId);
 
   // ONE removal pass, every match, BOTH sides, by membership (not index 0) and
-  // including the target. This is the whole fix.
+  // including the target. This is the whole fix from #708.
   next.forEach((d, i) => {
     (["a", "b"] as const).forEach((s) => {
       if (!d[s].includes(userId)) return;
@@ -178,13 +202,26 @@ export function assignInDraft<M extends AssignableMatch>(
     });
   });
 
-  const target = next[matchIdx];
-  if (!target) return next;
-
   // Singles: the slot holds exactly one player, so assigning REPLACES whoever
   // was there (they return to the pool).
   if (target.playersPerSide === 1) {
     target[slot] = [userId];
+    return next;
+  }
+
+  // 2v2, reordering WITHIN the mover's own side (#747): swap with whoever holds
+  // the destination position instead of replacing them — built from the
+  // pre-removal snapshot, so the shift the removal pass just caused can't
+  // corrupt the index math and drop the other teammate.
+  if (ownSideIdx !== -1) {
+    const arr = ownSideArr.slice();
+    if (memberIdx < arr.length) {
+      [arr[ownSideIdx], arr[memberIdx]] = [arr[memberIdx], arr[ownSideIdx]];
+    } else {
+      arr.splice(ownSideIdx, 1);
+      arr.push(userId);
+    }
+    target[slot] = arr;
     return next;
   }
 
