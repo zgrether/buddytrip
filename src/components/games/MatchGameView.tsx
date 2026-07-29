@@ -2471,7 +2471,29 @@ function SortableMatchRow({
   index: number;
   children: (handle: React.ReactNode) => React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // animateLayoutChanges: false — dnd-kit's `defaultAnimateLayoutChanges` fires a
+  // FRESH css transition on every sortable row whose index changed once a drag ends
+  // (gated on `wasDragging`), independent of the live drag-transform below. That
+  // second transition lands on a still-settling transform, which is what reads on
+  // device as the row next to the dropped one visibly re-seating. The live reflow
+  // during the drag already shows the destination, so nothing needs to animate
+  // post-drop. Same one-line fix PR #716 applied to the roster rows
+  // (`SortableMemberRow`, TeamsPanel) — this is the matches half of it.
+  //
+  // Worth pinning, because the ids here differ from the roster list's: matches use
+  // POSITIONAL sortable ids (`String(i)`, re-minted every render), so `index`
+  // (`items.indexOf(id)`) is constant and dnd-kit's FLIP path (`useDerivedTransform`,
+  // which triggers on a CHANGED index) never engages at all. The re-seat reaches
+  // these rows through the other consumer of the same flag: post-drop `isSorting` is
+  // false, so `getTransition()` hands out a live 200ms `transform` transition on
+  // `shouldAnimateLayoutChanges` alone — while `finalTransform` has already dropped
+  // to null. A transition on a transform snapping to `none` IS the animated re-seat.
+  // Returning false closes that branch and the row snaps. The live drag is untouched
+  // either way: `getTransition()` short-circuits on `isSorting` first.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    animateLayoutChanges: () => false,
+  });
   const style: React.CSSProperties = {
     gridTemplateColumns: MATCH_GRID,
     gap: 8,
