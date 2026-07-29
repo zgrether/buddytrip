@@ -9,6 +9,7 @@ import { ContextIntro, LockedTabExplainer } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { DesktopTabStrip } from "./DesktopTabStrip";
 import { useIsChatColumn, chatMountLocation } from "./breakpoints";
+import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 /**
@@ -149,6 +150,21 @@ export function AppShell({
   const chatAside = chatMount === "aside";
 
   /**
+   * Two-pane Cup → the panes own the scroll, not the body. The SAME predicate
+   * `CompetitionFace` builds the grid from (`useCupPanel`), evaluated here off the
+   * same React Query cache rather than re-derived — two derivations of "are we in
+   * two-pane" is how the shell and the board silently disagree, and the disagreement
+   * shows up as the double scrollbar this replaces.
+   *
+   * Gated on `mainView` too, not `panelOpen` alone: all three tab slots stay mounted
+   * and the inactive ones are `hidden`, so a game left open while the user switches
+   * to Trip keeps `panelOpen` true with the Cup hidden — switching the body to
+   * `overflow-hidden` on `panelOpen` alone would leave the Trip tab unscrollable.
+   */
+  const { panelOpen } = useCupPanel(tripId);
+  const twoPane = isTwoPane(panelOpen, mainView);
+
+  /**
    * Reset scroll on arriving at the Chat tab, INLINE only (mobile, or desktop
    * <1280 where Chat owns the whole view — not the >=1280 aside, where Trip/
    * Cup content still owns the document's scroll behind it).
@@ -250,14 +266,29 @@ export function AppShell({
      * B's header. Do not read it as protecting you before that change; do not
      * remove it while making that change.
      */
+    /*
+     * `lg:h-full lg:min-h-0` on these two wrappers is what makes the two-pane
+     * panes able to scroll AT ALL. They carried no height, so `lg:h-full` on the
+     * Cup grid below resolved to 100%-of-auto → auto, the grid grew with its
+     * content, `items-stretch` stretched both panes to that content height, and
+     * neither pane ever overflowed — the body absorbed everything instead. The
+     * pane overflow rules were inert. Measured: body 782px, wrappers 671px auto.
+     *
+     * In ONE-pane this changes nothing visible: taller content simply overflows
+     * these boxes visibly and the body (the scroller there) still scrolls it.
+     */
     body = (
-      <div key={tripId ?? "no-context"}>
+      <div key={tripId ?? "no-context"} className="lg:h-full lg:min-h-0">
         {visited.has("trip") && (
-          <div hidden={mainView !== "trip"}>
+          <div hidden={mainView !== "trip"} className="lg:h-full lg:min-h-0">
             {typeof trip === "function" ? trip({ requestView: select }) : trip}
           </div>
         )}
-        {visited.has("cup") && <div hidden={mainView !== "cup"}>{cup}</div>}
+        {visited.has("cup") && (
+          <div hidden={mainView !== "cup"} className="lg:h-full lg:min-h-0">
+            {cup}
+          </div>
+        )}
         {/*
          * Chat is CONDITIONALLY RENDERED, not hidden like the other two — and
          * mounts at exactly ONE of two locations, decided by the pure
@@ -352,7 +383,30 @@ export function AppShell({
               }`}
               style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 16px)" }}
             >
-              <div className="min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">{body}</div>
+              {/*
+               * ── EXACTLY ONE SCROLLER PER VERTICAL CHAIN ────────────────────
+               * One-pane → the body scrolls. Two-pane → the body does NOT; each
+               * pane owns its own scroll. Never both.
+               *
+               * #749 left this unconditionally `overflow-y-auto`, which put two
+               * scrollers in the game pane's chain (pane + body) and — worse —
+               * meant the BOARD pane never scrolled at all: the body absorbed
+               * everything, so the panes were never independent, and opening a
+               * game while scrolled down put the pane below the fold because the
+               * pane is a child of the thing that scrolled.
+               *
+               * `overflow-hidden` in two-pane makes "the body never scrolls here"
+               * an INVARIANT rather than something that merely happens to hold
+               * while the height chain below cooperates.
+               */}
+              <div
+                className={`min-w-0 lg:h-full lg:min-h-0 ${
+                  twoPane ? "lg:overflow-hidden" : "lg:overflow-y-auto"
+                }`}
+                data-testid="shell-body"
+              >
+                {body}
+              </div>
               {chatAside && (
                 <aside
                   className="min-w-0 rounded-xl lg:h-full lg:min-h-0 lg:overflow-hidden"
