@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { GameChromeProvider } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
 import { AppTabBar } from "./AppTabBar";
-import { LockedTabExplainer } from "./LockedTabExplainer";
+import { ContextIntro, LockedTabExplainer } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { DesktopTabStrip } from "./DesktopTabStrip";
 import { useIsChatColumn, chatMountLocation } from "./breakpoints";
@@ -118,7 +118,15 @@ export function AppShell({
     [router, setView, scoped, remoteTripId],
   );
 
-  const effectiveView: AppView = scoped ? view : "home";
+  /**
+   * `home` is not a valid view on a SCOPED route. Home is context-free and lives
+   * on `/dashboard`, so `select("home")` navigates rather than setting `?view=`
+   * — but a hand-written `/trips/X?view=home` still resolved to `"home"` here,
+   * which hid all three slots (none matches `mainView`) and rendered a BLANK
+   * content area with nothing selected in the tab strip. Normalise it to the
+   * host's landing tab instead of honouring an invalid state.
+   */
+  const effectiveView: AppView = scoped ? (view === "home" ? defaultView : view) : "home";
 
   /**
    * On a wide desktop, Chat does not REPLACE the content — it sits beside it in a
@@ -207,7 +215,27 @@ export function AppShell({
   if (peeking) {
     body = <LockedTabExplainer view={peeking} onPickTrip={() => setPeeking(null)} />;
   } else if (!scoped) {
-    body = home;
+    /**
+     * `/dashboard`. On MOBILE Home is a tab and the trip list is the body — that
+     * is correct and unchanged. On DESKTOP the rail is the picker, so listing the
+     * same trips again in the content area was the actual defect (nothing-selected
+     * in the tab strip is the accurate state, not the bug). At `lg+` the content
+     * area explains what the three context tabs scope to instead.
+     *
+     * Swapped by CSS on ONE tree — `lg:hidden` / `hidden lg:block` — not a JS
+     * viewport branch, so crossing the breakpoint reflows and never remounts.
+     * `home` stays mounted underneath at desktop, which costs nothing: the rail
+     * and the dashboard share the `trips.list` query key, so React Query serves
+     * both from one fetch.
+     */
+    body = (
+      <>
+        <div className="lg:hidden">{home}</div>
+        <div className="hidden lg:block">
+          <ContextIntro />
+        </div>
+      </>
+    );
   } else {
     /**
      * All three scoped surfaces stay MOUNTED; only visibility changes. That is
@@ -261,18 +289,46 @@ export function AppShell({
     // here is what lets the game panel (rendered deep inside the Cup tab) publish
     // its title/back/gear up to a bar the shell owns.
     <GameChromeProvider>
+      {/**
+       * ── The bounded full-height box, at `lg+` ONLY ────────────────────────
+       * This root was `min-h-screen` — a FLOOR, not a height. That is the exact
+       * diagnosis already made and fixed for mobile chat: with only a minimum,
+       * no descendant can resolve a definite height, so every nested
+       * `overflow-y-auto` is unbounded, nothing clips, and the PAGE scrolls
+       * instead of the region. It is why the rail stopped at its content, why
+       * `lg:items-stretch` stretched the rail to the CONTENT column rather than
+       * the viewport (Crew being the tallest tab is the only reason any of it
+       * looked right), and why the tab strip scrolled away.
+       *
+       * `lg:` ONLY is deliberate. Mobile is a page-scrolling document and is
+       * CORRECT as it stands: `min-h-screen` is the right rule there, TopNav's
+       * `sticky top-0` pins against the page scroll, `AppTabBar` is `fixed`, and
+       * ChatView opts out entirely with a `fixed` top/bottom-pinned box — a model
+       * arrived at only after `dvh` and then `svh` both failed against Chrome's
+       * collapsing address bar. Making the root a bounded viewport box on mobile
+       * would walk straight back into that. Desktop has no dynamic toolbar and
+       * genuinely needs regions that scroll independently of the document, so the
+       * bounded model is ADDITIVE at `lg+`, not a correction of a shared rule.
+       *
+       * `h-dvh` over `h-screen`: nothing in the app currently establishes a
+       * definite height at all (every rule is a `min-h-*` floor), so there is no
+       * existing convention to match — and `dvh` is the honest unit.
+       */}
       <div
-        className="min-h-screen"
+        className="min-h-screen lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden"
         style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
       >
-        {topBar}
+        {/* Pinned by STRUCTURE at lg (a non-shrinking flex child of a bounded
+            column) rather than by `sticky`, which is what it still relies on for
+            the mobile page scroll. Both work; neither fights the other. */}
+        <div className="lg:shrink-0">{topBar}</div>
         {/* ONE tree, reflowed by CSS. The rail and the two tab chromes are
             `hidden lg:*` / `lg:hidden`, so crossing a breakpoint changes which
             chrome paints — it never rebuilds the content beneath, which is what
             keeps scroll, mounted slots and in-flight state across a resize. */}
-        <div className="lg:flex lg:items-stretch">
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:items-stretch">
           <ContextRail activeTripId={tripId} />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 lg:flex lg:min-h-0 lg:flex-col">
             <DesktopTabStrip
               active={peeking ?? effectiveView}
               hasContext={hasContext}
@@ -280,14 +336,26 @@ export function AppShell({
               onLockedTap={(v) => setPeeking(v)}
               tripId={tripId}
             />
+            {/*
+             * The scroll BOUNDARY. `lg:min-h-0 lg:flex-1` gives this a resolved
+             * height inside the bounded column; `lg:overflow-hidden` makes it a
+             * clip box so the actual scrolling happens in the children below,
+             * under the pinned strip — never on the document.
+             *
+             * Nothing is clipped by it that shouldn't be: every overlay on these
+             * surfaces (player selector, discard prompt, sheets) is `createPortal`'d
+             * to `document.body`, so it escapes this box entirely.
+             */}
             <div
-              className={chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""}
+              className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${
+                chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""
+              }`}
               style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 16px)" }}
             >
-              <div className="min-w-0">{body}</div>
+              <div className="min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">{body}</div>
               {chatAside && (
                 <aside
-                  className="min-w-0 rounded-xl"
+                  className="min-w-0 rounded-xl lg:h-full lg:min-h-0 lg:overflow-hidden"
                   style={{
                     background: "var(--color-bt-card)",
                     border: "1px solid var(--color-bt-border)",

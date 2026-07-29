@@ -110,10 +110,17 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
     news: { label: "News", Icon: Newspaper, unread: newsUnread },
   };
 
-  // Aside (≥1280): unchanged — a `min-height` floor lets the grid's
-  // `items-stretch` grow this past it to match the Trip/Cup content beside
-  // it. No viewport-anchoring concerns here; desktop browsers don't have a
-  // dynamic toolbar.
+  // Aside (≥1280): a BOUNDED box, `height: 100%` of the shell's chat column.
+  //
+  // This used to be `minHeight: calc(100svh - 56px - …)` — a FLOOR — on the
+  // assumption that the grid's `items-stretch` would grow it to match the content
+  // beside it. It didn't, because the grid had no bounded height either: the whole
+  // shell was `min-h-screen`, a floor all the way up. So the `flex-1 min-h-0`
+  // message list below had nothing to clip against, the history ran off screen and
+  // the composer drifted with total content height — the same failure this
+  // component's INLINE branch was rewritten to fix, never applied to desktop.
+  // AppShell is now a bounded `lg:h-dvh` column, so `100%` resolves and the
+  // existing flex model does the rest, unchanged.
   //
   // Inline (mobile, or desktop <1280 where Chat OWNS the tab): NO CALCULATED
   // SIZE — that was two fixes in a row that each turned out incomplete
@@ -135,7 +142,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   // of one we calculated.
   const chatIsColumn = useIsChatColumn();
   const rootStyle: CSSProperties = chatIsColumn
-    ? { minHeight: "calc(100svh - 56px - var(--bt-bottomnav-height, 0px))" }
+    ? { height: "100%", minHeight: 0 }
     : {
         position: "fixed",
         top: 56, // below the sticky 56px top nav (TopNav's own h-14)
