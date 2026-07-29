@@ -440,7 +440,7 @@ export function CompetitionFace({
            * card reads as a box in a box, and STYLE_GUIDE §1 puts contextual
            * structure on the page background rather than a chrome surface.
            */
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : "lg:mx-auto"} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : "lg:mx-auto"} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the
@@ -457,7 +457,38 @@ export function CompetitionFace({
               row is just the first block of the same scroll context — no
               cross-element offset, nothing to oscillate. */}
           <GameActionRow />
-          {panelView}
+          {/*
+           * ── Why this wrapper exists (containing block, not decoration) ──────
+           * `game-panel` above is `position: fixed`/`lg:relative` — a positioned
+           * box — so a format view's `absolute inset-0` entry surface (Match's
+           * score screen, Rack/Stroke's group entry, Stroke's WHOLE post-setup
+           * surface) resolves `inset-0` against IT, not against the space below
+           * `GameActionRow`. `inset:0` means "cover this positioned ancestor
+           * from its own top edge," which is exactly `GameActionRow`'s own
+           * position — so the entry surface painted OVER the back button
+           * (positioned content always paints above a normal-flow sibling in
+           * the same stacking context, regardless of DOM order or z-index).
+           * That was the actual bug behind "stroke/entry has no back button":
+           * not a missing chrome publish, a wrong containing block.
+           *
+           * `relative` here gives any nested `absolute inset-0` a NEW
+           * containing block that starts below `GameActionRow`, not at
+           * `game-panel`'s own top. `flex-1 min-h-0` (this box is now a flex
+           * item of `game-panel`'s `flex flex-col`) sizes it to exactly the
+           * remaining space, matching the `min-h-0`-on-a-flex-item pattern
+           * used throughout this shell (see AppShell.tsx) so a plain in-flow
+           * view (Match/Rack/NonGolf's overview, no `absolute inset-0` at
+           * all) still overflows into `game-panel`'s own `overflow-y-auto`
+           * exactly as it did before this wrapper existed — this only changes
+           * where `inset-0` resolves, not how normal content scrolls.
+           * This is the fourth time this session `absolute inset-0`'s
+           * containing block has been the actual bug (chat's old inline
+           * fixed box, the #749 pane offset, the #754 `lg:relative` fix
+           * above, and now this) — if a new format view adds an `absolute
+           * inset-0` surface, it MUST go inside this wrapper, not as a
+           * sibling of it.
+           */}
+          <div className="relative min-h-0 flex-1">{panelView}</div>
         </div>
       )}
 
