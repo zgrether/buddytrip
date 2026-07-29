@@ -76,9 +76,11 @@ export function AppShell({
    *  scrim/grip/back), so the same control that opens it is the only way to
    *  close it. `onDismissPanels` also closes chat, so opening the trip
    *  switcher / user menu doesn't leave chat's scrim trapping them.
-   *  `activeView`/`onSelectView`/`onLockedTapView` are the SAME `select`/
-   *  `activeForTabs`/`setPeeking` `AppTabBar` uses below — one tab-switching
-   *  mechanism, two chrome consumers. */
+   *  `activeView`/`onSelectView` are the SAME `select`/`activeForTabs`
+   *  `AppTabBar` uses below — one tab-switching mechanism, two chrome
+   *  consumers. No locked-tap callback: Trip/Cup are ABSENT with no context
+   *  at `lg+` (Task 5), never dimmed-and-tappable-to-explain the way
+   *  `AppTabBar`'s mobile tabs are — there's nothing for a tap to explain. */
   topBar?:
     | ReactNode
     | ((api: {
@@ -88,7 +90,6 @@ export function AppShell({
         activeView: AppView;
         hasContext: boolean;
         onSelectView: (v: AppView) => void;
-        onLockedTapView: (v: LockedExplainerView) => void;
       }) => ReactNode);
   defaultView?: AppView;
   /**
@@ -380,7 +381,6 @@ export function AppShell({
                 activeView: activeForTabs,
                 hasContext,
                 onSelectView: select,
-                onLockedTapView: (v) => setPeeking(v),
               })
             : topBar}
         </div>

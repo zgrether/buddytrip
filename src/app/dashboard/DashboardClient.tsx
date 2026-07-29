@@ -120,7 +120,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
     <AppShell
       tripId={null}
       remoteTripId={remoteTripId}
-      topBar={({ activeView, hasContext, onSelectView, onLockedTapView }) => (
+      topBar={({ activeView, hasContext, onSelectView }) => (
         <TopNav
           title="BuddyTrip"
           hideTripSwitcher
@@ -128,7 +128,6 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
           activeView={activeView}
           hasContext={hasContext}
           onSelectView={onSelectView}
-          onLockedTapView={onLockedTapView}
         />
       )}
       home={

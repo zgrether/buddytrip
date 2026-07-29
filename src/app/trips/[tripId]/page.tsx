@@ -292,7 +292,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       <AppShell
         tripId={tripId}
         defaultView="trip"
-        topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView, onLockedTapView }) => (
+        topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
           <TopNav
             tripId={tripId}
             hideTripSwitcher
@@ -303,7 +303,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
             activeView={activeView}
             hasContext={hasContext}
             onSelectView={onSelectView}
-            onLockedTapView={onLockedTapView}
           />
         )}
         cup={<LiveFaceClient initialBoot={null} />}
@@ -486,7 +485,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     <AppShell
       tripId={tripId}
       defaultView="trip"
-      topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView, onLockedTapView }) => (
+      topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
         <TopNav
           tripId={tripId}
           hideTripSwitcher
@@ -497,7 +496,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           activeView={activeView}
           hasContext={hasContext}
           onSelectView={onSelectView}
-          onLockedTapView={onLockedTapView}
         />
       )}
       cup={<LiveFaceClient initialBoot={null} />}

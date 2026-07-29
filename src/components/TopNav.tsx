@@ -80,13 +80,10 @@ interface TopNavProps {
    *  trip page's `topBar` render prop); absent elsewhere (dashboard,
    *  profile), where TopNav renders exactly as it did before this. */
   activeView?: AppView;
-  /** False when no trip is selected — Trip/Cup render dimmed, tappable to
-   *  explain (matching the prior `DesktopTabStrip` behaviour). */
+  /** False when no trip is selected — Trip/Cup are ABSENT then (Task 5), not
+   *  dimmed; see the render-site comment. */
   hasContext?: boolean;
   onSelectView?: (view: AppView) => void;
-  /** A locked (no-context) Trip/Cup tap: show its explainer instead of
-   *  switching. */
-  onLockedTapView?: (view: Exclude<AppView, "home">) => void;
 }
 
 // Minimal shape we read off trips.list for the breadcrumb.
@@ -110,7 +107,6 @@ export const TopNav: FC<TopNavProps> = ({
   activeView,
   hasContext = false,
   onSelectView,
-  onLockedTapView,
 }) => {
   const router = useRouter();
   const params = useParams<{ tripId?: string }>();
@@ -161,17 +157,23 @@ export const TopNav: FC<TopNavProps> = ({
           Absolutely positioned at `left: RAIL_WIDTH_PX` (not a third flex zone)
           so it sits at a fixed x regardless of how wide the left/right zones
           are — the same column alignment the rail itself provides below this
-          bar. Only rendered when the host wired AppShell's tab state through
-          (`onSelectView` present); dashboard/profile TopNav instances render
-          exactly as before. */}
-      {onSelectView && (
+          bar.
+          ABSENT (not dimmed/disabled) with no trip context (Task 5) — the rail
+          IS the picker at `lg+`, and `ContextIntro` already carries the "pick a
+          trip" copy in the body; a third, redundant, dimmed voice would just
+          draw attention away from the one thing on screen that should have
+          weight. This deliberately differs from `AppTabBar`'s mobile locked-tab
+          treatment (dimmed + tappable-to-explain) — that's correct there
+          because the bar is the ONLY navigation on mobile, so tapping a locked
+          tab is the sole discovery path for what it does; neither reason
+          applies here. */}
+      {onSelectView && hasContext && (
         <div
           className="absolute inset-y-0 hidden items-center lg:flex"
           style={{ left: RAIL_WIDTH_PX }}
           role="tablist"
         >
           {TOP_NAV_VIEW_TABS.map(({ id, label, Icon }) => {
-            const locked = !hasContext;
             const selected = activeView === id;
             return (
               <button
@@ -179,17 +181,14 @@ export const TopNav: FC<TopNavProps> = ({
                 type="button"
                 role="tab"
                 aria-selected={selected}
-                aria-disabled={locked || undefined}
                 data-testid={`desktop-tab-${id}`}
-                data-locked={locked || undefined}
-                onClick={() => (locked ? onLockedTapView?.(id) : onSelectView(id))}
+                onClick={() => onSelectView(id)}
                 className="flex h-full items-center gap-1.5 px-4 text-[13.5px] font-semibold transition-colors"
                 style={{
                   background: "transparent",
                   border: 0,
                   borderBottom: `2px solid ${selected ? "var(--color-bt-accent)" : "transparent"}`,
                   color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                  opacity: locked ? 0.45 : 1,
                 }}
               >
                 <Icon size={16} />
