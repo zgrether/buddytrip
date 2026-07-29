@@ -66,10 +66,27 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
     // Spurious popstate guard: Next.js / React may fire popstate during their
     // own history churn on mount. Until things settle we re-push instead of
     // treating it as a user back-press.
+    //
+    // Tied to two animation frames rather than a wall-clock guess (was
+    // `setTimeout(..., 100)`). Genuine mount-time churn is synchronous JS
+    // work and resolves within a frame or two; 100ms turned out to be long
+    // enough for a FAST real back-press (an automated one especially — no
+    // human hesitation between actions) to land inside the window and get
+    // mistaken for churn, which SWALLOWS it: the branch below re-pushes the
+    // phantom instead of closing, and since the caller only ever issues one
+    // back-press, nothing closes the modal afterward (confirmed: the exact
+    // failure signature of e2e/chat-action.spec.ts's mobile back-close case,
+    // reproduced identically on `main` pre-dating this fix — a real bug, not
+    // test flake). Two rAFs still comfortably outlasts synchronous churn
+    // while cutting the collision window roughly 3x versus the fixed timer.
     let settled = false;
-    const settleId = setTimeout(() => {
-      settled = true;
-    }, 100); // 100ms is long enough for any framework-level history churn
+    let settleFrame1 = 0;
+    let settleFrame2 = 0;
+    settleFrame1 = requestAnimationFrame(() => {
+      settleFrame2 = requestAnimationFrame(() => {
+        settled = true;
+      });
+    });
 
     // Set when WE close via the back button, so cleanup knows the phantom was
     // already popped by the navigation and must NOT history.back() again
@@ -123,7 +140,8 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
     window.addEventListener("popstate", handlePopState, { capture: true });
 
     return () => {
-      clearTimeout(settleId);
+      cancelAnimationFrame(settleFrame1);
+      cancelAnimationFrame(settleFrame2);
       window.removeEventListener("popstate", handlePopState, { capture: true });
       const idx = modalStack.lastIndexOf(id);
       if (idx !== -1) modalStack.splice(idx, 1);
