@@ -1,13 +1,16 @@
 "use client";
 
 import { type FC } from "react";
-import { Calendar, Trophy, MessageCircle, type LucideIcon } from "lucide-react";
-import { useChatTabUnread } from "@/hooks/useChatTabUnread";
+import { Calendar, Trophy, type LucideIcon } from "lucide-react";
 import type { AppView } from "./useAppView";
 
 /**
- * DesktopTabStrip — Trip · Cup · Chat as content tabs above the content area
- * (Phase 5). Home is not here: on desktop it is the persistent rail.
+ * DesktopTabStrip — Trip · Cup as content tabs above the content area
+ * (Phase 5). Home is not here: on desktop it is the persistent rail. Chat is
+ * not here either (Phase 6) — there is no bottom bar at `lg+`, so the Chat
+ * toggle moves to `TopNav`, top-right beside the avatar, rather than living in
+ * this strip. Chat was never a destination this strip should have selected
+ * state for regardless of where its toggle lives.
  *
  * `hidden lg:flex`, the mirror of `AppTabBar`'s `lg:hidden`. Both render from the
  * SAME `view` state and the same `onSelect`, so a URL renders identically in
@@ -22,7 +25,6 @@ import type { AppView } from "./useAppView";
 const TABS: { id: Exclude<AppView, "home">; label: string; Icon: LucideIcon }[] = [
   { id: "trip", label: "Trip", Icon: Calendar },
   { id: "cup", label: "Cup", Icon: Trophy },
-  { id: "chat", label: "Chat", Icon: MessageCircle },
 ];
 
 export const DesktopTabStrip: FC<{
@@ -30,10 +32,7 @@ export const DesktopTabStrip: FC<{
   hasContext: boolean;
   onSelect: (view: AppView) => void;
   onLockedTap: (view: Exclude<AppView, "home">) => void;
-  /** Drives the Chat tab's unread badge. Null on the context-free host. */
-  tripId?: string | null;
-}> = ({ active, hasContext, onSelect, onLockedTap, tripId }) => {
-  const chatUnread = useChatTabUnread(tripId ?? undefined);
+}> = ({ active, hasContext, onSelect, onLockedTap }) => {
   return (
     <div
       role="tablist"
@@ -44,7 +43,6 @@ export const DesktopTabStrip: FC<{
       {TABS.map(({ id, label, Icon }) => {
         const locked = !hasContext;
         const selected = active === id;
-        const showBadge = id === "chat" && !locked && chatUnread > 0;
         return (
           <button
             key={id}
@@ -66,14 +64,6 @@ export const DesktopTabStrip: FC<{
           >
             <Icon size={16} />
             {label}
-            {showBadge && (
-              <span
-                aria-hidden="true"
-                data-testid="desktop-tab-chat-badge"
-                className="rounded-full"
-                style={{ width: 6, height: 6, background: "var(--color-bt-owner)" }}
-              />
-            )}
           </button>
         );
       })}

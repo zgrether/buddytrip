@@ -292,7 +292,16 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       <AppShell
         tripId={tripId}
         defaultView="trip"
-        topBar={<TopNav tripId={tripId} hideTripSwitcher hideNews />}
+        topBar={({ chatOpen, onToggleChat, onDismissPanels }) => (
+          <TopNav
+            tripId={tripId}
+            hideTripSwitcher
+            hideNews
+            chatOpen={chatOpen}
+            onOpenChat={onToggleChat}
+            onDismissPanels={onDismissPanels}
+          />
+        )}
         cup={<LiveFaceClient initialBoot={null} embedded />}
         chat={<ChatView tripId={tripId} canPost={false} />}
         trip={
@@ -457,22 +466,35 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     /**
-     * The four-tab shell (Phase 3). This route is the SCOPED host: Trip, Cup and
-     * Chat all render here and switching between them is client state — no route
-     * change, no remount, no server round trip. Home is context-free and lives on
-     * /dashboard, so selecting it navigates; see AppShell's scope note.
+     * The shell (Phase 3, chat-as-action Phase 6). This route is the SCOPED
+     * host: Trip and Cup render here and switching between them is client
+     * state — no route change, no remount, no server round trip. Chat is an
+     * overlay AppShell layers on top, not a third tab. Home is context-free
+     * and lives on /dashboard, so selecting it navigates; see AppShell's
+     * scope note.
      *
-     * The top bar is REDUCED to brand + avatar purely by configuration — the
-     * trip switcher, News and Chat tools all moved into the tab bar, so we simply
-     * stop passing their props. No TopNav change was needed.
+     * The top bar is REDUCED to brand + avatar plus (desktop-only) the chat
+     * toggle — the trip switcher and News stay out (moved into the tab bar /
+     * never wired here), and Chat is wired back in as a render prop so it can
+     * reach AppShell's own `chatOpen` state (see AppShell's `topBar` doc
+     * comment).
      */
     <AppShell
       tripId={tripId}
       defaultView="trip"
-      topBar={<TopNav tripId={tripId} hideTripSwitcher hideNews />}
+      topBar={({ chatOpen, onToggleChat, onDismissPanels }) => (
+        <TopNav
+          tripId={tripId}
+          hideTripSwitcher
+          hideNews
+          chatOpen={chatOpen}
+          onOpenChat={onToggleChat}
+          onDismissPanels={onDismissPanels}
+        />
+      )}
       cup={<LiveFaceClient initialBoot={null} embedded />}
       chat={<ChatView tripId={tripId} canPost={effectiveCanEdit} />}
-      trip={({ requestView }) => (
+      trip={({ openChat }) => (
         <>
       {/* ── Trip content ────────────────────────────────────────────────── */}
       {isIdea ? (
@@ -515,7 +537,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 onTabChange={(tab) => goToTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
                 compActivated={showComp}
-                onOpenChat={() => requestView("chat")}
+                onOpenChat={openChat}
                 onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
               />
             )}
@@ -590,7 +612,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     isOwner={isOwner}
                     roleLoading={roleLoading}
                     onTabChange={(tab) => goToTab(tab as TabId)}
-                    onOpenChat={() => requestView("chat")}
+                    onOpenChat={openChat}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}

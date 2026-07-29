@@ -34,6 +34,21 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
       dependencies: ["setup"],
     },
+    {
+      // Chat-as-a-tab-bar-action (Phase 6) — a THIRD merge-blocking spec,
+      // added deliberately: chat's redesign had zero E2E coverage before this
+      // (`grep -ri chat e2e/` was a clean miss), and the whole point of the
+      // change — the underlying tab keeps selection while chat is open, and
+      // closing returns you to it — is exactly the class of break a unit
+      // test can't see (it's about which DOM node is mounted where, across a
+      // real navigation + history stack). CLAUDE.md documents "two Playwright
+      // specs run merge-blocking" — update that line alongside this one if
+      // the count changes again.
+      name: "chat-action",
+      testMatch: /chat-action\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
+      dependencies: ["setup"],
+    },
   ],
   webServer: {
     // CI runs the prebuilt app (the workflow does `npm run build` first) so

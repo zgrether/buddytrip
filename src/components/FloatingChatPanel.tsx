@@ -50,18 +50,27 @@ interface FloatingChatPanelProps {
    *  channel is redundant — collapse to a single Organizers channel. */
   ideaStage?: boolean;
   /**
-   * Rendered as a TAB (AppShell's Chat view) rather than as an overlay.
+   * Rendered as a SEGMENT of `ChatView` rather than as a standalone overlay.
+   * `ChatView` itself is always mounted inside some other container now
+   * (`AppShell`'s `<aside>` at ≥1280, or `ChatSheet` below it — Phase 6:
+   * chat is an action, never a tab), so `embedded` here just means "let the
+   * container above own the chrome."
    *
    * Two things change. (1) Layout: the return below skips the floating
    * `fixed`/scrim/drag-resize/× chrome entirely and renders in normal flow,
-   * filling whatever height the caller (`ChatView`) gives it — a tab has
-   * nothing to close or resize; you leave by choosing another segment.
-   * (2) History: a tab must NOT claim a history entry. `useModalBackButton`
-   * pushes one on mount and calls `history.back()` on unmount, which is
-   * right for a modal and corrupting for a tab: switching away from Chat
-   * popped an entry the shell had not pushed, so repeated tab switching
-   * unwound the stack until the user fell out of the trip entirely (observed:
-   * landing on /dashboard).
+   * filling whatever height the caller (`ChatView`) gives it — a segment has
+   * nothing to close or resize itself; you switch segments instead, and the
+   * CONTAINER around `ChatView` owns open/close. (2) History: an embedded
+   * segment must NOT claim a history entry of its own — `ChatSheet` (or
+   * nothing, for the aside) already owns exactly one, via `useModalBackButton`.
+   * `useModalBackButton` pushes one on mount and calls `history.back()` on
+   * unmount, which is right for a real modal and was corrupting when Chat was
+   * briefly a TAB (pre-Phase-6): switching away from Chat popped an entry the
+   * shell had not pushed, so repeated tab switching unwound the stack until
+   * the user fell out of the trip entirely (observed: landing on /dashboard).
+   * Kept disabled here for the same reason it was added — `embedded` is
+   * still exactly "does something ABOVE this one already own the history
+   * entry," true whether that something is the old tab or today's sheet/aside.
    */
   embedded?: boolean;
   /**
