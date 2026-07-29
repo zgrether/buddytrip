@@ -6,7 +6,7 @@ import { Flag, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { Spinner } from "@/components/Spinner";
-import { useIsShellDesktop } from "./breakpoints";
+import { useIsShellDesktop, RAIL_WIDTH_PX } from "./breakpoints";
 
 /**
  * ContextRail — Home promoted from a tab to a persistent left rail (Phase 5).
@@ -76,8 +76,9 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
      * whatever the CONTENT column happened to be.
      */
     <aside
-      className="hidden w-[246px] shrink-0 flex-col lg:flex lg:min-h-0"
+      className="hidden shrink-0 flex-col lg:flex lg:min-h-0"
       style={{
+        width: RAIL_WIDTH_PX,
         background: "var(--color-bt-card)",
         borderRight: "1px solid var(--color-bt-border)",
       }}

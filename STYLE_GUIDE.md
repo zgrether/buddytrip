@@ -82,12 +82,28 @@ content panels. They frame the app — they don't contain content.
 for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
 
 **Chrome elements (persistent app frame only):**
-- Global top app bar (`TopNav`) — `border-bottom`
-- Bottom navigation bar (`BottomNav`) — `border-top`
+- Global top app bar (`TopNav`) — `border-bottom`. At `lg+` this includes
+  Trip/Cup (Task 4, shell polish batch) — the same context tabs
+  `AppTabBar` shows on mobile, positioned inside the top bar (x-aligned
+  to the rail's right edge) rather than in a separate row below it.
+- Bottom navigation bar (`AppTabBar`) — `border-top`. Home/Trip/Cup as
+  destinations, Chat as an action (Phase 6).
+
+This is a correction, not a new rule: Trip/Cup were always the SAME
+items on both widths — the four-tab refactor just classified them
+differently by accident of where each width happened to render them
+(a separate, page-background-toned strip at `lg+`; the chrome-toned
+bottom bar on mobile). One concept, one classification, regardless of
+width — chrome, because they're the same tabs `AppTabBar` already was.
 
 **Not chrome — contextual page structure (blend with page background):**
 - Page breadcrumb bar (`TripBreadcrumb`) — inherits `--color-bt-base`
-- Trip tab bar (`TripTabBar`) — inherits `--color-bt-base`
+- Trip's own SUB-tab bar (`TripTabBar` — Home/Crew/Lodging/Agenda/
+  Receipts, one level inside the Trip context tab) — inherits
+  `--color-bt-base`. Distinct from the CONTEXT tabs above (Trip/Cup
+  themselves, now chrome): sub-tabs are scoped to whichever context
+  tab is active and stay page structure regardless of width — only
+  the outer Trip/Cup pair was promoted.
 
 ### Surface border
 
