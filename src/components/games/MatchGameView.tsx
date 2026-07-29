@@ -73,7 +73,7 @@ import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, sideMemberIds } from "@/lib/matchDraft";
+import { assignInDraft, filledMatches, allMatchesFilled, hasValidMatch, pointsReady, removeMatchRow, sideMemberIds } from "@/lib/matchDraft";
 import {
   configToDraft,
   configDraftToPayload,
@@ -2263,47 +2263,10 @@ function serverDraftFrom(
   });
 }
 
-// Assign userId to (matchIdx, slot, memberIdx); if already on another side, MOVE
-// them and clear the vacated match's handicap (the relationship it described is
-// gone). Singles keeps its exact one-per-slot behavior; doubles fills a member
-// position within a 2-player side.
-function assignInDraft(
-  prev: DraftMatch[],
-  matchIdx: number,
-  slot: "a" | "b",
-  memberIdx: number,
-  userId: string
-): DraftMatch[] {
-  const next = prev.map((d) => ({ ...d, a: [...d.a], b: [...d.b] }));
-  // Per-match shape (A2a): the target match's own shape drives the assignment.
-  const playersPerSide = next[matchIdx]?.playersPerSide ?? 1;
-  if (playersPerSide === 1) {
-    // Singles — identical to the original: clear from OTHER matches, set here.
-    next.forEach((d, i) => {
-      if (i === matchIdx) return;
-      if (d.a[0] === userId) { d.a = []; d.handicap = 0; }
-      if (d.b[0] === userId) { d.b = []; d.handicap = 0; }
-    });
-    next[matchIdx][slot] = [userId];
-    return next;
-  }
-  // Doubles — remove the player from every side (move); only OTHER matches lose
-  // their handicap. Then place at the requested member position in the target.
-  next.forEach((d, i) => {
-    (["a", "b"] as const).forEach((s) => {
-      if (d[s].includes(userId)) {
-        d[s] = d[s].filter((u) => u !== userId);
-        if (i !== matchIdx) d.handicap = 0;
-      }
-    });
-  });
-  const target = next[matchIdx];
-  const arr = target[slot].slice();
-  if (memberIdx < arr.length) arr[memberIdx] = userId;
-  else arr.push(userId);
-  target[slot] = arr;
-  return next;
-}
+// `assignInDraft` now lives in `@/lib/matchDraft` (imported above) alongside its
+// pure siblings. It was module-private here, which is why the two duplicate-
+// producing holes it carried (#708) had no test to catch them; exported, it is
+// directly unit-testable.
 
 /**
  * Setup-flow title bar — matches the entry app bar (Quick Game / score views):

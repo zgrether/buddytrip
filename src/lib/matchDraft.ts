@@ -114,3 +114,84 @@ export function sideMemberIds(side: ServerSide, membersOfSide: Map<string, strin
 export function pointsReady(pointsPerMatch: number): boolean {
   return pointsPerMatch > 0;
 }
+
+/** A draft match as the assignment editor sees it — sides plus the signed handicap
+ *  that describes the relationship between them. */
+export interface AssignableMatch extends MatchSides {
+  handicap: number;
+}
+
+/**
+ * Assign `userId` to (`matchIdx`, `slot`, `memberIdx`). If they are already placed
+ * anywhere, this MOVES them: the removal pass below clears every side they occupy
+ * before the placement puts them in exactly one.
+ *
+ * ── Why this is one shared removal pass (#708) ──────────────────────────────
+ * A player may be in exactly one match per game — a hard invariant, enforced by
+ * `game_participants_game_id_user_id_key UNIQUE (game_id, user_id)` (migration 033)
+ * and relied on by handicap resolution, match-play rollups and `configHash`'s total
+ * order. This function used to enforce it with TWO removal passes, one per shape,
+ * and the singles one had two holes:
+ *
+ *   1. it SKIPPED the target match (`if (i === matchIdx) return`), so moving a
+ *      player into the OTHER SLOT OF THE MATCH THEY WERE ALREADY IN never removed
+ *      them: `[{a:[rob], b:[ann]}]` + assign rob→b produced `[{a:[rob], b:[rob]}]`;
+ *   2. it only inspected `d.a[0]` / `d.b[0]`, so in a MIXED game (Refactor A1 —
+ *      1v1 and 2v2 in one game) a player sitting at index 1 of a 2v2 side was
+ *      invisible to it, and assigning them into a singles slot left them in both.
+ *
+ * Neither is a race: this is a pure function applied in a single `setDraft`. They
+ * were plain logic holes, and they surfaced only as a failed save — the composed
+ * draft carried the player twice, and `_write_game_side` plain-INSERTs each side of
+ * each match, so the second insert hit 23505.
+ *
+ * The picker is what makes them reachable: it lists already-assigned players under
+ * "Already in a match" and keeps them CLICKABLE on purpose — that IS the reassign
+ * affordance. So "already placed" is a normal input here, not a guarded-against one.
+ *
+ * The doubles branch was always correct (it removed from every side of every match,
+ * target included). The fix is to stop having two passes at all: ONE removal, then
+ * a shape-specific placement. A future divergence would have to be written twice.
+ *
+ * Handicap: cleared on any OTHER match the player is removed from — the pairing it
+ * described is gone. The target match KEEPS its handicap, which is exactly what the
+ * doubles branch already did; singles now agrees rather than being special.
+ *
+ * Pure — returns a new draft, never mutates.
+ */
+export function assignInDraft<M extends AssignableMatch>(
+  prev: M[],
+  matchIdx: number,
+  slot: "a" | "b",
+  memberIdx: number,
+  userId: string,
+): M[] {
+  const next = prev.map((d) => ({ ...d, a: [...d.a], b: [...d.b] }));
+
+  // ONE removal pass, every match, BOTH sides, by membership (not index 0) and
+  // including the target. This is the whole fix.
+  next.forEach((d, i) => {
+    (["a", "b"] as const).forEach((s) => {
+      if (!d[s].includes(userId)) return;
+      d[s] = d[s].filter((u) => u !== userId);
+      if (i !== matchIdx) d.handicap = 0;
+    });
+  });
+
+  const target = next[matchIdx];
+  if (!target) return next;
+
+  // Singles: the slot holds exactly one player, so assigning REPLACES whoever
+  // was there (they return to the pool).
+  if (target.playersPerSide === 1) {
+    target[slot] = [userId];
+    return next;
+  }
+
+  // 2v2: fill the requested member position within the side.
+  const arr = target[slot].slice();
+  if (memberIdx < arr.length) arr[memberIdx] = userId;
+  else arr.push(userId);
+  target[slot] = arr;
+  return next;
+}
