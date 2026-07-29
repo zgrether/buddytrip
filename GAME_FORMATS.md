@@ -95,9 +95,13 @@ BuddyTrip's own inventions and their rules live **here**.
   (hardest holes first). Course-gated. Player chips render the shared `Avatar` (team-colored
   initial + name), fed from the **live grouping field**.
 - **Modifier compatibility** (real applicability):
-  `stroke → moving_tees` · `match → moving_tees, glorious_holes` · `rack → moving_tees` ·
-  `non-golf → none`. *Glorious Finishing Holes doubles a hole's **match** value (match only),
-  derived at compute time — never snapshotted.*
+  `stroke → none` · `match → glorious_holes` · `rack → none` · `non-golf → none`.
+  *Glorious Finishing Holes doubles a hole's **match** value (match only), derived at
+  compute time — never snapshotted.* It is the ONLY modifier: `moving_tees` was offered
+  on all three golf formats but never specified and never read by anything, so it was
+  removed rather than left as UI with no backing. Stroke and rack therefore render no
+  Modifiers row at all (`compatibleModifiers: []` → the row is gated off). The feature
+  itself remains a nomination in `DEFERRED.md`.
 
 ---
 
@@ -176,7 +180,8 @@ match's own override**, so it reverts to the real share, not a degenerate 0). Aw
 > `Σoverrides + (matchCount − overrideCount) × evenShare = total` always. `total_points`
 > is held fixed exactly as intended.
 
-**Modifiers.** `moving_tees`, `glorious_holes` (doubles a hole's match value).
+**Modifiers.** `glorious_holes` (doubles a hole's match value) — the only one. `moving_tees`
+was removed (see the modifier-compatibility note in §4).
 
 **Settlement (standard match play).** Holes won decide the match; dormie / close-out are
 standard match-play concepts. **Glorious Holes is not a special case** — it's a hole's value

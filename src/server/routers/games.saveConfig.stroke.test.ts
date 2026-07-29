@@ -115,12 +115,12 @@ afterAll(async () => {
 describe("save_game_config — stroke (P2 flip): whole lean page saves; course is the one wall", () => {
   it("MODIFIERS write through AND survive a later omitted-slice save is impossible — always sent", async () => {
     const gameId = await newStrokeGame("Stroke modifiers");
-    await save(gameId, { modifiers: { moving_tees: {} } });
-    expect((await getById(gameId)).modifiers).toEqual({ moving_tees: {} });
+    await save(gameId, { modifiers: { placeholder_modifier: {} } });
+    expect((await getById(gameId)).modifiers).toEqual({ placeholder_modifier: {} });
     // A later save that changes ONLY the name still echoes modifiers (the payload builder
     // always includes them) → they persist, not wiped. This is the stroke-specific trap.
     await save(gameId, { name: "Renamed" });
-    expect((await getById(gameId)).modifiers).toEqual({ moving_tees: {} });
+    expect((await getById(gameId)).modifiers).toEqual({ placeholder_modifier: {} });
   });
 
   it("accepts an EMPTY name (standalone stroke) — the RPC preserves the title, never blanks it", async () => {
@@ -136,7 +136,7 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
   it("no-op Save is byte-identical — the faithless-mirror guard for stroke", async () => {
     const gameId = await newStrokeGame("Stroke no-op");
     await ctx.caller().games.addParticipants({ tripId, gameId, userIds: [owner, member] });
-    await save(gameId, { pointsTotal: 8, modifiers: { moving_tees: {} }, participants: [{ userId: owner, strokes: 3 }, { userId: member, strokes: 0 }] });
+    await save(gameId, { pointsTotal: 8, modifiers: { placeholder_modifier: {} }, participants: [{ userId: owner, strokes: 3 }, { userId: member, strokes: 0 }] });
     const before = await hashOf(gameId);
     await save(gameId, {}); // re-send the same config
     expect(await hashOf(gameId)).toBe(before);
@@ -148,12 +148,12 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
     // Warned/Quiet: name + points + a stroke + a modifier, ALL in one save → SUCCEEDS live.
     await save(gameId, {
       name: "Renamed live", pointsTotal: 12, pointsDistribution: { type: "placement", values: [6, 4, 2] },
-      modifiers: { moving_tees: {} }, participants: [{ userId: owner, strokes: 5 }, { userId: member, strokes: 0 }],
+      modifiers: { placeholder_modifier: {} }, participants: [{ userId: owner, strokes: 5 }, { userId: member, strokes: 0 }],
     });
     const g = await getById(gameId);
     expect(g.name).toBe("Renamed live");
     expect(Number(g.points_total)).toBe(12);
-    expect(g.modifiers).toEqual({ moving_tees: {} });
+    expect(g.modifiers).toEqual({ placeholder_modifier: {} });
     const strokesOf = new Map((g.participants ?? []).map((p) => [p.user_id, p.handicap_strokes]));
     expect(strokesOf.get(owner)).toBe(5);
 

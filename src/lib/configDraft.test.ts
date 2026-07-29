@@ -357,7 +357,7 @@ const STROKE_GAME = {
   scoring_enabled: false,
   points_total: 8,
   points_distribution: { type: "placement" as const, values: [6, 4, 2] },
-  modifiers: { moving_tees: {} },
+  modifiers: { placeholder_modifier: {} },
   course_id: "course-1",
   back_course_id: null,
   scorecard_schema: { units: { count: 18 } },
@@ -370,7 +370,7 @@ describe("configToStrokeDraft — baseline", () => {
   it("folds strokes + modifiers + course + groups over the base and is stable", () => {
     const d = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]);
     expect(d.strokes).toEqual(STROKE_STROKES);
-    expect(d.modifiers).toEqual({ moving_tees: {} });
+    expect(d.modifiers).toEqual({ placeholder_modifier: {} });
     expect(d.course).toEqual({ id: "course-1", backId: null, scorecardSchema: { units: { count: 18 } } });
     expect(d.groups).toEqual([["u1", "u2"]]);
     expect(strokeDraftsEqual(d, configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]))).toBe(true);
@@ -384,7 +384,7 @@ describe("strokeDraftToPayload — placement passthrough, explicit modifiers, gr
     expect(strokeDraftToPayload(base).pointsTotal).toBe(8);
   });
   it("sends modifiers EXPLICITLY (the RPC wipes a missing key to {})", () => {
-    expect(strokeDraftToPayload(base).modifiers).toEqual({ moving_tees: {} });
+    expect(strokeDraftToPayload(base).modifiers).toEqual({ placeholder_modifier: {} });
   });
   it("emits every participant's strokes and NO matches key", () => {
     const p = strokeDraftToPayload(base);
