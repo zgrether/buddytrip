@@ -1768,14 +1768,11 @@ export default function IdeaZonePanel({
   canEdit,
   isOwner,
   onTabChange: _onTabChange,
-  onOpenChat: _onOpenChat,
 }: {
   trip: TripData;
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
-  /** Opens the FloatingChatPanel (managed in page.tsx) */
-  onOpenChat?: () => void;
 }) {
   const currentUser = useCurrentUser();
   const tripId = trip.id;
