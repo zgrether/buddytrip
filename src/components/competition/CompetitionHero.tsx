@@ -320,11 +320,9 @@ export function StickyCollapseHero({
   // them, so the pull fell short and the collapsed bar PEEKED ~11px above the hero
   // at rest. Instead of guessing that offset, MEASURE the rendered gap between the
   // hero's top and the collapsed bar's top and close it — robust to whatever
-  // ambient spacing sits between them, and to the taller N-team bar. Converges in
-  // one step (moving the margin by X moves the hero's top by X) to a 1px
-  // over-cover (no peek), and re-corrects if the collapsed bar's height changes
-  // (ResizeObserver). Layout effect on the client so the correction lands before
-  // paint; SSR-safe (useEffect fallback).
+  // ambient spacing sits between them, and to the taller N-team bar. Re-corrects if
+  // the collapsed bar's height changes (ResizeObserver). Layout effect on the
+  // client so the correction lands before paint; SSR-safe (useEffect fallback).
   //
   // ⚠ ONLY measure while the collapsed bar is at REST (not pinned). The bar is
   // `position: sticky`, and once it pins Chrome reports its STUCK position for BOTH
@@ -339,6 +337,30 @@ export function StickyCollapseHero({
   // and healed it, which is exactly why it "snapped back on resize". Neither
   // `rect.top` nor `offsetTop` is pin-invariant — the fix is to gate the measure on
   // rest, where the bar is at its natural top (> stickyTop) and the gap is real.
+  //
+  // ⚠ The gap must be measured relative to `e`'s NATURAL position (marginTop 0),
+  // never `e`'s CURRENT rendered position — `e`'s own top is exactly what the last
+  // `pull` write moved. The original version read `e.getBoundingClientRect().top`
+  // directly and did `setPull(p => p + gap + 1)`: an INCREMENT, not an assignment,
+  // fed by `window.addEventListener("scroll", measure)` with no throttling. A fast
+  // scroll fires several `measure()` calls before React commits the first
+  // correction, so a second call reads the SAME stale (pre-correction) `e.top`,
+  // computes the SAME `gap`, and enqueues ANOTHER `+gap` on top of the already-
+  // converging value — each scroll burst across the pin/unpin boundary stacked
+  // another overshoot on the last, which is the reported "padding above the hero
+  // keeps growing" bug. This is exactly the measure-write-remeasure loop it looks
+  // like: `e`'s own rendered position (which its own `marginTop: -pull` sets) fed
+  // the next `pull` correction.
+  //
+  // The fix recovers `e`'s natural top by reading `getComputedStyle(e).marginTop`
+  // — the margin CURRENTLY PAINTED — and subtracting it back out, then computes
+  // `pull` as an ABSOLUTE target (`naturalGap + 1`), not a delta added to the
+  // previous value. `getComputedStyle` and `getBoundingClientRect`, read in the
+  // same synchronous call, are always consistent with EACH OTHER — both reflect
+  // whichever layout snapshot is currently live — so this stays self-consistent
+  // even when `measure()` fires more than once before the browser repaints:
+  // every call reconstructs the SAME pull-independent baseline and computes the
+  // SAME target, an idempotent assignment redundant calls can no longer stack.
   useIsoLayoutEffect(() => {
     const c = collapsedRef.current;
     const e = expandedRef.current;
@@ -347,10 +369,13 @@ export function StickyCollapseHero({
       // Skip while pinned — a stuck sticky bar's top reports its on-screen (scrolled)
       // position, which would corrupt the gap. At rest its top sits below stickyTop.
       if (c.getBoundingClientRect().top <= stickyTop + 1) return;
+      const appliedMarginTop = parseFloat(getComputedStyle(e).marginTop) || 0;
+      const naturalGap =
+        e.getBoundingClientRect().top - appliedMarginTop - c.getBoundingClientRect().top;
       // gap > 0 → the collapsed bar's top peeks above the hero; target a 1px
       // over-cover (gap = -1) so sub-pixel rounding never leaves a sliver.
-      const gap = e.getBoundingClientRect().top - c.getBoundingClientRect().top;
-      if (Math.abs(gap + 1) > 1) setPull((p) => p + gap + 1);
+      const nextPull = Math.round(naturalGap + 1);
+      setPull((prev) => (prev === nextPull ? prev : nextPull));
     };
     measure();
     const ro = new ResizeObserver(measure);
