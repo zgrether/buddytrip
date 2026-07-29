@@ -435,9 +435,9 @@ These patterns have been established through prior work. Follow them exactly —
     architecture. **Recording an unfinished removal as an intended design is how it
     becomes permanent** — the next reader follows the doc and preserves it. The bug
     fix was right; the generalisation was not. Slugs are not wanted: the machinery,
-    the generator (`src/lib/slug.ts`), and the resolver are gone, and
-    `trips.slug` follows in its own PR once the code that writes it is deployed
-    (see Migration Workflow — a DROP inverts the usual ordering).
+    the generator (`src/lib/slug.ts`), and the resolver are gone, and `trips.slug`
+    itself went in migration 097 (#743) — applied to production. The removal is
+    complete; nothing in the stack writes or reads a second identifier form.
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 
@@ -572,7 +572,8 @@ idempotent schema change stays — then re-push.)
    halves of the rule are the same idea — the schema and the code must never be in a state
    where one references something the other hasn't provided — it just points the other way
    depending on whether you're adding or removing. (Established removing the trip-slug
-   machinery; the drop lands only after the no-slug code is live.)
+   machinery: #742 shipped the no-slug code, then #743 dropped the column — the
+   ordering this rule prescribes, carried out.)
 4. **Never edit a migration after it's applied to prod — write a new one.** The one
    exception, set by the `044` fix (#636): a *body-only* change to make a historical migration
    replay cleanly on a fresh DB is safe — prod already recorded that version and won't re-run
