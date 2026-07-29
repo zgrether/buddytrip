@@ -872,3 +872,135 @@ describe("saveConfig — the payload contract", () => {
     expect(matches).toHaveLength(1);
   });
 });
+
+/**
+ * #708 — a player may be in exactly ONE match per game.
+ *
+ * The invariant was always enforced: `game_participants_game_id_user_id_key`
+ * UNIQUE (game_id, user_id), present since migration 033 (the migration that creates
+ * the table), which is why production has never held a duplicate. What was missing was
+ * LEGIBILITY — `_write_game_side` plain-INSERTs each side of each match, so a payload
+ * carrying someone twice surfaced as a raw SQLSTATE 23505 and the owner saw an
+ * unexplained failed save.
+ *
+ * Migration 098 adds a PRE-FLIGHT check that names the person and the match(es). These
+ * assert the refusal still happens (it must — do not make the insert tolerant) and that
+ * it is now readable.
+ */
+describe("save_game_config — duplicate participant is refused, legibly (#708)", () => {
+  /** Build a payload with an arbitrary match set, threaded against the seeded baseline
+   *  so `matchesDirty` is honest (see goLive's note). */
+  async function saveMatches(gameId: string, matches: ConfigDraft["matches"]) {
+    const seeded = await draftOf(gameId);
+    const edited = { ...seeded, matches, pointsTotal: 2 };
+    return ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: configDraftToPayload(edited, seeded),
+    });
+  }
+
+  it("names the person and BOTH matches when they appear in two", async () => {
+    const gameId = await newGame("dupe across matches");
+    await expect(
+      saveMatches(gameId, [
+        { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+        { matchNumber: 2, playersPerSide: 1, a: [owner], b: [planner], handicap: 0, pointValue: null },
+      ]),
+    ).rejects.toThrow(/DUPLICATE_PARTICIPANT[\s\S]*Match 1 and Match 2[\s\S]*one match per game/);
+  });
+
+  it("names the person and the ONE match when they are on both sides of it", async () => {
+    const gameId = await newGame("dupe within a match");
+    await expect(
+      saveMatches(gameId, [
+        { matchNumber: 1, playersPerSide: 1, a: [owner], b: [owner], handicap: 0, pointValue: null },
+      ]),
+    ).rejects.toThrow(/DUPLICATE_PARTICIPANT[\s\S]*both sides of Match 1/);
+  });
+
+  it("the message carries the player's NAME, not a raw uuid or a bare SQLSTATE", async () => {
+    const gameId = await newGame("dupe names the player");
+    const err = await saveMatches(gameId, [
+      { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+      { matchNumber: 2, playersPerSide: 1, a: [owner], b: [planner], handicap: 0, pointValue: null },
+    ]).then(() => null).catch((e: unknown) => e as Error);
+    expect(err).toBeInstanceOf(Error);
+    if (!(err instanceof Error)) throw new Error("expected a rejection");
+    // Read the CURRENT name rather than hardcoding "Test Owner". The 4 test users are
+    // shared and persistent (isolation comes from unique trips), so their `name` is
+    // mutable shared state — `users.update` suites rename test-owner, and a literal
+    // here passes in isolation and fails in the full run. The property under test is
+    // "the message carries the player's NAME", not any particular name.
+    const { data: me } = await ctx.admin.from("users").select("name").eq("id", owner).single();
+    const ownerName = (me?.name as string | undefined) ?? "";
+    expect(ownerName.length).toBeGreaterThan(0);
+    expect(err.message).toContain(ownerName);
+    expect(err.message).not.toContain(owner); // the id itself never reaches the user
+    expect(err.message).not.toMatch(/23505|duplicate key value/i);
+  });
+
+  it("catches a 2v2 duplicate too (the mixed-game shape)", async () => {
+    const gameId = await newGame("dupe in a 2v2");
+    await expect(
+      saveMatches(gameId, [
+        { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+        { matchNumber: 2, playersPerSide: 2, a: [planner, owner], b: [outsider, member], handicap: 0, pointValue: null },
+      ]),
+    ).rejects.toThrow(/DUPLICATE_PARTICIPANT/);
+  });
+
+  it("REFUSES rather than tolerates — nothing is written, the game keeps its old matches", async () => {
+    const gameId = await newGame("dupe writes nothing");
+    await saveMatches(gameId, [
+      { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+    ]);
+    const before = (await ctx.caller().matches.listByGame({ tripId, gameId })) as { matches: unknown[] };
+    expect(before.matches).toHaveLength(1);
+
+    await expect(
+      saveMatches(gameId, [
+        { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+        { matchNumber: 2, playersPerSide: 1, a: [owner], b: [planner], handicap: 0, pointValue: null },
+      ]),
+    ).rejects.toThrow(/DUPLICATE_PARTICIPANT/);
+
+    // Atomic: the refused save left the previous match set intact, not half-applied.
+    const after = (await ctx.caller().matches.listByGame({ tripId, gameId })) as { matches: unknown[] };
+    expect(after.matches).toHaveLength(1);
+    const parts = await ctx.admin.from("game_participants").select("user_id").eq("game_id", gameId);
+    expect(parts.data?.map((p) => p.user_id).sort()).toEqual([member, owner].sort());
+  });
+
+  it("a legitimate multi-match save with distinct players still succeeds", async () => {
+    const gameId = await newGame("distinct players save fine");
+    await saveMatches(gameId, [
+      { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+      { matchNumber: 2, playersPerSide: 1, a: [planner], b: [outsider], handicap: 0, pointValue: null },
+    ]);
+    const { matches } = (await ctx.caller().matches.listByGame({ tripId, gameId })) as { matches: unknown[] };
+    expect(matches).toHaveLength(2);
+  });
+
+  /**
+   * The backstop, asserted directly: even if something bypassed the pre-flight, the DB
+   * refuses. This is the constraint the whole invariant rests on — and it is also what
+   * gives configHash's `game_participants` read (ordered by user_id) its total order,
+   * so it must never be relaxed.
+   */
+  it("the UNIQUE constraint refuses a duplicate at the DB layer (SQLSTATE 23505)", async () => {
+    const gameId = await newGame("constraint backstop");
+    await saveMatches(gameId, [
+      { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
+    ]);
+    const { error } = await ctx.admin.from("game_participants").insert({
+      id: `dup-test-${gameId}`,
+      game_id: gameId,
+      user_id: owner, // already a participant via match 1
+    });
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("23505");
+    expect(error!.message).toMatch(/game_participants_game_id_user_id_key/);
+  });
+});

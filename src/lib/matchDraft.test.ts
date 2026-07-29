@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeMatchRow, sideMemberIds, type MatchSides, type ServerSide } from "./matchDraft";
+import { assignInDraft, isMatchFilled, filledMatches, allMatchesFilled, matchPlayReady, hasValidMatch, pointsReady, removeMatchRow, sideMemberIds, type MatchSides, type ServerSide } from "./matchDraft";
 
 // Readiness rework P1b — the ONE match-play readiness threshold, shared by the
 // setup-page Enable gate and the server `isConfigured` so they can't drift.
@@ -181,5 +181,137 @@ describe("removeMatchRow (the × action)", () => {
     const snapshot = JSON.parse(JSON.stringify(draft));
     removeMatchRow(draft, 0);
     expect(draft).toEqual(snapshot);
+  });
+});
+
+// ── assignInDraft — one player, one match (#708) ─────────────────────────────
+// A player may be in exactly one match per game. It is enforced at the DB by
+// `game_participants_game_id_user_id_key UNIQUE (game_id, user_id)` (migration 033),
+// and `_write_game_side` plain-INSERTs each side of each match — so a draft holding
+// someone twice doesn't render wrong, it fails the save with 23505.
+//
+// These two cases are the regression: both FAIL on main, both are deterministic
+// (not races — this is a pure function applied in a single setDraft), and both are
+// reachable because the picker lists already-assigned players under "Already in a
+// match" and keeps them clickable on purpose — that IS the reassign affordance.
+type AM = { playersPerSide: 1 | 2; a: string[]; b: string[]; handicap: number };
+const m = (playersPerSide: 1 | 2, a: string[], b: string[], handicap = 0): AM => ({
+  playersPerSide, a, b, handicap,
+});
+/** Every id appearing in more than one side across the whole draft. */
+const duplicatesIn = (draft: AM[]): string[] => {
+  const seen = new Map<string, number>();
+  for (const match of draft) for (const u of [...match.a, ...match.b]) seen.set(u, (seen.get(u) ?? 0) + 1);
+  return [...seen].filter(([, n]) => n > 1).map(([u]) => u);
+};
+
+describe("assignInDraft — the one-match invariant", () => {
+  /**
+   * REGRESSION 1 — the same-match slot swap. The old singles branch opened its
+   * removal pass with `if (i === matchIdx) return`, skipping the target match. So
+   * moving a player into the OTHER SLOT of the match they were already in never
+   * removed them, and the draft carried them on both sides of one match: a player
+   * playing himself.
+   */
+  it("moving a player to the other slot of the SAME match does not duplicate them", () => {
+    const before = [m(1, ["rob"], ["ann"])];
+    const after = assignInDraft(before, 0, "b", 0, "rob");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual([]); // vacated
+    expect(after[0].b).toEqual(["rob"]);
+  });
+
+  /**
+   * REGRESSION 2 — a MIXED game (Refactor A1: 1v1 and 2v2 in one game). The old
+   * singles branch only inspected `d.a[0]` / `d.b[0]`, so a player sitting at index
+   * 1 of a 2v2 side was invisible to it and stayed there. This is the true
+   * cross-match duplicate — one person genuinely in two matches.
+   */
+  it("pulling a player out of index>0 of a 2v2 side into a singles slot removes them from the 2v2", () => {
+    const before = [m(1, ["ann"], ["bob"]), m(2, ["cat", "rob"], ["dan", "eve"])];
+    const after = assignInDraft(before, 0, "a", 0, "rob");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual(["rob"]);
+    expect(after[1].a).toEqual(["cat"]); // rob pulled out of the 2v2 side
+  });
+
+  it("removes from index>0 of a 2v2 side regardless of which slot they sat in", () => {
+    const before = [m(1, ["ann"], ["bob"]), m(2, ["cat", "dan"], ["eve", "rob"])];
+    const after = assignInDraft(before, 0, "b", 0, "rob");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[1].b).toEqual(["eve"]);
+  });
+
+  // ── behaviour that must NOT change ────────────────────────────────────────
+  it("a normal cross-match move still moves, and clears the vacated match's handicap", () => {
+    const before = [m(1, ["ann"], ["bob"]), m(1, ["rob"], ["dan"], -3)];
+    const after = assignInDraft(before, 0, "a", 0, "rob");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual(["rob"]);
+    expect(after[1].a).toEqual([]);
+    expect(after[1].handicap).toBe(0); // the pairing it described is gone
+  });
+
+  it("the TARGET match keeps its handicap — singles now agrees with doubles", () => {
+    const before = [m(1, ["ann"], ["bob"], -2), m(1, ["rob"], ["dan"])];
+    const after = assignInDraft(before, 0, "a", 0, "rob");
+    expect(after[0].handicap).toBe(-2);
+  });
+
+  it("singles assignment REPLACES the slot's occupant (one per slot)", () => {
+    const after = assignInDraft([m(1, ["ann"], ["bob"])], 0, "a", 0, "rob");
+    expect(after[0].a).toEqual(["rob"]);
+    expect(after[0].b).toEqual(["bob"]);
+  });
+
+  it("2v2 fills the requested member position, appending past the end", () => {
+    const after = assignInDraft([m(2, ["cat"], ["dan", "eve"])], 0, "a", 1, "rob");
+    expect(after[0].a).toEqual(["cat", "rob"]);
+    expect(duplicatesIn(after)).toEqual([]);
+  });
+
+  it("a 2v2 cross-match pull leaves the source side short, never duplicated", () => {
+    const before = [m(2, ["cat", "dan"], ["eve", "fay"]), m(2, ["gil", "hal"], ["ivy", "jan"])];
+    const after = assignInDraft(before, 1, "a", 0, "cat");
+    expect(duplicatesIn(after)).toEqual([]);
+    expect(after[0].a).toEqual(["dan"]);
+    expect(after[1].a).toEqual(["cat", "hal"]);
+  });
+
+  it("is pure — never mutates the input draft", () => {
+    const before = [m(1, ["rob"], ["ann"])];
+    const snapshot = JSON.parse(JSON.stringify(before));
+    assignInDraft(before, 0, "b", 0, "rob");
+    expect(before).toEqual(snapshot);
+  });
+
+  /**
+   * The invariant, stated as a property rather than a case list: from any starting
+   * draft, ANY single assignment leaves no player in two places. This is what the
+   * DB constraint enforces and what `_write_game_side` depends on.
+   */
+  it("PROPERTY — no assignment on any draft shape can produce a duplicate", () => {
+    const drafts: AM[][] = [
+      [m(1, ["rob"], ["ann"])],
+      [m(2, ["rob", "cat"], ["ann", "bob"])],
+      [m(1, ["ann"], ["bob"]), m(2, ["cat", "rob"], ["dan", "eve"])],
+      [m(2, ["cat", "rob"], ["dan", "eve"]), m(1, ["ann"], ["bob"])],
+      [m(1, ["ann"], []), m(1, [], ["rob"])],
+    ];
+    const users = ["rob", "ann", "bob", "cat", "dan", "eve"];
+    for (const draft of drafts) {
+      for (let i = 0; i < draft.length; i++) {
+        for (const slot of ["a", "b"] as const) {
+          for (let mi = 0; mi < 2; mi++) {
+            for (const u of users) {
+              const after = assignInDraft(draft, i, slot, mi, u);
+              expect({ draft: i, slot, mi, u, dupes: duplicatesIn(after) }).toEqual({
+                draft: i, slot, mi, u, dupes: [],
+              });
+            }
+          }
+        }
+      }
+    }
   });
 });
