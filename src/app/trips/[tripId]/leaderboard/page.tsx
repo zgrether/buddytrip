@@ -23,6 +23,25 @@ import { useParams, useRouter } from "next/navigation";
  * It normalises with `replace`, not `push`, so it never becomes a history entry
  * the user can be bounced back onto.
  *
+ * ── The entry it lands on gets tagged from the OTHER side ────────────────────
+ * This `router.replace` used to write `?view=cup` as a bare, untagged entry —
+ * `historyMarker.ts`'s own stated rule is that every `pushState`/`replaceState`
+ * in the app should go through `pushMarker`, and this was the one write that
+ * didn't. It can't call `pushMarker`/`replaceMarker` itself: those wrap a raw
+ * `history.replaceState`, which can't reliably drive Next's own route-tree
+ * transition across a PATHNAME change (this route to `/trips/[tripId]`) the
+ * way `router.replace` does, and calling both in the same tick would race
+ * Next's own (not-guaranteed-synchronous) history write. `useAppView`'s
+ * self-healing effect closes this from the landing side instead — see its
+ * doc comment. Confirmed by code audit that #754's desktop drill-in pushes no
+ * history of its own and rides entirely on `GameRow`'s existing `"panel"`
+ * marker, so this fix addresses a real, independently-confirmed violation of
+ * the marker system's own invariant — but it was NOT possible to reproduce
+ * the originally-reported "back lands on Trip" symptom through this path (or
+ * any other) from static analysis alone. This may or may not be the cause;
+ * if the symptom persists after this lands, look elsewhere.
+ *
+
  * KNOWN, SEQUENCED REGRESSION: this used to be a Server Component that resolved
  * `competitions.faceBootstrap` and handed it down as `initialData`, so a cold
  * deep link painted the board from server HTML with no client round-trip. That
