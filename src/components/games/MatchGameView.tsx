@@ -79,6 +79,7 @@ import {
   configDraftToPayload,
   configDraftsEqual,
   isDraftMatchFilled,
+  isDraftLockStale,
   type ConfigDraft,
   type DraftMatchConfig,
   type DraftMatchInput,
@@ -1128,6 +1129,43 @@ export function MatchGameView() {
     setCourseDraft(null);
     setDelegatesDraft(null);
   }
+
+  // Latest-ref so the game-swap effect below can call the reset without taking a
+  // per-render function into its dep array (which would re-run it every render and
+  // defeat the id gate). Same latest-ref idiom as `dirtyRef`/`discardRef` above.
+  const resetSlicesRef = useRef(resetSlices);
+  resetSlicesRef.current = resetSlices;
+
+  // ── The touched-lock belongs to ONE game ────────────────────────────────────
+  // `draftTouched` is keyed to "has the user typed here", not to any id, and the
+  // ONLY things that clear it are Save and Cancel (`resetSlices`, above). Neither
+  // fires when this same mounted view is handed a DIFFERENT game — so a touched
+  // draft for game A makes the seed effect bail for game B and the panel keeps
+  // rendering A's match rows. Stale content, not merely a stale flag.
+  //
+  // Reachable on `main` today: at `lg+` the board renders as [list | pane] with the
+  // panel `lg:static` (CompetitionFace) — the game list stays interactive BESIDE the
+  // open game, by design. Tapping a second match game there moves `?game=` A→B while
+  // `panelOpen` stays true, so `<MatchGameView />` holds its position in the tree and
+  // React reuses the instance. (Phase 7 will make more of this shape.)
+  //
+  // Keyed on the id, like `StrokeGameView`'s `currentHoleSeededRef` — the reference
+  // pattern, not a second mechanism. `isDraftLockStale` also encodes the create
+  // transition (null → id), which must NOT clear: that draft belongs to the game
+  // `handleCreate` just made, which is why it takes care to preserve it.
+  //
+  // Clears the WHOLE composite, not just the lock: every sibling slice
+  // (`nameDraft`, `modifiersDraft`, …) is null-when-untouched state carrying game
+  // A's edits too, and the seed effect's `draft.length > 0` guard would keep A's
+  // rows on screen even with the lock cleared. `resetSlices([])` is the existing
+  // clearing path — reused, not reimplemented.
+  const draftLockGameRef = useRef<string | null>(gameId);
+  useEffect(() => {
+    const prev = draftLockGameRef.current;
+    draftLockGameRef.current = gameId;
+    if (!isDraftLockStale(prev, gameId)) return;
+    resetSlicesRef.current([]);
+  }, [gameId]);
 
   // Restore a hard-teardown draft (Layer 2). Handles BOTH shapes the outbox has stored:
   // the composite `SettingsDraftBundle` and — for drafts written before the composite —
@@ -2433,7 +2471,29 @@ function SortableMatchRow({
   index: number;
   children: (handle: React.ReactNode) => React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // animateLayoutChanges: false — dnd-kit's `defaultAnimateLayoutChanges` fires a
+  // FRESH css transition on every sortable row whose index changed once a drag ends
+  // (gated on `wasDragging`), independent of the live drag-transform below. That
+  // second transition lands on a still-settling transform, which is what reads on
+  // device as the row next to the dropped one visibly re-seating. The live reflow
+  // during the drag already shows the destination, so nothing needs to animate
+  // post-drop. Same one-line fix PR #716 applied to the roster rows
+  // (`SortableMemberRow`, TeamsPanel) — this is the matches half of it.
+  //
+  // Worth pinning, because the ids here differ from the roster list's: matches use
+  // POSITIONAL sortable ids (`String(i)`, re-minted every render), so `index`
+  // (`items.indexOf(id)`) is constant and dnd-kit's FLIP path (`useDerivedTransform`,
+  // which triggers on a CHANGED index) never engages at all. The re-seat reaches
+  // these rows through the other consumer of the same flag: post-drop `isSorting` is
+  // false, so `getTransition()` hands out a live 200ms `transform` transition on
+  // `shouldAnimateLayoutChanges` alone — while `finalTransform` has already dropped
+  // to null. A transition on a transform snapping to `none` IS the animated re-seat.
+  // Returning false closes that branch and the row snaps. The live drag is untouched
+  // either way: `getTransition()` short-circuits on `isSorting` first.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    animateLayoutChanges: () => false,
+  });
   const style: React.CSSProperties = {
     gridTemplateColumns: MATCH_GRID,
     gap: 8,

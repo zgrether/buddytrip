@@ -152,12 +152,13 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "stroke_total",
     scorecardSchema: strokeSchema,
-    // Modifier matrix (reconciled): moving_tees applies to stroke play (a full round);
-    // glorious_holes does NOT (it doubles a hole's MATCH value — match-play only). The
-    // full matrix — glorious → {match, skins, scramble}; moving_tees → {scramble, stroke,
-    // rack} — is FORWARD-DECLARED for skins/scramble in comments here (those game types
-    // aren't built yet, so there's no def to carry the array; add it when they land).
-    compatibleModifiers: ["moving_tees"], // checkbox-only branch
+    // No modifier applies to stroke play, so its Game Modifiers row is hidden-by-`[]`.
+    // `glorious_holes` doubles a hole's MATCH value (match-play only). `moving_tees`
+    // used to sit here, but it was never specified and never computed — a selectable
+    // checkbox that only ever wrote a key nothing read — so it was removed rather
+    // than left as UI with no backing (see DEFERRED.md, where the feature itself
+    // still lives as a nomination). Skins/scramble take `glorious_holes` when built.
+    compatibleModifiers: [],
     supportsFreeForAll: true,
     supportsSides: false,
     requiresSides: false,
@@ -182,10 +183,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "match_play",
     scorecardSchema: matchPlaySchema,
-    // Matrix (reconciled): glorious_holes applies to match play (it doubles a hole's
-    // match value); moving_tees is grandfathered here too. (Skins — when built — also
-    // takes glorious, per the matrix; forward-declared in the stroke-play comment above.)
-    compatibleModifiers: ["moving_tees", "glorious_holes"],
+    // `glorious_holes` applies to match play (it doubles a hole's match value) and is
+    // the ONLY modifier left after `moving_tees` was removed — the one format whose
+    // Modifiers row still renders. (Skins, when built, takes glorious too.)
+    compatibleModifiers: ["glorious_holes"],
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,
@@ -204,10 +205,11 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     entrySchema: "user_holes",
     resultStrategy: "rack_n_stack",
     scorecardSchema: rackSchema,
-    // Matrix reconcile: rack plays a full round, so Moving tee boxes applies — its
-    // Modifiers row is now LIVE (was hidden-by-`[]`). Glorious is match-play hole-win
-    // only, so it stays excluded.
-    compatibleModifiers: ["moving_tees"],
+    // Back to hidden-by-`[]`: `moving_tees` (the one modifier rack ever offered) was
+    // removed as unbacked UI, and glorious is match-play hole-win only. Rack's
+    // Modifiers row therefore doesn't render — the state it was in before the matrix
+    // reconcile briefly made it live.
+    compatibleModifiers: [],
     supportsFreeForAll: false,
     supportsSides: true,
     requiresSides: true,

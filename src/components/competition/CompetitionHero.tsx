@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Settings, Trophy, Users } from "lucide-react";
+import { Settings, Trophy } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -539,9 +539,45 @@ function MiniScore({ team, points }: { team: LBTeam | undefined; points: number 
   );
 }
 
-/** A team name on its side of the collapsed bar — team-colored, group icon,
- *  wraps toward center (no truncate), capped so it never crowds the scores.
- *  Tappable → that team's editor (disabled/inert where onEditTeam is omitted). */
+/**
+ * The "ROSTER" affordance label under a tappable team name.
+ *
+ * Replaces the `Users` glyph that used to sit beside the name. An icon isn't a
+ * verb — a person outline next to a team name reads as decoration (or as "team",
+ * which the name already says), not as "tap here to open the roster". The word
+ * says what the tap does.
+ *
+ * Rendered ONLY when the name is actually tappable. `GamePageHeader` mounts the
+ * same `CollapsedHero` WITHOUT `onEditTeam`, so its names are inert; labelling an
+ * inert control is the same failure as an unlabelled one, in the other direction.
+ * This is a display rule, not a permission one — who may open the sheet, and what
+ * they can do inside it, is unchanged and still decided by `TeamSheet`/`useCanEditTeam`.
+ *
+ * `--color-bt-text-dim` matches the hero's other secondary text (the tagline, the
+ * "First to X wins" line) rather than tinting to the team color, which would
+ * compete with the name it labels.
+ */
+function RosterLabel({ size = 10 }: { size?: number }) {
+  return (
+    <span
+      style={{
+        display: "block",
+        fontSize: size,
+        fontWeight: 600,
+        letterSpacing: "0.09em",
+        lineHeight: 1.1,
+        color: "var(--color-bt-text-dim)",
+      }}
+    >
+      ROSTER
+    </span>
+  );
+}
+
+/** A team name on its side of the collapsed bar — team-colored, wraps toward
+ *  center (no truncate), capped so it never crowds the scores. The name + its
+ *  ROSTER label are one tap target → that team's editor (inert, and unlabelled,
+ *  where onEditTeam is omitted). */
 function MiniName({
   team,
   align,
@@ -557,13 +593,12 @@ function MiniName({
       type="button"
       onClick={() => onEditTeam?.(team.id)}
       disabled={!onEditTeam}
-      className={`flex min-w-0 items-center gap-1.5 disabled:cursor-default ${align === "right" ? "justify-end text-right" : ""}`}
+      className={`flex min-w-0 flex-col gap-0.5 disabled:cursor-default ${align === "right" ? "items-end text-right" : "items-start text-left"}`}
       style={{ maxWidth: "38%" }}
       data-testid={`comp-team-name-collapsed-${align === "left" ? "a" : "b"}`}
     >
-      {align === "left" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
-      <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.25, color: team.color }}>{team.name}</span>
-      {align === "right" && <Users size={13} style={{ color: team.color, flexShrink: 0 }} />}
+      <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}>{team.name}</span>
+      {onEditTeam && <RosterLabel size={9} />}
     </button>
   );
 }
@@ -703,8 +738,9 @@ function CollapsedTeam({
   );
 }
 
-/** A team name on its side of the hero — full name, team-colored, group icon,
- *  tappable to that team's identity editor (owner / its captain). */
+/** A team name on its side of the hero — full name, team-colored, with the ROSTER
+ *  affordance label beneath it. The whole block is one tap target → that team's
+ *  editor (owner / its captain edit; a member gets it read-only). */
 function TeamName({
   team,
   onEditTeam,
@@ -714,24 +750,20 @@ function TeamName({
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
 }) {
-  const content = (
-    <>
-      {align === "left" && <Users size={14} style={{ color: team.color, flexShrink: 0 }} />}
-      <span className="truncate" style={{ fontSize: 15, fontWeight: 600, color: team.color }}>
-        {team.name}
-      </span>
-      {align === "right" && <Users size={14} style={{ color: team.color, flexShrink: 0 }} />}
-    </>
-  );
   return (
     <button
       type="button"
       onClick={() => onEditTeam?.(team.id)}
       disabled={!onEditTeam}
-      className={`flex min-w-0 items-center gap-1.5 disabled:cursor-default ${align === "right" ? "justify-end text-right" : ""}`}
+      className={`flex min-w-0 flex-col gap-0.5 disabled:cursor-default ${align === "right" ? "items-end text-right" : "items-start text-left"}`}
       data-testid={`comp-team-name-${align === "left" ? "a" : "b"}`}
     >
-      {content}
+      {/* 17 (was 15) — the name carries the block now that the icon is gone, and
+          it has to stay the dominant element over the ROSTER label beneath it. */}
+      <span className="w-full truncate" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.2, color: team.color }}>
+        {team.name}
+      </span>
+      {onEditTeam && <RosterLabel />}
     </button>
   );
 }

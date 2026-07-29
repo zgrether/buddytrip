@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import {
   configToDraft,
+  isDraftLockStale,
   configDraftToPayload,
   configDraftsEqual,
   isDraftMatchFilled,
@@ -354,7 +357,7 @@ const STROKE_GAME = {
   scoring_enabled: false,
   points_total: 8,
   points_distribution: { type: "placement" as const, values: [6, 4, 2] },
-  modifiers: { moving_tees: {} },
+  modifiers: { placeholder_modifier: {} },
   course_id: "course-1",
   back_course_id: null,
   scorecard_schema: { units: { count: 18 } },
@@ -367,7 +370,7 @@ describe("configToStrokeDraft — baseline", () => {
   it("folds strokes + modifiers + course + groups over the base and is stable", () => {
     const d = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]);
     expect(d.strokes).toEqual(STROKE_STROKES);
-    expect(d.modifiers).toEqual({ moving_tees: {} });
+    expect(d.modifiers).toEqual({ placeholder_modifier: {} });
     expect(d.course).toEqual({ id: "course-1", backId: null, scorecardSchema: { units: { count: 18 } } });
     expect(d.groups).toEqual([["u1", "u2"]]);
     expect(strokeDraftsEqual(d, configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]))).toBe(true);
@@ -381,7 +384,7 @@ describe("strokeDraftToPayload — placement passthrough, explicit modifiers, gr
     expect(strokeDraftToPayload(base).pointsTotal).toBe(8);
   });
   it("sends modifiers EXPLICITLY (the RPC wipes a missing key to {})", () => {
-    expect(strokeDraftToPayload(base).modifiers).toEqual({ moving_tees: {} });
+    expect(strokeDraftToPayload(base).modifiers).toEqual({ placeholder_modifier: {} });
   });
   it("emits every participant's strokes and NO matches key", () => {
     const p = strokeDraftToPayload(base);
@@ -482,5 +485,64 @@ describe("payload delegates — omitted when unchanged, sent on a real change (#
     const stroke = configToStrokeDraft(STROKE_GAME, STROKE_STROKES, STROKE_GROUPS, ["u9"]);
     expect(strokeDraftToPayload(stroke, stroke)).not.toHaveProperty("delegates");
     expect(strokeDraftToPayload(stroke)).toHaveProperty("delegates"); // no baseline ⇒ sent
+  });
+});
+
+// ── The draft touched-lock is per-GAME ───────────────────────────────────────
+// REGRESSION. `MatchGameView`'s `draftTouched` ref is keyed to "has the user typed
+// here", not to any id, and only Save/Cancel (`resetSlices`) clear it. Nothing
+// cleared it when the SAME mounted view was handed a different game — so a touched
+// draft for game A made the seed effect bail for game B and the panel kept showing
+// A's match rows.
+//
+// Reachable on `main` before the fix: at `lg+` `CompetitionFace` renders
+// [game list | game pane] with the panel `lg:static`, so the list stays interactive
+// beside the open game. Tapping a second match game moves `?game=` A→B while
+// `panelOpen` stays true, `<MatchGameView />` holds its slot in the tree, and React
+// reuses the instance instead of remounting.
+describe("isDraftLockStale — the touched-lock is keyed to one game", () => {
+  it("a swap between two real games invalidates the lock", () => {
+    expect(isDraftLockStale("game-a", "game-b")).toBe(true);
+  });
+
+  it("the same id does not — nothing changed", () => {
+    expect(isDraftLockStale("game-a", "game-a")).toBe(false);
+  });
+
+  /**
+   * The CREATE transition. `handleCreate` calls `setGameId(g.id)` on a view mounted
+   * with none, and deliberately PRESERVES a touched draft there (`if
+   * (!draftTouched.current) setDraft([])`) — the matches the user added on the
+   * new-game screen belong to the game just created. Clearing on null → id would
+   * discard exactly that work.
+   */
+  it("null → id is CREATE, not a swap — the draft belongs to the new game", () => {
+    expect(isDraftLockStale(null, "game-a")).toBe(false);
+  });
+
+  it("leaving a game (id → null) still counts — the lock does not outlive it", () => {
+    expect(isDraftLockStale("game-a", null)).toBe(true);
+  });
+});
+
+// Source guard: the predicate above is only worth anything if the view actually
+// calls it. The views can't be rendered under this suite (node env, no jsdom), so
+// pin the wiring by reading the source — the same technique `TripIdProvider.test.ts`
+// uses for its param guard. This is the assertion that fails on `main` today.
+describe("MatchGameView wires the per-game lock reset", () => {
+  const SRC = readFileSync(
+    resolve(__dirname, "..", "components", "games", "MatchGameView.tsx"),
+    "utf8",
+  );
+
+  it("calls isDraftLockStale from an effect keyed on the game id", () => {
+    expect(SRC).toContain("isDraftLockStale");
+    // The effect must depend on `gameId` alone — a wider dep list would re-run it
+    // on unrelated renders, and a narrower one (or none) would never fire.
+    expect(SRC).toMatch(/isDraftLockStale\(prev, gameId\)[\s\S]{0,400}?\}, \[gameId\]\)/);
+  });
+
+  it("still clears the lock on Save/Cancel — resetSlices is unchanged", () => {
+    expect(SRC).toMatch(/function resetSlices\(matches: DraftMatch\[\]\) \{\s*\n\s*draftTouched\.current = false;/);
   });
 });

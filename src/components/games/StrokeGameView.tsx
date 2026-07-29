@@ -541,11 +541,13 @@ export function StrokeGameView() {
   });
 
   // A1 P0 — Game Modifiers, the home stroke play was missing (the match page had
-  // it; stroke didn't, yet stroke has functional modifiers — moving_tees /
-  // glorious_holes). Same component + same games.modifiers wiring as the match
-  // page; persisted on-change (the stroke page's idiom — like onSetStrokes —
-  // rather than the match accordion's persist-on-collapse). Seed the draft once
-  // from the saved game, then own it locally.
+  // it; stroke didn't). Same component + same games.modifiers wiring as the match
+  // page. Seed the draft once from the saved game, then own it locally.
+  //
+  // Currently resolves to `[]` for stroke: its only modifier was `moving_tees`,
+  // removed as unbacked UI, and glorious_holes is match-play only. So the row
+  // renders nothing today — the wiring stays because it's keyed on the game type
+  // and lights up the moment a stroke-applicable modifier exists.
   const availableModifiers = GAME_TYPES.find(
     (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
   )?.compatibleModifiers ?? [];

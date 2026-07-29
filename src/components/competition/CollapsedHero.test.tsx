@@ -84,3 +84,60 @@ describe("CollapsedHero — N-team (points cup) bar, not 2-hardcoded", () => {
     expect(html).toContain(">4<");
   });
 });
+
+// ── The ROSTER affordance label ──────────────────────────────────────────────
+// A person icon used to sit beside each team name. An icon isn't a verb: a person
+// outline next to a team name reads as decoration, or as "team" — which the name
+// already says — not as "tap here to open the roster". The word says what the tap
+// does, and the name + label are one target.
+describe("team name → ROSTER affordance", () => {
+  const teams = [team("a", "Hammer", "HAM", "#f87171"), team("b", "Whack", "WHK", "#c084fc")];
+  const base = { teams, teamTotals: { a: 5, b: 12 }, winNumber: 78, pointsAvailable: 100, clincher: null };
+
+  const tappable = renderToStaticMarkup(<CollapsedHero {...base} onEditTeam={() => {}} />);
+  const inert = renderToStaticMarkup(<CollapsedHero {...base} />);
+
+  it("labels the tappable name with ROSTER", () => {
+    expect(tappable).toContain("ROSTER");
+  });
+
+  it("drops the person icon entirely", () => {
+    // lucide renders its glyphs as inline <svg class="lucide lucide-users">.
+    expect(tappable).not.toMatch(/lucide-users/i);
+    expect(inert).not.toMatch(/lucide-users/i);
+  });
+
+  /**
+   * `GamePageHeader` mounts this same CollapsedHero WITHOUT `onEditTeam`, so its
+   * names are inert. Labelling a control that does nothing is the same failure as
+   * an unlabelled one, pointing the other way. This is a DISPLAY rule — it changes
+   * nothing about who may open the sheet or what they can do inside it, which stays
+   * with TeamSheet/useCanEditTeam.
+   */
+  it("omits the label where the name is not tappable (the game-page header)", () => {
+    expect(inert).not.toContain("ROSTER");
+    expect(inert).toContain("Hammer"); // the name itself still renders
+  });
+
+  it("keeps the label as chrome-dim, not tinted to the team color", () => {
+    // The label must not compete with the name it labels; it matches the hero's
+    // other secondary text (tagline, "First to X wins"). Assert on the ROSTER
+    // element ITSELF — a bare `toContain("--color-bt-text-dim")` would pass on
+    // the target line's color and prove nothing about this label.
+    const spans = tappable.match(/<span[^>]*>ROSTER<\/span>/g) ?? [];
+    expect(spans).toHaveLength(2); // one per team
+    for (const s of spans) {
+      expect(s).toContain("var(--color-bt-text-dim)");
+      expect(s).not.toContain("#f87171");
+      expect(s).not.toContain("#c084fc");
+    }
+  });
+
+  it("the score, target line and race bar all still render beside it", () => {
+    // The enlarged target must not swallow the rest of the row.
+    expect(tappable).toContain(">5<");
+    expect(tappable).toContain(">12<");
+    expect(tappable).toContain("First to 78 wins");
+    expect(tappable).toContain("#f87171"); // team fills on the race bar
+  });
+});

@@ -878,10 +878,11 @@ export function RackGameView() {
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={[teamA, teamB]} />
       </ChecklistRow>
     );
-    // Game Modifiers — LIVE for rack now (matrix reconcile: rack's compatibleModifiers is
-    // ["moving_tees"]). Keyed on the game type, so the row appears iff a modifier applies —
-    // the same gated shape stroke uses, so the two can't drift. Inline ModifierCards panel
-    // editing the modifiers draft slice (built below).
+    // Game Modifiers — keyed on the game type, so the row appears iff a modifier
+    // applies; the same gated shape stroke uses, so the two can't drift. Inline
+    // ModifierCards panel editing the modifiers draft slice (built below).
+    // Rack currently resolves to `[]` (its only modifier, `moving_tees`, was removed
+    // as unbacked UI), so the row is hidden until a rack-applicable modifier exists.
     const availableModifiers = getGameTypeDefinition(gameTypeId)?.compatibleModifiers ?? [];
     const modifierCount = enabledCount(configDraft.modifiers, availableModifiers);
     const modifiersInlineRow = availableModifiers.length > 0 ? (

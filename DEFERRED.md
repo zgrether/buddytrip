@@ -120,6 +120,14 @@ doubles), rack-n-stack, and the generic/manual formats):
   within-format standards; template `config_schema` declares tunable keys
 - Moving tee boxes — available to any stroke-input scorecard; pop-up +
   per-cell visual cue; `tee_box_change` `game_live_events` (no September format requires it)
+  - **The selectable modifier has been REMOVED from the app** (2026-07-28). It was
+    offered as a checkbox on all three golf formats and nothing ever read the key it
+    wrote — no compute path, no pop-up, no live event: UI with no backing. The
+    feature stays deferred here, as a nomination; when it is actually built, the
+    registry entry (`lib/modifiers.ts`) and the `compatibleModifiers` sets come back
+    TOGETHER WITH the compute path, not ahead of it. One production game row still
+    carries a stored `moving_tees` key; it is simply not offered and drops on that
+    game's next settings Save.
   - **Tee-subset selection** (sub-note, captured 2026-06-20 during the
     golfcourseapi build): when moving tees is on, the owner/delegate picks WHICH
     of the course's stored tee sets rotate. Cannot be worked independently of
@@ -135,6 +143,10 @@ doubles), rack-n-stack, and the generic/manual formats):
   is point-valued/match formats only (it doubles a hole's *match* value, so it does
   NOT apply to raw stroke play); `moving_tees` is any stroke-input scorecard. When
   the scoring engine lands, set the real sets.
+  - **Largely settled (2026-07-28).** The crossed test-matrix is gone: the real sets
+    are `match → glorious_holes` and `[]` everywhere else, now that `moving_tees` has
+    been removed. What's left of this item is re-adding stroke-input applicability
+    if/when moving tees is genuinely built.
 - **Generalize the per-modifier config (moving-scale)**: the shipped registry
   (`lib/modifiers.ts`) is presence-model with a per-key jsonb config — `glorious_holes`
   already carries a `{ holes: N }` param. Moving tees' tee-subset selection (sub-note

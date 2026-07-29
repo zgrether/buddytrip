@@ -15,12 +15,12 @@ import { useParams } from "next/navigation";
  * The param is still funnelled through this one provider — see the next
  * paragraph for why that matters independently of resolution.
  *
- * This used to accept a slug as well and resolve it here. Slugs were removed
- * (see CLAUDE.md #21): the generator, the `slug ?? id` navigation fallbacks and
- * the `trips.resolveSlug` procedure are all gone, so what remains is a param
- * that is already the id. `trips.slug` itself is dropped in a follow-up PR,
- * after this code is deployed — a DROP inverts the usual migration ordering
- * (CLAUDE.md Migration Workflow 3b).
+ * This used to accept a slug as well and resolve it here. Slugs are gone (see
+ * CLAUDE.md #21): the generator, the `slug ?? id` navigation fallbacks, the
+ * `trips.resolveSlug` procedure and finally the `trips.slug` column itself
+ * (migration 097) have all been removed, and the drop is applied to production.
+ * Nothing writes or reads a second identifier form anywhere in the stack, so
+ * this provider resolves nothing — there is nothing left to resolve.
  *
  * ── Why the provider survives the resolution it used to wrap ────────────────
  * Reading the param in one place is worth more than the resolving was. It used

@@ -7,15 +7,16 @@
  * "last 3 holes worth double" for the group even though nothing auto-scores it.
  *
  * **Presence-model:** a key present in `games.modifiers` = enabled; absence =
- * disabled. The per-key VALUE holds config (`glorious_holes → { holes: N }`;
- * `moving_tees → {}`). This module is the single place that knows how each
+ * disabled. The per-key VALUE holds config (`glorious_holes → { holes: N }`; a
+ * modifier with nothing to configure stores `{}`). This module is the single
+ * place that knows how each
  * modifier renders + serializes — but APPLICABILITY (which keys a format offers)
  * comes from `gameTypes.ts` `compatibleModifiers`, NOT here and NOT the DB
  * (`game_type_templates.compatible_modifiers` is deprecated — see the Modifiers
  * Phase-0 resolution, Flag 2).
  *
- * **Keys are snake_case** (`moving_tees`, `glorious_holes`) — the values already
- * stored in `games.modifiers`, `gameTypes.ts`, and live rows. Never camelCase.
+ * **Keys are snake_case** (`glorious_holes`) — the values already stored in
+ * `games.modifiers`, `gameTypes.ts`, and live rows. Never camelCase.
  *
  * Client-safe (no server/DB deps) so both setup surfaces share it.
  */
@@ -39,13 +40,17 @@ export const GLORIOUS_HOLES_DEFAULT = 3;
 export const GLORIOUS_HOLES_MIN = 1;
 export const GLORIOUS_HOLES_MAX = 9;
 
+/**
+ * `glorious_holes` is currently the ONLY modifier. `moving_tees` used to sit
+ * beside it and was removed: it was never specified, nothing ever read the key
+ * it wrote, and it was offered as a selectable checkbox on all three golf
+ * formats — UI with no backing. The feature itself is still a live nomination in
+ * `DEFERRED.md`; when it's actually built it comes back here WITH a compute path.
+ *
+ * The registry stays a keyed map (not collapsed to one const) precisely because
+ * that's expected.
+ */
 export const MODIFIER_REGISTRY: Record<string, ModifierDef> = {
-  moving_tees: {
-    key: "moving_tees",
-    label: "Moving tee boxes",
-    description: "Score well and everyone else will appreciate you moving back a tee. Score not so well, and move up a tee to get your mojo back. We'll help guide you so you don't forget.",
-    controlType: "checkbox",
-  },
   glorious_holes: {
     key: "glorious_holes",
     label: "Glorious finishing holes",
@@ -108,7 +113,7 @@ export function enabledCount(modifiers: ModifiersMap, available: string[]): numb
 /**
  * Collapsed-row summary. None enabled → "None added" (the row is NOT resolved —
  * an optional row isn't "set" just by being applicable). ≥1 → a short list,
- * e.g. "Glorious finishing holes (last 3) · Moving tees".
+ * e.g. "Glorious finishing holes (last 3)".
  */
 export function modifiersSummary(modifiers: ModifiersMap, available: string[]): string {
   const on = available.filter((k) => isModifierEnabled(modifiers, k));
