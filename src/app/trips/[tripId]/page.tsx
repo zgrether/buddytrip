@@ -94,7 +94,15 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     error,
   } = trpc.trips.getById.useQuery({ tripId });
 
-  const { role, isOwner, canEdit } = useTripRole(tripId);
+  // `loading` is destructured now and threaded to `HomeTab`. Role has THREE
+  // states, not two: resolved-privileged, resolved-member, and NOT YET KNOWN.
+  // While pending, `role` is null and `isOwner` is therefore `false` — which
+  // `ItineraryPanel`'s `if (!isOwner)` read as "member" and painted the member
+  // empty state over the owner's trip. The layout now seeds `tripMembers.list`
+  // from the server so this is normally already resolved on the first render;
+  // this flag covers the path where that seed can't land (the layout swallows
+  // auth/membership failures by design).
+  const { role, isOwner, canEdit, loading: roleLoading } = useTripRole(tripId);
 
   // ── Prefetch the tab queries in parallel with the trip query ──────────────
   // All of these only need tripId (available immediately from the URL), so they
@@ -503,6 +511,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 role={role}
                 canEdit={effectiveCanEdit}
                 isOwner={isOwner}
+                roleLoading={roleLoading}
                 onTabChange={(tab) => goToTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
                 compActivated={showComp}
@@ -579,6 +588,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     role={role}
                     canEdit={effectiveCanEdit}
                     isOwner={isOwner}
+                    roleLoading={roleLoading}
                     onTabChange={(tab) => goToTab(tab as TabId)}
                     onOpenChat={() => requestView("chat")}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}

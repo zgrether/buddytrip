@@ -28,6 +28,7 @@ export function HomeTab({
   trip,
   canEdit: canEditProp,
   isOwner,
+  roleLoading,
   onTabChange,
   onOpenChat,
   onOpenDatesSheet,
@@ -92,6 +93,10 @@ export function HomeTab({
             tripId={trip.id}
             trip={trip}
             isOwner={!!isOwner}
+            // Pending is NOT member — see ItineraryPanel's branch. Without this,
+            // `isOwner` reads false while role is in flight and the owner gets
+            // the member empty state until it resolves.
+            roleLoading={!!roleLoading}
             isActivated={!!trip.itinerary_enabled}
             onOpenDatesSheet={onOpenDatesSheet}
             onTabChange={onTabChange}

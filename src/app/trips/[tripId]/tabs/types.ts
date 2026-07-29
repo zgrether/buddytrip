@@ -30,6 +30,13 @@ export interface TabProps {
   role: TripRole | null;
   canEdit: boolean;
   isOwner?: boolean;
+  /**
+   * Role is NOT YET KNOWN — a third state, distinct from owner and from member.
+   * `role`/`canEdit`/`isOwner` all read as unprivileged while pending, so any
+   * surface that branches on them must consult this before treating "not owner"
+   * as "member". Optional: surfaces that don't branch on role can ignore it.
+   */
+  roleLoading?: boolean;
   /** In-place tab switcher exposed so cross-tab CTAs (e.g. Agenda's
    *  "Enable competition →") can navigate without doing a full page
    *  reload. Optional — tabs that don't need it can ignore. */

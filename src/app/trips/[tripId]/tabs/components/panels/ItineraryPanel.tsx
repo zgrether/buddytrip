@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@/components/Spinner";
 import { ItineraryView } from "../ItineraryView";
 import { DatePollCard } from "../DatePollCard";
 import {
@@ -16,6 +17,9 @@ interface ItineraryPanelProps {
   tripId: string;
   trip: TripData;
   isOwner: boolean;
+  /** Role is not yet known. Distinct from `isOwner: false`, which this panel
+   *  otherwise treats as "member" — see the branch below. */
+  roleLoading?: boolean;
   /** True once the owner has tapped "Add Itinerary" on the (legacy)
    *  invitation card. With the FreshTripGuide rollout we treat the empty
    *  itinerary as the default for owners, so this flag is no longer the
@@ -55,6 +59,7 @@ export function ItineraryPanel({
   tripId,
   trip,
   isOwner,
+  roleLoading,
   isActivated,
   onOpenDatesSheet,
   onTabChange,
@@ -68,7 +73,33 @@ export function ItineraryPanel({
   const datesSet = !!(trip.start_date && trip.end_date);
   const pollActive = !!trip.poll_mode;
 
+  // ── Role NOT YET KNOWN — a third state, and it must not fall through ──────
+  // `isOwner` is `false` while `useTripRole` is in flight, so the member branch
+  // below used to claim a pending role as a definite one and paint "Your
+  // timeline will start to fill in" over an owner's trip until the query landed.
+  // Same defect class as #741, where a null role rendered the non-editor
+  // placeholder permanently.
+  //
+  // The trip layout now seeds `tripMembers.list` from the server, so on the
+  // normal path role is already resolved on the first render and this branch is
+  // never reached. It is the fallback for the path where the seed can't land —
+  // the layout swallows auth/membership failures by design — and a wrong view is
+  // worse than a brief neutral one.
+  //
+  // Neutral means NEUTRAL: the shared spinner, not either role's surface. It is
+  // scoped to this panel, so the rest of the tab still paints — this is not the
+  // page-level gate Phase 4 removed.
+  if (roleLoading) {
+    return (
+      <div className="flex items-center justify-center py-16" data-testid="itinerary-role-pending">
+        <Spinner size={24} />
+      </div>
+    );
+  }
+
   // ── Member path ─────────────────────────────────────────────────────
+  // Reached only once role is RESOLVED (see the guard above) — `!isOwner` here
+  // means "definitely not the owner", not "not the owner yet".
   // Priority order:
   //   1. Real bookends locked → ItineraryView (the trip has dates; show
   //      the day-by-day even if the poll flag is somehow still on,

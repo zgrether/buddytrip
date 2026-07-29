@@ -1,8 +1,14 @@
 import { HydrationBoundary, type DehydratedState } from "@tanstack/react-query";
+import type { inferRouterOutputs } from "@trpc/server";
 import { createSSRHelpers } from "@/server/trpc-ssr";
-import { FaceBootSeed } from "@/components/competition/FaceBootSeed";
+import { TripBootSeed } from "@/components/competition/TripBootSeed";
 import { TripIdProvider } from "@/components/TripIdProvider";
 import type { FaceBootstrap } from "@/components/competition/LiveFaceClient";
+import type { AppRouter } from "@/server/router";
+
+/** Exactly what `tripMembers.list` returns — inferred, so the seed can never
+ *  drift from the query it is seeding. */
+type TripMemberRow = inferRouterOutputs<AppRouter>["tripMembers"]["list"][number];
 
 /**
  * Per-trip route layout (Server Component) — the shell's server boundary.
@@ -52,19 +58,40 @@ export default async function TripLayout({
 
   let dehydratedState: DehydratedState | undefined = undefined;
   let boot: FaceBootstrap | null = null;
+  let members: TripMemberRow[] | null = null;
   try {
     const helpers = await createSSRHelpers();
-    // Issued together, awaited once: the added wall-clock is the MAX of the two,
-    // not their sum. `allSettled` so one failure can't discard the other's result.
-    const [, bootResult] = await Promise.allSettled([
+    // Issued together, awaited once: the added wall-clock is the MAX of the three,
+    // not their sum. `allSettled` so one failure can't discard the others' results.
+    //
+    // `tripMembers.list` joined this set to kill the trip-open role flash. It is
+    // what `useTripRole` reads, and while it was in flight `role` was `null` — so
+    // `isOwner` was FALSE, and `ItineraryPanel`'s `if (!isOwner)` took the MEMBER
+    // path and painted "Your timeline will start to fill in" until the query
+    // landed. Pending was indistinguishable from member.
+    //
+    // Resolving it here removes the pending state on this path rather than
+    // covering it, and it is a CLASS fix: every consumer that reads `role`
+    // directly — `ItineraryPanel` via the page, `ChatView`'s `canSeePlanning`,
+    // `FloatingChatPanel`'s `canSeeOrganizers` — gets a resolved role on its
+    // first render, without any of them being touched.
+    //
+    // `.fetch` not `.prefetch`, deliberately: the value has to come BACK so it can
+    // be seeded explicitly below. See TripBootSeed for why the HydrationBoundary
+    // can't do this job here.
+    const [, bootResult, membersResult] = await Promise.allSettled([
       helpers.competitions.getByTrip.prefetch({ tripId }),
       helpers.competitions.faceBootstrap.fetch({ tripId }),
+      helpers.tripMembers.list.fetch({ tripId }),
     ]);
     if (bootResult.status === "fulfilled") boot = bootResult.value as FaceBootstrap;
+    if (membersResult.status === "fulfilled") members = membersResult.value as TripMemberRow[];
     dehydratedState = helpers.dehydrate();
   } catch {
     // Auth or membership — fall through to the client, which renders the
-    // right error state.
+    // right error state. `members` stays null and `useTripRole` fetches as
+    // before, which is why ItineraryPanel still honours its `roleLoading`
+    // branch rather than trusting the seed to always land.
   }
 
   return (
@@ -74,8 +101,8 @@ export default async function TripLayout({
           See TripIdProvider. */}
       <TripIdProvider>
         {/* Explicit seed — the dehydrated state alone does not reach the client
-            cache here; see FaceBootSeed for the evidence and why. */}
-        {tripId && <FaceBootSeed tripId={tripId} boot={boot} />}
+            cache here; see TripBootSeed for the evidence and why. */}
+        {tripId && <TripBootSeed tripId={tripId} boot={boot} members={members} />}
         {children}
       </TripIdProvider>
     </HydrationBoundary>
