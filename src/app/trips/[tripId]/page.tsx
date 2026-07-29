@@ -494,7 +494,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       )}
       cup={<LiveFaceClient initialBoot={null} embedded />}
       chat={<ChatView tripId={tripId} canPost={effectiveCanEdit} />}
-      trip={({ openChat }) => (
+      trip={() => (
         <>
       {/* ── Trip content ────────────────────────────────────────────────── */}
       {isIdea ? (
@@ -537,7 +537,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 onTabChange={(tab) => goToTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
                 compActivated={showComp}
-                onOpenChat={openChat}
                 onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
               />
             )}
@@ -612,7 +611,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     isOwner={isOwner}
                     roleLoading={roleLoading}
                     onTabChange={(tab) => goToTab(tab as TabId)}
-                    onOpenChat={openChat}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}

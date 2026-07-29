@@ -30,9 +30,8 @@ export function HomeTab({
   isOwner,
   roleLoading,
   onTabChange,
-  onOpenChat,
   onOpenDatesSheet,
-}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onOpenDatesSheet?: () => void }) {
+}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenDatesSheet?: () => void }) {
   // Prefetch ideas so IdeaZonePanel renders instantly in the idea phase.
   trpc.ideas.list.useQuery({ tripId: trip.id });
 
@@ -46,7 +45,6 @@ export function HomeTab({
         canEdit={canEditProp}
         isOwner={!!isOwner}
         onTabChange={onTabChange}
-        onOpenChat={onOpenChat}
       />
     );
   }
