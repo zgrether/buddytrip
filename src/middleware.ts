@@ -1,7 +1,26 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isObviouslyBogusPath } from "@/lib/botPaths";
 
 export async function middleware(request: NextRequest) {
+  // Credential scanners, 404'd at the edge BEFORE anything else. They were being
+  // 307'd to /login like any other unauthenticated request; the scanner follows the
+  // redirect and we pay a full serverless page render so someone can check whether
+  // we leak AWS keys. 76 distinct such paths in one 3-hour production window.
+  //
+  // Deliberately the FIRST thing in the function — ahead of the Supabase client and
+  // `getUser()` — so a bogus path costs one edge invocation and no auth round-trip.
+  // Nothing legitimate reaches here: the rules key on shapes the App Router cannot
+  // produce, never on observed scanner names (see `botPaths.ts` for why, and for the
+  // tRPC batch-URL case that makes the dotfile rule `startsWith`, not `includes`).
+  //
+  // This is also the CLASS fix for a bug patched narrowly twice before —
+  // `manifest.webmanifest`, then `/api/trpc` — each time by naming the one thing
+  // that broke.
+  if (isObviouslyBogusPath(request.nextUrl.pathname)) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -111,6 +130,20 @@ export const config = {
     // manifest.webmanifest + sw.js are excluded like favicon.ico: they must be
     // publicly fetchable (Android install + SW registration send no auth
     // context), and without the exclusion the auth check 307'd them to /login.
-    "/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    //
+    // robots.txt + sitemap.xml join them, and were a LIVE bug rather than a cost
+    // problem: both were 307'd to /login, which then answered 200 with an HTML
+    // page. A crawler asking for robots.txt got a redirect chain ending in
+    // markup, so search engines could not read this site's robots.txt at all.
+    // They are crawler-facing by definition and must never be auth-gated.
+    //
+    // NB there is no `robots.ts`/`sitemap.ts` in `src/app`, so both now answer
+    // with Next's 404 — which is the CORRECT response for a crawler (an absent
+    // robots.txt means "no restrictions"), and is what it should have been all
+    // along. Adding a real robots.txt/sitemap is a separate product call.
+    //
+    // `favicon.ico` is escaped now; it was `favicon.ico` with a bare `.`, which
+    // matches any character. Cosmetic — no route was affected either way.
+    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
