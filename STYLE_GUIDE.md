@@ -571,6 +571,42 @@ dark image-overlay contexts where tokens don't apply. No migration needed.
 
 ---
 
+## Widths — the supported mobile floor, and what may stretch
+
+**412px is the supported mobile floor** — the Pixel 7 Pro viewport. It was the
+only device named anywhere in this repo before now, and only as a *failure case*
+(the bottom-CTA-below-the-fold bug that produced the anchoring rule, CLAUDE.md
+#14). Writing it down as the floor makes it a target rather than a postmortem.
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `ENTRY_COL_PX` | **412** | Score entry's width. A DESIGNED interface — it does not stretch at any viewport. |
+| `CUP_MAIN_MIN_PX` | 380 | Floor for the scoreboard column beside entry. |
+| `CUP_MAIN_MAX_PX` | 560 | Cap for any single content column. |
+| `CUP_COL_GAP_PX` | 16 | Gap between columns. |
+| `CUP_TWO_COL_PX` | **808** | `380 + 16 + 412` — the CONTENT width two columns need. |
+
+All five live in `src/components/shell/breakpoints.ts` as the one numeric source;
+CSS and JS both derive from there. Do not restate any of them in a component.
+
+**Two rules that follow, and they are the point:**
+
+1. **Score entry never stretches.** It is 412 wherever it renders in a column.
+   Below the two-column fit it takes the whole surface, as on mobile — it does not
+   get narrower either.
+2. **Nothing grows to fill.** Leftover space is MARGIN. A solo column caps at 560
+   and centres, so a 1760px viewport is a 1440px viewport with more margin and
+   there is no width at which any surface keeps widening.
+
+**Threshold is measured on CONTENT width, not viewport.** A viewport breakpoint
+would have to bake in the rail (246) and the stage padding (32), and would then be
+silently wrong the moment either changed. Express it as a container query on the
+stage. (Evidence it matters: the design mockup's own viewport figure assumed a
+206px rail and was 40px optimistic against this codebase — the content-width
+threshold is immune to that class of drift.)
+
+---
+
 ## Structural Tokens Reference
 
 | Token | Light | Dark | Use |

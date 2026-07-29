@@ -123,7 +123,7 @@ export function CompetitionFace({
   // answer to decide who owns the scroll (in two-pane the body must not scroll,
   // each pane does), and deriving it in both places is how they silently disagree.
   // Same rule, same React Query cache; the second caller is a cache read.
-  const { panelOpen, openGame, openType } = useCupPanel(tripId);
+  const { panelOpen, openGame, openType, entryOpen } = useCupPanel(tripId);
   // Suppress the game-panel slide-in wipe when the panel opens STRAIGHT into settings
   // (the deep-link `?settings=1` — the board→setup-game entry). In that case the settings
   // slide-over covers the panel immediately, so the wipe is just distracting dark motion
@@ -262,27 +262,49 @@ export function CompetitionFace({
      * board — the whole point of the panel idiom.
      */
     <div
+      /**
+       * THE STAGE. A clip box that lays its columns out and centres them; it never
+       * scrolls (each column owns exactly one scroller — #752's rule). Leftover
+       * space is MARGIN, not growth: `justify-center` plus per-column max-widths,
+       * so 1760 is 1440 with more margin and there is no width at which anything
+       * gets wider.
+       *
+       * `@container` because the two-column threshold is 808 of CONTENT width, not
+       * a viewport number — see breakpoints.ts for why measuring the space the
+       * columns actually get beats baking in the rail and padding.
+       */
       className={
         panelOpen
-          ? // `lg:items-stretch` (was `items-start`) + `lg:h-full lg:min-h-0`: the two
-            // panes now FILL the bounded shell body and each owns its own scroller,
-            // which is the master-detail convention and what a long game list beside a
-            // short game needs. `items-start` sized both to content, so neither could
-            // ever clip. Below lg this is one column and the pane overlays, unchanged.
-            "space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:items-stretch lg:gap-4 lg:space-y-0"
-          : "space-y-4"
+          ? "@container space-y-4 lg:flex lg:h-full lg:min-h-0 lg:items-stretch lg:justify-center lg:gap-4 lg:space-y-0"
+          : "@container space-y-4 lg:h-full lg:min-h-0"
       }
+      data-testid="cup-stage"
     >
       {/* Rosters entry point RELOCATED into competition settings (§2 / the deferred Phase B):
           the leaderboard header no longer carries a Rosters button. Points cups open the
           Rosters surface from Settings → "Teams & rosters"; match_play team editing stays a
           team-name tap → the Edit Team modal (per-team, no add/delete). */}
-      {/* The board's own scroll pane. ALWAYS present, classes vary — a wrapper
-          added conditionally would unmount and remount the leaderboard every time
-          a game opened or closed, which is precisely what the panel idiom exists
-          to avoid (the board must stay mounted and warm beneath the pane). */}
+      {/*
+        * THE LEADERBOARD — HIDDEN, not unmounted, once a game is open.
+        *
+        * Drill-in REPLACES: a game takes the surface the way it does on mobile, so
+        * no game list stays live beside an open game. `hidden` makes it
+        * non-interactive and removes it from layout while keeping it MOUNTED and
+        * warm, which is the whole reason the panel idiom exists (CLAUDE.md #12) —
+        * unmounting would throw the warm board away and pay to rebuild it on every
+        * back. The wrapper is always present for the same reason: adding it
+        * conditionally would remount the leaderboard.
+        *
+        * Capped at 560 and centred by the stage when it is the only column.
+        */}
       <div
-        className={panelOpen ? "min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto" : "min-w-0"}
+        // `lg:hidden`, NOT the `hidden` ATTRIBUTE — the attribute is width-blind and
+        // reached mobile, where the board must stay in flow beneath the `fixed`
+        // panel exactly as before (measured: it was being display:none'd at 390px).
+        // Drill-in is a DESKTOP model; mobile keeps its overlay.
+        className={`min-w-0 lg:mx-auto lg:h-full lg:min-h-0 lg:w-full lg:max-w-[560px] lg:overflow-y-auto ${
+          panelOpen ? "lg:hidden" : ""
+        }`}
         data-testid="board-pane"
       >
       <CompetitionLeaderboard
@@ -405,10 +427,22 @@ export function CompetitionFace({
            * (measured: top=174 bot=940 in a 900px viewport). Resetting it at `lg`
            * keeps the mobile offset and drops it where the box is in flow.
            */
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          /**
+           * ── The GAME column (drill-in) ────────────────────────────────────
+           * The scoreboard is now the MAIN column and flexes 380–560; entry is the
+           * fixed 412 beside it. Note this INVERTS the old `1fr : 1.35fr` grid,
+           * where the game pane was the WIDER of the two — easy to carry forward by
+           * accident, so it is spelled out.
+           *
+           * Flush, not a card: `lg:rounded-xl lg:border` is dropped. Per the mockup
+           * the columns are plain panes on the page background and the CONTENT
+           * inside them is card-surfaced (match rows, player rows). A card around a
+           * card reads as a box in a box, and STYLE_GUIDE §1 puts contextual
+           * structure on the page background rather than a chrome surface.
+           */
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : "lg:mx-auto"} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the
             // nav-hidden entry surfaces (their CTA anchors to the viewport bottom).
             paddingBottom: navUnderPanel ? "calc(64px + env(safe-area-inset-bottom))" : undefined,

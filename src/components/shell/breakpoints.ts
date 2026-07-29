@@ -35,6 +35,34 @@ import { useEffect, useState } from "react";
 export const SHELL_DESKTOP_PX = 1024;
 export const CHAT_COLUMN_PX = 1280;
 
+/**
+ * ── Cup two-column geometry — the ONE numeric source ─────────────────────────
+ *
+ * Score entry is a DESIGNED interface at a fixed 412px (the Pixel 7 Pro viewport
+ * and the supported mobile floor — see STYLE_GUIDE.md §Widths). It does not
+ * stretch at any viewport. The scoreboard column absorbs the difference by
+ * flexing between 380 and 560, so there is no cliff where a few pixels cost the
+ * whole second column, and nothing grows to fill: leftover space is margin.
+ *
+ * Two columns therefore need `380 + 16 + 412 = 808` of CONTENT width.
+ *
+ * ── Why content width and not a viewport breakpoint ──────────────────────────
+ * A viewport number would have to bake in the rail (246) and the stage padding
+ * (32), and it would then be wrong the moment either changes — the mockup's own
+ * ~1046 figure assumes a 206px rail and is 40px optimistic against this codebase.
+ * Measuring the space the columns actually get is rail-independent and can't
+ * drift. It is expressed as a CONTAINER query on the stage, so CSS and JS read
+ * the same number from here rather than each carrying their own copy — two
+ * sources for one threshold is the exact class of bug that produced the double
+ * scrollbar (#752) and the two-pane disagreement before it.
+ */
+export const ENTRY_COL_PX = 412;
+export const CUP_MAIN_MIN_PX = 380;
+export const CUP_MAIN_MAX_PX = 560;
+export const CUP_COL_GAP_PX = 16;
+/** Content width at which the entry column can sit BESIDE the scoreboard. */
+export const CUP_TWO_COL_PX = CUP_MAIN_MIN_PX + CUP_COL_GAP_PX + ENTRY_COL_PX; // 808
+
 function useMediaMin(px: number): boolean {
   // False on the server and on the first client render, so hydration matches;
   // the effect corrects it before paint-relevant work.

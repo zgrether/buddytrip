@@ -46,6 +46,20 @@ export interface CupPanelState {
   openGame: CupPanelGame | undefined;
   /** The open game's type, or null when nothing panel-capable is open. */
   openType: string | null;
+  /**
+   * A match is open in SCORE ENTRY, via `?match=<id>`.
+   *
+   * Entry used to be private component state inside `MatchGameView` (`screen ===
+   * "score"` + `selectedMatchId`), which meant the layout — two levels up — had no
+   * way to know it was open. Putting it in the URL makes it derivable
+   * SYNCHRONOUSLY here, which is what the column count needs: publishing it up
+   * through `GameChrome` would arrive one `useEffect` late and paint a frame with
+   * the wrong number of columns. It is also deep-linkable and rides the existing
+   * depth-tagged history markers unchanged.
+   */
+  entryOpen: boolean;
+  /** The `?match=` value, or null. */
+  openMatchId: string | null;
 }
 
 export function useCupPanel(tripId: string | null | undefined): CupPanelState {
@@ -60,11 +74,29 @@ export function useCupPanel(tripId: string | null | undefined): CupPanelState {
     ? (games as CupPanelGame[]).find((g) => g.id === openGameId)
     : undefined;
   const openType = openGame?.game_type_id ?? null;
-  return { panelOpen: !!openGame && opensAsPanel(openType), openGameId, openGame, openType };
+  const panelOpen = !!openGame && opensAsPanel(openType);
+  const openMatchId = search.get("match");
+  return {
+    panelOpen,
+    openGameId,
+    openGame,
+    openType,
+    // Entry only counts while a game is actually open — a stray `?match=` with no
+    // `?game=` is not a state the app can be in, and treating it as one would give
+    // the shell a column count for a surface that isn't rendered.
+    entryOpen: panelOpen && !!openMatchId,
+    openMatchId,
+  };
 }
 
 /**
- * Does the CONTENT BODY hand its scroll to the panes?
+ * Does the CONTENT BODY hand its scroll to the Cup's own columns?
+ *
+ * TRUE whenever the Cup is showing a game at all — drill-in or entry — because in
+ * BOTH of those the Cup lays itself out as bounded, self-scrolling columns and the
+ * body must not add a second scroller above them (one scroller per vertical chain,
+ * #752). It is only false on the plain leaderboard, which is ordinary flow content
+ * the body scrolls.
  *
  * `panelOpen` alone is not the condition, and getting that wrong is a real bug:
  * `AppShell` keeps all three tab slots mounted and hides the inactive ones, so a
