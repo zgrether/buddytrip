@@ -232,6 +232,31 @@ export function isDraftMatchFilled(m: DraftMatchConfig): boolean {
   return m.a.length === m.playersPerSide && m.b.length === m.playersPerSide;
 }
 
+/**
+ * Does a change of the rendered game id invalidate the "user has touched this
+ * draft" lock?
+ *
+ * The touched-lock (`draftTouched`) is keyed to "has the user typed here", not
+ * to any id — and the only things that clear it are Save and Cancel. Neither
+ * fires when the SAME mounted view is handed a DIFFERENT game, so a touched
+ * draft for game A suppresses the seed for game B and the panel keeps showing
+ * A's match rows. That is stale content, not merely a stale flag.
+ *
+ * Two cases are deliberately NOT a game change:
+ *  - `prev === next` — the identity is unchanged; nothing to invalidate.
+ *  - `prev === null` — the CREATE transition (`handleCreate` sets the id on a
+ *    view that was mounted with none). The draft the user built on the new-game
+ *    screen belongs to the game just created, so clearing it there would discard
+ *    exactly the work `handleCreate` takes care to preserve.
+ *
+ * Pure + exported so the rule is directly testable — the views that own the ref
+ * can't be rendered under this suite (node env, no jsdom), and the seed/lock
+ * interaction is too easy to get subtly wrong to leave untested.
+ */
+export function isDraftLockStale(prev: string | null, next: string | null): boolean {
+  return prev !== null && prev !== next;
+}
+
 // ── Payload (the `save_game_config` RPC contract) ────────────────────────────
 
 /** One match row the RPC writes. Sides are member-id lists (a 2v2 side becomes a
