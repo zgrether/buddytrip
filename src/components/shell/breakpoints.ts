@@ -80,26 +80,15 @@ function useMediaMin(px: number): boolean {
 /** Rail + tab strip are showing. */
 export const useIsShellDesktop = () => useMediaMin(SHELL_DESKTOP_PX);
 
-/** Chat renders as a side column rather than replacing the content. */
-export const useIsChatColumn = () => useMediaMin(CHAT_COLUMN_PX);
-
 /**
- * Where the Chat surface mounts, given the current view and viewport. Pulled
- * out of `AppShell`'s render so the "exactly one location, never both, never
- * neither-when-active" contract is a pure function AppShell actually calls
- * (not logic re-derived in a test, which can drift from the real thing).
+ * Chat renders as a persistent side column rather than a bottom sheet.
  *
- * The historical bug this guards: rendering Chat both inline AND in the
- * aside at once didn't just double-paint it — the aside's floating panel is
- * `position: fixed`, so an "invisible" duplicate still sat over the whole
- * app and swallowed every click, breaking four merge-blocking E2E specs.
+ * Chat is an independent overlay (Phase 6), not a view, so this is the ONLY
+ * thing that decides its placement — never gated on which tab is selected.
+ * Below this breakpoint chat is a resizable sheet (`ChatSheet`) regardless of
+ * which of the rail/tab-strip chrome is showing; the sheet and the aside
+ * column are mutually exclusive by construction (`AppShell` renders exactly
+ * one, chosen by this single boolean), so there is no width band where chat
+ * is open but unreachable — the historical bug this replaces.
  */
-export type ChatMountLocation = "inline" | "aside" | "none";
-
-export function chatMountLocation(
-  effectiveView: "home" | "trip" | "cup" | "chat",
-  chatIsColumn: boolean
-): ChatMountLocation {
-  if (effectiveView !== "chat") return "none";
-  return chatIsColumn ? "aside" : "inline";
-}
+export const useIsChatColumn = () => useMediaMin(CHAT_COLUMN_PX);

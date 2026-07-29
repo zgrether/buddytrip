@@ -242,12 +242,17 @@ export const TopNav: FC<TopNavProps> = ({
           <NewsToolButton tripId={tripId} onClick={onOpenNews} active={newsOpen} />
         )}
 
+        {/* Desktop-only (Phase 6): below `lg`, chat opens from the tab bar's
+            Chat action instead — this stays hidden there so there's exactly
+            one entry point per viewport, not two competing ones. */}
         {tripId && onOpenChat && (
-          <ChatToolButton
-            tripId={tripId}
-            onClick={onOpenChat}
-            active={chatOpen}
-          />
+          <div className="hidden lg:block">
+            <ChatToolButton
+              tripId={tripId}
+              onClick={onOpenChat}
+              active={chatOpen}
+            />
+          </div>
         )}
 
         {/* Quick Game moved OUT of the app header (trip/competition-scoped chrome)
@@ -341,6 +346,7 @@ function ChatToolButton({
       icon={MessageCircle}
       label="Chat"
       count={unread}
+      dot
       badgeBg="var(--color-bt-owner)"
       active={active}
       onClick={onClick}
@@ -358,8 +364,9 @@ function ChatToolButton({
 function ToolButton({
   icon: Icon,
   label,
-  count,
+  count = 0,
   badgeBg,
+  dot = false,
   active = false,
   onClick,
   ariaLabel,
@@ -372,8 +379,14 @@ function ToolButton({
 }: {
   icon: LucideIcon;
   label: string;
-  count: number;
-  badgeBg: string;
+  /** Numeric unread count. Ignored when `dot` is set — see `dot` below. */
+  count?: number;
+  badgeBg?: string;
+  /** Unread as a plain dot on the icon instead of a numeric badge — same
+   *  presentation both viewport widths (a dot doesn't need to collapse the
+   *  way a number does). Chat uses this (no count badge, per its redesign);
+   *  News keeps the numeric badge. */
+  dot?: boolean;
   active?: boolean;
   onClick?: () => void;
   ariaLabel: string;
@@ -390,7 +403,8 @@ function ToolButton({
   /** Override the label text color. Defaults to var(--color-bt-text). */
   labelColor?: string;
 }) {
-  const showBadge = count > 0;
+  const showDot = dot && count > 0;
+  const showBadge = !dot && count > 0;
   const badgeLabel = count > 99 ? "99+" : String(count);
   // Hover is driven from state, not a Tailwind hover: class — an inline
   // `background` (resting fill / "none") would otherwise win over the class
@@ -429,12 +443,29 @@ function ToolButton({
         cursor: "pointer",
       }}
     >
-      <Icon
-        size={16}
-        strokeWidth={2}
-        aria-hidden="true"
-        style={iconColor ? { color: iconColor } : undefined}
-      />
+      <span className="relative inline-flex">
+        <Icon
+          size={16}
+          strokeWidth={2}
+          aria-hidden="true"
+          style={iconColor ? { color: iconColor } : undefined}
+        />
+        {showDot && (
+          <span
+            aria-hidden="true"
+            data-testid={`${testId}-dot`}
+            className="absolute rounded-full"
+            style={{
+              top: -2,
+              right: -2,
+              width: 7,
+              height: 7,
+              background: badgeBg ?? "var(--color-bt-owner)",
+              border: "1.5px solid var(--color-bt-nav-bg)",
+            }}
+          />
+        )}
+      </span>
       <span
         className="@max-[600px]:hidden"
         style={labelColor ? { color: labelColor } : undefined}

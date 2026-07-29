@@ -17,14 +17,13 @@ import { usePathname } from "next/navigation";
  * form) — those pages own their own persistent bottom navigation (AppTabBar /
  * FaceBottomNav), and this footer is a normal in-flow block that trails
  * AFTER the whole page regardless. That's harmless on an ordinarily-scrolling
- * page, but the Chat tab's embedded surface sizes itself to EXACTLY fill the
- * viewport below the top nav and above that bottom nav (`ChatView`'s
- * `calc(100svh - 56px - var(--bt-bottomnav-height, 0px))`) — a footer stacked
- * below it silently adds its own height as extra scrollable page content the
- * Chat surface's own math never accounted for, so the composer ends up
- * sitting well short of the bottom nav instead of pinned against it. Rather
- * than have `ChatView` reach outside itself to measure a footer it has no
- * business knowing about, the footer just doesn't belong on these routes.
+ * page, but the chat overlay (`ChatSheet`, Phase 6) is `position: fixed`,
+ * pinned to the viewport (top of the mobile bottom nav / `--bt-bottomnav-height`)
+ * rather than sized off document height — a footer stacked below it as extra
+ * in-flow page content would sit BEHIND the overlay's scrim/panel rather than
+ * visibly break its sizing, but it would still be an unreachable dead zone of
+ * page underneath a fixed surface that never scrolls it into view. The
+ * footer just doesn't belong on these routes.
  */
 export function SiteFooter() {
   const pathname = usePathname();

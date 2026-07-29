@@ -2,17 +2,23 @@
 
 import { type FC } from "react";
 import { Calendar, Trophy, MessageCircle, type LucideIcon } from "lucide-react";
-import type { AppView } from "./useAppView";
 
 /**
- * What a tab says when there's no trip selected.
+ * What a tab (or the Chat action) says when there's no trip selected.
  *
  * The tab is tappable rather than inert (AppTabBar) because this copy is the
  * only place a first-time crew member learns what a Cup even is. It explains and
  * offers the one action that unlocks it; it never navigates on its own.
+ *
+ * `chat` is included even though Chat is no longer an `AppView` (Phase 6 — it's
+ * a tab-bar action, not a destination): the explainer content is about what the
+ * FEATURE does, which is still worth surfacing when a locked Chat action is
+ * tapped with no trip in context. Hence a standalone type here rather than
+ * `Exclude<AppView, "home">`.
  */
+export type LockedExplainerView = "trip" | "cup" | "chat";
 
-const COPY: Record<Exclude<AppView, "home">, { Icon: LucideIcon; head: string; body: string }> = {
+const COPY: Record<LockedExplainerView, { Icon: LucideIcon; head: string; body: string }> = {
   trip: {
     Icon: Calendar,
     head: "Trips hold the plan",
@@ -31,7 +37,7 @@ const COPY: Record<Exclude<AppView, "home">, { Icon: LucideIcon; head: string; b
 };
 
 export const LockedTabExplainer: FC<{
-  view: Exclude<AppView, "home">;
+  view: LockedExplainerView;
   /** Omit to render the copy WITHOUT the action. `/dashboard` at `lg+` does
    *  that: the rail beside it already is the picker, so a "Pick a trip" button
    *  pointing at nothing in particular would be noise. */

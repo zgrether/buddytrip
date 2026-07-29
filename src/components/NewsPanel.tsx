@@ -45,17 +45,23 @@ interface NewsPanelProps {
   tripId: string;
   isOpen: boolean;
   /**
-   * Rendered as a TAB (AppShell's Chat view) rather than as an overlay.
+   * Rendered as a SEGMENT of `ChatView` rather than as a standalone overlay.
+   * `ChatView` itself is always mounted inside some other container now
+   * (`AppShell`'s `<aside>` at ≥1280, or `ChatSheet` below it — Phase 6:
+   * chat is an action, never a tab).
    *
    * Two things change. (1) Layout: the return below skips the portal /
    * `fixed` / scrim / drag-resize / × chrome entirely and renders in normal
-   * flow, filling whatever height the caller (`ChatView`) gives it — a tab
-   * has nothing to close or resize; you leave by choosing another segment.
-   * (2) History: a tab must NOT claim a history entry. `useModalBackButton`
-   * pushes one on mount and calls `history.back()` on unmount — right for a
-   * modal, corrupting for a tab: switching away popped an entry the shell
-   * never pushed, so repeated tab switching unwound the stack until the user
-   * fell out of the trip entirely (observed: landing on /dashboard).
+   * flow, filling whatever height the caller (`ChatView`) gives it — a
+   * segment has nothing to close or resize itself; the container around
+   * `ChatView` owns that. (2) History: an embedded segment must NOT claim a
+   * history entry of its own — the container already owns exactly one, via
+   * `useModalBackButton`. Kept disabled here for the same reason it was
+   * added: pushing one on mount and calling `history.back()` on unmount is
+   * right for a real modal and was corrupting when Chat was briefly a TAB
+   * (pre-Phase-6) — switching away popped an entry the shell never pushed,
+   * so repeated tab switching unwound the stack until the user fell out of
+   * the trip entirely (observed: landing on /dashboard).
    */
   embedded?: boolean;
   onClose: () => void;
@@ -358,7 +364,7 @@ function NewsPanelInner({
     </div>
   );
 
-  // Embedded header (the Chat tab's News segment) — same actions minus the
+  // Embedded header (ChatView's News segment) — same actions minus the
   // title text (the segment button already reads "News") and minus the ×
   // (see the embedded return below).
   const embeddedHeader = (
@@ -414,7 +420,7 @@ function NewsPanelInner({
       </>
     );
 
-  // ── Embedded (the Chat tab's News segment) ────────────────────────────────
+  // ── Embedded (ChatView's News segment) ────────────────────────────────────
   // A tab has no scrim to close and no × to dismiss — you leave by choosing
   // another segment. Render in normal flow (no portal, no `fixed`, no
   // backdrop, no drag-resize): it fills whatever height its caller

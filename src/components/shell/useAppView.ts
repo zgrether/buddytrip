@@ -5,12 +5,21 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
 
 /**
- * useAppView — the OUTER tab (Home · Trip · Cup · Chat), Phase 3.
+ * useAppView — the OUTER tab (Home · Trip · Cup), Phase 3.
+ *
+ * Chat is NOT one of these (Phase 6 — "chat becomes a tab-bar action, not a
+ * destination"). It used to be a fourth `AppView`, rendered in place of
+ * whichever tab was selected, which is exactly the bug this reworked: Chat and
+ * Cup could both read "active" at once, tapping Chat abandoned wherever you
+ * were, and a tablet-width band existed where Chat was the only thing
+ * reachable on screen (no bottom nav, no top nav). Chat open/closed now lives
+ * as ordinary local state (`AppShell`'s `chatOpen`), orthogonal to this hook —
+ * see `useModalBackButton`, which chat reuses exactly as any other modal does.
  *
  * Same model as Phase 2's inner trip sub-tabs, one level up: the tab is DERIVED
  * from the URL (`?view=`), writes go through the History API, and the first step
  * away from the default pushes ONE sentinel that every later switch replaces. So
- * an excursion across all four tabs costs one history entry, back returns to
+ * an excursion across all tabs costs one history entry, back returns to
  * where it started, and back again leaves.
  *
  * ── `?view=` and `?tab=` coexist, and `?tab=` is PRESERVED ───────────────────
@@ -23,16 +32,16 @@ import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
  * which is what makes that preservation automatic rather than a special case.
  *
  * ── Scope: persistent WITHIN a context, not across ───────────────────────────
- * Trip ↔ Cup ↔ Chat are free — same route, no server round trip. Home is a
+ * Trip ↔ Cup are free — same route, no server round trip. Home is a
  * navigation, because Home is context-free and lives on `/dashboard` while the
- * other three are scoped to `/trips/[tripId]`. That is the deliberate trade:
+ * other two are scoped to `/trips/[tripId]`. That is the deliberate trade:
  * context switches are rare and heavier by nature, and keeping them on a route
  * boundary is what preserves the anti-flash guarantee (see AppShell).
  */
 
-export type AppView = "home" | "trip" | "cup" | "chat";
+export type AppView = "home" | "trip" | "cup";
 
-export const APP_VIEWS: readonly AppView[] = ["home", "trip", "cup", "chat"] as const;
+export const APP_VIEWS: readonly AppView[] = ["home", "trip", "cup"] as const;
 
 /**
  * The view a host shows when `?view=` is absent.
