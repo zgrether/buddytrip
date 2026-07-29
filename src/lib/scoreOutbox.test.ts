@@ -82,3 +82,66 @@ describe("scoreOutbox — localStorage wrappers", () => {
     expect(outboxEntries("g1")).toHaveLength(2);
   });
 });
+
+// ── #744: the outbox across a game swap in the board's pane ─────────────────
+// At `lg+` the board is `[game list | game pane]` and the list stays interactive,
+// so `?game=` can move A→B without a route change. The pane is now KEYED by the
+// game id (`gamePanelView`), so a swap unmounts the old view and mounts a fresh
+// one — which is what re-runs `useScoreSaver`'s recover-on-mount against the NEW
+// game. These lock the store semantics that recovery depends on.
+describe("scoreOutbox — survives a keyed remount on a game swap (#744)", () => {
+  beforeEach(() => {
+    const store = new Map<string, string>();
+    (globalThis as unknown as { window: unknown; localStorage: unknown }).window = globalThis;
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+      key: () => null,
+      length: 0,
+    } as Storage;
+  });
+
+  /**
+   * THE HAZARD THAT DECIDED THE FIX. A participant id for a 1v1 side IS a user id,
+   * and two match games in one competition share their users — so "same cell key,
+   * different game" is the NORMAL case here, not a corner. The outbox is namespaced
+   * by game, so an unconfirmed 4 on game A's hole 3 for user U must not be visible
+   * as game B's hole 3 for user U.
+   *
+   * This is precisely what a live-derived `gameId` would NOT have protected: the
+   * outbox would have been fine, but the in-memory `values` map (keyed by the same
+   * user id, and spread OVER the server snapshot by `mergedFor`) would have carried
+   * game A's score onto game B's card. The remount is what clears that.
+   */
+  it("the same user id in two games does not cross over", () => {
+    outboxPut("game-a", "user-U", "3", 4);
+    outboxPut("game-b", "user-U", "3", 6);
+    expect(outboxEntries("game-a")).toEqual([{ participantId: "user-U", unitLabel: "3", value: 4 }]);
+    expect(outboxEntries("game-b")).toEqual([{ participantId: "user-U", unitLabel: "3", value: 6 }]);
+  });
+
+  it("an unconfirmed cell on game A survives a swap to B and is still there on return", () => {
+    outboxPut("game-a", "user-U", "7", 5); // typed, never confirmed
+    // Swap to B: the pane remounts and recovers against B, which has nothing pending.
+    expect(outboxEntries("game-b")).toEqual([]);
+    // Swap back to A: the remount recovers A's survivor, unchanged.
+    expect(outboxEntries("game-a")).toEqual([{ participantId: "user-U", unitLabel: "7", value: 5 }]);
+  });
+
+  /**
+   * A save that CONFIRMS after its view unmounted still clears the right game's
+   * entry: `outboxClear` is a module-level function closing over the gameId passed
+   * to `useScoreSaver`, not component state, so the in-flight `mutateAsync().then()`
+   * clears game A even though the pane now shows B. Only the `setSaveStatus` UI
+   * update is dropped (React 18 no-ops a setState on an unmounted component).
+   */
+  it("a confirm landing after the swap clears the ORIGINATING game, not the visible one", () => {
+    outboxPut("game-a", "user-U", "7", 5);
+    outboxPut("game-b", "user-U", "7", 9);
+    outboxClear("game-a", "user-U", "7"); // A's in-flight save confirms post-swap
+    expect(outboxEntries("game-a")).toEqual([]);
+    expect(outboxEntries("game-b")).toEqual([{ participantId: "user-U", unitLabel: "7", value: 9 }]);
+  });
+});

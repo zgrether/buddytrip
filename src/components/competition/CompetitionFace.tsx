@@ -12,10 +12,7 @@ import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { isMatchPlayFormat, isRackFormat, isStrokeFormat, opensAsPanel } from "@/lib/gameRoutes";
-import { MatchGameView } from "@/components/games/MatchGameView";
-import { RackGameView } from "@/components/games/RackGameView";
-import { NonGolfGameView } from "@/components/games/NonGolfGameView";
-import { StrokeGameView } from "@/components/games/StrokeGameView";
+import { gamePanelView } from "./gamePanelView";
 import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
 import { useGameChrome } from "@/components/games/GameChrome";
 
@@ -160,17 +157,14 @@ export function CompetitionFace({
     };
   }, [panelOpen]);
   // Pick the format's view — each reads its own tripId + `?game=`, so the host just
-  // selects which component to mount. Explicit per format (non-golf is the only
-  // fall-through, and only after opensAsPanel already vetted the type).
-  const panelView = !panelOpen
-    ? null
-    : isMatchPlayFormat(openType)
-      ? <MatchGameView />
-      : isRackFormat(openType)
-        ? <RackGameView />
-        : isStrokeFormat(openType)
-          ? <StrokeGameView />
-          : <NonGolfGameView />;
+  // selects which component to mount. Now KEYED BY THE GAME ID (#744): at `lg+` the
+  // board below is `[list | pane]` and the list stays interactive beside the open
+  // game, so `?game=` can move A→B with `panelOpen` never dipping false. Same
+  // position + same type + same key is what makes React reuse an instance, and the
+  // reused instance kept its captured `gameId` — the pane silently didn't navigate
+  // and a score entered after the swap wrote to game A. The key is the remount.
+  // See `gamePanelView` for why a key rather than a live-derived id.
+  const panelView = panelOpen && openGameId ? gamePanelView(openType, openGameId) : null;
 
   // Warm-cache seed (Task 4) — so the panel renders INSTANTLY instead of
   // spinner-gating on a cold getById. For match/rack/non-golf, seed getById from
