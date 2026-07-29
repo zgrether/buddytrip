@@ -15,6 +15,7 @@ import { getLocationInfo } from "@/lib/locationUtils";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { getTripCountdown } from "@/lib/tripCountdown";
 import { CountdownBar } from "@/components/TripHeader";
+import { Spinner } from "@/components/Spinner";
 
 interface Trip {
   id: string;
@@ -145,13 +146,10 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
           className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
           style={{ background: "var(--color-bt-overlay)" }}
         >
-          <div
-            className="h-6 w-6 animate-spin rounded-full border-2"
-            style={{
-              borderColor: "var(--color-bt-accent)",
-              borderTopColor: "transparent",
-            }}
-          />
+          {/* The shared <Spinner/> — same ring the context rail's pending row
+              shows, so the two "the thing you tapped is loading" affordances
+              can't drift apart. */}
+          <Spinner size={24} />
         </div>
       )}
       <div className="relative p-4">

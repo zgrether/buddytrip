@@ -15,6 +15,7 @@ import { isMatchPlayFormat, isRackFormat, isStrokeFormat, opensAsPanel } from "@
 import { gamePanelView } from "./gamePanelView";
 import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
 import { useGameChrome } from "@/components/games/GameChrome";
+import { useIsShellDesktop } from "@/components/shell/breakpoints";
 
 interface Competition {
   id: string;
@@ -147,15 +148,28 @@ export function CompetitionFace({
   // `overflow-y-auto`, so without this the board behind it keeps its own window
   // scrollbar → two vertical scrollbars (Zach's QA). The panel owns the only
   // scroll while it's up; restored on close.
+  //
+  // MOBILE ONLY. This is what actually killed scrolling in two-pane mode: it ran
+  // at every width, but at `lg+` the panel is `lg:static` — in normal flow, not a
+  // `fixed` box with its own scroller — so locking the document left the page
+  // unable to scroll AND neither pane able to (their `overflow-y-auto` had no
+  // bounded height either). "Open a game and neither pane scrolls", exactly.
+  // At `lg+` the shell is now a bounded box and each pane owns a real scroller,
+  // so there is no document scroll to lock in the first place.
+  // NB the hook is called unconditionally — `panelOpen && useIsShellDesktop()`
+  // would short-circuit and skip it, which breaks the rules of hooks. It gates a
+  // document STYLE in an effect, never a tree, so it can't cause a remount.
+  const isShellDesktop = useIsShellDesktop();
+  const lockPageScroll = panelOpen && !isShellDesktop;
   useEffect(() => {
-    if (!panelOpen) return;
+    if (!lockPageScroll) return;
     const el = document.documentElement;
     const prev = el.style.overflow;
     el.style.overflow = "hidden";
     return () => {
       el.style.overflow = prev;
     };
-  }, [panelOpen]);
+  }, [lockPageScroll]);
   // Pick the format's view — each reads its own tripId + `?game=`, so the host just
   // selects which component to mount. Now KEYED BY THE GAME ID (#744): at `lg+` the
   // board below is `[list | pane]` and the list stays interactive beside the open
@@ -250,7 +264,12 @@ export function CompetitionFace({
     <div
       className={
         panelOpen
-          ? "space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:items-start lg:gap-4 lg:space-y-0"
+          ? // `lg:items-stretch` (was `items-start`) + `lg:h-full lg:min-h-0`: the two
+            // panes now FILL the bounded shell body and each owns its own scroller,
+            // which is the master-detail convention and what a long game list beside a
+            // short game needs. `items-start` sized both to content, so neither could
+            // ever clip. Below lg this is one column and the pane overlays, unchanged.
+            "space-y-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:items-stretch lg:gap-4 lg:space-y-0"
           : "space-y-4"
       }
     >
@@ -258,6 +277,11 @@ export function CompetitionFace({
           the leaderboard header no longer carries a Rosters button. Points cups open the
           Rosters surface from Settings → "Teams & rosters"; match_play team editing stays a
           team-name tap → the Edit Team modal (per-team, no add/delete). */}
+      {/* The board's own scroll pane. ALWAYS present, classes vary — a wrapper
+          added conditionally would unmount and remount the leaderboard every time
+          a game opened or closed, which is precisely what the panel idiom exists
+          to avoid (the board must stay mounted and warm beneath the pane). */}
+      <div className={panelOpen ? "min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto" : "min-w-0"}>
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
@@ -276,6 +300,7 @@ export function CompetitionFace({
         // edits identity (roster read-only), a plain member sees it read-only.
         onEditTeam={handleEditTeam}
       />
+      </div>
 
       {/* Add a game opens the GameSheet modal directly over the board (the
           aggregate games panel was retired). It's ADD-only now — editing an
@@ -352,7 +377,22 @@ export function CompetitionFace({
            * The wipe animation is mobile-only: a pane appearing beside a list has
            * nothing to slide over.
            */
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:static lg:z-auto lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          /**
+           * `lg:relative` REPLACES `lg:static`, and that is load-bearing beyond
+           * layout. `MatchGameView`'s score-entry surface renders `absolute inset-0`
+           * in panel mode, which resolves against the nearest POSITIONED ancestor —
+           * on mobile that is this box (`fixed`), but `lg:static` removed the
+           * positioning at desktop and nothing between here and the viewport is
+           * positioned, so the entry surface escaped the pane and filled the whole
+           * viewport. `relative` is in-flow exactly like `static` for layout AND
+           * restores the containing block. (Pre-existing bug, fixed here because
+           * this is the line that caused it.)
+           *
+           * `lg:h-full lg:min-h-0` is what finally makes the existing
+           * `overflow-y-auto` do something at desktop: it had no bounded height,
+           * so the box just grew to its content.
+           */
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:relative lg:z-auto lg:h-full lg:min-h-0 lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
