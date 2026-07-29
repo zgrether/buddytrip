@@ -263,8 +263,14 @@ function LiveFaceInner({
   }
 
   // Embedded (Cup tab): body only — the shell owns the frame. See the prop doc.
+  //
+  // `lg:h-full lg:min-h-0` continues the shell's bounded height down to the board.
+  // Without it this `<main>` is auto-height, so the two-pane grid's own `lg:h-full`
+  // resolves to 100%-of-auto → auto, the panes stretch to CONTENT height, neither
+  // ever overflows, and the shell body absorbs all the scrolling — which is what
+  // made the panes non-independent and put a freshly-opened game below the fold.
   if (embedded) {
-    return <main className="mx-auto max-w-[1024px] px-3 pt-4">{body}</main>;
+    return <main className="mx-auto max-w-[1024px] px-3 pt-4 lg:h-full lg:min-h-0">{body}</main>;
   }
 
   return (

@@ -11,7 +11,8 @@ import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
-import { isMatchPlayFormat, isRackFormat, isStrokeFormat, opensAsPanel } from "@/lib/gameRoutes";
+import { isMatchPlayFormat, isRackFormat, isStrokeFormat } from "@/lib/gameRoutes";
+import { useCupPanel } from "@/hooks/useCupPanel";
 import { gamePanelView } from "./gamePanelView";
 import { ScorecardPreviewSheet } from "@/components/games/ScorecardPreviewSheet";
 import { useGameChrome } from "@/components/games/GameChrome";
@@ -118,12 +119,11 @@ export function CompetitionFace({
   // pops the entry. Distinct from the in-game scorecard, which each game view
   // hosts itself so it can show live scores/save-state.
   const scorecardGameId = search.get("scorecard");
-  const gamesForPanel = trpc.games.listByTrip.useQuery({ tripId }, STRUCTURE_QUERY).data ?? [];
-  const openGame = openGameId
-    ? (gamesForPanel as { id: string; game_type_id: string | null }[]).find((g) => g.id === openGameId)
-    : undefined;
-  const openType = openGame?.game_type_id ?? null;
-  const panelOpen = !!openGame && opensAsPanel(openType);
+  // The two-pane predicate now lives in `useCupPanel` — AppShell needs the SAME
+  // answer to decide who owns the scroll (in two-pane the body must not scroll,
+  // each pane does), and deriving it in both places is how they silently disagree.
+  // Same rule, same React Query cache; the second caller is a cache read.
+  const { panelOpen, openGame, openType } = useCupPanel(tripId);
   // Suppress the game-panel slide-in wipe when the panel opens STRAIGHT into settings
   // (the deep-link `?settings=1` — the board→setup-game entry). In that case the settings
   // slide-over covers the panel immediately, so the wipe is just distracting dark motion
@@ -281,7 +281,10 @@ export function CompetitionFace({
           added conditionally would unmount and remount the leaderboard every time
           a game opened or closed, which is precisely what the panel idiom exists
           to avoid (the board must stay mounted and warm beneath the pane). */}
-      <div className={panelOpen ? "min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto" : "min-w-0"}>
+      <div
+        className={panelOpen ? "min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto" : "min-w-0"}
+        data-testid="board-pane"
+      >
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
@@ -392,7 +395,17 @@ export function CompetitionFace({
            * `overflow-y-auto` do something at desktop: it had no bounded height,
            * so the box just grew to its content.
            */
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:relative lg:z-auto lg:h-full lg:min-h-0 lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          /**
+           * `lg:top-0` is load-bearing, and its absence was a latent bug from #749.
+           * `top-14` exists for the MOBILE `fixed` box (below the 56px app bar).
+           * #749 changed `lg:static` → `lg:relative` to restore the containing block
+           * for the entry surface — but `static` IGNORES `top` and `relative`
+           * HONOURS it, so the pane silently gained a 56px downward offset while
+           * keeping its full height, and hung 56px past the bottom of the viewport
+           * (measured: top=174 bot=940 in a 900px viewport). Resetting it at `lg`
+           * keeps the mobile offset and drops it where the box is in flow.
+           */
+          className={`fixed inset-x-0 bottom-0 top-14 z-30 overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:rounded-xl lg:border ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
