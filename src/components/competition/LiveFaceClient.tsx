@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useTripId } from "@/components/TripIdProvider";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
@@ -10,19 +10,17 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
-import { TopNav } from "@/components/TopNav";
-import { TripBottomNav } from "@/components/BottomNav";
-import { FloatingChatPanel } from "@/components/FloatingChatPanel";
-import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { CompetitionFace } from "@/components/competition/CompetitionFace";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
-import { GameChromeProvider, useGameChrome } from "@/components/games/GameChrome";
 
 /**
- * The Live face — the competition face's client root (the "Live" bottom-nav
- * destination). Stage 3 escaped this off the trip's Competition tab: it's a
- * clean face = global title bar (Band 1) + the competition header (Band 2) +
- * the bottom nav, with NO trip header and NO trip tab bar.
+ * The Live face — the competition face's client root, rendered inside
+ * `AppShell` as the Cup tab (Phase 3, and body-only since — the shell
+ * supplies the app frame: `GameChromeProvider`, the top bar, the tab bar,
+ * and chat/news, all of which used to be duplicated here behind a
+ * standalone `embedded={false}` mode nothing constructed any more; removed
+ * rather than left dormant, see the PR this landed in for the reachability
+ * audit).
  *
  * It hosts both states through CompetitionFace (setup guide ⇄ leaderboard) and
  * — as the interim entry point until Stage 5 — the pre-competition create flow
@@ -49,23 +47,10 @@ export type FaceBootstrap =
 
 export function LiveFaceClient({
   initialBoot,
-  embedded = false,
 }: {
   /** Server-prefetched bootstrap (Stage B). null when the server prefetch was
    *  skipped (unauthed/early) — the client then fetches + shows the spinner. */
   initialBoot: FaceBootstrap | null;
-  /**
-   * Hosted inside `AppShell` as the Cup tab (Phase 3) rather than owning the
-   * screen. The shell supplies the app frame — `GameChromeProvider`, the top bar,
-   * the tab bar, and the chat/news surfaces — so this renders BODY ONLY.
-   *
-   * The provider in particular must come from the shell, not from here: `TopNav`
-   * reads `useGameChrome()` to swap into game mode, so the provider has to sit
-   * ABOVE the bar. Rendering a second one here would give the game panel a
-   * provider the bar can't see, and the game's back/title/gear would silently
-   * stop appearing.
-   */
-  embedded?: boolean;
 }) {
   /**
    * The trip UUID, via the shared provider — never `useParams()` directly.
@@ -96,34 +81,20 @@ export function LiveFaceClient({
     );
   }
 
-  return <LiveFaceInner tripId={tripId} initialBoot={initialBoot} embedded={embedded} />;
+  return <LiveFaceInner tripId={tripId} initialBoot={initialBoot} />;
 }
 
 function LiveFaceInner({
   tripId,
   initialBoot,
-  embedded,
 }: {
   tripId: string;
   initialBoot: FaceBootstrap | null;
-  embedded: boolean;
 }) {
   // Push competition (name, tagline, roster setup) + membership changes live so
   // the face re-resolves without a manual refresh.
   useRealtimeCompetition(tripId);
   useRealtimeMembers(tripId);
-
-  const [chatOpen, setChatOpen] = useState(false);
-  const [newsOpen, setNewsOpen] = useState(false);
-
-  const openChat = () => {
-    setNewsOpen(false);
-    setChatOpen((p) => !p);
-  };
-  const openNews = () => {
-    setChatOpen(false);
-    setNewsOpen((p) => !p);
-  };
 
   const utils = trpc.useUtils();
 
@@ -158,22 +129,6 @@ function LiveFaceInner({
   const competition = boot?.competition ?? null;
   // Competition role (owner / co_admin / member), live-derived server-side.
   const role = boot?.myCompetitionRole ?? null;
-
-  // The current user's TEAM color, for the app-bar avatar (Task 2 — reinforces
-  // team identity in competition context). Resolved from the same faceBootstrap
-  // snapshot the board uses: my assignment → team → color. Undefined when I'm
-  // teamless/unresolvable → the avatar falls back to the teal accent.
-  const { data: me } = trpc.users.getMe.useQuery();
-  const myTeamColor = useMemo(() => {
-    if (!boot || !me) return null;
-    const myTeamId = (boot.assignments as { user_id: string; team_id: string }[] | undefined)
-      ?.find((a) => a.user_id === me.id)?.team_id;
-    if (!myTeamId) return null;
-    return (
-      (boot.teams as { id: string; color: string | null }[] | undefined)
-        ?.find((t) => t.id === myTeamId)?.color ?? null
-    );
-  }, [boot, me]);
   const canEdit = role === "owner" || role === "co_admin";
   const isOwner = role === "owner";
   // Seed the child caches from the one bootstrap so the board/guide — and the
@@ -217,14 +172,6 @@ function LiveFaceInner({
     }
   }, [boot, tripId, utils]);
 
-  // Crew names (for chat/news authors) are container-provided and NOT needed to
-  // render the face — fetch lazily, only when a panel opens (A4: chat/news off
-  // the load critical path).
-  const { data: members = [] } = trpc.tripMembers.list.useQuery(
-    { tripId },
-    { ...STRUCTURE_QUERY, enabled: chatOpen || newsOpen },
-  );
-
   let body: React.ReactNode;
   if (loading) {
     body = (
@@ -262,102 +209,18 @@ function LiveFaceInner({
     );
   }
 
-  // Embedded (Cup tab): body only — the shell owns the frame. See the prop doc.
+  // Body only — the shell (AppShell) owns the frame: GameChromeProvider, the
+  // top bar, the tab bar, and chat/news. Rendering a second GameChromeProvider
+  // here would give the game panel a provider the bar can't see, and the
+  // game's back/title/gear would silently stop appearing — so this never
+  // wraps its own.
   //
   // `lg:h-full lg:min-h-0` continues the shell's bounded height down to the board.
   // Without it this `<main>` is auto-height, so the two-pane grid's own `lg:h-full`
   // resolves to 100%-of-auto → auto, the panes stretch to CONTENT height, neither
   // ever overflows, and the shell body absorbs all the scrolling — which is what
   // made the panes non-independent and put a freshly-opened game below the fold.
-  if (embedded) {
-    return <main className="mx-auto max-w-[1024px] px-3 pt-4 lg:h-full lg:min-h-0">{body}</main>;
-  }
-
-  return (
-    <GameChromeProvider>
-    <div
-      className="min-h-screen"
-      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
-    >
-      {/* Band 1 — the global title bar, identical to the trip face (§2), EXCEPT
-          the trip-switcher is suppressed here (W3-Header2): the competition face
-          is a destination reached from within a trip, not a place to hop between
-          trips. Scoped to this face's bar only — the trip face keeps its switcher. */}
-      <TopNav
-        tripId={tripId}
-        hideTripSwitcher
-        onOpenChat={openChat}
-        chatOpen={chatOpen}
-        onOpenNews={openNews}
-        newsOpen={newsOpen}
-        avatarTeamColor={myTeamColor}
-        onDismissPanels={() => {
-          setChatOpen(false);
-          setNewsOpen(false);
-        }}
-      />
-
-      <main className="mx-auto max-w-[1024px] px-3 pt-4 pb-32">{body}</main>
-
-      {/* Bottom nav persists on the face so you can always cross back to the trip
-          (§11) — EXCEPT on the focused score-entry surface (#550 Task 5), where a
-          game view publishes hideBottomNav. Live is the current destination. */}
-      <FaceBottomNav
-        tripId={tripId}
-        liveLabel={competition?.short_name ?? competition?.name ?? null}
-      />
-
-      {/* Chat / News overlay any surface (§11). */}
-      <FloatingChatPanel
-        tripId={tripId}
-        isOpen={chatOpen}
-        onClose={() => setChatOpen(false)}
-        memberNames={Object.fromEntries(
-          members.map(
-            (m: {
-              user_id: string | null;
-              memberId: string;
-              displayName: string;
-            }) => [m.user_id ?? m.memberId, m.displayName]
-          )
-        )}
-      />
-      <NewsPanel
-        tripId={tripId}
-        isOpen={newsOpen}
-        onClose={() => setNewsOpen(false)}
-        canPost={canEdit}
-        authors={Object.fromEntries(
-          members.map(
-            (m: {
-              user_id: string | null;
-              memberId: string;
-              displayName: string;
-              role: NewsAuthorMeta["role"];
-              user: { avatar_icon: string | null } | null;
-            }) => [
-              m.user_id ?? m.memberId,
-              {
-                name: m.displayName,
-                role: m.role,
-                avatarIcon: m.user?.avatar_icon ?? null,
-              },
-            ]
-          )
-        )}
-      />
-    </div>
-    </GameChromeProvider>
-  );
-}
-
-// ── Bottom nav (game-aware) ──────────────────────────────────────────────────
-// A consumer INSIDE the provider so it can read the published chrome; the score-
-// entry surface hides it (Task 5). Kept on the scoreboard + everywhere else.
-function FaceBottomNav({ tripId, liveLabel }: { tripId: string; liveLabel: string | null }) {
-  const chrome = useGameChrome();
-  if (chrome?.hideBottomNav) return null;
-  return <TripBottomNav tripId={tripId} showComp={true} liveLabel={liveLabel} />;
+  return <main className="mx-auto max-w-[1024px] px-3 pt-4 lg:h-full lg:min-h-0">{body}</main>;
 }
 
 // ── Empty states ────────────────────────────────────────────────────────────

@@ -302,7 +302,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
             onDismissPanels={onDismissPanels}
           />
         )}
-        cup={<LiveFaceClient initialBoot={null} embedded />}
+        cup={<LiveFaceClient initialBoot={null} />}
         chat={<ChatView tripId={tripId} canPost={false} />}
         trip={
           <div className="flex min-h-[60vh] items-center justify-center">
@@ -492,7 +492,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           onDismissPanels={onDismissPanels}
         />
       )}
-      cup={<LiveFaceClient initialBoot={null} embedded />}
+      cup={<LiveFaceClient initialBoot={null} />}
       chat={<ChatView tripId={tripId} canPost={effectiveCanEdit} />}
       trip={() => (
         <>
