@@ -109,7 +109,33 @@ export function AppShell({
   const { view, setView } = useAppView(defaultView);
   const [peeking, setPeeking] = useState<LockedExplainerView | null>(null);
   const scoped = !!tripId;
-  const hasContext = scoped || !!remoteTripId;
+
+  /**
+   * TWO different questions, each derived ONCE — because the two things that
+   * must agree were previously derived separately and disagreed.
+   *
+   * `hasScopedContext` — is a trip actually open on THIS route? Drives the
+   * desktop context tabs (Trip/Cup in `TopNav`) AND the `ContextIntro` "Pick a
+   * trip to get started" explainer that replaces the content at `lg+`. Those two
+   * are the same question and must never disagree: the explainer used to test
+   * `!scoped` while the tabs tested `!hasContext` (below), so on `/dashboard`
+   * for any user with at least one trip — `scoped` false, `remoteTripId`
+   * populated — the explainer rendered AND Trip/Cup rendered beside it. #760's
+   * Task 5 aimed at the wrong condition and so only hid them for a brand-new
+   * zero-trip account. Same lesson as the scroll-ownership work: if two things
+   * must agree, derive them once.
+   *
+   * `hasRemoteContext` — is there a trip worth POINTING AT, here or elsewhere?
+   * Drives `AppTabBar`'s mobile locked-tab treatment only, where "the trip you
+   * were just in" deliberately keeps Trip/Cup live and navigable so Home reads
+   * as "switch context" rather than "leave context" (locked stays a true
+   * first-run state). That remote-aware behaviour is correct on mobile, where
+   * the tab bar is the only navigation — it is NOT correct for the desktop tabs,
+   * because at `lg+` the rail is already the picker and the explainer already
+   * carries the copy.
+   */
+  const hasScopedContext = scoped;
+  const hasRemoteContext = scoped || !!remoteTripId;
 
   /**
    * Chat open/closed (Phase 6) — plain local state, not a view and not a URL
@@ -282,7 +308,7 @@ export function AppShell({
   let body: ReactNode;
   if (peeking) {
     body = <LockedTabExplainer view={peeking} onPickTrip={() => setPeeking(null)} />;
-  } else if (!scoped) {
+  } else if (!hasScopedContext) {
     /**
      * `/dashboard`. On MOBILE Home is a tab and the trip list is the body — that
      * is correct and unchanged. On DESKTOP the rail is the picker, so listing the
@@ -392,7 +418,10 @@ export function AppShell({
                 onToggleChat: toggleChat,
                 onDismissPanels: closeChat,
                 activeView: activeForTabs,
-                hasContext,
+                // Scoped, NOT remote-aware — the same condition the explainer
+                // below branches on, so the desktop tabs and the "Pick a trip"
+                // copy can never both claim the screen.
+                hasContext: hasScopedContext,
                 onSelectView: select,
               })
             : topBar}
@@ -472,7 +501,11 @@ export function AppShell({
         </div>
         <AppTabBar
           active={activeForTabs}
-          hasContext={hasContext}
+          // Remote-aware on purpose: on mobile the tab bar is the only
+          // navigation, so "the trip you were just in" keeps Trip/Cup live and
+          // navigable rather than greying them out. Mobile behaviour is
+          // unchanged by the desktop fix above.
+          hasContext={hasRemoteContext}
           onSelect={select}
           onLockedTap={(v) => setPeeking(v)}
           chatOpen={chatOpen}
