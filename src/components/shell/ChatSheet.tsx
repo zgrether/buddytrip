@@ -106,9 +106,16 @@ export function ChatSheet({
         if (Math.abs(s - frac) < Math.abs(best - frac)) best = s;
       }
       setHeightFrac(best);
-      // Hand height back to the percentage style now that we've snapped —
-      // clears the drag's inline px override.
-      if (sheetRef.current) sheetRef.current.style.height = "";
+      // Hand height back to the percentage style now that we've snapped — set
+      // it directly rather than clearing to "" and relying on the re-render
+      // this triggers: when `best` equals the CURRENT `heightFrac` (any drag
+      // that doesn't cross into a different snap band — the common case),
+      // React bails out of re-rendering on the same-value state update, so
+      // clearing the inline override left the sheet with no height at all —
+      // collapsing to its content's minimum size, which reads as snapping
+      // back down to the bottom nav. Writing the resolved value directly is
+      // correct whether or not React's own render ends up running.
+      if (sheetRef.current) sheetRef.current.style.height = `${best * 100}%`;
       e.currentTarget.releasePointerCapture(e.pointerId);
     },
     [availableHeight]
