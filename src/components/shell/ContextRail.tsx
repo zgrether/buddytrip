@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Flag, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -24,7 +24,42 @@ import { useIsShellDesktop, RAIL_WIDTH_PX } from "./breakpoints";
  * show. Gating a QUERY on a media query is safe in a way that gating a TREE is
  * not: crossing the breakpoint enables the query, it doesn't rebuild anything.
  * The key is shared with the dashboard, so it's usually warm already.
+ *
+ * ── Also gated on idle (#750) ─────────────────────────────────────────────────
+ * `enabled: isDesktop` alone still cost every desktop trip page a THIRD
+ * cold-open batch — `useIsShellDesktop` is `useState(false)` corrected in a
+ * `useEffect` (`breakpoints.ts`), so ANYTHING gated on it structurally misses
+ * the initial mount batch by exactly one tick, every time. That's not
+ * incidental timing to chase into an earlier tick; it's how the hook is
+ * built, so "collapse it into an existing batch" isn't on the table while
+ * the breakpoint gate works this way.
+ *
+ * So this defers instead of trying to win a spot in the critical-path
+ * batches: `useIdle` holds `enabled` false until the browser reports it has
+ * nothing more pressing to do, which is well after the queries the user is
+ * actually waiting on (trip content, chrome) have already gone out. Same
+ * shape as the Phase 3 lazy-mount decision — don't pay for a surface nobody
+ * has looked at yet, even one that's always on screen. The rail still fills
+ * in almost immediately in practice; it just never competes for the cold
+ * path's batch window.
  */
+
+/** True once the browser reports it's idle, or after one tick as a fallback
+ *  where `requestIdleCallback` doesn't exist (Safari). Stays `false` while
+ *  `!enabled`, so nothing is scheduled on mobile at all. */
+function useIdle(enabled: boolean): boolean {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(() => setIdle(true));
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(() => setIdle(true), 1);
+    return () => window.clearTimeout(id);
+  }, [enabled]);
+  return idle;
+}
 
 interface TripRow {
   id: string;
@@ -37,9 +72,10 @@ interface TripRow {
 export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   const router = useRouter();
   const isDesktop = useIsShellDesktop();
+  const idle = useIdle(isDesktop);
   const { data: trips = [] } = trpc.trips.list.useQuery(undefined, {
     ...STRUCTURE_QUERY,
-    enabled: isDesktop,
+    enabled: isDesktop && idle,
   });
 
   const rows = trips as TripRow[];
