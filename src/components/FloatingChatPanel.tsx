@@ -22,6 +22,7 @@ const CHAT_PAGE_SIZE = 50;
 const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -378,6 +379,12 @@ function FloatingChatPanelInner({
     onSuccess: () => {
       utils.messages.readState.invalidate({ tripId });
       utils.messages.unreadCount.invalidate({ tripId });
+      // ...and the per-segment breakdown, which was MISSING: the Chat tab's
+      // Crew/Planning dots read `unreadCountByChannel`, so reading a segment
+      // cleared the combined badge while its own dot stayed lit until the next
+      // refetch. Same invalidation-set divergence as the send/realtime split —
+      // both counts are fed by one server function and must clear together.
+      utils.messages.unreadCountByChannel.invalidate({ tripId });
     },
   });
   const lastMarkedRef = useRef<Record<Visibility, string | null>>({
@@ -414,8 +421,11 @@ function FloatingChatPanelInner({
   }, []);
 
   const sendMessage = trpc.messages.send.useMutation({
-    onSuccess: async (_, variables) => {
-      await utils.messages.list.invalidate({
+    onSuccess: (_, variables) => {
+      // The SAME set the realtime INSERT handler invalidates — one shared
+      // helper, because the delta between these two lists WAS the bug (see
+      // chatQueryInvalidation.ts). Do not inline a key list here again.
+      invalidateChatQueries(utils, {
         tripId,
         channel: "trip",
         visibility: variables.visibility,
@@ -1164,18 +1174,22 @@ function ChatBody({
  * already requires (see the comment on that hook call, below).
  */
 export function useChatUnreadCount(tripId: string): number {
-  // Subscribe to realtime here — MUST stay even though the count below no
-  // longer derives from messages.list. This hook is mounted via TopNav's
-  // ChatToolButton, which today only renders where `onOpenChat` is passed —
-  // the competition Live face (LiveFaceClient), not the four-tab trip page
-  // (Chat moved to AppShell's own tab there; AppShell.tsx holds the
-  // equivalent always-mounted subscription for that page instead). The open
-  // FloatingChatPanel deliberately does NOT also subscribe (a single channel
-  // avoids a duplicate-topic collision), so it relies on whichever of these
-  // holds the subscription in its context to keep its own messages.list
-  // cache live via direct cache writes (useRealtimeChat.ts). Removing this
-  // call would silently stop new messages from appearing in an open panel
-  // without a manual refresh.
+  // Subscribe to realtime here — safe to do even though `AppShell` also holds a
+  // trip-chat subscription. The channel is REF-COUNTED per topic
+  // (`useRealtimeChat`'s `acquire`), so both mounts share one join and either can
+  // unmount without killing the survivor. Subscribing from more than one place is
+  // now correct by construction rather than forbidden by convention.
+  //
+  // This comment previously claimed the opposite — that ChatToolButton only
+  // mounted on the competition Live face and never on the four-tab trip page, and
+  // that a second subscriber would be a "duplicate-topic collision." Both halves
+  // stopped being true when #756 wired `onOpenChat` into the trip page's TopNav:
+  // ChatToolButton mounted there (at every width — `hidden lg:block` is CSS, not
+  // a mount gate), creating exactly the second subscription this text said didn't
+  // exist. That is the third time in three shell restructures that chat realtime
+  // broke because "what is always mounted" moved underneath a comment describing
+  // it. The ref-count is the fix; this note is a warning about the class of bug,
+  // not a new invariant to maintain by hand.
   useRealtimeChat(tripId, "trip");
 
   const { data } = trpc.messages.unreadCount.useQuery(
