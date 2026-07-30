@@ -442,6 +442,46 @@ These patterns have been established through prior work. Follow them exactly —
     itself went in migration 097 (#743) — applied to production. The removal is
     complete; nothing in the stack writes or reads a second identifier form.
 
+22. **A shared realtime topic is REF-COUNTED, and a shared query set has ONE
+    invalidator.** Both halves generalise #20's score-event rules to every
+    subscription, because chat broke on both and neither was enforced by anything
+    but a comment.
+    - **Ref-count the topic.** More than one mounted component may watch the same
+      topic, and *which* components has changed with every shell restructure. Two
+      `supabase.channel(sameTopic)` objects means two joins for one stream, and the
+      first unmount `removeChannel`s a topic the other still needs — silently. So a
+      hook that subscribes owns a module-level `Map<topic, {channel, handlers, refs}>`
+      and hands back a release fn that tears down only on the LAST release (and is
+      inert if called twice — StrictMode/fast refresh run cleanups twice).
+      `useRealtimeScoreEvents` and `useRealtimeChat` both do this; `acquire` is
+      exported from each for tests, since the suite is `environment: "node"` and the
+      ref-count is the part with real failure modes. **Do NOT instead pick a
+      "canonical" subscriber and document that nobody else may subscribe.** That was
+      chat's design for three restructures, and the comment asserting it
+      ("the open panel deliberately does NOT also subscribe") was FALSE by the end —
+      #756 remounted `ChatToolButton` on the trip page and created the second
+      subscriber the comment said couldn't exist. A comment cannot enforce an
+      invariant across a shell that keeps changing what is always-mounted;
+      ref-counting makes duplicate subscribers correct instead of forbidden.
+    - **A dead subscription must SAY SO.** Handle `CHANNEL_ERROR` / `TIMED_OUT` /
+      `CLOSED`, don't only branch on `SUBSCRIBED`. A subscription that never
+      establishes is indistinguishable from a working one with nothing to report,
+      which is precisely why chat presented as "barely working" rather than "broken"
+      and cost three sessions to find.
+    - **One invalidator, not two lists that happen to match.** When a realtime
+      handler and a mutation refresh the same data, the delta between their key lists
+      IS the bug: chat's `messages.send.onSuccess` invalidated `messages.list` (a
+      refetch that incidentally healed what realtime missed) while the realtime
+      handler only patched the cache and invalidated the counts — so POSTING worked
+      and RECEIVING didn't ("you don't see it until you post something"). Both paths
+      now call `invalidateChatQueries` (`src/lib/chatQueryInvalidation.ts`) and
+      nothing else. Mirror this for any new realtime surface: a new query gets added
+      to the shared helper once, so there is no second list to forget.
+    - **Omit an optional key, never pass it as `undefined`.** React Query matches
+      query keys by PARTIAL DEEP EQUALITY, so a filter carrying `visibility: undefined`
+      does **not** match a cached key whose visibility is `"crew"` — the invalidation
+      silently hits nothing. Build the input without the key when you mean "all".
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
