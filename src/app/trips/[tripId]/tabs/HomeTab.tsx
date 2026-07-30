@@ -32,10 +32,15 @@ export function HomeTab({
   onTabChange,
   onOpenDatesSheet,
 }: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenDatesSheet?: () => void }) {
-  // Prefetch ideas so IdeaZonePanel renders instantly in the idea phase.
-  trpc.ideas.list.useQuery({ tripId: trip.id });
-
   const status = getTripStatus(trip);
+
+  // Prefetch ideas so IdeaZonePanel renders instantly in the idea phase — and
+  // ONLY in the idea phase (#763). `IdeaZonePanel` is the sole reader (its own
+  // two `ideas.list` observers), and it is returned only from the branch below,
+  // so on a dated trip this fired on every load with nothing to consume it.
+  // Declared after `status` so the gate can use it; the hook still runs on every
+  // render either way, which is what the rules of hooks require.
+  trpc.ideas.list.useQuery({ tripId: trip.id }, { enabled: status === "idea" });
 
   // Idea phase (no destination locked): render IdeaZonePanel only.
   if (status === "idea") {

@@ -108,14 +108,28 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // All of these only need tripId (available immediately from the URL), so they
   // fire on first render alongside trips.getById and warm the caches their tabs
   // read. They no longer hold up first paint — see `dataLoading` below.
-  trpc.ideas.list.useQuery({ tripId });
+  //
+  // Each one below is either GATED on the condition that makes its reader
+  // visible, or left eager WITH THE READER NAMED (#763). An ungated prefetch
+  // with no stated reader is indistinguishable from waste to the next sweep.
+  //
+  // `ideas.list` is IDEA-PHASE ONLY. Its only readers live inside
+  // `IdeaZonePanel` (which mounts solely when `getTripStatus(trip) === "idea"`,
+  // here and in `HomeTab`), so on a dated trip this fired on every load and
+  // nothing ever read the result. Gated on the resolved phase rather than
+  // prefetched blind — it costs one render's delay on an idea trip (the gate
+  // needs `trip` back first) and removes the request entirely everywhere else.
+  const tripPhaseIsIdea = trip ? getTripStatus(trip) === "idea" : false;
+  trpc.ideas.list.useQuery({ tripId }, { enabled: tripPhaseIsIdea });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, STRUCTURE_QUERY);
-  // datePoll / quickInfoTiles / schedule / logistics used to GATE first paint, to
-  // stop a trip switch painting the previous trip's poll windows, header tiles or
-  // itinerary for a frame. They no longer do — the route boundary already prevents
-  // that (see the note on `dataLoading`). They stay here as parallel PREFETCHES so
-  // the surfaces that read them are warm, but they hold nothing up.
-  trpc.datePoll.get.useQuery({ tripId });
+  // `datePoll.get` feeds `DatePollCard`, which is CONDITIONALLY rendered — only
+  // inside `FreshTripGuide` / `ItineraryPanel` when the trip actually has a poll.
+  // With date polling now an opt-in planning toggle, most trips never render it,
+  // so this was a cold-path request for a card that usually doesn't exist. Gated
+  // on the same flag the card's own branches read.
+  trpc.datePoll.get.useQuery({ tripId }, { enabled: !!trip?.poll_mode });
+  // EAGER, reader: `TripHeaderDock` (via `TripHeader`) — the quick-info tile rail
+  // beside the countdown ring, visible on the trip page at both widths.
   trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
@@ -125,13 +139,19 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // leaderboard is rebuilt against the new model.
   const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
 
-  // schedule + logistics feed the home itinerary and the tab badge dots. Prefetched
-  // in parallel; no longer part of the paint gate.
+  // EAGER, readers: the home itinerary AND `tabBadges` below (schedule/lodging
+  // dots on `TripTabBar`) — both visible on first paint, so these are read on
+  // this render, not merely warmed for a later one.
   const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: prefetchedLogistics = [] } = trpc.logistics.list.useQuery({ tripId });
-  // Background prefetch for receipts so the Expenses tab reads from cache
-  // instead of flashing its loading skeleton for 1–2s on first open. Same
+  // EAGER BY DELIBERATE CHOICE — an accepted cold-path cost, not an oversight.
+  // Reader: `ExpensesTab` / `ExpensesSection`, which are NOT mounted on first
+  // paint (the sub-tabs are conditionally rendered). This exists purely so the
+  // Expenses tab reads from cache instead of flashing its loading skeleton for
+  // 1–2s on first open — a trade made on purpose for a tab people do open. Same
   // queryKey as ExpensesSection's own useQuery, so it hydrates instantly.
+  // Reviewed and KEPT in the #763 mounted-but-hidden sweep: do not "fix" this
+  // as waste; it buys a real, stated UX win and the cost is known.
   trpc.expenses.list.useQuery({ tripId });
   // teams + assignments are NO LONGER prefetched here. They were, so the old comp
   // tab wouldn't flash while its panels fetched — but they are gated on

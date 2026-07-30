@@ -62,13 +62,27 @@ export interface CupPanelState {
   openMatchId: string | null;
 }
 
-export function useCupPanel(tripId: string | null | undefined): CupPanelState {
+export function useCupPanel(
+  tripId: string | null | undefined,
+  /**
+   * Whether this caller's surface is one that actually READS the result
+   * (#763). Defaults to true, so `CompetitionFace` — which only mounts inside
+   * the Cup slot — needs no argument and is unaffected.
+   *
+   * `AppShell` passes `visited.has("cup")`, because it calls this hook on every
+   * trip page including the Trip tab, where nothing reads the answer: `twoPane`
+   * is false on `effectiveView` alone there. A `?game=` deep link overrides the
+   * gate below, since that genuinely needs the list on first paint.
+   */
+  opts?: { enabled?: boolean },
+): CupPanelState {
   const search = useSearchParams();
   const openGameId = search.get("game");
+  const wanted = (opts?.enabled ?? true) || !!openGameId;
   const games =
     trpc.games.listByTrip.useQuery(
       { tripId: tripId! },
-      { ...STRUCTURE_QUERY, enabled: !!tripId },
+      { ...STRUCTURE_QUERY, enabled: !!tripId && wanted },
     ).data ?? [];
   const openGame = openGameId
     ? (games as CupPanelGame[]).find((g) => g.id === openGameId)
