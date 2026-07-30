@@ -44,8 +44,26 @@ export function InstallBanner() {
     useState<BeforeInstallPromptEvent | null>(null);
   const [enabling, setEnabling] = useState(false);
 
+  /**
+   * Desktop never shows this banner at all: `resolveBannerState` short-circuits
+   * on `platform === "other"` before `pushConfigured` is ever consulted. So on
+   * desktop the push-status query had no reader — a request on every load for a
+   * banner that cannot render (#763).
+   *
+   * Resolved in an effect rather than during render because `detectPlatform()`
+   * reads `navigator`, which is absent on the server; reading it during render
+   * would make the server and first client render disagree. The one-tick delay
+   * costs nothing here — this component already resolves its whole state in an
+   * effect and renders null until it does.
+   */
+  const [isMobilePlatform, setIsMobilePlatform] = useState(false);
+  useEffect(() => {
+    setIsMobilePlatform(detectPlatform() !== "other");
+  }, []);
+
   const pushStatus = trpc.notifications.status.useQuery(undefined, {
     staleTime: Infinity,
+    enabled: isMobilePlatform,
   });
   const subscribeMut = trpc.notifications.subscribe.useMutation();
   const pushConfigured = pushStatus.data?.configured ?? false;

@@ -407,6 +407,16 @@ function NewsToolButton({
 
 // ── ChatToolButton ──────────────────────────────────────────────────────────
 // Thin wrapper so useChatUnreadCount only mounts on trip pages (tripId present).
+//
+// EAGER AT BOTH WIDTHS, and deliberately left ungated in the #763 sweep. The
+// button is `hidden lg:block` at its call site, so at mobile widths it mounts
+// while invisible — normally the exact "CSS hides it but can't stop it
+// fetching" pattern that sweep was gating. It is kept because it costs nothing:
+// `useChatUnreadCount` reads `messages.unreadCount`, the SAME query key
+// `useChatTabUnread` (AppTabBar, visible at mobile) already fetches, so React
+// Query serves both observers from ONE request at every width. Gating it would
+// remove no network call and would leave this button's dot stale on the width
+// where it IS visible.
 function ChatToolButton({
   tripId,
   onClick,

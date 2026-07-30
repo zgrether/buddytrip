@@ -245,21 +245,6 @@ export function AppShell({
   const effectiveView: AppView = scoped ? (view === "home" ? defaultView : view) : "home";
 
   /**
-   * Two-pane Cup → the panes own the scroll, not the body. The SAME predicate
-   * `CompetitionFace` builds the grid from (`useCupPanel`), evaluated here off the
-   * same React Query cache rather than re-derived — two derivations of "are we in
-   * two-pane" is how the shell and the board silently disagree, and the disagreement
-   * shows up as the double scrollbar this replaces.
-   *
-   * Gated on `effectiveView` too, not `panelOpen` alone: both tab slots stay mounted
-   * and the inactive one is `hidden`, so a game left open while the user switches
-   * to Trip keeps `panelOpen` true with the Cup hidden — switching the body to
-   * `overflow-hidden` on `panelOpen` alone would leave the Trip tab unscrollable.
-   */
-  const { panelOpen } = useCupPanel(tripId);
-  const twoPane = isTwoPane(panelOpen, effectiveView);
-
-  /**
    * LAZY MOUNT, then keep. A slot is not mounted until its tab is first visited;
    * after that it stays mounted so returning to it is free.
    *
@@ -294,6 +279,32 @@ export function AppShell({
   if (!visited.has(effectiveView)) {
     setVisited(new Set(visited).add(effectiveView));
   }
+
+  /**
+   * Two-pane Cup → the panes own the scroll, not the body. The SAME predicate
+   * `CompetitionFace` builds the grid from (`useCupPanel`), evaluated here off the
+   * same React Query cache rather than re-derived — two derivations of "are we in
+   * two-pane" is how the shell and the board silently disagree, and the disagreement
+   * shows up as the double scrollbar this replaces.
+   *
+   * Gated on `effectiveView` too, not `panelOpen` alone: both tab slots stay mounted
+   * and the inactive one is `hidden`, so a game left open while the user switches
+   * to Trip keeps `panelOpen` true with the Cup hidden — switching the body to
+   * `overflow-hidden` on `panelOpen` alone would leave the Trip tab unscrollable.
+   *
+   * `enabled` gates the underlying `games.listByTrip` fetch on the Cup having been
+   * VISITED (#763). This hook runs on every trip page, but on the Trip tab with no
+   * `?game=` nothing reads its result — `twoPane` is false on `effectiveView`
+   * alone — so it was a cold-path request with no reader. Nothing is lost by
+   * waiting: `useCupPanel` still fetches unconditionally when `?game=` is present
+   * (a deep link into a panel), and once Cup opens, `LiveFaceClient` seeds this
+   * very key from the server-resolved `faceBootstrap` (CLAUDE.md #10) — so the
+   * warm path that made this prefetch look worthwhile already exists without it.
+   *
+   * Declared AFTER `visited` on purpose; it reads that set.
+   */
+  const { panelOpen } = useCupPanel(tripId, { enabled: visited.has("cup") });
+  const twoPane = isTwoPane(panelOpen, effectiveView);
 
   /**
    * What the tab bars highlight while peeking a locked explainer. `peeking`
