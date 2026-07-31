@@ -7,18 +7,32 @@ import {
 } from "./gameFinishNotify";
 
 /**
- * Names used throughout: TEAM names are the ones in `supabase/seed.sql`'s BBMI
- * fixture, which are real-shaped rather than "Team A" — they are long, and that
- * length is the finding. CREW names are full names, because `users.name` holds a
- * full name ("Zach Grether" in the seed) and that is what the summary resolves;
- * testing with "Zach" would measure a string the app never actually sends.
+ * Two name sets, on purpose.
+ *
+ * `BBMI` is the REAL thing — the actual team names for the event this ships for.
+ * They are short, so they are what the copy will actually look like.
+ *
+ * `LONG` is the `supabase/seed.sql` fixture set, kept as the deliberate
+ * WORST CASE: every length assertion below is bounded against these, so the real
+ * strings have headroom by construction rather than by luck. If a future cup
+ * uses names this long, the measurements still hold.
+ *
+ * CREW names are FULL names because `users.name` holds a full name — testing
+ * with "Zach" would measure a string the app never actually sends. These are
+ * representative rather than the real roster (stroke play isn't at BBMI, so the
+ * exact crew line is unmeasured; noted rather than guessed).
  */
-const TEAMS = {
+const BBMI = {
+  manhattans: "Manhattans",
+  centurions: "Centurions",
+};
+const LONG = {
   usual: "The Usual Suspects",
   buddy: "Buddy's Last Stand",
   vibing: "Not Golfing, Just Vibing",
   breeders: "Former Breeders II",
 };
+const TEAMS = LONG;
 const CREW = {
   zach: "Zach Grether",
   bj: "BJ Dennison",
@@ -391,5 +405,73 @@ describe("truncation with real names", () => {
   it("body: the clinch line is short because it carries no names", () => {
     const b = `Buddy Banks Memorial Invitational · ${formatClinchMargin([25.5, 20.5])}`;
     expect(b.length).toBe(45);
+  });
+
+  /**
+   * The REAL BBMI strings. Everything above bounds the worst case; this records
+   * what the crew will actually see. Both real team names are 10 characters, so
+   * every body has substantial headroom against the ~80c comfortable limit —
+   * including the 4-team placement list, which is the one shape that overflows
+   * with the long fixture names.
+   */
+  describe("as it will actually read at BBMI", () => {
+    it("match play — the format BBMI actually plays", () => {
+      const b = formatResultSummary([
+        { name: BBMI.manhattans, points: 2.5 },
+        { name: BBMI.centurions, points: 1.5 },
+      ]);
+      expect(b).toBe("Manhattans 2½ – Centurions 1½");
+      expect(b.length).toBe(29);
+    });
+
+    it("match play, drawn", () => {
+      const b = formatResultSummary([
+        { name: BBMI.manhattans, points: 2 },
+        { name: BBMI.centurions, points: 2 },
+      ]);
+      expect(b).toBe("Tied: Manhattans & Centurions 2");
+      expect(b.length).toBe(31);
+    });
+
+    it("rack — the other format BBMI plays", () => {
+      const b = formatResultSummary([
+        { name: BBMI.manhattans, points: 24, position: 1 },
+        { name: BBMI.centurions, points: 18, position: 2 },
+      ]);
+      expect(b).toBe("Manhattans 24 – Centurions 18");
+      expect(b.length).toBe(29);
+    });
+
+    it("non-golf side event", () => {
+      const b = formatResultSummary([
+        { name: BBMI.centurions, position: 1 },
+        { name: BBMI.manhattans, position: 2 },
+      ]);
+      expect(b).toBe("1st Centurions · 2nd Manhattans");
+      expect(b.length).toBe(31);
+    });
+
+    it("the clinch — the highest-value push in the app", () => {
+      const b = `Buddy Banks Memorial · ${formatClinchMargin([25.5, 20.5])}`;
+      expect(b).toBe("Buddy Banks Memorial · 25½ – 20½");
+      expect(b.length).toBe(32);
+      expect(`${BBMI.manhattans} clinched`).toBe("Manhattans clinched");
+      expect(`${BBMI.manhattans} clinched`.length).toBe(19);
+    });
+
+    it("every real-name body clears the comfortable limit with room to spare", () => {
+      const bodies = [
+        formatResultSummary([
+          { name: BBMI.manhattans, points: 2.5 },
+          { name: BBMI.centurions, points: 1.5 },
+        ]),
+        formatResultSummary([
+          { name: BBMI.centurions, position: 1 },
+          { name: BBMI.manhattans, position: 2 },
+        ]),
+        `Buddy Banks Memorial · ${formatClinchMargin([25.5, 20.5])}`,
+      ];
+      for (const b of bodies) expect(b.length).toBeLessThanOrEqual(40);
+    });
   });
 });
