@@ -26,33 +26,57 @@ unchanged — those describe a phase, not the role.
 
 | Role | Code/DB value (`TripRole`) | Description |
 |------|----------------------------|-------------|
-| **Owner** | `'Owner'` | Everything an Organizer can do, plus trip administration. |
-| **Organizer** | `'Organizer'` | **Everything the Owner can do except trip administration** — see the principle below. |
+| **Owner** | `'Owner'` | Everything an Organizer can do, plus changing who is trusted and ending containers. |
+| **Organizer** | `'Organizer'` | **Everything the Owner can do**, except the four exceptions in the principle below. |
 | **Member** | `'Member'` | Participant. Views everything on the trip, votes, chats (crew), logs expenses + own travel. Cannot edit trip configuration. |
 
 ### The Owner/Organizer principle
 
-**An Organizer has the same capabilities as the Owner, except trip
-administration.** Trip administration is exactly two things:
+> **An Organizer helps run the trip. Only the Owner changes who is trusted, or
+> ends a container.**
 
-1. **Elevating crew to Organizer** (changing someone's role)
-2. **Deleting the trip**
+That is the whole rule. Everything else an Owner can do, an Organizer can do.
 
-That is the whole rule. It is stated as a PRINCIPLE rather than a list of
-permitted actions on purpose: a list has to be re-derived and re-checked every
-time a feature is added, and the previous version of this section was a list
-(*"Edits trip details, dates, ideas, lodging, agenda, competition, news,
-tiles"*) that had already drifted out of step with the code. A principle tells
-you what to do for the NEXT procedure without anyone updating this file.
+It yields exactly **four** exceptions:
+
+| # | Exception | Procedure | Why |
+|---|---|---|---|
+| 1 | Creating or elevating Organizers | `tripMembers.updateRole` | the Owner declares who he trusts; a trusted party can't extend that trust |
+| 2 | Deleting the trip | `trips.delete` | ends the top-level container |
+| 3 | Transferring ownership | `trips.transferOwnership` | hands over the trust relationship itself |
+| 4 | Deleting a competition | `competitions.delete` | ends a container **within** the trip — see below |
+
+**Why the rule says "a container" and not "the trip".** Exception 4 is the one
+that generalises it. A competition is not a unit of work; it is a container that
+teams, rosters, assignments and whole games live inside, and removing it cascades
+across all of them (there is a `delete_competition_cascade` RPC precisely because
+it is not a single-row delete). Ending something that other people's work lives
+inside is the Owner's call, at any level of the tree — not only at the top.
+
+**The test for a NEW object,** so this carries without anyone editing this file
+again: ask whether deleting it *destroys a container other objects live in and
+cascades to them*, or whether it removes *one unit of work*. A competition is
+the former. A **game is the latter** — an Organizer may delete a game, reset its
+scoring, and reset it to skeleton, even though those are destructive, because a
+game is a thing the Organizer is there to run. Safety for destructive-but-
+in-scope actions belongs in a **confirmation dialog, not a permission gate**
+(all four such actions already have one).
+
+Stated as a PRINCIPLE rather than a list of permitted actions on purpose: a list
+has to be re-derived and re-checked every time a feature is added, and the
+previous version of this section was a list (*"Edits trip details, dates, ideas,
+lodging, agenda, competition, news, tiles"*) that had already drifted out of step
+with the code. A principle tells you what to do for the NEXT procedure without
+anyone updating this file.
 
 **Applying it to new work:** gate on `requireTripRole("Organizer")` unless the
-action is one of the two above. If you find yourself writing
-`requireTripRole("Owner")` for anything else, that is a deviation from this rule
-and needs a reason — not a shrug.
+action is one of the four above, or fails the container test. If you find
+yourself writing `requireTripRole("Owner")` for anything else, that is a
+deviation from this rule and needs a reason — not a shrug.
 
 > **⚠️ The code does not currently match this principle.** The rule above is the
-> INTENT, ratified after #770. As of 2026-07-31 there are ~21 procedures gated
-> `requireTripRole("Owner")` that are not trip administration, plus the RLS
+> INTENT, ratified after #770. As of 2026-07-31 there are 21 procedures gated
+> `requireTripRole("Owner")` that are none of the four exceptions, plus the RLS
 > policies mirroring them (migration 030 deliberately aligned RLS to the tRPC
 > layer, so the deviation exists at BOTH layers). They are enumerated in
 > **Audit notes → Owner/Organizer deviations** at the end of this file. Until
@@ -283,8 +307,9 @@ the actual one.
 > `canEditGame` passes anyone at `co_admin` or above, which the trip→competition
 > mapping grants every trip **Organizer**. So both are: **Owner, Organizer, or
 > that game's delegate** — consistent with the Owner/Organizer principle at the
-> top, since neither is trip administration. (An earlier version of this note
-> claimed the RUN tier was narrower and excluded a plain Organizer. The code
+> top, since neither changes who is trusted nor ends a container. (An earlier
+> version of this note claimed the RUN tier was narrower and excluded a plain
+> Organizer. The code
 > never did that, and #770 resolved it in the code's favour.) Finalizing is
 > **re-runnable** (Open → Posted ⇄ Correcting), never a permanent lock-out. A
 > posted game's scores are frozen (`scores.upsertEntry`/`deleteEntry` return
@@ -424,20 +449,21 @@ trip.** The code predates that rule and does not match it yet. This section is
 the enumerated gap — the rule is the intent, these are the exceptions to it, and
 each is now a *deviation from a stated rule* rather than an open question.
 
-### Conforming (the two sanctioned exceptions)
+### Conforming (the four sanctioned exceptions)
 
-| Procedure | Why it's Owner-only |
+| Procedure | Exception |
 |---|---|
-| `tripMembers.updateRole` | elevating crew — exception 1 |
-| `trips.delete` | deleting the trip — exception 2 |
+| `tripMembers.updateRole` | 1 — creating/elevating Organizers |
+| `trips.delete` | 2 — ends the top-level container |
+| `trips.transferOwnership` | 3 — hands over the trust relationship |
+| `competitions.delete` | 4 — ends a container *within* the trip |
 
-### One judgment call
+`competitions.delete` is gated differently from the rest: it uses
+`requireCompetitionRole("owner")` (the competition's own role model), not
+`requireTripRole`. It is Owner-only at both layers (`competitions_delete` policy)
+and **stays that way** — it was never among the 21 below.
 
-| Procedure | Note |
-|---|---|
-| `trips.transferOwnership` | Owner-only, and not literally either named exception — but it is the ultimate role change and sits squarely in the trip-administration family. Reads as conforming in spirit; flagged because the rule as stated doesn't name it. |
-
-### Deviations — 21 procedures gated `requireTripRole("Owner")` that are not trip administration
+### Deviations — 21 procedures gated `requireTripRole("Owner")` that are none of the four exceptions
 
 | Area | Procedures |
 |---|---|
