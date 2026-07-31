@@ -30,12 +30,18 @@ Every candidate write site is one of:
 Volumes are per **BBMI-scale trip** (~30 people, ~4 days, competition-heavy);
 "per day" = a live tournament day.
 
+**`games.post` is gone** — it was a second finalize that existed only for non-golf
+and has been merged into `games.finish` (one procedure, branching on
+`result_strategy`). Two corrections to what this table used to say: there is now
+ONE finalize row to wire, not two, and the old `post` volume estimate of ~5–15/day
+was wrong — non-golf side events run ~1–5 per **trip**, so nothing about the
+disappearance of that row raises the volume budget.
+
 | Write site (tRPC) | What happened | Category | Eligibility | Est. volume |
 |---|---|---|---|---|
 | `scores.upsertEntry` | A hole score entered | `scores` | **NEVER** | ~540/day (30×18). Mechanical. Never wire. |
 | `scores.deleteEntry` | A hole score cleared | `scores` | **NEVER** | churny corrections; mechanical |
-| `games.finish` | Game/round finalized | `scores` | **ELIGIBLE** | ~5–15/day. **The natural Phase 3 first wire.** |
-| `games.post` | Result posted to the cup | `scores` | **ELIGIBLE** | ~5–15/day |
+| `games.finish` | Game/round finalized (EVERY format, incl. a non-golf result posted to the cup) | `scores` | **ELIGIBLE** | ~5–15/day golf + ~1–5/**trip** non-golf. **The natural Phase 3 first wire.** |
 | `games.openCorrection` | Correction window opened | `scores` | BATCH | rare; only notify affected players |
 | competition leaderboard → cup decided | **Cup clinched** | `scores` | **ELIGIBLE** | ~1–3/trip. **Highest-value push in the app** — "Manhattans clinched." |
 | `matches.setPairings` / `assignPlayer` / `reorder` | Pairings/roster setup | `scores` | **NEVER** | setup-time mechanical churn |

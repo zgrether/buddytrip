@@ -72,7 +72,7 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
 
     // Post a result (requireGameRunAction — co-admin, not just owner/delegate).
     await expect(
-      coadmin.games.post({
+      coadmin.games.finish({
         tripId,
         gameId: g1,
         placements: [
@@ -131,7 +131,7 @@ describe("members have no co-admin access (either phase)", () => {
       member.games.setStatus({ tripId, gameId: g, status: "active" })
     ).rejects.toThrow(/co-admin|organizer|owner/i);
     await expect(
-      member.games.post({
+      member.games.finish({
         tripId,
         gameId: g,
         placements: [{ entityId: teamA, position: 1 }],

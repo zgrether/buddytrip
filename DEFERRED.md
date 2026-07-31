@@ -46,7 +46,8 @@ multi-match cards, singles (1v1) and doubles (2v2).
 
 **Slice D — Competition bolt-on.** Shipped: competition creation persists teams +
 `team_assignments`; the Tier 1 competition leaderboard reads `game_results` ⨝
-`games`; run/post/lock + score-correction model (`games.post`/`openCorrection`).
+`games`; run/post/lock + score-correction model (`games.finish`/`openCorrection`
+— shipped as `games.post`/`openCorrection`; `post` was later merged into `finish`).
 Competition close → `circle_events` entry is unconfirmed/likely still open —
 verify before closing it out too.
 

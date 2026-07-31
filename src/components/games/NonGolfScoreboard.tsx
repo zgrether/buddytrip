@@ -21,8 +21,12 @@ import type { ScoringModel } from "@/lib/gameTypes";
  *    (Part 3 gives it Team-A-vs-B framing + points-in-play).
  *  - **points** / >2 teams: the finishing-order placement editor (#430).
  *
- * Posting feeds the EXISTING `games.post` path (winner→pos 1 / tie→both pos 1 /
- * placement order) — no second points mechanism. Members get the read-only board;
+ * Posting feeds `games.finish` — the ONE finalize for every format — as its
+ * manual (`result_strategy: null`) arm: winner→pos 1 / tie→both pos 1 /
+ * placement order, no second points mechanism. It used to call `games.post`, a
+ * separate procedure that ran the same dispatch and the same lock; that fork is
+ * gone. The user-facing verb here stays "Post" — non-golf results are posted,
+ * and the procedure name is not the UI copy. Members get the read-only board;
  * the post CTA is owner/delegate-only (the server enforces it too).
  */
 export function NonGolfScoreboard({
@@ -67,8 +71,8 @@ export function NonGolfScoreboard({
   // → "open"; pending shouldn't reach the board (setup mode), but treat as open.
   const correcting = game.status === "complete";
 
-  const post = trpc.games.post.useMutation();
-  const busy = post.isPending;
+  const finishGame = trpc.games.finish.useMutation();
+  const busy = finishGame.isPending;
 
   function teamById(id: string) {
     return teams.find((t) => t.id === id);
@@ -89,7 +93,7 @@ export function NonGolfScoreboard({
           ? teams.map((t) => ({ entityId: t.id, position: 1 }))
           : teams.map((t) => ({ entityId: t.id, position: t.id === result ? 1 : 2 }))
         : order.map((id, i) => ({ entityId: id, position: i + 1 }));
-      await post.mutateAsync({ tripId, gameId: game.id, placements });
+      await finishGame.mutateAsync({ tripId, gameId: game.id, placements });
       utils.games.listByTrip.invalidate({ tripId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       // The Live face seeds its board from faceBootstrap — invalidate it so the
