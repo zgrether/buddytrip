@@ -22,7 +22,7 @@ import that slips through.
 
 | Key | Label | Default | Covers | Excludes (load-bearing) |
 |-----|-------|:-------:|--------|--------|
-| `scores` | Scores & results | **ON** | game/round finalized · result posted · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
+| `scores` | Scores & results | **ON** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
 | `planning` | Trip planning | **ON** | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
 | `chat` | Chat messages | **OFF** | new messages, any channel | per-channel prefs — one global switch |
@@ -90,14 +90,40 @@ disappearance of that row raises the volume budget.
 ## What the `scores` wiring actually does (Phase 3, shipped)
 
 One call site — `games.finish` — because there is now one finalize for every
-format. `src/server/lib/gameFinishNotify.ts` owns it, and the three copy variants
-live together at the top of that file so they read as a set.
+format. `src/server/lib/gameFinishNotify.ts` owns it, and all the copy lives
+together at the top of that file so it reads as a set.
 
 | Notification | Audience | Trigger | Exactly-once via |
 |---|---|---|---|
 | Game is final (engine: match/rack/stroke) | the game's **participants** | `games.finish` | the `status` TRANSITION guard — a re-finish after a correction notifies nobody |
-| Result posted (manual / non-golf) | the competition's **team assignees** | `games.finish` manual arm | same transition guard |
+| Game is final (manual / non-golf) | the competition's **team assignees** | `games.finish` manual arm | same transition guard |
 | **Cup clinched** | the competition's **team assignees** | derived after every finalize | conditional claim on `competitions.clinch_notified_team_id` (migration 099) |
+
+**Golf and non-golf share one copy shape.** Both title as `Final: {game}` —
+they are the same event to the person holding the phone. Only the AUDIENCE
+differs. In particular there is no "Result posted" notification: that is the
+exact phrasing for `scores.upsertEntry`, a NEVER-marked site, so on a lock
+screen it would read as "someone entered a score" — the one notification this
+category promises never to send.
+
+**The body carries the RESULT, never a tap instruction.** `games.finish` has the
+outcome in hand at send time, so spending the most valuable line on the lock
+screen to say "tap to see" wastes it — everyone knows notifications are
+tappable. No emoji, for the same reason: those characters carry the score.
+
+```
+Final: Saturday Singles              Final: Euchre night
+Manhattans 2½ – Centurions 1½        1st Centurions · 2nd Manhattans
+
+Final: Saturday Rack                 Manhattans clinched
+Manhattans 24 – Centurions 18        Buddy Banks Memorial · 25½ – 20½
+```
+
+Three result shapes that must read as siblings (`formatResultSummary`): a
+head-to-head **score line** for two sides with points (match play, rack), and a
+**placement list** otherwise (non-golf, stroke, and any 3+ team format — points
+ride along when the format has them, so a 3-team rack still reports the margin).
+The clinch line drops team names deliberately: the title already says who.
 
 Three rules that hold the volume down, and why each is what it is:
 

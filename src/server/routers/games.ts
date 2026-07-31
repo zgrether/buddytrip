@@ -713,6 +713,7 @@ export const gamesRouter = router({
           gameTypeId: (game.game_type_id as string | null) ?? null,
           competitionId: (game.competition_id as string | null) ?? null,
           isManual: strategy === null,
+          isStroke: strategy === "stroke_total",
           actorUserId: ctx.user!.id,
         });
       }
