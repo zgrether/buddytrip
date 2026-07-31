@@ -235,18 +235,54 @@ export const matchesRouter = router({
         const onA = r.side_a?.id === input.userId;
         const onB = r.side_b?.id === input.userId;
         if (!onA && !onB) continue;
-        await ctx.supabase
+        // `r.id` was read from this same game a moment ago, so this should
+        // always match exactly one row. #774: this write had no error or
+        // affected-row check at all — a failure (or, more subtly, a match
+        // vanishing between the read above and this write) used to be
+        // completely invisible, with the caller reporting success regardless.
+        const { error: matchErr, count: matchCount } = await ctx.supabase
           .from("game_matches")
-          .update(onA ? { side_a: null } : { side_b: null })
+          .update(onA ? { side_a: null } : { side_b: null }, { count: "exact" })
           .eq("id", r.id);
-        // Clear the vacated match's handicap for both its players.
+        if (matchErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to vacate match ${r.id}: ${matchErr.message}`,
+          });
+        }
+        if ((matchCount ?? 0) !== 1) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Expected to vacate 1 match but matched ${matchCount ?? 0} — the match may have changed concurrently.`,
+          });
+        }
+
+        // Clear the vacated match's handicap for both its players. setPairings
+        // always seeds a game_participants row for every side member, so under
+        // normal operation this ALWAYS matches vacatedUsers.length exactly — a
+        // mismatch means a participant row is unexpectedly missing, and letting
+        // that pass silently is exactly how a stale handicap can survive a
+        // roster move undetected (#774 — the invisible-failure shape a
+        // "expected null, got a number" test failure would surface as).
         const vacatedUsers = [r.side_a?.id, r.side_b?.id].filter((x): x is string => !!x);
         if (vacatedUsers.length > 0) {
-          await ctx.supabase
+          const { error: hcapErr, count: hcapCount } = await ctx.supabase
             .from("game_participants")
-            .update({ handicap_strokes: null })
+            .update({ handicap_strokes: null }, { count: "exact" })
             .eq("game_id", input.gameId)
             .in("user_id", vacatedUsers);
+          if (hcapErr) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to clear vacated handicap: ${hcapErr.message}`,
+            });
+          }
+          if ((hcapCount ?? 0) !== vacatedUsers.length) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Expected to clear ${vacatedUsers.length} participant handicap(s) but matched ${hcapCount ?? 0} — a roster row may be missing.`,
+            });
+          }
         }
       }
 
