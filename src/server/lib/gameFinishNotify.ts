@@ -71,19 +71,84 @@ export interface SummaryEntry {
   position?: number | null;
 }
 
+/** "A & B" for two, "A, B & C" for more. Serial comma omitted deliberately —
+ *  this is a lock-screen line, not prose, and the ampersand already separates. */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
 /**
- * The result line that goes in the notification body.
+ * AN ORDINAL IS NEVER REPEATED. "1st Centurions · 1st Manhattans" reads as a
+ * mistake — two firsts look like a bug in the app, not a tie in the game. Tied
+ * competitors therefore SHARE one ordinal slot rather than each printing their
+ * own, and a tie that covers the whole field drops ordinals entirely because
+ * "1st" is meaningless when nobody is behind it:
  *
- * Three formats produce three different shapes, and the job is to make them read
- * as SIBLINGS rather than three unrelated strings:
+ *   whole field, two   →  Tied: Centurions & Manhattans
+ *   whole field, 3+    →  3-way tie: Centurions, Manhattans & Bootleggers
+ *   partial tie        →  1st Centurions · 2nd Manhattans & Bootleggers
+ *
+ * The N-way form leads with the COUNT because that is the part still readable
+ * when the name list gets cut — "3-way tie: Not Golfing, Just Vib…" still tells
+ * you what happened, where a truncated bare list does not.
+ */
+function tieGroupLabel(names: string[], position: number, wholeField: boolean): string {
+  if (names.length === 1) return `${ordinal(position)} ${names[0]}`;
+  if (!wholeField) return `${ordinal(position)} ${joinNames(names)}`;
+  return names.length === 2
+    ? `Tied: ${joinNames(names)}`
+    : `${names.length}-way tie: ${joinNames(names)}`;
+}
+
+/**
+ * Group entries by finishing position, best first.
+ *
+ * Two ranking sources, because not every format writes a position: match play
+ * stores team POINTS with a null position, so a drawn match is only detectable
+ * as equal points. Grouping on the index instead would have made a 2–2 draw look
+ * like two distinct places — which is exactly the "1st and 2nd on identical
+ * scores" nonsense the tie handling exists to prevent.
+ *
+ * Where positions are absent, ranks are assigned competition-style (1, 1, 3):
+ * a tied pair both hold 1st and the next competitor is 3rd, never 2nd.
+ */
+function rankGroups(entries: SummaryEntry[]): { position: number; entries: SummaryEntry[] }[] {
+  const hasPositions = entries.every((e) => e.position != null);
+  const ranked = [...entries].sort((x, y) => {
+    if (hasPositions) return (x.position ?? 0) - (y.position ?? 0);
+    return (y.points ?? 0) - (x.points ?? 0);
+  });
+
+  const groups: { position: number; entries: SummaryEntry[] }[] = [];
+  let seen = 0;
+  for (const e of ranked) {
+    const last = groups[groups.length - 1];
+    const tiedWithLast = last
+      ? hasPositions
+        ? last.entries[0].position === e.position
+        : (last.entries[0].points ?? 0) === (e.points ?? 0)
+      : false;
+    if (last && tiedWithLast) last.entries.push(e);
+    else groups.push({ position: hasPositions ? (e.position as number) : seen + 1, entries: [e] });
+    seen += 1;
+  }
+  return groups;
+}
+
+/**
+ * The result line that goes in the notification body, for TEAM-scoped formats
+ * (match play, rack, non-golf). Stroke has its own shape — see below.
+ *
+ * Two shapes, built to read as siblings rather than as unrelated strings:
  *
  *   match play / rack →  Manhattans 2½ – Centurions 1½      (a score line)
- *   non-golf / stroke →  1st Centurions · 2nd Manhattans    (a placement list)
+ *   non-golf / 3+     →  1st Centurions · 2nd Manhattans    (a placement list)
  *
- * A head-to-head with exactly two sides gets the score line, because that is how
- * anyone would say it out loud. Anything else gets the placement list, which
- * scales past two without becoming a wall of numbers — with points appended when
- * the format actually has them, so a 3-team rack still reports the margin.
+ * A head-to-head with exactly two sides and no tie gets the score line, because
+ * that is how anyone would say it out loud. Everything else gets the placement
+ * list, which scales past two — with points appended when the format has them,
+ * so a 3-team rack still reports the margin.
  *
  * Returns "" when there is nothing worth saying; callers fall back to a body
  * that doesn't pretend to have a result.
@@ -93,26 +158,75 @@ export function formatResultSummary(entries: SummaryEntry[]): string {
   if (named.length === 0) return "";
 
   const hasPoints = named.every((e) => typeof e.points === "number");
+  const groups = rankGroups(named);
+  const wholeFieldTied = groups.length === 1 && named.length > 1;
 
-  // Head-to-head score line — the natural spoken form for two sides.
-  if (hasPoints && named.length === 2) {
+  // Head-to-head score line — two sides, both scored, genuinely separated. A
+  // drawn match falls through to the tie form instead of printing "2 – 2",
+  // which states the score but buries the outcome.
+  if (hasPoints && named.length === 2 && !wholeFieldTied) {
     const [a, b] = [...named].sort((x, y) => (y.points ?? 0) - (x.points ?? 0));
     return `${a.name} ${formatPoints(a.points ?? 0)} – ${b.name} ${formatPoints(b.points ?? 0)}`;
   }
 
-  // Placement list. Ranked by position when present, else by points descending.
-  const ranked = [...named].sort((x, y) => {
-    if (x.position != null && y.position != null) return x.position - y.position;
-    return (y.points ?? 0) - (x.points ?? 0);
-  });
-
-  return ranked
-    .map((e, i) => {
-      const place = ordinal(e.position ?? i + 1);
-      const pts = hasPoints ? ` ${formatPoints(e.points ?? 0)}` : "";
-      return `${place} ${e.name}${pts}`;
+  return groups
+    .map((g) => {
+      const names = g.entries.map((e) => e.name);
+      const label = tieGroupLabel(names, g.position, wholeFieldTied);
+      // Points ride along only where they disambiguate — a tied group shares one
+      // score, so it prints once rather than after every name.
+      if (!hasPoints) return label;
+      return `${label} ${formatPoints(g.entries[0].points ?? 0)}`;
     })
     .join(" · ");
+}
+
+/**
+ * Stroke play: the top two, then a count of everyone else.
+ *
+ *   1st Zach Grether · 2nd BJ Dennison · +2
+ *
+ * A stroke field is the whole trip, not two sides — a full placement list would
+ * be thirty names and would blow past any lock screen, so it is CAPPED. `+2`
+ * says how many finished behind without naming them.
+ *
+ * ── DELIBERATE: this form does NOT express ties below first place ────────────
+ * If 2nd and 3rd tie, one of them is shown as 2nd and the other is folded into
+ * the `+N`. That is not an oversight and it is not worth "fixing": expressing a
+ * mid-field tie would require either naming the tied group (re-expanding the
+ * list this cap exists to bound) or an ordinal-skipping scheme that a
+ * two-line notification has no room to explain. A tie for the LEAD is expressed,
+ * because that is the part anyone reads the notification for. Anyone who wants
+ * the full field taps through to the scorecard, which is exactly what the deep
+ * link is for.
+ */
+export function formatStrokeSummary(entries: SummaryEntry[]): string {
+  const named = entries.filter((e) => e.name);
+  if (named.length === 0) return "";
+
+  const groups = rankGroups(named);
+  const shown: string[] = [];
+  let accounted = 0;
+
+  const lead = groups[0];
+  const leadTied = lead.entries.length > 1;
+
+  // A SHARED LEAD takes the whole headline: "Tied: A & B", then the count. The
+  // runner-up slot is dropped in that case — when the lead is tied, who came
+  // next is not the story, and naming them would push the line past a glance.
+  shown.push(tieGroupLabel(lead.entries.map((e) => e.name), lead.position, leadTied));
+  accounted += lead.entries.length;
+
+  // Runner-up: ONE name only, and only when the lead is outright. See the note
+  // above — a tie at this level is deliberately not expressed.
+  if (!leadTied && groups[1]) {
+    shown.push(`${ordinal(groups[1].position)} ${groups[1].entries[0].name}`);
+    accounted += 1;
+  }
+
+  const rest = named.length - accounted;
+  if (rest > 0) shown.push(`+${rest}`);
+  return shown.join(" · ");
 }
 
 /**
@@ -309,9 +423,12 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
       input.isManual
     );
 
-    const summary = formatResultSummary(
-      await loadSummaryEntries(admin, input.gameId, input.isStroke)
-    );
+    const entries = await loadSummaryEntries(admin, input.gameId, input.isStroke);
+    // Stroke's field is the whole trip, so it gets the capped form; every other
+    // format is team-scoped and small enough to list in full.
+    const summary = input.isStroke
+      ? formatStrokeSummary(entries)
+      : formatResultSummary(entries);
 
     await sendPushToUsers(audience, "scores", {
       ...COPY.gameFinal(input.gameName, summary),

@@ -2,8 +2,29 @@ import { describe, it, expect } from "vitest";
 import {
   formatPoints,
   formatResultSummary,
+  formatStrokeSummary,
   formatClinchMargin,
 } from "./gameFinishNotify";
+
+/**
+ * Names used throughout: TEAM names are the ones in `supabase/seed.sql`'s BBMI
+ * fixture, which are real-shaped rather than "Team A" — they are long, and that
+ * length is the finding. CREW names are full names, because `users.name` holds a
+ * full name ("Zach Grether" in the seed) and that is what the summary resolves;
+ * testing with "Zach" would measure a string the app never actually sends.
+ */
+const TEAMS = {
+  usual: "The Usual Suspects",
+  buddy: "Buddy's Last Stand",
+  vibing: "Not Golfing, Just Vibing",
+  breeders: "Former Breeders II",
+};
+const CREW = {
+  zach: "Zach Grether",
+  bj: "BJ Dennison",
+  marcus: "Marcus Thornton",
+  jeremy: "Jeremy Maddox",
+};
 
 /**
  * Notification copy, exercised with REAL names rather than "Team A" — a summary
@@ -90,27 +111,165 @@ describe("formatResultSummary — three shapes that must read as siblings", () =
     ).toBe("1st Manhattans 12 · 2nd Centurions 9 · 3rd Bootleggers 7");
   });
 
-  it("a tie reads as a tie — both sides at 1st", () => {
-    expect(
-      formatResultSummary([
-        { name: "Centurions", position: 1 },
-        { name: "Manhattans", position: 1 },
-      ])
-    ).toBe("1st Centurions · 1st Manhattans");
-  });
-
-  it("a halved match still renders as a score line", () => {
-    expect(
-      formatResultSummary([
-        { name: "Manhattans", points: 2 },
-        { name: "Centurions", points: 2 },
-      ])
-    ).toBe("Manhattans 2 – Centurions 2");
-  });
-
   it("returns empty when there is nothing to say, so the body can fall back", () => {
     expect(formatResultSummary([])).toBe("");
     expect(formatResultSummary([{ name: "", points: 1 }])).toBe("");
+  });
+});
+
+describe("ties — an ordinal is NEVER repeated", () => {
+  it("two-way tie for the whole field drops ordinals entirely", () => {
+    // "1st X · 1st Y" reads as an app bug, not a tie. And "1st" says nothing
+    // when there is nobody behind it.
+    expect(
+      formatResultSummary([
+        { name: TEAMS.usual, position: 1 },
+        { name: TEAMS.buddy, position: 1 },
+      ])
+    ).toBe("Tied: The Usual Suspects & Buddy's Last Stand");
+  });
+
+  it("a DRAWN match uses the tie form, not a 2 – 2 score line", () => {
+    // The score line states the numbers but buries the outcome; "Tied:" leads
+    // with what happened.
+    expect(
+      formatResultSummary([
+        { name: TEAMS.usual, points: 2 },
+        { name: TEAMS.buddy, points: 2 },
+      ])
+    ).toBe("Tied: The Usual Suspects & Buddy's Last Stand 2");
+  });
+
+  it("three-way tie leads with the COUNT — the part that survives truncation", () => {
+    expect(
+      formatResultSummary([
+        { name: TEAMS.usual, position: 1 },
+        { name: TEAMS.buddy, position: 1 },
+        { name: TEAMS.breeders, position: 1 },
+      ])
+    ).toBe("3-way tie: The Usual Suspects, Buddy's Last Stand & Former Breeders II");
+  });
+
+  it("four-way tie scales the same way", () => {
+    expect(
+      formatResultSummary([
+        { name: "Alpha", position: 1 },
+        { name: "Bravo", position: 1 },
+        { name: "Charlie", position: 1 },
+        { name: "Delta", position: 1 },
+      ])
+    ).toBe("4-way tie: Alpha, Bravo, Charlie & Delta");
+  });
+
+  it("a PARTIAL tie shares one ordinal rather than printing it twice", () => {
+    expect(
+      formatResultSummary([
+        { name: TEAMS.usual, position: 1 },
+        { name: TEAMS.buddy, position: 2 },
+        { name: TEAMS.breeders, position: 2 },
+      ])
+    ).toBe("1st The Usual Suspects · 2nd Buddy's Last Stand & Former Breeders II");
+  });
+
+  it("a tied group with points prints the shared score ONCE, not per name", () => {
+    expect(
+      formatResultSummary([
+        { name: "Alpha", points: 12, position: 1 },
+        { name: "Bravo", points: 9, position: 2 },
+        { name: "Charlie", points: 9, position: 2 },
+      ])
+    ).toBe("1st Alpha 12 · 2nd Bravo & Charlie 9");
+  });
+
+  it("no output anywhere repeats an ordinal", () => {
+    // The invariant itself, checked over every tie shape above.
+    const shapes = [
+      formatResultSummary([
+        { name: "A", position: 1 },
+        { name: "B", position: 1 },
+      ]),
+      formatResultSummary([
+        { name: "A", position: 1 },
+        { name: "B", position: 2 },
+        { name: "C", position: 2 },
+      ]),
+      formatResultSummary([
+        { name: "A", position: 1 },
+        { name: "B", position: 1 },
+        { name: "C", position: 3 },
+      ]),
+      formatStrokeSummary([
+        { name: "A", position: 1 },
+        { name: "B", position: 1 },
+        { name: "C", position: 3 },
+      ]),
+    ];
+    for (const s of shapes) {
+      for (const ord of ["1st", "2nd", "3rd", "4th"]) {
+        const hits = s.split(ord).length - 1;
+        expect(hits, `"${ord}" appears ${hits}× in "${s}"`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+});
+
+describe("formatStrokeSummary — capped at top two plus a count", () => {
+  it("names the top two and counts the rest", () => {
+    expect(
+      formatStrokeSummary([
+        { name: CREW.zach, position: 1 },
+        { name: CREW.bj, position: 2 },
+        { name: CREW.marcus, position: 3 },
+        { name: CREW.jeremy, position: 4 },
+      ])
+    ).toBe("1st Zach Grether · 2nd BJ Dennison · +2");
+  });
+
+  it("omits the +N when nobody is left over", () => {
+    expect(
+      formatStrokeSummary([
+        { name: CREW.zach, position: 1 },
+        { name: CREW.bj, position: 2 },
+      ])
+    ).toBe("1st Zach Grether · 2nd BJ Dennison");
+  });
+
+  it("a tie FOR THE LEAD is expressed — it is what the notification is for", () => {
+    expect(
+      formatStrokeSummary([
+        { name: CREW.zach, position: 1 },
+        { name: CREW.bj, position: 1 },
+        { name: CREW.marcus, position: 3 },
+      ])
+    ).toBe("Tied: Zach Grether & BJ Dennison · +1");
+  });
+
+  it("a tie BELOW first is deliberately NOT expressed — see the note at the site", () => {
+    // 2nd and 3rd tie: one is shown, the other folds into +N. This is the
+    // documented trade, not a bug. Expressing it would either re-expand the list
+    // the cap exists to bound, or need an ordinal scheme two lines can't explain.
+    expect(
+      formatStrokeSummary([
+        { name: CREW.zach, position: 1 },
+        { name: CREW.bj, position: 2 },
+        { name: CREW.marcus, position: 2 },
+        { name: CREW.jeremy, position: 4 },
+      ])
+    ).toBe("1st Zach Grether · 2nd BJ Dennison · +2");
+  });
+
+  it("a 30-person field stays one short line", () => {
+    const field = Array.from({ length: 30 }, (_, i) => ({
+      name: `Player Number ${i + 1}`,
+      position: i + 1,
+    }));
+    const out = formatStrokeSummary(field);
+    expect(out).toBe("1st Player Number 1 · 2nd Player Number 2 · +28");
+    expect(out.length).toBeLessThanOrEqual(60);
+  });
+
+  it("returns empty for an empty field", () => {
+    expect(formatStrokeSummary([])).toBe("");
   });
 });
 
@@ -178,29 +337,56 @@ describe("truncation with real names", () => {
     expect(`${TITLE_PREFIX}Buddy Banks Memorial Invitational`.length).toBe(40);
   });
 
-  it("the BODY survives at full length for every shape", () => {
-    // Bodies are the payload's real content now, so they must not be the thing
-    // that overflows. All three stay comfortably inside two lines.
-    const bodies = [
-      formatResultSummary([
-        { name: "Manhattans", points: 2.5 },
-        { name: "Centurions", points: 1.5 },
-      ]),
-      formatResultSummary([
-        { name: "Centurions", position: 1 },
-        { name: "Manhattans", position: 2 },
-      ]),
-      `Buddy Banks Memorial Invitational · ${formatClinchMargin([25.5, 20.5])}`,
-    ];
-    for (const b of bodies) expect(b.length).toBeLessThanOrEqual(80);
+  /**
+   * BODY lengths with the REAL names. Bodies wrap to a second line collapsed and
+   * expand on long-press, so ~80 chars is comfortable and ~120 is the point at
+   * which a collapsed body starts losing its tail. The team names below are the
+   * seed fixture's, which are the long ones — that length is the finding.
+   */
+  it("body: head-to-head with the two longest real team names", () => {
+    const b = formatResultSummary([
+      { name: TEAMS.vibing, points: 2.5 },
+      { name: TEAMS.breeders, points: 1.5 },
+    ]);
+    expect(b).toBe("Not Golfing, Just Vibing 2½ – Former Breeders II 1½");
+    expect(b.length).toBe(51);
   });
 
-  it("a long TEAM name is the real overflow risk in a body, and it is bounded", () => {
-    // Two long team names in one score line is the worst case the body can hit.
-    const worst = formatResultSummary([
-      { name: "Buddy Banks Memorial Invitational", points: 25.5 },
-      { name: "Centurions of the Back Nine", points: 20.5 },
+  it("body: a 4-team placement list is the longest shape a real game produces", () => {
+    const b = formatResultSummary([
+      { name: TEAMS.vibing, position: 1 },
+      { name: TEAMS.usual, position: 2 },
+      { name: TEAMS.buddy, position: 3 },
+      { name: TEAMS.breeders, position: 4 },
     ]);
-    expect(worst.length).toBeLessThanOrEqual(80);
+    // Crosses 80 — still fully readable expanded, tail-cut when collapsed.
+    expect(b.length).toBeGreaterThan(80);
+    expect(b.length).toBeLessThanOrEqual(130);
+  });
+
+  it("body: a 3-way tie with real team names is the worst case overall", () => {
+    const b = formatResultSummary([
+      { name: TEAMS.vibing, position: 1 },
+      { name: TEAMS.usual, position: 1 },
+      { name: TEAMS.buddy, position: 1 },
+    ]);
+    // The COUNT leads, so even a hard cut still says "3-way tie:" first.
+    expect(b.startsWith("3-way tie:")).toBe(true);
+    expect(b.length).toBeLessThanOrEqual(130);
+  });
+
+  it("body: stroke stays short regardless of field size, with full crew names", () => {
+    const b = formatStrokeSummary([
+      { name: CREW.zach, position: 1 },
+      { name: CREW.marcus, position: 2 },
+      ...Array.from({ length: 28 }, (_, i) => ({ name: `Player ${i}`, position: i + 3 })),
+    ]);
+    expect(b).toBe("1st Zach Grether · 2nd Marcus Thornton · +28");
+    expect(b.length).toBeLessThanOrEqual(60);
+  });
+
+  it("body: the clinch line is short because it carries no names", () => {
+    const b = `Buddy Banks Memorial Invitational · ${formatClinchMargin([25.5, 20.5])}`;
+    expect(b.length).toBe(45);
   });
 });
