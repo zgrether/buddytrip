@@ -593,19 +593,33 @@ export function RackGameView() {
       );
       return;
     }
-    await finishGame.mutateAsync({ tripId, gameId: gid });
-    await utils.games.getById.invalidate({ tripId, gameId: gid });
-    // #6: finalize changes the leaderboard — invalidate it so the board reflects
-    // the result IMMEDIATELY (no realtime sub, only a 30s poll), instead of only
-    // after leave-and-return ("showed 4 to 2 only after I left and came back").
-    if (competitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      utils.games.listByTrip.invalidate({ tripId });
-      // The Live face re-seeds competitions.leaderboard FROM faceBootstrap on
-      // mount (setData), which marks it fresh and clobbers the invalidate above
-      // with the bootstrap's cached value — so invalidate the bootstrap too, or
-      // a re-locked correction reads stale until the 30s poll.
-      utils.competitions.faceBootstrap.invalidate({ tripId });
+    // #776 PREREQUISITE: this await was bare. `games.finish` is about to start
+    // THROWING when its results write fails (today it swallows the failure and
+    // marks the game complete anyway), and without a catch here a rejection
+    // became an unhandled promise rejection: the user saw nothing, and the
+    // invalidations below silently never ran. Making finish throw while this
+    // view couldn't display the throw would have produced exactly the silent
+    // failure #776 exists to remove. Matches `handleCorrect` directly below,
+    // and stroke/match, which already wrap their finish calls.
+    try {
+      await finishGame.mutateAsync({ tripId, gameId: gid });
+      await utils.games.getById.invalidate({ tripId, gameId: gid });
+      // #6: finalize changes the leaderboard — invalidate it so the board reflects
+      // the result IMMEDIATELY (no realtime sub, only a 30s poll), instead of only
+      // after leave-and-return ("showed 4 to 2 only after I left and came back").
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+        utils.games.listByTrip.invalidate({ tripId });
+        // The Live face re-seeds competitions.leaderboard FROM faceBootstrap on
+        // mount (setData), which marks it fresh and clobbers the invalidate above
+        // with the bootstrap's cached value — so invalidate the bootstrap too, or
+        // a re-locked correction reads stale until the 30s poll.
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      }
+    } catch {
+      // surfaced via the global error toast. The game stays unlocked and the
+      // Finish CTA stays tappable — the recompute is idempotent, so retrying is
+      // the correct recovery (same reasoning as StrokeGameView's catch).
     }
   }
 
