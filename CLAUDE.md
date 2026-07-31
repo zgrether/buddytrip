@@ -197,6 +197,22 @@ These patterns have been established through prior work. Follow them exactly —
    imports the pure fn. Mirror this split for every new `result_strategy`, and
    branch `games.finish` on the template's `result_strategy` (data-driven, NOT a
    hardcoded format name) so new strategies slot in without touching `finish`.
+   **`games.finish` is now the ONLY finalize — this line went from prescription to
+   description.** A second finalize, `games.post`, existed for non-golf and was
+   merged away: it ran the same select, the same `result_strategy` dispatch and the
+   same lock write, its three engine arms were character-for-character duplicates
+   of `finish`'s, and no client or test ever reached them. It existed to route
+   AROUND the `null` (manual) arm — which was already a first-class member of the
+   same closed strategy set, served by `post` and refused by `finish`. So the fork
+   was never a design; it was this rule not being followed. `null` is now a served
+   arm of the one dispatch (`placements` is its manual-only input), and the tell to
+   watch for is a NEW procedure appearing whose reason for existing is "this format
+   is different" — that is a hardcoded format name wearing a procedure's clothes.
+   Two supporting facts worth keeping: the guards the two ran behind
+   (`requireGameEdit` / `requireGameRunAction`) are the same function with a
+   different error string, so the split had no permission basis either; and `post`'s
+   own doc comment asserted a distinction ("NOT 'finalize': re-runnable") its code
+   never made, which is how the two drifted into looking like different things.
    The competition board's LIVE projected-points pill extends this: the read-only
    `src/server/lib/liveProjection.ts` runs the SAME pure projection fns the game
    pages use (`rollupMatchPlay` / `computeRack("projected")`) server-side and
@@ -290,7 +306,7 @@ These patterns have been established through prior work. Follow them exactly —
     blank. **The active enterer's in-flight cells (saving / error / in-outbox) WIN
     over any remote update — never clobber them** (this is the contract sync depends
     on). Non-golf is the deliberate exception: it posts placement RESULTS via
-    `games.post`, not per-hole `score_entries`.
+    `games.finish`'s manual arm (`placements`), not per-hole `score_entries`.
 16. **Game-state sync — config-hash cross-device reconcile.** Cross-device
     convergence with zero schema changes and no Realtime. Scores poll ~20s
     (`useConfigSync`, `GAME_SYNC_INTERVAL_MS`, no background refetch). Config

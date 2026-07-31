@@ -248,8 +248,10 @@ never the reverse. Scores anchor to the person.
 **What it is.** However the game is actually played (poker, cornhole, a bar game), you settle
 it and **enter the finishing order by hand** — the day's rules say how it's won.
 
-**Definition.** Scores are posted as a **placement** finishing order via `games.post` (not
-per-hole `score_entries`): order the teams by finish; points come from the configured
+**Definition.** Scores are posted as a **placement** finishing order via `games.finish`'s
+manual arm — its `placements` input, the `result_strategy: null` branch of the ONE finalize
+(it had its own procedure, `games.post`, until that fork was merged away) — not
+per-hole `score_entries`: order the teams by finish; points come from the configured
 placement distribution (you set the order, not the points). Uses the **placement** distribution
 model → subject to the §9 save gate.
 

@@ -110,7 +110,7 @@ export function NonGolfGameView() {
   // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
   // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
   // Non-golf had NO freshness mechanism before this (no score poll — results post via
-  // games.post, not per-hole entries — and its own leaderboard read has no
+  // games.finish's manual arm, not per-hole entries — and its own leaderboard read has no
   // refetchInterval, DATA_FRESHNESS_AUDIT.md §8-F9), so this is its first one.
   useRealtimeGame(tripId, urlGameId);
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);

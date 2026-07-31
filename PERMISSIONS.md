@@ -148,8 +148,8 @@ who's in, what they're called, what role they hold — is the Owner's.
 | **Reorder a team's roster** (canonical order) | ✓ | **—** | **captain of *that* team** | `teamAssignments.reorder` *(Owner or that team's captain — **not** a plain Organizer; same gate as `teams.update`; mig 094)* |
 | Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
 | **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
-| **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **delegate of *that* game** | `games.setManualResults` / `finish` |
-| **RUN: post results / open score correction** | ✓ | **—** | **delegate of *that* game** | `games.post` / `openCorrection` *(Owner or game-delegate only — **not** a plain Organizer)* |
+| **Enter a game's results** (manual placement; finish/compute — every format) | ✓ | ✓ | **delegate of *that* game** | `games.setManualResults` / `finish` *(`finish` absorbed `games.post`; see the flag below)* |
+| **RUN: open score correction** | ✓ | see flag | **delegate of *that* game** | `games.openCorrection` |
 | Enter a per-hole score (until posted) | ✓ (any unit) | ✓ (any unit) | ✓ (any unit in *their* game) | `scores.upsertEntry` / `deleteEntry` — **scoped** (see below); **blocked** once the game is posted & not in correction |
 | ↳ a plain **Member** | their own **unit** only | — | — | member scores only the match/group they play in; a non-participant scores nothing |
 | Delegate / revoke a game organizer | ✓ | ✓ | — | `games.addOrganizer` / `removeOrganizer` *(trip staff only — a delegate can't sub-delegate)* |
@@ -232,23 +232,37 @@ who's in, what they're called, what role they hold — is the Owner's.
 > renamed `game_organizers`→`game_delegates` / `is_game_organizer`→`is_game_delegate`
 > in migration 061). Granting is a trip-staff act (`requireTripRole('Organizer')`).
 
-> **Competition RUN-actions are owner/game-delegate scoped — narrower than game
-> edit (Slice D Run/Post §5).** Posting results and opening score correction
-> (`games.post` / `games.openCorrection`) gate on **`isOwner || isGameDelegate(gameId)`**
-> — the trip **Owner** or *that game's* delegate. A plain **Organizer (the trip
-> planner) is NOT a run-action** unless they're also the game's delegate: running
-> the competition is owner/delegate-scoped, distinct from trip-planner scope.
-> Enforced server-side by `requireGameRunAction`. "Post" publishes the current
-> standing and is **re-runnable** (Open → Posted ⇄ Correcting) — never a permanent
-> finalize. A posted game's scores are frozen (`scores.upsertEntry`/`deleteEntry`
-> return FORBIDDEN) until the owner/delegate opens correction; results stay
-> visible to everyone throughout.
+> **⚠️ FLAGGED CONTRADICTION — this paragraph does not match the code, and the
+> code wins.** It claims the RUN-action tier is NARROWER than game edit: that
+> "a plain **Organizer** is NOT a run-action unless they're also the game's
+> delegate". The code has never done that. `requireGameRunAction` and
+> `requireGameEdit` are the same function with a different error string — both
+> parse the same input, both delegate to the same `canEditGame`, both `next()`
+> identically — and `canEditGame` passes anyone at `co_admin` or above, which the
+> trip→competition container mapping grants to every trip **Organizer**. The test
+> suite asserts the code's behaviour explicitly ("a co-admin (trip Organizer) and
+> a game-delegate can post"), so the doc is the thing that is wrong, not the test.
+> This was NOT introduced by the finish/post merge — the merge only surfaced it —
+> and it is deliberately left unresolved here rather than silently rewritten,
+> because "should a trip Organizer be able to post results?" is a permissions
+> decision, not a documentation fix. Until it is answered, treat the code as
+> authoritative: **Owner, co-admin/Organizer, or that game's delegate.**
+>
+> **Competition RUN-actions (Slice D Run/Post §5).** Opening score correction
+> (`games.openCorrection`) is enforced server-side by `requireGameRunAction`.
+> Finalizing a game — every format, including the non-golf placement post that
+> used to have its own `games.post` procedure — runs behind `requireGameEdit`.
+> Both gates resolve to the same rule (see the flag above). Finalizing is
+> **re-runnable** (Open → Posted ⇄ Correcting), never a permanent lock-out. A
+> posted game's scores are frozen (`scores.upsertEntry`/`deleteEntry` return
+> FORBIDDEN) until the owner/delegate opens correction; results stay visible to
+> everyone throughout.
 
 > **Per-hole scoring is member-facing and SCOPED** (`scores.upsertEntry`/
 > `deleteEntry`, mig 072): a member enters scores for the match/group they play
 > in; owner/organizer/delegate score more broadly. See the scoped-model note under
-> the competition table above. (Non-golf placement scoring — `games.post` /
-> `setManualResults` — stays owner/organizer/delegate.)
+> the competition table above. (Non-golf placement scoring — `games.finish`'s
+> manual arm / `setManualResults` — stays owner/organizer/delegate.)
 
 ### News / trip board — `news`
 

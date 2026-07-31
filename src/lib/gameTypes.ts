@@ -56,7 +56,9 @@ export interface GameTypeDefinition {
   category: GameCategory;
   /** How scores are entered. null for manual (no scorecard entry). */
   entrySchema: string | null;
-  /** The scoring engine; null = manual. Branches games.finish / games.post. */
+  /** The scoring engine; null = manual (finalized by passing an entered finishing
+   *  ORDER instead of computing from scores). THE axis `games.finish` — the one
+   *  finalize for every format — dispatches on. */
   resultStrategy: ResultStrategy | null;
   /** The base scorecard the format carries; null = non-golf (no scorecard).
    *  applyCourse patches a COPY of this with the course's par/index. */

@@ -8,6 +8,12 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * Runs the whole cycle on a MANUAL game so the post/lock/correct logic is tested
  * without engine-compute fixtures: posting a manual game writes the entered order
  * and points come from the CONFIGURED distribution (poster sets order, not points).
+ *
+ * The procedure under test is `games.finish` — the ONE finalize for every format.
+ * These cases used to call `games.post`, a second finalize that existed only for
+ * non-golf; it ran the same dispatch and the same lock, so it was merged into
+ * `finish`'s manual (`result_strategy: null`) arm. "Post" survives as the DOMAIN
+ * verb for a non-golf result, which is why it still reads that way below.
  */
 
 const MANUAL = "gtt_manual";
@@ -57,7 +63,7 @@ afterAll(async () => {
 describe("post — commit current standing, points from configured distribution", () => {
   it("manual post writes the entered ORDER; points come from the distribution", async () => {
     const g = await newManualGame();
-    await ctx.caller().games.post({
+    await ctx.caller().games.finish({
       tripId, gameId: g,
       placements: [{ entityId: teamA, position: 1 }, { entityId: teamB, position: 2 }],
     });
@@ -76,8 +82,8 @@ describe("post — commit current standing, points from configured distribution"
   it("re-post is idempotent (re-commits current state)", async () => {
     const g = await newManualGame("Re-post game");
     const place = [{ entityId: teamA, position: 1 }, { entityId: teamB, position: 2 }];
-    await ctx.caller().games.post({ tripId, gameId: g, placements: place });
-    await ctx.caller().games.post({ tripId, gameId: g, placements: place });
+    await ctx.caller().games.finish({ tripId, gameId: g, placements: place });
+    await ctx.caller().games.finish({ tripId, gameId: g, placements: place });
     const game = (await ctx.caller().games.getById({ tripId, gameId: g })) as { status: string };
     expect(game.status).toBe("complete");
   });
@@ -89,7 +95,7 @@ describe("score lock — posted scores frozen until correction", () => {
     const place = [{ entityId: teamA, position: 1 }, { entityId: teamB, position: 2 }];
     const entry = { tripId, gameId: g, participantId: ctx.getUser("owner").id, unitLabel: "1", value: 4 };
 
-    await ctx.caller().games.post({ tripId, gameId: g, placements: place });
+    await ctx.caller().games.finish({ tripId, gameId: g, placements: place });
     // Locked: score entry rejected while posted & not correcting.
     await expect(ctx.caller().scores.upsertEntry(entry)).rejects.toThrow(/posted/i);
 
@@ -100,7 +106,7 @@ describe("score lock — posted scores frozen until correction", () => {
     await expect(ctx.caller().scores.upsertEntry(entry)).resolves.toBeTruthy();
 
     // Re-post → re-locked.
-    await ctx.caller().games.post({ tripId, gameId: g, placements: place });
+    await ctx.caller().games.finish({ tripId, gameId: g, placements: place });
     await expect(ctx.caller().scores.upsertEntry(entry)).rejects.toThrow(/posted/i);
   });
 
@@ -114,7 +120,7 @@ describe("permissions — run-actions: owner / co-admin / game-delegate", () => 
   it("owner can post", async () => {
     const g = await newManualGame("Owner posts");
     await expect(
-      ctx.caller().games.post({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] })
+      ctx.caller().games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] })
     ).resolves.toBeTruthy();
   });
 
@@ -124,28 +130,28 @@ describe("permissions — run-actions: owner / co-admin / game-delegate", () => 
 
     // Co-admin (trip Organizer) — posting is operational (owner-minus-destructive),
     // so co-admins post now (the game-day redundancy this role exists for).
-    await expect(ctx.callerAs("planner").games.post({ tripId, gameId: g, placements: place }))
+    await expect(ctx.callerAs("planner").games.finish({ tripId, gameId: g, placements: place }))
       .resolves.toBeTruthy();
     // Plain Member — blocked (not co-admin, not this game's delegate).
-    await expect(ctx.callerAs("member").games.post({ tripId, gameId: g, placements: place }))
+    await expect(ctx.callerAs("member").games.finish({ tripId, gameId: g, placements: place }))
       .rejects.toThrow(/co-admin|delegate/i);
 
     // Grant the Member the game-delegate role → now allowed.
     await ctx.caller().games.addOrganizer({ tripId, gameId: g, userId: memberId });
-    await expect(ctx.callerAs("member").games.post({ tripId, gameId: g, placements: place }))
+    await expect(ctx.callerAs("member").games.finish({ tripId, gameId: g, placements: place }))
       .resolves.toBeTruthy();
   });
 
   it("an outsider (non-member) cannot post or correct", async () => {
     const g = await newManualGame("Outsider blocked");
-    await ctx.caller().games.post({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] });
-    await expect(ctx.callerAs("outsider").games.post({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] })).rejects.toThrow();
+    await ctx.caller().games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] });
+    await expect(ctx.callerAs("outsider").games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] })).rejects.toThrow();
     await expect(ctx.callerAs("outsider").games.openCorrection({ tripId, gameId: g })).rejects.toThrow();
   });
 
   it("a co-admin (trip Organizer) can open correction", async () => {
     const g = await newManualGame("Co-admin corrects");
-    await ctx.caller().games.post({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] });
+    await ctx.caller().games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] });
     await expect(ctx.callerAs("planner").games.openCorrection({ tripId, gameId: g }))
       .resolves.toBeTruthy();
   });

@@ -561,12 +561,51 @@ export const gamesRouter = router({
       return data;
     }),
 
-  // finish — Owner/Organizer. Compute + persist results, mark complete.
-  // Branches on the game type's result_strategy (data-driven, NOT a hardcoded
-  // format name) so new formats slot in without touching this. Idempotent: each
-  // compute replaces prior game_results, and status='complete' again is a no-op.
+  // finish — THE finalize. One procedure for every format, branching on the game
+  // type's result_strategy (data-driven, NOT a hardcoded format name) so new
+  // formats slot in without touching this. Idempotent: each compute replaces
+  // prior game_results, and status='complete' again is a no-op.
+  //
+  // ── This absorbed `games.post`, which should never have existed ─────────────
+  // `post` was a second finalize for non-golf. It ran the SAME select, the SAME
+  // result_strategy dispatch and the SAME lock write; its match_play /
+  // rack_n_stack / stroke_total arms were character-for-character duplicates of
+  // the three below, and no client ever reached them (every call site and every
+  // test used a MANUAL type). The only real difference was the `null` arm:
+  // `finish` refused it, `post` handled it. So `null` was always a first-class
+  // member of the same closed strategy set — the fork existed to route AROUND a
+  // branch that was already sitting in the dispatch.
+  //
+  // The two also ran behind guards that looked different and were not:
+  // `requireGameEdit` and `requireGameRunAction` are the same function with a
+  // different error string (identical parsing, identical `canEditGame`, identical
+  // `next()`), so collapsing onto `requireGameEdit` — what `setManualResults`,
+  // the other `writeManualResults` caller, already uses — changes nobody's
+  // access. Only the FORBIDDEN message on the non-golf path moved.
+  //
+  // Worth naming because it is the mechanism: `post`'s own doc comment claimed it
+  // was "NOT 'finalize': re-runnable" while its write was byte-identical to the
+  // lock below, and `finish` is equally re-runnable. A comment asserting a
+  // distinction the code never made is how the two drifted into looking like
+  // different things. Keeping ONE name also removes the procedure whose name
+  // ("post") invited a wire to the NEVER-marked score-posting sites in
+  // NOTIFICATIONS.md.
   finish: authedProcedure
-    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        // MANUAL formats only (result_strategy null): the entered finishing
+        // ORDER. Points are NOT set here — they stay derived from the game's
+        // configured points_distribution at read time (placementPoints), so the
+        // finisher never sets points. Ignored by the engine strategies, which
+        // compute their results from entered scores.
+        placements: z
+          .array(z.object({ entityId: z.string().min(1), position: z.number().int().min(1).max(99) }))
+          .max(64)
+          .optional(),
+      })
+    )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
@@ -596,15 +635,17 @@ export const gamesRouter = router({
 
       // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new
       // strategies slot in here without touching the rest of finish.
-      // null (manual): finish has no placements input — caller must use post.
+      // null (manual): the caller supplies the entered finishing order; committed
+      // through the SAME shared write path `setManualResults` uses, so there is
+      // no parallel commit. The roll-up never distinguishes computed from entered.
       let matches: MatchOutcome[] = [];
       let teams: RackTeamOutcome[] = [];
       let standings: StrokeStanding[] = [];
       if (strategy === null) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Manual games cannot be finalized via finish — use post with a placements array.",
-        });
+        if (!input.placements) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "A manual game posts a finishing order." });
+        }
+        await writeManualResults(ctx.supabase, input.gameId, input.placements);
       } else if (strategy === "match_play") {
         matches = await computeMatchPlayResults(ctx.supabase, input.gameId);
       } else if (strategy === "rack_n_stack") {
@@ -625,10 +666,16 @@ export const gamesRouter = router({
       // re-lock exit score-correction mode (openCorrection → edit → finish).
       // scoring_enabled=true keeps the "a run/posted game is enabled" invariant
       // (Phase 2B.1) so a correction edit passes the score-entry gate.
+      //
+      // The `trip_id` filter came from `post` and is kept deliberately: the select
+      // above already scoped by trip and `id` is the PK, so it is defence in depth
+      // rather than a fix — but of the two behaviours the merge had to choose
+      // between, the stricter one wins when it costs nothing.
       const { error } = await ctx.supabase
         .from("games")
         .update({ status: "complete", corrections_open: false, scoring_enabled: true })
-        .eq("id", input.gameId);
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -1096,86 +1143,11 @@ export const gamesRouter = router({
       return { success: true, count };
     }),
 
-  // post — RUN action (owner / game-delegate only). Publishes the game's current
-  // standing to the leaderboard. NOT "finalize": re-runnable. One action, two
-  // sources (Run-Post §2):
-  //   - manual game: the poster passes the entered finishing ORDER (placements);
-  //     POINTS come from the already-configured points_distribution at read time
-  //     (the poster never sets points). Committed via the shared writeManualResults.
-  //   - engine game: the result is COMPUTED from entered scores (same branch as
-  //     `finish`), writing game_results.
-  // Then locks: status='complete', corrections_open=false. The leaderboard
-  // recomputes on the next read (competitionPlacement.ts — the single reader);
-  // we do NOT recompute locally. Idempotent — re-post just re-commits. Never
-  // blocks an incomplete post (the rainout confirm is a UI guard, §4).
-  post: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        gameId: z.string(),
-        placements: z
-          .array(z.object({ entityId: z.string().min(1), position: z.number().int().min(1).max(99) }))
-          .max(64)
-          .optional(),
-      })
-    )
-    .use(requireGameRunAction())
-    .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, game_type_id")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-
-      // Result strategy from the format definition in CODE (W-PERF-01); an
-      // unregistered type loud-fails (the generalized B2 guard — see finish).
-      const def = getGameTypeDefinition(game.game_type_id as string);
-      if (!def) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Unknown game type '${game.game_type_id}' — refusing to compute to avoid silent stroke-play scoring`,
-        });
-      }
-      const strategy = def.resultStrategy;
-
-      if (strategy === null) {
-        // Manual: commit the entered finishing order (shared write path).
-        if (!input.placements) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "A manual game posts a finishing order." });
-        }
-        await writeManualResults(ctx.supabase, input.gameId, input.placements);
-      } else if (strategy === "match_play") {
-        await computeMatchPlayResults(ctx.supabase, input.gameId);
-      } else if (strategy === "rack_n_stack") {
-        await computeRackNStackResults(ctx.supabase, input.gameId);
-      } else if (strategy === "stroke_total") {
-        await computeStrokePlayResults(ctx.supabase, input.gameId);
-      } else {
-        // Defense in depth: union is exhaustive, unreachable via types.
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Unhandled result_strategy '${strategy as string}' — refusing to compute to avoid silent stroke-play scoring`,
-        });
-      }
-
-      const { error } = await ctx.supabase
-        .from("games")
-        // scoring_enabled=true keeps the "a run/posted game is enabled" invariant
-        // (Phase 2B.1) so a correction edit passes the score-entry gate.
-        .update({ status: "complete", corrections_open: false, scoring_enabled: true })
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to post game: ${error.message}` });
-      return { success: true };
-    }),
-
   // openCorrection — RUN action (owner / game-delegate only). Enters score-
   // correction on a POSTED game: re-opens score entry (the scores router gates on
   // status='complete' && !corrections_open) WITHOUT un-posting — the result stays
-  // visible on the board until Re-post (`post` again). A deliberate enter→re-post
-  // cycle, never a silent edit (§3).
+  // visible on the board until it is finalized again (`finish`). A deliberate
+  // enter→re-finish cycle, never a silent edit (§3).
   openCorrection: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireGameRunAction())

@@ -44,7 +44,7 @@ describe("match_play (default) — non-golf game scores winner-take-all", () => 
     gameIds.push(g.id);
 
     // Win/lose/tie posts winner → position 1, loser → position 2.
-    await ctx.caller().games.post({
+    await ctx.caller().games.finish({
       tripId, gameId: g.id,
       placements: [{ entityId: ta, position: 1 }, { entityId: tb, position: 2 }],
     });
@@ -65,7 +65,7 @@ describe("match_play (default) — non-golf game scores winner-take-all", () => 
     gameIds.push(g.id);
 
     // Tie → BOTH at position 1 (placementPoints averages [5,0] → 2.5 each).
-    await ctx.caller().games.post({
+    await ctx.caller().games.finish({
       tripId, gameId: g.id,
       placements: [{ entityId: ta, position: 1 }, { entityId: tb, position: 1 }],
     });
@@ -90,7 +90,7 @@ describe("points comp — keeps #430's placement model (regression)", () => {
     })) as { id: string };
     gameIds.push(g.id);
 
-    await ctx.caller().games.post({
+    await ctx.caller().games.finish({
       tripId, gameId: g.id,
       placements: [{ entityId: ta, position: 1 }, { entityId: tb, position: 2 }],
     });

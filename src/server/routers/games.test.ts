@@ -125,14 +125,71 @@ describe("games router — result_strategy dispatch guard", () => {
     await ctx.cleanup();
   });
 
-  it("finish — manual game (strategy=null) throws BAD_REQUEST, no stroke-play results written", async () => {
+  /**
+   * BEHAVIOUR CHANGE (finish/post merge). This case used to assert that a manual
+   * game was REFUSED by `finish` ("Manual games cannot be finalized via finish —
+   * use post with a placements array"), because a second procedure, `games.post`,
+   * owned the manual arm. That fork is gone: `null` is now a served arm of the
+   * one dispatch. What survives from the old assertion is the part that was
+   * actually load-bearing — a manual game must never fall through to stroke-play
+   * compute — so that is what is pinned, on BOTH the refusal and success paths.
+   */
+  it("finish — manual game (strategy=null) without placements throws BAD_REQUEST, nothing written", async () => {
     const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_manual", name: "Cornhole" });
     await expect(ctx.caller().games.finish({ tripId, gameId: game.id })).rejects.toMatchObject({
-      message: expect.stringContaining("Manual games cannot be finalized via finish"),
+      message: expect.stringContaining("finishing order"),
     });
     // Guard must fire before any compute — confirm no game_results rows exist.
     const { data: results } = await ctx.admin.from("game_results").select("id").eq("game_id", game.id);
     expect(results).toHaveLength(0);
+  });
+
+  it("finish — manual game WITH placements writes the entered order and locks, via the same procedure", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_manual", name: "Cornhole 2" });
+    // entity ids are opaque to the manual arm (teams in production); the point
+    // here is that the null arm commits an ORDER rather than computing scores.
+    await ctx.caller().games.finish({
+      tripId,
+      gameId: game.id,
+      placements: [
+        { entityId: "entity-a", position: 1 },
+        { entityId: "entity-b", position: 2 },
+      ],
+    });
+
+    const { data: results } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, entity_type, position")
+      .eq("game_id", game.id)
+      .order("position", { ascending: true });
+    expect(results).toHaveLength(2);
+    expect(results![0]).toMatchObject({ entity_id: "entity-a", entity_type: "team", position: 1 });
+    expect(results![1]).toMatchObject({ entity_id: "entity-b", entity_type: "team", position: 2 });
+
+    // Same lock as every other format — one finalize, one locked state.
+    const { data: row } = await ctx.admin
+      .from("games")
+      .select("status, corrections_open, scoring_enabled")
+      .eq("id", game.id)
+      .maybeSingle();
+    expect(row).toMatchObject({ status: "complete", corrections_open: false, scoring_enabled: true });
+  });
+
+  it("finish — an ENGINE game ignores placements rather than committing them", async () => {
+    // Defence against the merge's one new input reaching an arm it does not
+    // belong to: `placements` is manual-only, so a stroke game must compute from
+    // scores (none here → empty standings) and never write the passed order.
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_stroke_play", name: "Stroke Ignore" });
+    await ctx.caller().games.finish({
+      tripId,
+      gameId: game.id,
+      placements: [{ entityId: "should-not-appear", position: 1 }],
+    });
+    const { data: results } = await ctx.admin
+      .from("game_results")
+      .select("entity_id")
+      .eq("game_id", game.id);
+    expect((results ?? []).map((r) => r.entity_id)).not.toContain("should-not-appear");
   });
 
   it("finish — an unregistered game type throws rather than silently scoring as stroke play", async () => {
