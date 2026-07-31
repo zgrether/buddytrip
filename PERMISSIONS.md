@@ -6,8 +6,12 @@
 `canEdit`/`isOwner` guards. The tRPC gates are the source of truth — this doc
 mirrors them.*
 
-*Last reconciled against the code: 2026-06-07 (see **Audit notes** at the end
+*Last reconciled against the code: 2026-07-31 (see **Audit notes** at the end
 for what changed and the open questions).*
+
+*The **Owner/Organizer principle** below is the ratified INTENT (#770). Where the
+code differs, the code is ground truth and the difference is enumerated as a
+deviation — this doc no longer describes drift as though it were design.*
 
 ---
 
@@ -22,9 +26,39 @@ unchanged — those describe a phase, not the role.
 
 | Role | Code/DB value (`TripRole`) | Description |
 |------|----------------------------|-------------|
-| **Owner** | `'Owner'` | Full control. Creates the trip, owns the crew roster, locks decisions, transfers/deletes the trip. |
-| **Organizer** | `'Organizer'` | Planning authority. Edits trip details, dates, ideas, lodging, agenda, competition, news, tiles. Cannot manage the roster, lock the destination, transfer, or delete. |
+| **Owner** | `'Owner'` | Everything an Organizer can do, plus trip administration. |
+| **Organizer** | `'Organizer'` | **Everything the Owner can do except trip administration** — see the principle below. |
 | **Member** | `'Member'` | Participant. Views everything on the trip, votes, chats (crew), logs expenses + own travel. Cannot edit trip configuration. |
+
+### The Owner/Organizer principle
+
+**An Organizer has the same capabilities as the Owner, except trip
+administration.** Trip administration is exactly two things:
+
+1. **Elevating crew to Organizer** (changing someone's role)
+2. **Deleting the trip**
+
+That is the whole rule. It is stated as a PRINCIPLE rather than a list of
+permitted actions on purpose: a list has to be re-derived and re-checked every
+time a feature is added, and the previous version of this section was a list
+(*"Edits trip details, dates, ideas, lodging, agenda, competition, news,
+tiles"*) that had already drifted out of step with the code. A principle tells
+you what to do for the NEXT procedure without anyone updating this file.
+
+**Applying it to new work:** gate on `requireTripRole("Organizer")` unless the
+action is one of the two above. If you find yourself writing
+`requireTripRole("Owner")` for anything else, that is a deviation from this rule
+and needs a reason — not a shrug.
+
+> **⚠️ The code does not currently match this principle.** The rule above is the
+> INTENT, ratified after #770. As of 2026-07-31 there are ~21 procedures gated
+> `requireTripRole("Owner")` that are not trip administration, plus the RLS
+> policies mirroring them (migration 030 deliberately aligned RLS to the tRPC
+> layer, so the deviation exists at BOTH layers). They are enumerated in
+> **Audit notes → Owner/Organizer deviations** at the end of this file. Until
+> those are reconciled, the per-row matrix below reflects the CODE, which is
+> ground truth; where a row says Owner-only and the principle says Organizer,
+> the row is a known deviation, not a counter-example to the rule.
 
 **Derived flags used in code:**
 - `isOwner = viewerRole === 'Owner'`
@@ -83,8 +117,15 @@ Each row notes the **tRPC procedure** (authoritative gate).
 
 ### Crew / roster — `tripMembers`, `ghostCrew`
 
-Roster management is **Owner-only**. Organizers plan the trip; the crew list —
-who's in, what they're called, what role they hold — is the Owner's.
+Roster management is **Owner-only in the code today**, and the rows below reflect
+that. Note this is mostly a **known deviation** from the Owner/Organizer
+principle, not a second rule: only `updateRole` (promote/demote) is trip
+administration and therefore legitimately Owner-only. The rest — add, invite,
+rename, remove, ghost crew, another member's travel — are Organizer-appropriate
+under the ratified rule and are listed in *Audit notes → Owner/Organizer
+deviations*. An earlier version of this paragraph justified the whole block
+("the crew list is the Owner's"), which read as a principle and competed with
+the actual one.
 
 | Action | Owner | Organizer | Member | tRPC |
 |--------|:-----:|:---------:|:------:|------|
@@ -232,27 +273,19 @@ who's in, what they're called, what role they hold — is the Owner's.
 > renamed `game_organizers`→`game_delegates` / `is_game_organizer`→`is_game_delegate`
 > in migration 061). Granting is a trip-staff act (`requireTripRole('Organizer')`).
 
-> **⚠️ FLAGGED CONTRADICTION — this paragraph does not match the code, and the
-> code wins.** It claims the RUN-action tier is NARROWER than game edit: that
-> "a plain **Organizer** is NOT a run-action unless they're also the game's
-> delegate". The code has never done that. `requireGameRunAction` and
-> `requireGameEdit` are the same function with a different error string — both
-> parse the same input, both delegate to the same `canEditGame`, both `next()`
-> identically — and `canEditGame` passes anyone at `co_admin` or above, which the
-> trip→competition container mapping grants to every trip **Organizer**. The test
-> suite asserts the code's behaviour explicitly ("a co-admin (trip Organizer) and
-> a game-delegate can post"), so the doc is the thing that is wrong, not the test.
-> This was NOT introduced by the finish/post merge — the merge only surfaced it —
-> and it is deliberately left unresolved here rather than silently rewritten,
-> because "should a trip Organizer be able to post results?" is a permissions
-> decision, not a documentation fix. Until it is answered, treat the code as
-> authoritative: **Owner, co-admin/Organizer, or that game's delegate.**
->
 > **Competition RUN-actions (Slice D Run/Post §5).** Opening score correction
 > (`games.openCorrection`) is enforced server-side by `requireGameRunAction`.
 > Finalizing a game — every format, including the non-golf placement post that
 > used to have its own `games.post` procedure — runs behind `requireGameEdit`.
-> Both gates resolve to the same rule (see the flag above). Finalizing is
+> Both gates resolve to the SAME predicate — `requireGameEdit` and
+> `requireGameRunAction` are the same function with a different error string
+> (identical parsing, identical `canEditGame`, identical `next()`), and
+> `canEditGame` passes anyone at `co_admin` or above, which the trip→competition
+> mapping grants every trip **Organizer**. So both are: **Owner, Organizer, or
+> that game's delegate** — consistent with the Owner/Organizer principle at the
+> top, since neither is trip administration. (An earlier version of this note
+> claimed the RUN tier was narrower and excluded a plain Organizer. The code
+> never did that, and #770 resolved it in the code's favour.) Finalizing is
 > **re-runnable** (Open → Posted ⇄ Correcting), never a permanent lock-out. A
 > posted game's scores are frozen (`scores.upsertEntry`/`deleteEntry` return
 > FORBIDDEN) until the owner/delegate opens correction; results stay visible to
@@ -380,3 +413,58 @@ legitimately update most trip columns (rename, about, dates, change
 destination); only `lockDestination` / `transferOwnership` are Owner-only, and
 those are **column-level** distinctions row-level RLS can't express without a
 trigger. tRPC enforces them — not worth a trigger for defense-in-depth here.
+
+---
+
+## Audit notes (2026-07-31) — Owner/Organizer deviations
+
+#770 ratified the principle at the top of this file: **an Organizer can do
+everything the Owner can, except elevating crew to Organizer and deleting the
+trip.** The code predates that rule and does not match it yet. This section is
+the enumerated gap — the rule is the intent, these are the exceptions to it, and
+each is now a *deviation from a stated rule* rather than an open question.
+
+### Conforming (the two sanctioned exceptions)
+
+| Procedure | Why it's Owner-only |
+|---|---|
+| `tripMembers.updateRole` | elevating crew — exception 1 |
+| `trips.delete` | deleting the trip — exception 2 |
+
+### One judgment call
+
+| Procedure | Note |
+|---|---|
+| `trips.transferOwnership` | Owner-only, and not literally either named exception — but it is the ultimate role change and sits squarely in the trip-administration family. Reads as conforming in spirit; flagged because the rule as stated doesn't name it. |
+
+### Deviations — 21 procedures gated `requireTripRole("Owner")` that are not trip administration
+
+| Area | Procedures |
+|---|---|
+| Crew / roster | `tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `.inviteByEmail`, `.sendInvitationBlast` |
+| Guests | `ghostCrew.create`, `.update`, `.remove` |
+| Ideas | `ideas.create`, `ideas.remove`, `archivedIdeas.archive` |
+| Trip state | `trips.lockDestination` |
+| Dates | `datePoll.castVoteForMember` |
+| Competition | `teamAssignments.remove`, `teamAssignments.setCaptain` |
+| Games (destructive) | `games.delete`, `games.resetScoring`, `games.resetToSkeleton` |
+| Chat | `messages.clearChannel` |
+
+Two things worth knowing before anyone reconciles these:
+
+**It is a TWO-LAYER deviation.** Migration 030 is titled
+`tighten_rls_to_match_trpc` and deliberately aligned the RLS policies to these
+same Owner-only gates (`trip_members` INSERT/UPDATE, `invites` INSERT,
+`date_poll_votes` ghost-vote, and others). So loosening a tRPC guard without the
+matching policy leaves the write still refused at the DB — and per `CLAUDE.md`,
+an RLS role string is the class `tsc` and grep cannot catch. Any reconciliation
+is a **DB-value change**, the highest-risk tier, and needs a migration plus
+auth verification, not just a middleware edit.
+
+**Not all of them are obviously wrong.** The destructive game trio
+(`delete` / `resetScoring` / `resetToSkeleton`) and `messages.clearChannel` are
+irreversible data loss; a reasonable person could argue those belong with trip
+administration even though the rule as written doesn't put them there. The
+roster, ideas, dates and competition ones look like straightforward drift.
+Deciding which is which is a product call, not a mechanical sweep — which is why
+this section enumerates rather than fixes.
