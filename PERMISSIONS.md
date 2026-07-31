@@ -26,18 +26,18 @@ unchanged — those describe a phase, not the role.
 
 | Role | Code/DB value (`TripRole`) | Description |
 |------|----------------------------|-------------|
-| **Owner** | `'Owner'` | Everything an Organizer can do, plus changing who is trusted and ending containers. |
-| **Organizer** | `'Organizer'` | **Everything the Owner can do**, except the four exceptions in the principle below. |
+| **Owner** | `'Owner'` | Everything an Organizer can do, plus changing who is trusted, ending containers, and erasing others' content. |
+| **Organizer** | `'Organizer'` | **Everything the Owner can do**, except the five exceptions in the principle below. |
 | **Member** | `'Member'` | Participant. Views everything on the trip, votes, chats (crew), logs expenses + own travel. Cannot edit trip configuration. |
 
 ### The Owner/Organizer principle
 
-> **An Organizer helps run the trip. Only the Owner changes who is trusted, or
-> ends a container.**
+> **An Organizer helps run the trip. Only the Owner changes who is trusted,
+> ends a container, or erases everyone else's content.**
 
 That is the whole rule. Everything else an Owner can do, an Organizer can do.
 
-It yields exactly **four** exceptions:
+It yields exactly **five** exceptions:
 
 | # | Exception | Procedure | Why |
 |---|---|---|---|
@@ -45,6 +45,7 @@ It yields exactly **four** exceptions:
 | 2 | Deleting the trip | `trips.delete` | ends the top-level container |
 | 3 | Transferring ownership | `trips.transferOwnership` | hands over the trust relationship itself |
 | 4 | Deleting a competition | `competitions.delete` | ends a container **within** the trip — see below |
+| 5 | Clearing a chat channel | `messages.clearChannel` | erases everyone's content inside a container that survives — see below |
 
 **Why the rule says "a container" and not "the trip".** Exception 4 is the one
 that generalises it. A competition is not a unit of work; it is a container that
@@ -60,7 +61,26 @@ the former. A **game is the latter** — an Organizer may delete a game, reset i
 scoring, and reset it to skeleton, even though those are destructive, because a
 game is a thing the Organizer is there to run. Safety for destructive-but-
 in-scope actions belongs in a **confirmation dialog, not a permission gate**
-(all four such actions already have one).
+(all three such actions already have one).
+
+**The SECOND reason, which the container test does not catch.** Exception 5
+fails that test and is still Owner-only, so the distinguishing property is worth
+stating on its own: `messages.clearChannel` doesn't *end* anything — the channel
+keeps existing — it **erases everyone else's contributions inside it**. A game
+reset destroys work too, but that work *is* the game, and the game is the one
+unit the Organizer is there to run. Clearing chat destroys thirty people's
+messages while the trip carries on around the hole. So there are two independent
+Owner-only reasons, and a new procedure needs to clear both:
+
+1. **Ending a container** others' work lives inside (exceptions 2, 4).
+2. **Erasing others' content inside a container that survives** (exception 5).
+
+Neither is "it's destructive" — destructiveness alone is a confirmation-dialog
+problem. What makes these Owner-only is *whose* work is lost and whether the
+thing it lived in is going with it. Note the asymmetry that decides ties: if an
+Organizer genuinely needs to clear a channel mid-trip they can ask the Owner,
+and the cost is one message; if an Organizer clears it and shouldn't have,
+nothing brings it back. Being wrong in the restrictive direction is cheap.
 
 Stated as a PRINCIPLE rather than a list of permitted actions on purpose: a list
 has to be re-derived and re-checked every time a feature is added, and the
@@ -70,13 +90,14 @@ with the code. A principle tells you what to do for the NEXT procedure without
 anyone updating this file.
 
 **Applying it to new work:** gate on `requireTripRole("Organizer")` unless the
-action is one of the four above, or fails the container test. If you find
-yourself writing `requireTripRole("Owner")` for anything else, that is a
-deviation from this rule and needs a reason — not a shrug.
+action is one of the five above, or trips either reason — it ends a container,
+or it erases others' content. If you find yourself writing
+`requireTripRole("Owner")` for anything else, that is a deviation from this rule
+and needs a reason — not a shrug.
 
 > **⚠️ The code does not currently match this principle.** The rule above is the
-> INTENT, ratified after #770. As of 2026-07-31 there are 21 procedures gated
-> `requireTripRole("Owner")` that are none of the four exceptions, plus the RLS
+> INTENT, ratified after #770. As of 2026-07-31 there are 20 procedures gated
+> `requireTripRole("Owner")` that are none of the five exceptions, plus the RLS
 > policies mirroring them (migration 030 deliberately aligned RLS to the tRPC
 > layer, so the deviation exists at BOTH layers). They are enumerated in
 > **Audit notes → Owner/Organizer deviations** at the end of this file. Until
@@ -338,7 +359,7 @@ the actual one.
 | Read / send **Organizers** chat | ✓ | ✓ | — | `list` / `send` *(visibility `planning`)* |
 | Read / send **Team** chat | team members only | — | — | `list` / `send` *(channel `team`; team assignment required)* |
 | Mark a channel read | ✓ | ✓ | ✓ | `markRead` *(per visibility; planning = Organizer+)* |
-| Clear a channel's messages | ✓ | — | — | `clearChannel` *(Owner)* |
+| Clear a channel's messages | ✓ | — | — | `clearChannel` *(Owner — sanctioned exception 5, not a deviation)* |
 
 ### Account / profile (not trip-scoped) — `users`, `feedback`
 
@@ -449,7 +470,7 @@ trip.** The code predates that rule and does not match it yet. This section is
 the enumerated gap — the rule is the intent, these are the exceptions to it, and
 each is now a *deviation from a stated rule* rather than an open question.
 
-### Conforming (the four sanctioned exceptions)
+### Conforming (the five sanctioned exceptions)
 
 | Procedure | Exception |
 |---|---|
@@ -457,13 +478,19 @@ each is now a *deviation from a stated rule* rather than an open question.
 | `trips.delete` | 2 — ends the top-level container |
 | `trips.transferOwnership` | 3 — hands over the trust relationship |
 | `competitions.delete` | 4 — ends a container *within* the trip |
+| `messages.clearChannel` | 5 — erases others' content inside a surviving container |
 
 `competitions.delete` is gated differently from the rest: it uses
 `requireCompetitionRole("owner")` (the competition's own role model), not
 `requireTripRole`. It is Owner-only at both layers (`competitions_delete` policy)
-and **stays that way** — it was never among the 21 below.
+and **stays that way** — it was never among the deviations below.
 
-### Deviations — 21 procedures gated `requireTripRole("Owner")` that are none of the four exceptions
+`messages.clearChannel` **was** among them and has been ruled a sanctioned
+exception rather than a deviation, which is why this list is 20 and not 21. It
+is the only exception justified by the second Owner-only reason (erasing others'
+content) rather than the container test; see the principle section.
+
+### Deviations — 20 procedures gated `requireTripRole("Owner")` that are none of the five exceptions
 
 | Area | Procedures |
 |---|---|
@@ -474,7 +501,6 @@ and **stays that way** — it was never among the 21 below.
 | Dates | `datePoll.castVoteForMember` |
 | Competition | `teamAssignments.remove`, `teamAssignments.setCaptain` |
 | Games (destructive) | `games.delete`, `games.resetScoring`, `games.resetToSkeleton` |
-| Chat | `messages.clearChannel` |
 
 Two things worth knowing before anyone reconciles these:
 
@@ -487,10 +513,12 @@ an RLS role string is the class `tsc` and grep cannot catch. Any reconciliation
 is a **DB-value change**, the highest-risk tier, and needs a migration plus
 auth verification, not just a middleware edit.
 
-**Not all of them are obviously wrong.** The destructive game trio
-(`delete` / `resetScoring` / `resetToSkeleton`) and `messages.clearChannel` are
-irreversible data loss; a reasonable person could argue those belong with trip
-administration even though the rule as written doesn't put them there. The
-roster, ideas, dates and competition ones look like straightforward drift.
-Deciding which is which is a product call, not a mechanical sweep — which is why
-this section enumerates rather than fixes.
+**The destructive cluster was the one product call, and it is now made.** The
+four irreversible actions originally listed here (`games.delete` /
+`.resetScoring` / `.resetToSkeleton`, plus `messages.clearChannel`) split three
+to one: the game trio moves to Organizer — a game is one unit of work and
+running games is the job, so the safety belongs in the confirm dialog it already
+has — while `clearChannel` became **exception 5**, on the grounds that it erases
+others' content rather than the Organizer's own. Irreversibility alone was never
+the deciding property. What remains in the table above (roster, guests, ideas,
+dates, competition) is straightforward drift that predates the rule.
