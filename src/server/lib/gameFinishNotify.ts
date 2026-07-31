@@ -147,8 +147,18 @@ function rankGroups(entries: SummaryEntry[]): { position: number; entries: Summa
  *
  * A head-to-head with exactly two sides and no tie gets the score line, because
  * that is how anyone would say it out loud. Everything else gets the placement
- * list, which scales past two — with points appended when the format has them,
- * so a 3-team rack still reports the margin.
+ * list, which scales past two — with points appended when the format has them.
+ *
+ * WHAT ACTUALLY REACHES the 3+-with-points branch: MATCH PLAY in a competition
+ * with more than two teams (its team rows carry points and a null position).
+ * NOT rack — rack is hard-capped at two teams by its own engine
+ * (`computeRackNStackResults` slots only `teamIds[0]`/`[1]` and skips everyone
+ * else), so it can never emit a third scored team. An earlier version of this
+ * comment claimed "a 3-team rack still reports the margin", which was fiction;
+ * see the rack issue filed alongside this, because that cap is not clean —
+ * a third team still gets a `game_results` row written with undefined points.
+ * Non-golf reaches the 3+ branch too, but WITHOUT points (its placements mirror
+ * position into raw_score, which is stripped as not-a-real-score above).
  *
  * Returns "" when there is nothing worth saying; callers fall back to a body
  * that doesn't pretend to have a result.

@@ -100,15 +100,18 @@ describe("formatResultSummary — three shapes that must read as siblings", () =
   });
 
   it("more than two sides falls to the placement list, keeping the points", () => {
-    // A 3-team rack still needs to report the margin, so points ride along
-    // rather than being dropped for the sake of a uniform shape.
+    // Reached by MATCH PLAY in a 3+-team competition — not by rack, which its
+    // own engine caps at two teams. Points ride along rather than being dropped
+    // for the sake of a uniform shape, so the margin still reads.
     expect(
       formatResultSummary([
-        { name: "Manhattans", points: 12, position: 1 },
-        { name: "Centurions", points: 9, position: 2 },
-        { name: "Bootleggers", points: 7, position: 3 },
+        { name: TEAMS.usual, points: 12, position: 1 },
+        { name: TEAMS.buddy, points: 9, position: 2 },
+        { name: TEAMS.breeders, points: 7, position: 3 },
       ])
-    ).toBe("1st Manhattans 12 · 2nd Centurions 9 · 3rd Bootleggers 7");
+    ).toBe(
+      "1st The Usual Suspects 12 · 2nd Buddy's Last Stand 9 · 3rd Former Breeders II 7"
+    );
   });
 
   it("returns empty when there is nothing to say, so the body can fall back", () => {

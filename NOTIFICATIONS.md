@@ -122,7 +122,11 @@ Manhattans 24 – Centurions 18        Buddy Banks Memorial · 25½ – 20½
 Three result shapes that must read as siblings (`formatResultSummary`): a
 head-to-head **score line** for two sides with points (match play, rack), and a
 **placement list** otherwise (non-golf, stroke, and any 3+ team format — points
-ride along when the format has them, so a 3-team rack still reports the margin).
+ride along when the format has them). Ties never repeat an ordinal — tied
+competitors share one slot (`2nd A & B`), and a tie covering the whole field
+drops ordinals entirely (`Tied: A & B`, or `3-way tie: A, B & C`, which leads
+with the count so a truncated line still says what happened). Stroke is capped
+at the top two plus `+N`, and deliberately does not express ties below first.
 The clinch line drops team names deliberately: the title already says who.
 
 Three rules that hold the volume down, and why each is what it is:
