@@ -169,6 +169,104 @@ describe("matches router (Slice B — setup + visibility)", () => {
   });
 });
 
+/**
+ * #774 — assignPlayer's vacate/handicap-clear writes now fail loudly instead of
+ * silently. Uses its OWN game (not the shared m1/m2 fixture above) so this
+ * doesn't disturb the other describe block's ordering or state.
+ *
+ * The scenario: setPairings always seeds a `game_participants` row for every
+ * side member, so under normal operation the handicap-clear always matches
+ * every vacated user. This forces the abnormal case — a participant row
+ * missing where one should exist — by deleting it directly, the same shape a
+ * stray data-integrity gap (or, unconfirmed, whatever produced the one-off CI
+ * flake this issue was filed from) would take. Before the fix, that gap was
+ * invisible: the call would report success while quietly clearing fewer rows
+ * than it should have.
+ */
+describe("assignPlayer — write observability (#774)", () => {
+  let gameId: string;
+  let m1: string, m2: string;
+
+  beforeAll(async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Observability" });
+    gameId = game.id;
+    const matches = (await ctx.callerAs("planner").matches.setPairings({
+      tripId,
+      gameId,
+      matches: [
+        { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 },
+        { playersPerSide: 1, sideA: { members: [planner] }, sideB: null, matchNumber: 2 },
+      ],
+    })) as { id: string; side_a: Side; side_b: Side }[];
+    m1 = matches[0].id;
+    m2 = matches[1].id;
+  });
+
+  it("throws rather than silently under-clearing when a vacated participant row is missing", async () => {
+    // Simulate the gap directly — member's own game_participants row is gone,
+    // even though they're still on match 1's side_b.
+    await ctx.admin.from("game_participants").delete().eq("game_id", gameId).eq("user_id", member);
+
+    await expect(
+      ctx.callerAs("planner").matches.assignPlayer({ tripId, gameId, matchId: m2, slot: "b", userId: member })
+    ).rejects.toThrow(/roster row may be missing/i);
+
+    // The match itself still vacates correctly — the throw is about the
+    // handicap-clear mismatch, not a rollback of the whole operation. Nothing
+    // here asserts transactional atomicity; that's a separate, pre-existing
+    // property (or lack of one) this fix doesn't change.
+    const { data: m1Row } = await ctx.admin
+      .from("game_matches")
+      .select("side_b")
+      .eq("id", m1)
+      .single();
+    expect((m1Row as { side_b: Side }).side_b).toBeNull();
+
+    // And critically: member was never assigned into match 2's slot, since the
+    // throw happens before that write — an inconsistent half-assignment never
+    // reaches the client as a reported success.
+    const { data: m2Row } = await ctx.admin
+      .from("game_matches")
+      .select("side_b")
+      .eq("id", m2)
+      .single();
+    expect((m2Row as { side_b: Side }).side_b).toBeNull();
+  });
+
+  it("the happy path is unchanged — a normal move still clears both handicaps and succeeds", async () => {
+    // Fresh game so the prior test's mid-operation state doesn't interfere.
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Observability Happy Path" });
+    const matches = (await ctx.callerAs("planner").matches.setPairings({
+      tripId,
+      gameId: game.id,
+      matches: [
+        { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 },
+        { playersPerSide: 1, sideA: { members: [planner] }, sideB: null, matchNumber: 2 },
+      ],
+    })) as { id: string; side_a: Side; side_b: Side }[];
+    const [hm1, hm2] = [matches[0].id, matches[1].id];
+
+    await ctx.callerAs("planner").matches.setHandicap({ tripId, gameId: game.id, matchId: hm1, recipientId: member, strokes: 5 });
+
+    await expect(
+      ctx.callerAs("planner").matches.assignPlayer({ tripId, gameId: game.id, matchId: hm2, slot: "b", userId: member })
+    ).resolves.toBeDefined();
+
+    const { data: parts } = await ctx.admin
+      .from("game_participants")
+      .select("user_id, handicap_strokes")
+      .eq("game_id", game.id);
+    const hcap = Object.fromEntries(
+      (parts as { user_id: string; handicap_strokes: number | null }[]).map((p) => [p.user_id, p.handicap_strokes])
+    );
+    expect(hcap[member]).toBeNull();
+    expect(hcap[owner]).toBeNull();
+
+    const { data: m2Row } = await ctx.admin.from("game_matches").select("side_b").eq("id", hm2).single();
+    expect((m2Row as { side_b: Side }).side_b?.id).toBe(member);
+  });
+});
+
 describe("match-play results — computeMatchPlayResults via games.finish", () => {
   // Enter both sides' gross for the given holes. scoreA[h] / scoreB[h].
   async function enter(
