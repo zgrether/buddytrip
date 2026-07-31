@@ -87,11 +87,16 @@ describe("trips router", () => {
     expect(trip.comparison_mode).toBe(false);
   });
 
-  it("lockDestination — planner cannot lock", async () => {
+  // Reversed by #786: choosing the destination is trip-running, not trip
+  // administration. transferOwnership (below) is what stays Owner-only.
+  it("lockDestination — planner (Organizer) CAN lock", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(
-      caller.trips.lockDestination({ tripId, title: "Somewhere", location: "Nowhere" })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const trip = await caller.trips.lockDestination({
+      tripId,
+      title: "Somewhere",
+      location: "Nowhere",
+    });
+    expect(trip.locked_destination_title).toBe("Somewhere");
   });
 
   // create with comparisonMode + lockedDestination

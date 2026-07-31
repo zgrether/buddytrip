@@ -35,13 +35,16 @@ export const archivedIdeasRouter = router({
   }),
 
   // -----------------------------------------------------------------------
-  // archive — copy an idea from a trip into the owner's archive
-  //           (Owner-only; mirrors ideas.remove in that removing an idea
-  //            is an owner action)
+  // archive — copy an idea from a trip into the caller's own archive
+  //           (Organizer+ since #786; still mirrors ideas.remove, which moved
+  //            with it — archiving is the step before removing)
+  //
+  // No RLS change was needed: this INSERTs into `archived_ideas` with
+  // user_id = the caller, so its policy is self-scoped, not trip-role-scoped.
   // -----------------------------------------------------------------------
   archive: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Snapshot the source idea. If the idea doesn't exist (already
       // deleted) we refuse — the caller is expected to archive before

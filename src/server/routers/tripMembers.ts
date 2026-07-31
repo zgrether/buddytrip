@@ -391,7 +391,10 @@ export const tripMembersRouter = router({
         role: z.enum(["Organizer", "Member"]).default("Organizer"),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Inviting crew is running the trip; it does not
+    // change who is TRUSTED (exception 1 is tripMembers.updateRole, below).
+    // RLS moved with it: `invites_insert` (migration 101).
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const email = input.email.trim().toLowerCase();
 
@@ -687,7 +690,9 @@ export const tripMembersRouter = router({
         message: z.string().optional(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity, same reasoning as inviteByEmail: this is the
+    // bulk form of the same act, behind the same `invites_insert` policy.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Fetch trip for email content. locked_destination_location is the
       // real-world location string ("Bandon, OR") that buildCannedInvitation
