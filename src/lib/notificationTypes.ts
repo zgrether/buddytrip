@@ -39,7 +39,10 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
     key: "scores",
     label: "Scores & results",
-    description: "A game or round is finalized, a result is posted, or a cup is clinched.",
+    // Deliberately does NOT say "a result is posted" — that phrasing belongs to
+    // `scores.upsertEntry` (a NEVER-marked site), so using it here would promise
+    // the one thing this category must never send.
+    description: "A game or round is finalized, or a cup is clinched.",
     defaultOn: true,
     excludes:
       "Per-hole score entry (scores.upsertEntry — a ~540/day firehose, NEVER-eligible), " +

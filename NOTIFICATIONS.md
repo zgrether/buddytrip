@@ -2,15 +2,27 @@
 
 Companion to the registry (`src/lib/notificationTypes.ts`). The registry is the
 code source of truth for the four **categories**; this doc is the source of truth
-for which **write sites** may fan out to them, and how. Phase 3 wires from this
-list — nothing here is wired yet (Phase 2 built only the mechanism + a dev test
-send).
+for which **write sites** may fan out to them, and how.
+
+**Status: the `scores` category is WIRED (Phase 3).** One wire point —
+`games.finish`, which covers all four formats — produces two notifications: "a
+game is final" and, when it becomes true, "the cup is clinched". Everything else
+in the table below is still unwired: `planning`, `invites` and `chat` are
+untouched, every BATCH row is untouched (their coalescing is undesigned), and
+every **NEVER** row is untouched and must stay that way.
+
+That last one is enforced MECHANICALLY, not remembered:
+`src/server/lib/pushCallSites.guard.test.ts` fails the build if any file outside
+a short allowlist imports a send helper, and names the NEVER-marked routers
+explicitly so the failure says which prohibition was breached. Adding a call site
+means adding a line to that allowlist AND a row here — deliberately, not by an
+import that slips through.
 
 ## Categories (registry — confirmed)
 
 | Key | Label | Default | Covers | Excludes (load-bearing) |
 |-----|-------|:-------:|--------|--------|
-| `scores` | Scores & results | **ON** | game/round finalized · result posted · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
+| `scores` | Scores & results | **ON** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
 | `planning` | Trip planning | **ON** | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
 | `chat` | Chat messages | **OFF** | new messages, any channel | per-channel prefs — one global switch |
@@ -75,8 +87,62 @@ disappearance of that row raises the volume budget.
    (per-recipient debounce window) before it's wired — out of scope until Phase 3
    picks up chat/itinerary.
 
-## Phase 3 recommended first wire
+## What the `scores` wiring actually does (Phase 3, shipped)
 
-`games.finish` (ELIGIBLE, ~5–15/day, easy to reason about) to prove the
-end-to-end path, then **cup clinched** — the single highest-value notification
-in the app.
+One call site — `games.finish` — because there is now one finalize for every
+format. `src/server/lib/gameFinishNotify.ts` owns it, and all the copy lives
+together at the top of that file so it reads as a set.
+
+| Notification | Audience | Trigger | Exactly-once via |
+|---|---|---|---|
+| Game is final (engine: match/rack/stroke) | the game's **participants** | `games.finish` | the `status` TRANSITION guard — a re-finish after a correction notifies nobody |
+| Game is final (manual / non-golf) | the competition's **team assignees** | `games.finish` manual arm | same transition guard |
+| **Cup clinched** | the competition's **team assignees** | derived after every finalize | conditional claim on `competitions.clinch_notified_team_id` (migration 099) |
+
+**Golf and non-golf share one copy shape.** Both title as `Final: {game}` —
+they are the same event to the person holding the phone. Only the AUDIENCE
+differs. In particular there is no "Result posted" notification: that is the
+exact phrasing for `scores.upsertEntry`, a NEVER-marked site, so on a lock
+screen it would read as "someone entered a score" — the one notification this
+category promises never to send.
+
+**The body carries the RESULT, never a tap instruction.** `games.finish` has the
+outcome in hand at send time, so spending the most valuable line on the lock
+screen to say "tap to see" wastes it — everyone knows notifications are
+tappable. No emoji, for the same reason: those characters carry the score.
+
+```
+Final: Saturday Singles              Final: Euchre night
+Manhattans 2½ – Centurions 1½        1st Centurions · 2nd Manhattans
+
+Final: Saturday Rack                 Manhattans clinched
+Manhattans 24 – Centurions 18        Buddy Banks Memorial · 25½ – 20½
+```
+
+Three result shapes that must read as siblings (`formatResultSummary`): a
+head-to-head **score line** for two sides with points (match play, rack), and a
+**placement list** otherwise (non-golf, stroke, and any 3+ team format — points
+ride along when the format has them). Ties never repeat an ordinal — tied
+competitors share one slot (`2nd A & B`), and a tie covering the whole field
+drops ordinals entirely (`Tied: A & B`, or `3-way tie: A, B & C`, which leads
+with the count so a truncated line still says what happened). Stroke is capped
+at the top two plus `+N`, and deliberately does not express ties below first.
+The clinch line drops team names deliberately: the title already says who.
+
+Three rules that hold the volume down, and why each is what it is:
+
+- **Engine games notify who PLAYED, not the whole cup.** ~4–8 people, so a person
+  gets ~1–2 a day rather than one per game on the board. Cup-wide news is the
+  clinch push's job, and the board is already live via the score-event broadcast.
+- **The manual arm notifies the competition** because non-golf side events are
+  team-scoped and have NO individual roster — `game_participants` isn't populated
+  for them, so "the participants" isn't a resolvable audience. They're also rare
+  (~1–5 per trip), so the wider audience stays cheap.
+- **The actor is always excluded.** Nobody is notified about their own action, and
+  it's a parameter of the fan-out helper rather than each call site's job to
+  remember.
+
+Cup clinch is DERIVED, never stored — `pointsToClinch <= 0`, the same predicate
+the board pill and `GamePageHeader` use. Only the *announcement* is recorded, so
+an un-clinch needs no migration: the same team re-clinching sends nothing, a
+different team clinching does.

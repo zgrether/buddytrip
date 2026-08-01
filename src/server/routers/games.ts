@@ -17,6 +17,7 @@ import { isPlacement } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
+import { notifyGameFinished, notifyCupClinchedIfDecided } from "../lib/gameFinishNotify";
 import { computeConfigHash } from "@/lib/configHash";
 
 /**
@@ -619,15 +620,20 @@ export const gamesRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
+      // `status`, `name` and `competition_id` are selected for the push wiring
+      // below — status is the TRANSITION guard, the other two are payload/route.
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id, game_type_id")
+        .select("id, game_type_id, status, name, competition_id")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
+      // Read BEFORE the update: `finish` is deliberately re-runnable, so this is
+      // the only point at which "was it already complete?" is still answerable.
+      const wasAlreadyComplete = game.status === "complete";
 
       // Result strategy comes from the format definition in CODE (W-PERF-01).
       // An unregistered game_type_id (not in the code catalog) is the generalized
@@ -701,6 +707,51 @@ export const gamesRouter = router({
           message: `Failed to finish game: ${error.message}`,
         });
       }
+
+      // ── Push (Phase 3, `scores` category) ────────────────────────────────
+      // AFTER the write and after its error check, so a notification can only
+      // follow a finalize that actually succeeded. Both helpers swallow their
+      // own errors and neither is inside the try/catch of the domain write, so
+      // a push failure CANNOT roll back a finished game.
+      //
+      // AWAITED, not fire-and-forget: an un-awaited promise can be killed when
+      // a serverless function freezes after the response, which would make
+      // delivery intermittent in exactly the way that is hardest to diagnose.
+      //
+      // The TRANSITION guard is what keeps `finish`'s re-runnability from
+      // becoming a notification bug: a correction cycle (openCorrection → edit
+      // → finish) re-finalizes a game that is already `complete`, and at BBMI
+      // both golf formats in play have openCorrection wired, so that is a real
+      // sequence on the day rather than a hypothetical. Only the genuine
+      // pending/active → complete transition notifies.
+      if (!wasAlreadyComplete) {
+        await notifyGameFinished({
+          tripId: ctx.tripId,
+          gameId: input.gameId,
+          gameName: (game.name as string | null) ?? null,
+          gameTypeId: (game.game_type_id as string | null) ?? null,
+          competitionId: (game.competition_id as string | null) ?? null,
+          isManual: strategy === null,
+          isStroke: strategy === "stroke_total",
+          actorUserId: ctx.user!.id,
+        });
+      }
+
+      // The clinch check deliberately runs on EVERY finalize, not only on the
+      // transition: a re-finish after a score correction can be the write that
+      // decides the cup, and gating it on the transition would lose exactly that
+      // case. Its own exactly-once guard is the conditional claim on
+      // `competitions.clinch_notified_team_id` (migration 099), so running it
+      // more often is safe — it is the correct place for that responsibility,
+      // rather than borrowing the game push's guard.
+      if (game.competition_id) {
+        await notifyCupClinchedIfDecided({
+          tripId: ctx.tripId,
+          competitionId: game.competition_id as string,
+          actorUserId: ctx.user!.id,
+        });
+      }
+
       return { standings, matches, teams };
     }),
 
