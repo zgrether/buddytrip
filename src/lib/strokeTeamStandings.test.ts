@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeStrokeTeamStandings, type StrokeStanding } from "./strokePlay";
+import {
+  computeStrokePlayStandings,
+  computeStrokeTeamStandings,
+  type StrokeStanding,
+} from "./strokePlay";
 
 /**
  * Team aggregate net — every player's net counts toward their team's total,
@@ -61,9 +65,8 @@ describe("computeStrokeTeamStandings", () => {
   });
 
   it("gives a team with NO players in the game no row at all", () => {
-    // The dangerous edge: a row would carry total 0 and, under lowest-wins, an
-    // absent team would win the game outright. Teams are discovered FROM the
-    // players, so this holds by construction.
+    // NOTE: this is NOT the case that failed in production — see the block below.
+    // Kept because it is still true, but it is the weaker of the two.
     const out = computeStrokeTeamStandings([s("a1", 72), s("a2", 74)], {
       a1: "A",
       a2: "A",
@@ -111,5 +114,89 @@ describe("computeStrokeTeamStandings", () => {
     // A standalone stroke game: no competition, so no assignments and no team
     // rows. The caller must not write an empty team set as a result.
     expect(computeStrokeTeamStandings([s("a", 70), s("b", 80)], {})).toEqual([]);
+  });
+
+  /**
+   * ── The case the original guard MISSED ──────────────────────────────────────
+   *
+   * #802 shipped an exclusion for teams with no ROSTER and called the absent-team
+   * edge "handled by construction". Production then produced a three-way tie for
+   * first among teams that had played no golf: every one of them had rostered
+   * players, and those players had simply never scored. The guard was on the
+   * wrong axis — and the roster case it did cover cannot even occur in the field,
+   * because it requires nobody to have been added at all.
+   *
+   * Qualification now lives one level down, in `computeStrokePlayStandings`, so
+   * these tests drive the two functions TOGETHER. Testing the team function on
+   * hand-made standings is what let the gap through the first time: it can only
+   * see rows it is given, and the bug was in which rows it was given.
+   */
+  describe("unscored players — the production failure", () => {
+    const ROUND = 18;
+
+    it("drops a team whose players are all unscored, rather than crowning it with 0", () => {
+      // Reproduces "BBMI Playground (Points)" / Test1: one player completed the
+      // round; seven rostered team-mates across three other teams never teed off.
+      const entries = Array.from({ length: ROUND }, () => ({ participant_id: "zach", value: 5 }));
+      const standings = computeStrokePlayStandings(
+        ["zach", "rob", "steve", "johnny", "taj", "brad", "charlie", "llama"],
+        entries,
+        { requiredUnits: ROUND }
+      );
+
+      const teams = computeStrokeTeamStandings(standings, {
+        zach: "Phoenix", rob: "Phoenix",
+        steve: "Negronis",
+        johnny: "Stallions", taj: "Stallions",
+        brad: "Lightning", charlie: "Lightning", llama: "Lightning",
+      });
+
+      // Before the fix this was four rows: Negronis/Stallions/Lightning tied at
+      // position 1 with total 0, and Phoenix — the only team that played — 4th.
+      expect(teams).toEqual([{ teamId: "Phoenix", total: 90, playerCount: 1, position: 1 }]);
+    });
+
+    it("excludes a partially-finished player, not just a completely unscored one", () => {
+      // The mid-round case, which is the one that recurs: a legitimately rostered
+      // player thru 9 of 18 is not a 45-stroke round. Nothing about the bug needs
+      // a deleted player — only an unfinished one.
+      const entries = [
+        ...Array.from({ length: ROUND }, () => ({ participant_id: "done", value: 5 })),
+        ...Array.from({ length: 9 }, () => ({ participant_id: "thru9", value: 4 })),
+      ];
+      const standings = computeStrokePlayStandings(["done", "thru9"], entries, {
+        requiredUnits: ROUND,
+      });
+      expect(standings.map((r) => r.entityId)).toEqual(["done"]);
+
+      // …and the half-round player's 36 does not become his team's total.
+      expect(computeStrokeTeamStandings(standings, { done: "A", thru9: "B" })).toEqual([
+        { teamId: "A", total: 90, playerCount: 1, position: 1 },
+      ]);
+    });
+
+    it("returns nothing at all when nobody completed the round", () => {
+      // The caller must refuse to finalize on this, rather than record an empty
+      // result — `computeStrokePlayResults` throws PRECONDITION_FAILED.
+      const standings = computeStrokePlayStandings(["a", "b"], [{ participant_id: "a", value: 4 }], {
+        requiredUnits: ROUND,
+      });
+      expect(standings).toEqual([]);
+      expect(computeStrokeTeamStandings(standings, { a: "A", b: "B" })).toEqual([]);
+    });
+
+    it("counts a 9-hole round as complete at 9 — qualification is per game, not per 18", () => {
+      const entries = Array.from({ length: 9 }, () => ({ participant_id: "a", value: 4 }));
+      const standings = computeStrokePlayStandings(["a", "b"], entries, { requiredUnits: 9 });
+      expect(standings).toEqual([{ entityId: "a", rawScore: 36, position: 1 }]);
+    });
+
+    it("without requiredUnits, behaviour is unchanged — the live surfaces still see everyone", () => {
+      // The three client callers render mid-round. Excluding the field there
+      // would blank the screen, which is why qualification is opt-in.
+      const standings = computeStrokePlayStandings(["a", "b"], [{ participant_id: "a", value: 4 }]);
+      expect(standings).toHaveLength(2);
+      expect(standings.find((r) => r.entityId === "b")).toMatchObject({ rawScore: 0, position: 1 });
+    });
   });
 });

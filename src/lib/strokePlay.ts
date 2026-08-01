@@ -140,16 +140,44 @@ export function computeStrokeLeaderboard(
 
 export function computeStrokePlayStandings(
   participantIds: string[],
-  entries: StrokeEntry[]
+  entries: StrokeEntry[],
+  /**
+   * **Qualification.** When `requiredUnits` is given, a player who has scored
+   * FEWER than that many units is left out of the standings entirely.
+   *
+   * Without it a player with no scores totals 0 and — under lowest-wins — ranks
+   * FIRST. That is the corruption seen in production: seven rostered players who
+   * never teed off were each recorded `rawScore 0, position 1`, and the team
+   * aggregation built on top of it produced a three-way tie for first among
+   * teams that had played no golf at all. **Absence is not a perfect round.**
+   *
+   * Opt-in rather than default, because the three CLIENT callers (the live
+   * standings strip, the grid, Quick Game) render MID-ROUND, where nobody has
+   * finished and excluding the field would empty the screen. Partial standings
+   * are correct on a live surface and wrong in `game_results`; the option is
+   * what separates the two. The PERSISTED path always passes it.
+   */
+  opts?: { requiredUnits?: number }
 ): StrokeStanding[] {
   const totals = new Map<string, number>();
-  for (const id of participantIds) totals.set(id, 0);
+  const scored = new Map<string, number>();
+  for (const id of participantIds) {
+    totals.set(id, 0);
+    scored.set(id, 0);
+  }
   for (const e of entries) {
     if (e.value == null) continue;
     totals.set(e.participant_id, (totals.get(e.participant_id) ?? 0) + e.value);
+    // One entry per unit per player (`score_entries` is unique on
+    // game+participant+unit), so counting non-null entries IS the holes-played
+    // count. Stated because the count, not the total, decides qualification.
+    scored.set(e.participant_id, (scored.get(e.participant_id) ?? 0) + 1);
   }
 
-  const rows = Array.from(totals, ([entityId, rawScore]) => ({ entityId, rawScore }));
+  const required = opts?.requiredUnits;
+  const rows = Array.from(totals, ([entityId, rawScore]) => ({ entityId, rawScore })).filter(
+    (r) => required == null || (scored.get(r.entityId) ?? 0) >= required
+  );
   rows.sort((a, b) => a.rawScore - b.rawScore); // low wins
   return rows.map((r) => ({
     entityId: r.entityId,
@@ -163,7 +191,8 @@ export interface StrokeTeamStanding {
   teamId: string;
   /** Aggregate NET total across every one of this team's players in the game. */
   total: number;
-  /** How many of the team's players actually appear in this game. */
+  /** How many QUALIFIED players contributed — i.e. the rows that reached this
+   *  function, after `computeStrokePlayStandings` dropped unqualified ones. */
   playerCount: number;
   /** 1-based rank, lowest total first, ties share (standard 1, 2, 2, 4). */
   position: number;
@@ -189,14 +218,25 @@ export interface StrokeTeamStanding {
  * *Placement-by-team-best* was rejected outright: it discards everyone but one
  * player, which is the opposite of the premise above.
  *
- * ── Two exclusions that matter ───────────────────────────────────────────────
+ * ── Three exclusions that matter ─────────────────────────────────────────────
  * - A player with **no team assignment** contributes nothing. There is no team to
  *   contribute to, and silently attributing them somewhere would be worse.
  * - A team with **no players in this game gets no row at all.** Emitting a row
  *   would give it a total of 0 — which, under lowest-wins, means an absent team
- *   wins the game outright. That is the single most dangerous edge here, so it is
- *   handled by construction (teams are discovered FROM the players, never from
- *   the roster) rather than by a guard someone could later remove.
+ *   wins the game outright.
+ * - A team whose players are all **UNQUALIFIED** (fewer completed holes than the
+ *   round has) likewise gets no row. This one is not enforced here: it falls out
+ *   of `computeStrokePlayStandings` having already dropped those players when the
+ *   persisted path passes `requiredUnits`, so they never reach the map below.
+ *   ONE definition of "qualified", one place to change it.
+ *
+ * **The second and third are not the same guard, and conflating them is what
+ * shipped the bug.** The original code excluded teams with no ROSTER and the doc
+ * called the absent-team edge "handled by construction" — but in production every
+ * team had rostered players who had simply never scored, so the guard was on the
+ * wrong axis and three teams tied for first on zero golf. Absence from the
+ * roster and absence of scores are different failures; only the second occurs in
+ * the field, because the first requires nobody to have been added at all.
  *
  * Pure and client-safe (CLAUDE.md #8), so a live projected team total can reuse
  * it without a second implementation.
