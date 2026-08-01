@@ -138,7 +138,12 @@ export const teamAssignmentsRouter = router({
         userId: z.string(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity, and it closes a split INSIDE this one table:
+    // `assign` was already requireTripRole("Organizer") and team_assignments
+    // INSERT/UPDATE were already Owner+Organizer, so an Organizer could put a
+    // player on a team but not take them off. DELETE was the outlier; migration
+    // 101 moved `team_assignments_delete` to match.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Roster-removal lock: a removal is blocked once any game in the competition
       // has a score (it could orphan the player in a configured match).

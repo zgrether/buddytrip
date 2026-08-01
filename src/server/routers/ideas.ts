@@ -72,7 +72,9 @@ export const ideasRouter = router({
         sourceIdeaId: z.string().nullable().optional(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Proposing where the trip might go is the
+    // Organizer's job. RLS moved with it: `ideas_insert` (migration 101).
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("ideas")
@@ -173,11 +175,14 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner only
+  // remove — Organizer+ (#786). An idea is ONE UNIT OF WORK, not a container
+  // others live inside: its votes cascade with it, but a vote is part of the
+  // idea, not a body of separate content. So it fails neither Owner-only test.
+  // RLS moved with it: `ideas_delete` (migration 101).
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Delete votes first
       await ctx.supabase

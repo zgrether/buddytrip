@@ -207,7 +207,12 @@ export const datePollRouter = router({
         answer: z.enum(["yes", "no", "maybe"]).nullable(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Recording availability for someone standing
+    // next to you is running the trip. All FOUR backing policies moved with it
+    // (migration 101): the "_ghost" pair (voting for a placeholder) and the
+    // "_owner_any" pair (voting for a real member) — moving one pair would
+    // have left an Organizer able to vote for guests but not for people.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Confirm the target is a member of this trip
       const { data: member } = await ctx.supabase

@@ -222,7 +222,12 @@ export const tripsRouter = router({
         location: z.string().min(1),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Choosing the destination is trip-running, not
+    // trip administration. No RLS change was needed: `trips_update` has always
+    // been Owner+Organizer (migration 030 declined to narrow it, because
+    // lockDestination is a COLUMN-level distinction row-level RLS can't
+    // express) — so tRPC was the only gate holding this one.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("trips")

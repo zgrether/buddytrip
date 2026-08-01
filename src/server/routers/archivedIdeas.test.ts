@@ -46,11 +46,13 @@ describe("archivedIdeas router", () => {
     archivedId = archived.id;
   });
 
-  it("archive — planner cannot archive", async () => {
+  // Reversed by #786, in lockstep with ideas.remove — archiving is the step
+  // before removing, so the two must not sit on different tiers.
+  it("archive — planner (Organizer) CAN archive", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(
-      caller.archivedIdeas.archive({ tripId, ideaId })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const archived = await caller.archivedIdeas.archive({ tripId, ideaId });
+    expect(archived.id).toBeTruthy();
+    await ctx.admin.from("archived_ideas").delete().eq("id", archived.id);
   });
 
   it("archive — member cannot archive", async () => {
