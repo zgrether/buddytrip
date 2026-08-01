@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   computeStrokePlayStandings,
+  computeStrokeTeamStandings,
   netStrokeEntries,
   type RawStrokeEntry,
   type StrokeStanding,
@@ -17,8 +18,25 @@ import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
  * game's course stroke index — the snapshot in `scorecard_schema`), computes
  * standings via the SHARED pure `computeStrokePlayStandings` (same rule the
  * live client strip uses — see `src/lib/strokePlay.ts`), and REPLACES the
- * game's `game_results` rows (entity_type 'user', competition_points_earned
- * null — standalone game). Idempotent: a recompute deletes prior rows first.
+ * game's `game_results` rows. Idempotent: a recompute deletes prior rows first.
+ *
+ * Writes TWO row kinds, in one atomic replace:
+ *  - `entity_type='user'` — per-player net standings. Always.
+ *  - `entity_type='team'` — TEAM AGGREGATE NET, only when the game belongs to a
+ *    competition. Every player's net counts toward their team; lowest wins.
+ *
+ * The team half is new. This engine previously wrote user rows ONLY, and its own
+ * doc comment said why — "standalone game". But `competitionLeaderboard` reads
+ * `game_results` filtered `.eq("entity_type","team")`, so a finalized stroke game
+ * in a competition contributed **nothing to the cup**: the finalize succeeded, the
+ * board stayed empty, and nothing anywhere reported a problem. Rack
+ * (`rackNStack.ts:122`) and match (`matchPlay.ts:250`) had always written team
+ * rows; stroke was the format that never learned the competition half.
+ *
+ * `position` (rank, 1 = best) is the PLACEMENT shape the leaderboard's placement
+ * branch reads, with the game's `points_distribution` supplying the payout — the
+ * same contract rack uses for a non-per_match game. Points themselves stay
+ * derived at roll-up; `competition_points_earned` stays null here.
  *
  * Net is derived through the shared `netStrokeEntries` helper so the persisted
  * final and the live strip can't diverge. `score_entries.value` stays raw
@@ -43,7 +61,7 @@ export async function computeStrokePlayResults(
     .eq("participant_type", "user");
   const { data: game } = await supabase
     .from("games")
-    .select("scorecard_schema")
+    .select("scorecard_schema, competition_id")
     .eq("id", gameId)
     .single();
 
@@ -62,20 +80,49 @@ export async function computeStrokePlayResults(
     netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer)
   );
 
+  // Team aggregate net — competition games only. A standalone game has no
+  // competition_id, so `teamOf` stays empty and `computeStrokeTeamStandings`
+  // returns [], leaving the user-only shape byte-identical to before.
+  const teamOf: Record<string, string> = {};
+  if (game?.competition_id) {
+    const { data: assigns } = await supabase
+      .from("team_assignments")
+      .select("user_id, team_id")
+      .eq("competition_id", game.competition_id as string);
+    for (const a of assigns ?? []) teamOf[a.user_id as string] = a.team_id as string;
+  }
+  const teamStandings = computeStrokeTeamStandings(standings, teamOf);
+
   // #776: one atomic replace instead of a bare delete + bare insert. Note there
   // is no early return above — an empty game legitimately clears its results, so
   // `rows: []` is a real "clear", not a no-op. That behaviour is preserved.
+  //
+  // Both row kinds go in the SAME `scope:"all"` replace. Match play needs two
+  // scoped passes because it writes its user rows and team rows at different
+  // points in the same finalize; stroke computes both from one pass, so a single
+  // atomic replace is correct AND simpler — there is no window in which the user
+  // rows exist without their team rows.
   await writeGameResults(supabase, {
     gameId,
     scope: { kind: "all" },
-    rows: standings.map((s) => ({
-      id: crypto.randomUUID(),
-      entity_id: s.entityId,
-      entity_type: "user" as const,
-      raw_score: s.rawScore,
-      position: s.position,
-      competition_points_earned: null,
-    })),
+    rows: [
+      ...standings.map((s) => ({
+        id: crypto.randomUUID(),
+        entity_id: s.entityId,
+        entity_type: "user" as const,
+        raw_score: s.rawScore,
+        position: s.position,
+        competition_points_earned: null,
+      })),
+      ...teamStandings.map((t) => ({
+        id: crypto.randomUUID(),
+        entity_id: t.teamId,
+        entity_type: "team" as const,
+        raw_score: t.total,
+        position: t.position,
+        competition_points_earned: null,
+      })),
+    ],
     onFailure,
   });
   return standings;
