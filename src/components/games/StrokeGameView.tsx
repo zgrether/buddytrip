@@ -14,7 +14,6 @@ import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
-import { FinalStandings } from "@/components/games/FinalStandings";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
@@ -37,7 +36,7 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import { computeStrokeLeaderboard, type StrokeStanding } from "@/lib/strokePlay";
+import { computeStrokeLeaderboard } from "@/lib/strokePlay";
 import { allUnitsComplete } from "@/lib/gameCompleteness";
 import { StrokeLeaderboard } from "@/components/games/StrokeLeaderboard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
@@ -46,6 +45,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
 import { pointsReady } from "@/lib/matchDraft";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
+import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { showToast } from "@/lib/toast";
 
 const STROKE_PLAY = "gtt_stroke_play";
@@ -108,10 +108,9 @@ export function StrokeGameView() {
   // A game created or joined in THIS session (the standalone new flow, or after
   // adding players to a competition game we opened with ?game).
   const [createdGame, setCreatedGame] = useState<{ id: string; participants: Participant[] } | null>(null);
-  const [view, setView] = useState<"entry" | "final">("entry");
-  // The scorecard is an OVERLAY over the current view (entry or final), not a
-  // third base view — so the caller stays mounted underneath and dismiss returns
-  // to it with score state intact (#543).
+  // The scorecard is an OVERLAY over the base view, not a third base view — so
+  // the caller stays mounted underneath and dismiss returns to it with score
+  // state intact (#543).
   const [gridOpen, setGridOpen] = useState(false);
   // The SURFACE→entry drill (mandatory groupings): null = on the surface (leaderboard +
   // groupings list); a group id = scoring THAT grouping (one level down). Mirrors rack's
@@ -135,7 +134,6 @@ export function StrokeGameView() {
     else if (entryGroupId) setEntryGroupId(null);
   });
   const [currentHole, setCurrentHole] = useState(1);
-  const [standings, setStandings] = useState<StrokeStanding[]>([]);
   // The ONE settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1). Confirm-on-leave: the whole page is ONE draft (commits on Save), so a
   // dirty back-press is guarded via latest-refs (guardDirty reads showConfig, which this
@@ -560,7 +558,7 @@ export function StrokeGameView() {
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
-  const { values, setValues, saveStatus, onChange, onClear, retryCell, reconcile } =
+  const { values, saveStatus, onChange, onClear, retryCell, reconcile } =
     useScoreSaver(tripId, activeGameId);
   // Finishing also retries (idempotent — recomputes from the same scores); a
   // failure stays on the entry view and surfaces via the global error toast,
@@ -569,6 +567,13 @@ export function StrokeGameView() {
     retry: 4,
     retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
   });
+  // #769: reopen a finalized stroke round for correction (scores become editable
+  // again until re-locked via handleFinish). Stroke shipped its finalize without
+  // this, so `status='complete'` was a DEAD END — `scores.upsertEntry` refuses a
+  // complete-and-not-correcting game (`scores.ts:53`), and no UI could clear that
+  // flag. Rack has had it since #7; this is the same procedure and the same
+  // invalidation set.
+  const openCorrection = trpc.games.openCorrection.useMutation();
 
   // Reflect scores from OTHER devices: reconcile server truth into the view each
   // time the poll returns changed data, merged so the active enterer's unsaved
@@ -725,7 +730,7 @@ export function StrokeGameView() {
     leaderboardRows.map((r) => r.holesPlayed),
     scUnits.length,
   );
-  const strokeFinal = gameQ.data?.status === "complete";
+  const strokeCorrectionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
 
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
@@ -762,7 +767,7 @@ export function StrokeGameView() {
             "Stroke Play",
           // Settings gear on the SURFACE only (not inside a group's entry — that view carries
           // its own onConfig). Absent on the final.
-          onSettings: !!game && canEdit && !showConfig && view !== "final" && !entryGroupId ? openConfig : undefined,
+          onSettings: !!game && canEdit && !showConfig && !entryGroupId ? openConfig : undefined,
           // Focused scoring (in a group) hides the bottom nav.
           hideBottomNav: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
         }
@@ -801,26 +806,44 @@ export function StrokeGameView() {
       return;
     }
     try {
-      const res = await finishGame.mutateAsync({ tripId, gameId: game.id });
-      setStandings(res.standings);
-      setView("final");
+      await finishGame.mutateAsync({ tripId, gameId: game.id });
+      // Stroke previously invalidated NOTHING here — it just swapped to a local
+      // summary screen, so the scoreboard behind it kept rendering the
+      // pre-finalize `gameQ` row and the cup board stayed stale. With the summary
+      // gone the view stays put, which makes these loud by their absence: without
+      // them the "Finish round" button would still be sitting there after a
+      // successful finalize.
+      await utils.games.getById.invalidate({ tripId, gameId: game.id });
+      if (gameCompetitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
+        utils.games.listByTrip.invalidate({ tripId });
+        // CLAUDE.md #10: the Live face re-seeds `competitions.leaderboard` FROM
+        // `faceBootstrap` on mount, which marks it fresh and silently undoes the
+        // child invalidate above. Invalidate the bootstrap or the board reads
+        // stale until the poll. Rack learned this the same way.
+        utils.competitions.faceBootstrap.invalidate({ tripId });
+      }
     } catch {
-      // Stay on the entry view (no silent advance). The global error toast
+      // Stay on the scoreboard (no silent advance). The global error toast
       // surfaces the failure; the Finish CTA stays tappable to retry (the
       // recompute is idempotent).
     }
   }
 
-  function playAgain() {
-    setCreatedGame(null);
-    setValues({});
-    setStandings([]);
-    setSelected([]);
-    setCurrentHole(1);
-    setView("entry");
-    setGridOpen(false);
-    // Drop ?game so "Play again" starts a fresh game instead of resuming this one.
-    if (urlGameId) router.replace(`/trips/${param}/games/new`);
+  // #769: the correction path, mirroring rack's `handleCorrect` exactly.
+  async function handleCorrect() {
+    if (!tripId || !game) return;
+    try {
+      await openCorrection.mutateAsync({ tripId, gameId: game.id });
+      await utils.games.getById.invalidate({ tripId, gameId: game.id });
+      // `corrections_open` is a `games` column — snapshotted by the bootstrap and
+      // carried on the board's GameRow, so both need invalidating for the same
+      // reason as above.
+      utils.games.listByTrip.invalidate({ tripId });
+      if (gameCompetitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
+    } catch {
+      // surfaced via the global error toast
+    }
   }
 
   // P3 3.3 — Handicaps + Game Modifiers are now INLINE accordion panels inside the
@@ -1107,23 +1130,9 @@ export function StrokeGameView() {
       />
     );
 
-    // FINAL — the completed standings over the whole field (reached via Finish from a group's
-    // entry). The scorecard overlays it.
-    if (view === "final") {
-      return (
-        <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
-          <FinalStandings
-            participants={fieldParticipants}
-            standings={standings}
-            unitCount={scUnits.length}
-            dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-            onScorecard={() => setGridOpen(true)}
-            onPlayAgain={playAgain}
-          />
-          {gridOpen && <ScorecardSheet subtitle={courseName ?? undefined} onClose={back}>{scorecardGrid}</ScorecardSheet>}
-        </div>
-      );
-    }
+    // (There is no post-finalize summary screen. Finalizing leaves you on the
+    // scoreboard, which is where rack leaves you and where the result actually
+    // lives — see the note at `handleFinish`.)
 
     // ENTRY (one level down) — a grouping is tapped: score just that group. A scorer of the
     // group gets the keypad; anyone else gets its read-only scorecard. Back → the surface.
@@ -1187,22 +1196,24 @@ export function StrokeGameView() {
             setEntryGroupId(id);
           }}
         />
-        {/* Game-level finalize (just like rack): organizer/owner/delegate only
-            (canEdit → hidden for others, not disabled), and ONLY once every group
-            is complete (all players, all holes, live over the current group set —
-            a mid-round-added group re-blocks it). Never on a group's entry page. */}
-        {canEdit && !strokeFinal && allGroupsComplete && (
-          <div className="px-4 pb-6" data-testid="stroke-finalize">
-            <button
-              onClick={handleFinish}
-              disabled={finishGame.isPending}
-              className="w-full disabled:opacity-40"
-              style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}
-            >
-              {finishGame.isPending ? "Finishing…" : "Finish round"}
-            </button>
-          </div>
-        )}
+        {/* Game-level finalize / correct / re-lock — the SHARED control, so
+            stroke's conditions are rack's conditions rather than a second copy
+            that agrees today. Organizer/owner/delegate only (hidden for others,
+            not disabled); finalize only once every group is complete (all
+            players, all holes, live over the current group set — a
+            mid-round-added group re-blocks it). Never on a group's entry page. */}
+        <GameLifecycleActions
+          canEdit={canEdit}
+          status={gameQ.data?.status ?? null}
+          correctionsOpen={strokeCorrectionsOpen}
+          allComplete={allGroupsComplete}
+          finalizeLabel="Finish round"
+          finalizePendingLabel="Finishing…"
+          finalizePending={finishGame.isPending}
+          correctPending={openCorrection.isPending}
+          onFinalize={handleFinish}
+          onCorrect={handleCorrect}
+        />
       </div>
     );
   }

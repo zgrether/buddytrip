@@ -45,6 +45,7 @@ import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
+import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 
 const RACK = "gtt_rack_n_stack";
 
@@ -1143,28 +1144,24 @@ export function RackGameView() {
         nameOf={(id) => nameOf.get(id) ?? "Player"}
         final={final}
       />
-      {canEdit && !final && allThru18 && (
-        <div className="px-4 pb-6">
-          <button onClick={finish} disabled={finishGame.isPending} className="w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}>
-            {finishGame.isPending ? "Locking…" : "Lock the result"}
-          </button>
-        </div>
-      )}
-      {/* #7: the deliberate, auditable correction path (owner/co-admin/delegate). */}
-      {canEdit && locked && (
-        <div className="px-4 pb-6">
-          <button onClick={handleCorrect} disabled={openCorrection.isPending} className="w-full disabled:opacity-40" style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 14, fontWeight: 600 }}>
-            {openCorrection.isPending ? "Opening…" : "Correct a score"}
-          </button>
-        </div>
-      )}
-      {canEdit && correcting && (
-        <div className="px-4 pb-6">
-          <button onClick={finish} disabled={finishGame.isPending} className="w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 15, fontWeight: 600 }}>
-            {finishGame.isPending ? "Re-locking…" : "Re-lock result"}
-          </button>
-        </div>
-      )}
+      {/* Finalize / #7's deliberate, auditable correction path / re-lock — all
+          three now decided by the SHARED `gameLifecycle` predicate and rendered
+          by the shared component, so stroke cannot answer "can this be
+          finalized?" differently from rack. `locked` and `correcting` are still
+          computed above because the board and the subtitle read them; this
+          control derives its own from the same two inputs. */}
+      <GameLifecycleActions
+        canEdit={canEdit}
+        status={gameQ.data?.status ?? null}
+        correctionsOpen={correctionsOpen}
+        allComplete={allThru18}
+        finalizeLabel="Lock the result"
+        finalizePendingLabel="Locking…"
+        finalizePending={finishGame.isPending}
+        correctPending={openCorrection.isPending}
+        onFinalize={finish}
+        onCorrect={handleCorrect}
+      />
     </Shell>
   );
 }
