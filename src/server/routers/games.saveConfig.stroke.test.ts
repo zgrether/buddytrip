@@ -112,6 +112,98 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
+/**
+ * 102 — removing a player from every grouping must remove their participation.
+ *
+ * Section 2b was insert-only ("upsert the roster union"), so a dropped player kept
+ * their `game_participants` row with a NULL `play_group_id` — in the game, in no
+ * group, with no scores. Found in production: seven such rows in one game, which the
+ * stroke engine then aggregated at 0 strokes into a three-way tie for first.
+ */
+describe("102 — pruning participants dropped from every grouping", () => {
+  async function groupedGame(name: string, userIds: string[]): Promise<string> {
+    const gameId = await newStrokeGame(name);
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: {
+        ...(await strokePayload(gameId, {})),
+        groups: [{ name: "G1", userIds }],
+        groupsStructureDirty: true,
+      },
+    });
+    return gameId;
+  }
+  const participantsOf = async (gameId: string) =>
+    (await ctx.admin.from("game_participants").select("user_id, play_group_id").eq("game_id", gameId)).data ?? [];
+
+  it("removes an UNSCORED player dropped from every group", async () => {
+    const gameId = await groupedGame("Prune unscored", [owner, member]);
+    expect(await participantsOf(gameId)).toHaveLength(2);
+
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: {
+        ...(await strokePayload(gameId, {})),
+        groups: [{ name: "G1", userIds: [owner] }],
+        groupsStructureDirty: true,
+      },
+    });
+
+    const rows = await participantsOf(gameId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ user_id: owner });
+    // The old shape: still present, `play_group_id` null. That is what this asserts
+    // against — not merely that the survivor is right.
+    expect(rows.map((r) => r.user_id)).not.toContain(member);
+  });
+
+  it("re-grouping keeps everyone — the delete is removal-only, not a clean replace", async () => {
+    // The regression risk of adding a DELETE here: it must not turn a re-shuffle into
+    // a rebuild that drops and re-adds rows (which would churn ids and, with scores
+    // present, be refused outright).
+    const gameId = await groupedGame("Regroup", [owner, member]);
+    const before = await participantsOf(gameId);
+
+    await ctx.caller().games.saveConfig({
+      tripId, gameId, baseHash: await hashOf(gameId),
+      payload: {
+        ...(await strokePayload(gameId, {})),
+        groups: [{ name: "A", userIds: [owner] }, { name: "B", userIds: [member] }],
+        groupsStructureDirty: true,
+      },
+    });
+
+    const after = await participantsOf(gameId);
+    expect(after).toHaveLength(2);
+    expect(after.every((r) => r.play_group_id)).toBe(true);
+    expect(new Set(after.map((r) => r.user_id))).toEqual(new Set(before.map((r) => r.user_id)));
+  });
+
+  it("still REFUSES to drop a scored player, and removes nobody when it does", async () => {
+    // The guard above the delete is what protects scores; this pins that the new
+    // delete did not weaken it, and that a refused save is atomic.
+    const gameId = await armScored("Prune refused");
+    await expect(
+      ctx.caller().games.saveConfig({
+        tripId, gameId, baseHash: await hashOf(gameId),
+        payload: {
+          ...(await strokePayload(gameId, {})),
+          groups: [{ name: "G1", userIds: [member] }], // owner has a score
+          groupsStructureDirty: true,
+          scoringEnabled: true,
+        },
+      })
+      // Assert the USER-FACING copy, not the raw `HAS_SCORES:` prefix — the tRPC
+      // layer strips that on purpose (`games.ts:1052`) and passes through the
+      // RPC's own actionable wording, which is what lands in the Save banner.
+      // And match the GROUPINGS sentence specifically: the handler falls back to
+      // the match-play "matchups" copy if the split fails, so a looser pattern
+      // could pass on the wrong branch.
+    ).rejects.toThrow(/dropped from the groupings mid-round/i);
+    expect(await participantsOf(gameId)).toHaveLength(2);
+  });
+});
+
 describe("save_game_config — stroke (P2 flip): whole lean page saves; course is the one wall", () => {
   it("MODIFIERS write through AND survive a later omitted-slice save is impossible — always sent", async () => {
     const gameId = await newStrokeGame("Stroke modifiers");
