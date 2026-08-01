@@ -72,11 +72,19 @@ recorded in **§1.5**.
 
 ### 1.2 The pipeline (GitHub Actions)
 
-- **One workflow** (`.github/workflows/ci.yml`), two jobs, **both merge-blocking**:
+- **Two workflows.** `ci.yml` (below) is the merge gate; `prod-migrations.yml` is a
+  manual, `workflow_dispatch`-only button documented in **§1.2a**. Nothing else runs.
+- **`ci.yml`**, two jobs, **both merge-blocking**:
   - `test` (`:14-41`): `supabase db push --db-url "$SUPABASE_DB_URL"` → `tsc --noEmit` →
     `vitest run`
   - `e2e` (`:47-79`, `needs: [test]`): build → Playwright (`critical-path` **and**
     `match-play` specs — `playwright.config.ts:33`)
+  - ⚠️ **Both job descriptions above are the PRE-Step-0 state and are now stale.** #636
+    took CI off the shared prod project: each job runs `supabase start` for an ephemeral
+    LOCAL stack, applies the whole migration history to it, and references **no secrets at
+    all**. `e2e` also runs `chat-action.spec.ts` now (three merge-blocking specs, not two).
+    Left in place rather than silently rewritten — the rest of this section was audited on
+    2026-07-18 and has not been re-verified since; treat undated claims here accordingly.
 - **Trigger gotcha CONFIRMED.** `on:` lists only `branches: [main]` for both `push` and
   `pull_request` (`ci.yml:2-6`). A bare feature-branch push runs **nothing** — no CI, no
   migration apply.
@@ -92,11 +100,94 @@ recorded in **§1.5**.
 - **Run cancellation:** `concurrency: group: ci-${{ github.ref }}, cancel-in-progress: true`
   (`ci.yml:7-12`) — per-ref; a new commit cancels the stale run on that ref only, never
   `main`. No "Vercel reads a canceled run as failure" note exists anywhere in the repo.
-- **Repo secrets** (`gh secret list`): `NEXT_PUBLIC_SUPABASE_URL`,
+- **Repo secrets** (`gh secret list`, 2026-07-18): `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL` (all
   consumed by CI) + `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (present but **not used by
   `ci.yml`** — runtime/OAuth, not CI).
-- **Repo is PUBLIC** (`visibility: public`) — relevant to §1.3.
+  - **Since #636, `ci.yml` consumes none of them** — the four "consumed by CI" secrets are
+    now unreferenced by any workflow. They have not been deleted; nothing has re-verified
+    their values either, which is why §1.2a uses a **new** secret rather than reusing
+    `SUPABASE_DB_URL`.
+  - **`SUPABASE_PROD_DB_URL`** (to be added by hand) is the one secret §1.2a consumes.
+- **Repo is PUBLIC** (`visibility: public`) — relevant to §1.3, and the reason §1.2a uses a
+  DB connection string rather than a Supabase management-API access token.
+
+### 1.2a Applying migrations to prod from Actions — the exception, not the default
+
+`.github/workflows/prod-migrations.yml`. **`supabase db push --linked` from a laptop
+remains the correct way to apply a migration.** This workflow is for when there isn't one.
+
+**Why it exists.** Migrations 099/100/101 sat queued while #784 — a fix for a *confirmed
+production data-loss path* (a stroke round finalized, the `game_results` write failed
+silently, nothing on the leaderboard) — stayed unmergeable for days, because the only
+person with prod credentials was away from a laptop. The bug was live and the fix was
+green. That is the situation this button is for, and roughly the only one.
+
+**What it does NOT change.** `CLAUDE.md`'s migration workflow is unchanged: application
+stays **manual and separate from merging**. That separation is what caught `044`'s
+replay bug, and a merge still cannot apply anything. `workflow_dispatch` is the only
+trigger — no `push`, no `pull_request`, no `schedule` — and adding one would delete the
+gate the rule exists to keep.
+
+| Mode | What runs | Writes? |
+|---|---|---|
+| **`list`** (default) | `supabase migration list` + `supabase db push --dry-run` | no |
+| **`push`** (must be selected) | both of the above, then `db push`, then `migration list` again | **yes** |
+
+**Auth: one secret.** `SUPABASE_PROD_DB_URL` — the production Postgres URI (Supabase →
+Project Settings → Database → Connection string → **URI**, session pooler, password
+filled in, percent-encoded). Chosen over `link` + `--linked`, which needs *two*
+credentials (`SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_PASSWORD`) and puts a management-API
+token — able to delete the project outright — on a public repo. Same migration applier
+either way.
+
+**It does not recreate the MCP-tool problem.** `schema_migrations` records the migration
+**filename** timestamp, exactly as `db push --linked` does. (`CLAUDE.md` Migration
+Workflow: the Supabase MCP tool records the *apply* timestamp instead, which breaks the
+next `db push` with "Remote migration versions not found in local migrations directory.")
+
+**Three guards, each of which fails the job:**
+
+1. **Ref.** Refuses anything but `refs/heads/main`. `workflow_dispatch` offers a branch
+   picker, so the single easiest way to damage prod with this file is to dispatch from a
+   feature branch and apply its unmerged migrations. The CLI cannot see this — the files
+   simply look like migrations.
+2. **Project.** The expected ref (`nezhuwyfirrbmyojpiyx`) is a literal in the workflow —
+   it already ships to every browser inside `NEXT_PUBLIC_SUPABASE_URL` — and the run
+   fails if the secret doesn't reference it. This also puts the target project in the log,
+   so a misdirected dispatch is visible rather than silent.
+3. **No leakage.** The connection string is never echoed. GitHub masks exact secret values
+   but **not substrings**, and the Postgres password is inside it, so the project check is
+   shell globbing.
+
+**Flags that are deliberately absent:**
+
+- **`--include-all`.** Without it the CLI stops and names any local migration timestamped
+  *before* prod's newest ("Found local migration files to be inserted before the last
+  migration on remote database"). That stop is correct: two open branches can pick the
+  same `NNN` and ordering is by timestamp (`CLAUDE.md` Enforced Patterns #3), so
+  out-of-order application is a live hazard here. The flag converts a loud stop into a
+  silent out-of-order apply.
+- **Any rollback / `db reset` / seed.** `CLAUDE.md`'s rule is a **new migration**, never an
+  edit or an undo. Recovery from a bad migration is Supabase PITR, outside this workflow.
+
+`--yes` is passed to both CLI calls because `db push` prompts (*"Do you want to push these
+migrations to the remote database?"*) and would otherwise hang on a non-TTY runner. On the
+dry run that is hang-safety only; `--dry-run` is what guarantees nothing is written.
+
+> ### ⚠️ What this workflow does **not** check: the `081` failure
+>
+> It applies **schema only**. It has no idea what Vercel is currently serving, so it cannot
+> tell you whether the code that reads the new schema has deployed. Migration `081` shipped
+> ahead of its push once and produced a live *"could not find function `save_game_config`
+> in the schema cache."*
+>
+> The ordering rule is `CLAUDE.md` Migration Workflow §3/§3b and it still applies in full:
+> for an **addition**, the migration goes to prod **first**, then the code that reads it;
+> for a **removal** (`DROP COLUMN`/`DROP FUNCTION`), the code that stops using it deploys
+> **first**, then the drop. Applying a `DROP` from here while the old code is still live
+> breaks prod in the other direction. **That sequencing is the operator's judgement — no
+> guard in this file can make it for you.**
 
 ### 1.3 Vercel
 

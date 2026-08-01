@@ -624,6 +624,11 @@ CI and local dev off the shared prod project). Two consequences follow:
 - **Prod is applied manually, separately from merging.** Merging a PR does NOT push its
   migration to prod. Apply it to the prod project by hand with `supabase db push --linked`
   (records the version under the filename timestamp), as its own step around the deploy.
+  There is now one alternative *route* to the same manual act — a `workflow_dispatch`-only
+  Action (`.github/workflows/prod-migrations.yml`, documented in `ENVIRONMENT_AUDIT.md`
+  §1.2a) for when there is no laptop to run the CLI from. It changes nothing about this
+  rule: still manual, still separate from merging, still never on a merge or a schedule.
+  **`--linked` from a laptop stays the default path; the button is the exception.**
 
 **Don't apply migrations via the Supabase MCP tool** (`apply_migration`, raw `execute_sql`
 for DDL). It records the migration under the *apply timestamp*, which differs from the local
