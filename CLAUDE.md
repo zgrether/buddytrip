@@ -498,6 +498,32 @@ These patterns have been established through prior work. Follow them exactly —
       does **not** match a cached key whose visibility is `"crew"` — the invalidation
       silently hits nothing. Build the input without the key when you mean "all".
 
+23. **A declared return type is not a runtime guarantee across a library
+    boundary.** `tsc` checks that your code agrees with a library's *declaration*.
+    It cannot check that the library agrees with itself, so a wrong declaration
+    type-checks perfectly and fails only at runtime — and if the consuming code
+    silently tolerates the wrong shape, it fails **invisibly**.
+    Established by #730: `createServerSideHelpers().dehydrate()` is typed
+    `DehydratedState` and actually returns a superjson envelope (`{ json, meta }`),
+    so `<HydrationBoundary state={...}>` read `state.queries`, found `undefined`,
+    iterated nothing and returned. **No error, no warning, clean `tsc`.** Every
+    prefetch in the trip layout was decorative from the layout's creation until
+    someone measured it — and it had been WORKED AROUND TWICE (`TripBootSeed`,
+    then the #751 role-flash seed) by people who correctly observed the symptom
+    and reasonably assumed the framework mechanism was simply unreliable.
+    **The tell:** a value crosses a library boundary, the type says it arrived,
+    and the consumer's behaviour says it didn't. When those two disagree, believe
+    the behaviour and go read the library's compiled source — `node_modules`
+    is readable, and in this case the answer was one line
+    (`const after = resolvedOpts.serialize(before); return after;`).
+    **The guard:** any cross-library data contract that can fail silently gets a
+    runtime test, because a type annotation is not one (`hydrationTransport.test.ts`
+    pins this one, including the inverse — that "completing" the config with
+    `hydrate.deserializeData` would double-deserialize and break it). Related but
+    distinct from #16's landmine, where a swallowed `error` hid a missing relation:
+    same *invisibility*, different source — that was our code ignoring a signal,
+    this was a library declaring something untrue.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
