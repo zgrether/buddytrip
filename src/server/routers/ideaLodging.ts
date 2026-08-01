@@ -175,6 +175,13 @@ export const ideaLodgingRouter = router({
     .input(z.object({ id: z.string(), tripId: z.string() }))
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      // #781 — count deliberately NOT asserted. Zero rows here means the
+      // row was already gone, which on shared trip data is a concurrent
+      // actor or a double-tap, not a defect — and the user's intent
+      // ("remove this") is satisfied either way. Asserting would turn a
+      // race into an error for no gain. Contrast archivedIdeas.remove,
+      // which DOES assert: that row is user-scoped, so it has no second
+      // actor.
       const { error } = await ctx.supabase
         .from("idea_lodging_options")
         .delete()

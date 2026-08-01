@@ -236,18 +236,68 @@ raises the stakes on the answer — more people can now reach them.
 | 10 | `matches.ts:547` play_groups cleanup | no orphan groups to clear | normal case throws — almost certainly wrong | orphan group stays visible to `listByGame` (§4.5) |
 | 11 | **`ideas.ts:236`** single-pick clear ⚠️ | no prior vote — the FIRST vote, i.e. the common case | breaks every first vote — clearly wrong | a real failure could leave two active votes, **contingent on an unconfirmed `idea_votes` uniqueness constraint**. **Gate widened in #788** |
 
-**The shape of the answer**, since ten of the eleven are the same question: these are all
-"delete/update a thing the user just saw and asked to remove." The competing values are
-*catch stale ids* versus *don't punish a double-tap*. A blanket count assertion makes every
-concurrent-action race an error; leaving them all makes every stale id invisible.
+### DECIDED 2026-08-01 — the rule that came out of it
 
-**Two are not that question and can be settled independently:** #10 (`matches.ts:547`) and
-#11 (`ideas.ts:236`) both have zero rows as their NORMAL case, so a count assertion is simply
-wrong at both — they need only the error check they now have. #11's residual risk still
-depends on the `idea_votes` constraint, which remains **unconfirmed** (checking it needs a DB;
-`supabase start` has been unavailable). Unconfirmed rather than guessed at, still.
+**Zach's ruling: leave rows 1–9, assert row 8, settle 10 and 11 at error-check only.**
+Every site now carries a comment stating its side of this, so the next sweep finds a
+decision rather than an omission.
 
-All eleven are error-checked or already were; only the count decision is open.
+**The distinguishing property is whether the row has a SECOND ACTOR.**
+
+- **Shared trip data** (schedule, teams, tiles, lodging options, team assignments, the
+  date poll) — another member can legitimately have removed the row first. Zero rows is a
+  race or a double-tap, and the caller's intent ("remove this") is satisfied either way.
+  Asserting turns a race into an error for no gain. **Left as error-check only.**
+- **User-scoped data** — `archivedIdeas.remove` (`.eq("user_id", ctx.user.id)`, a personal
+  archive) has **no second actor**. Zero rows means a stale or foreign id, and reporting
+  success for a foreign id is wrong. **Asserts, and throws NOT_FOUND** — the id matched
+  nothing of yours, which is a request problem, not a server one.
+
+That is the whole rule, and it generalises: **ask who else could have removed the row.
+If the answer is "nobody," assert.**
+
+The two reorder fan-outs (`schedule.ts`, `teamAssignments.ts`) are left for a second
+reason worth keeping separate: they fire in parallel via `Promise.all`, so a mid-flight
+throw would commit a PARTIAL order — worse than the silent partial already tolerated,
+which a re-drag corrects by resending the whole permutation. Contrast `matches.reorder`,
+which DOES assert: its input is a closed set with no concurrent editor.
+
+Rows 10 (`matches.ts:547`) and 11 (`ideas.ts:236`) are settled at error-check only. Zero
+rows is their NORMAL case, so a count assertion would break the common path at both.
+
+### The `idea_votes` constraint — CONFIRMED, and the answer is not "missing"
+
+The audit flagged row 11's residual risk as contingent on an unconfirmed uniqueness
+constraint. **Confirmed from the schema** (`001_initial_schema.sql:228`), and the finding
+is sharper than expected:
+
+```sql
+CREATE TABLE IF NOT EXISTS idea_votes (
+  trip_id text NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  idea_id text NOT NULL REFERENCES ideas(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (idea_id, user_id)
+);
+```
+
+The PK is **`(idea_id, user_id)`** — per IDEA. It enforces "you can't vote twice on the
+same idea" and says nothing about the **single-pick rule** ("one vote per trip"), which is
+enforced *only* by the delete-then-insert in `ideas.vote`. So the flagged risk is REAL: if
+that clear silently failed, a user would hold votes on two different ideas in one trip and
+**no database constraint would stop it**.
+
+**The correct shape is `UNIQUE (trip_id, user_id)`** — trip-scoped, because a trip is the
+unit the single-pick rule applies to and votes carry different context across years. It
+subsumes the existing PK (an idea belongs to exactly one trip), so the PK becomes redundant
+but harmless and should be left alone.
+
+**It is NOT written yet, and it is not a blindly additive migration.** Adding a UNIQUE
+constraint FAILS if any user currently holds two votes in one trip — precisely the
+corruption it exists to prevent — so it needs a de-dup step (keep the most recent
+`created_at`) before the `ALTER`. That is replayable from zero (no rows on a fresh DB) and
+safe on prod, but it must be written deliberately rather than as a one-liner. Tracked as
+its own follow-up.
 
 ---
 

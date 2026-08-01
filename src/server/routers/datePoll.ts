@@ -451,6 +451,11 @@ export const datePollRouter = router({
     .mutation(async ({ ctx }) => {
       // Clear the trip dates and flip poll_mode back on in a single update
       // so the UI transitions in one render.
+      // #781 — returnToPoll's writes keep error checks and no count
+      // assertions. A trip that never opened a poll has no date_polls row to
+      // reopen, so zero rows there is a legal no-op; asserting would make
+      // "return to poll" throw on exactly the trips where the request is
+      // harmless.
       const { error: tripErr } = await ctx.supabase
         .from("trips")
         .update({
