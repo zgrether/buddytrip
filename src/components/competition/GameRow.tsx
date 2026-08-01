@@ -500,12 +500,6 @@ function OuterColumn({
   );
 }
 
-function ordinal(n: number): string {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
-}
-
 /** Fixed column width shared between `GridColumnHeader` and each completed
  *  row's grid cells (match_play only) — the two can never misalign since both
  *  read the same constant. Sized for a short-name (≤5 char) column. */
@@ -727,15 +721,28 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
  *  shared place tokens; each pill = place chip (gold/silver/bronze bg) + team
  *  color dot + short name. Only teams with a resolved place are shown. */
 function CompletedPodium({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+  // POINTS, not ordinals. The badge used to read "1st MAN · 2nd CEN", which is a
+  // different number from the one in the Completed TABLE directly beside it — the
+  // table has always shown per-game points per team. Two numbers for one result,
+  // and the badge's was the one that doesn't decide anything.
+  //
+  // `points` is already on the cell (`LBCell`), so nothing needs the distribution
+  // resolved here; the leaderboard has done that work upstream.
+  //
+  // Places that earned NOTHING are omitted entirely — no zero, no ordinal. With a
+  // distribution of [6, 3.5, 1.5] and four teams, 4th pays nothing, and printing
+  // "4th" or "0" would assert a standing the scoring model doesn't award. The
+  // place COLOR still comes from the finishing position, so the ranking is still
+  // legible without spelling it out.
   const ranked = teams
-    .map((t) => ({ team: t, place: cells?.get(t.id)?.place }))
-    .filter((x): x is { team: LBTeam; place: number } => x.place != null)
-    .sort((a, b) => a.place - b.place);
+    .map((t) => ({ team: t, cell: cells?.get(t.id) }))
+    .filter((x): x is { team: LBTeam; cell: LBCell } => x.cell != null && x.cell.points > 0)
+    .sort((a, b) => a.cell.place - b.cell.place);
   if (ranked.length === 0) return null;
   return (
     <div className="flex shrink-0 items-center gap-1">
-      {ranked.map(({ team, place }) => {
-        const p = Math.min(Math.max(place, 1), 4);
+      {ranked.map(({ team, cell }) => {
+        const p = Math.min(Math.max(cell.place, 1), 4);
         return (
           <span
             key={team.id}
@@ -746,11 +753,12 @@ function CompletedPodium({ teams, cells }: { teams: LBTeam[]; cells: Map<string,
             }}
           >
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
-            {ordinal(place)} {team.short_name}
+            {team.short_name} {fmtPts(cell.points)}
           </span>
         );
       })}
     </div>
   );
 }
+
 

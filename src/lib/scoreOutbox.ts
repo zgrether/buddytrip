@@ -77,6 +77,24 @@ export function outboxPut(gameId: string, participantId: string, unitLabel: stri
 export function outboxClear(gameId: string, participantId: string, unitLabel: string): void {
   write(gameId, clearIn(read(gameId), participantId, unitLabel));
 }
+/**
+ * Drop the ENTIRE outbox for a game.
+ *
+ * For the Danger-zone reset only. The outbox exists to make an unconfirmed score
+ * survive a hard teardown (#15) — `outboxEntries` re-sends survivors on the next
+ * mount. That is exactly wrong after a reset: the server has authoritatively no
+ * scores, and a surviving entry would RE-SEND one, quietly undoing the reset the
+ * moment the view remounted.
+ */
+export function outboxClearAll(gameId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(storeKey(gameId));
+  } catch {
+    // best-effort, same as every other write here
+  }
+}
+
 /** All still-unconfirmed scores for a game (read on mount → re-send + reflect). */
 export function outboxEntries(gameId: string): OutboxEntry[] {
   return entriesOf(read(gameId));

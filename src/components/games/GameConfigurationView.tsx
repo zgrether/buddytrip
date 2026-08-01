@@ -39,6 +39,7 @@ export function GameConfigurationView({
   canManageGame,
   onChanged,
   onDeleted,
+  onScoresReset,
   whosPlayingLabel,
   onEditWhosPlaying,
   settingsZoneLabel = "Settings",
@@ -86,6 +87,8 @@ export function GameConfigurationView({
   onChanged: () => void;
   /** Game deleted from the danger zone — leave the page (back to the board). */
   onDeleted: () => void;
+  /** Danger-zone score reset — forwarded to `GameDangerZone`. */
+  onScoresReset?: () => void;
   /** Summary + drill-down into the format's who's-playing/handicaps editor. Omit when
    *  the format has no post-create roster editor. */
   whosPlayingLabel?: string;
@@ -287,6 +290,7 @@ export function GameConfigurationView({
               competitionId={competitionId}
               onChanged={onChanged}
               onDeleted={onDeleted}
+              onScoresReset={onScoresReset}
               disabled={serverScoringEnabled}
             />
           )}

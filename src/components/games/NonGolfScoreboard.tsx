@@ -9,6 +9,7 @@ import {
 } from "@/components/competition/CompetitionGamesPanel";
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import type { ScoringModel } from "@/lib/gameTypes";
+import { placementsFrom } from "@/lib/placementGroups";
 
 /**
  * NonGolfScoreboard — the scoring-mode body of the non-golf scoreboard page
@@ -61,6 +62,12 @@ export function NonGolfScoreboard({
   const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
 
   const [order, setOrder] = useState<string[]>(initialOrder.length ? initialOrder : teams.map((t) => t.id));
+  // Teams tied with the row ABOVE. Non-golf produces genuine ties (cornhole,
+  // euchre) and a drag list expresses a strict sequence, so the tie is a separate
+  // explicit toggle rather than a second meaning overloaded onto the drop target.
+  // `placementPoints` already pools and splits the shared places, so the game's
+  // total is preserved by construction — there is nothing to validate here.
+  const [tiedWithPrev, setTiedWithPrev] = useState<ReadonlySet<string>>(new Set());
   // Start with NO outcome selected on a fresh game so nothing reads as
   // pre-decided (and the Post button stays disabled until the user picks).
   // When correcting a posted game, seed from the recorded outcome.
@@ -77,12 +84,13 @@ export function NonGolfScoreboard({
   function teamById(id: string) {
     return teams.find((t) => t.id === id);
   }
-  function move(i: number, dir: -1 | 1) {
-    const j = i + dir;
-    if (j < 0 || j >= order.length) return;
-    const next = [...order];
-    [next[i], next[j]] = [next[j], next[i]];
-    setOrder(next);
+  function toggleTie(teamId: string) {
+    setTiedWithPrev((prev) => {
+      const next = new Set(prev);
+      if (next.has(teamId)) next.delete(teamId);
+      else next.add(teamId);
+      return next;
+    });
   }
 
   async function commit() {
@@ -92,7 +100,11 @@ export function NonGolfScoreboard({
         ? result === "tie"
           ? teams.map((t) => ({ entityId: t.id, position: 1 }))
           : teams.map((t) => ({ entityId: t.id, position: t.id === result ? 1 : 2 }))
-        : order.map((id, i) => ({ entityId: id, position: i + 1 }));
+        // Tied teams share a position — `writeManualResults` has never required
+        // positions to be unique, and the leaderboard reads `position` as the
+        // standing value, so equal positions arrive at `placementPoints` as a
+        // real tie group and are paid the pooled share.
+        : placementsFrom(order, tiedWithPrev);
       await finishGame.mutateAsync({ tripId, gameId: game.id, placements });
       utils.games.listByTrip.invalidate({ tripId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
@@ -123,7 +135,15 @@ export function NonGolfScoreboard({
           onPick={canEdit ? setResult : () => {}}
         />
       ) : (
-        <ManualPlacementEditor order={order} dist={dist} teamById={teamById} move={canEdit ? move : () => {}} />
+        <ManualPlacementEditor
+          order={order}
+          dist={dist}
+          teamById={teamById}
+          canEdit={canEdit}
+          onReorder={setOrder}
+          tiedWithPrev={tiedWithPrev}
+          onToggleTie={toggleTie}
+        />
       )}
 
       {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}

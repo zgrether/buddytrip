@@ -6,6 +6,7 @@ import {
   outboxPut,
   outboxClear,
   outboxEntries,
+  outboxClearAll,
   type OutboxMap,
 } from "./scoreOutbox";
 
@@ -143,5 +144,26 @@ describe("scoreOutbox — survives a keyed remount on a game swap (#744)", () =>
     outboxClear("game-a", "user-U", "7"); // A's in-flight save confirms post-swap
     expect(outboxEntries("game-a")).toEqual([]);
     expect(outboxEntries("game-b")).toEqual([{ participantId: "user-U", unitLabel: "7", value: 9 }]);
+  });
+});
+
+describe("outboxClearAll — the Danger-zone reset", () => {
+  it("wipes the whole game's outbox, so a reset is not undone on remount", () => {
+    // Without this, `outboxEntries` re-sends the survivors on the next mount and
+    // quietly re-creates the scores the reset just deleted.
+    outboxPut("g1", "p1", "1", 4);
+    outboxPut("g1", "p2", "1", 5);
+    expect(outboxEntries("g1")).toHaveLength(2);
+
+    outboxClearAll("g1");
+    expect(outboxEntries("g1")).toEqual([]);
+  });
+
+  it("leaves other games alone", () => {
+    outboxPut("g1", "p1", "1", 4);
+    outboxPut("g2", "p1", "1", 4);
+    outboxClearAll("g1");
+    expect(outboxEntries("g1")).toEqual([]);
+    expect(outboxEntries("g2")).toHaveLength(1);
   });
 });

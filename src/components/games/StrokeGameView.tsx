@@ -559,7 +559,7 @@ export function StrokeGameView() {
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
-  const { values, saveStatus, onChange, onClear, retryCell, reconcile } =
+  const { values, saveStatus, onChange, onClear, retryCell, reconcile, clearAll: clearScores } =
     useScoreSaver(tripId, activeGameId);
   // Finishing retries (idempotent — recomputes from the same scores); a failure
   // stays put and is surfaced by the global mutationCache.onError, which covers
@@ -1050,6 +1050,7 @@ export function StrokeGameView() {
           // distribution divides across the groups, so Groupings leads (dependency order).
           leadingSettingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
           onChanged={() => void refreshGame()}
+          onScoresReset={clearScores}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
           // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —
           // an inline accordion now (P3 3.3), not a drill-down trigger.

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
-import { outboxPut, outboxClear, outboxEntries } from "@/lib/scoreOutbox";
+import { outboxPut, outboxClear, outboxClearAll, outboxEntries } from "@/lib/scoreOutbox";
 import { reconcileScores } from "@/lib/scoreReconcile";
 import { showToast } from "@/lib/toast";
 import {
@@ -271,9 +271,35 @@ export function useScoreSaver(
     (s) => s === "error",
   ).length;
 
+  /**
+   * Wipe every score this hook is holding — local values, per-cell save status,
+   * and the durable outbox.
+   *
+   * For the Danger-zone reset, and ONLY that. `reconcileScores` cannot express
+   * this: it starts from `local` and only ever OVERLAYS server values on top, so
+   * a cell present locally and absent from the server survives. That asymmetry is
+   * deliberate and load-bearing — it is what protects the active enterer's
+   * in-flight cells (#15/#16) — but it means the server's answer to "what are the
+   * scores" cannot be "none", because that answer is expressed by ABSENCE and
+   * absence is precisely what the overlay ignores.
+   *
+   * So resetting invalidated everything correctly, refetched an empty set, merged
+   * nothing, and left every score on screen until the view remounted. Which is
+   * exactly the reported symptom: leave the game and come back and it is right.
+   *
+   * The outbox wipe is not optional. Without it `outboxEntries` would re-send the
+   * survivors on the next mount and undo the reset a second time.
+   */
+  const clearAll = useCallback(() => {
+    setValues({});
+    setSaveStatus({});
+    if (gameId) outboxClearAll(gameId);
+  }, [gameId]);
+
   return {
     values,
     setValues,
+    clearAll,
     saveStatus,
     errorCount,
     onChange,
