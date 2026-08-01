@@ -60,11 +60,13 @@ export function HomeTab({
 
   // FreshTripGuide owns its own welcoming header when it renders, so the
   // generic "You're driving this trip" TabHeader collapses to avoid two
-  // intros stacked on top of each other. The guide renders for owners
-  // who haven't dismissed it AND don't yet have a populated itinerary —
-  // matched against the same gates ItineraryPanel uses.
+  // intros stacked on top of each other. The guide renders for anyone who can
+  // EDIT and hasn't dismissed it AND doesn't yet have a populated itinerary —
+  // matched against the same gates ItineraryPanel uses, which is why this moved
+  // to `canEdit` with them (#793). Left on `isOwner` it would have stacked two
+  // headers for an Organizer the moment the guide became visible to them.
   const guideOwnsHeader =
-    !!isOwner && !!showFullPanels;
+    !!canEditProp && !!showFullPanels;
 
   // pt-1 (4px) lands the guide / ITINERARY eyebrow level with the
   // other tabs' TabHeader eyebrow (Crew/Lodging/Agenda/Receipts). The
@@ -95,10 +97,10 @@ export function HomeTab({
           <ItineraryPanel
             tripId={trip.id}
             trip={trip}
-            isOwner={!!isOwner}
+            canEdit={!!canEditProp}
             // Pending is NOT member — see ItineraryPanel's branch. Without this,
-            // `isOwner` reads false while role is in flight and the owner gets
-            // the member empty state until it resolves.
+            // `canEdit` reads false while role is in flight and a privileged user
+            // gets the member empty state until it resolves.
             roleLoading={!!roleLoading}
             isActivated={!!trip.itinerary_enabled}
             onOpenDatesSheet={onOpenDatesSheet}
