@@ -4,6 +4,11 @@ import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, type PerMatchDistribution } from "@/lib/pointsDistribution";
+import {
+  writeGameResults,
+  type MatchResultUpdate,
+  type WriteFailureMode,
+} from "./writeGameResults";
 
 /**
  * DB-persist side of match-play results. Reads each `game_matches` row, builds
@@ -48,9 +53,13 @@ export interface MatchOutcome {
   thru: number;
 }
 
-interface GameResultRow {
+/** A match-play side's result row. `game_id` is NOT carried: #776's writer
+ *  stamps it from the RPC's own `p_game_id`, so a payload can never target
+ *  another game's rows. Narrower than the shared `GameResultRow` (match play
+ *  has no aggregate score and always sets a position) — kept that way so the
+ *  types still document the format. */
+interface MatchSideResultRow {
   id: string;
-  game_id: string;
   entity_id: string;
   entity_type: "user" | "play_group";
   raw_score: null;
@@ -61,12 +70,15 @@ interface GameResultRow {
 export async function computeMatchPlayResults(
   supabase: SupabaseClient,
   gameId: string,
-  opts?: { skipComplete?: boolean }
+  /** `onFailure` (#776) — how a results-write failure surfaces. Defaults to the
+   *  setup behaviour; `games.finish` passes "throw". See WriteFailureMode. */
+  opts?: { skipComplete?: boolean; onFailure?: WriteFailureMode }
 ): Promise<MatchOutcome[]> {
   // Freeze boundary: incremental re-derives (setHandicap / assignPlayer) pass
   // skipComplete so a finished match's recorded result is never rewritten by a
   // late input edit. `finish` passes nothing → processes every match.
   const skipComplete = opts?.skipComplete ?? false;
+  const onFailure = opts?.onFailure;
   const { data: matches } = await supabase
     .from("game_matches")
     // point_value = the A2b per-match override (null → the even share). Read here so
@@ -158,7 +170,8 @@ export async function computeMatchPlayResults(
   }
 
   const outcomes: MatchOutcome[] = [];
-  const resultRows: GameResultRow[] = [];
+  const resultRows: MatchSideResultRow[] = [];
+  const matchUpdates: MatchResultUpdate[] = [];
   const processedEntities: string[] = [];
 
   for (const m of matches ?? []) {
@@ -194,7 +207,13 @@ export async function computeMatchPlayResults(
         : "pending";
     const margin = st.over ? st.margin : null;
 
-    await supabase.from("game_matches").update({ result, margin, status }).eq("id", m.id as string);
+    // #776: collected rather than written here. This used to be a per-match
+    // UPDATE inside the loop — a third independent write phase that could fail
+    // halfway through, leaving some matches with fresh results and others stale
+    // alongside a results table that had already been replaced. They now ride
+    // the same transaction as the results replace below, matching how
+    // `_reset_game_scoring` already treats these two tables as one unit.
+    matchUpdates.push({ id: m.id as string, result, margin, status });
     outcomes.push({ matchId: m.id as string, result, margin, status, thru: st.thru });
 
     // One game_results row per side. position 1 leader / 2 trailing / both 1 on
@@ -204,23 +223,28 @@ export async function computeMatchPlayResults(
     const bTrailing = st.up > 0 && st.leader === "A";
     // entity_type follows the side type: 'user' (1v1) or 'play_group' (2v2).
     resultRows.push(
-      mkResult(gameId, a.id, aTrailing ? 2 : 1, a.type),
-      mkResult(gameId, b.id, bTrailing ? 2 : 1, b.type)
+      mkResult(a.id, aTrailing ? 2 : 1, a.type),
+      mkResult(b.id, bTrailing ? 2 : 1, b.type)
     );
   }
 
   // Replace game_results for the processed sides only — when skipComplete, a
   // frozen match's rows are left intact; otherwise the whole game is rewritten.
-  if (skipComplete) {
-    if (processedEntities.length > 0) {
-      await supabase.from("game_results").delete().eq("game_id", gameId).in("entity_id", processedEntities);
-    }
-  } else {
-    await supabase.from("game_results").delete().eq("game_id", gameId);
-  }
-  if (resultRows.length > 0) {
-    await supabase.from("game_results").insert(resultRows);
-  }
+  //
+  // #776: this was three separate unchecked writes (the per-match UPDATE loop
+  // above, this delete, and the insert). They now commit as ONE transaction, so
+  // a game can never be left with its matches updated and its results emptied —
+  // and migration 096's per-row broadcast no longer fires mid-sequence telling
+  // clients to read a table that is momentarily empty.
+  await writeGameResults(supabase, {
+    gameId,
+    scope: skipComplete
+      ? { kind: "entity_ids", entityIds: processedEntities }
+      : { kind: "all" },
+    rows: resultRows,
+    matchUpdates,
+    onFailure,
+  });
 
   // Competition adapter: if this game is in a per_match competition, compute
   // per-team match totals and write entity_type='team' rows to game_results.
@@ -239,7 +263,8 @@ export async function computeMatchPlayResults(
       // FALLBACK. Each match awards its own `point_value` when set, else this.
       (gameInfo.points_distribution as PerMatchDistribution).value,
       matches ?? [],
-      outcomes
+      outcomes,
+      onFailure
     );
   }
 
@@ -266,14 +291,12 @@ async function loadStrokeIndex(
 }
 
 function mkResult(
-  gameId: string,
   entityId: string,
   position: number,
   sideType: string
-): GameResultRow {
+): MatchSideResultRow {
   return {
     id: crypto.randomUUID(),
-    game_id: gameId,
     entity_id: entityId,
     // Normalize the side ref's type to the entity_type column's domain; a 1v1
     // side ('user') and a 2v2 side ('play_group') are the only cases.
@@ -298,7 +321,8 @@ async function writeTeamMatchPoints(
   competitionId: string,
   evenShareFallback: number,
   allMatches: { id: unknown; side_a: unknown; side_b: unknown; result: unknown; point_value?: unknown }[],
-  freshOutcomes: MatchOutcome[]
+  freshOutcomes: MatchOutcome[],
+  onFailure?: WriteFailureMode
 ) {
   // Fresh outcomes override stale results for the matches we just processed.
   const resultByMatch = new Map<string, "a_win" | "b_win" | "halve" | null>();
@@ -363,23 +387,23 @@ async function writeTeamMatchPoints(
     }
   }
 
-  // Replace all team rows for this game with fresh totals.
-  await supabase
-    .from("game_results")
-    .delete()
-    .eq("game_id", gameId)
-    .eq("entity_type", "team");
-
+  // Replace all team rows for this game with fresh totals. #776: atomic, and
+  // scoped to entity_type='team' so it cannot disturb the user/play_group rows
+  // written moments earlier in the same finalize. `raw_score` here is NUMERIC
+  // (migration 048) — a halved match awards half a point, so this genuinely
+  // carries fractions.
   const rows = [...teamPoints.entries()].map(([teamId, pts]) => ({
     id: crypto.randomUUID(),
-    game_id: gameId,
     entity_id: teamId,
     entity_type: "team" as const,
     raw_score: pts,
     position: null as number | null,
     competition_points_earned: null as null,
   }));
-  if (rows.length > 0) {
-    await supabase.from("game_results").insert(rows);
-  }
+  await writeGameResults(supabase, {
+    gameId,
+    scope: { kind: "entity_type", entityType: "team" },
+    rows,
+    onFailure,
+  });
 }

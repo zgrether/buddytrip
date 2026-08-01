@@ -7,6 +7,7 @@ import {
 } from "@/lib/strokePlay";
 import { strokeHoles } from "@/lib/matchPlay";
 import { strokeIndexOf, unitsFromSchema } from "@/lib/strokePlayConfig";
+import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
 
 /**
  * DB-persist side of stroke-play results (shape (b) — runs on Finish).
@@ -26,7 +27,10 @@ import { strokeIndexOf, unitsFromSchema } from "@/lib/strokePlayConfig";
  */
 export async function computeStrokePlayResults(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  /** #776 — how a results-write failure surfaces. Defaults to the setup
+   *  behaviour; `games.finish` passes "throw". See WriteFailureMode. */
+  { onFailure }: { onFailure?: WriteFailureMode } = {}
 ): Promise<StrokeStanding[]> {
   const { data: participants } = await supabase
     .from("game_participants")
@@ -58,19 +62,21 @@ export async function computeStrokePlayResults(
     netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer)
   );
 
-  await supabase.from("game_results").delete().eq("game_id", gameId);
-  if (standings.length > 0) {
-    await supabase.from("game_results").insert(
-      standings.map((s) => ({
-        id: crypto.randomUUID(),
-        game_id: gameId,
-        entity_id: s.entityId,
-        entity_type: "user",
-        raw_score: s.rawScore,
-        position: s.position,
-        competition_points_earned: null,
-      }))
-    );
-  }
+  // #776: one atomic replace instead of a bare delete + bare insert. Note there
+  // is no early return above — an empty game legitimately clears its results, so
+  // `rows: []` is a real "clear", not a no-op. That behaviour is preserved.
+  await writeGameResults(supabase, {
+    gameId,
+    scope: { kind: "all" },
+    rows: standings.map((s) => ({
+      id: crypto.randomUUID(),
+      entity_id: s.entityId,
+      entity_type: "user" as const,
+      raw_score: s.rawScore,
+      position: s.position,
+      competition_points_earned: null,
+    })),
+    onFailure,
+  });
   return standings;
 }

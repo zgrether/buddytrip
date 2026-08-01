@@ -657,12 +657,20 @@ export const gamesRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "A manual game posts a finishing order." });
         }
         await writeManualResults(ctx.supabase, input.gameId, input.placements);
+      // #776: the FINALIZE path passes onFailure:"throw" — a game marked
+      // complete with an empty results table is worse than a game that didn't
+      // finish, and the failure is recoverable (status stays non-complete, the
+      // computes are idempotent, so re-tapping Finish re-runs and recovers).
+      // This ends a divergence rather than adding a behaviour: the manual arm
+      // (writeManualResults, above) has always checked and thrown on this same
+      // table. The SETUP callers deliberately keep the default ("log") — see
+      // WriteFailureMode. `writeGameResults.guard.test.ts` pins these three.
       } else if (strategy === "match_play") {
-        matches = await computeMatchPlayResults(ctx.supabase, input.gameId);
+        matches = await computeMatchPlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else if (strategy === "rack_n_stack") {
-        teams = await computeRackNStackResults(ctx.supabase, input.gameId);
+        teams = await computeRackNStackResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else if (strategy === "stroke_total") {
-        standings = await computeStrokePlayResults(ctx.supabase, input.gameId);
+        standings = await computeStrokePlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else {
         // Defense in depth: the union above is exhaustive, so this is unreachable
         // via types — a new ResultStrategy that forgets a branch trips it loudly.

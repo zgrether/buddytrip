@@ -3,6 +3,7 @@ import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rack
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch } from "@/lib/pointsDistribution";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
 
 /**
  * DB-persist side of rack-n-stack. Builds the SAME read-model the live client
@@ -36,7 +37,10 @@ interface SchemaShape {
 
 export async function computeRackNStackResults(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  /** #776 — how a results-write failure surfaces. Defaults to the setup
+   *  behaviour; `games.finish` passes "throw". See WriteFailureMode. */
+  { onFailure }: { onFailure?: WriteFailureMode } = {}
 ): Promise<RackTeamOutcome[]> {
   const { data: game } = await supabase
     .from("games")
@@ -112,10 +116,8 @@ export async function computeRackNStackResults(
   const position = (id: string) =>
     teamPoints[id] === teamPoints[ranked[0]] ? 1 : 2;
 
-  await supabase.from("game_results").delete().eq("game_id", gameId);
   const rows = teamIds.map((teamId) => ({
     id: crypto.randomUUID(),
-    game_id: gameId,
     entity_id: teamId,
     entity_type: "team" as const,
     // per_match: realized slot points × value as raw_score (no position) — the
@@ -125,7 +127,8 @@ export async function computeRackNStackResults(
     position: perMatch ? null : position(teamId),
     competition_points_earned: null,
   }));
-  if (rows.length > 0) await supabase.from("game_results").insert(rows);
+  // #776: atomic replace (delete + insert commit together, or not at all).
+  await writeGameResults(supabase, { gameId, scope: { kind: "all" }, rows, onFailure });
 
   return teamIds.map((teamId) => ({ teamId, points: teamPoints[teamId], position: position(teamId) }));
 }
