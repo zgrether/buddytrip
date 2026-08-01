@@ -61,8 +61,15 @@ delete is fine at zero).
 
 ## 3 · ⚠️ DO NOT TOUCH — signup-trigger-adjacent
 
-**`ghostCrew.ts:330`** — the `trip_members.status` update inside `ghostCrew.update`'s auto-link
-branch, immediately after `rpc("link_guest_to_account", ...)`. That RPC is the documented wrapper
+**`ghostCrew.ts:332`** — the `trip_members.status` update inside `ghostCrew.update`'s auto-link
+branch, immediately after `rpc("link_guest_to_account", ...)`.
+
+> **Line corrected 2026-08-01 (was `:330`).** The reference drifted two lines and `:330` now sits
+> INSIDE the same block — so following this marker literally would have put an edit adjacent to the
+> merge call, in the path every signup runs through. A stale safety marker is worse than none.
+> **If you are reading this file at a later date, re-locate the site by its SHAPE** — the
+> `trip_members.status` update immediately after `rpc("link_guest_to_account", ...)` — not by line
+> number. That RPC is the documented wrapper
 around `merge_guest_to_real_user`, the same function the `auth.users` signup trigger
 (`handle_new_user`) calls on every real signup (see `CLAUDE.md`'s guest→real-user conversion
 section). This site is classified MUST-FAIL-LOUDLY on its own terms — a zero-row result here would
@@ -160,12 +167,19 @@ at a row that no longer exists. **Tracked in #782.**
 
 ### 4.9 `games.ts` — two procedures missing an existence check their siblings have
 
-`setStatus` (`:762`) and `setPointsDistribution` (`:1110`) check `error` but have no existence
-pre-check anywhere in either procedure, unlike `enableScoring`/`disableScoring` in the same file. A
-wrong/foreign `gameId` silently no-ops and still returns success. Also unchecked, lower priority:
-`:817` (revert active matches to pending) and `:550` (clear old back-nine scores — the comment
-explicitly says these "belong to the old nine," so a silent failure corrupts net scoring under the
-new index). **Tracked in #782.**
+`setStatus` (`:762`) and `setPointsDistribution` (`:1127`, was `:1110`) check `error` but have no
+existence pre-check anywhere in either procedure, unlike `enableScoring`/`disableScoring` in the same
+file. A wrong/foreign `gameId` silently no-ops and still returns success. Also unchecked, lower
+priority: `:817` (revert active matches to pending).
+
+> **CORRECTED 2026-08-01 — the back-nine site (`:550`, now `:549`).** The original entry implied this
+> needs an affected-row assertion. **It must not get one.** Re-read in context, the delete clears
+> holes 10–18 when composing a NEW back nine, and its own comment says *"(A no-op on the first
+> compose.)"* — **zero rows is the normal case**, not a failure. What it actually lacks is an `error`
+> check: a real Postgres failure would leave the old nine's scores in place under a new stroke index,
+> which does corrupt net scoring. So: check `error`, never assert a count. Filed under the same issue
+> but as a different fix from its neighbours — this is precisely the over-correction the "legitimate
+> zero-row" bucket exists to prevent, and the audit itself nearly caused it.
 
 ### 4.10 `ghostCrew.ts:191` — orphaned guest row on a failed membership insert
 
