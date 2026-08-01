@@ -1,4 +1,4 @@
-import { HydrationBoundary, type DehydratedState } from "@tanstack/react-query";
+import { HydrateQueryState } from "@/components/HydrateQueryState";
 import type { inferRouterOutputs } from "@trpc/server";
 import { createSSRHelpers } from "@/server/trpc-ssr";
 import { TripBootSeed } from "@/components/competition/TripBootSeed";
@@ -15,6 +15,18 @@ type TripMemberRow = inferRouterOutputs<AppRouter>["tripMembers"]["list"][number
  *
  * Prefetches on the server and dehydrates into the client cache, so the first
  * client render finds the data already there instead of firing a round trip.
+ *
+ * ── #730: this only started being true just now ──────────────────────────────
+ * From this layout's creation until #730, the dehydrated payload was DISCARDED
+ * on arrival and every prefetch here was decorative — `helpers.dehydrate()`
+ * returns a superjson envelope, not the `DehydratedState` it is typed as, so
+ * `HydrationBoundary` read `state.queries`, found `undefined`, and hydrated
+ * nothing. Silently. `HydrateQueryState` deserializes it first; the round trip
+ * is pinned by `hydrationTransport.test.ts`.
+ *
+ * The explicit seed below (`TripBootSeed`) exists BECAUSE of that bug and is
+ * deliberately still here — the boundary is proven by test but not yet by a
+ * cold open, and retiring a workaround belongs in its own revertable change.
  *
  * ── Why `faceBootstrap` lives HERE now (Phase 4) ─────────────────────────────
  * It used to be resolved by `leaderboard/page.tsx`, which stopped being a
@@ -56,7 +68,11 @@ export default async function TripLayout({
    */
   const { tripId } = await params;
 
-  let dehydratedState: DehydratedState | undefined = undefined;
+  // NOT a `DehydratedState`, despite what `helpers.dehydrate()` is typed as —
+  // it is a superjson ENVELOPE (`{ json, meta }`). See HydrateQueryState for
+  // the whole story; the honest type here is what keeps the lie from
+  // re-annotating itself. (#730)
+  let dehydratedState: unknown = undefined;
   let boot: FaceBootstrap | null = null;
   let members: TripMemberRow[] | null = null;
   try {
@@ -95,7 +111,7 @@ export default async function TripLayout({
   }
 
   return (
-    <HydrationBoundary state={dehydratedState}>
+    <HydrateQueryState state={dehydratedState}>
       {/* The ONE place the URL param is read. Everything trip-scoped below
           reads `useTripId()`; nothing re-derives it from `useParams()`.
           See TripIdProvider. */}
@@ -105,6 +121,6 @@ export default async function TripLayout({
         {tripId && <TripBootSeed tripId={tripId} boot={boot} members={members} />}
         {children}
       </TripIdProvider>
-    </HydrationBoundary>
+    </HydrateQueryState>
   );
 }
