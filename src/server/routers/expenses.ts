@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember } from "../middleware";
 
@@ -102,8 +103,22 @@ export const expensesRouter = router({
         .insert(splitRows);
 
       if (splitErr) {
-        // Clean up expense
-        await ctx.supabase.from("expenses").delete().eq("id", input.id);
+        // Clean up expense.
+        //
+        // #779 — logged, not thrown: this runs inside an existing failure path,
+        // so throwing here would replace splitErr's message with a worse one.
+        // A failed cleanup leaves an expense with NO splits — visible in the
+        // trip total but owed by nobody, which is the "real disagreement about
+        // who owes what" the audit named (§4.4).
+        const { error: cleanupErr } = await ctx.supabase
+          .from("expenses")
+          .delete()
+          .eq("id", input.id);
+        if (cleanupErr) {
+          console.error(
+            `[expenses.create] cleanup of split-less expense ${input.id} failed: ${cleanupErr.message}`
+          );
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create expense splits",
@@ -174,11 +189,23 @@ export const expensesRouter = router({
         }
       }
 
-      // Delete existing splits
-      await ctx.supabase
-        .from("expense_splits")
-        .delete()
-        .eq("expense_id", input.expenseId);
+      // Delete existing splits.
+      //
+      // #779 — error-checked; count NOT asserted (an expense with no splits yet
+      // legitimately clears zero). This is the first half of a delete-then-insert
+      // rewrite: a silent failure here meant the OLD splits survived and the new
+      // ones were inserted on top, doubling the amounts owed.
+      //
+      // NOT transactional, and this commit does not make it so: if the insert
+      // below fails after this delete succeeds, the expense is left with no
+      // splits at all. Pre-existing; making the failure loud is what changed.
+      assertNoError(
+        await ctx.supabase
+          .from("expense_splits")
+          .delete()
+          .eq("expense_id", input.expenseId),
+        "clear the expense's previous splits"
+      );
 
       // Insert new splits
       const splitRows = input.splits.map((s) => ({
@@ -232,14 +259,29 @@ export const expensesRouter = router({
         });
       }
 
-      const { error } = await ctx.supabase
+      // #779 — count asserted. The caller's own split row was read back
+      // immediately above (the NOT_FOUND guard), so zero rows here is not a
+      // race — it means the write didn't land, and opting out of a shared cost
+      // that silently didn't apply is exactly the money disagreement this issue
+      // is about.
+      const { error, count } = await ctx.supabase
         .from("expense_splits")
-        .update({
-          opted_out: input.optOut,
-          amount: input.optOut ? 0 : null,
-        })
+        .update(
+          {
+            opted_out: input.optOut,
+            amount: input.optOut ? 0 : null,
+          },
+          { count: "exact" }
+        )
         .eq("expense_id", input.expenseId)
         .eq("user_id", userId);
+
+      if (!error && count !== 1) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to record your opt-out: expected 1 row, affected ${count ?? "unknown"}.`,
+        });
+      }
 
       if (error) {
         throw new TRPCError({
@@ -276,11 +318,19 @@ export const expensesRouter = router({
         }
       }
 
-      // Delete splits first
-      await ctx.supabase
-        .from("expense_splits")
-        .delete()
-        .eq("expense_id", input.expenseId);
+      // Delete splits first.
+      //
+      // #779 — error-checked; count NOT asserted (an expense may legitimately
+      // have none). A silent failure orphans split rows whose parent expense is
+      // then deleted below — invisible in every UI, and they resurface in any
+      // query that reads splits directly.
+      assertNoError(
+        await ctx.supabase
+          .from("expense_splits")
+          .delete()
+          .eq("expense_id", input.expenseId),
+        "clear the expense's splits"
+      );
 
       const { error } = await ctx.supabase
         .from("expenses")
