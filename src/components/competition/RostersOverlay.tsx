@@ -23,6 +23,7 @@ export function RostersOverlay({
   tripId,
   competitionId,
   isOwner,
+  canManageRoster,
   structureLocked,
   rosterBuilding,
   onSaveRosters,
@@ -30,10 +31,18 @@ export function RostersOverlay({
 }: {
   tripId: string;
   competitionId: string;
-  /** Owner gates every STRUCTURE affordance; everyone else gets a read-only view.
-   *  IDENTITY editing (name/short/color) additionally opens to a team's captain,
-   *  resolved inside TeamsPanel (the per-card pencil). */
+  /** Owner gates TEAM structure (create / delete) and captaincy; everyone else
+   *  gets a read-only view of those. IDENTITY editing (name/short/color)
+   *  additionally opens to a team's captain, resolved inside TeamsPanel (the
+   *  per-card pencil). */
   isOwner: boolean;
+  /** Owner OR Organizer — ROSTER MEMBERSHIP (assign / remove). Split from
+   *  `isOwner` in #789: `teamAssignments.assign` has always been Organizer-gated
+   *  server-side and `remove` moved there in #788, so an Organizer already held
+   *  this and was shown a read-only roster. Team create/delete are NOT this flag
+   *  (still Owner-only at the server), which is why it is a second prop rather
+   *  than a loosened `isOwner`. */
+  canManageRoster: boolean;
   /** Head-to-head: team COUNT is fixed at 2 (no add/delete team) — rename + swap
    *  stay. False for points (2–N). */
   structureLocked: boolean;
@@ -69,6 +78,7 @@ export function RostersOverlay({
         tripId={tripId}
         competitionId={competitionId}
         canEdit={isOwner}
+        canManageRoster={canManageRoster}
         structureLocked={structureLocked}
         embedded
       />

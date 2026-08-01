@@ -75,7 +75,7 @@ export function StrokeGameView() {
   const utils = trpc.useUtils();
   // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
   // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
-  const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
+  const { canEdit, isOwner, canManageGame } = useGameEditAccess(tripId, urlGameId);
   const me = useCurrentUser();
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
@@ -1001,6 +1001,7 @@ export function StrokeGameView() {
           game={draftGameRow}
           canEdit={canEdit}
           isOwner={isOwner}
+          canManageGame={canManageGame}
           settingsZoneLabel="Group Settings"
           // GROUP SETTINGS (P3): Point Distribution → Groupings → Handicaps (all inline).
           // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —

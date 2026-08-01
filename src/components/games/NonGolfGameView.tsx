@@ -67,7 +67,7 @@ export function NonGolfGameView() {
   const utils = trpc.useUtils();
   // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
   // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
-  const { canEdit, isOwner } = useGameEditAccess(tripId, urlGameId);
+  const { canEdit, isOwner, canManageGame } = useGameEditAccess(tripId, urlGameId);
 
   const gameQ = trpc.games.getById.useQuery(
     { tripId: tripId!, gameId: urlGameId! },
@@ -325,6 +325,7 @@ export function NonGolfGameView() {
         scoringModel={scoringModel}
         canEdit={canEdit}
         isOwner={isOwner}
+        canManageGame={canManageGame}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
         // Draft-then-save: the whole page is controlled off configDraft; Save commits.

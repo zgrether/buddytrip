@@ -355,6 +355,9 @@ export function CompetitionFace({
           tripId={tripId}
           competitionId={competition.id}
           isOwner={isOwner}
+          // #789 — MEMBERSHIP (assign / remove) is Owner-or-Organizer at the
+          // server; `isOwner` above still gates team create/delete + captaincy.
+          canManageRoster={canEdit}
           // Team-COUNT lock keys on the frozen scoring_model: head-to-head is
           // exactly 2 teams (no add / no delete), so structure is locked; points
           // is 2–N, so adds/deletes stay open. (The go-live freeze this replaced
