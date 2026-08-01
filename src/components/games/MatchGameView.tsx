@@ -386,7 +386,7 @@ export function MatchGameView() {
   // server layer), so the match-list header and scorecard grid would
   // otherwise show the pre-reset result until the next scheduled poll —
   // refetch right away instead of waiting out GAME_SYNC_INTERVAL_MS.
-  const { values, setValues, saveStatus, onChange, onClear, retryCell } =
+  const { values, setValues, saveStatus, onChange, onClear, retryCell, clearAll: clearScores } =
     useScoreSaver(tripId, gameId, participantTypeOf, () => void scoresQ.refetch());
   // Refactor B: the outcome write path — same durability contract, unconditional
   // (hooks can't be conditional); inert for a score-mode game (nothing calls its
@@ -2160,6 +2160,7 @@ export function MatchGameView() {
                 gameId={gameQ.data.id as string}
                 competitionId={gameCompId}
                 onChanged={onSetupChanged}
+                onScoresReset={clearScores}
                 onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
                 disabled={scoringEnabled}
               />

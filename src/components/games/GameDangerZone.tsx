@@ -32,6 +32,7 @@ export function GameDangerZone({
   competitionId,
   onChanged,
   onDeleted,
+  onScoresReset,
   disabled = false,
 }: {
   tripId: string;
@@ -41,6 +42,15 @@ export function GameDangerZone({
   onChanged: () => void;
   /** Game removed — leave the page (back to the board / trip). */
   onDeleted: () => void;
+  /**
+   * Scores were wiped server-side — drop whatever the host is holding locally.
+   *
+   * Deliberately SEPARATE from `onChanged`, which fires for ordinary config
+   * changes too; clearing the board's scores on a tee-time edit would be worse
+   * than the bug this fixes. Invalidation alone is not enough here — see
+   * `useScoreSaver.clearAll`.
+   */
+  onScoresReset?: () => void;
   /** #501: the whole zone is locked while the game is LIVE (scoring mode) — wiping
    *  scores / settings or deleting mid-competition is a terrible UX. Switch back to
    *  Setup (the toggle) to manage the game. Every action row disables. */
@@ -59,6 +69,7 @@ export function GameDangerZone({
       void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       void utils.competitions.faceBootstrap.invalidate({ tripId });
     }
+    onScoresReset?.();
     onChanged();
   }
 
