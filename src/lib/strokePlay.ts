@@ -158,3 +158,79 @@ export function computeStrokePlayStandings(
     position: 1 + rows.filter((o) => o.rawScore < r.rawScore).length,
   }));
 }
+
+export interface StrokeTeamStanding {
+  teamId: string;
+  /** Aggregate NET total across every one of this team's players in the game. */
+  total: number;
+  /** How many of the team's players actually appear in this game. */
+  playerCount: number;
+  /** 1-based rank, lowest total first, ties share (standard 1, 2, 2, 4). */
+  position: number;
+}
+
+/**
+ * TEAM AGGREGATE NET — how a stroke game scores a competition.
+ *
+ * Every player's net counts toward their team's total; **lowest total wins.**
+ * No dropped scores, no per-team player cap.
+ *
+ * ── Why this rule, and not the alternatives ──────────────────────────────────
+ * It is what a stroke round *is*: the format's premise is that every shot counts,
+ * and dropping scores contradicts it. It works at any team size with no rule
+ * about uneven sides, and it is what someone would assume without being told —
+ * which matters most for a format nobody has played yet.
+ *
+ * *Lowest-N-per-team* is the real-world variant and the better long-term option,
+ * but it needs an N, and N depends on team size — a configuration surface for a
+ * format that isn't in the current competition. If it ever matters it belongs as
+ * a separate `result_strategy` variant, NOT as a change to this function.
+ *
+ * *Placement-by-team-best* was rejected outright: it discards everyone but one
+ * player, which is the opposite of the premise above.
+ *
+ * ── Two exclusions that matter ───────────────────────────────────────────────
+ * - A player with **no team assignment** contributes nothing. There is no team to
+ *   contribute to, and silently attributing them somewhere would be worse.
+ * - A team with **no players in this game gets no row at all.** Emitting a row
+ *   would give it a total of 0 — which, under lowest-wins, means an absent team
+ *   wins the game outright. That is the single most dangerous edge here, so it is
+ *   handled by construction (teams are discovered FROM the players, never from
+ *   the roster) rather than by a guard someone could later remove.
+ *
+ * Pure and client-safe (CLAUDE.md #8), so a live projected team total can reuse
+ * it without a second implementation.
+ */
+export function computeStrokeTeamStandings(
+  standings: StrokeStanding[],
+  /** userId → teamId, from `team_assignments` for the game's competition. */
+  teamOf: Record<string, string>
+): StrokeTeamStanding[] {
+  const totals = new Map<string, { total: number; playerCount: number }>();
+  for (const s of standings) {
+    const teamId = teamOf[s.entityId];
+    if (!teamId) continue; // unassigned player — nothing to contribute to
+    const acc = totals.get(teamId) ?? { total: 0, playerCount: 0 };
+    acc.total += s.rawScore;
+    acc.playerCount += 1;
+    totals.set(teamId, acc);
+  }
+
+  // Sort by total asc; teamId breaks ties so the output order is deterministic
+  // (an unstable order would churn `configHash`-adjacent reads and make diffs
+  // unreadable, even though position is what actually scores).
+  const rows = [...totals.entries()]
+    .map(([teamId, { total, playerCount }]) => ({ teamId, total, playerCount }))
+    .sort((a, b) => a.total - b.total || a.teamId.localeCompare(b.teamId));
+
+  // Standard competition ranking (1, 2, 2, 4) — the same convention
+  // `computeStrokePlayStandings` uses for players.
+  let lastTotal: number | null = null;
+  let lastPosition = 0;
+  return rows.map((r, i) => {
+    const position = lastTotal !== null && r.total === lastTotal ? lastPosition : i + 1;
+    lastTotal = r.total;
+    lastPosition = position;
+    return { ...r, position };
+  });
+}
