@@ -391,10 +391,27 @@ export const tripMembersRouter = router({
         role: z.enum(["Organizer", "Member"]).default("Organizer"),
       })
     )
-    // #786 — Organizer parity. Inviting crew is running the trip; it does not
-    // change who is TRUSTED (exception 1 is tripMembers.updateRole, below).
-    // RLS moved with it: `invites_insert` (migration 101).
-    .use(requireTripRole("Organizer"))
+    // OWNER-ONLY — reverted from requireTripRole("Organizer") (#788), for TWO
+    // independent reasons. Re-widening belongs with the `trip_members`
+    // role-column trigger work (#786), not with a guard swap.
+    //
+    // 1. IT MINTS THE ROLE IT IS GATED ON. `role` defaults to "Organizer" and
+    //    is written straight into `trip_members` on both paths below, so an
+    //    Organizer-gated version of this procedure can create another
+    //    Organizer — exception 1 ("only the Owner changes who is trusted")
+    //    routed around. Today RLS refuses it, but only by accident; the moment
+    //    the planned trigger lands and `trip_members_insert` widens, it becomes
+    //    a clean bypass. The general lesson: **a procedure that takes a role as
+    //    INPUT cannot be gated on role alone.** When this is re-widened it needs
+    //    a server-side split — Owner-only for role "Organizer",
+    //    Organizer-allowed for role "Member" — not a different `.use()`.
+    //
+    // 2. IT FAILED SILENTLY IN THE MEANTIME. Both `trip_members` inserts are
+    //    unchecked (SILENT_WRITES_AUDIT.md §4.3, #778) and `trip_members_insert`
+    //    is Owner-only, so an Organizer got `added_existing` / `invited_new`
+    //    back with no roster row written — and on the new-email path an invite
+    //    email was already sent to someone who then wasn't on the trip.
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const email = input.email.trim().toLowerCase();
 
@@ -690,9 +707,13 @@ export const tripMembersRouter = router({
         message: z.string().optional(),
       })
     )
-    // #786 — Organizer parity, same reasoning as inviteByEmail: this is the
-    // bulk form of the same act, behind the same `invites_insert` policy.
-    .use(requireTripRole("Organizer"))
+    // OWNER-ONLY — reverted from requireTripRole("Organizer") (#788), alongside
+    // inviteByEmail. Milder instance of the same write problem: the
+    // `last_emailed_at` stamp below is an UPDATE on `trip_members`, whose policy
+    // is Owner-only, and it is unchecked — so for an Organizer the emails sent
+    // and the send-tracking never landed. Moves back with its sibling rather
+    // than leaving the pair on different tiers.
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Fetch trip for email content. locked_destination_location is the
       // real-world location string ("Bandon, OR") that buildCannedInvitation

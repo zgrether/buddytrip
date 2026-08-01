@@ -152,15 +152,14 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
-  // Reversed by #786: inviting crew is running the trip. It does NOT change
-  // who is trusted — that is updateRole, which stays Owner-only below.
-  it("inviteByEmail — planner (Organizer) CAN invite", async () => {
+  // Was briefly Organizer+ (#788) and is Owner-only again: `role` defaults to
+  // "Organizer" and is written into trip_members, so an Organizer-gated version
+  // could mint an Organizer. See the guard comment in tripMembers.ts.
+  it("inviteByEmail — planner cannot invite (Owner only)", async () => {
     const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId,
-      email: `organizer-invite-${Date.now()}@example.com`,
-    });
-    expect(result).toBeTruthy();
+    await expect(
+      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("inviteByEmail — member cannot invite", async () => {
@@ -472,14 +471,14 @@ describe("tripMembers router — sendInvitationBlast", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // Reversed by #786 alongside inviteByEmail — this is the bulk form of the
-  // same act, behind the same `invites_insert` policy.
-  it("sendInvitationBlast — planner (Organizer) CAN blast", async () => {
+  // Owner-only again alongside inviteByEmail (#788 reverted).
+  it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
     const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.sendInvitationBlast({
-      tripId,
-      memberUserIds: [ctx.getUser("member").id],
-    });
-    expect(result).toBeTruthy();
+    await expect(
+      caller.tripMembers.sendInvitationBlast({
+        tripId,
+        memberUserIds: [ctx.getUser("member").id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
