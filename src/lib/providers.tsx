@@ -17,28 +17,7 @@ import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistr
 import { PwaEngagementTracker } from "@/components/pwa/PwaEngagementTracker";
 import { showToast } from "@/lib/toast";
 import { handleAuthExpiry, isUnauthorizedError } from "@/lib/authExpiry";
-
-/**
- * A mutation failed because the request never reached a server (dead zone / bad
- * signal), NOT because the server rejected it. A transport failure has no HTTP
- * status; a real server response (validation/conflict/500) does and is handled
- * where it's raised, so we don't hijack it with a connectivity toast.
- */
-function isConnectivityError(error: unknown): boolean {
-  const httpStatus = (error as { data?: { httpStatus?: number } } | null)?.data
-    ?.httpStatus;
-  if (typeof httpStatus === "number" && httpStatus > 0) return false;
-  const msg = (
-    error instanceof Error ? error.message : String(error)
-  ).toLowerCase();
-  return (
-    msg.includes("fetch") ||
-    msg.includes("network") ||
-    msg.includes("load failed") ||
-    msg.includes("failed to fetch") ||
-    httpStatus === undefined
-  );
-}
+import { isConnectivityError, mutationErrorMessage } from "@/lib/mutationErrors";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -53,20 +32,33 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
-        // Surface connectivity failures (Layer 1): any mutation whose request
-        // never reached the server gets a "couldn't save" toast — UNLESS it
-        // opts out via meta.suppressErrorToast (score writes do, since they
-        // own per-cell save UI). Server-rejected mutations are handled at their
-        // call sites, so they're left alone.
+        // EVERY failed mutation is surfaced, unless it opts out via
+        // meta.suppressErrorToast (score/outcome writes do — they own per-cell
+        // save UI).
+        //
+        // This used to toast ONLY connectivity failures, on the stated grounds
+        // that "server-rejected mutations are handled at their call sites". For
+        // the game lifecycle that was false: finalize / correct / re-lock all
+        // sat behind empty `catch {}` blocks whose comments pointed back HERE.
+        // Each comment delegated to the other and a server rejection reached
+        // nobody — no toast, no message, no navigation. #784 made that
+        // load-bearing by making `games.finish` throw on a failed results write,
+        // converting a silent wrong success into a silent nothing.
+        //
+        // The default is now "say something", because the two failure modes are
+        // not symmetric: a redundant toast beside a site's own inline error is
+        // noise, and silence is a bug that looks exactly like success.
         mutationCache: new MutationCache({
           onError: (error, _vars, _ctx, mutation) => {
             const suppressed = (
               mutation.meta as { suppressErrorToast?: boolean } | undefined
             )?.suppressErrorToast;
             if (suppressed) return;
-            if (isConnectivityError(error)) {
-              showToast("Couldn't save — check your connection. We'll keep your data.");
-            }
+            showToast(
+              isConnectivityError(error)
+                ? "Couldn't save — check your connection. We'll keep your data."
+                : mutationErrorMessage(error)
+            );
           },
         }),
         // A query that comes back UNAUTHORIZED (401) means the session died
