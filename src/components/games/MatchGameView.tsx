@@ -413,8 +413,10 @@ export function MatchGameView() {
   // matches.setHandicap / matches.setPointValue remain the deliberate CORRECTIONS
   // late-edit path, which this refactor does not touch.)
   // Finishing retries (idempotent recompute); a failure stays on the overview
-  // and surfaces via the global error toast — loud + retryable, not a silent
-  // stall. Score writes go through useScoreSaver (above).
+  // and is surfaced by the global mutationCache.onError, which covers server
+  // rejections as well as connectivity failures. That claim was untrue when
+  // first written: the handler skipped server rejections, so "loud" was silent.
+  // Score writes go through useScoreSaver (above).
   const finishGame = trpc.games.finish.useMutation({
     retry: 4,
     retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
@@ -1297,8 +1299,15 @@ export function MatchGameView() {
       // inherit. We're already on the overview; the refetch above re-renders it as
       // Final · locked. No navigation — stay put (pop-not-push).
     } catch {
-      // Stay put (no silent advance). The global error toast surfaces the
-      // failure; Finish stays tappable to retry (the recompute is idempotent).
+      // Swallowed HERE on purpose, and only because the toast is now real: the
+      // global `mutationCache.onError` (lib/providers.tsx) surfaces every
+      // server-rejected mutation, not just connectivity ones. Until that fix
+      // this comment was FALSE — the global handler explicitly skipped server
+      // rejections and this block showed nothing, so a failed finalize looked
+      // exactly like a success that didn't navigate.
+      //
+      // Staying put is the right recovery: no silent advance, and the CTA stays
+      // tappable because the recompute is idempotent.
     }
   }
 
@@ -1323,7 +1332,9 @@ export function MatchGameView() {
       if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
       go("overview");
     } catch {
-      // surfaced via the global error toast
+      // Surfaced by the global mutationCache.onError (lib/providers.tsx), which
+      // covers server rejections as well as connectivity failures. It did not
+      // before, which made this comment false and this block silent.
     }
   }
 

@@ -618,9 +618,15 @@ export function RackGameView() {
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
     } catch {
-      // surfaced via the global error toast. The game stays unlocked and the
-      // Finish CTA stays tappable — the recompute is idempotent, so retrying is
-      // the correct recovery (same reasoning as StrokeGameView's catch).
+      // Swallowed HERE on purpose, and only because the toast is now real: the
+      // global `mutationCache.onError` (lib/providers.tsx) surfaces every
+      // server-rejected mutation, not just connectivity ones. Until that fix
+      // this comment was FALSE — the global handler explicitly skipped server
+      // rejections and this block showed nothing, so a failed finalize looked
+      // exactly like a success that didn't navigate.
+      //
+      // Staying put is the right recovery: no silent advance, and the CTA stays
+      // tappable because the recompute is idempotent.
     }
   }
 
@@ -638,7 +644,9 @@ export function RackGameView() {
       utils.games.listByTrip.invalidate({ tripId });
       if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
     } catch {
-      // surfaced via the global error toast
+      // Surfaced by the global mutationCache.onError (lib/providers.tsx), which
+      // covers server rejections as well as connectivity failures. It did not
+      // before, which made this comment false and this block silent.
     }
   }
 
