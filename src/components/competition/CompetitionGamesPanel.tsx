@@ -2,8 +2,31 @@
 
 import { useEffect, useState } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Link2, Link2Off } from "lucide-react";
+import {
+  placementGroups,
+  placeOfGroup,
+  placementPointsByTeam,
+} from "@/lib/placementGroups";
+import {
   Plus, X, ListTree,
-  Target, Swords, Radio, ChevronUp, ChevronDown, Check, Users, Info,
+  Target, Swords, Radio, Check, Users, Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -512,42 +535,220 @@ export function PlacementEditor({
 /** Manual placement entry — order the teams 1st→last; PAYS shows the configured
  *  distribution (the poster sets ORDER, never points). */
 export function ManualPlacementEditor({
-  order, dist, teamById, move,
+  order,
+  dist,
+  teamById,
+  canEdit,
+  onReorder,
+  tiedWithPrev,
+  onToggleTie,
 }: {
-  order: string[]; dist: number[];
-  teamById: (id: string) => LBTeamLite | undefined; move: (i: number, dir: -1 | 1) => void;
+  order: string[];
+  dist: number[];
+  teamById: (id: string) => LBTeamLite | undefined;
+  canEdit: boolean;
+  onReorder: (next: string[]) => void;
+  /** Teams tied with the row ABOVE them. See `src/lib/placementGroups.ts`. */
+  tiedWithPrev: ReadonlySet<string>;
+  onToggleTie: (teamId: string) => void;
 }) {
+  // dnd-kit settings are NOT defaults — every one was found by device testing on
+  // the matches board and the roster (`TeamsPanel`), and this reuses them rather
+  // than rediscovering them: PointerSensor with a distance activation (a handle
+  // drag, never a long-press), a DragOverlay with dropAnimation={null}, the
+  // source row hidden while dragging, animateLayoutChanges: () => false, and
+  // -webkit-tap-highlight-color cleared.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const groups = placementGroups(order, tiedWithPrev);
+  const pointsByTeam = placementPointsByTeam(order, tiedWithPrev, dist);
+  /** teamId → the place its GROUP finishes in (tied teams share it). */
+  const placeOf = new Map<string, number>();
+  groups.forEach((g, gi) => g.forEach((id) => placeOf.set(id, placeOfGroup(groups, gi))));
+
   return (
     <div>
+      {/* "Pays" is gone — jargon, and the number under it is self-evidently the
+          points. The remaining header names the thing you are editing. */}
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Finishing order</span>
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Pays</span>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          Finishing order
+        </span>
       </div>
-      <div className="space-y-1.5">
-        {order.map((teamId, i) => {
-          const team = teamById(teamId);
-          const pays = dist[i] ?? 0;
-          return (
-            <div key={teamId} className="flex items-center gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
-              <span className="w-5 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>{i + 1}</span>
-              <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{team?.name ?? "Team"}</span>
-              <span className="text-sm font-bold tabular-nums" style={{ color: pays > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>{fmtValue(pays)}</span>
-              <div className="ml-1 flex flex-col">
-                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" className="flex h-4 w-6 items-center justify-center rounded disabled:opacity-30" style={{ color: "var(--color-bt-text-dim)" }}>
-                  <ChevronUp size={13} />
-                </button>
-                <button type="button" onClick={() => move(i, 1)} disabled={i === order.length - 1} aria-label="Move down" className="flex h-4 w-6 items-center justify-center rounded disabled:opacity-30" style={{ color: "var(--color-bt-text-dim)" }}>
-                  <ChevronDown size={13} />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={(e) => setDraggingId(String(e.active.id))}
+        onDragCancel={() => setDraggingId(null)}
+        onDragEnd={(e) => {
+          setDraggingId(null);
+          const { active, over } = e;
+          if (!over || active.id === over.id) return;
+          const from = order.indexOf(String(active.id));
+          const to = order.indexOf(String(over.id));
+          if (from < 0 || to < 0) return;
+          onReorder(arrayMove(order, from, to));
+        }}
+      >
+        {/* Stable ids — the team id, never the index. A positional id makes
+            dnd-kit re-key every row on each move and the drag jumps. */}
+        <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1.5">
+            {order.map((teamId, i) => (
+              <PlacementRow
+                key={teamId}
+                teamId={teamId}
+                team={teamById(teamId)}
+                place={placeOf.get(teamId) ?? i + 1}
+                points={pointsByTeam.get(teamId) ?? 0}
+                showPlace={!tiedWithPrev.has(teamId) || i === 0}
+                tied={i > 0 && tiedWithPrev.has(teamId)}
+                canTie={i > 0}
+                canEdit={canEdit}
+                onToggleTie={() => onToggleTie(teamId)}
+                hidden={draggingId === teamId}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        <DragOverlay dropAnimation={null}>
+          {draggingId ? (
+            <PlacementRowBody
+              team={teamById(draggingId)}
+              place={placeOf.get(draggingId) ?? 1}
+              points={pointsByTeam.get(draggingId) ?? 0}
+              showPlace
+              lifted
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Order the teams by finish — points come from the game&rsquo;s configured distribution, so you set the order, not the points.
+        Drag to set the finishing order. Tap the link icon to tie a team with the one above it —
+        tied teams split the points for the places they share, so the game&rsquo;s total never changes.
       </p>
+    </div>
+  );
+}
+
+function PlacementRow({
+  teamId, team, place, points, showPlace, tied, canTie, canEdit, onToggleTie, hidden,
+}: {
+  teamId: string;
+  team: LBTeamLite | undefined;
+  place: number;
+  points: number;
+  showPlace: boolean;
+  tied: boolean;
+  canTie: boolean;
+  canEdit: boolean;
+  onToggleTie: () => void;
+  hidden: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: teamId,
+    // dnd-kit animates EVERY sortable on any list change by default, which reads
+    // as the whole list breathing after a drop.
+    animateLayoutChanges: () => false,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        // Hidden, not dimmed — the DragOverlay is the row you are dragging.
+        visibility: hidden ? "hidden" : undefined,
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <PlacementRowBody
+        team={team}
+        place={place}
+        points={points}
+        showPlace={showPlace}
+        tied={tied}
+        handle={
+          canEdit ? (
+            <button
+              type="button"
+              aria-label="Reorder"
+              className="flex h-8 w-6 cursor-grab items-center justify-center touch-none"
+              style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical size={15} />
+            </button>
+          ) : undefined
+        }
+        tieButton={
+          canEdit && canTie ? (
+            <button
+              type="button"
+              onClick={onToggleTie}
+              aria-label={tied ? "Untie from the team above" : "Tie with the team above"}
+              aria-pressed={tied}
+              className="flex h-8 w-7 items-center justify-center rounded"
+              style={{
+                color: tied ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
+              {tied ? <Link2 size={15} /> : <Link2Off size={15} />}
+            </button>
+          ) : undefined
+        }
+      />
+    </div>
+  );
+}
+
+/** The row's visuals, shared by the live sortable row and the DragOverlay copy so
+ *  the floating card can't drift from the list. */
+function PlacementRowBody({
+  team, place, points, showPlace, tied, handle, tieButton, lifted,
+}: {
+  team: LBTeamLite | undefined;
+  place: number;
+  points: number;
+  showPlace: boolean;
+  tied?: boolean;
+  handle?: React.ReactNode;
+  tieButton?: React.ReactNode;
+  lifted?: boolean;
+}) {
+  return (
+    <div
+      className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: `1px solid ${tied ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+        boxShadow: lifted ? "var(--shadow-raised)" : undefined,
+        // A tied row is indented so a shared place reads as one block.
+        marginLeft: tied ? 14 : undefined,
+      }}
+    >
+      <span className="w-5 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
+        {showPlace ? place : ""}
+      </span>
+      <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        {team?.name ?? "Team"}
+      </span>
+      {/* Points inline and prominent — the number that decides the cup. */}
+      <span
+        className="text-sm font-bold tabular-nums"
+        style={{ color: points > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+      >
+        {fmtValue(points)}
+      </span>
+      {tieButton}
+      {handle}
     </div>
   );
 }
