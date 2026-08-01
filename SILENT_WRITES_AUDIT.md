@@ -83,6 +83,21 @@ class of failure: it can break every signup, not just this one code path.
 
 ### 4.1 Highest severity — final results can vanish with zero signal
 
+> **⚠️ CONFIRMED IN THE FIELD, 2026-08-01, and STILL UNFIXED ON `main`.** A full
+> stroke round was played, Finish tapped, the summary rendered from the return
+> value — and nothing appeared on the leaderboard, because the `game_results`
+> write failed silently. This is no longer a reasoned-about severity; it is an
+> observed production data-loss path.
+>
+> **The fix exists and is not merged.** PR #784 routes all three engines through
+> the atomic `write_game_results` RPC and has been green since it opened; it is
+> blocked only on the manual `supabase db push --linked` of migration 100.
+> Nothing else in this audit is more valuable than landing it.
+>
+> Note the scores themselves survive in `score_entries` — the compute is
+> idempotent, so re-finalizing after the fix should recover the round rather than
+> requiring re-entry.
+
 All six mutating calls in `src/server/lib/matchPlay.ts` are fire-and-forget (lines 197, 216, 219,
 222, 367, 383), and the same delete-then-insert pattern repeats in `strokePlay.ts` (61, 63) and
 `rackNStack.ts` (115, 128) — the write every scoring engine uses to persist final `game_results` on
@@ -200,14 +215,78 @@ applies a handicap to nobody. The pre-rebuild delete (`:66`) is completely unche
 Same shape throughout: a plain delete/update by id, no count check, no comment settling intent —
 zero-match could be a harmless race or a real stale-id bug:
 
-`schedule.ts:175` (reorder) · `schedule.ts:201` (remove) · `teams.ts:155` (delete) ·
-`teamAssignments.ts:149` (remove) · `teamAssignments.ts:284` (reorder) · `quickInfoTiles.ts:132` ·
-`ideaLodging.ts:180` · `archivedIdeas.ts:109` · `datePoll.ts:435` (`returnToPoll`) ·
-`matches.ts:511` (see §4.5) · `ideas.ts:229` (clearing a prior vote before casting a new one — zero
-rows is legitimate, no prior vote — but a real failure could leave two active votes,
-**contingent on an unconfirmed DB uniqueness constraint** on `idea_votes`; unconfirmed rather than
-guessed at). **Consolidated in #781** for triage rather than filed individually — none of these are
-independently actionable until the intent is settled.
+**Framed for decision 2026-08-01 — line numbers refreshed.** Each is now stated as
+*what zero rows would mean here* and *what the user experiences under each answer*, because
+"is zero rows OK" in the abstract is not answerable. **Zach decides; this frames.**
+
+Two of the eleven have had their PERMISSION GATE WIDEN since the audit was written, which
+raises the stakes on the answer — more people can now reach them.
+
+| # | Site | What zero rows would mean | If we assert a count | If we leave it |
+|---|---|---|---|---|
+| 1 | `schedule.ts:175` reorder | a sent id isn't in this trip's schedule | a stale drag (item deleted in another tab) throws mid-loop, leaving a partial order | order silently partial; a re-drag fixes it |
+| 2 | `schedule.ts:201` remove | the item was already gone | double-tap / two devices → an error on the second | user sees it vanish, which is what they wanted |
+| 3 | `teams.ts:155` delete | the team was already deleted | same double-tap exposure | silent success on an already-gone team |
+| 4 | **`teamAssignments.ts:154` remove** ⚠️ | the player wasn't on the team | a concurrent removal by another organizer throws | roster shows what they wanted either way. **Gate widened in #788 — Organizers reach this now** |
+| 5 | `teamAssignments.ts:289` reorder | a sent user isn't assigned | roster changed mid-drag → throw, partial order | partial order, re-drag fixes |
+| 6 | `quickInfoTiles.ts:132` delete | tile already gone | double-tap exposure | silent success |
+| 7 | `ideaLodging.ts:180` delete | option already gone | double-tap exposure | silent success |
+| 8 | `archivedIdeas.ts:112` delete | not in *your* archive (it is user-scoped) | a foreign/stale id becomes an error — arguably correct here, since it can only be your own row | silently succeeds on someone else's id |
+| 9 | `datePoll.ts:440` returnToPoll | no `date_polls` row for this trip | a trip that never opened a poll throws on "return to poll" | reopens nothing, reports success |
+| 10 | `matches.ts:547` play_groups cleanup | no orphan groups to clear | normal case throws — almost certainly wrong | orphan group stays visible to `listByGame` (§4.5) |
+| 11 | **`ideas.ts:236`** single-pick clear ⚠️ | no prior vote — the FIRST vote, i.e. the common case | breaks every first vote — clearly wrong | a real failure could leave two active votes, **contingent on an unconfirmed `idea_votes` uniqueness constraint**. **Gate widened in #788** |
+
+**The shape of the answer**, since ten of the eleven are the same question: these are all
+"delete/update a thing the user just saw and asked to remove." The competing values are
+*catch stale ids* versus *don't punish a double-tap*. A blanket count assertion makes every
+concurrent-action race an error; leaving them all makes every stale id invisible.
+
+**Two are not that question and can be settled independently:** #10 (`matches.ts:547`) and
+#11 (`ideas.ts:236`) both have zero rows as their NORMAL case, so a count assertion is simply
+wrong at both — they need only the error check they now have. #11's residual risk still
+depends on the `idea_votes` constraint, which remains **unconfirmed** (checking it needs a DB;
+`supabase start` has been unavailable). Unconfirmed rather than guessed at, still.
+
+All eleven are error-checked or already were; only the count decision is open.
+
+---
+
+## 4bis · Resolved — what has been walked (2026-08-01)
+
+A map that doesn't record what's been walked stops being one. Everything below
+landed in one PR, one commit per issue, on top of a shared helper.
+
+**`src/server/lib/assertAffected.ts`** is now the single idiom — `assertAffected`
+(exact count), `assertAffectedAtLeastOne`, `assertNoError` (zero rows legitimate).
+`grep assertAffected src/server` is the inventory of what has been made loud.
+Deliberately a helper and not an RPC: #776 needed plpgsql for ATOMICITY, this
+batch needs OBSERVABILITY, and wrapping one statement in a function makes nothing
+more atomic. Its `count: null` case THROWS — a site that forgets
+`{ count: "exact" }` must not look guarded while asserting nothing.
+
+| Issue | Status | Sites |
+|---|---|---|
+| #777 | **resolved** | promote / demote / rollback — counts asserted; a failed rollback now says "may now have two Owners" |
+| #778 | **resolved** | both roster inserts + the blast's send stamp |
+| #779 | **resolved** | create rollback (logged), clear-before-rewrite, optOut (count), pre-delete |
+| #780 | **resolved** | setPairings ×3, ensure-participant upsert, setHandicap ×4, removeMatch cascade, reorder loop |
+| #782 | **resolved** | scores hot path, notifications, datePoll unlock pair, games ×4, ghostCrew ×2, playGroups ×3 |
+| #781 | **framed, not decided** | the eleven — see below |
+| #776 | **fix open, NOT merged** | see the warning under §4.1 |
+
+**Three sites deliberately did NOT get a throw**, and each says why at the site —
+they run inside an existing failure path where throwing would replace a better
+diagnostic (`expenses.create` cleanup, `ghostCrew.create` rollback) or on a
+non-privileged side effect of a write that already succeeded (`scores`' status
+flip, where failing a scorer's entry over a status flag is the worse outcome).
+Logged loudly instead. **Do not "finish the job" by converting these** — that is
+the over-correction, not the fix.
+
+**Nothing here became transactional.** `expenses.updateSplits`,
+`matches.setPairings`, `matches.removeMatch` and `playGroups.setFoursomes` are
+still delete-then-insert sequences where a throw partway leaves earlier writes
+applied. Making a failure loud does not make it atomic. Atomicity for those
+clusters is an RPC per cluster and its own piece of work.
 
 ---
 
