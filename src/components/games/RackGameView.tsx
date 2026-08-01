@@ -46,6 +46,7 @@ import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayC
 import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
+import { useExitToBoard } from "@/hooks/useExitToBoard";
 
 const RACK = "gtt_rack_n_stack";
 
@@ -617,6 +618,13 @@ export function RackGameView() {
         // a re-locked correction reads stale until the 30s poll.
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
+      // Finalize is a terminal act: the result now lives on the board, not here.
+      // Fired AFTER the invalidations above and deliberately not awaited with
+      // them — the board is still mounted underneath (CLAUDE.md #12), so it
+      // repaints instantly from its warm cache and the just-invalidated queries
+      // refetch behind that paint. `back()` POPS the `?game=` entry rather than
+      // pushing a second one; see the hook for why that distinction is #550's.
+      exitToBoard();
     } catch {
       // Swallowed HERE on purpose, and only because the toast is now real: the
       // global `mutationCache.onError` (lib/providers.tsx) surfaces every
@@ -740,6 +748,7 @@ export function RackGameView() {
   // owner gear) instead of a second header. Standalone route (no provider) keeps
   // its own Shell/ScoreEntryView headers below.
   const inPanel = useInGamePanel();
+  const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
   const rackGroupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
   const rackFinal = gameQ.data?.status === "complete";
   usePublishGameChrome(

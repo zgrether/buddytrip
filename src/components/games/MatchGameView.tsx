@@ -41,6 +41,7 @@ import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
+import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
@@ -1293,11 +1294,20 @@ export function MatchGameView() {
         // too, or a re-locked correction reads stale until the 30s poll.
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
-      // #550 Task 4: Finish is tapped ON the overview (the "Finish round" /
-      // "Re-lock" CTAs). The old `go("overview")` PUSHED another overview onto the
-      // nav stack — the two-backs-to-leave bug the unified app-bar back would
-      // inherit. We're already on the overview; the refetch above re-renders it as
-      // Final · locked. No navigation — stay put (pop-not-push).
+      // #550 Task 4 left this navigating NOWHERE, and the reason is still load
+      // bearing: the old `go("overview")` PUSHED another overview onto the nav
+      // stack and produced a two-backs-to-leave bug. `exitToBoard` is the
+      // resolution of that, not a reversal of it — in a panel it POPS the
+      // `?game=` entry (the true inverse of opening the panel) instead of
+      // pushing a second one, and on a standalone route it navigates explicitly
+      // because there is nothing to pop.
+      // Finalize is a terminal act: the result now lives on the board, not here.
+      // Fired AFTER the invalidations above and deliberately not awaited with
+      // them — the board is still mounted underneath (CLAUDE.md #12), so it
+      // repaints instantly from its warm cache and the just-invalidated queries
+      // refetch behind that paint. `back()` POPS the `?game=` entry rather than
+      // pushing a second one; see the hook for why that distinction is #550's.
+      exitToBoard();
     } catch {
       // Swallowed HERE on purpose, and only because the toast is now real: the
       // global `mutationCache.onError` (lib/providers.tsx) surfaces every
@@ -1392,6 +1402,7 @@ export function MatchGameView() {
   // owner gear + scorecard) instead of rendering our own header. On a standalone
   // route (no provider) `inPanel` is false → we keep our own headers below.
   const inPanel = useInGamePanel();
+  const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
   const chromeTitle =
     screen === "score" && selectedGroup
       // Item 5: the app-bar title is "Match N" — the player names truncate on a

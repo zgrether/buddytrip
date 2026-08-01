@@ -46,6 +46,7 @@ import { strokeHoles } from "@/lib/matchPlay";
 import { pointsReady } from "@/lib/matchDraft";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
+import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { showToast } from "@/lib/toast";
 
 const STROKE_PLAY = "gtt_stroke_play";
@@ -758,6 +759,7 @@ export function StrokeGameView() {
   // a second header. Handicaps/modifiers are inline panels now (P3 3.3), so there's no
   // drill-down that covers the bar. Standalone route keeps its headers.
   const inPanel = useInGamePanel();
+  const exitToBoard = useExitToBoard(tripId, gameCompetitionId);
   usePublishGameChrome(
     inPanel
       ? {
@@ -825,6 +827,13 @@ export function StrokeGameView() {
         // stale until the poll. Rack learned this the same way.
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
+      // Finalize is a terminal act: the result now lives on the board, not here.
+      // Fired AFTER the invalidations above and deliberately not awaited with
+      // them — the board is still mounted underneath (CLAUDE.md #12), so it
+      // repaints instantly from its warm cache and the just-invalidated queries
+      // refetch behind that paint. `back()` POPS the `?game=` entry rather than
+      // pushing a second one; see the hook for why that distinction is #550's.
+      exitToBoard();
     } catch {
       // Swallowed HERE on purpose, and only because the toast is now real: the
       // global `mutationCache.onError` (lib/providers.tsx) surfaces every
