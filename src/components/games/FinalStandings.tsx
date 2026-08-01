@@ -10,6 +10,16 @@ import type { Participant } from "./types";
  * Renders persisted `game_results` (position-sorted, ties as a shared rank —
  * T2/T2/4th). Place colors from the `--color-bt-place-{1..4}-*` tokens. "strokes"
  * as the value label (no par / vs-par — that's Slice C).
+ *
+ * **Quick Game only.** `StrokeGameView` used to show this after finalizing a
+ * trip game; it no longer does. The screen's terminal actions are *restart* and
+ * *scorecard*, which is the right ending for a standalone round with no points
+ * to award — and the wrong one inside a competition, where finalizing is how the
+ * game contributes to the cup and "Play again" navigated away from it. Rack, the
+ * other net-stroke golf engine going through the same `games.finish`, never had
+ * an equivalent: it finalizes in place and stays on its scoreboard. Stroke's was
+ * a leftover from the quick-game path, not a design. Do not re-attach it to a
+ * competition surface.
  */
 interface Result {
   entityId: string;
