@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -386,10 +387,16 @@ export const datePollRouter = router({
           .eq("window_id", lockedWindowId);
 
         if ((count ?? 0) === 0) {
-          await ctx.supabase
-            .from("date_windows")
-            .delete()
-            .eq("id", lockedWindowId);
+          // #782 — error-checked, count deliberately NOT asserted. The window is
+          // read back as zero-vote immediately above, but between that read and
+          // this delete another path could legitimately have removed it, so zero
+          // rows is a benign race rather than a defect. A real failure is not:
+          // it leaves an orphan window that the clear below then points away
+          // from, which is the dangling reference this pair produces.
+          assertNoError(
+            await ctx.supabase.from("date_windows").delete().eq("id", lockedWindowId),
+            "remove the unvoted locked date window"
+          );
         }
       }
 
@@ -412,11 +419,20 @@ export const datePollRouter = router({
         });
       }
 
-      // Clear locked_window_id
-      await ctx.supabase
-        .from("date_polls")
-        .update({ locked_window_id: null, open: true })
-        .eq("trip_id", ctx.tripId);
+      // Clear locked_window_id.
+      //
+      // #782 — the second half of the pair the audit flagged (§4.8): if the
+      // window delete above succeeded and this doesn't, `locked_window_id`
+      // points at a row that no longer exists. Count is NOT asserted: a trip
+      // with no `date_polls` row yet has nothing to clear and that is legal, so
+      // zero rows here is a no-op rather than a failure.
+      assertNoError(
+        await ctx.supabase
+          .from("date_polls")
+          .update({ locked_window_id: null, open: true })
+          .eq("trip_id", ctx.tripId),
+        "clear the locked date window"
+      );
 
       return data;
     }),

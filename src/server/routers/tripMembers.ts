@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected } from "@/server/lib/assertAffected";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
@@ -445,14 +446,33 @@ export const tripMembersRouter = router({
           return { status: "already_member" as const, displayName };
         }
 
-        // Add to trip with status 'in'
-        await ctx.supabase.from("trip_members").insert({
-          trip_id: ctx.tripId,
-          user_id: existing.id,
-          role: input.role,
-          status: "in",
-          chat_visible_from: new Date().toISOString(),
-        });
+        // Add to trip with status 'in'.
+        //
+        // #778 — CHECKED, and the check is load-bearing rather than tidy. This
+        // insert is refused by `trip_members_insert` for anyone but the Owner,
+        // and while it was unchecked #788 widened this procedure's gate past it:
+        // an Organizer got `added_existing` back with no roster row written.
+        // The gate is Owner-only again (#790) and is queued to widen a second
+        // time once the role-input split lands — so this is fixed BEFORE that,
+        // not after (SILENT_WRITES_AUDIT.md §4.3).
+        //
+        // Throwing here also stops the two best-effort side effects below (the
+        // crew system message and the notification email), which is the point:
+        // neither should fire for someone who was never added.
+        assertAffected(
+          await ctx.supabase.from("trip_members").insert(
+            {
+              trip_id: ctx.tripId,
+              user_id: existing.id,
+              role: input.role,
+              status: "in",
+              chat_visible_from: new Date().toISOString(),
+            },
+            { count: "exact" }
+          ),
+          1,
+          "add the invited member to the trip"
+        );
 
         // Crew-chat system line announcing the new member (best-effort).
         try {
@@ -540,13 +560,32 @@ export const tripMembersRouter = router({
       // Add to trip_members with status 'invited'. The chat floor is set
       // now so once they accept + sign in they only see Crew chat from
       // this point forward.
-      await ctx.supabase.from("trip_members").insert({
-        trip_id: ctx.tripId,
-        user_id: guestUserId,
-        role: input.role,
-        status: "invited",
-        chat_visible_from: new Date().toISOString(),
-      });
+      //
+      // #778 — CHECKED. This is the worse half of the pair: unchecked, a refused
+      // insert still fell through to the invite EMAIL below, so someone got a
+      // link to a trip they were not on and the failure surfaced only as "my
+      // invite doesn't work". Throwing stops the send.
+      //
+      // NOT made transactional, deliberately: the guest `users` row and the
+      // `invites` row were already written above, and a throw here leaves both
+      // orphaned. That is pre-existing and unchanged — this commit makes the
+      // failure observable, it does not add a rollback (which would be a
+      // behaviour change, and the orphan guest is recoverable by re-inviting the
+      // same address, which re-uses the existing placeholder).
+      assertAffected(
+        await ctx.supabase.from("trip_members").insert(
+          {
+            trip_id: ctx.tripId,
+            user_id: guestUserId,
+            role: input.role,
+            status: "invited",
+            chat_visible_from: new Date().toISOString(),
+          },
+          { count: "exact" }
+        ),
+        1,
+        "add the invited guest to the trip"
+      );
 
       // Send invite email (best effort)
       try {
@@ -784,11 +823,24 @@ export const tripMembersRouter = router({
       // any later send a follow-up). The increment is a SQL function because
       // supabase-js can't express `email_count = email_count + 1`.
       if (sentIds.length > 0) {
-        await ctx.supabase
-          .from("trip_members")
-          .update({ last_emailed_at: now })
-          .eq("trip_id", ctx.tripId)
-          .in("user_id", sentIds);
+        // #778 — CHECKED. Same Owner-only `trip_members` policy as the inserts
+        // above, so this went silent for an Organizer under #788 too: the emails
+        // sent and the send-tracking never recorded, which turns "when did we
+        // last chase them" into a lie. One row per recipient we actually emailed.
+        //
+        // Ordered AFTER the sends on purpose (unchanged): a stamp failure must
+        // not suppress mail that already went out. Throwing here reports a
+        // send that happened but wasn't recorded — the honest outcome, and the
+        // caller can re-run since the mail path is idempotent per recipient.
+        assertAffected(
+          await ctx.supabase
+            .from("trip_members")
+            .update({ last_emailed_at: now }, { count: "exact" })
+            .eq("trip_id", ctx.tripId)
+            .in("user_id", sentIds),
+          sentIds.length,
+          "record when the invitation emails were sent"
+        );
 
         await ctx.supabase.rpc("increment_member_email_count", {
           p_trip_id: ctx.tripId,
