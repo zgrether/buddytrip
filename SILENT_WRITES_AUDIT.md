@@ -102,6 +102,23 @@ Both insert branches (`:429`, `:523`) are completely unchecked. The invite email
 `"invited_new"`/`"added_existing"` returns regardless of whether the row was ever created — the
 failure surfaces only when someone reports a dead invite link. **Tracked in #778.**
 
+> **⚠️ This one went from latent to LIVE and back, which is worth recording.** #788
+> widened `inviteByEmail` to `requireTripRole("Organizer")` while `trip_members_insert`
+> stayed Owner-only (migration 101 deliberately did not widen it). So for an Organizer
+> both inserts were *refused* — and because they are unchecked, the procedure returned
+> `added_existing` / `invited_new` with no roster row, after already sending the invite
+> email on the new-email path. Reverted to Owner-only in the follow-up PR.
+>
+> The lesson isn't "check the write" — it's that **an unchecked write is a loaded gun that
+> a later, unrelated permission change can pull the trigger on.** This site was already
+> catalogued here and tracked as #778; the sweep was right and the widening walked past it.
+> When widening any guard, cross-reference this file for the procedure first: a finding
+> listed here means a refused write will be reported as success.
+>
+> `sendInvitationBlast` has the same shape one severity down — its unchecked
+> `last_emailed_at` UPDATE (`:765`) hits the same Owner-only `trip_members` policy, so the
+> emails sent and the send-tracking silently didn't record. Also reverted.
+
 ### 4.4 `expenses.ts` — orphaned/duplicated financial split rows
 
 Rollback (`:106`), clear-before-rewrite (`:178`), and pre-delete (`:280`) are all completely

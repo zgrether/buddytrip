@@ -19,6 +19,21 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  * send, a missing row), and this file is about the permission boundary. A
  * FORBIDDEN is the failure it exists to catch; any other outcome means the gate
  * admitted the caller, which is the claim under test.
+ *
+ * ── WHAT THIS FILE CANNOT PROVE, and it bit us once ──────────────────────────
+ * A not-FORBIDDEN assertion proves the GATE admits the caller. It says nothing
+ * about whether the procedure's WRITES then succeed. `tripMembers.inviteByEmail`
+ * passed here while every one of its `trip_members` inserts was refused by an
+ * RLS policy that had not moved — the caller was admitted and nothing was
+ * written, and because those inserts are unchecked (SILENT_WRITES_AUDIT.md
+ * §4.3) the procedure still returned success. It is now in the held-back block
+ * below for a second, deeper reason, but the test-shape lesson stands.
+ *
+ * EVERY procedure in this file has that same blind spot. When widening a guard,
+ * enumerate the tables the procedure WRITES and confirm each one's policy moved
+ * — a green line here is not that check. The RLS half is covered separately in
+ * `organizerParity.rls.test.ts`, per policy; the two files only add up if
+ * someone has matched the procedure's write set against the policy set.
  */
 async function forbidden(fn: () => Promise<unknown>): Promise<boolean> {
   try {
@@ -197,42 +212,6 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
     });
   });
 
-  describe("tripMembers.inviteByEmail", () => {
-    const input = () => ({
-      tripId,
-      email: `parity-${genId("e")}@example.test`,
-      role: "Member" as const,
-    });
-
-    it("admits an Organizer", async () => {
-      expect(
-        await forbidden(() => ctx.callerAs("planner").tripMembers.inviteByEmail(input()))
-      ).toBe(false);
-    });
-    it("refuses a Member", async () => {
-      expect(
-        await forbidden(() => ctx.callerAs("member").tripMembers.inviteByEmail(input()))
-      ).toBe(true);
-    });
-  });
-
-  describe("tripMembers.sendInvitationBlast", () => {
-    it("admits an Organizer", async () => {
-      expect(
-        await forbidden(() =>
-          ctx.callerAs("planner").tripMembers.sendInvitationBlast({ tripId, memberUserIds: [memberId] })
-        )
-      ).toBe(false);
-    });
-    it("refuses a Member", async () => {
-      expect(
-        await forbidden(() =>
-          ctx.callerAs("member").tripMembers.sendInvitationBlast({ tripId, memberUserIds: [memberId] })
-        )
-      ).toBe(true);
-    });
-  });
-
   describe("games.delete / .resetScoring / .resetToSkeleton", () => {
     async function seedGame() {
       const gameId = genId("guard-game");
@@ -397,6 +376,33 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
           ctx
             .callerAs("planner")
             .ghostCrew.update({ tripId, guestUserId: memberId, name: "Nope" })
+        )
+      ).toBe(true);
+    });
+
+    // Blocked by: the procedure MINTS THE ROLE IT IS GATED ON. `role` defaults
+    // to "Organizer" and is written into trip_members, so an Organizer-gated
+    // version could create another Organizer — exception 1 routed around. It
+    // was briefly Organizer+ (#788) and is reverted; re-widening needs a
+    // server-side split on the role INPUT, not a different guard.
+    it("tripMembers.inviteByEmail (mints the role it is gated on)", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.inviteByEmail({
+            tripId,
+            email: `held-invite-${genId("e")}@example.test`,
+            role: "Member",
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("tripMembers.sendInvitationBlast (moves with inviteByEmail)", async () => {
+      expect(
+        await forbidden(() =>
+          ctx
+            .callerAs("planner")
+            .tripMembers.sendInvitationBlast({ tripId, memberUserIds: [memberId] })
         )
       ).toBe(true);
     });

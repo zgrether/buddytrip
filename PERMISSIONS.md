@@ -95,9 +95,9 @@ or it erases others' content. If you find yourself writing
 `requireTripRole("Owner")` for anything else, that is a deviation from this rule
 and needs a reason — not a shrug.
 
-> **⚠️ The code does not YET fully match this principle — 8 of 19 deviations
-> remain.** #786 reconciled 11 of them across both layers (migration 101 + the
-> tRPC guards). The 8 that are left are not drift: each is blocked by a specific
+> **⚠️ The code does not YET fully match this principle — 10 of 19 deviations
+> remain.** #786 reconciled 11 across both layers (migration 101 + the tRPC
+> guards), then **2 were reverted** — see the deviations section. The 8 that are left are not drift: each is blocked by a specific
 > gate that cannot move without a separate, deliberate change, and each is
 > enumerated with its blocker in **Audit notes → Owner/Organizer deviations** at
 > the end of this file. Until they are reconciled, the per-row matrix below
@@ -178,7 +178,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 |--------|:-----:|:---------:|:------:|------|
 | View roster | ✓ | ✓ | ✓ | `tripMembers.list`, `checkEmail` |
 | Add member | ✓ | — | — | `tripMembers.add` *(Owner)* |
-| Invite by email / blast | ✓ | ✓ | — | `inviteByEmail`, `sendInvitationBlast` *(Organizer+, #786)* |
+| Invite by email / blast | ✓ | — | — | `inviteByEmail`, `sendInvitationBlast` *(Owner — see the deviations note)* |
 | Promote/demote role | ✓ | — | — | `updateRole` *(Owner; not self)* |
 | Rename (trip nickname) | ✓ | — | — | `updateNickname` *(Owner; not the Owner)* |
 | Remove member | ✓ | — | — | `remove` *(Owner; not self)* |
@@ -455,7 +455,7 @@ only write path) but tightened in **migration 030** so RLS is a true backstop:
 | Table / cmd | Was | Now (migration 030) |
 |-------------|-----|---------------------|
 | `trip_members` INSERT/UPDATE | self **or** Owner+Organizer | self **or** Owner — matches Owner-only roster mgmt |
-| `invites` INSERT | any trip member | Owner (030) → **Owner+Organizer** (101) — still matches `inviteByEmail` |
+| `invites` INSERT | any trip member | Owner (030) → **Owner+Organizer** (101). NOTE this is now LOOSER than `inviteByEmail`'s tRPC gate, which reverted to Owner — the one place the two layers deliberately disagree, because the procedure also writes `trip_members`, whose policy is still Owner-only. |
 | `date_poll_votes` "_ghost" (vote for a guest) | Owner+Organizer | Owner (030) → **Owner+Organizer** (101) — still matches `castVoteForMember` |
 
 **`trips` UPDATE left as Owner+Organizer (intentional).** Organizers
@@ -504,21 +504,20 @@ written. There are **23** `requireTripRole("Owner")` call sites in
 `requireCompetitionRole` and was never a call site here at all. Counts below are
 from an enumeration, not a carried-forward figure.
 
-### Reconciled — 11 of 19, in #786
+### Reconciled — 9 of 19, in #786
 
 Moved to `requireTripRole("Organizer")` with their backing RLS moved in the same
 change (migration 101), so no layer disagrees:
 
 | Area | Procedures | RLS that moved with them |
 |---|---|---|
-| Crew / roster | `tripMembers.inviteByEmail`, `.sendInvitationBlast` | `invites_insert` |
 | Ideas | `ideas.create`, `ideas.remove`, `archivedIdeas.archive` | `ideas_insert`, `ideas_delete` (archive is self-scoped — none) |
 | Trip state | `trips.lockDestination` | none — `trips_update` was already Owner+Organizer |
 | Dates | `datePoll.castVoteForMember` | all four `date_poll_votes` policies |
 | Competition | `teamAssignments.remove` | `team_assignments_delete` |
 | Games (destructive) | `games.delete`, `games.resetScoring`, `games.resetToSkeleton` | `assert_game_owner()` (delete needed none — `games_write` was already Owner+Organizer) |
 
-### Remaining — 8 deviations, each with a named blocker
+### Remaining — 10 deviations, each with a named blocker
 
 These are NOT drift. Each is a deviation from the ratified rule that a specific
 gate prevents moving, and the blocker is the work, not the guard swap.
@@ -527,7 +526,21 @@ gate prevents moving, and the blocker is the work, not the guard swap.
 |---|---|
 | `tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `ghostCrew.create`, `.remove` | **RLS is row-granular.** Widening `trip_members` INSERT/UPDATE/DELETE lets an Organizer calling PostgREST directly set any member's `role` — including their own, to `'Owner'`. Exception 1 would hold only in the client. Needs a role-column trigger on `trip_members` first — the fix migration 030 itself named — and that trigger sits on the signup/merge write path, so it is its own migration with its own verification. |
 | `ghostCrew.update` | **`link_guest_to_account()`** (migration 095) hardcodes an Owner check inside the guest→real-user MERGE path, which runs in the signup trigger. Widening tRPC alone half-opens it: editing a placeholder's name would work, pasting an email that matches an account would fail at the database. |
+| `tripMembers.inviteByEmail`, `.sendInvitationBlast` | **The procedure mints the role it is gated on.** `inviteByEmail`'s `role` input defaults to `"Organizer"` and is written straight into `trip_members`, so an Organizer-gated version can create another Organizer — exception 1 routed around. These two were moved in #788 and **reverted**; RLS refused their `trip_members` writes (unchecked, so they reported success — SILENT_WRITES_AUDIT.md §4.3), which masked the design problem behind a bug. Re-widening belongs with the `trip_members` trigger work and needs a server-side split on the role INPUT — Owner-only for `"Organizer"`, Organizer-allowed for `"Member"` — not a different guard. |
 | `teamAssignments.setCaptain` | **A shared assert.** `set_team_captain` calls `assert_competition_owner`, which also guards `delete_competition_cascade` — exception 4. Widening the shared assert would widen `competitions.delete`. It also may not be a deviation at all: a captain holds real RLS grants (migrations 065 / 094), so appointing one is arguably "changing who is trusted" one level down — i.e. a sixth exception rather than a gap. That is a product call, not a code one. |
+
+**A procedure that takes a role as INPUT cannot be gated on role alone.** This is
+the misjudgement that produced the revert above, stated precisely: "inviting crew
+doesn't change who is trusted" is true for `role: "Member"` and false for the
+default. Before widening any guard, check whether the procedure can *write* the
+very role it is being gated on.
+
+**A guard test proves the gate, not the write.** The parity suite asserts
+not-FORBIDDEN, which says the caller was admitted — it cannot see a write that
+the caller's RLS then refuses inside the mutation. When widening a guard,
+enumerate the tables the procedure WRITES and confirm each policy moved, and
+cross-reference `SILENT_WRITES_AUDIT.md`: an unchecked write listed there will
+report a refusal as success.
 
 **Three gates, not one.** The reconciliation had to move a tRPC guard, an RLS
 policy, AND a hardcoded role check inside a plpgsql body — and the third kind is
