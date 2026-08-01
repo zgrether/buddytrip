@@ -107,9 +107,22 @@ export const archivedIdeasRouter = router({
   remove: authedProcedure
     .input(z.object({ archivedIdeaId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
+      // #781 — the ONE site of the eleven that asserts a count, decided on the
+      // grounds that separate it from the other eight:
+      //
+      // This row is USER-SCOPED (`.eq("user_id", ctx.user!.id)` — a personal
+      // archive, not shared trip data), so there is no concurrent actor who
+      // could legitimately have removed it first. The other "delete a thing the
+      // user just saw" sites trade catching stale ids against punishing a
+      // double-tap by a SECOND person; here there is no second person. Zero rows
+      // means a stale or foreign id, and the old code reported success for both.
+      //
+      // NOT_FOUND rather than INTERNAL_SERVER_ERROR: the id didn't match
+      // anything of yours, which is a request problem, not a server one. And
+      // never UNAUTHORIZED — `authExpiry` turns a 401 into a forced logout.
+      const { error, count } = await ctx.supabase
         .from("archived_ideas")
-        .delete()
+        .delete({ count: "exact" })
         .eq("id", input.archivedIdeaId)
         .eq("user_id", ctx.user!.id);
 
@@ -117,6 +130,13 @@ export const archivedIdeasRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to remove archived idea",
+        });
+      }
+
+      if (count === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "That idea isn't in your archive",
         });
       }
 

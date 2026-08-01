@@ -70,11 +70,22 @@ describe("archivedIdeas router", () => {
     expect(memberResults.some((a) => a.id === archivedId)).toBe(false);
   });
 
-  it("remove — another user cannot delete my archived idea", async () => {
+  it("remove — another user cannot delete my archived idea, and is TOLD so", async () => {
+    // Reversed by #781, and this test is the proof the change works. It used to
+    // assert `result.success === true` with the comment "RLS silently no-ops the
+    // delete" — i.e. it pinned the exact silence being removed: a foreign id
+    // reported success. `archived_ideas` is USER-SCOPED, so there is no second
+    // actor who could legitimately have removed the row first; zero rows can only
+    // mean a stale or foreign id.
+    //
+    // Both halves still matter: the caller now gets NOT_FOUND (observable), AND
+    // the row survives (nothing was destroyed). Asserting only the throw would
+    // pass even if the delete had leaked.
     const outsider = ctx.callerAs("member");
-    const result = await outsider.archivedIdeas.remove({ archivedIdeaId: archivedId });
-    // RLS silently no-ops the delete; verify the row still exists.
-    expect(result.success).toBe(true);
+    await expect(
+      outsider.archivedIdeas.remove({ archivedIdeaId: archivedId })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
     const still = await ctx.callerAs("owner").archivedIdeas.list();
     expect(still.some((a) => a.id === archivedId)).toBe(true);
   });

@@ -168,6 +168,14 @@ export const scheduleRouter = router({
       // Update sort_order from array position. Fire all updates in parallel —
       // a drag of N items was N sequential round-trips; Promise.all collapses
       // the wall-clock cost to a single round-trip's worth.
+      // #781 — counts deliberately NOT asserted on this fan-out. A sent id
+      // that no longer matches means the list changed under the drag
+      // (another device, another tab), and since these fire in parallel a
+      // mid-flight throw would leave a PARTIAL order committed — worse than
+      // the silent partial already tolerated, which a re-drag corrects by
+      // resending the whole permutation. Errors ARE surfaced below. Contrast
+      // matches.reorder, which does assert: its input is a closed set with
+      // no concurrent editor.
       const results = await Promise.all(
         input.itemIds.map((id, i) =>
           ctx.supabase
@@ -196,6 +204,13 @@ export const scheduleRouter = router({
     .input(z.object({ tripId: z.string(), itemId: z.string() }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // #781 — count deliberately NOT asserted. Zero rows here means the
+      // row was already gone, which on shared trip data is a concurrent
+      // actor or a double-tap, not a defect — and the user's intent
+      // ("remove this") is satisfied either way. Asserting would turn a
+      // race into an error for no gain. Contrast archivedIdeas.remove,
+      // which DOES assert: that row is user-scoped, so it has no second
+      // actor.
       const { error } = await ctx.supabase
         .from("schedule_items")
         .delete()
