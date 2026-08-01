@@ -97,6 +97,26 @@ describe("games router (Slice A — stroke play)", () => {
     await caller.scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "1", value: 5 });
     await caller.scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "2", value: 6 });
 
+    // QUALIFICATION (the "BBMI Playground" corruption): finalize now records only
+    // players who COMPLETED the round, because an unscored player totalling 0
+    // ranked FIRST under lowest-wins. Two holes each is no longer a finishable
+    // round, so fill holes 3–18 in bulk — the two above still exercise the real
+    // `scores.upsertEntry` path, which is what this test is about.
+    const rest = [ctx.user.id, memberId].flatMap((pid) =>
+      Array.from({ length: 16 }, (_, i) => ({
+        id: crypto.randomUUID(),
+        game_id: gameId,
+        participant_id: pid,
+        participant_type: "user",
+        unit_label: String(i + 3),
+        value: 0,
+        annotations: {},
+        submitted_by: ctx.user.id,
+        submitted_at: new Date().toISOString(),
+      }))
+    );
+    await ctx.admin.from("score_entries").insert(rest);
+
     const { standings } = await caller.games.finish({ tripId, gameId });
     expect(standings.find((s) => s.entityId === ctx.user.id)).toMatchObject({ rawScore: 8, position: 1 });
     expect(standings.find((s) => s.entityId === memberId)).toMatchObject({ rawScore: 11, position: 2 });
@@ -180,16 +200,26 @@ describe("games router — result_strategy dispatch guard", () => {
     // belong to: `placements` is manual-only, so a stroke game must compute from
     // scores (none here → empty standings) and never write the passed order.
     const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_stroke_play", name: "Stroke Ignore" });
-    await ctx.caller().games.finish({
-      tripId,
-      gameId: game.id,
-      placements: [{ entityId: "should-not-appear", position: 1 }],
-    });
+
+    // With no scores at all, finalize now REFUSES rather than recording an empty
+    // result — qualification means "completed the round", and nobody has. That
+    // strengthens this test rather than replacing it: the original point was
+    // that `placements` must not reach an engine arm, and the strongest form of
+    // that is the engine refusing outright while writing nothing.
+    await expect(
+      ctx.caller().games.finish({
+        tripId,
+        gameId: game.id,
+        placements: [{ entityId: "should-not-appear", position: 1 }],
+      })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+
     const { data: results } = await ctx.admin
       .from("game_results")
       .select("entity_id")
       .eq("game_id", game.id);
     expect((results ?? []).map((r) => r.entity_id)).not.toContain("should-not-appear");
+    expect(results ?? []).toHaveLength(0);
   });
 
   it("finish — an unregistered game type throws rather than silently scoring as stroke play", async () => {

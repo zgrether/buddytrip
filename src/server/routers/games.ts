@@ -676,7 +676,13 @@ export const gamesRouter = router({
       } else if (strategy === "rack_n_stack") {
         teams = await computeRackNStackResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else if (strategy === "stroke_total") {
-        standings = await computeStrokePlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
+        standings = await computeStrokePlayResults(ctx.supabase, input.gameId, {
+          onFailure: "throw",
+          // Finalize refuses when nobody completed the round — see the
+          // qualification note in `server/lib/strokePlay.ts`. The setup-path
+          // recompute below deliberately does NOT pass this.
+          requireQualified: true,
+        });
       } else {
         // Defense in depth: the union above is exhaustive, so this is unreachable
         // via types — a new ResultStrategy that forgets a branch trips it loudly.

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { TRPCError } from "@trpc/server";
 import {
   computeStrokePlayStandings,
   computeStrokeTeamStandings,
@@ -48,7 +49,18 @@ export async function computeStrokePlayResults(
   gameId: string,
   /** #776 — how a results-write failure surfaces. Defaults to the setup
    *  behaviour; `games.finish` passes "throw". See WriteFailureMode. */
-  { onFailure }: { onFailure?: WriteFailureMode } = {}
+  {
+    onFailure,
+    requireQualified = false,
+  }: {
+    onFailure?: WriteFailureMode;
+    /**
+     * FINALIZE only. Refuse rather than record a result when not one player
+     * completed the round. Off for the setup-path recompute, which runs
+     * constantly mid-round when nobody has finished and must stay silent.
+     */
+    requireQualified?: boolean;
+  } = {}
 ): Promise<StrokeStanding[]> {
   const { data: participants } = await supabase
     .from("game_participants")
@@ -75,10 +87,37 @@ export async function computeStrokePlayResults(
     );
   }
 
+  // QUALIFICATION: only a player who has completed every unit of the round is
+  // recorded. Without this a player with no scores totals 0 and, under
+  // lowest-wins, RANKS FIRST — which is exactly what reached production, both in
+  // the user rows (seven unscored players each `position 1`) and in the team
+  // rows built on them (three teams tied first having played no golf).
+  //
+  // Always applied on this path, not only at finalize: the setup recompute
+  // writes `game_results` too, so gating it on finalize alone would leave the
+  // corrupt zero-rows reachable by every other write.
+  const requiredUnits = unitsFromSchema(game?.scorecard_schema).length;
   const standings = computeStrokePlayStandings(
     (participants ?? []).map((p) => p.user_id as string),
-    netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer)
+    netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer),
+    { requiredUnits }
   );
+
+  // Nobody finished. Recording this as a result would either write nothing and
+  // report success, or — before qualification — crown whoever played least. A
+  // finalize that cannot produce a result must SAY so; #801 is what makes this
+  // message reach the screen instead of vanishing into an empty catch.
+  //
+  // Not UNAUTHORIZED: `authExpiry` turns a 401 into a forced logout, which
+  // mid-round is a worse outcome than the error being reported.
+  if (requireQualified && standings.length === 0) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        `No player has completed all ${requiredUnits} holes, so there's no result to record yet. ` +
+        `Finish the round, or use the game's Danger zone if it needs to be closed out early.`,
+    });
+  }
 
   // Team aggregate net — competition games only. A standalone game has no
   // competition_id, so `teamOf` stays empty and `computeStrokeTeamStandings`
