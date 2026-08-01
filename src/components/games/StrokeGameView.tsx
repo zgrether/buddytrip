@@ -560,9 +560,11 @@ export function StrokeGameView() {
   // back) on failure. Owns `values` + `saveStatus` for this game.
   const { values, saveStatus, onChange, onClear, retryCell, reconcile } =
     useScoreSaver(tripId, activeGameId);
-  // Finishing also retries (idempotent — recomputes from the same scores); a
-  // failure stays on the entry view and surfaces via the global error toast,
-  // so it's loud + retryable instead of a silent stall.
+  // Finishing retries (idempotent — recomputes from the same scores); a failure
+  // stays put and is surfaced by the global mutationCache.onError, which covers
+  // server rejections as well as connectivity failures. That claim was untrue
+  // when first written: the handler skipped server rejections, so "loud +
+  // retryable" was in fact silent + retryable.
   const finishGame = trpc.games.finish.useMutation({
     retry: 4,
     retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
@@ -824,9 +826,15 @@ export function StrokeGameView() {
         utils.competitions.faceBootstrap.invalidate({ tripId });
       }
     } catch {
-      // Stay on the scoreboard (no silent advance). The global error toast
-      // surfaces the failure; the Finish CTA stays tappable to retry (the
-      // recompute is idempotent).
+      // Swallowed HERE on purpose, and only because the toast is now real: the
+      // global `mutationCache.onError` (lib/providers.tsx) surfaces every
+      // server-rejected mutation, not just connectivity ones. Until that fix
+      // this comment was FALSE — the global handler explicitly skipped server
+      // rejections and this block showed nothing, so a failed finalize looked
+      // exactly like a success that didn't navigate.
+      //
+      // Staying put is the right recovery: no silent advance, and the CTA stays
+      // tappable because the recompute is idempotent.
     }
   }
 
@@ -842,7 +850,9 @@ export function StrokeGameView() {
       utils.games.listByTrip.invalidate({ tripId });
       if (gameCompetitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
     } catch {
-      // surfaced via the global error toast
+      // Surfaced by the global mutationCache.onError (lib/providers.tsx), which
+      // covers server rejections as well as connectivity failures. It did not
+      // before, which made this comment false and this block silent.
     }
   }
 
