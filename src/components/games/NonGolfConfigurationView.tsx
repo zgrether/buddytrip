@@ -50,6 +50,7 @@ export function NonGolfConfigurationView({
   scoringModel,
   canEdit,
   isOwner,
+  canManageGame,
   onChanged,
   onDeleted,
   draft,
@@ -73,7 +74,14 @@ export function NonGolfConfigurationView({
   game: GameRow;
   scoringModel: ScoringModel;
   canEdit: boolean;
+  /** Trip Owner ONLY. Gates the delegation grant inside `GameIdentityHeader` —
+   *  handing someone edit rights is changing who is trusted, so it stays with the
+   *  Owner. Do NOT reuse this for the danger zone; see `canManageGame`. */
   isOwner: boolean;
+  /** Trip Owner or Organizer, delegates excluded. Gates the danger zone
+   *  (reset/delete), matching its server gate since #788. Split from `isOwner`
+   *  in #789 — one flag can't guard two powers with different answers. */
+  canManageGame: boolean;
   /** Server-direct refresh after a Danger-Zone action (reset/delete) — NOT a draft edit. */
   onChanged: () => void;
   onDeleted: () => void;
@@ -210,7 +218,7 @@ export function NonGolfConfigurationView({
           {/* Danger Zone — owner-only. Its `disabled` is the ONE deliberate SERVER read
               (not the draft): reset-scores is immediate surgery and must not unlock off a
               staged toggle. Everything else on this page follows the draft. */}
-          {isOwner && (
+          {canManageGame && (
             <GameDangerZone
               tripId={tripId}
               gameId={game.id}

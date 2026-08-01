@@ -16,9 +16,14 @@ import type { TripData } from "../../types";
 interface ItineraryPanelProps {
   tripId: string;
   trip: TripData;
-  isOwner: boolean;
-  /** Role is not yet known. Distinct from `isOwner: false`, which this panel
-   *  otherwise treats as "member" — see the branch below. */
+  /** Owner OR Organizer (`useTripRole().canEdit`). Every action behind the
+   *  privileged branch below is `requireTripRole("Organizer")` at the server —
+   *  the seven `datePoll` procedures plus `trips.lockDates` — so this was
+   *  `isOwner` for no reason the server agreed with (#793). */
+  canEdit: boolean;
+  /** Role is not yet known. Distinct from `canEdit: false`, which this panel
+   *  otherwise treats as "member" — see the branch below. MUST be checked
+   *  BEFORE the branch: `canEdit` is also false while the query is in flight. */
   roleLoading?: boolean;
   /** True once the owner has tapped "Add Itinerary" on the (legacy)
    *  invitation card. With the FreshTripGuide rollout we treat the empty
@@ -38,18 +43,26 @@ interface ItineraryPanelProps {
 /**
  * ItineraryPanel — home tab panel for the day-by-day timeline.
  *
- * State machine (owner):
+ * State machine (Owner OR Organizer — `canEdit`):
  *   - poll active + no dates → FreshTripGuide poll-takeover (DatePollCard
- *     with owner controls). Wins over dismissal so a live poll is never
- *     hidden behind the "Set dates" empty state.
+ *     with the management controls). Wins over dismissal so a live poll is
+ *     never hidden behind the "Set dates" empty state.
  *   - dates set OR isActivated → ItineraryView (real bookends + content).
  *     When the guide isn't dismissed, FreshTripGuide also renders above it
- *     so the owner can keep adding lodging/crew/agenda from the same spot.
+ *     so lodging/crew/agenda can be added from the same spot.
  *   - no dates set + !dismissed → FreshTripGuide alone (the empty state).
  *   - no dates set + dismissed  → DismissedEmptyState (single dashed card
  *     with a Set-dates CTA and a "Show setup guide" restore link).
  *
  * Members still see the dim placeholder until the trip has real content.
+ *
+ * **This branch was `isOwner` until #793, and that was never right** — every
+ * action behind it (the seven `datePoll` procedures + `trips.lockDates`) has
+ * been `requireTripRole("Organizer")` server-side since it shipped, so an
+ * Organizer was permitted to run the date poll and shown the member's
+ * read-only card instead. The surrounding page had already noticed: the trip
+ * page passes `onOpenDatesSheet={canEdit ? … }` at five call sites, so an
+ * Organizer could lock dates from the header while this panel hid the poll.
  *
  * The legacy `isActivated` flag (itinerary_enabled) routes pre-existing
  * trips that already opted in; new trips treat the empty itinerary as the
@@ -58,7 +71,7 @@ interface ItineraryPanelProps {
 export function ItineraryPanel({
   tripId,
   trip,
-  isOwner,
+  canEdit,
   roleLoading,
   isActivated,
   onOpenDatesSheet,
@@ -74,11 +87,16 @@ export function ItineraryPanel({
   const pollActive = !!trip.poll_mode;
 
   // ── Role NOT YET KNOWN — a third state, and it must not fall through ──────
-  // `isOwner` is `false` while `useTripRole` is in flight, so the member branch
-  // below used to claim a pending role as a definite one and paint "Your
-  // timeline will start to fill in" over an owner's trip until the query landed.
-  // Same defect class as #741, where a null role rendered the non-editor
-  // placeholder permanently.
+  // `canEdit` is `false` while `useTripRole` is in flight — exactly as `isOwner`
+  // was — so the member branch below would claim a pending role as a definite one
+  // and paint "Your timeline will start to fill in" over a privileged user's trip
+  // until the query landed. Same defect class as #741, where a null role rendered
+  // the non-editor placeholder permanently.
+  //
+  // THIS GUARD MUST STAY AHEAD OF THE BRANCH. Swapping the flag to `canEdit`
+  // (#793) does not change that and slightly widens who it protects: Organizer is
+  // an ordinary mid-trip promotion, so the pending window is now reachable by more
+  // people than the Owner alone.
   //
   // The trip layout now seeds `tripMembers.list` from the server, so on the
   // normal path role is already resolved on the first render and this branch is
@@ -98,8 +116,8 @@ export function ItineraryPanel({
   }
 
   // ── Member path ─────────────────────────────────────────────────────
-  // Reached only once role is RESOLVED (see the guard above) — `!isOwner` here
-  // means "definitely not the owner", not "not the owner yet".
+  // Reached only once role is RESOLVED (see the guard above) — `!canEdit` here
+  // means "definitely a plain Member", not "not privileged yet".
   // Priority order:
   //   1. Real bookends locked → ItineraryView (the trip has dates; show
   //      the day-by-day even if the poll flag is somehow still on,
@@ -115,18 +133,18 @@ export function ItineraryPanel({
   //      flow, "itinerary is set up" should mean "dates are locked,"
   //      not "the owner flipped a legacy switch." Owners (below) still
   //      honor the flag for the rare in-flight legacy trip.
-  if (!isOwner) {
+  if (!canEdit) {
     // Active poll (before dates are locked) → the crew votes here.
     if (pollActive && !datesSet) {
-      return <DatePollCard trip={trip} isOwner={false} />;
+      return <DatePollCard trip={trip} canManagePoll={false} />;
     }
     // Otherwise always show the itinerary. With no content yet it renders the
     // redesigned empty-state preview — no "organizer needs to set the dates"
     // dead-end, which isn't the member's concern.
-    return <ItineraryView trip={trip} isOwner={false} />;
+    return <ItineraryView trip={trip} />;
   }
 
-  // ── Owner: active poll (before dates lock) — poll takes over ───────
+  // ── Owner/Organizer: active poll (before dates lock) — poll takes over ──
   // An in-flight poll owns the home tab REGARDLESS of guide dismissal.
   // Without this, a dismissed setup guide drops the owner onto the generic
   // "Set dates" empty state while a poll is live — stranding them with no way
@@ -145,7 +163,7 @@ export function ItineraryPanel({
     );
   }
 
-  // ── Owner: dates set OR activated — guide and itinerary toggle ────
+  // ── Owner/Organizer: dates set OR activated — guide/itinerary toggle ────
   // Either/or: when the guide is up the itinerary is hidden, and vice
   // versa. The toggle lives in the top-right of whichever surface is
   // showing — "View itinerary →" on the guide, "← Setup guide" in the
@@ -164,14 +182,13 @@ export function ItineraryPanel({
     return (
       <ItineraryView
         trip={trip}
-        isOwner={isOwner}
         onShowGuide={() => setDismissed(false)}
         setupLeft={setup.leftCount}
       />
     );
   }
 
-  // ── Owner: no dates yet ────────────────────────────────────────────
+  // ── Owner/Organizer: no dates yet ──────────────────────────────────
   if (dismissed) {
     return (
       <DismissedEmptyState

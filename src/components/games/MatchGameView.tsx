@@ -187,7 +187,7 @@ export function MatchGameView() {
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
   // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
-  const { canEdit, isOwner, loading: roleLoading } = useGameEditAccess(tripId, gameId);
+  const { canEdit, isOwner, canManageGame, loading: roleLoading } = useGameEditAccess(tripId, gameId);
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
   // The settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game,
@@ -2139,7 +2139,11 @@ export function MatchGameView() {
                 reflect what's actually live, not what's merely intended. Consequence
                 worth knowing: the HAS_SCORES refusal points here, so on a live scored
                 game the user Saves the disable first, THEN resets. */}
-            {isOwner && gameQ.data && (
+            {/* #789 — `canManageGame` (Owner OR Organizer), not `isOwner`. The
+                danger zone's three procedures moved to requireTripRole
+                ("Organizer") in #788; the delegation grant above it did NOT, which
+                is why these are now two flags rather than one. */}
+            {canManageGame && gameQ.data && (
               <GameDangerZone
                 tripId={tripId}
                 gameId={gameQ.data.id as string}

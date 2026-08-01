@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { createAdminClient } from "@/lib/supabase-admin";
 import {
@@ -113,16 +114,19 @@ export const notificationsRouter = router({
       const prefs = { ...((data?.notification_prefs ?? {}) as NotificationPrefs) };
       prefs[key] = input.enabled;
 
-      const { error } = await ctx.supabase
-        .from("users")
-        .update({ notification_prefs: prefs })
-        .eq("id", ctx.user.id);
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to save preference: ${error.message}`,
-        });
-      }
+      // #782 — count asserted. Always the caller's OWN row, so zero rows can
+      // never be legitimate here; it meant the toggle reported {ok:true} and the
+      // preference never saved. Directly adjacent to the push gate #772 wired:
+      // a user who turns a category OFF and is told it saved, but wasn't, keeps
+      // receiving what they just declined.
+      assertAffected(
+        await ctx.supabase
+          .from("users")
+          .update({ notification_prefs: prefs }, { count: "exact" })
+          .eq("id", ctx.user.id),
+        1,
+        "save your notification preference"
+      );
       return { ok: true };
     }),
 

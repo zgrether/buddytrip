@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -135,9 +136,28 @@ export const matchesRouter = router({
 
       // Clean replace (setup-time, before scoring). Order: matches + participants
       // reference play_groups (ON DELETE SET NULL), so clear children then groups.
-      await ctx.supabase.from("game_matches").delete().eq("game_id", input.gameId);
-      await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId);
-      await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId);
+      //
+      // #780 — error-checked; counts deliberately NOT asserted: on a first save
+      // there is nothing to replace and all three legitimately clear zero rows.
+      // A real failure is what matters — the inserts below then land ON TOP of
+      // surviving rows instead of replacing them, which is how a game ends up
+      // with duplicate matches and a doubled participant roster.
+      //
+      // NOT transactional, unchanged: a failure on the second or third delete
+      // leaves the earlier ones applied. Atomicity here is an RPC and its own
+      // piece of work; this makes the failure observable, nothing more.
+      assertNoError(
+        await ctx.supabase.from("game_matches").delete().eq("game_id", input.gameId),
+        "clear the game's existing matches"
+      );
+      assertNoError(
+        await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId),
+        "clear the game's existing participants"
+      );
+      assertNoError(
+        await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId),
+        "clear the game's existing play groups"
+      );
 
       const pgRows: { id: string; game_id: string; display_name: null }[] = [];
       const partRows: {
@@ -303,7 +323,12 @@ export const matchesRouter = router({
       }
 
       // Ensure a participant row exists (handicap home).
-      await ctx.supabase.from("game_participants").upsert(
+      //
+      // #780 — error-checked only. `ignoreDuplicates: true` means zero rows is
+      // the NORMAL outcome whenever the row already exists, so a count assertion
+      // here would fail on the common path.
+      assertNoError(
+        await ctx.supabase.from("game_participants").upsert(
         {
           id: crypto.randomUUID(),
           game_id: input.gameId,
@@ -312,6 +337,8 @@ export const matchesRouter = router({
           team_id: null,
         },
         { onConflict: "game_id,user_id", ignoreDuplicates: true }
+        ),
+        "ensure the player has a participant row"
       );
 
       // Roster is a recompute INPUT — re-derive every match touched (the
@@ -364,31 +391,54 @@ export const matchesRouter = router({
 
       // The side's own type picks the handicap home: a user side → game_participants
       // (keyed by user_id); a play_group side → play_groups (keyed by id).
+      //
+      // #780 — counts asserted on all four. Each targets ONE row resolved from the
+      // match's own sides immediately above, so zero means the row is missing, not
+      // that nothing needed doing. This is the pair that produced the flaky
+      // `matches.test.ts` failure the whole audit was filed after ("expected null,
+      // got 3") — a handicap silently applied to nobody reads as a scoring bug
+      // several steps later, which is why it gets the strict form.
       if (recipientSide.type === "play_group") {
-        await ctx.supabase
-          .from("play_groups")
-          .update({ handicap_strokes: input.strokes })
-          .eq("id", input.recipientId)
-          .eq("game_id", input.gameId);
-        if (other) {
+        assertAffected(
           await ctx.supabase
             .from("play_groups")
-            .update({ handicap_strokes: 0 })
-            .eq("id", other.id)
-            .eq("game_id", input.gameId);
+            .update({ handicap_strokes: input.strokes }, { count: "exact" })
+            .eq("id", input.recipientId)
+            .eq("game_id", input.gameId),
+          1,
+          "apply the handicap to the receiving group"
+        );
+        if (other) {
+          assertAffected(
+            await ctx.supabase
+              .from("play_groups")
+              .update({ handicap_strokes: 0 }, { count: "exact" })
+              .eq("id", other.id)
+              .eq("game_id", input.gameId),
+            1,
+            "zero the opposing group's handicap"
+          );
         }
       } else {
-        await ctx.supabase
-          .from("game_participants")
-          .update({ handicap_strokes: input.strokes })
-          .eq("game_id", input.gameId)
-          .eq("user_id", input.recipientId);
-        if (other) {
+        assertAffected(
           await ctx.supabase
             .from("game_participants")
-            .update({ handicap_strokes: 0 })
+            .update({ handicap_strokes: input.strokes }, { count: "exact" })
             .eq("game_id", input.gameId)
-            .eq("user_id", other.id);
+            .eq("user_id", input.recipientId),
+          1,
+          "apply the handicap to the receiving player"
+        );
+        if (other) {
+          assertAffected(
+            await ctx.supabase
+              .from("game_participants")
+              .update({ handicap_strokes: 0 }, { count: "exact" })
+              .eq("game_id", input.gameId)
+              .eq("user_id", other.id),
+            1,
+            "zero the opposing player's handicap"
+          );
         }
       }
       // Handicap is a recompute INPUT — re-derive in-progress matches so existing
@@ -533,18 +583,58 @@ export const matchesRouter = router({
       const sideKeyIds = [...userSideIds, ...pgSideIds];
 
       // Drop the match first so the recompute below sees the reduced set.
-      await ctx.supabase.from("game_matches").delete().eq("id", input.matchId);
+      //
+      // #780 — the match's OWN delete asserts a count (it was read back above, so
+      // zero means a stale/foreign matchId and the cascade below would then clear
+      // a live match's data). Everything after it is error-checked only: each
+      // clears a set that may legitimately be empty — an unscored match has no
+      // score_entries, an unfinalized one no game_results.
+      //
+      // The audit called out the participant deletes specifically (§4.5): a
+      // surviving stale row is later PRESERVED rather than overwritten by
+      // assignPlayer's `ignoreDuplicates` upsert, so the failure resurfaces as a
+      // wrong handicap on a future reassignment. That is now loud.
+      //
+      // NOT transactional, unchanged — a throw partway leaves the earlier deletes
+      // applied, with the match already gone.
+      assertAffected(
+        await ctx.supabase
+          .from("game_matches")
+          .delete({ count: "exact" })
+          .eq("id", input.matchId),
+        1,
+        "remove the match"
+      );
 
       if (sideKeyIds.length > 0) {
-        await ctx.supabase.from("score_entries").delete().eq("game_id", input.gameId).in("participant_id", sideKeyIds);
-        await ctx.supabase.from("game_results").delete().eq("game_id", input.gameId).in("entity_id", sideKeyIds);
+        assertNoError(
+          await ctx.supabase.from("score_entries").delete().eq("game_id", input.gameId).in("participant_id", sideKeyIds),
+          "clear the removed match's scores"
+        );
+        assertNoError(
+          await ctx.supabase.from("game_results").delete().eq("game_id", input.gameId).in("entity_id", sideKeyIds),
+          "clear the removed match's results"
+        );
       }
       if (userSideIds.length > 0) {
-        await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId).in("user_id", userSideIds);
+        assertNoError(
+          await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId).in("user_id", userSideIds),
+          "clear the removed match's participants"
+        );
       }
       if (pgSideIds.length > 0) {
-        await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId).in("play_group_id", pgSideIds);
-        await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId).in("id", pgSideIds);
+        assertNoError(
+          await ctx.supabase.from("game_participants").delete().eq("game_id", input.gameId).in("play_group_id", pgSideIds),
+          "clear the removed match's group participants"
+        );
+        // NOTE `play_groups` cleanup here is #781's ambiguous site (§4.12): an
+        // orphaned group stays visible to listByGame's own query, and whether
+        // that is harmful is a product call. Error-checked; count deliberately
+        // left alone pending that decision.
+        assertNoError(
+          await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId).in("id", pgSideIds),
+          "clear the removed match's play groups"
+        );
       }
 
       // Recompute remaining in-progress matches — rebuilds the per-team totals so
@@ -571,12 +661,21 @@ export const matchesRouter = router({
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
+      // #780 — count asserted per row. The input is a permutation of THIS game's
+      // matches, so every id must match exactly one row; zero means the caller
+      // sent a stale or foreign id and the resulting order is silently partial.
+      // Throwing mid-loop leaves earlier rows renumbered — pre-existing and
+      // unchanged, and a re-drag re-sends the whole permutation.
       for (let i = 0; i < input.orderedMatchIds.length; i++) {
-        await ctx.supabase
-          .from("game_matches")
-          .update({ display_order: i })
-          .eq("id", input.orderedMatchIds[i])
-          .eq("game_id", input.gameId);
+        assertAffected(
+          await ctx.supabase
+            .from("game_matches")
+            .update({ display_order: i }, { count: "exact" })
+            .eq("id", input.orderedMatchIds[i])
+            .eq("game_id", input.gameId),
+          1,
+          `set display order for match ${input.orderedMatchIds[i]}`
+        );
       }
       return { ok: true };
     }),

@@ -187,8 +187,25 @@ export const ghostCrewRouter = router({
         });
 
       if (memberError) {
-        // Rollback guest user insert
-        await ctx.supabase.from("users").delete().eq("id", guest.id);
+        // Rollback the guest user insert.
+        //
+        // #782 — error-checked, count NOT asserted, and the ORDER matters: this
+        // runs inside an existing failure path, so it must not mask the error it
+        // is cleaning up after. assertNoError would throw its own message over
+        // memberError's, which is the more useful one — so the rollback's own
+        // failure is logged and the original error still propagates below.
+        // A failed rollback leaves an orphaned guest row that "can resurface
+        // stale name/email later" (audit §4.10); that is worth knowing about and
+        // is not worth replacing a better diagnostic with a worse one.
+        const { error: rollbackError } = await ctx.supabase
+          .from("users")
+          .delete()
+          .eq("id", guest.id);
+        if (rollbackError) {
+          console.error(
+            `[ghostCrew.create] rollback of orphaned guest ${guest.id} failed: ${rollbackError.message}`
+          );
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to add guest to trip members: ${memberError.message}`,
@@ -403,11 +420,24 @@ export const ghostCrewRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
+      // #782 — count asserted. Removing a guest is an explicit act on a row the
+      // caller just saw in the roster, so zero rows means the id was stale or
+      // foreign, not a benign race — and the old code reported success either
+      // way, leaving the guest visibly still on the trip. This gate is one of
+      // #786's remaining ten and will widen when the trip_members role-column
+      // trigger lands, so it is checked before that rather than after.
+      const { error, count } = await ctx.supabase
         .from("trip_members")
-        .delete()
+        .delete({ count: "exact" })
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.guestUserId);
+
+      if (!error && count === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "That crew member is not on this trip",
+        });
+      }
 
       if (error) {
         throw new TRPCError({

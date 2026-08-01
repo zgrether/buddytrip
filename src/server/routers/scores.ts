@@ -129,11 +129,31 @@ export const scoresRouter = router({
       // a pending game to score it once the gate lands). It's kept as the FALLBACK
       // for any enable path that bypasses the toggle.
       if (game.status === "pending") {
-        await createAdminClient()
+        // #782 — error-checked, count deliberately NOT asserted, and NOT thrown.
+        //
+        // Three deliberate choices, because this sits in the per-hole scoring hot
+        // path and getting it wrong costs a round:
+        //  • zero rows is LEGITIMATE — the `.eq("status","pending")` clause is a
+        //    compare-and-set, so a concurrent score write that already flipped the
+        //    status matches nothing. That is the designed race, not a failure.
+        //  • a real error is now VISIBLE, where before it wasn't destructured at
+        //    all: the score itself saved but the game stayed "Ready", which is the
+        //    confusing half-state the audit named (§4.6).
+        //  • it LOGS rather than throws. This is a non-privileged side effect on
+        //    a write that has already succeeded from the scorer's point of view;
+        //    failing their score entry over a status flag would be a worse
+        //    outcome than a stale badge, and the flag is recoverable via the mode
+        //    toggle. Loud, but not fatal.
+        const { error: statusErr } = await createAdminClient()
           .from("games")
           .update({ status: "active" })
           .eq("id", input.gameId)
           .eq("status", "pending");
+        if (statusErr) {
+          console.error(
+            `[scores.upsertEntry] failed to flip game ${input.gameId} pending→active: ${statusErr.message}`
+          );
+        }
       }
 
       const { data } = await ctx.supabase

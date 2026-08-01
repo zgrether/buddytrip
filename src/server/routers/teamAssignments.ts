@@ -138,12 +138,24 @@ export const teamAssignmentsRouter = router({
         userId: z.string(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity, and it closes a split INSIDE this one table:
+    // `assign` was already requireTripRole("Organizer") and team_assignments
+    // INSERT/UPDATE were already Owner+Organizer, so an Organizer could put a
+    // player on a team but not take them off. DELETE was the outlier; migration
+    // 101 moved `team_assignments_delete` to match.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Roster-removal lock: a removal is blocked once any game in the competition
       // has a score (it could orphan the player in a configured match).
       await assertRosterUnlocked(ctx.supabase, input.competitionId);
 
+      // #781 — count deliberately NOT asserted. Shared trip data: another
+      // organizer removing the same player first is a race, not a defect, and the
+      // roster ends in the state the caller wanted either way. NOTE this site's
+      // gate WIDENED in #788 (Organizers reach it now), which is why it was
+      // flagged for an explicit decision rather than left unexamined — the
+      // decision was to leave it. Contrast archivedIdeas.remove, which DOES
+      // assert: that row is user-scoped, so it has no second actor.
       const { error } = await ctx.supabase
         .from("team_assignments")
         .delete()
@@ -277,6 +289,14 @@ export const teamAssignmentsRouter = router({
       //
       // Independent single-row writes keyed on the (competition_id, user_id) PK,
       // so they can't race each other.
+      // #781 — counts deliberately NOT asserted on this fan-out. A sent id
+      // that no longer matches means the list changed under the drag
+      // (another device, another tab), and since these fire in parallel a
+      // mid-flight throw would leave a PARTIAL order committed — worse than
+      // the silent partial already tolerated, which a re-drag corrects by
+      // resending the whole permutation. Errors ARE surfaced below. Contrast
+      // matches.reorder, which does assert: its input is a closed set with
+      // no concurrent editor.
       const results = await Promise.all(
         input.orderedUserIds.map((userId, i) =>
           ctx.supabase

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
 import { clampStrokes } from "@/lib/handicap";
@@ -63,7 +64,15 @@ export const playGroupsRouter = router({
       }
 
       // Rebuild play_groups (SET NULL clears participants' play_group_id first).
-      await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId);
+      //
+      // #782 — error-checked; count NOT asserted (a first grouping has nothing to
+      // clear). A real failure leaves the OLD groups in place while the new ones
+      // are inserted below, so a foursome ends up split across stale and fresh
+      // groups. Non-transactional, unchanged.
+      assertNoError(
+        await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId),
+        "clear the game's existing play groups"
+      );
 
       for (let i = 0; i < input.groups.length; i++) {
         const g = input.groups[i];
@@ -72,12 +81,23 @@ export const playGroupsRouter = router({
           .from("play_groups")
           .insert({ id: groupId, game_id: input.gameId, display_name: g.name ?? `Group ${i + 1}`, tee_time: g.teeTime ?? null });
         if (gErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to create group: ${gErr.message}` });
-        const { error: aErr } = await ctx.supabase
+        // #782 — count asserted against the roster the caller sent. The audit's
+        // point (§4.11): checking `error` alone let a PARTIAL match through, so a
+        // foursome could come back with three of its four players assigned and
+        // the fourth silently left ungrouped — which then reads as a scoring-unit
+        // bug, not an assignment one.
+        const assignRes = await ctx.supabase
           .from("game_participants")
-          .update({ play_group_id: groupId })
+          .update({ play_group_id: groupId }, { count: "exact" })
           .eq("game_id", input.gameId)
           .in("user_id", g.userIds);
-        if (aErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to assign group: ${aErr.message}` });
+        if (assignRes.error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to assign group: ${assignRes.error.message}` });
+        if (assignRes.count !== g.userIds.length) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to assign group: expected ${g.userIds.length} player(s), assigned ${assignRes.count ?? "unknown"}.`,
+          });
+        }
       }
 
       return await readGroups(ctx.supabase, input.gameId);
@@ -102,12 +122,18 @@ export const playGroupsRouter = router({
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
       const strokes = clampStrokes(input.strokes);
-      const { error } = await ctx.supabase
-        .from("game_participants")
-        .update({ handicap_strokes: strokes })
-        .eq("game_id", input.gameId)
-        .eq("user_id", input.userId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set strokes: ${error.message}` });
+      // #782 — count asserted: one named player in one named game. Zero means the
+      // participant row is missing, and a handicap applied to nobody surfaces
+      // later as a wrong net score rather than as this call failing.
+      assertAffected(
+        await ctx.supabase
+          .from("game_participants")
+          .update({ handicap_strokes: strokes }, { count: "exact" })
+          .eq("game_id", input.gameId)
+          .eq("user_id", input.userId),
+        1,
+        "set the player's handicap strokes"
+      );
 
       // Re-derive in-progress results; leave a complete (frozen) game untouched.
       // Result strategy from the format definition in code (W-PERF-01); an

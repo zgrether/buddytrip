@@ -152,6 +152,9 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
+  // Was briefly Organizer+ (#788) and is Owner-only again: `role` defaults to
+  // "Organizer" and is written into trip_members, so an Organizer-gated version
+  // could mint an Organizer. See the guard comment in tripMembers.ts.
   it("inviteByEmail — planner cannot invite (Owner only)", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
@@ -468,6 +471,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
+  // Owner-only again alongside inviteByEmail (#788 reverted).
   it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
     const caller = ctx.callerAs("planner");
     await expect(

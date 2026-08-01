@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -545,11 +546,21 @@ export const gamesRouter = router({
 
       // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
       // front (1-9) is left intact. (A no-op on the first compose.)
-      await ctx.supabase
-        .from("score_entries")
-        .delete()
-        .eq("game_id", input.gameId)
-        .in("unit_label", ["10", "11", "12", "13", "14", "15", "16", "17", "18"]);
+      //
+      // #782 — error-checked, and a count assertion here would be WRONG: the
+      // comment above is the spec, and zero rows is the first-compose case. The
+      // audit originally implied this needed a count and that entry has been
+      // corrected — this is the over-correction the "legitimate zero-row" bucket
+      // exists to prevent. A real failure leaves the old nine's scores under a
+      // new stroke index, which does corrupt net scoring.
+      assertNoError(
+        await ctx.supabase
+          .from("score_entries")
+          .delete()
+          .eq("game_id", input.gameId)
+          .in("unit_label", ["10", "11", "12", "13", "14", "15", "16", "17", "18"]),
+        "clear the previous back nine's scores"
+      );
 
       const { error } = await ctx.supabase
         .from("games")
@@ -765,12 +776,20 @@ export const gamesRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ status: input.status })
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set status: ${error.message}` });
+      // #782 — count asserted. This procedure has no existence pre-check at all,
+      // unlike enableScoring/disableScoring in this same file, so a wrong or
+      // foreign gameId silently no-opped and still returned success. The
+      // `.eq("trip_id")` scoping means a foreign id matches zero rows rather than
+      // erroring, which is exactly the invisible case.
+      assertAffected(
+        await ctx.supabase
+          .from("games")
+          .update({ status: input.status }, { count: "exact" })
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId),
+        1,
+        "set the game's status"
+      );
       return { success: true };
     }),
 
@@ -820,11 +839,16 @@ export const gamesRouter = router({
       // active ones back to pending so Scoring→Setup→Scoring is a clean round-trip.
       // (`complete`/frozen match rows are left alone; scores are never touched.)
       if (next === "pending") {
-        await ctx.supabase
-          .from("game_matches")
-          .update({ status: "pending" })
-          .eq("game_id", input.gameId)
-          .eq("status", "active");
+        // #782 — error-checked; count NOT asserted. A game with no ACTIVE matches
+        // legitimately updates zero rows, so this is the correct half of the fix.
+        assertNoError(
+          await ctx.supabase
+            .from("game_matches")
+            .update({ status: "pending" })
+            .eq("game_id", input.gameId)
+            .eq("status", "active"),
+          "revert the game's active matches to pending"
+        );
       }
       return { success: true };
     }),
@@ -1053,16 +1077,33 @@ export const gamesRouter = router({
       return { success: true };
     }),
 
-  // delete — Owner-only. HARD-delete a game; all dependent rows (participants,
-  // matches, play_groups, results, score_entries, organizers) cascade via ON
-  // DELETE CASCADE. A true removal (L3-b) — the danger-zone Delete. OWNER-ONLY
-  // (Spec 1): the most destructive per-game action must match its sibling
-  // danger-zone actions (resetScoring / resetToSkeleton are requireTripRole
-  // ("Owner")) — an Organizer/co-admin no longer deletes, a game-delegate never
-  // could. The client danger zone is already isOwner-gated in all three hulls.
+  // delete — Organizer+ (#786). HARD-delete a game; all dependent rows
+  // (participants, matches, play_groups, results, score_entries, organizers)
+  // cascade via ON DELETE CASCADE. A true removal (L3-b) — the danger-zone
+  // Delete. A game-delegate still cannot reach it.
+  //
+  // This was Owner-only (Spec 1) on the reasoning that "the most destructive
+  // per-game action must match its sibling danger-zone actions" — and that
+  // internal consistency is PRESERVED: resetScoring and resetToSkeleton moved
+  // to Organizer in the same change, so all three danger-zone siblings still
+  // agree. What changed is the tier they agree on. Per the ratified rule, a
+  // game is ONE UNIT OF WORK, not a container others live inside, and running
+  // games is what an Organizer is there for; irreversibility alone is a
+  // confirmation-dialog concern, not a permission gate — and the client danger
+  // zone already confirms in all three hulls.
+  //
+  // NOTE the client AFFORDANCE has not moved yet: `useGameEditAccess.isOwner`
+  // still gates GameDangerZone in all three hulls, so an Organizer is permitted
+  // here but is not yet shown the button. That is deliberate — the same
+  // `isOwner` also gates the delegation grant, which is NOT moving, so the two
+  // need splitting apart rather than loosening together. Tracked separately;
+  // this change is the permission layer only.
+  //
+  // No RLS change was needed: `games_write` (migration 033, FOR ALL) has
+  // always been Owner+Organizer. tRPC was the only gate holding this one.
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games").select("id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
@@ -1113,12 +1154,17 @@ export const gamesRouter = router({
           }
         }
       }
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ points_distribution: input.distribution })
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set distribution: ${error.message}` });
+      // #782 — count asserted, same reasoning as setStatus above: no existence
+      // pre-check, and a foreign gameId matches zero rows instead of erroring.
+      assertAffected(
+        await ctx.supabase
+          .from("games")
+          .update({ points_distribution: input.distribution }, { count: "exact" })
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId),
+        1,
+        "set the game's points distribution"
+      );
       return { success: true };
     }),
 
@@ -1244,16 +1290,22 @@ export const gamesRouter = router({
       return (data ?? []).map((r) => r.game_id as string);
     }),
 
-  // resetScoring — owner-only, ONE game. Clears this game's RESULTS back to
-  // unscored; keeps config + identity (incl. its per-match point value). The
+  // resetScoring — Organizer+ (#786), ONE game. Clears this game's RESULTS back
+  // to unscored; keeps config + identity (incl. its per-match point value). The
   // per-game rung of the danger-zone ladder (below it: resetToSkeleton; below
   // that: delete) — the level-down sibling of competitions.resetScoring (#442).
   // Delegates to the transactional plpgsql primitive (migration 066); the SQL
-  // wrapper re-asserts owner on the game's REAL trip (authoritative), so this
+  // wrapper re-asserts the role on the game's REAL trip (authoritative), so this
   // can't be spoofed by passing a trip you own + a foreign gameId.
+  //
+  // The wrapper's guard is `assert_game_owner`, a hardcoded role check inside a
+  // plpgsql body — a THIRD gate, invisible to any pg_policies sweep. Migration
+  // 101 widened it in lockstep; without that this guard change would have moved
+  // the refusal one layer down rather than removing it. The function keeps its
+  // now-under-stating name (same trade migration 029 made for is_trip_planner).
   resetScoring: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase.rpc("reset_game_scoring", {
         p_game_id: input.gameId,
@@ -1267,13 +1319,14 @@ export const gamesRouter = router({
       return { success: true };
     }),
 
-  // resetToSkeleton — owner-only, ONE game. SUPERSET of resetScoring: the SQL
-  // primitive clears scoring then additionally clears config back to an
+  // resetToSkeleton — Organizer+ (#786), ONE game. SUPERSET of resetScoring:
+  // the SQL primitive clears scoring then additionally clears config back to an
   // unconfigured shell (keeps identity + the per-match point value, §E-1).
-  // The level-down sibling of competitions.resetToSkeleton.
+  // The level-down sibling of competitions.resetToSkeleton. Same third gate as
+  // resetScoring — `assert_game_owner`, widened in migration 101.
   resetToSkeleton: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase.rpc("reset_game_to_skeleton", {
         p_game_id: input.gameId,

@@ -15,24 +15,36 @@ type TripMemberRow = inferRouterOutputs<AppRouter>["tripMembers"]["list"][number
  * seeds `tripMembers.list` as well, so the name was renamed rather than left
  * describing half the job.
  *
- * ── Why this exists instead of just relying on HydrationBoundary ─────────────
- * The trip layout prefetches on the server and dehydrates, and the payload is
- * demonstrably correct — the streamed HTML carries the entry with
- * `status:"success"` under exactly the key the client uses
- * (`[["competitions","faceBootstrap"],{"input":{"tripId":…},"type":"query"}]`).
- * The client refetches it anyway.
+ * ── Why this existed instead of relying on HydrationBoundary — NOW FIXED ─────
+ * ⚠️ **This component is a workaround for a bug that has been fixed (#730), and
+ * is retained deliberately rather than because it is still needed.**
  *
- * That is NOT specific to one query: `competitions.getByTrip` has been prefetched
- * in that layout for far longer and shows the same symptom — measured firing on
- * the client in the first batch despite being dehydrated. Two independent queries
- * now confirm the boundary is inert there, which means every `.prefetch` in that
- * layout is decorative (#730). Worth chasing separately; not worth blocking on.
+ * The observation that produced it was exact and is worth keeping: the streamed
+ * HTML carried the entry with `status:"success"` under precisely the key the
+ * client uses, and the client refetched anyway — for `faceBootstrap`,
+ * `competitions.getByTrip` and `tripMembers.list` alike, i.e. every prefetch in
+ * that layout was decorative.
  *
- * The mechanism that IS known to work is the one the old `/leaderboard` route
- * used before Phase 3 retired it: hand the resolved value down explicitly.
- * `setData` during render is synchronous and lands before any child mounts and
- * fires its own query — the same pattern (and the same reasoning about render
- * vs effect ordering) that `LiveFaceClient` already uses to seed ITS children.
+ * The cause was NOT a key mismatch, a stale `dataUpdatedAt`, a duplicate
+ * QueryClient or boundary placement. `createServerSideHelpers().dehydrate()`
+ * returns a superjson ENVELOPE while being TYPED as a `DehydratedState`, so
+ * `HydrationBoundary` read `state.queries`, found `undefined`, and hydrated
+ * nothing — silently, and invisibly to `tsc`. `HydrateQueryState` deserializes
+ * it first; `hydrationTransport.test.ts` pins the contract.
+ *
+ * **Retirement is a separate, revertable change.** The boundary is proven by
+ * test but not yet by a cold open, and two mechanisms briefly overlapping is
+ * safe where neither working is not. `setData` during render is idempotent
+ * against an already-hydrated cache — it writes the same server value under the
+ * same key — so the overlap cannot corrupt anything; it is redundant, not
+ * harmful. Remove this once a cold open confirms the hydrated queries do not
+ * fire.
+ *
+ * The mechanism it uses is the one the old `/leaderboard` route used before
+ * Phase 3 retired it: hand the resolved value down explicitly. `setData` during
+ * render is synchronous and lands before any child mounts and fires its own
+ * query — the same pattern (and the same reasoning about render vs effect
+ * ordering) that `LiveFaceClient` already uses to seed ITS children.
  *
  * ── Why `tripMembers.list` is here ──────────────────────────────────────────
  * It is what `useTripRole` reads, and a pending role is indistinguishable from a
