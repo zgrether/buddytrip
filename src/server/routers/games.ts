@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -545,11 +546,21 @@ export const gamesRouter = router({
 
       // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
       // front (1-9) is left intact. (A no-op on the first compose.)
-      await ctx.supabase
-        .from("score_entries")
-        .delete()
-        .eq("game_id", input.gameId)
-        .in("unit_label", ["10", "11", "12", "13", "14", "15", "16", "17", "18"]);
+      //
+      // #782 — error-checked, and a count assertion here would be WRONG: the
+      // comment above is the spec, and zero rows is the first-compose case. The
+      // audit originally implied this needed a count and that entry has been
+      // corrected — this is the over-correction the "legitimate zero-row" bucket
+      // exists to prevent. A real failure leaves the old nine's scores under a
+      // new stroke index, which does corrupt net scoring.
+      assertNoError(
+        await ctx.supabase
+          .from("score_entries")
+          .delete()
+          .eq("game_id", input.gameId)
+          .in("unit_label", ["10", "11", "12", "13", "14", "15", "16", "17", "18"]),
+        "clear the previous back nine's scores"
+      );
 
       const { error } = await ctx.supabase
         .from("games")
@@ -757,12 +768,20 @@ export const gamesRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ status: input.status })
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set status: ${error.message}` });
+      // #782 — count asserted. This procedure has no existence pre-check at all,
+      // unlike enableScoring/disableScoring in this same file, so a wrong or
+      // foreign gameId silently no-opped and still returned success. The
+      // `.eq("trip_id")` scoping means a foreign id matches zero rows rather than
+      // erroring, which is exactly the invisible case.
+      assertAffected(
+        await ctx.supabase
+          .from("games")
+          .update({ status: input.status }, { count: "exact" })
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId),
+        1,
+        "set the game's status"
+      );
       return { success: true };
     }),
 
@@ -812,11 +831,16 @@ export const gamesRouter = router({
       // active ones back to pending so Scoring→Setup→Scoring is a clean round-trip.
       // (`complete`/frozen match rows are left alone; scores are never touched.)
       if (next === "pending") {
-        await ctx.supabase
-          .from("game_matches")
-          .update({ status: "pending" })
-          .eq("game_id", input.gameId)
-          .eq("status", "active");
+        // #782 — error-checked; count NOT asserted. A game with no ACTIVE matches
+        // legitimately updates zero rows, so this is the correct half of the fix.
+        assertNoError(
+          await ctx.supabase
+            .from("game_matches")
+            .update({ status: "pending" })
+            .eq("game_id", input.gameId)
+            .eq("status", "active"),
+          "revert the game's active matches to pending"
+        );
       }
       return { success: true };
     }),
@@ -1122,12 +1146,17 @@ export const gamesRouter = router({
           }
         }
       }
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ points_distribution: input.distribution })
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set distribution: ${error.message}` });
+      // #782 — count asserted, same reasoning as setStatus above: no existence
+      // pre-check, and a foreign gameId matches zero rows instead of erroring.
+      assertAffected(
+        await ctx.supabase
+          .from("games")
+          .update({ points_distribution: input.distribution }, { count: "exact" })
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId),
+        1,
+        "set the game's points distribution"
+      );
       return { success: true };
     }),
 
