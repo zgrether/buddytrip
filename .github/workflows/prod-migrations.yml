@@ -1,0 +1,211 @@
+name: Prod migrations (manual)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Apply `supabase/migrations/` to the PRODUCTION database, by hand, from a
+# browser — including a phone.
+#
+# THIS IS THE EXCEPTION PATH, NOT THE DEFAULT. `supabase db push --linked` from
+# a laptop stays the normal way to apply a migration. This exists for the case
+# that produced it: a confirmed production data-loss fix (#784) sitting
+# unmergeable behind a migration nobody could push, because the only person with
+# credentials was away from a laptop for days.
+#
+# The deliberate friction in CLAUDE.md's migration workflow — application is
+# manual and SEPARATE from merging — is what caught `044`'s replay bug. A button
+# keeps that: it is still a deliberate act, still a decision, still not something
+# a merge can do on its own. Hence `workflow_dispatch` and nothing else. Do not
+# add a `push:`, a `pull_request:`, or a `schedule:` trigger to this file.
+#
+# What it does NOT do, on purpose:
+#   - no rollback / undo — CLAUDE.md's rule is a NEW migration, never an edit or
+#     a revert. Recovery from a bad migration is Supabase PITR, outside this file.
+#   - no seeds, no `db reset`, no `--include-all` (see the guard notes below).
+#   - no check that the code depending on the schema has deployed. See `081`,
+#     documented in ENVIRONMENT_AUDIT.md — that one is the operator's judgement.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "list = show applied vs pending, changes nothing. push = APPLY pending migrations to production."
+        type: choice
+        required: true
+        default: list
+        options:
+          - list
+          - push
+
+# Never cancel an in-flight run: `cancel-in-progress: true` on a job that is
+# mid-`db push` would kill it partway through the migration set. Serialise
+# instead — a second dispatch queues behind the first.
+concurrency:
+  group: prod-migrations
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # NOT a secret — this ref ships to every browser inside
+  # `NEXT_PUBLIC_SUPABASE_URL`. It is a literal here on purpose: it is what makes
+  # the wrong-project guard below possible, and it puts the target project in the
+  # log so a misdirected dispatch is visible rather than silent.
+  EXPECTED_PROJECT_REF: nezhuwyfirrbmyojpiyx
+  # Pinned to match `ci.yml`. An unpinned CLI applying production schema is a
+  # version-drift hazard; `latest` also resolves through a gateway that
+  # intermittently times out.
+  SUPABASE_CLI_VERSION: 2.78.1
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      # ── Guard 1: the ref ──────────────────────────────────────────────────
+      # `workflow_dispatch` offers a branch picker, so the single easiest way to
+      # damage prod with this file is to dispatch it from a feature branch and
+      # apply that branch's unmerged migrations. The CLI cannot see this — the
+      # files are simply there, and they look exactly like every other migration.
+      - name: Refuse to run from anything but main
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Dispatched from '$GITHUB_REF'. This workflow only runs from refs/heads/main — from any other ref it would apply that ref's migrations, which have not necessarily been merged or CI-tested, to production."
+            exit 1
+          fi
+          echo "Ref OK: $GITHUB_REF"
+
+      - uses: actions/checkout@v4
+
+      # Only the CLI is needed. No `npm ci`, no `setup-node`, and deliberately no
+      # `supabase start` — `migration list` and `db push` talk to the remote
+      # only, so there is no local stack and no Docker in this job.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # ── Guard 2: the credential, and the project it points at ─────────────
+      # The connection string is NEVER echoed. GitHub masks the exact secret
+      # value, but not substrings of it, and the Postgres password lives inside
+      # this one — so it is matched with shell globbing and never printed, not
+      # even into a variable that something later might log.
+      - name: Check the secret is present and targets the expected project
+        env:
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_PROD_DB_URL:-}" ]; then
+            echo "::error::Repository secret SUPABASE_PROD_DB_URL is not set. Add it under Settings → Secrets and variables → Actions. Value: the production Postgres URI from Supabase → Project Settings → Database → Connection string (URI, session pooler, password filled in, percent-encoded)."
+            exit 1
+          fi
+          case "$SUPABASE_PROD_DB_URL" in
+            *"$EXPECTED_PROJECT_REF"*) ;;
+            *)
+              echo "::error::SUPABASE_PROD_DB_URL does not reference project $EXPECTED_PROJECT_REF. Refusing to apply migrations to an unexpected database. (The URL itself is not printed — it contains the password.)"
+              exit 1
+              ;;
+          esac
+          echo "Secret present, and it targets $EXPECTED_PROJECT_REF."
+
+      - name: Name what this run is about to touch
+        run: |
+          set -euo pipefail
+          {
+            echo "### Prod migrations — \`${{ inputs.mode }}\`"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Project | \`$EXPECTED_PROJECT_REF\` |"
+            echo "| Ref | \`$GITHUB_REF\` |"
+            echo "| Commit | \`$GITHUB_SHA\` |"
+            echo "| CLI | \`$SUPABASE_CLI_VERSION\` |"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ── Always: the read-only picture ─────────────────────────────────────
+      # Runs in BOTH modes. In `list` mode it is the whole job; in `push` mode it
+      # is the record of what the push was about to do, captured in the same run
+      # as the push itself — a `list` from an earlier run could have been a
+      # different commit.
+      #
+      # Two views because they answer different questions: `migration list` gives
+      # the full applied-vs-pending table (`Local | Remote | Time (UTC)`), and
+      # `db push --dry-run` gives the exact set this CLI would apply — which is
+      # not always "everything pending" (see the --include-all note below).
+      #
+      # Expect a couple of `WARN: environment variable is unset: GOOGLE_CLIENT_ID`
+      # lines first — `supabase/config.toml` interpolates those for local auth
+      # config. Harmless here; nothing in this job reads them.
+      - name: Applied vs pending (read-only)
+        env:
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          set -euo pipefail
+          supabase migration list --db-url "$SUPABASE_PROD_DB_URL"
+
+      - name: What a push would apply (dry run, writes nothing)
+        env:
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          set -euo pipefail
+          {
+            echo "#### Pending — what a push would apply"
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # `--yes` guards against a prompt on a non-TTY runner; `--dry-run` is
+          # what guarantees nothing is written.
+          supabase db push --db-url "$SUPABASE_PROD_DB_URL" --dry-run --yes \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Only on explicit selection: the write ─────────────────────────────
+      # `list` is the default input, so a dispatch tapped by accident — or by
+      # someone who just wanted to see the state — stops above this step.
+      #
+      # NOTE the flags that are NOT here. `--include-all` would apply local
+      # migrations timestamped BEFORE the newest one already on prod. Without it
+      # the CLI stops and names them ("Found local migration files to be inserted
+      # before the last migration on remote database"), which is the correct
+      # outcome: out-of-order application is a real hazard in this repo, where two
+      # open branches can pick the same `NNN` and ordering is by timestamp
+      # (CLAUDE.md, Enforced Patterns #3). Adding that flag would convert a loud
+      # stop into a silent out-of-order apply. Do not add it.
+      #
+      # Likewise no `continue-on-error` and no output redirection: drift, a bad
+      # credential, or a failing statement must fail the job.
+      - name: Apply pending migrations to production
+        if: ${{ inputs.mode == 'push' }}
+        env:
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          set -euo pipefail
+          echo "Applying to $EXPECTED_PROJECT_REF from $GITHUB_SHA"
+          supabase db push --db-url "$SUPABASE_PROD_DB_URL" --yes
+
+      # Re-read after the write so the run ENDS on the resulting state rather
+      # than on the intent. This is also where a partial apply would show.
+      - name: Resulting state
+        if: ${{ inputs.mode == 'push' }}
+        env:
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          set -euo pipefail
+          {
+            echo "#### Applied — resulting state"
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          supabase migration list --db-url "$SUPABASE_PROD_DB_URL" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```'
+            echo
+            echo "> Reminder: this applied SCHEMA only. If the code that reads it"
+            echo "> has not deployed yet, prod is now ahead of the app — the safe"
+            echo "> direction for an additive migration, and the wrong one for a"
+            echo "> removal. See ENVIRONMENT_AUDIT.md."
+          } >> "$GITHUB_STEP_SUMMARY"
