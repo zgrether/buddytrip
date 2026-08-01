@@ -29,16 +29,16 @@ describe("ideas router", () => {
     expect(idea.title).toBe("Scottsdale");
   });
 
-  it("create — planner cannot create", async () => {
+  // Reversed by #786: proposing where the trip might go is Organizer work.
+  it("create — planner (Organizer) CAN create", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(
-      caller.ideas.create({
-        tripId,
-        id: genId("idea"),
-        title: "Nope",
-        location: "Nowhere",
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const idea = await caller.ideas.create({
+      tripId,
+      id: genId("idea"),
+      title: "Organizer's idea",
+      location: "Somewhere",
+    });
+    expect(idea.title).toBe("Organizer's idea");
   });
 
   it("create — member cannot create", async () => {
@@ -82,11 +82,17 @@ describe("ideas router", () => {
     expect(result.voted).toBe(false);
   });
 
-  it("remove — planner cannot remove", async () => {
+  // Reversed by #786: an idea is one unit of work, not a container.
+  it("remove — planner (Organizer) CAN remove", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(
-      caller.ideas.remove({ tripId, ideaId })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const doomed = await ctx.caller().ideas.create({
+      tripId,
+      id: genId("idea"),
+      title: "Organizer removes this",
+      location: "Somewhere",
+    });
+    const result = await caller.ideas.remove({ tripId, ideaId: doomed.id });
+    expect(result.success).toBe(true);
   });
 
   it("remove — owner can remove", async () => {

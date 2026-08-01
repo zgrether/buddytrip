@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -207,7 +208,12 @@ export const datePollRouter = router({
         answer: z.enum(["yes", "no", "maybe"]).nullable(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Recording availability for someone standing
+    // next to you is running the trip. All FOUR backing policies moved with it
+    // (migration 101): the "_ghost" pair (voting for a placeholder) and the
+    // "_owner_any" pair (voting for a real member) — moving one pair would
+    // have left an Organizer able to vote for guests but not for people.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Confirm the target is a member of this trip
       const { data: member } = await ctx.supabase
@@ -381,10 +387,16 @@ export const datePollRouter = router({
           .eq("window_id", lockedWindowId);
 
         if ((count ?? 0) === 0) {
-          await ctx.supabase
-            .from("date_windows")
-            .delete()
-            .eq("id", lockedWindowId);
+          // #782 — error-checked, count deliberately NOT asserted. The window is
+          // read back as zero-vote immediately above, but between that read and
+          // this delete another path could legitimately have removed it, so zero
+          // rows is a benign race rather than a defect. A real failure is not:
+          // it leaves an orphan window that the clear below then points away
+          // from, which is the dangling reference this pair produces.
+          assertNoError(
+            await ctx.supabase.from("date_windows").delete().eq("id", lockedWindowId),
+            "remove the unvoted locked date window"
+          );
         }
       }
 
@@ -407,11 +419,20 @@ export const datePollRouter = router({
         });
       }
 
-      // Clear locked_window_id
-      await ctx.supabase
-        .from("date_polls")
-        .update({ locked_window_id: null, open: true })
-        .eq("trip_id", ctx.tripId);
+      // Clear locked_window_id.
+      //
+      // #782 — the second half of the pair the audit flagged (§4.8): if the
+      // window delete above succeeded and this doesn't, `locked_window_id`
+      // points at a row that no longer exists. Count is NOT asserted: a trip
+      // with no `date_polls` row yet has nothing to clear and that is legal, so
+      // zero rows here is a no-op rather than a failure.
+      assertNoError(
+        await ctx.supabase
+          .from("date_polls")
+          .update({ locked_window_id: null, open: true })
+          .eq("trip_id", ctx.tripId),
+        "clear the locked date window"
+      );
 
       return data;
     }),
@@ -430,6 +451,11 @@ export const datePollRouter = router({
     .mutation(async ({ ctx }) => {
       // Clear the trip dates and flip poll_mode back on in a single update
       // so the UI transitions in one render.
+      // #781 — returnToPoll's writes keep error checks and no count
+      // assertions. A trip that never opened a poll has no date_polls row to
+      // reopen, so zero rows there is a legal no-op; asserting would make
+      // "return to poll" throw on exactly the trips where the request is
+      // harmless.
       const { error: tripErr } = await ctx.supabase
         .from("trips")
         .update({

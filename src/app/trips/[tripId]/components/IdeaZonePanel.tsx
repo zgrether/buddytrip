@@ -85,7 +85,6 @@ function IdeaCard({
   idea,
   tripId,
   canEdit,
-  isOwner,
   tripStartDate,
   currentUserId,
   memberData,
@@ -96,8 +95,10 @@ function IdeaCard({
 }: {
   idea: Idea;
   tripId: string;
+  /** Owner OR Organizer. IdeaCard no longer takes `isOwner`: every control it
+   *  renders (set-destination, remove/archive) moved to Organizer in #788, so
+   *  the two flags had the same answer here and keeping both invited drift. */
   canEdit: boolean;
-  isOwner: boolean;
   tripStartDate?: string | null;
   currentUserId?: string;
   memberData: { memberId: string; displayName: string; avatar_icon?: string | null }[];
@@ -767,8 +768,13 @@ function IdeaCard({
             />
           )}
 
-          {/* Footer actions — owner only (set destination + remove) */}
-          {isOwner && (
+          {/* Footer actions — Owner OR Organizer (#789). Set-destination is
+              trips.lockDestination and the × opens the remove/archive modal
+              (ideas.remove / archivedIdeas.archive); all three moved to
+              requireTripRole("Organizer") in #788. Deliberately `canEdit`, not
+              `isOwner` — the crew controls further down this file stay on
+              `isOwner` because tripMembers.remove did NOT move. */}
+          {canEdit && (
             <div
               className="flex items-center justify-between pt-3 mt-auto"
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
@@ -1676,6 +1682,9 @@ export function CoPlannerPanel({
       <div className="space-y-1.5">
         {planners.map((m) => {
           const isSelf = m.user_id === currentUser?.id;
+          // DELIBERATELY `isOwner` (#789): this is `tripMembers.remove`, one of
+          // the held-back deviations — the server still refuses an Organizer, so
+          // showing the × would be worse than hiding it.
           const canRemove = isOwner && !isSelf && m.role !== "Owner";
           const hasVoted = allVoterIds.has(m.user_id);
           return (
@@ -1704,7 +1713,18 @@ export function CoPlannerPanel({
         })}
       </div>
 
-      {/* Add planner — reuses CrewSearchInput with Organizer default */}
+      {/* Add planner — reuses CrewSearchInput with Organizer default.
+          DELIBERATELY STILL `isOwner` (#789). Both of this block's actions are
+          Owner-only, by two DIFFERENT routes, which is why it looks un-migrated
+          and isn't:
+            • `tripMembers.inviteByEmail` — was moved to Organizer in #788 and
+              REVERTED in #790: it writes `role` (default "Organizer") straight
+              into trip_members, so an Organizer-gated version could mint an
+              Organizer. Sanctioned Owner-only until the role INPUT is split.
+            • `tripMembers.add` — one of the held-back deviations (#786): its
+              trip_members write needs a role-column trigger before the policy
+              can widen.
+          If either moves later, check BOTH before touching this line. */}
       {isOwner && (
         <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
           <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1866,7 +1886,10 @@ export default function IdeaZonePanel({
   const planningInvitation = buildPlanningInvitation(trip);
 
   if (ideasTyped.length === 0) {
-    if (!isOwner) {
+    // `canEdit`, not `isOwner` (#789): an Organizer can add ideas now, so the
+    // "waiting on the owner" empty state would be telling them to wait for
+    // themselves.
+    if (!canEdit) {
       const ownerName =
         members.find((m) => m.role === "owner")?.displayName ?? "The owner";
       return (
@@ -1993,7 +2016,7 @@ export default function IdeaZonePanel({
             className="flex-1 text-sm leading-relaxed"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            {isOwner
+            {canEdit
               ? "Add your top contenders from the catalog or enter your own — compare them side by side, then let the crew weigh in."
               : "Weigh in on the ideas below — react, comment, and vote for your favorite to help the crew decide where to go."}
           </p>
@@ -2026,7 +2049,6 @@ export default function IdeaZonePanel({
               idea={idea}
               tripId={tripId}
               canEdit={canEdit}
-              isOwner={isOwner}
               tripStartDate={trip.start_date}
               currentUserId={currentUser?.id}
               memberData={memberData}
@@ -2036,7 +2058,8 @@ export default function IdeaZonePanel({
               onDelete={setDeleteIdea}
             />
           ))}
-          {isOwner && <AddIdeaCard onClick={() => setShowAddModal(true)} />}
+          {/* ideas.create — Organizer+ since #788. */}
+          {canEdit && <AddIdeaCard onClick={() => setShowAddModal(true)} />}
         </div>
       </div>
 

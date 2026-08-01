@@ -6,8 +6,12 @@
 `canEdit`/`isOwner` guards. The tRPC gates are the source of truth — this doc
 mirrors them.*
 
-*Last reconciled against the code: 2026-06-07 (see **Audit notes** at the end
+*Last reconciled against the code: 2026-07-31 (see **Audit notes** at the end
 for what changed and the open questions).*
+
+*The **Owner/Organizer principle** below is the ratified INTENT (#770). Where the
+code differs, the code is ground truth and the difference is enumerated as a
+deviation — this doc no longer describes drift as though it were design.*
 
 ---
 
@@ -22,9 +26,84 @@ unchanged — those describe a phase, not the role.
 
 | Role | Code/DB value (`TripRole`) | Description |
 |------|----------------------------|-------------|
-| **Owner** | `'Owner'` | Full control. Creates the trip, owns the crew roster, locks decisions, transfers/deletes the trip. |
-| **Organizer** | `'Organizer'` | Planning authority. Edits trip details, dates, ideas, lodging, agenda, competition, news, tiles. Cannot manage the roster, lock the destination, transfer, or delete. |
+| **Owner** | `'Owner'` | Everything an Organizer can do, plus changing who is trusted, ending containers, and erasing others' content. |
+| **Organizer** | `'Organizer'` | **Everything the Owner can do**, except the five exceptions in the principle below. |
 | **Member** | `'Member'` | Participant. Views everything on the trip, votes, chats (crew), logs expenses + own travel. Cannot edit trip configuration. |
+
+### The Owner/Organizer principle
+
+> **An Organizer helps run the trip. Only the Owner changes who is trusted,
+> ends a container, or erases everyone else's content.**
+
+That is the whole rule. Everything else an Owner can do, an Organizer can do.
+
+It yields exactly **five** exceptions:
+
+| # | Exception | Procedure | Why |
+|---|---|---|---|
+| 1 | Creating or elevating Organizers | `tripMembers.updateRole` | the Owner declares who he trusts; a trusted party can't extend that trust |
+| 2 | Deleting the trip | `trips.delete` | ends the top-level container |
+| 3 | Transferring ownership | `trips.transferOwnership` | hands over the trust relationship itself |
+| 4 | Deleting a competition | `competitions.delete` | ends a container **within** the trip — see below |
+| 5 | Clearing a chat channel | `messages.clearChannel` | erases everyone's content inside a container that survives — see below |
+
+**Why the rule says "a container" and not "the trip".** Exception 4 is the one
+that generalises it. A competition is not a unit of work; it is a container that
+teams, rosters, assignments and whole games live inside, and removing it cascades
+across all of them (there is a `delete_competition_cascade` RPC precisely because
+it is not a single-row delete). Ending something that other people's work lives
+inside is the Owner's call, at any level of the tree — not only at the top.
+
+**The test for a NEW object,** so this carries without anyone editing this file
+again: ask whether deleting it *destroys a container other objects live in and
+cascades to them*, or whether it removes *one unit of work*. A competition is
+the former. A **game is the latter** — an Organizer may delete a game, reset its
+scoring, and reset it to skeleton, even though those are destructive, because a
+game is a thing the Organizer is there to run. Safety for destructive-but-
+in-scope actions belongs in a **confirmation dialog, not a permission gate**
+(all three such actions already have one).
+
+**The SECOND reason, which the container test does not catch.** Exception 5
+fails that test and is still Owner-only, so the distinguishing property is worth
+stating on its own: `messages.clearChannel` doesn't *end* anything — the channel
+keeps existing — it **erases everyone else's contributions inside it**. A game
+reset destroys work too, but that work *is* the game, and the game is the one
+unit the Organizer is there to run. Clearing chat destroys thirty people's
+messages while the trip carries on around the hole. So there are two independent
+Owner-only reasons, and a new procedure needs to clear both:
+
+1. **Ending a container** others' work lives inside (exceptions 2, 4).
+2. **Erasing others' content inside a container that survives** (exception 5).
+
+Neither is "it's destructive" — destructiveness alone is a confirmation-dialog
+problem. What makes these Owner-only is *whose* work is lost and whether the
+thing it lived in is going with it. Note the asymmetry that decides ties: if an
+Organizer genuinely needs to clear a channel mid-trip they can ask the Owner,
+and the cost is one message; if an Organizer clears it and shouldn't have,
+nothing brings it back. Being wrong in the restrictive direction is cheap.
+
+Stated as a PRINCIPLE rather than a list of permitted actions on purpose: a list
+has to be re-derived and re-checked every time a feature is added, and the
+previous version of this section was a list (*"Edits trip details, dates, ideas,
+lodging, agenda, competition, news, tiles"*) that had already drifted out of step
+with the code. A principle tells you what to do for the NEXT procedure without
+anyone updating this file.
+
+**Applying it to new work:** gate on `requireTripRole("Organizer")` unless the
+action is one of the five above, or trips either reason — it ends a container,
+or it erases others' content. If you find yourself writing
+`requireTripRole("Owner")` for anything else, that is a deviation from this rule
+and needs a reason — not a shrug.
+
+> **⚠️ The code does not YET fully match this principle — 10 of 19 deviations
+> remain.** #786 reconciled 11 across both layers (migration 101 + the tRPC
+> guards), then **2 were reverted** — see the deviations section. The 8 that are left are not drift: each is blocked by a specific
+> gate that cannot move without a separate, deliberate change, and each is
+> enumerated with its blocker in **Audit notes → Owner/Organizer deviations** at
+> the end of this file. Until they are reconciled, the per-row matrix below
+> reflects the CODE, which is ground truth; where a row says Owner-only and the
+> principle says Organizer, the row is a known deviation, not a counter-example
+> to the rule.
 
 **Derived flags used in code:**
 - `isOwner = viewerRole === 'Owner'`
@@ -51,7 +130,7 @@ Each row notes the **tRPC procedure** (authoritative gate).
 | Rename trip | ✓ | ✓ | — | `renameTripName` |
 | Edit "about" message | ✓ | ✓ | — | `updateAboutMessage` |
 | Change destination | ✓ | ✓ | — | `changeDestination` |
-| Lock destination | ✓ | — | — | `lockDestination` *(Owner)* |
+| Lock destination | ✓ | ✓ | — | `lockDestination` *(Organizer+, #786)* |
 | Transfer ownership | ✓ | — | — | `transferOwnership` *(Owner)* |
 | Delete trip | ✓ | — | — | `delete` *(Owner)* |
 
@@ -65,7 +144,7 @@ Each row notes the **tRPC procedure** (authoritative gate).
 | Lock the winning window | ✓ | ✓ | — | `datePoll.lockDateWindow` |
 | Clear dates / return to poll | ✓ | ✓ | — | `datePoll.unlock` / `returnToPoll` |
 | Vote on a window (self) | ✓ | ✓ | ✓ | `datePoll.castDateVote` |
-| Vote on behalf of a member | ✓ | — | — | `datePoll.castVoteForMember` **(Owner only)** |
+| Vote on behalf of a member | ✓ | ✓ | — | `datePoll.castVoteForMember` *(Organizer+, #786)* |
 
 ### Destination ideas — `ideas`, `ideaLodging`, `archivedIdeas`
 
@@ -74,23 +153,32 @@ Each row notes the **tRPC procedure** (authoritative gate).
 | View ideas | ✓ | ✓ | ✓ | `ideas.list` |
 | Browse global idea catalog | ✓ | ✓ | ✓ | `ideas.catalogList` *(any authed)* |
 | Vote on an idea | ✓ | ✓ | ✓ | `ideas.vote` |
-| Add idea | ✓ | — | — | `ideas.create` *(Owner)* |
-| Remove idea | ✓ | — | — | `ideas.remove` *(Owner)* |
+| Add idea | ✓ | ✓ | — | `ideas.create` *(Organizer+, #786)* |
+| Remove idea | ✓ | ✓ | — | `ideas.remove` *(Organizer+, #786)* |
 | Edit idea details | ✓ | ✓ | — | `ideas.update` |
 | Suggest / edit lodging options on an idea | ✓ | ✓ | ✓ | `ideaLodging.create` / `update` / `remove` *(member)* |
-| Archive an idea to personal archive | ✓ | — | — | `archivedIdeas.archive` *(Owner)* |
+| Archive an idea to personal archive | ✓ | ✓ | — | `archivedIdeas.archive` *(Organizer+, #786)* |
 | View / remove **own** archived ideas | ✓ | ✓ | ✓ | `archivedIdeas.list` / `remove` *(self, via RLS)* |
 
 ### Crew / roster — `tripMembers`, `ghostCrew`
 
-Roster management is **Owner-only**. Organizers plan the trip; the crew list —
-who's in, what they're called, what role they hold — is the Owner's.
+Roster management **split in #786**, and the rows below reflect the code today.
+Inviting (`inviteByEmail` / `sendInvitationBlast`) moved to Organizer — it is
+running the trip and does not change who is trusted. The rest of this block is
+still Owner-only, and that is a **known deviation with a named blocker**, not a
+second rule: widening `trip_members` writes at the RLS layer would let an
+Organizer set any member's `role` via direct PostgREST, so it needs a
+role-column trigger first (see *Audit notes → Owner/Organizer deviations*).
+Only `updateRole` is legitimately Owner-only on principle (exception 1).
+
+An earlier version of this paragraph justified the whole block ("the crew list
+is the Owner's"), which read as a principle and competed with the actual one.
 
 | Action | Owner | Organizer | Member | tRPC |
 |--------|:-----:|:---------:|:------:|------|
 | View roster | ✓ | ✓ | ✓ | `tripMembers.list`, `checkEmail` |
 | Add member | ✓ | — | — | `tripMembers.add` *(Owner)* |
-| Invite by email / blast | ✓ | — | — | `inviteByEmail`, `sendInvitationBlast` *(Owner)* |
+| Invite by email / blast | ✓ | — | — | `inviteByEmail`, `sendInvitationBlast` *(Owner — see the deviations note)* |
 | Promote/demote role | ✓ | — | — | `updateRole` *(Owner; not self)* |
 | Rename (trip nickname) | ✓ | — | — | `updateNickname` *(Owner; not the Owner)* |
 | Remove member | ✓ | — | — | `remove` *(Owner; not self)* |
@@ -144,7 +232,7 @@ who's in, what they're called, what role they hold — is the Owner's.
 | **Edit team identity** (name / short / color) | ✓ | **—** | **captain of *that* team** | `teams.update` *(Owner or that team's captain — **not** a plain Organizer; mig 065)* |
 | Delete a team | ✓ | — | — | `teams.delete` *(Owner)* |
 | Assign member to a team | ✓ | ✓ | — | `teamAssignments.assign` |
-| Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
+| Remove a team assignment | ✓ | ✓ | — | `teamAssignments.remove` *(Organizer+, #786)* |
 | **Reorder a team's roster** (canonical order) | ✓ | **—** | **captain of *that* team** | `teamAssignments.reorder` *(Owner or that team's captain — **not** a plain Organizer; same gate as `teams.update`; mig 094)* |
 | Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
 | **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
@@ -232,27 +320,20 @@ who's in, what they're called, what role they hold — is the Owner's.
 > renamed `game_organizers`→`game_delegates` / `is_game_organizer`→`is_game_delegate`
 > in migration 061). Granting is a trip-staff act (`requireTripRole('Organizer')`).
 
-> **⚠️ FLAGGED CONTRADICTION — this paragraph does not match the code, and the
-> code wins.** It claims the RUN-action tier is NARROWER than game edit: that
-> "a plain **Organizer** is NOT a run-action unless they're also the game's
-> delegate". The code has never done that. `requireGameRunAction` and
-> `requireGameEdit` are the same function with a different error string — both
-> parse the same input, both delegate to the same `canEditGame`, both `next()`
-> identically — and `canEditGame` passes anyone at `co_admin` or above, which the
-> trip→competition container mapping grants to every trip **Organizer**. The test
-> suite asserts the code's behaviour explicitly ("a co-admin (trip Organizer) and
-> a game-delegate can post"), so the doc is the thing that is wrong, not the test.
-> This was NOT introduced by the finish/post merge — the merge only surfaced it —
-> and it is deliberately left unresolved here rather than silently rewritten,
-> because "should a trip Organizer be able to post results?" is a permissions
-> decision, not a documentation fix. Until it is answered, treat the code as
-> authoritative: **Owner, co-admin/Organizer, or that game's delegate.**
->
 > **Competition RUN-actions (Slice D Run/Post §5).** Opening score correction
 > (`games.openCorrection`) is enforced server-side by `requireGameRunAction`.
 > Finalizing a game — every format, including the non-golf placement post that
 > used to have its own `games.post` procedure — runs behind `requireGameEdit`.
-> Both gates resolve to the same rule (see the flag above). Finalizing is
+> Both gates resolve to the SAME predicate — `requireGameEdit` and
+> `requireGameRunAction` are the same function with a different error string
+> (identical parsing, identical `canEditGame`, identical `next()`), and
+> `canEditGame` passes anyone at `co_admin` or above, which the trip→competition
+> mapping grants every trip **Organizer**. So both are: **Owner, Organizer, or
+> that game's delegate** — consistent with the Owner/Organizer principle at the
+> top, since neither changes who is trusted nor ends a container. (An earlier
+> version of this note claimed the RUN tier was narrower and excluded a plain
+> Organizer. The code
+> never did that, and #770 resolved it in the code's favour.) Finalizing is
 > **re-runnable** (Open → Posted ⇄ Correcting), never a permanent lock-out. A
 > posted game's scores are frozen (`scores.upsertEntry`/`deleteEntry` return
 > FORBIDDEN) until the owner/delegate opens correction; results stay visible to
@@ -280,7 +361,7 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Read / send **Organizers** chat | ✓ | ✓ | — | `list` / `send` *(visibility `planning`)* |
 | Read / send **Team** chat | team members only | — | — | `list` / `send` *(channel `team`; team assignment required)* |
 | Mark a channel read | ✓ | ✓ | ✓ | `markRead` *(per visibility; planning = Organizer+)* |
-| Clear a channel's messages | ✓ | — | — | `clearChannel` *(Owner)* |
+| Clear a channel's messages | ✓ | — | — | `clearChannel` *(Owner — sanctioned exception 5, not a deviation)* |
 
 ### Account / profile (not trip-scoped) — `users`, `feedback`
 
@@ -326,8 +407,10 @@ This pass reconciled the doc against the tRPC routers. Highlights:
 ### Corrected — behavior the old doc had wrong
 - **Add expense** — old doc said Organizer+ (`canEdit`); code allows **any
   member** (`expenses.create` is `requireTripMember`). Documented as any member.
-- **Vote on behalf of member** — old doc said Organizer+; code is **Owner only**
-  (`castVoteForMember`).
+- **Vote on behalf of member** — old doc said Organizer+; code was **Owner only**
+  at the time of that audit (`castVoteForMember`). #786 moved it back to
+  Organizer+, so the old doc's row is now the correct one again — kept here
+  because this section records what the 2026-06-07 audit found, not current state.
 - **Disable/delete competition** & **delete team** — Owner only (the old doc
   lumped all competition edits under `canEdit`).
 - **Organizers chat** — the old "trip chat: any member" row missed the
@@ -372,11 +455,128 @@ only write path) but tightened in **migration 030** so RLS is a true backstop:
 | Table / cmd | Was | Now (migration 030) |
 |-------------|-----|---------------------|
 | `trip_members` INSERT/UPDATE | self **or** Owner+Organizer | self **or** Owner — matches Owner-only roster mgmt |
-| `invites` INSERT | any trip member | Owner — matches `inviteByEmail` |
-| `date_poll_votes` "_ghost" (vote for a guest) | Owner+Organizer | Owner — matches `castVoteForMember` |
+| `invites` INSERT | any trip member | Owner (030) → **Owner+Organizer** (101). NOTE this is now LOOSER than `inviteByEmail`'s tRPC gate, which reverted to Owner — the one place the two layers deliberately disagree, because the procedure also writes `trip_members`, whose policy is still Owner-only. |
+| `date_poll_votes` "_ghost" (vote for a guest) | Owner+Organizer | Owner (030) → **Owner+Organizer** (101) — still matches `castVoteForMember` |
 
 **`trips` UPDATE left as Owner+Organizer (intentional).** Organizers
 legitimately update most trip columns (rename, about, dates, change
 destination); only `lockDestination` / `transferOwnership` are Owner-only, and
 those are **column-level** distinctions row-level RLS can't express without a
 trigger. tRPC enforces them — not worth a trigger for defense-in-depth here.
+
+---
+
+## Audit notes (2026-07-31) — Owner/Organizer deviations
+
+#770 ratified the principle at the top of this file: **an Organizer can do
+everything the Owner can, except elevating crew to Organizer and deleting the
+trip.** The code predates that rule and does not match it yet. This section is
+the enumerated gap — the rule is the intent, these are the exceptions to it, and
+each is now a *deviation from a stated rule* rather than an open question.
+
+### Conforming (the five sanctioned exceptions)
+
+| Procedure | Exception |
+|---|---|
+| `tripMembers.updateRole` | 1 — creating/elevating Organizers |
+| `trips.delete` | 2 — ends the top-level container |
+| `trips.transferOwnership` | 3 — hands over the trust relationship |
+| `competitions.delete` | 4 — ends a container *within* the trip |
+| `messages.clearChannel` | 5 — erases others' content inside a surviving container |
+
+`competitions.delete` is gated differently from the rest: it uses
+`requireCompetitionRole("owner")` (the competition's own role model), not
+`requireTripRole`. It is Owner-only at both layers (`competitions_delete` policy)
+and **stays that way** — it was never among the deviations below.
+
+`messages.clearChannel` **was** among the deviations and has been ruled a
+sanctioned exception instead. It is the only exception justified by the second
+Owner-only reason (erasing others' content) rather than the container test; see
+the principle section.
+
+**A correction to this file's own arithmetic.** Earlier versions of this section
+said 21 deviations, then 20. Both were wrong: the enumerated table has always
+listed **19**, and the headline number was never recounted after the table was
+written. There are **23** `requireTripRole("Owner")` call sites in
+`src/server/routers/` (not 24), of which 4 are sanctioned exceptions
+(`updateRole`, `trips.delete`, `transferOwnership`, `clearChannel`) — leaving
+19. `competitions.delete`, the fifth exception, is gated by
+`requireCompetitionRole` and was never a call site here at all. Counts below are
+from an enumeration, not a carried-forward figure.
+
+### Reconciled — 9 of 19, in #786
+
+Moved to `requireTripRole("Organizer")` with their backing RLS moved in the same
+change (migration 101), so no layer disagrees:
+
+| Area | Procedures | RLS that moved with them |
+|---|---|---|
+| Ideas | `ideas.create`, `ideas.remove`, `archivedIdeas.archive` | `ideas_insert`, `ideas_delete` (archive is self-scoped — none) |
+| Trip state | `trips.lockDestination` | none — `trips_update` was already Owner+Organizer |
+| Dates | `datePoll.castVoteForMember` | all four `date_poll_votes` policies |
+| Competition | `teamAssignments.remove` | `team_assignments_delete` |
+| Games (destructive) | `games.delete`, `games.resetScoring`, `games.resetToSkeleton` | `assert_game_owner()` (delete needed none — `games_write` was already Owner+Organizer) |
+
+### Remaining — 10 deviations, each with a named blocker
+
+These are NOT drift. Each is a deviation from the ratified rule that a specific
+gate prevents moving, and the blocker is the work, not the guard swap.
+
+| Procedures | Blocked by |
+|---|---|
+| `tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `ghostCrew.create`, `.remove` | **RLS is row-granular.** Widening `trip_members` INSERT/UPDATE/DELETE lets an Organizer calling PostgREST directly set any member's `role` — including their own, to `'Owner'`. Exception 1 would hold only in the client. Needs a role-column trigger on `trip_members` first — the fix migration 030 itself named — and that trigger sits on the signup/merge write path, so it is its own migration with its own verification. |
+| `ghostCrew.update` | **`link_guest_to_account()`** (migration 095) hardcodes an Owner check inside the guest→real-user MERGE path, which runs in the signup trigger. Widening tRPC alone half-opens it: editing a placeholder's name would work, pasting an email that matches an account would fail at the database. |
+| `tripMembers.inviteByEmail`, `.sendInvitationBlast` | **The procedure mints the role it is gated on.** `inviteByEmail`'s `role` input defaults to `"Organizer"` and is written straight into `trip_members`, so an Organizer-gated version can create another Organizer — exception 1 routed around. These two were moved in #788 and **reverted**; RLS refused their `trip_members` writes (unchecked, so they reported success — SILENT_WRITES_AUDIT.md §4.3), which masked the design problem behind a bug. Re-widening belongs with the `trip_members` trigger work and needs a server-side split on the role INPUT — Owner-only for `"Organizer"`, Organizer-allowed for `"Member"` — not a different guard. |
+| `teamAssignments.setCaptain` | **A shared assert.** `set_team_captain` calls `assert_competition_owner`, which also guards `delete_competition_cascade` — exception 4. Widening the shared assert would widen `competitions.delete`. It also may not be a deviation at all: a captain holds real RLS grants (migrations 065 / 094), so appointing one is arguably "changing who is trusted" one level down — i.e. a sixth exception rather than a gap. That is a product call, not a code one. |
+
+**A procedure that takes a role as INPUT cannot be gated on role alone.** This is
+the misjudgement that produced the revert above, stated precisely: "inviting crew
+doesn't change who is trusted" is true for `role: "Member"` and false for the
+default. Before widening any guard, check whether the procedure can *write* the
+very role it is being gated on.
+
+**A guard test proves the gate, not the write.** The parity suite asserts
+not-FORBIDDEN, which says the caller was admitted — it cannot see a write that
+the caller's RLS then refuses inside the mutation. When widening a guard,
+enumerate the tables the procedure WRITES and confirm each policy moved, and
+cross-reference `SILENT_WRITES_AUDIT.md`: an unchecked write listed there will
+report a refusal as success.
+
+**One client flag guarding two powers is the client-side equivalent, and it is a
+PATTERN, not a coincidence — four instances found in one sweep (#789).** Whenever
+the server splits two powers apart, look for the single client flag that was
+guarding both; it will not fail loudly, it will just widen the wrong one.
+
+| Flag | Moved | Stayed |
+|---|---|---|
+| `useGameEditAccess.isOwner` | the game Danger Zone → `canManageGame` | the delegation grant |
+| `useCanEditTeam.isOwner` (TeamSheet roster) | add / remove → `canManageRoster` | the captain ★ |
+| `TeamsPanel.canEdit` (board cards) | drag-to-trade / remove → `canManageRoster` | team create/delete, the captain ★ |
+| `IdeaZonePanel.isOwner` | ideas + lock-destination → `canEdit` | crew add / remove / invite |
+
+Two rules fell out of it. **A flag whose two consumers now disagree gets SPLIT,
+never loosened** — loosening widens the power nobody reviewed, with no server
+change to point at. And **a display string is not a permission**:
+`GameIdentityHeader`'s `assignedLabel` reads `isOwner ? "you" : ownerName`, whose
+no-delegate fallback *is* the trip Owner, so an Organizer must keep seeing the
+owner's name. Flipping it with the rest makes the header lie.
+
+**Three gates, not one.** The reconciliation had to move a tRPC guard, an RLS
+policy, AND a hardcoded role check inside a plpgsql body — and the third kind is
+invisible to a `pg_policies` sweep. Two were found this way (`assert_game_owner`,
+`link_guest_to_account`); a third (`assert_competition_owner`) turned out to be
+shared with a sanctioned exception. When auditing a permission boundary here,
+grep the function bodies, not only the policies.
+
+**Migration 030's parity principle still governs.** It aligned RLS to the tRPC
+gates so the database mirrors the API; #786 kept that alignment and moved both
+layers together. What changed is the reference point 030 took as given, not the
+rule that the layers must agree.
+
+**A client-affordance gap, deliberately left open.** These changes are the
+permission layer only. The client still gates several of the moved actions on
+`isOwner` — notably `useGameEditAccess.isOwner`, which guards `GameDangerZone` in
+all three game hulls AND the delegation grant, so the two need splitting before
+either moves. An Organizer is permitted by the server but not yet shown the
+button. Tracked separately; nothing is broken by the gap, but the change is not
+user-visible until it closes.

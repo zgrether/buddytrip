@@ -17,7 +17,12 @@ import { ConfirmDatesModal } from "../../components/ConfirmDatesModal";
 
 export interface DatePollCardProps {
   trip: TripData;
-  isOwner: boolean;
+  /** Owner OR Organizer (#793). Every mutation this card fires — addWindow,
+   *  removeWindow, lockDateWindow, setPollMode, castVoteForMember — is
+   *  `requireTripRole("Organizer")` server-side, so this is the flag that
+   *  matches the API. Named for the capability, not the role, because the role
+   *  is what it was wrong about. */
+  canManagePoll: boolean;
   /** Owner / planner only — shown as "Manage →" in the Crew column header. */
   onManageCrew?: () => void;
 }
@@ -42,7 +47,7 @@ function sortWindows(ws: PollWindow[]): PollWindow[] {
  * - Reset confirmation: two-step confirm before clearing all votes.
  * - All-voted banner: thumbs-up shown to any user once they've responded to every window.
  */
-export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps) {
+export function DatePollCard({ trip, canManagePoll, onManageCrew }: DatePollCardProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
@@ -329,7 +334,7 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   const handleVote = (windowId: string, answer: VoteAnswer, userId: string) => {
     if (userId === currentUser?.id) {
       castVote.mutate({ tripId, windowId, answer });
-    } else if (isOwner) {
+    } else if (canManagePoll) {
       voteForMember.mutate({ tripId, windowId, userId, answer });
     }
   };
@@ -343,13 +348,14 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
           panel underneath. */}
       <div className="space-y-2" style={{ maxWidth: 720 }}>
         {/* ── Member intro header ─────────────────────────────────────
-            The owner sees the FreshTripGuide header upstream ("Now let's
-            lock the dates" — see FreshTripGuide.tsx); members come into
+            Anyone who can manage the poll arrives via FreshTripGuide, which
+            carries its own header ("Now let's lock the dates" — see
+            FreshTripGuide.tsx); members come into
             this surface cold via ItineraryPanel and need the same context
             framing. Eyebrow + headline + body matches the shared
             TabHeader cadence (11px accent eyebrow, clamp-scaled
             semibold headline, 15px body at 1.65 line-height). */}
-        {!isOwner && (
+        {!canManagePoll && (
           <header className="mb-3">
             <p
               className="mb-3 text-[11px] font-semibold uppercase"
@@ -393,11 +399,11 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
           windows={windows}
           members={pollMembers}
           currentUserId={currentUser?.id ?? ""}
-          isOwner={isOwner}
+          canManagePoll={canManagePoll}
           ownerName={ownerName}
           onVote={handleVote}
           onAddWindow={
-            isOwner
+            canManagePoll
               ? (startDate, endDate) =>
                   addWindow.mutate({
                     tripId,
@@ -408,15 +414,15 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
               : undefined
           }
           onRemoveWindow={
-            isOwner
+            canManagePoll
               ? (windowId) => removeWindow.mutate({ tripId, windowId })
               : undefined
           }
           onLockWindow={
-            isOwner ? (windowId) => setPendingLockWindowId(windowId) : undefined
+            canManagePoll ? (windowId) => setPendingLockWindowId(windowId) : undefined
           }
           onCancelPoll={
-            isOwner
+            canManagePoll
               ? () => endPoll.mutate({ tripId, pollMode: false })
               : undefined
           }
@@ -424,7 +430,7 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
         />
 
         {/* ── All-voted confirmation (non-owners only) ──────────────────── */}
-        {allWindowsVoted && !isOwner && (
+        {allWindowsVoted && !canManagePoll && (
           <div
             className="flex items-center gap-2 rounded-xl px-3 py-2.5"
             style={{

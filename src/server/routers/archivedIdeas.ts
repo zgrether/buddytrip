@@ -35,13 +35,16 @@ export const archivedIdeasRouter = router({
   }),
 
   // -----------------------------------------------------------------------
-  // archive — copy an idea from a trip into the owner's archive
-  //           (Owner-only; mirrors ideas.remove in that removing an idea
-  //            is an owner action)
+  // archive — copy an idea from a trip into the caller's own archive
+  //           (Organizer+ since #786; still mirrors ideas.remove, which moved
+  //            with it — archiving is the step before removing)
+  //
+  // No RLS change was needed: this INSERTs into `archived_ideas` with
+  // user_id = the caller, so its policy is self-scoped, not trip-role-scoped.
   // -----------------------------------------------------------------------
   archive: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Snapshot the source idea. If the idea doesn't exist (already
       // deleted) we refuse — the caller is expected to archive before
@@ -104,9 +107,22 @@ export const archivedIdeasRouter = router({
   remove: authedProcedure
     .input(z.object({ archivedIdeaId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
+      // #781 — the ONE site of the eleven that asserts a count, decided on the
+      // grounds that separate it from the other eight:
+      //
+      // This row is USER-SCOPED (`.eq("user_id", ctx.user!.id)` — a personal
+      // archive, not shared trip data), so there is no concurrent actor who
+      // could legitimately have removed it first. The other "delete a thing the
+      // user just saw" sites trade catching stale ids against punishing a
+      // double-tap by a SECOND person; here there is no second person. Zero rows
+      // means a stale or foreign id, and the old code reported success for both.
+      //
+      // NOT_FOUND rather than INTERNAL_SERVER_ERROR: the id didn't match
+      // anything of yours, which is a request problem, not a server one. And
+      // never UNAUTHORIZED — `authExpiry` turns a 401 into a forced logout.
+      const { error, count } = await ctx.supabase
         .from("archived_ideas")
-        .delete()
+        .delete({ count: "exact" })
         .eq("id", input.archivedIdeaId)
         .eq("user_id", ctx.user!.id);
 
@@ -114,6 +130,13 @@ export const archivedIdeasRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to remove archived idea",
+        });
+      }
+
+      if (count === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "That idea isn't in your archive",
         });
       }
 

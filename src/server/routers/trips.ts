@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -222,7 +223,12 @@ export const tripsRouter = router({
         location: z.string().min(1),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Choosing the destination is trip-running, not
+    // trip administration. No RLS change was needed: `trips_update` has always
+    // been Owner+Organizer (migration 030 declined to narrow it, because
+    // lockDestination is a COLUMN-level distinction row-level RLS can't
+    // express) — so tRPC was the only gate holding this one.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("trips")
@@ -313,39 +319,57 @@ export const tripsRouter = router({
       }
 
       // Step 1: Promote new owner FIRST (current user is still Owner
-      // so RLS has_trip_role('Owner') passes for this update)
-      const { error: promoteErr } = await ctx.supabase
-        .from("trip_members")
-        .update({ role: "Owner" })
-        .eq("trip_id", ctx.tripId)
-        .eq("user_id", input.newOwnerId);
-
-      if (promoteErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to promote new owner",
-        });
-      }
+      // so RLS has_trip_role('Owner') passes for this update).
+      //
+      // #777 — the COUNT is what matters here, not just the error. Both steps
+      // checked `error` already; neither verified a row actually moved, and the
+      // two failure modes are the two states a trip must never be in: a promote
+      // that matches nothing leaves ZERO Owners once step 2 demotes, and a
+      // demote that matches nothing leaves TWO. Neither is detectable afterwards
+      // without reading the roster, and the procedure returned success for both.
+      assertAffected(
+        await ctx.supabase
+          .from("trip_members")
+          .update({ role: "Owner" }, { count: "exact" })
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", input.newOwnerId),
+        1,
+        "promote the new owner"
+      );
 
       // Step 2: Demote current owner to Organizer (self-update passes
-      // RLS user_id = auth.uid() clause)
-      const { error: demoteErr } = await ctx.supabase
+      // RLS user_id = auth.uid() clause).
+      const demoteRes = await ctx.supabase
         .from("trip_members")
-        .update({ role: "Organizer" })
+        .update({ role: "Organizer" }, { count: "exact" })
         .eq("trip_id", ctx.tripId)
         .eq("user_id", userId);
 
-      if (demoteErr) {
-        // Rollback: restore new owner to their previous role
-        await ctx.supabase
+      if (demoteRes.error || demoteRes.count !== 1) {
+        // Rollback: restore new owner to their previous role.
+        //
+        // #777 — the rollback was entirely unchecked, which was the worst of the
+        // three: it runs precisely when the trip already has two Owners, so a
+        // silent failure here LEAVES it that way while reporting the demote
+        // error. Its outcome is now folded into the thrown message, because
+        // "the demote failed" and "the demote failed AND I couldn't undo the
+        // promote" are different emergencies and the reader needs to know which.
+        //
+        // Deliberately not a throw of its own: it must not replace the
+        // underlying demote failure, which is the more useful diagnostic.
+        const rollbackRes = await ctx.supabase
           .from("trip_members")
-          .update({ role: member.role })
+          .update({ role: member.role }, { count: "exact" })
           .eq("trip_id", ctx.tripId)
           .eq("user_id", input.newOwnerId);
+        const rolledBack = !rollbackRes.error && rollbackRes.count === 1;
 
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to demote current owner",
+          message: rolledBack
+            ? "Failed to demote current owner; ownership was left unchanged."
+            : "Failed to demote current owner AND failed to roll back the " +
+              "promotion — this trip may now have two Owners. Check the roster.",
         });
       }
 

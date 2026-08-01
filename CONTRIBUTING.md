@@ -57,6 +57,9 @@ Migrations are SQL files in [`supabase/migrations/`](supabase/migrations) and ar
 - **Applying to prod is manual and separate from merging:** `supabase db push --linked`
   (CI no longer pushes to the prod project). Land a migration as its own PR to `main`
   before the feature branch that depends on it.
+  - Away from a laptop? There's a `workflow_dispatch`-only Action for the same manual
+    step — Actions → *Prod migrations (manual)*, `list` mode first. It is the **exception**,
+    not the default; see [`ENVIRONMENT_AUDIT.md`](ENVIRONMENT_AUDIT.md) §1.2a.
 
 See [`CLAUDE.md`](CLAUDE.md) → *Migration Workflow* and *Schema Cleanup Rule* for the full
 detail (including the audit-before-delete rule for any `DROP`).

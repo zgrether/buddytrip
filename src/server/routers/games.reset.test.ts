@@ -120,19 +120,24 @@ describe("games.resetScoring — one game's results cleared, config + identity k
     expect(sg.status).toBe("complete");
   });
 
-  it("a co-admin (Organizer) and a game delegate are both rejected — owner only", async () => {
-    const target = await makeMatchGame("OwnerOnly");
+  it("a co-admin (Organizer) may reset; a game delegate still may not (#786)", async () => {
+    const target = await makeMatchGame("RoleBoundary");
     // Make the member a DELEGATE of this game (can edit/score) — still not reset.
     await ctx.admin.from("game_delegates").insert({ game_id: target, user_id: memberId, granted_by: ownerId });
 
-    await expect(
-      ctx.callerAs("planner").games.resetScoring({ tripId, gameId: target })
-    ).rejects.toThrow();
+    // The delegate is refused, and the write does not land.
     await expect(
       ctx.callerAs("member").games.resetScoring({ tripId, gameId: target })
     ).rejects.toThrow();
-    // Neither write landed — scoring intact.
     expect(await count("game_results", target)).toBe(1);
+
+    // The Organizer is admitted. This REVERSES the original assertion here
+    // ("owner only"): #786 moved resetScoring to requireTripRole("Organizer")
+    // and migration 101 widened assert_game_owner in lockstep, so the reset
+    // must now succeed all the way through the plpgsql primitive — this line
+    // is what proves both layers moved, not just the tRPC guard.
+    await ctx.callerAs("planner").games.resetScoring({ tripId, gameId: target });
+    expect(await count("game_results", target)).toBe(0);
   });
 });
 

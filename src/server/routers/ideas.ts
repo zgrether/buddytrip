@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -72,7 +73,9 @@ export const ideasRouter = router({
         sourceIdeaId: z.string().nullable().optional(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786 — Organizer parity. Proposing where the trip might go is the
+    // Organizer's job. RLS moved with it: `ideas_insert` (migration 101).
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("ideas")
@@ -173,17 +176,25 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner only
+  // remove — Organizer+ (#786). An idea is ONE UNIT OF WORK, not a container
+  // others live inside: its votes cascade with it, but a vote is part of the
+  // idea, not a body of separate content. So it fails neither Owner-only test.
+  // RLS moved with it: `ideas_delete` (migration 101).
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
-      // Delete votes first
-      await ctx.supabase
-        .from("idea_votes")
-        .delete()
-        .eq("idea_id", input.ideaId);
+      // Delete votes first.
+      //
+      // #782 — error-checked; count deliberately NOT asserted (an idea nobody
+      // voted on legitimately clears zero rows). A real failure here would leave
+      // orphan votes behind the deleted idea. Gate note: `ideas.remove` moved to
+      // Organizer in #788, so this path is reachable by more people than it was.
+      assertNoError(
+        await ctx.supabase.from("idea_votes").delete().eq("idea_id", input.ideaId),
+        "clear the idea's votes"
+      );
 
       const { error } = await ctx.supabase
         .from("ideas")
@@ -217,20 +228,37 @@ export const ideasRouter = router({
         .maybeSingle();
 
       if (existing) {
-        // Clicking current pick — unvote completely
-        await ctx.supabase
-          .from("idea_votes")
-          .delete()
-          .eq("idea_id", input.ideaId)
-          .eq("user_id", ctx.user!.id);
+        // Clicking current pick — unvote completely.
+        // #782 — error-checked. The row was just read back above, but a count
+        // assertion is still wrong: a double-tap race legitimately clears zero.
+        assertNoError(
+          await ctx.supabase
+            .from("idea_votes")
+            .delete()
+            .eq("idea_id", input.ideaId)
+            .eq("user_id", ctx.user!.id),
+          "clear your vote"
+        );
         return { voted: false };
       } else {
-        // Remove any existing vote on another idea first (single-pick rule)
-        await ctx.supabase
-          .from("idea_votes")
-          .delete()
-          .eq("trip_id", ctx.tripId)
-          .eq("user_id", ctx.user!.id);
+        // Remove any existing vote on another idea first (single-pick rule).
+        //
+        // #782 — error-checked only. Zero rows is the NORMAL case (a first-time
+        // voter has nothing to clear), so this must never assert a count.
+        // OPEN QUESTION, deliberately not settled here (#781): whether a silent
+        // FAILURE could leave two active votes depends on whether `idea_votes`
+        // carries a uniqueness constraint on (trip_id, user_id). The audit flagged
+        // that as unconfirmed and it is still unconfirmed — checking it needs a DB
+        // this environment doesn't have. Making the error loud is correct either
+        // way; the count decision waits on that fact.
+        assertNoError(
+          await ctx.supabase
+            .from("idea_votes")
+            .delete()
+            .eq("trip_id", ctx.tripId)
+            .eq("user_id", ctx.user!.id),
+          "clear your previous vote"
+        );
 
         // Cast new vote
         const { error } = await ctx.supabase.from("idea_votes").insert({

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { assertAffected } from "@/server/lib/assertAffected";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
@@ -391,6 +392,26 @@ export const tripMembersRouter = router({
         role: z.enum(["Organizer", "Member"]).default("Organizer"),
       })
     )
+    // OWNER-ONLY — reverted from requireTripRole("Organizer") (#788), for TWO
+    // independent reasons. Re-widening belongs with the `trip_members`
+    // role-column trigger work (#786), not with a guard swap.
+    //
+    // 1. IT MINTS THE ROLE IT IS GATED ON. `role` defaults to "Organizer" and
+    //    is written straight into `trip_members` on both paths below, so an
+    //    Organizer-gated version of this procedure can create another
+    //    Organizer — exception 1 ("only the Owner changes who is trusted")
+    //    routed around. Today RLS refuses it, but only by accident; the moment
+    //    the planned trigger lands and `trip_members_insert` widens, it becomes
+    //    a clean bypass. The general lesson: **a procedure that takes a role as
+    //    INPUT cannot be gated on role alone.** When this is re-widened it needs
+    //    a server-side split — Owner-only for role "Organizer",
+    //    Organizer-allowed for role "Member" — not a different `.use()`.
+    //
+    // 2. IT FAILED SILENTLY IN THE MEANTIME. Both `trip_members` inserts are
+    //    unchecked (SILENT_WRITES_AUDIT.md §4.3, #778) and `trip_members_insert`
+    //    is Owner-only, so an Organizer got `added_existing` / `invited_new`
+    //    back with no roster row written — and on the new-email path an invite
+    //    email was already sent to someone who then wasn't on the trip.
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const email = input.email.trim().toLowerCase();
@@ -425,14 +446,33 @@ export const tripMembersRouter = router({
           return { status: "already_member" as const, displayName };
         }
 
-        // Add to trip with status 'in'
-        await ctx.supabase.from("trip_members").insert({
-          trip_id: ctx.tripId,
-          user_id: existing.id,
-          role: input.role,
-          status: "in",
-          chat_visible_from: new Date().toISOString(),
-        });
+        // Add to trip with status 'in'.
+        //
+        // #778 — CHECKED, and the check is load-bearing rather than tidy. This
+        // insert is refused by `trip_members_insert` for anyone but the Owner,
+        // and while it was unchecked #788 widened this procedure's gate past it:
+        // an Organizer got `added_existing` back with no roster row written.
+        // The gate is Owner-only again (#790) and is queued to widen a second
+        // time once the role-input split lands — so this is fixed BEFORE that,
+        // not after (SILENT_WRITES_AUDIT.md §4.3).
+        //
+        // Throwing here also stops the two best-effort side effects below (the
+        // crew system message and the notification email), which is the point:
+        // neither should fire for someone who was never added.
+        assertAffected(
+          await ctx.supabase.from("trip_members").insert(
+            {
+              trip_id: ctx.tripId,
+              user_id: existing.id,
+              role: input.role,
+              status: "in",
+              chat_visible_from: new Date().toISOString(),
+            },
+            { count: "exact" }
+          ),
+          1,
+          "add the invited member to the trip"
+        );
 
         // Crew-chat system line announcing the new member (best-effort).
         try {
@@ -520,13 +560,32 @@ export const tripMembersRouter = router({
       // Add to trip_members with status 'invited'. The chat floor is set
       // now so once they accept + sign in they only see Crew chat from
       // this point forward.
-      await ctx.supabase.from("trip_members").insert({
-        trip_id: ctx.tripId,
-        user_id: guestUserId,
-        role: input.role,
-        status: "invited",
-        chat_visible_from: new Date().toISOString(),
-      });
+      //
+      // #778 — CHECKED. This is the worse half of the pair: unchecked, a refused
+      // insert still fell through to the invite EMAIL below, so someone got a
+      // link to a trip they were not on and the failure surfaced only as "my
+      // invite doesn't work". Throwing stops the send.
+      //
+      // NOT made transactional, deliberately: the guest `users` row and the
+      // `invites` row were already written above, and a throw here leaves both
+      // orphaned. That is pre-existing and unchanged — this commit makes the
+      // failure observable, it does not add a rollback (which would be a
+      // behaviour change, and the orphan guest is recoverable by re-inviting the
+      // same address, which re-uses the existing placeholder).
+      assertAffected(
+        await ctx.supabase.from("trip_members").insert(
+          {
+            trip_id: ctx.tripId,
+            user_id: guestUserId,
+            role: input.role,
+            status: "invited",
+            chat_visible_from: new Date().toISOString(),
+          },
+          { count: "exact" }
+        ),
+        1,
+        "add the invited guest to the trip"
+      );
 
       // Send invite email (best effort)
       try {
@@ -687,6 +746,12 @@ export const tripMembersRouter = router({
         message: z.string().optional(),
       })
     )
+    // OWNER-ONLY — reverted from requireTripRole("Organizer") (#788), alongside
+    // inviteByEmail. Milder instance of the same write problem: the
+    // `last_emailed_at` stamp below is an UPDATE on `trip_members`, whose policy
+    // is Owner-only, and it is unchecked — so for an Organizer the emails sent
+    // and the send-tracking never landed. Moves back with its sibling rather
+    // than leaving the pair on different tiers.
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Fetch trip for email content. locked_destination_location is the
@@ -758,11 +823,24 @@ export const tripMembersRouter = router({
       // any later send a follow-up). The increment is a SQL function because
       // supabase-js can't express `email_count = email_count + 1`.
       if (sentIds.length > 0) {
-        await ctx.supabase
-          .from("trip_members")
-          .update({ last_emailed_at: now })
-          .eq("trip_id", ctx.tripId)
-          .in("user_id", sentIds);
+        // #778 — CHECKED. Same Owner-only `trip_members` policy as the inserts
+        // above, so this went silent for an Organizer under #788 too: the emails
+        // sent and the send-tracking never recorded, which turns "when did we
+        // last chase them" into a lie. One row per recipient we actually emailed.
+        //
+        // Ordered AFTER the sends on purpose (unchanged): a stamp failure must
+        // not suppress mail that already went out. Throwing here reports a
+        // send that happened but wasn't recorded — the honest outcome, and the
+        // caller can re-run since the mail path is idempotent per recipient.
+        assertAffected(
+          await ctx.supabase
+            .from("trip_members")
+            .update({ last_emailed_at: now }, { count: "exact" })
+            .eq("trip_id", ctx.tripId)
+            .in("user_id", sentIds),
+          sentIds.length,
+          "record when the invitation emails were sent"
+        );
 
         await ctx.supabase.rpc("increment_member_email_count", {
           p_trip_id: ctx.tripId,

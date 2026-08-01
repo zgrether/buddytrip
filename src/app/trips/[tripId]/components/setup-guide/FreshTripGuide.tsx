@@ -200,7 +200,11 @@ export function FreshTripGuide({
         <div className="mt-4">
           <DatePollCard
             trip={trip}
-            isOwner
+            // Hard-coded true, and still correct after #793: this guide only
+            // renders from ItineraryPanel's privileged branch, which is now
+            // `canEdit` rather than `isOwner`. The coupling is the reason —
+            // don't reintroduce a role read here.
+            canManagePoll
             onManageCrew={onTabChange ? () => onTabChange("crew") : undefined}
           />
         </div>
