@@ -74,7 +74,7 @@ export interface DatePollStackedCardsProps {
   windows: PollWindow[];
   members: PollMember[];
   currentUserId: string;
-  isOwner: boolean;
+  canManagePoll: boolean;
   /** Owner's display name — surfaced in the member empty state body
    *  ("{Owner} hasn't posted any windows…"). Falls back to a neutral
    *  noun upstream when the owner record isn't loaded yet. */
@@ -169,7 +169,7 @@ export function DatePollStackedCards({
   windows,
   members,
   currentUserId,
-  isOwner,
+  canManagePoll,
   ownerName = "The organizer",
   onVote,
   onAddWindow,
@@ -224,7 +224,7 @@ export function DatePollStackedCards({
   // exists (even with zero windows) so the owner can always back out to
   // direct date entry. Shared between the empty state and the footer.
   const cancelPollButton =
-    isOwner && onCancelPoll ? (
+    canManagePoll && onCancelPoll ? (
       confirmCancelPoll ? (
         <CancelPollConfirm
           voteCount={windows.reduce((sum, w) => sum + w.votes.length, 0)}
@@ -257,7 +257,7 @@ export function DatePollStackedCards({
     // picker takes over the empty-state slot entirely — no glyph, no
     // headline, no dashed frame. The dashed pitch is the affordance to
     // open the picker; once it's open, the picker IS the surface.
-    if (isOwner && onAddWindow && addingOpen) {
+    if (canManagePoll && onAddWindow && addingOpen) {
       return (
         <InlineAddOption
           onCancel={() => setAddingOpen(false)}
@@ -272,7 +272,7 @@ export function DatePollStackedCards({
     // owner-attributed body. Members can't act here so we make the
     // surface read as "stand by," not as a target zone — same dashed
     // frame as the owner empty (visual consistency across roles).
-    if (!isOwner) {
+    if (!canManagePoll) {
       return (
         <div
           className="rounded-xl px-6 py-10 text-center"
@@ -400,7 +400,7 @@ export function DatePollStackedCards({
             window={w}
             members={members}
             currentUserId={currentUserId}
-            isOwner={isOwner}
+            canManagePoll={canManagePoll}
             isSelected={selectedId === w.id}
             isMostPopular={mostPopularId === w.id}
             // First option opens expanded so a freshly-added window shows
@@ -420,7 +420,7 @@ export function DatePollStackedCards({
       {/* "+ Add a date option" — owner only. Inline calendar takes over
           this row when revealed (matches HANDOFF "back to the list so the
           owner can add several back-to-back"). */}
-      {isOwner && onAddWindow && (
+      {canManagePoll && onAddWindow && (
         addingOpen ? (
           <InlineAddOption
             onCancel={() => setAddingOpen(false)}
@@ -452,7 +452,7 @@ export function DatePollStackedCards({
           stays present regardless of selection. Members get a separate
           "Save my answers" CTA on the per-card segmented control (votes
           save on click), so no dedicated footer is needed. */}
-      {isOwner && (
+      {canManagePoll && (
         <div className="space-y-2 pt-1">
           {onLockWindow && selectedId && (
             <button
@@ -485,7 +485,7 @@ function OptionCard({
   window: w,
   members,
   currentUserId,
-  isOwner,
+  canManagePoll,
   isSelected,
   isMostPopular,
   defaultExpanded = false,
@@ -498,7 +498,7 @@ function OptionCard({
   window: PollWindow;
   members: PollMember[];
   currentUserId: string;
-  isOwner: boolean;
+  canManagePoll: boolean;
   isSelected: boolean;
   isMostPopular: boolean;
   defaultExpanded?: boolean;
@@ -514,7 +514,7 @@ function OptionCard({
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const myAnswer = answerOf(w, currentUserId);
-  const memberView = !isOwner;
+  const memberView = !canManagePoll;
 
   // ── Member card layout — no select radio, no roster expand. Just the
   // date + Yes/Maybe/No segmented control + faint consensus line. The

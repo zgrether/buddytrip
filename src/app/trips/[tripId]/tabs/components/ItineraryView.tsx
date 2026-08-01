@@ -66,7 +66,6 @@ function categoryOf(event: ItineraryEvent): EventCategory {
 
 export interface ItineraryViewProps {
   trip: TripData;
-  isOwner: boolean;
   /** When provided (owner only), shows an X button on the empty-state
       mock-up that backs out of the activation. */
   onCancel?: () => void;
@@ -95,7 +94,7 @@ export interface ItineraryViewProps {
  *      state mirrors the intro modal preview. Owners get an X button
  *      that backs out of the activation entirely.
  */
-export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, setupLeft = 0 }: ItineraryViewProps) {
+export function ItineraryView({ trip, onCancel, onShowGuide, setupLeft = 0 }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
