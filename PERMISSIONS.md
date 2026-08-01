@@ -542,6 +542,25 @@ enumerate the tables the procedure WRITES and confirm each policy moved, and
 cross-reference `SILENT_WRITES_AUDIT.md`: an unchecked write listed there will
 report a refusal as success.
 
+**One client flag guarding two powers is the client-side equivalent, and it is a
+PATTERN, not a coincidence — four instances found in one sweep (#789).** Whenever
+the server splits two powers apart, look for the single client flag that was
+guarding both; it will not fail loudly, it will just widen the wrong one.
+
+| Flag | Moved | Stayed |
+|---|---|---|
+| `useGameEditAccess.isOwner` | the game Danger Zone → `canManageGame` | the delegation grant |
+| `useCanEditTeam.isOwner` (TeamSheet roster) | add / remove → `canManageRoster` | the captain ★ |
+| `TeamsPanel.canEdit` (board cards) | drag-to-trade / remove → `canManageRoster` | team create/delete, the captain ★ |
+| `IdeaZonePanel.isOwner` | ideas + lock-destination → `canEdit` | crew add / remove / invite |
+
+Two rules fell out of it. **A flag whose two consumers now disagree gets SPLIT,
+never loosened** — loosening widens the power nobody reviewed, with no server
+change to point at. And **a display string is not a permission**:
+`GameIdentityHeader`'s `assignedLabel` reads `isOwner ? "you" : ownerName`, whose
+no-delegate fallback *is* the trip Owner, so an Organizer must keep seeing the
+owner's name. Flipping it with the rest makes the header lie.
+
 **Three gates, not one.** The reconciliation had to move a tRPC guard, an RLS
 policy, AND a hardcoded role check inside a plpgsql body — and the third kind is
 invisible to a `pg_policies` sweep. Two were found this way (`assert_game_owner`,

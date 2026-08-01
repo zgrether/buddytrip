@@ -36,6 +36,7 @@ export function GameConfigurationView({
   game,
   canEdit,
   isOwner,
+  canManageGame,
   onChanged,
   onDeleted,
   whosPlayingLabel,
@@ -74,9 +75,14 @@ export function GameConfigurationView({
   competitionId: string | null;
   game: GameRow;
   canEdit: boolean;
-  /** Owner gates the per-game danger zone (reset/delete) — owner-only, matching the
-   *  server. Co-admins/delegates configure but don't get the danger ladder. */
+  /** Trip Owner ONLY. Gates the delegation grant inside `GameIdentityHeader` —
+   *  handing someone edit rights is changing who is trusted, so it stays with the
+   *  Owner. Do NOT reuse this for the danger zone; see `canManageGame`. */
   isOwner: boolean;
+  /** Trip Owner or Organizer, delegates excluded. Gates the per-game danger zone
+   *  (reset/delete), matching its server gate since #788. Split from `isOwner`
+   *  in #789 — one flag can't guard two powers with different answers. */
+  canManageGame: boolean;
   onChanged: () => void;
   /** Game deleted from the danger zone — leave the page (back to the board). */
   onDeleted: () => void;
@@ -274,7 +280,7 @@ export function GameConfigurationView({
           {/* Per-game danger zone — owner-only. `disabled` reads the LIVE server flag
               (reset-scores is immediate surgery, must not unlock off a staged toggle) —
               the one deliberate server read on this controlled page. */}
-          {isOwner && (
+          {canManageGame && (
             <GameDangerZone
               tripId={tripId}
               gameId={game.id}
