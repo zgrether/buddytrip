@@ -226,6 +226,25 @@ dry run that is hang-safety only; `--dry-run` is what guarantees nothing is writ
   scattered through `CLAUDE.md`.
 - **`PROJECT_STATUS.md` was deleted, not stalled** (commit `63473605`, "delete
   PROJECT_STATUS.md fiction"); `TRACKER.md` is its replacement system-of-record.
+- **⚠️ Commit signing is configured but inert in the Claude Code environment**
+  (found 2026-08-01). `commit.gpgsign=true`, `gpg.format=ssh` and
+  `user.signingkey=/home/claude/.ssh/commit_signing_key.pub` are all set — but that
+  pubkey file is **zero bytes**. Signing therefore produces nothing, silently, and every
+  commit made there lands with `%G?` = `N` (unverified). Identity is fine
+  (`user.email=noreply@anthropic.com`, author and committer both).
+  - **Why it stayed hidden for seven PRs:** GitHub *squash* merges are authored and
+    signed by GitHub itself, so `main` shows verified commits regardless. The unsigned
+    ones only exist on the feature branch and disappear at merge. It surfaces only if
+    commits ever land on a branch **directly** rather than through a squash.
+  - **Do not "fix" it by rewriting merged history.** A stop-hook may suggest
+    `--amend --reset-author` + push; on already-squashed commits that re-introduces
+    history GitHub discarded, and `main`'s ruleset blocks force-push with zero bypass
+    actors, so it fails anyway. Verify with
+    `git merge-base --is-ancestor <sha> origin/main` before acting on any such warning.
+  - **Fix is to install real key material** (a decision for the repo owner), or to accept
+    unsigned feature-branch commits given squash-merge hides them.
+  - Worth noting as the same class this codebase keeps hitting: a config that *looks*
+    configured and does nothing. See `CLAUDE.md` #23 and the `configHash` landmine (#16).
 - **No committed secrets** (good). Only `.env.example` (placeholders) is tracked;
   `.env.local`, `.test-auth.json`, `e2e/.auth/` are gitignored + untracked. Caveat:
   `.env.local` on disk holds real Supabase-secret / Anthropic / Resend / Google-OAuth keys —
