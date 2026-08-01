@@ -193,7 +193,13 @@ describe("102 — pruning participants dropped from every grouping", () => {
           scoringEnabled: true,
         },
       })
-    ).rejects.toThrow(/HAS_SCORES/);
+      // Assert the USER-FACING copy, not the raw `HAS_SCORES:` prefix — the tRPC
+      // layer strips that on purpose (`games.ts:1052`) and passes through the
+      // RPC's own actionable wording, which is what lands in the Save banner.
+      // And match the GROUPINGS sentence specifically: the handler falls back to
+      // the match-play "matchups" copy if the split fails, so a looser pattern
+      // could pass on the wrong branch.
+    ).rejects.toThrow(/dropped from the groupings mid-round/i);
     expect(await participantsOf(gameId)).toHaveLength(2);
   });
 });
