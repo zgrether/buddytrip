@@ -579,8 +579,9 @@ split when none exists. **Files:** `ExpensesSection.tsx`, `SplitPanel.tsx`,
 react-remove-scroll, `useModalBackButton`, backdrop scrim, `createPortal`). A
 shared `<Overlay>` that always portals to `document.body` would absorb all four
 and immunize every overlay against the `transform`/`filter`/`backdrop-filter`
-containing-block bug that already forces AboutModal, FeedbackModal, UserMenu,
-and TripSwitcher to portal out of `TopNav`. Keep the hooks as composable
+containing-block bug that already forces AboutModal, FeedbackModal, and
+UserMenu to portal out of `TopNav`. (TripSwitcher was a fourth until #812
+removed it as unreachable.) Keep the hooks as composable
 primitives for anchored popovers. Migrate incrementally. Not blocking — every
 overlay is correct today.
 

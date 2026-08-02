@@ -2,12 +2,10 @@
 
 import type { FC } from "react";
 import { Suspense, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { MessageCircle, ChevronDown, Calendar, Trophy, type LucideIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MessageCircle, Calendar, Trophy, type LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
-import { TripSwitcher } from "./TripSwitcher";
 import { FeedbackModal } from "./FeedbackModal";
-import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { InstallBanner } from "./pwa/InstallBanner";
 import { RAIL_WIDTH_PX } from "./shell/breakpoints";
@@ -15,7 +13,7 @@ import type { AppView } from "./shell/useAppView";
 
 /**
  * App title bar — three zones at `lg+` (two below it):
- *   LEFT   = identity / scope     → flag-home anchor + trip-breadcrumb switcher
+ *   LEFT   = identity / scope     → flag-home anchor
  *   MIDDLE = Trip · Cup           → `lg+` ONLY, x-aligned to the rail's right
  *            edge (`RAIL_WIDTH_PX`) so the column alignment between the rail
  *            and the content below holds. Absolutely positioned rather than a
@@ -55,13 +53,10 @@ interface TopNavProps {
   /** Reflects whether the FloatingChatPanel is currently open — paints the
    *  Chat tool in its active state. */
   chatOpen?: boolean;
-  /** Called when a title-bar control opens a competing overlay (trip switcher,
-   *  profile menu, feedback). The page uses it to close the News/Chat rail so
-   *  those dropdowns aren't trapped behind the mobile sheet's scrim. */
+  /** Called when a title-bar control opens a competing overlay (the profile
+   *  menu, feedback). The page uses it to close the News/Chat rail so those
+   *  dropdowns aren't trapped behind the mobile sheet's scrim. */
   onDismissPanels?: () => void;
-  /** Hide the trip-breadcrumb switcher (e.g. on the profile page, which
-   *  isn't trip-scoped). */
-  hideTripSwitcher?: boolean;
   /** In competition context, the current user's TEAM color — passed to the
    *  account avatar so it reads in the user's team identity instead of teal.
    *  Undefined off competition pages (avatar stays teal). */
@@ -77,55 +72,22 @@ interface TopNavProps {
   onSelectView?: (view: AppView) => void;
 }
 
-// Minimal shape we read off trips.list for the breadcrumb.
-interface SwitcherTripRow {
-  id: string;
-  title: string;
-  myRole?: string | null;
-}
-
 export const TopNav: FC<TopNavProps> = ({
   title = "BuddyTrip",
   tripId,
   onOpenChat,
   chatOpen = false,
   onDismissPanels,
-  hideTripSwitcher = false,
   avatarTeamColor,
   activeView,
   hasContext = false,
   onSelectView,
 }) => {
   const router = useRouter();
-  const params = useParams<{ tripId?: string }>();
-  const currentTripId = params?.tripId ?? null;
-  const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [switcherHovered, setSwitcherHovered] = useState(false);
   // FeedbackModal lives at the TopNav level so it's reachable from the
   // AboutModal "Send feedback" row (via UserMenu → AboutModal →
   // onOpenFeedback).
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-
-  // Drives the breadcrumb label + Owner pill. TanStack dedupes against the
-  // same query the page may already be running.
-  //
-  // Inherits the global cache policy on `trips.list` — `ContextRail` is the one
-  // site that overrides it, deliberately; see `DashboardClient`'s note (#764).
-  // No `= []` default here: nothing iterates this, it's only `.find`ed against,
-  // so a failed fetch reads as "no current trip" and hides the switcher rather
-  // than presenting an empty list as fact.
-  const { data: tripsForSwitcher } = trpc.trips.list.useQuery(undefined, {
-    enabled: !hideTripSwitcher,
-  });
-
-  // The breadcrumb switcher only makes sense when a specific trip is in
-  // scope. On the dashboard / profile the LEFT zone is just the flag +
-  // wordmark (global scope).
-  const currentTrip =
-    (tripsForSwitcher as SwitcherTripRow[] | undefined)?.find(
-      (t) => t.id === currentTripId
-    ) ?? null;
-  const showSwitcher = !hideTripSwitcher && currentTrip != null;
 
   // Game context (#550): when a game panel is open, a game view publishes its
   // chrome here and the bar SWAPS its left zone to a back affordance + single-
@@ -230,76 +192,6 @@ export const TopNav: FC<TopNavProps> = ({
           </span>
         </button>
 
-        {showSwitcher && currentTrip && (
-          <div className="relative flex min-w-0 items-center">
-            {/* Hairline divider — hidden on collapse along with the wordmark. */}
-            <span
-              aria-hidden="true"
-              className="@max-[600px]:hidden"
-              style={{
-                width: 1,
-                height: 22,
-                background: "var(--color-bt-border)",
-                margin: "0 10px",
-                flexShrink: 0,
-              }}
-            />
-
-            {/* Breadcrumb switcher — keeps a resting surface (it's a dropdown
-                control, not a plain action). */}
-            <button
-              type="button"
-              aria-label="Switch trip"
-              aria-haspopup="dialog"
-              aria-expanded={switcherOpen}
-              data-testid="trip-switcher-trigger"
-              data-trip-switcher-trigger="true"
-              onClick={() =>
-                setSwitcherOpen((p) => {
-                  // Opening the switcher dismisses the rail so its dropdown
-                  // isn't stuck behind the mobile sheet scrim.
-                  if (!p) onDismissPanels?.();
-                  return !p;
-                })
-              }
-              onMouseEnter={() => setSwitcherHovered(true)}
-              onMouseLeave={() => setSwitcherHovered(false)}
-              className="flex min-w-0 items-center gap-1.5 transition-colors"
-              style={{
-                // Resting fill is transparent (the border is the affordance);
-                // the hover wash is driven from state so the inline background
-                // can't suppress it, matching the rest of the bar.
-                background:
-                  switcherOpen || switcherHovered ? "var(--color-bt-hover)" : "transparent",
-                border: "1px solid var(--color-bt-border)",
-                borderRadius: 9,
-                padding: "5px 9px 5px 7px",
-              }}
-            >
-              <span
-                className="truncate max-w-[240px] @max-[600px]:max-w-[140px]"
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: "var(--color-bt-text)",
-                }}
-              >
-                {currentTrip.title}
-              </span>
-              <ChevronDown
-                size={14}
-                strokeWidth={2}
-                style={{ flexShrink: 0, color: "var(--color-bt-text-dim)" }}
-                aria-hidden="true"
-              />
-            </button>
-
-            <TripSwitcher
-              open={switcherOpen}
-              onClose={() => setSwitcherOpen(false)}
-            />
-          </div>
-        )}
       </div>
 
       {/* ── RIGHT: global tools + me ───────────────────────────────────── */}

@@ -5,7 +5,7 @@ import { join } from "node:path";
 /**
  * Source guard — the cache policy on `trips.list` (#764).
  *
- * `trips.list` is read from five call sites and every one of them resolves to
+ * `trips.list` is read from three call sites and every one of them resolves to
  * the SAME React Query key: the input is `undefined` everywhere, and tRPC omits
  * an undefined input from the key (`getQueryKeyInternal`). So there is ONE
  * query, and the effective freshness of that query is set by whichever mounted
@@ -89,7 +89,12 @@ describe("trips.list cache policy", () => {
     // If a refactor renames the procedure or the call shape, this fails LOUDLY
     // rather than the guard below vacuously passing over an empty set — the
     // failure mode CLAUDE.md #16's swallowed-error landmine is made of.
-    expect(callSites.length).toBeGreaterThanOrEqual(4);
+    //
+    // Was 4 when this guard landed (#814), lowered to 3 by #812: `TripSwitcher`
+    // was deleted as unreachable, and `TopNav`'s query went with it (it existed
+    // only to resolve the switcher's current trip). Lower this ONLY alongside a
+    // deliberate removal — a drop you didn't intend is the signal.
+    expect(callSites.length).toBeGreaterThanOrEqual(3);
   });
 
   it("has exactly one site setting a cache policy on the shared key", () => {
