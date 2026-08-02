@@ -108,6 +108,12 @@ export const TopNav: FC<TopNavProps> = ({
 
   // Drives the breadcrumb label + Owner pill. TanStack dedupes against the
   // same query the page may already be running.
+  //
+  // Inherits the global cache policy on `trips.list` — `ContextRail` is the one
+  // site that overrides it, deliberately; see `DashboardClient`'s note (#764).
+  // No `= []` default here: nothing iterates this, it's only `.find`ed against,
+  // so a failed fetch reads as "no current trip" and hides the switcher rather
+  // than presenting an empty list as fact.
   const { data: tripsForSwitcher } = trpc.trips.list.useQuery(undefined, {
     enabled: !hideTripSwitcher,
   });

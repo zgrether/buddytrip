@@ -65,9 +65,40 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
   // ── Current user ──────────────────────────────────────────────────────────
   const { data: me } = trpc.users.getMe.useQuery();
 
-  // ── Trips ──────────────────────────────────────────────────────────────────
-  const { data: trips = [], isLoading: tripsLoading } =
-    trpc.trips.list.useQuery();
+  /**
+   * ── Trips ────────────────────────────────────────────────────────────────
+   *
+   * This observer DELIBERATELY inherits the global 60s `staleTime` while
+   * `ContextRail` overrides the same key with `STRUCTURE_QUERY`
+   * (`staleTime: Infinity`). That difference is intentional and load-bearing,
+   * not drift left behind (#764) — the two are a pair, and this is the half
+   * that keeps the shared cache moving.
+   *
+   * All five `trips.list` observers resolve to ONE React Query key, so the
+   * effective freshness of the key is set by whichever mounted observer has the
+   * shortest `staleTime`. Under `staleTime: Infinity` nothing is ever stale and
+   * `refetchOnMount` is gated on staleness, so the rail alone would never
+   * refetch inside a session — and the ways this list actually goes stale
+   * (being added to or removed from a trip, a role change, another Organizer
+   * renaming a trip) are all done by ANOTHER user's client, with no
+   * invalidation and no Realtime path to carry them.
+   *
+   * This observer is what closes that. It is mounted on every Home visit at
+   * EVERY width — at `lg+` `AppShell` keeps this tree under `lg:hidden` rather
+   * than unmounting it — so returning to Home refreshes the shared cache and
+   * the rail reads the result.
+   *
+   * So: do NOT "converge" this onto `STRUCTURE_QUERY` to make the key
+   * consistent. Consistency here would delete the only in-session refresh path
+   * the key has. If a long cache is wanted on both, the membership mutations
+   * need invalidation FIRST.
+   */
+  const {
+    data: trips = [],
+    isLoading: tripsLoading,
+    isError: tripsError,
+    refetch: refetchTrips,
+  } = trpc.trips.list.useQuery();
 
   // ── Partition ──────────────────────────────────────────────────────────────
   const sections = partitionTrips(trips as TripRow[]);
@@ -184,7 +215,34 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
           <ChevronRight size={18} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
         </button>
 
-        {!hasAnyTrips ? (
+        {tripsError ? (
+          /* ── Load failure ────────────────────────────────────────────────
+             Checked BEFORE the empty state, and that order is the point
+             (#764). `data` is `undefined` on error and this component
+             defaults it to `[]`, so a failed fetch used to fall straight
+             through to `AuthenticatedEmptyState` — telling a user with trips
+             that they have none, complete with the first-run onboarding
+             pitch. The two states are now distinguishable. */
+          <div role="alert" data-testid="trips-load-error" className="py-16 text-center">
+            <p
+              className="text-base font-semibold"
+              style={{ color: "var(--color-bt-danger)" }}
+            >
+              Couldn&apos;t load your trips.
+            </p>
+            <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              This is a connection problem, not a change to your trips.
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetchTrips()}
+              className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Try again
+            </button>
+          </div>
+        ) : !hasAnyTrips ? (
           /* ── Empty state ─────────────────────────────────────────────────
              Single source of truth — root `/` redirects here when authed
              with no trips, and a direct `/dashboard` visit shows the

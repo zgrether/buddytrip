@@ -75,7 +75,17 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     setMounted(true);
   }, []);
 
-  const { data: trips = [] } = trpc.trips.list.useQuery(undefined, {
+  /**
+   * Inherits the global cache policy on `trips.list` — see `DashboardClient`'s
+   * note for why `ContextRail` is the one site that overrides it (#764).
+   *
+   * `isError` is surfaced rather than collapsed into the `[]` default, which
+   * would render a failed fetch as an empty trip list.
+   */
+  const {
+    data: trips = [],
+    isError,
+  } = trpc.trips.list.useQuery(undefined, {
     enabled: open, // don't fire query until user opens the switcher
   });
 
@@ -137,7 +147,13 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     onClose();
   };
 
-  const body = (
+  const body = isError ? (
+    <div role="alert" className="px-4 py-6 text-center">
+      <p className="text-[13px]" style={{ color: "var(--color-bt-danger)" }}>
+        Couldn&apos;t load your trips.
+      </p>
+    </div>
+  ) : (
     <TripSwitcherBody
       activeTrips={activeTrips}
       pastTrips={pastTrips}

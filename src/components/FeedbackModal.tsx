@@ -115,6 +115,10 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   const params = useParams<{ tripId?: string }>();
   const currentTripId = params?.tripId ?? null;
 
+  // Inherits the global cache policy on `trips.list` — `ContextRail` is the one
+  // site that overrides it, deliberately; see `DashboardClient`'s note (#764).
+  // No `= []` default: this is only `.find`ed against for a label, so a failed
+  // fetch degrades to "no trip label" rather than asserting an empty list.
   const { data: trips } = trpc.trips.list.useQuery(undefined, {
     enabled: open,
   });

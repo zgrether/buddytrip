@@ -42,6 +42,40 @@ import { useIsShellDesktop, RAIL_WIDTH_PX } from "./breakpoints";
  * has looked at yet, even one that's always on screen. The rail still fills
  * in almost immediately in practice; it just never competes for the cold
  * path's batch window.
+ *
+ * ── The cache policy on this key is DELIBERATELY not shared (#764) ───────────
+ * `trips.list` has five observers (this rail, `DashboardClient`, `TopNav`,
+ * `FeedbackModal`, `TripSwitcher`) and they all resolve to the SAME React Query
+ * key — `undefined` input is omitted from the tRPC key, so there is one query,
+ * not five. This site is the ONLY one that overrides the cache policy, and the
+ * override is intentional and bounded. Read `DashboardClient`'s note beside its
+ * own `trips.list` call before changing either one; the two are a pair.
+ *
+ * WHY `STRUCTURE_QUERY` IS SAFE HERE, precisely. It is NOT because the list
+ * can't go stale — it can, and nothing on this key can invalidate the ways it
+ * goes stale across devices:
+ *
+ *   - Being ADDED to a trip, REMOVED from one, or having your role changed are
+ *     all done by SOMEONE ELSE'S client. There is no invalidation path and no
+ *     Realtime path either — `useRealtimeMembers` is per-trip
+ *     (`trip_id=eq.{tripId}`), invalidates `tripMembers.list` and not this key,
+ *     and by construction cannot fire for a trip you don't yet know about.
+ *   - A trip renamed / re-dated by another Organizer is the same shape.
+ *
+ * What makes that tolerable is NOT `gcTime`. Under `staleTime: Infinity`
+ * nothing is ever stale, and `refetchOnMount: true` is gated on staleness
+ * (`shouldFetchOnMount` → `isStale`, query-core) — so within one page session
+ * this observer refetches on an explicit invalidate and on nothing else. The
+ * 30-minute `gcTime` only produces a refetch when EVERY observer has been
+ * unmounted for longer than that. The actual in-session refresh comes from
+ * `DashboardClient`'s observer, which inherits the 60s default and is mounted
+ * at `lg+` too (`AppShell.tsx` keeps `home` under `lg:hidden`) — so any visit
+ * to Home refreshes the shared cache and this rail reads the result.
+ *
+ * THE CONSEQUENCE, stated so the next reader doesn't have to rediscover it:
+ * putting `DashboardClient` on this same policy would remove the only path
+ * that refreshes this key inside a session. Don't "converge" the two without
+ * first adding invalidation on the membership mutations.
  */
 
 /** True once the browser reports it's idle, or after one tick as a fallback
@@ -73,7 +107,17 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   const router = useRouter();
   const isDesktop = useIsShellDesktop();
   const idle = useIdle(isDesktop);
-  const { data: trips = [] } = trpc.trips.list.useQuery(undefined, {
+  /**
+   * `isError` is read, not swallowed. This used to be a bare `data: trips = []`,
+   * which renders a FAILED fetch identically to a successful empty one — the
+   * rail simply showed no trips, with no way to tell "you're in no trips" apart
+   * from "the request failed" (#764).
+   */
+  const {
+    data: trips = [],
+    isError,
+    refetch,
+  } = trpc.trips.list.useQuery(undefined, {
     ...STRUCTURE_QUERY,
     enabled: isDesktop && idle,
   });
@@ -122,18 +166,22 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     >
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
       <Eyebrow>Your trips</Eyebrow>
-      {rows.map((t) => {
-        const current = t.id === activeTripId;
-        return (
-          <RailTripRow
-            key={t.id}
-            trip={t}
-            current={current}
-            pending={pendingTripId === t.id}
-            onOpen={() => openTrip(t.id)}
-          />
-        );
-      })}
+      {isError ? (
+        <RailLoadError onRetry={() => void refetch()} />
+      ) : (
+        rows.map((t) => {
+          const current = t.id === activeTripId;
+          return (
+            <RailTripRow
+              key={t.id}
+              trip={t}
+              current={current}
+              pending={pendingTripId === t.id}
+              onOpen={() => openTrip(t.id)}
+            />
+          );
+        })
+      )}
 
       <RailAction icon={<Flag size={14} />} label="Start a trip" onClick={() => router.push("/trips/new")} />
 
@@ -221,6 +269,30 @@ function RailTripRow({
         </span>
       </span>
     </button>
+  );
+}
+
+/**
+ * The rail's load-failure state — deliberately a distinct surface from "no
+ * trips", which is what a bare `data = []` collapsed it into. Quiet by design:
+ * the rail is chrome beside the thing the user came for, so a failure here says
+ * what happened and offers a retry without competing with page content.
+ */
+function RailLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="alert" className="mb-1 px-2.5 py-2">
+      <p className="text-[12px]" style={{ color: "var(--color-bt-danger)" }}>
+        Couldn&apos;t load your trips.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-1 text-[12px] font-semibold underline"
+        style={{ color: "var(--color-bt-accent)" }}
+      >
+        Try again
+      </button>
+    </div>
   );
 }
 
