@@ -993,6 +993,7 @@ export function StrokeGameView() {
           controlled={placementControlled}
           part="distribution"
           winnerTakesAll
+          entityCount={teamsQ.data?.length ?? null}
         />
       </ChecklistRow>
     );

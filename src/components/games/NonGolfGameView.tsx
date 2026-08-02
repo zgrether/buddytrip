@@ -342,6 +342,7 @@ export function NonGolfGameView() {
         canEdit={canEdit}
         isOwner={isOwner}
         canManageGame={canManageGame}
+        entityCount={teams.length || null}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
         // Draft-then-save: the whole page is controlled off configDraft; Save commits.
