@@ -524,6 +524,46 @@ These patterns have been established through prior work. Follow them exactly —
     same *invisibility*, different source — that was our code ignoring a signal,
     this was a library declaring something untrue.
 
+24. **Golf's lock state has ONE home — `src/lib/gameLifecycle.ts`
+    (`gameLockState` / `gameLifecycle`) + `GameLifecycleActions.tsx` — and a
+    format skipping it is how the same bug gets found seven times.** Rack and
+    stroke each grew a private `locked`/`correcting` pair; stroke's copy had
+    silently lost the correction arm entirely (#769 — a finalized stroke game
+    was a dead end with no reopen). Extracting the predicate (not just a shared
+    *component* — the divergence was in the conditions, not the markup) and
+    having every format call it turned seven separate incidents into one place
+    to look:
+    - the finalize gate itself (`canFinalize`/`canCorrect`/`canRelock`, #800)
+    - `openCorrection` missing from stroke (#769, same PR)
+    - closing the panel on finalize — absent in all three golf formats,
+      `useExitToBoard` (#806)
+    - the post-finalize invalidation set — three near-identical inline copies
+    - reset scoring not clearing local state — `useScoreSaver.clearAll` (#807)
+    - **tapping a grouping on a locked game opening the editable keypad instead
+      of the read-only scorecard** — absent in stroke though rack/match had it;
+      `gameLockState` split out specifically so a view can read lock state
+      EARLY, before the finalize CTA's completeness input even exists (#809)
+    - **match rendering its own copy of the CTA markup** at a different font
+      size and spacing than `GameLifecycleActions`, agreeing with it only by
+      coincidence of nobody having changed either side yet (found and closed
+      in the same sitting #809 predicted it, rather than as an eighth incident)
+
+    **The two shapes this takes, both real, both worth checking for:** logic
+    can drift while the markup happens to still look the same (rack/stroke's
+    finalize gate — same predicate, same visual result, different code); or
+    the STATE can already be unified while the PRESENTATION of it is still a
+    private copy (match's inline buttons — `canCorrect` was correctly derived
+    from the shared `gameLockState` one level up, then re-flattened into a
+    format-specific button before it reached the screen). A "the labels still
+    match" check only catches the first shape. Before accepting a copy as
+    harmless, check whether the INPUTS are shared and diverging, or the
+    OUTPUT is shared and being re-rendered privately — they need different
+    fixes and a status-quo check that only looks at rendered text will miss
+    the second kind entirely.
+    **The tell, going forward:** any new per-format behaviour that reads
+    `status` / `corrections_open` directly, anywhere outside this module, is
+    the eighth instance arriving.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
