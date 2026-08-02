@@ -95,9 +95,11 @@ or it erases others' content. If you find yourself writing
 `requireTripRole("Owner")` for anything else, that is a deviation from this rule
 and needs a reason — not a shrug.
 
-> **⚠️ The code does not YET fully match this principle — 10 of 19 deviations
+> **⚠️ The code does not YET fully match this principle — 8 of 19 deviations
 > remain.** #786 reconciled 11 across both layers (migration 101 + the tRPC
-> guards), then **2 were reverted** — see the deviations section. The 8 that are left are not drift: each is blocked by a specific
+> guards), then **2 were reverted** (#790) and have since been **re-landed
+> correctly** — `inviteByEmail` / `sendInvitationBlast`, via the role-INPUT split
+> recorded below (migration 103 + the tRPC guards). The 8 that are left are not drift: each is blocked by a specific
 > gate that cannot move without a separate, deliberate change, and each is
 > enumerated with its blocker in **Audit notes → Owner/Organizer deviations** at
 > the end of this file. Until they are reconciled, the per-row matrix below
@@ -163,8 +165,12 @@ Each row notes the **tRPC procedure** (authoritative gate).
 ### Crew / roster — `tripMembers`, `ghostCrew`
 
 Roster management **split in #786**, and the rows below reflect the code today.
-Inviting (`inviteByEmail` / `sendInvitationBlast`) moved to Organizer — it is
-running the trip and does not change who is trusted. The rest of this block is
+Inviting moved to Organizer — it is running the trip — but with one line drawn
+INSIDE `inviteByEmail`: an Organizer may invite a **Member**, and only the Owner
+may invite an **Organizer**, because the invite isn't the trusted act, the role
+being granted is. `sendInvitationBlast` takes no role and so moved wholesale.
+(Both were reverted once, in #790, for exactly the reason that split now
+handles — see the worked example in the audit notes.) The rest of this block is
 still Owner-only, and that is a **known deviation with a named blocker**, not a
 second rule: widening `trip_members` writes at the RLS layer would let an
 Organizer set any member's `role` via direct PostgREST, so it needs a
@@ -178,7 +184,9 @@ is the Owner's"), which read as a principle and competed with the actual one.
 |--------|:-----:|:---------:|:------:|------|
 | View roster | ✓ | ✓ | ✓ | `tripMembers.list`, `checkEmail` |
 | Add member | ✓ | — | — | `tripMembers.add` *(Owner)* |
-| Invite by email / blast | ✓ | — | — | `inviteByEmail`, `sendInvitationBlast` *(Owner — see the deviations note)* |
+| Invite by email (as **Member**) | ✓ | ✓ | — | `inviteByEmail` with `role: "Member"` (the default) |
+| Invite by email (as **Organizer**) | ✓ | — | — | `inviteByEmail` with `role: "Organizer"` — **Owner-only, checked in the procedure, not the guard** |
+| Invitation blast | ✓ | ✓ | — | `sendInvitationBlast` *(takes no role — nothing to split)* |
 | Promote/demote role | ✓ | — | — | `updateRole` *(Owner; not self)* |
 | Rename (trip nickname) | ✓ | — | — | `updateNickname` *(Owner; not the Owner)* |
 | Remove member | ✓ | — | — | `remove` *(Owner; not self)* |
@@ -455,7 +463,7 @@ only write path) but tightened in **migration 030** so RLS is a true backstop:
 | Table / cmd | Was | Now (migration 030) |
 |-------------|-----|---------------------|
 | `trip_members` INSERT/UPDATE | self **or** Owner+Organizer | self **or** Owner — matches Owner-only roster mgmt |
-| `invites` INSERT | any trip member | Owner (030) → **Owner+Organizer** (101). NOTE this is now LOOSER than `inviteByEmail`'s tRPC gate, which reverted to Owner — the one place the two layers deliberately disagree, because the procedure also writes `trip_members`, whose policy is still Owner-only. |
+| `invites` INSERT | any trip member | Owner (030) → Owner+Organizer (101) → **Owner+Organizer, but `role = 'Organizer'` is Owner-only** (103). The two layers now AGREE — 101's widening was too loose (it assumed the signup trigger creates the `trip_members` row; it does not, the invitee's own client does, via the self-insert arm), and 103 narrowed it to match the procedure's split. |
 | `date_poll_votes` "_ghost" (vote for a guest) | Owner+Organizer | Owner (030) → **Owner+Organizer** (101) — still matches `castVoteForMember` |
 
 **`trips` UPDATE left as Owner+Organizer (intentional).** Organizers
@@ -526,14 +534,45 @@ gate prevents moving, and the blocker is the work, not the guard swap.
 |---|---|
 | `tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `ghostCrew.create`, `.remove` | **RLS is row-granular.** Widening `trip_members` INSERT/UPDATE/DELETE lets an Organizer calling PostgREST directly set any member's `role` — including their own, to `'Owner'`. Exception 1 would hold only in the client. Needs a role-column trigger on `trip_members` first — the fix migration 030 itself named — and that trigger sits on the signup/merge write path, so it is its own migration with its own verification. |
 | `ghostCrew.update` | **`link_guest_to_account()`** (migration 095) hardcodes an Owner check inside the guest→real-user MERGE path, which runs in the signup trigger. Widening tRPC alone half-opens it: editing a placeholder's name would work, pasting an email that matches an account would fail at the database. |
-| `tripMembers.inviteByEmail`, `.sendInvitationBlast` | **The procedure mints the role it is gated on.** `inviteByEmail`'s `role` input defaults to `"Organizer"` and is written straight into `trip_members`, so an Organizer-gated version can create another Organizer — exception 1 routed around. These two were moved in #788 and **reverted**; RLS refused their `trip_members` writes (unchecked, so they reported success — SILENT_WRITES_AUDIT.md §4.3), which masked the design problem behind a bug. Re-widening belongs with the `trip_members` trigger work and needs a server-side split on the role INPUT — Owner-only for `"Organizer"`, Organizer-allowed for `"Member"` — not a different guard. |
 | `teamAssignments.setCaptain` | **A shared assert.** `set_team_captain` calls `assert_competition_owner`, which also guards `delete_competition_cascade` — exception 4. Widening the shared assert would widen `competitions.delete`. It also may not be a deviation at all: a captain holds real RLS grants (migrations 065 / 094), so appointing one is arguably "changing who is trusted" one level down — i.e. a sixth exception rather than a gap. That is a product call, not a code one. |
 
 **A procedure that takes a role as INPUT cannot be gated on role alone.** This is
-the misjudgement that produced the revert above, stated precisely: "inviting crew
+the misjudgement that produced the #790 revert, stated precisely: "inviting crew
 doesn't change who is trusted" is true for `role: "Member"` and false for the
 default. Before widening any guard, check whether the procedure can *write* the
 very role it is being gated on.
+
+### Worked example — `inviteByEmail`, resolved
+
+The rule above is what the fix was built from, so it is worth having the shape
+on file:
+
+1. **The guard admits the wider role.** `requireTripRole("Organizer")`.
+2. **The procedure refuses the narrower act.** `role === "Organizer" &&
+   ctx.tripRole !== "Owner"` → `FORBIDDEN`. Not `UNAUTHORIZED`: `authExpiry`
+   treats a 401 as a dead session and hard-navigates to `/login`, logging
+   someone out mid-invite (#689). The message names the rule, not the state
+   (#809).
+3. **RLS enforces the same split independently** (migration 103). This is the
+   half that is easy to skip and mustn't be — see below.
+4. **The unsafe default is removed.** `.default("Organizer")` → `"Member"`.
+   It was dead from the UI (`CrewSearchInput` always passes `role`), so it only
+   ever governed a direct API call — where the safe value belongs.
+
+**Why the tRPC check alone was never enough.** `inviteByEmail` is not the only
+way its write is reached. It creates an `invites` row carrying `role`, and the
+invitee's own browser later copies that role into `trip_members`
+(`src/app/invite/page.tsx`), which RLS permits through the **self-insert arm** of
+`trip_members_insert` (`user_id = auth.uid()::text` — no role predicate). So an
+Organizer inserting an `invites` row *by direct PostgREST* could mint an
+Organizer without ever calling the procedure.
+
+Migration 101 had widened `invites_insert` to `is_trip_planner` on the reasoning
+that accepting an invite "creates a `trip_members` row through the signup path,
+not through this policy." **`handle_new_user()` does not create that row** — it
+only sets `invites.accepted_at`. That correction is the whole reason migration
+103 exists, and it is the concrete form of #720's rule: *a tRPC check is not a
+policy.*
 
 **A guard test proves the gate, not the write.** The parity suite asserts
 not-FORBIDDEN, which says the caller was admitted — it cannot see a write that

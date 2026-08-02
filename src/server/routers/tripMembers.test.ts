@@ -152,14 +152,68 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
-  // Was briefly Organizer+ (#788) and is Owner-only again: `role` defaults to
-  // "Organizer" and is written into trip_members, so an Organizer-gated version
-  // could mint an Organizer. See the guard comment in tripMembers.ts.
-  it("inviteByEmail — planner cannot invite (Owner only)", async () => {
+  // The input-dependent split. Was Owner-only (#790's revert) because `role` is
+  // written into trip_members and an Organizer-gated version could mint an
+  // Organizer; the guard is Organizer again, with the procedure refusing the
+  // one grant an Organizer may not make. Both directions per #786.
+  it("inviteByEmail — an Organizer CAN invite a Member", async () => {
+    const caller = ctx.callerAs("planner");
+    const result = await caller.tripMembers.inviteByEmail({
+      tripId,
+      email: `org-invites-member-${Date.now()}@example.test`,
+      role: "Member",
+    });
+    expect(result.status).toBe("invited_new");
+  });
+
+  it("inviteByEmail — an Organizer CANNOT invite an Organizer", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+      caller.tripMembers.inviteByEmail({
+        tripId,
+        email: `org-invites-org-${Date.now()}@example.test`,
+        role: "Organizer",
+      })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("inviteByEmail — the refusal names the rule, and is not UNAUTHORIZED", async () => {
+    // UNAUTHORIZED would send `authExpiry` into a hard /login navigation,
+    // logging someone out mid-invite (#689). And "forbidden" alone leaves the
+    // reader guessing which half was refused (#809).
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.inviteByEmail({
+        tripId,
+        email: `org-invites-org-msg-${Date.now()}@example.test`,
+        role: "Organizer",
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: expect.stringContaining("Only the Owner can invite an Organizer"),
+    });
+  });
+
+  it("inviteByEmail — the Owner CAN invite an Organizer", async () => {
+    const caller = ctx.caller();
+    const result = await caller.tripMembers.inviteByEmail({
+      tripId,
+      email: `owner-invites-org-${Date.now()}@example.test`,
+      role: "Organizer",
+    });
+    expect(result.status).toBe("invited_new");
+  });
+
+  it("inviteByEmail — role defaults to Member, so an Organizer omitting it succeeds", async () => {
+    // The default flipped from "Organizer" to "Member" (#790's finding). If it
+    // ever flips back, this test fails for an Organizer caller — which is the
+    // point: the unsafe default becomes visible instead of silent.
+    const caller = ctx.callerAs("planner");
+    const result = await caller.tripMembers.inviteByEmail({
+      tripId,
+      email: `default-role-${Date.now()}@example.test`,
+    });
+    expect(result.status).toBe("invited_new");
   });
 
   it("inviteByEmail — member cannot invite", async () => {
@@ -471,14 +525,14 @@ describe("tripMembers router — sendInvitationBlast", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // Owner-only again alongside inviteByEmail (#788 reverted).
-  it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
+  // Moved to Organizer WHOLESALE — unlike its sibling it takes no role, so it
+  // grants nothing and needs no input split.
+  it("sendInvitationBlast — an Organizer CAN blast", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(
-      caller.tripMembers.sendInvitationBlast({
-        tripId,
-        memberUserIds: [ctx.getUser("member").id],
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const result = await caller.tripMembers.sendInvitationBlast({
+      tripId,
+      memberUserIds: [ctx.getUser("member").id],
+    });
+    expect(result).toBeTruthy();
   });
 });
