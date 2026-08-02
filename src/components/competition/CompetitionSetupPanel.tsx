@@ -87,6 +87,14 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       // board (and seeds the new competition's child caches) without a hard
       // refresh.
       utils.competitions.faceBootstrap.invalidate({ tripId });
+      // `trips.list` carries `hasCompetition`, which the dashboard card renders
+      // as the trophy chip — without this the chip is missing on a trip that now
+      // has a cup (#813). `trips.list` is NOT one of faceBootstrap's seeded
+      // children, so CLAUDE.md #10's re-seed hazard doesn't apply to it.
+      //
+      // Actor-side only: the flag changed for every member of the trip, and only
+      // this client invalidates. The rest needs cross-user propagation.
+      utils.trips.list.invalidate();
     },
   });
 

@@ -259,6 +259,12 @@ export function CompetitionSettingsModal({
       // The face renders from the faceBootstrap snapshot — re-resolve so it
       // returns to the empty/create state without a hard refresh (#10).
       utils.competitions.faceBootstrap.invalidate({ tripId });
+      // `trips.list` carries `hasCompetition` (the dashboard card's trophy
+      // chip); without this the chip lingers on a trip whose cup is gone
+      // (#813). Not a faceBootstrap-seeded child, so #10 doesn't apply to it.
+      //
+      // Actor-side only: the flag changed for every member of the trip.
+      utils.trips.list.invalidate();
     },
     onSuccess: () => {
       onDeleted?.();
