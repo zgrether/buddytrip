@@ -34,7 +34,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
-import { validatePlacement } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { CATEGORY_ICONS } from "@/lib/gameCategoryIcon";
 // Format definitions live in code (W-PERF-01) — the catalog + its type come from
 // here, read synchronously, never fetched. Re-exported below so existing
@@ -512,6 +512,33 @@ export function PlacementEditor({
             {fmtValue(placement.allocated)} of {fmtValue(total)} pts
           </span>
         </div>
+        {/* Places vs teams — the second half of "is this split valid", shown while
+            typing rather than only at save. Read straight off `placement`, which
+            `validatePlacement` already computed: no second derivation of the rule
+            (a duplicate is how F4 happened).
+
+            Rendered ONLY when the entity count is known (`entities != null`) —
+            a game configured before its competition has teams shows nothing,
+            matching the validator's own never-refuse-on-unknown behaviour. */}
+        {started && placement.entities != null && (
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Places
+            </span>
+            <span
+              className="text-[11px] font-semibold tabular-nums"
+              style={{
+                color:
+                  placement.state === "too_many_places"
+                    ? "var(--color-bt-danger)"
+                    : "var(--color-bt-text-dim)",
+              }}
+            >
+              {placement.places} {placement.places === 1 ? "place" : "places"} ·{" "}
+              {placement.entities} {placement.entities === 1 ? "team" : "teams"}
+            </span>
+          </div>
+        )}
         {!started && (
           <div className="flex items-start gap-1.5">
             <Info size={12} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }} />
@@ -522,7 +549,14 @@ export function PlacementEditor({
         )}
         {started && !placement.saveable && (
           <p className="text-[11px]" style={{ color: "var(--color-bt-danger)" }}>
-            {placement.remaining > 0
+            {/* too-many-places uses the SHARED refusal message, so the inline
+                warning and the one the save gate throws are the same sentence —
+                it reads as one rule, not two. The sum case keeps its existing
+                compact copy: the "N of M pts" line directly above already
+                carries those numbers, so the long form would just repeat them. */}
+            {placement.state === "too_many_places"
+              ? placementRefusalMessage(placement)
+              : placement.remaining > 0
               ? `${fmtValue(placement.remaining)} point${placement.remaining === 1 ? "" : "s"} left to allocate`
               : `${fmtValue(-placement.remaining)} point${-placement.remaining === 1 ? "" : "s"} over — must total ${fmtValue(total)}`}
           </p>

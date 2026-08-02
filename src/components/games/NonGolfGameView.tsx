@@ -215,7 +215,14 @@ export function NonGolfGameView() {
   // null = fine (undistributed / per_match / exact). Server refine is the authority.
   const distSaveBlock = useMemo(() => {
     const d = configDraft.pointsDistribution;
-    if (!isPlacement(d) || configDraft.pointsTotal == null) return null;
+    if (!isPlacement(d)) return null;
+    // A null total blocks the SUM check (nothing to sum against) but NOT the
+    // places-vs-entities one, which never reads the total — #819 nested both
+    // under this guard, so a no-total game could save an unappliable split.
+    if (configDraft.pointsTotal == null) {
+      const noTotal = validatePlacement(0, d.values, teams.length || null);
+      return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
+    }
     // Entity count = teams in the competition (what the leaderboard ranks).
     // Empty while the leaderboard read is in flight — `|| null` so an
     // unresolved 0 never refuses a valid split.
@@ -342,6 +349,7 @@ export function NonGolfGameView() {
         canEdit={canEdit}
         isOwner={isOwner}
         canManageGame={canManageGame}
+        entityCount={teams.length || null}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
         // Draft-then-save: the whole page is controlled off configDraft; Save commits.

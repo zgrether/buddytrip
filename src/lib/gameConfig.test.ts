@@ -220,3 +220,22 @@ describe("validatePlacement — more places than scoring entities", () => {
     expect(placementRefusalMessage(validatePlacement(9, [5, 4], 2))).toBeNull();
   });
 });
+
+describe("validatePlacement — places check is independent of the total", () => {
+  // #819 nested the places-vs-entities check under `total != null` at every
+  // gate, so a game with no owner-set total could persist a split that can't be
+  // applied — the exact shape of the two affected games found in production.
+  // The validator itself was always independent; only the callers weren't.
+  it("flags too many places even with a 0 / unset total", () => {
+    const v = validatePlacement(0, [9, 6, 4, 2], 2);
+    expect(v.state).toBe("too_many_places");
+    expect(v.places).toBe(4);
+    expect(v.entities).toBe(2);
+  });
+
+  it("a 0 total with a FITTING split is not flagged as too many places", () => {
+    // It's `partial` (0 ≠ 15) — which the callers only enforce once a total
+    // exists — but it must never be reported as an entity-count problem.
+    expect(validatePlacement(0, [9, 6], 2).state).toBe("partial");
+  });
+});

@@ -67,6 +67,7 @@ export function NonGolfConfigurationView({
   onDisable,
   saving,
   saveBar,
+  entityCount = null,
 }: {
   onBack: () => void;
   tripId: string;
@@ -92,6 +93,9 @@ export function NonGolfConfigurationView({
   onRulesChange: (rules: string) => void;
   onDelegatesChange: (delegates: string[]) => void;
   onFormatChange: (format: CompetitionFormat | null) => void;
+  /** Teams in the competition — drives the inline places-vs-teams warning in
+   *  `FormatPointsPanel`. Null while unknown; warns about nothing then. */
+  entityCount?: number | null;
   onPointsTotalChange: (total: number | null) => void;
   onPointsDistChange: (dist: PointsDistribution | null) => void;
   /** The LIVE server flag — the toggle reads the DRAFT (`draft.scoringEnabled`) and
@@ -195,6 +199,7 @@ export function NonGolfConfigurationView({
               testId="row-point-distribution"
             >
               <FormatPointsPanel
+                entityCount={entityCount}
                 game={game}
                 canEdit={canEdit}
                 part="distribution"
