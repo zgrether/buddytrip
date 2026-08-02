@@ -9,6 +9,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
@@ -644,6 +645,20 @@ export function StrokeGameView() {
   // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
   // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
   useRealtimeGame(tripId, activeGameId);
+
+  // Membership realtime (#791). These four views also render as STANDALONE
+  // routes (`/trips/{id}/games/...`), where neither the trip page nor
+  // `LiveFaceClient` is mounted above them — so nothing was invalidating
+  // `tripMembers.list`, and `useTripRole` (via `useGameEditAccess`) had NO
+  // refetch trigger at all: `refetchOnMount` only fires on mount, and
+  // `refetchOnWindowFocus` is globally false. A role change while this view sat
+  // open was therefore not "stale for 60s" but frozen for the life of the
+  // mount, so a newly-promoted Organizer never saw their settings gear appear.
+  //
+  // Safe to add even though this component ALSO renders as a panel over the
+  // board (where two other subscribers already exist): the hook is ref-counted
+  // per topic since #791, so N subscribers share one join.
+  useRealtimeMembers(tripId);
 
   function toggle(userId: string) {
     setSelected((prev) =>
