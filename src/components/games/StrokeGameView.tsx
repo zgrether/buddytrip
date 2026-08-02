@@ -47,6 +47,7 @@ import { pointsReady } from "@/lib/matchDraft";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { gameLockState } from "@/lib/gameLifecycle";
 import { showToast } from "@/lib/toast";
 
 const STROKE_PLAY = "gtt_stroke_play";
@@ -734,6 +735,15 @@ export function StrokeGameView() {
     scUnits.length,
   );
   const strokeCorrectionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
+  // Stroke had NO notion of "this game is over" anywhere in this file — zero
+  // occurrences of `status === "complete"` — which is why tapping a grouping on a
+  // finished round opened the editable keypad, a screen `scores.upsertEntry`
+  // refuses (`scores.ts:53`). Rack and match both had `locked`/`correcting`;
+  // stroke was the one format that never grew them.
+  const { isLocked: strokeLocked } = gameLockState({
+    status: gameQ.data?.status,
+    correctionsOpen: strokeCorrectionsOpen,
+  });
 
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
@@ -1157,7 +1167,13 @@ export function StrokeGameView() {
     // ENTRY (one level down) — a grouping is tapped: score just that group. A scorer of the
     // group gets the keypad; anyone else gets its read-only scorecard. Back → the surface.
     if (entryGroupId && entryGroup) {
-      const canScoreThisGroup = canEdit || (!!me && entryGroup.userIds.includes(me.id));
+      // A POSTED round is read-only for everyone, whatever their role — the same
+      // rule rack applies (`readOnly = locked || !canScoreGroup`). Reopening a
+      // correction clears `locked` and restores editing, so this is not a
+      // one-way door. Without it an owner tapped into the keypad and every
+      // keystroke round-tripped to a refusal.
+      const canScoreThisGroup =
+        !strokeLocked && (canEdit || (!!me && entryGroup.userIds.includes(me.id)));
       return (
         <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
           {!canScoreThisGroup ? (

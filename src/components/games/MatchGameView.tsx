@@ -42,6 +42,7 @@ import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { gameLockState } from "@/lib/gameLifecycle";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
@@ -508,8 +509,11 @@ export function MatchGameView() {
   // Lifecycle #7: Final = locked. `locked` (posted, no correction) → read-only;
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
-  const locked = status === "complete" && !correctionsOpen;
-  const correcting = status === "complete" && correctionsOpen;
+  // Shared predicate, same inputs, same result — match's behaviour is unchanged.
+  const { isLocked: locked, isCorrecting: correcting } = gameLockState({
+    status,
+    correctionsOpen,
+  });
   const published = matchesQ.data?.published ?? false;
   const serverMatches = useMemo(() => matchesQ.data?.matches ?? [], [matchesQ.data]);
   const serverParticipants = useMemo(() => matchesQ.data?.participants ?? [], [matchesQ.data]);

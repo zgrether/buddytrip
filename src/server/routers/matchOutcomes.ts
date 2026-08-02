@@ -58,7 +58,8 @@ export const matchOutcomesRouter = router({
       if (game.status === "complete" && !game.corrections_open) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "This round is posted — open score correction to edit it.",
+          message:
+            "This round is posted — tap “Correct a score” on the scoreboard to reopen it for edits.",
         });
       }
       if (!game.scoring_enabled) {
@@ -131,7 +132,8 @@ export const matchOutcomesRouter = router({
       if (game.status === "complete" && !game.corrections_open) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "This round is posted — open score correction to edit it.",
+          message:
+            "This round is posted — tap “Correct a score” on the scoreboard to reopen it for edits.",
         });
       }
 
