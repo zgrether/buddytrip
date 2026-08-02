@@ -37,10 +37,11 @@ import {
  * (opening one closed the other), and the tab bar has no room for a
  * fifth entry. The segmented control is the switch.
  *
- * Both `FloatingChatPanel` and `NewsPanel` render through their `embedded`
- * branch here — normal flow, no scrim, no drag-resize, no close × (this
- * component has nothing to close; the container around it owns that). That
- * branch fills whatever height THIS component gives it.
+ * `FloatingChatPanel` and `NewsPanel` both always render in normal flow now —
+ * no scrim, no drag-resize, no close × (this component has nothing to close;
+ * the container around it owns that). Their standalone chrome (#758) is gone,
+ * since the only caller of either was this same segment. Whatever's rendered
+ * fills whatever height THIS component gives it.
  */
 export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean }) {
   const { role } = useTripRole(tripId);
@@ -190,9 +191,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
         <FloatingChatPanel
           tripId={tripId}
           isOpen
-          embedded
           channel="crew"
-          onClose={noop}
           memberNames={memberNames}
         />
       </div>
@@ -201,19 +200,14 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           <FloatingChatPanel
             tripId={tripId}
             isOpen
-            embedded
             channel="planning"
-            onClose={noop}
             memberNames={memberNames}
           />
         </div>
       )}
       <div className="flex min-h-0 flex-1 flex-col" hidden={activeSegment !== "news"}>
-        <NewsPanel tripId={tripId} isOpen embedded onClose={noop} canPost={canPost} authors={authors} />
+        <NewsPanel tripId={tripId} isOpen canPost={canPost} authors={authors} />
       </div>
     </div>
   );
 }
-
-/** A tab has no dismiss — see the header. */
-function noop() {}

@@ -26,11 +26,11 @@ import { useNewsUnreadCount } from "@/components/NewsPanel";
  *    feeds is off screen.
  *
  *  - `news.unreadCount` IS gated to mobile, because at desktop nothing renders
- *    it. `AppTabBar` is hidden; `TopNav`'s `NewsToolButton` requires an
- *    `onOpenNews` prop that no call site in the app passes (see #766 — that
- *    button is dead code); and `ChatView`, which owns the News segment and has
- *    its own `useNewsUnreadCount`, is only mounted while chat is OPEN. So with
- *    chat closed at `lg+` this was a request whose result had no reader.
+ *    it. `AppTabBar` is hidden; `TopNav` has no News tool at all (#766 removed
+ *    the always-dead `NewsToolButton` — no call site had ever wired the
+ *    `onOpenNews` it required); and `ChatView`, which owns the News segment
+ *    and has its own `useNewsUnreadCount`, is only mounted while chat is OPEN.
+ *    So with chat closed at `lg+` this was a request whose result had no reader.
  *
  * The gate rides `useIsShellDesktop`, whose SSR-safe default is `false`
  * (`useState(false)` corrected in an effect), so it delays by a tick at

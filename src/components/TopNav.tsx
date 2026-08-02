@@ -3,13 +3,12 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Newspaper, MessageCircle, ChevronDown, Calendar, Trophy, type LucideIcon } from "lucide-react";
+import { MessageCircle, ChevronDown, Calendar, Trophy, type LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
 import { FeedbackModal } from "./FeedbackModal";
 import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
-import { useNewsUnreadCount } from "./NewsPanel";
 import { InstallBanner } from "./pwa/InstallBanner";
 import { RAIL_WIDTH_PX } from "./shell/breakpoints";
 import type { AppView } from "./shell/useAppView";
@@ -56,11 +55,6 @@ interface TopNavProps {
   /** Reflects whether the FloatingChatPanel is currently open — paints the
    *  Chat tool in its active state. */
   chatOpen?: boolean;
-  /** Opens the NewsPanel. Required alongside tripId to show the News tool. */
-  onOpenNews?: () => void;
-  /** Reflects whether the NewsPanel is currently open — paints the News tool
-   *  in its active state. */
-  newsOpen?: boolean;
   /** Called when a title-bar control opens a competing overlay (trip switcher,
    *  profile menu, feedback). The page uses it to close the News/Chat rail so
    *  those dropdowns aren't trapped behind the mobile sheet's scrim. */
@@ -68,9 +62,6 @@ interface TopNavProps {
   /** Hide the trip-breadcrumb switcher (e.g. on the profile page, which
    *  isn't trip-scoped). */
   hideTripSwitcher?: boolean;
-  /** Hide the News tool (e.g. on the profile page, where the global
-   *  broadcast surface isn't relevant). */
-  hideNews?: boolean;
   /** In competition context, the current user's TEAM color — passed to the
    *  account avatar so it reads in the user's team identity instead of teal.
    *  Undefined off competition pages (avatar stays teal). */
@@ -98,11 +89,8 @@ export const TopNav: FC<TopNavProps> = ({
   tripId,
   onOpenChat,
   chatOpen = false,
-  onOpenNews,
-  newsOpen = false,
   onDismissPanels,
   hideTripSwitcher = false,
-  hideNews = false,
   avatarTeamColor,
   activeView,
   hasContext = false,
@@ -312,12 +300,6 @@ export const TopNav: FC<TopNavProps> = ({
       <div className="flex flex-shrink-0 items-center gap-1">
         {/* Game-context actions (#550) — scorecard + owner/delegate settings gear,
             ahead of the persistent chat/news/feedback/avatar cluster. */}
-        {/* News — owner/organizer announcements. Trip-scoped, same as Chat:
-            only renders when a trip is in scope and the page wires onOpenNews. */}
-        {!hideNews && tripId && onOpenNews && (
-          <NewsToolButton tripId={tripId} onClick={onOpenNews} active={newsOpen} />
-        )}
-
         {/* Desktop-only (Phase 6): below `lg`, chat opens from the tab bar's
             Chat action instead — this stays hidden there so there's exactly
             one entry point per viewport, not two competing ones. */}
@@ -373,37 +355,6 @@ export const TopNav: FC<TopNavProps> = ({
     </>
   );
 };
-
-// ── NewsToolButton ──────────────────────────────────────────────────────────
-// Thin wrapper so useNewsUnreadCount only mounts on trip pages (tripId present).
-function NewsToolButton({
-  tripId,
-  onClick,
-  active,
-}: {
-  tripId: string;
-  onClick: () => void;
-  active: boolean;
-}) {
-  const unread = useNewsUnreadCount(tripId);
-  const utils = trpc.useUtils();
-  return (
-    <ToolButton
-      icon={Newspaper}
-      label="News"
-      count={unread}
-      badgeBg="var(--color-bt-accent)"
-      active={active}
-      onClick={onClick}
-      // Warm the feed the moment the user shows intent (hover / focus / press)
-      // so it's already in flight before the panel mounts — the open then
-      // resolves from cache instead of starting a cold round-trip.
-      onPrefetch={() => utils.news.list.prefetch({ tripId })}
-      ariaLabel="News"
-      testId="news-button"
-    />
-  );
-}
 
 // ── ChatToolButton ──────────────────────────────────────────────────────────
 // Thin wrapper so useChatUnreadCount only mounts on trip pages (tripId present).
