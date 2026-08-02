@@ -316,7 +316,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           <TopNav
             tripId={tripId}
             hideTripSwitcher
-            hideNews
             chatOpen={chatOpen}
             onOpenChat={onToggleChat}
             onDismissPanels={onDismissPanels}
@@ -509,7 +508,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         <TopNav
           tripId={tripId}
           hideTripSwitcher
-          hideNews
           chatOpen={chatOpen}
           onOpenChat={onToggleChat}
           onDismissPanels={onDismissPanels}

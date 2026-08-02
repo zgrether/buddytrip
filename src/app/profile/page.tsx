@@ -164,7 +164,7 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav hideTripSwitcher hideNews />
+      <TopNav hideTripSwitcher />
 
       <div className="flex">
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}
