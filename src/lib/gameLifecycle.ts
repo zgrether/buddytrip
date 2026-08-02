@@ -61,15 +61,47 @@ export type GameLifecycleState = {
   canRelock: boolean;
 };
 
+/**
+ * The LOCK STATE alone — what phase of its life the game is in, with no reference
+ * to who is looking or whether the round is complete.
+ *
+ * Split out from `gameLifecycle` because the views need it EARLY (a group tap is
+ * gated on it, long before the finalize CTA's completeness input exists) and
+ * because it is the piece that kept going missing. `gameLifecycle` builds on it,
+ * so there is still one definition.
+ *
+ * Six divergences between the golf formats were found in one sitting — the
+ * finalize gate, `openCorrection`, closing the panel, the invalidation set,
+ * clearing scores on reset, and read-only-when-locked — and five were the same
+ * failure: **a behaviour that depends on lifecycle state, which each view had to
+ * remember to implement.** Rack and match usually had them because they were
+ * built alongside each other; stroke consistently did not. That is not six bugs,
+ * it is one missing abstraction observed six times, and this is where it lives.
+ */
+export function gameLockState({
+  status,
+  correctionsOpen,
+}: Pick<GameLifecycleInput, "status" | "correctionsOpen">): Pick<
+  GameLifecycleState,
+  "isFinal" | "isLocked" | "isCorrecting"
+> {
+  const isFinal = status === "complete";
+  return {
+    isFinal,
+    /** Posted and closed — scores are frozen. `scores.upsertEntry` refuses. */
+    isLocked: isFinal && !correctionsOpen,
+    /** Posted but reopened — scores are editable again until re-locked. */
+    isCorrecting: isFinal && correctionsOpen,
+  };
+}
+
 export function gameLifecycle({
   canEdit,
   status,
   correctionsOpen,
   allComplete,
 }: GameLifecycleInput): GameLifecycleState {
-  const isFinal = status === "complete";
-  const isLocked = isFinal && !correctionsOpen;
-  const isCorrecting = isFinal && correctionsOpen;
+  const { isFinal, isLocked, isCorrecting } = gameLockState({ status, correctionsOpen });
 
   return {
     isFinal,

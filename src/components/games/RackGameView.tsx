@@ -46,6 +46,7 @@ import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayC
 import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
+import { gameLockState } from "@/lib/gameLifecycle";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 
 const RACK = "gtt_rack_n_stack";
@@ -661,8 +662,13 @@ export function RackGameView() {
   // Lifecycle #7: Final = locked. `locked` (posted) → read-only; `correcting`
   // (owner re-opened) → editable until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
-  const locked = gameQ.data?.status === "complete" && !correctionsOpen;
-  const correcting = gameQ.data?.status === "complete" && correctionsOpen;
+  // Derived from the SHARED predicate rather than re-stated here. Same inputs,
+  // same result — rack's behaviour is unchanged; it just stops being the third
+  // private copy of a rule stroke turned out not to have at all.
+  const { isLocked: locked, isCorrecting: correcting } = gameLockState({
+    status: gameQ.data?.status,
+    correctionsOpen,
+  });
 
   // Browser/OS back steps through the score-entry sub-screens (group entry → grid)
   // instead of jumping to the leaderboard. Depth: 0 = play screen, 1 = a group's

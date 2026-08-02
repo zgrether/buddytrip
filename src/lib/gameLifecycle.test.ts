@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gameLifecycle } from "./gameLifecycle";
+import { gameLifecycle, gameLockState } from "./gameLifecycle";
 
 /**
  * The regression this file exists for: stroke and rack each carried their own
@@ -83,5 +83,42 @@ describe("gameLifecycle", () => {
         }
       }
     }
+  });
+});
+
+describe("gameLockState — the piece each view kept re-implementing", () => {
+  it("is the same three flags gameLifecycle exposes, for the same inputs", () => {
+    // The split exists so views can read the lock state EARLY (a group tap is
+    // gated on it, before the finalize CTA's completeness input exists). If the
+    // two ever disagreed, rack and match would keep their behaviour and stroke
+    // would silently get a different one — which is the failure being fixed.
+    for (const status of ["pending", "active", "complete", null, undefined]) {
+      for (const correctionsOpen of [false, true]) {
+        const full = gameLifecycle({ canEdit: true, status, correctionsOpen, allComplete: true });
+        expect(gameLockState({ status, correctionsOpen })).toEqual({
+          isFinal: full.isFinal,
+          isLocked: full.isLocked,
+          isCorrecting: full.isCorrecting,
+        });
+      }
+    }
+  });
+
+  it("locks a posted game and unlocks it for a correction", () => {
+    // What the group tap reads: locked → the read-only scorecard, correcting →
+    // the keypad again. `scores.upsertEntry` refuses exactly the locked case, so
+    // this predicate and the server gate are the same condition.
+    expect(gameLockState({ status: "complete", correctionsOpen: false })).toMatchObject({
+      isLocked: true,
+      isCorrecting: false,
+    });
+    expect(gameLockState({ status: "complete", correctionsOpen: true })).toMatchObject({
+      isLocked: false,
+      isCorrecting: true,
+    });
+    expect(gameLockState({ status: "active", correctionsOpen: false })).toMatchObject({
+      isLocked: false,
+      isCorrecting: false,
+    });
   });
 });

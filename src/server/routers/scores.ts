@@ -53,7 +53,13 @@ export const scoresRouter = router({
       if (game.status === "complete" && !game.corrections_open) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "This round is posted — open score correction to edit it.",
+          // Names the control that exists rather than describing the state. The
+          // wall is much harder to reach now that a locked game's groupings open
+          // the read-only scorecard, but a stale tab can still get here while
+          // another device finalizes — and an unreachable-in-theory refusal is
+          // exactly the kind that shows up illegible in the field.
+          message:
+            "This round is posted — tap “Correct a score” on the scoreboard to reopen it for edits.",
         });
       }
       // Phase 2B.1 universal gate: scoring must be ENABLED before entries land,
