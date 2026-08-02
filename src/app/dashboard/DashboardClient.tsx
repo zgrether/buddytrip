@@ -74,7 +74,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
    * not drift left behind (#764) — the two are a pair, and this is the half
    * that keeps the shared cache moving.
    *
-   * All five `trips.list` observers resolve to ONE React Query key, so the
+   * All three `trips.list` observers resolve to ONE React Query key, so the
    * effective freshness of the key is set by whichever mounted observer has the
    * shortest `staleTime`. Under `staleTime: Infinity` nothing is ever stale and
    * `refetchOnMount` is gated on staleness, so the rail alone would never

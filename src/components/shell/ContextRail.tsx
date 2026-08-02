@@ -44,10 +44,12 @@ import { useIsShellDesktop, RAIL_WIDTH_PX } from "./breakpoints";
  * path's batch window.
  *
  * ── The cache policy on this key is DELIBERATELY not shared (#764) ───────────
- * `trips.list` has five observers (this rail, `DashboardClient`, `TopNav`,
- * `FeedbackModal`, `TripSwitcher`) and they all resolve to the SAME React Query
- * key — `undefined` input is omitted from the tRPC key, so there is one query,
- * not five. This site is the ONLY one that overrides the cache policy, and the
+ * `trips.list` has three observers (this rail, `DashboardClient`,
+ * `FeedbackModal`) and they all resolve to the SAME React Query key —
+ * `undefined` input is omitted from the tRPC key, so there is one query, not
+ * three. (It was five until #812 removed the unreachable `TripSwitcher` and
+ * `TopNav`'s query, which existed only to feed it.) This site is the ONLY one
+ * that overrides the cache policy, and the
  * override is intentional and bounded. Read `DashboardClient`'s note beside its
  * own `trips.list` call before changing either one; the two are a pair.
  *
