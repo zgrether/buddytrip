@@ -180,6 +180,14 @@ export function TripSettingsModal({
     onSuccess: () => {
       utils.trips.getById.invalidate({ tripId });
       utils.tripMembers.list.invalidate({ tripId });
+      // The server demotes the acting Owner to Organizer, and `trips.list`
+      // carries `myRole` — which the dashboard card renders as the RoleBadge.
+      // Without this the badge still reads "Owner" after transferring (#813).
+      //
+      // Actor-side only, deliberately: the PROMOTED user's `myRole` changed too,
+      // and no invalidation in this client can reach their device. That half
+      // needs cross-user propagation and is tracked separately.
+      utils.trips.list.invalidate();
       onClose();
     },
   });

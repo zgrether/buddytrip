@@ -287,6 +287,14 @@ export function DatePollCard({ trip, canManagePoll, onManageCrew }: DatePollCard
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
       utils.trips.getById.invalidate({ tripId });
+      // Locking a window writes the trip's start_date/end_date (datePoll.ts),
+      // and `trips.list` carries both — they drive the dashboard card's
+      // countdown AND which section the card sorts into (`tripStatus.ts` derives
+      // status from the dates). Without this the trip keeps its old countdown
+      // and can sit in the wrong section (#813).
+      //
+      // Actor-side only: the dates changed for every member of the trip.
+      utils.trips.list.invalidate();
     },
   });
 
