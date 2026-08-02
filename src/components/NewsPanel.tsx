@@ -2,36 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
+import { Pin, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
 import { NewsComposer } from "@/components/news/NewsComposer";
 import { NewsHelpModal } from "@/components/news/NewsHelpModal";
 import type { NewsPost } from "@/lib/news";
-import {
-  RAIL_DEFAULT_WIDTH,
-  clampRailWidth,
-  readRailWidth,
-  persistRailWidth,
-  readRailSheetHeight,
-  persistRailSheetHeight,
-} from "@/lib/railLayout";
 
 // ── NewsPanel — the Trip Board ──────────────────────────────────────────────
 //
-// Owner/organizer announcement posts. A SEPARATE panel from Chat that shares
-// its window style AND size (see src/lib/railLayout.ts): docked right rail on
-// desktop (no scrim — the page stays usable), draggable bottom sheet on
-// mobile. The title-bar News/Chat buttons act as radio buttons — switching
-// keeps the same size/position. PR1 is read-only; the composer (New post /
-// ⋯ Edit) lands in PR2 behind onNewPost / onManagePost.
-
-// Live height of the trip bottom nav (0px when none) — the rail + sheet anchor
-// their bottom to it so the nav stays visible. Same var the chat panel uses.
-const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
+// Owner/organizer announcement posts. Renders as a SEGMENT of `ChatView`
+// (normal flow, filling whatever height the caller gives it) — the standalone
+// docked-rail/bottom-sheet chrome this used to share with Chat is gone
+// (#758); `ChatSheet` is the one surface that owns sizing now. PR1 was
+// read-only; the composer (New post / ⋯ Edit) lands in PR2 behind
+// onNewPost / onManagePost.
 
 /** What the panel needs to render a post's author. Built on the page from
  *  tripMembers.list (same as chat's memberNames), keyed by user_id. */
@@ -44,27 +30,6 @@ export interface NewsAuthorMeta {
 interface NewsPanelProps {
   tripId: string;
   isOpen: boolean;
-  /**
-   * Rendered as a SEGMENT of `ChatView` rather than as a standalone overlay.
-   * `ChatView` itself is always mounted inside some other container now
-   * (`AppShell`'s `<aside>` at ≥1280, or `ChatSheet` below it — Phase 6:
-   * chat is an action, never a tab).
-   *
-   * Two things change. (1) Layout: the return below skips the portal /
-   * `fixed` / scrim / drag-resize / × chrome entirely and renders in normal
-   * flow, filling whatever height the caller (`ChatView`) gives it — a
-   * segment has nothing to close or resize itself; the container around
-   * `ChatView` owns that. (2) History: an embedded segment must NOT claim a
-   * history entry of its own — the container already owns exactly one, via
-   * `useModalBackButton`. Kept disabled here for the same reason it was
-   * added: pushing one on mount and calling `history.back()` on unmount is
-   * right for a real modal and was corrupting when Chat was briefly a TAB
-   * (pre-Phase-6) — switching away popped an entry the shell never pushed,
-   * so repeated tab switching unwound the stack until the user fell out of
-   * the trip entirely (observed: landing on /dashboard).
-   */
-  embedded?: boolean;
-  onClose: () => void;
   /** Owner/organizer — drives the owner empty-state variant and (PR2) compose. */
   canPost: boolean;
   /** user_id → author display info. Missing ids fall back to a neutral label. */
@@ -85,13 +50,11 @@ export function useNewsUnreadCount(tripId: string): number {
   return data ?? 0;
 }
 
-export function NewsPanel({ tripId, isOpen, embedded, onClose, canPost, authors }: NewsPanelProps) {
+export function NewsPanel({ tripId, isOpen, canPost, authors }: NewsPanelProps) {
   if (!isOpen) return null;
   return (
     <NewsPanelInner
       tripId={tripId}
-      embedded={embedded}
-      onClose={onClose}
       canPost={canPost}
       authors={authors}
     />
@@ -129,13 +92,9 @@ function relativeTime(iso: string, now: number): string {
 
 function NewsPanelInner({
   tripId,
-  embedded = false,
-  onClose,
   canPost,
   authors,
 }: Omit<NewsPanelProps, "isOpen">) {
-  useModalBackButton(onClose, !embedded);
-
   const utils = trpc.useUtils();
   const { data: posts = [], isLoading } = trpc.news.list.useQuery({ tripId });
 
@@ -158,119 +117,6 @@ function NewsPanelInner({
     lastMarkedRef.current = newest;
     markReadMutate({ tripId });
   }, [tripId, posts, isLoading, markReadMutate]);
-
-  // ── Desktop rail resize (drag left edge; persist width — shared with Chat) ─
-  const [panelWidth, setPanelWidth] = useState<number>(readRailWidth);
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(RAIL_DEFAULT_WIDTH);
-
-  useEffect(() => {
-    persistRailWidth(panelWidth);
-  }, [panelWidth]);
-
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      isDragging.current = true;
-      dragStartX.current = e.clientX;
-      dragStartWidth.current = panelWidth;
-      document.body.style.cursor = "ew-resize";
-      document.body.style.userSelect = "none";
-      function onMove(ev: MouseEvent) {
-        if (!isDragging.current) return;
-        if (ev.buttons === 0) return onUp();
-        const delta = dragStartX.current - ev.clientX;
-        setPanelWidth(clampRailWidth(dragStartWidth.current + delta));
-      }
-      function onUp() {
-        isDragging.current = false;
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-      }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [panelWidth]
-  );
-
-  // ── Mobile sheet resize (drag handle; persist as vh fraction — shared) ────
-  const [sheetHeight, setSheetHeight] = useState<number | null>(readRailSheetHeight);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const isSheetDragging = useRef(false);
-  const sheetPrevY = useRef(0);
-  const sheetCurH = useRef(0);
-  const sheetMoved = useRef(false);
-
-  const handleSheetDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    const startY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    const h = sheetRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.85;
-    isSheetDragging.current = true;
-    sheetMoved.current = false;
-    sheetPrevY.current = startY;
-    sheetCurH.current = h;
-    const minH = window.innerHeight * 0.25;
-    const maxH = window.innerHeight * 0.95;
-    function onMove(ev: MouseEvent | TouchEvent) {
-      if (!isSheetDragging.current) return;
-      if (!("touches" in ev) && (ev as MouseEvent).buttons === 0) return onEnd();
-      const y = "touches" in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-      const delta = sheetPrevY.current - y;
-      sheetPrevY.current = y;
-      const next = Math.min(maxH, Math.max(minH, sheetCurH.current + delta));
-      sheetCurH.current = next;
-      sheetMoved.current = true;
-      if (sheetRef.current) sheetRef.current.style.height = `${next}px`;
-    }
-    document.body.style.userSelect = "none";
-    function onEnd() {
-      isSheetDragging.current = false;
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onEnd);
-      document.removeEventListener("touchmove", onMove);
-      document.removeEventListener("touchend", onEnd);
-      if (sheetMoved.current) setSheetHeight(sheetCurH.current);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onEnd);
-    document.addEventListener("touchmove", onMove, { passive: true });
-    document.addEventListener("touchend", onEnd);
-  }, []);
-
-  useEffect(() => {
-    if (sheetHeight == null) return;
-    persistRailSheetHeight(sheetHeight);
-  }, [sheetHeight]);
-
-  // Mobile-only scroll lock: the bottom sheet locks the page; the desktop rail
-  // leaves the page scrollable (it's a dock, not a modal).
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
-    const apply = () => setIsMobileViewport(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-
-  const titleRow = (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        fontSize: 15,
-        fontWeight: 700,
-        color: "var(--color-bt-text)",
-      }}
-    >
-      <Pin size={17} style={{ color: "var(--color-bt-accent)" }} /> News
-    </span>
-  );
 
   // ── "How posts work" help (lives next to the News title) ──────────────────
   const [helpOpen, setHelpOpen] = useState(false);
@@ -328,45 +174,9 @@ function NewsPanelInner({
     </button>
   ) : null;
 
-  const closeBtn = (variant: "desktop" | "mobile") => (
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Close news"
-      className={
-        canPost
-          ? variant === "mobile"
-            ? "flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            : "flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-          : variant === "mobile"
-            ? "ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            : "ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-      }
-      style={
-        variant === "mobile"
-          ? { background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }
-          : { color: "var(--color-bt-text-dim)" }
-      }
-    >
-      <X size={16} />
-    </button>
-  );
-
-  const feedHeader = (variant: "desktop" | "mobile") => (
-    <div
-      className={`flex flex-shrink-0 items-center gap-2 px-3 ${variant === "mobile" ? "pb-2" : "py-2"}`}
-      style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-    >
-      {titleRow}
-      {helpBtn}
-      {newPostBtn}
-      {closeBtn(variant)}
-    </div>
-  );
-
   // Embedded header (ChatView's News segment) — same actions minus the
   // title text (the segment button already reads "News") and minus the ×
-  // (see the embedded return below).
+  // (a segment has nothing to close; you leave by choosing another one).
   const embeddedHeader = (
     <div
       className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
@@ -399,158 +209,35 @@ function NewsPanelInner({
       />
     ))
   );
-  // A component (not a shared element) so the desktop rail + mobile sheet each
-  // get an independent scroll ref + arrow state.
   const feedScroll = <NewsFeedScroll>{feedContent}</NewsFeedScroll>;
 
-  // Either the composer or the feed (header + scroll), placed inside each
-  // chrome's flex-col. Composer renders its own header + footer.
-  const inner = (variant: "desktop" | "mobile") =>
-    compose ? (
-      <NewsComposer
-        tripId={tripId}
-        variant={variant}
-        post={compose.mode === "edit" ? compose.post : null}
-        onDone={() => setCompose(null)}
-      />
-    ) : (
-      <>
-        {feedHeader(variant)}
-        {feedScroll}
-      </>
-    );
-
-  // ── Embedded (ChatView's News segment) ────────────────────────────────────
-  // A tab has no scrim to close and no × to dismiss — you leave by choosing
-  // another segment. Render in normal flow (no portal, no `fixed`, no
-  // backdrop, no drag-resize): it fills whatever height its caller
-  // (ChatView) gives it, same as FloatingChatPanel's embedded branch.
-  if (embedded) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        {compose ? (
-          <NewsComposer
-            tripId={tripId}
-            variant="desktop"
-            post={compose.mode === "edit" ? compose.post : null}
-            onDone={() => setCompose(null)}
-          />
-        ) : (
-          <>
-            {embeddedHeader}
-            {feedScroll}
-          </>
-        )}
-        <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-      </div>
-    );
-  }
-
-  return createPortal(
-    <>
-      {/* ── Desktop: docked-right drawer over a scrim ────────────────────────
-          The scrim covers the content BELOW the title bar (not the bar itself)
-          so the News/Chat buttons stay clickable above it — tap the other one
-          to swap panels. Content isn't pushed narrower, and clicking the scrim
-          closes. The panel keeps its left-edge drag-to-resize + title controls. */}
-      <div
-        className="hidden lg:block fixed inset-x-0 top-14 bottom-0 z-50"
-        style={{ background: "var(--color-bt-overlay)" }}
-        // Close only on a press that lands directly on the scrim. Using
-        // pointerdown (not click) means a resize drag — which starts on the
-        // grip and may release over the scrim — never fires a close.
-        onPointerDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
-        <div
-          className="absolute right-0 top-0 bottom-0 flex flex-col"
-          style={{
-            background: "var(--color-bt-card-float)",
-            borderLeft: "1px solid var(--color-bt-border)",
-            width: panelWidth,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Resize grip — left edge */}
-          <div
-            onMouseDown={handleDragStart}
-            className="group absolute left-0 top-0 bottom-0 z-10 flex w-3 cursor-ew-resize items-center justify-center"
-            aria-hidden="true"
-          >
-            <div
-              className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-              style={{ background: "var(--color-bt-accent-faint)" }}
-            />
-            <div className="relative flex flex-col gap-[3px]">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-[3px] w-[3px] rounded-full" style={{ background: "var(--color-bt-border)" }} />
-              ))}
-            </div>
-          </div>
-
-          {inner("desktop")}
-        </div>
-      </div>
-
-      {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
-          Starts BELOW the title bar (top-14 = the 56px nav) so the News/Chat
-          buttons stay lit and tappable above the scrim — tap the other one to
-          swap panels in place without closing first. maxHeight 100% keeps the
-          sheet from ever riding up over the bar. */}
-      <ScrollLock enabled={isMobileViewport}>
-        <div
-          className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
-          style={{ background: "var(--color-bt-overlay)", bottom: BOTTOM_NAV_OFFSET }}
-          onPointerDown={(e) => {
-            if (e.target === e.currentTarget) onClose();
-          }}
-        >
-          <div
-            ref={sheetRef}
-            className="flex w-full flex-col rounded-t-[18px]"
-            style={{
-              background: "var(--color-bt-card-float)",
-              height: sheetHeight != null ? sheetHeight : "85vh",
-              maxHeight: "100%",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="group flex cursor-ns-resize touch-none justify-center pt-2 pb-1"
-              onMouseDown={handleSheetDragStart}
-              onTouchStart={handleSheetDragStart}
-            >
-              <div className="relative flex flex-row gap-[3px] rounded px-1.5 py-1">
-                <div
-                  className="absolute inset-0 rounded opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                  style={{ background: "var(--color-bt-accent-faint)" }}
-                />
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="relative h-[3px] w-[3px] rounded-full"
-                    style={{ background: "var(--color-bt-border)" }}
-                  />
-                ))}
-              </div>
-            </div>
-            {inner("mobile")}
-          </div>
-        </div>
-      </ScrollLock>
-
+  // Always renders this way now — normal flow, no scrim, no drag-resize, no
+  // close × (a segment has nothing to close; you leave by choosing another
+  // one, and the container around `ChatView` owns whatever height this gets).
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {compose ? (
+        <NewsComposer
+          tripId={tripId}
+          variant="desktop"
+          post={compose.mode === "edit" ? compose.post : null}
+          onDone={() => setCompose(null)}
+        />
+      ) : (
+        <>
+          {embeddedHeader}
+          {feedScroll}
+        </>
+      )}
       <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-    </>,
-    document.body
+    </div>
   );
 }
 
 // ── Scrollable feed + jump arrow ───────────────────────────────────────────
-// A component (not a shared JSX element) so the desktop rail and mobile sheet
-// each own an independent scroll ref. Mirrors chat's jump-to-latest, but the
-// arrow is position-aware: scrolled down → up-arrow to the top (newest +
-// pinned live there); at the top → down-arrow to the bottom (oldest).
+// Mirrors chat's jump-to-latest, but the arrow is position-aware: scrolled
+// down → up-arrow to the top (newest + pinned live there); at the top →
+// down-arrow to the bottom (oldest).
 function NewsFeedScroll({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [dir, setDir] = useState<"up" | "down" | null>(null);

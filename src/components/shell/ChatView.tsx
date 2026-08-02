@@ -37,10 +37,12 @@ import {
  * (opening one closed the other), and the tab bar has no room for a
  * fifth entry. The segmented control is the switch.
  *
- * Both `FloatingChatPanel` and `NewsPanel` render through their `embedded`
- * branch here — normal flow, no scrim, no drag-resize, no close × (this
- * component has nothing to close; the container around it owns that). That
- * branch fills whatever height THIS component gives it.
+ * `FloatingChatPanel` still renders through its `embedded` branch here —
+ * normal flow, no scrim, no drag-resize, no close × (this component has
+ * nothing to close; the container around it owns that). `NewsPanel` always
+ * renders that way now — its standalone chrome (#758) is gone, since the only
+ * caller of it was this same segment. Either way, whatever's rendered fills
+ * whatever height THIS component gives it.
  */
 export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean }) {
   const { role } = useTripRole(tripId);
@@ -209,7 +211,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
         </div>
       )}
       <div className="flex min-h-0 flex-1 flex-col" hidden={activeSegment !== "news"}>
-        <NewsPanel tripId={tripId} isOpen embedded onClose={noop} canPost={canPost} authors={authors} />
+        <NewsPanel tripId={tripId} isOpen canPost={canPost} authors={authors} />
       </div>
     </div>
   );
