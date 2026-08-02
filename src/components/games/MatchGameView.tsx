@@ -41,6 +41,7 @@ import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
+import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
@@ -2200,7 +2201,8 @@ export function MatchGameView() {
           onFinish={handleFinish}
           finishing={finishGame.isPending}
           correcting={correcting}
-          canCorrect={canEdit && locked}
+          status={status}
+          correctionsOpen={correctionsOpen}
           onCorrect={handleCorrect}
           correctingPending={openCorrection.isPending}
           onOpenMatch={(matchId) => {
@@ -2934,7 +2936,8 @@ function Overview({
   onFinish,
   finishing,
   correcting,
-  canCorrect,
+  status,
+  correctionsOpen,
   onCorrect,
   correctingPending,
   onOpenMatch,
@@ -2956,8 +2959,14 @@ function Overview({
   finishing: boolean;
   /** #7: posted game re-opened for a correction (editable until re-locked). */
   correcting: boolean;
-  /** #7: locked + editor → may open a correction. */
-  canCorrect: boolean;
+  /** Raw lifecycle inputs — `GameLifecycleActions` derives canFinalize/canCorrect/
+   *  canRelock from these itself (the same shared predicate rack and stroke use),
+   *  rather than Overview precomputing a `canCorrect` boolean of its own. That
+   *  precomputed boolean was the seventh instance of golf's recurring divergence
+   *  (#809's table) — the STATE was already shared via `gameLockState` upstream,
+   *  but the PRESENTATION of it was still a private inline copy. */
+  status: string | undefined;
+  correctionsOpen: boolean;
   onCorrect: () => void;
   correctingPending: boolean;
   onOpenMatch: (matchId: string) => void;
@@ -3005,23 +3014,27 @@ function Overview({
         ))}
       </div>
 
-      {canEdit && !complete && allOver && (
-        <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
-          Finish round
-        </button>
-      )}
-
-      {/* #7: the deliberate, auditable correction path (owner/co-admin/delegate). */}
-      {canCorrect && (
-        <button onClick={onCorrect} disabled={correctingPending} className="mt-5 w-full disabled:opacity-40" style={{ height: 48, borderRadius: 12, background: "transparent", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)", fontSize: 15, fontWeight: 600 }}>
-          {correctingPending ? "Opening…" : "Correct a score"}
-        </button>
-      )}
-      {canEdit && correcting && (
-        <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-warning)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
-          {finishing ? "Re-locking…" : "Re-lock result"}
-        </button>
-      )}
+      {/* #7's correction path, and finalize/re-lock, now the SAME shared control
+          rack and stroke render (#809's seventh divergence, closed): match used
+          to carry its own copy of this markup at a different font size and
+          spacing model, agreeing with the shared one only by coincidence of
+          nobody having changed either side yet. Adopting it here changes match's
+          appearance slightly (15/14/15px and the shared component's own padding,
+          not `mt-5`) — a deliberate trade, not an oversight: three formats
+          matching beats one formatted its own way, and match also gains the
+          "Finishing…" pending state it never had. */}
+      <GameLifecycleActions
+        canEdit={canEdit}
+        status={status}
+        correctionsOpen={correctionsOpen}
+        allComplete={allOver}
+        finalizeLabel="Finish round"
+        finalizePendingLabel="Finishing…"
+        finalizePending={finishing}
+        correctPending={correctingPending}
+        onFinalize={onFinish}
+        onCorrect={onCorrect}
+      />
     </div>
   );
 }
