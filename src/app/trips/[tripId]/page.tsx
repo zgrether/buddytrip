@@ -315,7 +315,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
           <TopNav
             tripId={tripId}
-            hideTripSwitcher
             chatOpen={chatOpen}
             onOpenChat={onToggleChat}
             onDismissPanels={onDismissPanels}
@@ -507,7 +506,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
         <TopNav
           tripId={tripId}
-          hideTripSwitcher
           chatOpen={chatOpen}
           onOpenChat={onToggleChat}
           onDismissPanels={onDismissPanels}

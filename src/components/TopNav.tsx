@@ -57,9 +57,6 @@ interface TopNavProps {
    *  menu, feedback). The page uses it to close the News/Chat rail so those
    *  dropdowns aren't trapped behind the mobile sheet's scrim. */
   onDismissPanels?: () => void;
-  /** Hide the trip-breadcrumb switcher (e.g. on the profile page, which
-   *  isn't trip-scoped). */
-  hideTripSwitcher?: boolean;
   /** In competition context, the current user's TEAM color — passed to the
    *  account avatar so it reads in the user's team identity instead of teal.
    *  Undefined off competition pages (avatar stays teal). */
@@ -81,7 +78,6 @@ export const TopNav: FC<TopNavProps> = ({
   onOpenChat,
   chatOpen = false,
   onDismissPanels,
-  hideTripSwitcher = false,
   avatarTeamColor,
   activeView,
   hasContext = false,

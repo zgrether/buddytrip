@@ -154,7 +154,6 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
       topBar={({ activeView, hasContext, onSelectView }) => (
         <TopNav
           title="BuddyTrip"
-          hideTripSwitcher
           activeView={activeView}
           hasContext={hasContext}
           onSelectView={onSelectView}
