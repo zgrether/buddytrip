@@ -32,7 +32,7 @@ import { fmtValue, type GameRow } from "@/components/competition/CompetitionGame
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
-import { validatePlacement } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -335,11 +335,12 @@ export function StrokeGameView() {
   const distSaveBlock = useMemo(() => {
     const d = configDraft.pointsDistribution;
     if (!isPlacement(d) || configDraft.pointsTotal == null) return null;
-    const v = validatePlacement(configDraft.pointsTotal, d.values);
-    return v.saveable
-      ? null
-      : `Point distribution adds up to ${v.allocated}, but the total is ${configDraft.pointsTotal}. Adjust the places so they match.`;
-  }, [configDraft.pointsDistribution, configDraft.pointsTotal]);
+    // Entity count = teams in the competition (what the leaderboard ranks).
+    // undefined while the query is in flight, and a standalone game has none —
+    // both pass `null`, which never refuses.
+    const v = validatePlacement(configDraft.pointsTotal, d.values, teamsQ.data?.length ?? null);
+    return v.saveable ? null : placementRefusalMessage(v);
+  }, [configDraft.pointsDistribution, configDraft.pointsTotal, teamsQ.data]);
 
   // The group picker's team sections: the WHOLE trip crew, grouped by their competition team
   // (via team_assignments), with a neutral bucket for anyone not on a team. This is the full

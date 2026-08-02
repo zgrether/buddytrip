@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   deriveMatchCount,
   validatePlacement,
+  placementRefusalMessage,
   matchReadout,
   placementFit,
   matchFit,
@@ -151,5 +152,71 @@ describe("matchFit — doubles parity", () => {
   it("self-clears when the odd team becomes even (recompute)", () => {
     expect(matchFit([8, 7], "doubles").state).toBe("warn");
     expect(matchFit([8, 8], "doubles").state).toBe("ok");
+  });
+});
+
+describe("validatePlacement — more places than scoring entities", () => {
+  // The reported setup: 2 teams, total 15, split 5/4/3/2/1 (one place per
+  // PLAYER). placementPoints walks the standings, not the distribution, so the
+  // trailing 3/2/1 are never read — the winner takes 5, the loser 4, and 6
+  // points quietly go nowhere while points-AVAILABLE still counts all 15.
+  it("refuses 5 places against 2 teams", () => {
+    const v = validatePlacement(15, [5, 4, 3, 2, 1], 2);
+    expect(v.state).toBe("too_many_places");
+    expect(v.saveable).toBe(false);
+    expect(v.places).toBe(5);
+    expect(v.entities).toBe(2);
+  });
+
+  it("names BOTH numbers, and what to change", () => {
+    const msg = placementRefusalMessage(validatePlacement(15, [5, 4, 3, 2, 1], 2))!;
+    expect(msg).toContain("5 places");
+    expect(msg).toContain("2 teams");
+    // #809 — name the control, not just the state.
+    expect(msg).toMatch(/remove places/i);
+  });
+
+  it("refuses even when the split adds up exactly", () => {
+    // Sum is correct (15) — the split is still unsatisfiable, and saying
+    // "3 left to place" here would send the reader the wrong way.
+    const v = validatePlacement(15, [5, 4, 3, 2, 1], 2);
+    expect(v.allocated).toBe(15);
+    expect(v.state).toBe("too_many_places");
+  });
+
+  it("places EQUAL to entities is fine", () => {
+    expect(validatePlacement(9, [5, 4], 2).saveable).toBe(true);
+  });
+
+  it("FEWER places than entities stays saveable (#807 — unpaid places show nothing)", () => {
+    // 4 teams, 2 paid places: 3rd and 4th earn 0. dist() returns 0 out of range,
+    // so this is legitimate and must never be refused.
+    const v = validatePlacement(9, [5, 4], 4);
+    expect(v.state).toBe("complete");
+    expect(v.saveable).toBe(true);
+  });
+
+  it("winner-take-all against 2 teams saves", () => {
+    expect(validatePlacement(15, [15], 2).saveable).toBe(true);
+  });
+
+  it("an UNKNOWN entity count never refuses", () => {
+    // A game configured before its competition has teams, a standalone game, or
+    // a query still in flight. Refusing there would block a setup that is merely
+    // incomplete rather than wrong.
+    expect(validatePlacement(15, [5, 4, 3, 2, 1]).saveable).toBe(true);
+    expect(validatePlacement(15, [5, 4, 3, 2, 1], null).saveable).toBe(true);
+    expect(validatePlacement(15, [5, 4, 3, 2, 1], 0).saveable).toBe(true);
+  });
+
+  it("still refuses a split that does not sum to the total", () => {
+    // The pre-existing check survives the extension, with and without a count.
+    expect(validatePlacement(8, [5, 4], 2).saveable).toBe(false);
+    expect(validatePlacement(8, [5, 4]).saveable).toBe(false);
+    expect(placementRefusalMessage(validatePlacement(8, [5, 4], 2))).toContain("total 8 exactly");
+  });
+
+  it("returns no message when the split is saveable", () => {
+    expect(placementRefusalMessage(validatePlacement(9, [5, 4], 2))).toBeNull();
   });
 });

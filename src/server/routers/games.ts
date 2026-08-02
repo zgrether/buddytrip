@@ -12,7 +12,7 @@ import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
-import { validatePlacement } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS } from "@/lib/configDraft";
@@ -150,6 +150,38 @@ async function writeManualResults(
   const { error: insErr } = await supabase.from("game_results").insert(rows);
   if (insErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to save results: ${insErr.message}` });
   return rows.length;
+}
+
+/**
+ * Teams in the game's competition — the scoring-entity count a placement split
+ * is applied to (`computeCompetitionLeaderboard` ranks `teamIds` and reads only
+ * `entity_type='team'` results, whatever the format underneath).
+ *
+ * Returns null for a STANDALONE game (no competition) so the caller skips the
+ * check rather than refusing: a split with no teams to apply it to isn't
+ * decidable here, and refusing would block a legitimately-incomplete setup.
+ */
+async function teamCountForGame(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string
+): Promise<number | null> {
+  const { data: game } = await supabase
+    .from("games")
+    .select("competition_id")
+    .eq("id", gameId)
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  const competitionId = game?.competition_id as string | null | undefined;
+  if (!competitionId) return null;
+  const { count, error } = await supabase
+    .from("teams")
+    .select("id", { count: "exact", head: true })
+    .eq("competition_id", competitionId);
+  // A failed count must not silently become "0 teams" — that would refuse every
+  // split. Null skips the check, matching the standalone case.
+  if (error) return null;
+  return count ?? null;
 }
 
 export const gamesRouter = router({
@@ -998,12 +1030,16 @@ export const gamesRouter = router({
           // Empty values = undistributed = fine; per_match carries no total relationship.
           .superRefine((p, ctx) => {
             if (isPlacement(p.pointsDistribution) && p.pointsTotal != null) {
+              // Sum-to-total ONLY here. The places-vs-entities half needs the
+              // competition's team count, which is not in the payload and would
+              // make this refinement do a DB read — so it lives in the mutation
+              // body instead (same validator, same message helper).
               const check = validatePlacement(p.pointsTotal, p.pointsDistribution.values);
               if (!check.saveable) {
                 ctx.addIssue({
                   code: z.ZodIssueCode.custom,
                   path: ["pointsDistribution"],
-                  message: `Points must total ${p.pointsTotal} exactly — ${check.allocated} allocated, ${check.remaining < 0 ? `${-check.remaining} over` : `${check.remaining} left to place`}.`,
+                  message: placementRefusalMessage(check)!,
                 });
               }
             }
@@ -1022,6 +1058,24 @@ export const gamesRouter = router({
       }
       if (currentHash !== input.baseHash) {
         throw new TRPCError({ code: "CONFLICT", message: "This game changed on another device — reload before saving." });
+      }
+      // 1b · Places-vs-entities. Separate from the zod refinement above because
+      //      it needs a DB read the payload can't supply (the competition's team
+      //      count), and separate from the RPC because refusing here keeps the
+      //      atomic write atomic — nothing is half-applied. Same validator and
+      //      same message helper as every other gate, so they can't drift.
+      {
+        const p = input.payload as {
+          pointsDistribution?: unknown;
+          pointsTotal?: number | null;
+        };
+        if (isPlacement(p.pointsDistribution) && p.pointsTotal != null) {
+          const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
+          const check = validatePlacement(p.pointsTotal, p.pointsDistribution.values, entities);
+          if (!check.saveable) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
+          }
+        }
       }
       // 2 · The atomic write. Map the RPC's RAISE prefixes to typed errors so the
       //     Save banner can surface the readiness reason / live-reject legibly.
@@ -1201,12 +1255,15 @@ export const gamesRouter = router({
         // Only enforce when a total exists to enforce against. (A legacy game
         // with no owner-set total keeps its pre-Slice-D free-form behavior.)
         if (total != null) {
-          const check = validatePlacement(total, input.distribution.values);
+          // Entity count folded into the SAME call — this path already reads the
+          // game, so the places-vs-entities half costs one more query here rather
+          // than a second validator.
+          const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
+          const check = validatePlacement(total, input.distribution.values, entities);
           if (!check.saveable) {
-            const over = check.remaining < 0;
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Points must total ${total} exactly — ${check.allocated} allocated, ${over ? `${-check.remaining} over` : `${check.remaining} left to place`}.`,
+              message: placementRefusalMessage(check)!,
             });
           }
         }
