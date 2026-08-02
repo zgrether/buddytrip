@@ -29,7 +29,7 @@ import {
   type CompetitionFormat,
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
-import { validatePlacement } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
@@ -216,11 +216,12 @@ export function NonGolfGameView() {
   const distSaveBlock = useMemo(() => {
     const d = configDraft.pointsDistribution;
     if (!isPlacement(d) || configDraft.pointsTotal == null) return null;
-    const v = validatePlacement(configDraft.pointsTotal, d.values);
-    return v.saveable
-      ? null
-      : `Point distribution adds up to ${v.allocated}, but the total is ${configDraft.pointsTotal}. Adjust the places so they match.`;
-  }, [configDraft.pointsDistribution, configDraft.pointsTotal]);
+    // Entity count = teams in the competition (what the leaderboard ranks).
+    // Empty while the leaderboard read is in flight — `|| null` so an
+    // unresolved 0 never refuses a valid split.
+    const v = validatePlacement(configDraft.pointsTotal, d.values, teams.length || null);
+    return v.saveable ? null : placementRefusalMessage(v);
+  }, [configDraft.pointsDistribution, configDraft.pointsTotal, teams.length]);
 
   // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
   // the whole lifecycle off these).

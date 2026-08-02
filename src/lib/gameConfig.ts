@@ -39,7 +39,11 @@ export function deriveMatchCount(
 
 // ── Placement distribution validation ────────────────────────────────────────
 
-export type PlacementState = "undistributed" | "partial" | "complete";
+export type PlacementState =
+  | "undistributed"
+  | "partial"
+  | "complete"
+  | "too_many_places";
 
 export interface PlacementValidation {
   state: PlacementState;
@@ -49,8 +53,15 @@ export interface PlacementValidation {
   total: number;
   /** total − allocated (how many points are left to place). */
   remaining: number;
-  /** Saveable when undistributed (not started) OR complete (sum === total). */
+  /** Saveable when undistributed (not started) OR complete (sum === total),
+   *  AND the split doesn't configure more places than there are entities. */
   saveable: boolean;
+  /** Places configured (`values.length`) — echoed so callers can build the
+   *  message without re-deriving it. */
+  places: number;
+  /** Scoring entities the split will be applied to, when the caller knew it
+   *  (see `entityCount`). `null` = not supplied / not yet knowable. */
+  entities: number | null;
 }
 
 /**
@@ -65,15 +76,67 @@ export interface PlacementValidation {
  * 0-value LOWER places are fine as long as the sum still equals the total
  * (e.g. total 8 → [5,3,0] is complete). The caller maps "1st place empty" to an
  * empty array; any entered value (incl. 0) yields a non-empty array.
+ *
+ * ── `entityCount` — more places than there can be recipients ────────────────
+ * A placement split is applied to SCORING ENTITIES, and for every placement
+ * game that means TEAMS IN THE COMPETITION: `computeCompetitionLeaderboard`
+ * reads only `entity_type='team'` results and ranks `teamIds`, whatever the
+ * format underneath (stroke aggregates players into their team first, non-golf
+ * records team placings directly). Match and rack don't reach here at all —
+ * they use `per_match`, which has no place list.
+ *
+ * Configuring MORE places than entities is unsatisfiable, and it fails quietly
+ * rather than loudly: `placementPoints` walks the STANDINGS, not the
+ * distribution, so trailing values are simply never read. Two teams with
+ * 5/4/3/2/1 award 5 and 4 — the other 6 points go nowhere. Worse, points
+ * -AVAILABLE still counts the owner-set total (15), so the cup's clinch number
+ * is computed against points that cannot be awarded.
+ *
+ * FEWER places than entities is LEGITIMATE and must keep saving — `dist()`
+ * returns 0 out of range, so 4 teams on a 2-value split means 3rd and 4th earn
+ * nothing, which is #807's established behaviour. Only the excess is refused.
+ *
+ * `entityCount` is OPTIONAL and a null/0 count NEVER refuses. A game can be
+ * configured before its competition has teams, and refusing there would block
+ * a setup that is merely incomplete rather than wrong.
  */
 export function validatePlacement(
   total: number,
-  values: number[]
+  values: number[],
+  entityCount?: number | null
 ): PlacementValidation {
-  if (values.length === 0) {
-    return { state: "undistributed", allocated: 0, total, remaining: total, saveable: true };
+  const entities = entityCount ?? null;
+  const places = values.length;
+
+  if (places === 0) {
+    return {
+      state: "undistributed",
+      allocated: 0,
+      total,
+      remaining: total,
+      saveable: true,
+      places,
+      entities,
+    };
   }
+
   const allocated = values.reduce((sum, v) => sum + (v || 0), 0);
+
+  // Checked BEFORE the sum: a split with too many places is wrong even when it
+  // adds up, and "5 places, 2 teams" is the more useful thing to say than
+  // "3 left to place".
+  if (entities != null && entities > 0 && places > entities) {
+    return {
+      state: "too_many_places",
+      allocated,
+      total,
+      remaining: total - allocated,
+      saveable: false,
+      places,
+      entities,
+    };
+  }
+
   const complete = allocated === total;
   return {
     state: complete ? "complete" : "partial",
@@ -81,7 +144,33 @@ export function validatePlacement(
     total,
     remaining: total - allocated,
     saveable: complete,
+    places,
+    entities,
   };
+}
+
+/**
+ * The one message for a refused split, so the client gate and both server
+ * gates can't word it differently. Returns null when the split is saveable.
+ *
+ * Names the control to use, not just the state (#809) — a message that only
+ * reports "5 places, 2 teams" leaves the reader to work out that places are
+ * what should change.
+ */
+export function placementRefusalMessage(v: PlacementValidation): string | null {
+  if (v.saveable) return null;
+  if (v.state === "too_many_places") {
+    return (
+      `${v.places} places configured, ${v.entities} ${v.entities === 1 ? "team" : "teams"} in this competition — ` +
+      `remove places until there are at most ${v.entities}, or add teams. ` +
+      `Places past the last team are never awarded.`
+    );
+  }
+  const over = v.remaining < 0;
+  return (
+    `Points must total ${v.total} exactly — ${v.allocated} allocated, ` +
+    `${over ? `${-v.remaining} over` : `${v.remaining} left to place`}.`
+  );
 }
 
 // ── Match readout (retires "projected") ──────────────────────────────────────
