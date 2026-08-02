@@ -18,6 +18,7 @@ import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
 import { useConfigSync } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import {
@@ -113,6 +114,20 @@ export function NonGolfGameView() {
   // games.finish's manual arm, not per-hole entries — and its own leaderboard read has no
   // refetchInterval, DATA_FRESHNESS_AUDIT.md §8-F9), so this is its first one.
   useRealtimeGame(tripId, urlGameId);
+
+  // Membership realtime (#791). These four views also render as STANDALONE
+  // routes (`/trips/{id}/games/...`), where neither the trip page nor
+  // `LiveFaceClient` is mounted above them — so nothing was invalidating
+  // `tripMembers.list`, and `useTripRole` (via `useGameEditAccess`) had NO
+  // refetch trigger at all: `refetchOnMount` only fires on mount, and
+  // `refetchOnWindowFocus` is globally false. A role change while this view sat
+  // open was therefore not "stale for 60s" but frozen for the life of the
+  // mount, so a newly-promoted Organizer never saw their settings gear appear.
+  //
+  // Safe to add even though this component ALSO renders as a panel over the
+  // board (where two other subscribers already exist): the hook is ref-counted
+  // per topic since #791, so N subscribers share one join.
+  useRealtimeMembers(tripId);
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);
   const gameCells = useMemo(
     () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number; points: number }[])

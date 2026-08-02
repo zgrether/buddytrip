@@ -15,6 +15,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -304,6 +305,20 @@ export function RackGameView() {
   // hidden tab). Pure invalidate; composes with `draftTouched` — a clean page
   // re-seeds live, a dirty page holds its edits and gets its honest CONFLICT at Save.
   useRealtimeGame(tripId, gid);
+
+  // Membership realtime (#791). These four views also render as STANDALONE
+  // routes (`/trips/{id}/games/...`), where neither the trip page nor
+  // `LiveFaceClient` is mounted above them — so nothing was invalidating
+  // `tripMembers.list`, and `useTripRole` (via `useGameEditAccess`) had NO
+  // refetch trigger at all: `refetchOnMount` only fires on mount, and
+  // `refetchOnWindowFocus` is globally false. A role change while this view sat
+  // open was therefore not "stale for 60s" but frozen for the life of the
+  // mount, so a newly-promoted Organizer never saw their settings gear appear.
+  //
+  // Safe to add even though this component ALSO renders as a panel over the
+  // board (where two other subscribers already exist): the hook is ref-counted
+  // per topic since #791, so N subscribers share one join.
+  useRealtimeMembers(tripId);
 
   // ── Rack read-model (the spec's novelty) ─────────────────────────────
   const participants = useMemo(() => groupsQ.data?.participants ?? [], [groupsQ.data]);
