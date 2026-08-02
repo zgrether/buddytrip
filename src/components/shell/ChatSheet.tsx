@@ -87,8 +87,7 @@ export function ChatSheet({
       const max = availableHeight();
       const next = Math.min(max, Math.max(MIN_HEIGHT_PX, dragStartHeight.current + delta));
       // Mutate the DOM directly during the drag — avoids a React re-render
-      // on every pointer-move frame (same technique as FloatingChatPanel's
-      // existing drag-resize).
+      // on every pointer-move frame.
       if (sheetRef.current) sheetRef.current.style.height = `${next}px`;
     },
     [availableHeight]

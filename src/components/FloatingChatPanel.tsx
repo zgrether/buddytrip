@@ -1,33 +1,16 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from "react";
-import { Send, X, ChevronDown, MessageCircle } from "lucide-react";
-import { ChatNotifyToggle } from "./ChatNotifyToggle";
-import {
-  RAIL_DEFAULT_WIDTH,
-  clampRailWidth,
-  readRailWidth,
-  persistRailWidth,
-  readRailSheetHeight,
-  persistRailSheetHeight,
-} from "@/lib/railLayout";
-
-// Chat history page size — how many messages each lazy "load older" fetch pulls.
-const CHAT_PAGE_SIZE = 50;
-// Live height of the trip bottom nav, published by BottomNav as a CSS var
-// (0px when no nav is mounted). Both the desktop panel and the mobile sheet
-// anchor their bottom to it so the nav stays visible and the input never hides
-// behind it — identically on every viewport, regardless of the nav's actual
-// measured height.
-const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
+import { Send, ChevronDown, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
-import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { ScrollLock } from "@/hooks/useScrollLock";
+
+// Chat history page size — how many messages each lazy "load older" fetch pulls.
+const CHAT_PAGE_SIZE = 50;
 
 type Visibility = "crew" | "planning";
 
@@ -51,66 +34,39 @@ interface FloatingChatPanelProps {
    *  channel is redundant — collapse to a single Organizers channel. */
   ideaStage?: boolean;
   /**
-   * Rendered as a SEGMENT of `ChatView` rather than as a standalone overlay.
-   * `ChatView` itself is always mounted inside some other container now
-   * (`AppShell`'s `<aside>` at ≥1280, or `ChatSheet` below it — Phase 6:
-   * chat is an action, never a tab), so `embedded` here just means "let the
-   * container above own the chrome."
-   *
-   * Two things change. (1) Layout: the return below skips the floating
-   * `fixed`/scrim/drag-resize/× chrome entirely and renders in normal flow,
-   * filling whatever height the caller (`ChatView`) gives it — a segment has
-   * nothing to close or resize itself; you switch segments instead, and the
-   * CONTAINER around `ChatView` owns open/close. (2) History: an embedded
-   * segment must NOT claim a history entry of its own — `ChatSheet` (or
-   * nothing, for the aside) already owns exactly one, via `useModalBackButton`.
-   * `useModalBackButton` pushes one on mount and calls `history.back()` on
-   * unmount, which is right for a real modal and was corrupting when Chat was
-   * briefly a TAB (pre-Phase-6): switching away from Chat popped an entry the
-   * shell had not pushed, so repeated tab switching unwound the stack until
-   * the user fell out of the trip entirely (observed: landing on /dashboard).
-   * Kept disabled here for the same reason it was added — `embedded` is
-   * still exactly "does something ABOVE this one already own the history
-   * entry," true whether that something is the old tab or today's sheet/aside.
-   */
-  embedded?: boolean;
-  /**
    * Drive the channel from OUTSIDE (the shell's Chat segments own the choice).
-   * When set, the panel's own channel tabs are hidden — two controls for one
-   * piece of state is how they drift.
+   * The panel has no channel-tab UI of its own (#758 removed it along with the
+   * standalone chrome it belonged to) — this prop is the only way a channel
+   * gets picked.
    *
    * It is still a REQUEST, not a grant: the derivation below refuses "planning"
    * for anyone who isn't currently an organizer, so this cannot be used to reach
    * a channel the caller can't read.
    */
   channel?: Visibility;
-  onClose: () => void;
   memberNames: Record<string, string>;
 }
 
 /**
- * FloatingChatPanel — the trip chat surface, mounted once per trip page.
+ * FloatingChatPanel — the trip chat surface. Renders as a SEGMENT of
+ * `ChatView` (normal flow, filling whatever height the caller gives it) — the
+ * standalone docked-rail/bottom-sheet chrome this used to share with News is
+ * gone (#758); `ChatSheet` is the one surface that owns sizing now.
  *
  * Two sub-channels live behind a tab toggle (Owner/Organizer only see the
  * toggle — everyone else just gets Crew):
  *   - Crew       — every trip member (messages.visibility = 'crew')
  *   - Organizers — Owner + Organizer only (messages.visibility = 'planning')
  *
- * Desktop (lg+): anchored panel below the top nav, slides in from the right.
- * Mobile: full-width bottom sheet with a drag handle and a backdrop that
- *   closes on tap. Body scroll is locked while open.
- *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, ideaStage, embedded, channel, onClose, memberNames }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ tripId, isOpen, ideaStage, channel, memberNames }: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
     <FloatingChatPanelInner
       tripId={tripId}
       ideaStage={ideaStage}
-      embedded={embedded}
       channel={channel}
-      onClose={onClose}
       memberNames={memberNames}
     />
   );
@@ -119,16 +75,12 @@ export function FloatingChatPanel({ tripId, isOpen, ideaStage, embedded, channel
 function FloatingChatPanelInner({
   tripId,
   ideaStage = false,
-  embedded = false,
   channel,
-  onClose,
   memberNames,
 }: {
   tripId: string;
   ideaStage?: boolean;
-  embedded?: boolean;
   channel?: Visibility;
-  onClose: () => void;
   memberNames: Record<string, string>;
 }) {
   const currentUser = useCurrentUser();
@@ -144,19 +96,8 @@ function FloatingChatPanelInner({
   // typed in. Switching tabs swaps the visible draft; hitting Enter only ever
   // sends the draft that belongs to the channel you're currently looking at.
   const [drafts, setDrafts] = useState<Record<Visibility, string>>({ crew: "", planning: "" });
-  const [selectedChannel, setSelectedChannel] = useState<Visibility>("crew");
+  const [selectedChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
-  // Width is shared with the News rail (see src/lib/railLayout.ts) so the two
-  // panels act as radio buttons — switching keeps the same size. Read the last
-  // persisted width on mount; persist on every change.
-  const [panelWidth, setPanelWidth] = useState<number>(readRailWidth);
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(RAIL_DEFAULT_WIDTH);
-
-  useEffect(() => {
-    persistRailWidth(panelWidth);
-  }, [panelWidth]);
 
   // Derived, not stored: non-organizers can never resolve to the planning
   // channel even if they were demoted mid-session with the panel open. The
@@ -170,7 +111,6 @@ function FloatingChatPanelInner({
     : canSeeOrganizers
       ? (channel ?? selectedChannel)
       : "crew";
-  const setActiveChannel = setSelectedChannel;
 
   // The visible draft + writer for the active channel.
   const text = drafts[activeChannel];
@@ -178,92 +118,6 @@ function FloatingChatPanelInner({
     (value: string) => setDrafts((d) => ({ ...d, [activeChannel]: value })),
     [activeChannel]
   );
-
-  // Mobile sheet drag state — shared with the News rail (vh fraction).
-  const [sheetHeight, setSheetHeight] = useState<number | null>(readRailSheetHeight);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const isSheetDragging = useRef(false);
-  const sheetDragStartY = useRef(0);
-
-  // Note: the realtime subscription lives in useChatUnreadCount (always
-  // mounted on the trip page), not here. A single subscription keeps both the
-  // unread badge and this open panel in sync via the shared query cache, and
-  // avoids two channels with the same topic colliding on the supabase singleton.
-  useModalBackButton(onClose, !embedded);
-
-  const finalSheetHeight = useRef<number>(0);
-  const didSheetMove = useRef(false);
-
-  const handleSheetDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    const startY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    const currentHeight = sheetRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.85;
-    isSheetDragging.current = true;
-    didSheetMove.current = false;
-    // sheetDragStartY tracks the PREVIOUS frame's Y so delta is always incremental.
-    sheetDragStartY.current = startY;
-    finalSheetHeight.current = currentHeight;
-
-    const minHeight = window.innerHeight * 0.25;
-    const maxHeight = window.innerHeight * 0.95;
-
-    function onMove(ev: MouseEvent | TouchEvent) {
-      if (!isSheetDragging.current) return;
-      if (!("touches" in ev) && (ev as MouseEvent).buttons === 0) { onEnd(); return; }
-      const y = "touches" in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-      // Incremental delta: movement since last frame, not from original start.
-      // This avoids the deadzone that builds up when the sheet is clamped at min/max.
-      const delta = sheetDragStartY.current - y;
-      sheetDragStartY.current = y;
-      const next = Math.min(maxHeight, Math.max(minHeight, finalSheetHeight.current + delta));
-      finalSheetHeight.current = next;
-      didSheetMove.current = true;
-      // Mutate the DOM directly — avoids a React re-render on every frame.
-      if (sheetRef.current) sheetRef.current.style.height = `${next}px`;
-    }
-    document.body.style.userSelect = "none";
-
-    function onEnd() {
-      isSheetDragging.current = false;
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onEnd);
-      document.removeEventListener("touchmove", onMove);
-      document.removeEventListener("touchend", onEnd);
-      // Sync React state once on release so the value survives re-renders.
-      if (didSheetMove.current) setSheetHeight(finalSheetHeight.current);
-    }
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onEnd);
-    document.addEventListener("touchmove", onMove, { passive: true });
-    document.addEventListener("touchend", onEnd);
-  }, []);
-
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartWidth.current = panelWidth;
-    document.body.style.cursor = "ew-resize";
-    document.body.style.userSelect = "none";
-
-    function onMove(ev: MouseEvent) {
-      if (!isDragging.current) return;
-      if (ev.buttons === 0) { onUp(); return; }
-      const delta = dragStartX.current - ev.clientX;
-      setPanelWidth(clampRailWidth(dragStartWidth.current + delta));
-    }
-    function onUp() {
-      isDragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [panelWidth]);
 
   // Chat history is paginated, not loaded all at once: each page is the newest
   // PAGE_SIZE messages older than the previous page's cursor (server orders
@@ -330,14 +184,11 @@ function FloatingChatPanelInner({
   // and useChatUnreadCount read the same readState query, and markRead
   // invalidates it — so marking read here updates the badge with no manual
   // cross-component plumbing.
-  const { data: readStateData } = trpc.messages.readState.useQuery(
-    { tripId },
-    { enabled: !!tripId }
-  );
-  const readMarks: Record<Visibility, string | null> = readStateData ?? {
-    crew: null,
-    planning: null,
-  };
+  // No `data` destructured — this call's job is the subscription itself:
+  // it's what populates the `messages.readState` cache the lazy initializer
+  // below reads via `getData`, and what `markReadMutate`'s invalidate()
+  // refetches on the next read-tracking cycle.
+  trpc.messages.readState.useQuery({ tripId }, { enabled: !!tripId });
 
   // ── New-messages divider boundary ───────────────────────────────────────
   // Freeze each channel's last-read timestamp at the moment the panel opens —
@@ -353,28 +204,15 @@ function FloatingChatPanelInner({
   });
   const dividerSnapshot = dividerSnapshots[activeChannel];
 
-  const unreadFor = (messages: ChatMessage[], visibility: Visibility): number => {
-    if (!currentUser?.id) return 0;
-    const others = messages.filter(
-      (m) => m.user_id !== currentUser.id && m.message_type !== "system"
-    );
-    const lr = readMarks[visibility];
-    if (!lr) return others.length;
-    const threshold = new Date(lr).getTime();
-    return others.filter((m) => new Date(m.created_at).getTime() > threshold).length;
-  };
-  const crewUnread = unreadFor(crewDisplayed, "crew");
-  const planningUnread = canSeeOrganizers ? unreadFor(planningDisplayed, "planning") : 0;
-
-
   // Mark the active channel read whenever it's shown and new messages arrive.
   // markRead stamps the server clock; on success it invalidates readState
-  // (refreshing readMarks here) AND unreadCount (F3 — the badge in
-  // useChatUnreadCount no longer shares a query with this panel, so it needs
-  // its own explicit invalidation to clear on read). The readState refresh
-  // produces a fresh `displayed` reference which would re-trigger this effect,
-  // so we track the last-marked newest-message timestamp in a ref and only
-  // fire when it actually changes (per channel) — no mutation loop.
+  // (refreshing the cache the next mount's dividerSnapshots reads) AND
+  // unreadCount (F3 — the badge in useChatUnreadCount no longer shares a query
+  // with this panel, so it needs its own explicit invalidation to clear on
+  // read). The readState refresh produces a fresh `displayed` reference which
+  // would re-trigger this effect, so we track the last-marked newest-message
+  // timestamp in a ref and only fire when it actually changes (per channel) —
+  // no mutation loop.
   const { mutate: markReadMutate } = trpc.messages.markRead.useMutation({
     onSuccess: () => {
       utils.messages.readState.invalidate({ tripId });
@@ -400,25 +238,6 @@ function FloatingChatPanelInner({
     lastMarkedRef.current[activeChannel] = ts;
     markReadMutate({ tripId, visibility: activeChannel });
   }, [tripId, activeChannel, displayed, markReadMutate]);
-
-  // Persist sheet height (shared with News) so it survives close/reopen/switch.
-  useEffect(() => {
-    if (sheetHeight == null) return;
-    persistRailSheetHeight(sheetHeight);
-  }, [sheetHeight]);
-
-  // Mobile-only scroll lock: the bottom sheet locks the page behind it, but
-  // the desktop side panel must leave the page scrollable. Both subtrees live
-  // in the same (CSS-toggled) render, so we track the viewport and only enable
-  // <ScrollLock> on the mobile sheet at the mobile breakpoint.
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
-    const apply = () => setIsMobileViewport(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
 
   const sendMessage = trpc.messages.send.useMutation({
     onSuccess: (_, variables) => {
@@ -483,56 +302,6 @@ function FloatingChatPanelInner({
     ? "var(--color-bt-accent-border)"
     : "var(--color-bt-planning-border)";
 
-  // Unified title bar — matches the News rail: a "Chat" title row, with the
-  // channel tabs dropped to a SECOND row beneath it (News has no tabs; this is
-  // the only structural difference between the two panels). The tabs row only
-  // renders when there's a real choice — organizers see Crew/Organizers; in
-  // the IDEA stage (everyone's an organizer) and for plain members there's a
-  // single channel, so the title alone carries it.
-  const titleRow = (
-    <span
-      className="inline-flex items-center gap-2"
-      style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}
-    >
-      <MessageCircle size={17} style={{ color: "var(--color-bt-accent)" }} /> Chat
-    </span>
-  );
-  const tabsRow =
-    canSeeOrganizers && !ideaSolo && !channel ? (
-      <div className="flex items-center gap-1">
-        {([
-          { ch: "crew" as const, label: "Crew", unread: crewUnread },
-          { ch: "planning" as const, label: "Organizers", unread: planningUnread },
-        ]).map(({ ch, label, unread }) => {
-          const active = activeChannel === ch;
-          // Organizers = teal accent, Crew = planning-blue — same hues as the
-          // CrewTab section headers so the two surfaces feel like one system.
-          const org = ch === "planning";
-          const fg = org ? "var(--color-bt-accent)" : "var(--color-bt-planning)";
-          const faint = org ? "var(--color-bt-accent-faint)" : "var(--color-bt-planning-faint)";
-          const bdr = org ? "var(--color-bt-accent-border)" : "var(--color-bt-planning-border)";
-          return (
-            <button
-              key={ch}
-              type="button"
-              onClick={() => setActiveChannel(ch)}
-              className="relative flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors"
-              style={{
-                color: active ? fg : "var(--color-bt-text-dim)",
-                background: active ? faint : "transparent",
-                border: `1px solid ${active ? bdr : "transparent"}`,
-              }}
-            >
-              {label}
-              {unread > 0 && !active && (
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: fg }} />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    ) : null;
-
   // Panel body — shared content between desktop + mobile wrappers. It MUST be
   // its own component (not inline JSX rendered twice) so each of the two
   // simultaneously-mounted wrappers gets independent scroll/textarea refs.
@@ -559,172 +328,16 @@ function FloatingChatPanelInner({
     />
   );
 
-  // ── Embedded (the Chat tab's Crew/Planning segments) ──────────────────────
-  // A tab has no scrim to close, no docked-right drawer to drag-resize, and
-  // no × to dismiss — you leave by choosing another segment, not by closing
-  // this surface. Render in normal flow instead of the floating overlay
-  // below (no `fixed`, no backdrop): it fills whatever height its caller
-  // (ChatView) gives it. Channel tabs stay suppressed (the `!channel` guard
-  // on `tabsRow` above) since the shell's segmented control already owns
-  // that choice. The notify toggle moved up into ChatView's own segment row
-  // (inline with Crew/Organizers/News) — it's a single per-account
-  // preference, not per-channel, so it doesn't belong to any one embedded
-  // panel instance.
-  if (embedded) {
-    return <div className="flex h-full min-h-0 flex-col">{body}</div>;
-  }
-
-  return (
-    <>
-      {/* ── Desktop: docked-right drawer over a scrim ────────────────────────
-          Scrim covers the content BELOW the title bar (not the bar itself) so
-          the News/Chat buttons stay clickable above it — tap the other one to
-          swap panels. Content isn't pushed narrower, and clicking the scrim
-          closes. The panel keeps its left-edge drag-to-resize + title controls. */}
-      <div
-        className="hidden lg:block fixed inset-x-0 top-14 bottom-0 z-50"
-        style={{ background: "var(--color-bt-overlay)" }}
-        // Close only on a press that lands directly on the scrim. Using
-        // pointerdown (not click) means a resize drag — which starts on the
-        // grip and may release over the scrim — never fires a close.
-        onPointerDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
-        <div
-          className="absolute right-0 top-0 bottom-0 flex flex-col"
-          style={{
-            background: "var(--color-bt-card-float)",
-            borderLeft: "1px solid var(--color-bt-border)",
-            width: panelWidth,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Drag handle — visible grip on the left edge */}
-          <div
-            onMouseDown={handleDragStart}
-            className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize flex items-center justify-center group z-10"
-            aria-hidden="true"
-          >
-            {/* Hit-area highlight on hover */}
-            <div
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-              style={{ background: "var(--color-bt-accent-faint)" }}
-            />
-            {/* Grip dots — always visible */}
-            <div className="relative flex flex-col gap-[3px]">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="h-[3px] w-[3px] rounded-full transition-colors duration-150"
-                  style={{ background: "var(--color-bt-border)" }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div
-            className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
-            style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-          >
-            {titleRow}
-            {/* Chat notifications toggle inline with ✕ (Push Phase 2) — the
-                same stored preference as the settings screen. */}
-            <div className="ml-auto flex items-center gap-1">
-              <ChatNotifyToggle />
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-                aria-label="Close chat"
-                title="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-          {/* Channel tabs live BELOW the divider bar (the title's own band). */}
-          {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
-          {body}
-        </div>
-      </div>
-
-      {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
-          Starts BELOW the title bar (top-14 = the 56px nav) so the News/Chat
-          buttons stay lit and tappable above the scrim — tap News to swap
-          panels in place without closing first. maxHeight 100% keeps the sheet
-          from riding up over the bar. */}
-      <ScrollLock enabled={isMobileViewport}>
-      <div
-        className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
-        style={{
-          background: "var(--color-bt-overlay)",
-          // Stop the sheet + backdrop at the top of the trip bottom nav so it
-          // stays visible/usable and the input never hides behind it. Resolves
-          // to 0px when no nav is mounted.
-          bottom: BOTTOM_NAV_OFFSET,
-        }}
-        onPointerDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
-        <div
-          ref={sheetRef}
-          className="flex w-full flex-col rounded-t-2xl"
-          style={{
-            background: "var(--color-bt-card-float)",
-            height: sheetHeight != null ? sheetHeight : "85vh",
-            maxHeight: "100%",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            className="group flex cursor-ns-resize touch-none justify-center pt-2 pb-1"
-            onMouseDown={handleSheetDragStart}
-            onTouchStart={handleSheetDragStart}
-          >
-            <div className="relative flex flex-row gap-[3px] rounded px-1.5 py-1">
-              <div
-                className="absolute inset-0 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                style={{ background: "var(--color-bt-accent-faint)" }}
-              />
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="relative h-[3px] w-[3px] rounded-full transition-colors duration-150"
-                  style={{ background: "var(--color-bt-border)" }}
-                />
-              ))}
-            </div>
-          </div>
-          <div
-            className="flex flex-shrink-0 items-center gap-2 px-3 pb-2"
-            style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-          >
-            {titleRow}
-            {/* Chat notifications toggle inline with ✕ (Push Phase 2). */}
-            <div className="ml-auto flex items-center gap-1.5">
-              <ChatNotifyToggle />
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-                aria-label="Close chat"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-          {/* Channel tabs live BELOW the divider bar. */}
-          {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
-          {body}
-        </div>
-      </div>
-      </ScrollLock>
-    </>
-  );
+  // Always renders this way now — normal flow, no scrim, no drag-resize, no
+  // close ×, no tab toggle (a segment has nothing to close or resize itself;
+  // you leave by choosing another segment, and the container around
+  // `ChatView` owns whatever height this gets). The standalone docked-rail/
+  // bottom-sheet chrome this used to share with News (#758) is gone — the
+  // only caller left is this same segment. The notify toggle lives in
+  // ChatView's own segment row (inline with Crew/Organizers/News) — it's a
+  // single per-account preference, not per-channel, so it doesn't belong to
+  // any one panel instance.
+  return <div className="flex h-full min-h-0 flex-col">{body}</div>;
 }
 
 // ── ChatBody ────────────────────────────────────────────────────────────────
