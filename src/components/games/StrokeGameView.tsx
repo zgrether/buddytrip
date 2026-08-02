@@ -334,7 +334,14 @@ export function StrokeGameView() {
   // the authority; this is the client-side pre-block + the reason shown in the save bar.
   const distSaveBlock = useMemo(() => {
     const d = configDraft.pointsDistribution;
-    if (!isPlacement(d) || configDraft.pointsTotal == null) return null;
+    if (!isPlacement(d)) return null;
+    // A null total blocks the SUM check (nothing to sum against) but NOT the
+    // places-vs-entities one, which never reads the total — #819 nested both
+    // under this guard, so a no-total game could save an unappliable split.
+    if (configDraft.pointsTotal == null) {
+      const noTotal = validatePlacement(0, d.values, teamsQ.data?.length ?? null);
+      return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
+    }
     // Entity count = teams in the competition (what the leaderboard ranks).
     // undefined while the query is in flight, and a standalone game has none —
     // both pass `null`, which never refuses.

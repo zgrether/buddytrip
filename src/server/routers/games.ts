@@ -1069,10 +1069,19 @@ export const gamesRouter = router({
           pointsDistribution?: unknown;
           pointsTotal?: number | null;
         };
-        if (isPlacement(p.pointsDistribution) && p.pointsTotal != null) {
+        // NOT gated on `pointsTotal != null`. Places-vs-entities compares the
+        // place count to the team count and never reads the total — gating it on
+        // one was a #819 defect that left every no-total game (the legacy shape:
+        // a split saved before the owner set a total) able to persist a split
+        // that can't be applied. The sum check still needs a total, so it stays
+        // conditional below.
+        if (isPlacement(p.pointsDistribution)) {
           const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
-          const check = validatePlacement(p.pointsTotal, p.pointsDistribution.values, entities);
-          if (!check.saveable) {
+          const check = validatePlacement(p.pointsTotal ?? 0, p.pointsDistribution.values, entities);
+          if (check.state === "too_many_places") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
+          }
+          if (p.pointsTotal != null && !check.saveable) {
             throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
           }
         }
@@ -1252,20 +1261,21 @@ export const gamesRouter = router({
         const { data: game } = await ctx.supabase
           .from("games").select("points_total").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
         const total = (game?.points_total as number | null) ?? null;
-        // Only enforce when a total exists to enforce against. (A legacy game
-        // with no owner-set total keeps its pre-Slice-D free-form behavior.)
-        if (total != null) {
-          // Entity count folded into the SAME call — this path already reads the
-          // game, so the places-vs-entities half costs one more query here rather
-          // than a second validator.
-          const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
-          const check = validatePlacement(total, input.distribution.values, entities);
-          if (!check.saveable) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: placementRefusalMessage(check)!,
-            });
-          }
+        // Entity count folded into the SAME call — this path already reads the
+        // game, so the places-vs-entities half costs one more query here rather
+        // than a second validator.
+        const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
+        const check = validatePlacement(total ?? 0, input.distribution.values, entities);
+        // Places-vs-entities does NOT need a total (#819 defect: it was nested
+        // under the total check, so a no-total game could save an unappliable
+        // split — which is exactly the shape the two affected prod games have).
+        if (check.state === "too_many_places") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
+        }
+        // The SUM check does need one. (A legacy game with no owner-set total
+        // keeps its pre-Slice-D free-form behavior for allocation.)
+        if (total != null && !check.saveable) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
         }
       }
       // #782 — count asserted, same reasoning as setStatus above: no existence
