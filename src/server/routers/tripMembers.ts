@@ -378,8 +378,7 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // inviteByEmail — Organizer for a MEMBER invite, Owner for an ORGANIZER
-  // invite (the split lives in the procedure, not the guard). Invite by email.
+  // inviteByEmail — Owner-only. Invite someone by email.
   //   - If a real account exists: adds them to the trip + sends notification
   //   - If no account: creates guest row + invites row + sends invite email
   //
@@ -397,45 +396,36 @@ export const tripMembersRouter = router({
         role: z.enum(["Organizer", "Member"]).default("Member"),
       })
     )
-    // ORGANIZER + AN INPUT-DEPENDENT SPLIT. Re-widened from Owner-only, which
-    // #790 reverted this to. Both of that revert's reasons are now addressed:
+    // OWNER-ONLY. #790 reverted this from Organizer, and an attempt to re-widen
+    // it (#823) was reverted AGAIN — this time with CI evidence rather than
+    // reasoning. Both halves are worth keeping straight, because only one of
+    // them is solved:
     //
-    // 1. IT MINTS THE ROLE IT IS GATED ON — solved by the check below, not by
-    //    the guard. **A procedure that takes a role as INPUT cannot be gated on
-    //    role alone**, so the guard admits Organizers and the procedure then
-    //    refuses the one thing an Organizer may not grant. An Organizer may
-    //    invite a MEMBER; only the Owner may invite an ORGANIZER — exception 1
-    //    applied where it actually bites, since the invite isn't the trusted
-    //    act, the role being granted is.
+    // 1. IT MINTS THE ROLE IT IS GATED ON — **solved in principle.** The shape
+    //    is a server-side split on the role INPUT (Owner-only for "Organizer",
+    //    Organizer-allowed for "Member"), because **a procedure that takes a
+    //    role as INPUT cannot be gated on role alone**. Migration 103 already
+    //    enforces exactly that rule at the DB for `invites_insert`, and it
+    //    SHIPPED — the direct-PostgREST bypass is closed regardless of this
+    //    guard. See PERMISSIONS.md's worked example.
     //
-    //    Layered, not trusted alone: migration 103 narrows `invites_insert` to
-    //    the same rule at the DB. That matters because the tRPC gate is NOT the
-    //    only way to reach the write — `invites.role` is copied into
-    //    `trip_members` by the invitee's own client (`app/invite/page.tsx`)
-    //    through the self-insert arm of `trip_members_insert`, so a direct
-    //    PostgREST insert bypassed this procedure entirely. #720's rule: a tRPC
-    //    check is not a policy.
+    // 2. THE PROCEDURE CANNOT DO ITS JOB AS AN ORGANIZER — **not solved, and
+    //    this is the live blocker.** Both write paths below write
+    //    `trip_members`, whose INSERT policy is Owner-only (plus self-insert).
+    //    An Organizer passes the guard and is then refused by the DATABASE:
     //
-    // 2. IT FAILED SILENTLY IN THE MEANTIME — fixed by #796; both
-    //    `trip_members` inserts below are `assertAffected`-checked, so an
-    //    Organizer whose write is refused now gets an error rather than a
-    //    success with no roster row.
-    .use(requireTripRole("Organizer"))
+    //      new row violates row-level security policy for table "trip_members"
+    //
+    //    #796 did NOT fix this. It made the failure LOUD (`assertAffected`)
+    //    rather than permitted — which is why the re-widening failed in CI
+    //    instead of silently writing nothing, the way #788 did. Do not read
+    //    "the silent-write bug is fixed" as "the permission works".
+    //
+    // So this stays Owner-only until the `trip_members` role-column trigger
+    // lands and those policies can widen. That trigger is the shared blocker
+    // for the remaining Owner-only roster procedures.
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // The input-dependent half of the gate. FORBIDDEN, never UNAUTHORIZED:
-      // `authExpiry` treats a 401 as a dead session and hard-navigates to
-      // /login, which would log someone out mid-invite (#689). Names the rule
-      // rather than the state (#809) — "forbidden" leaves the reader guessing
-      // which part was refused.
-      if (input.role === "Organizer" && ctx.tripRole !== "Owner") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message:
-            "Only the Owner can invite an Organizer. You can invite them as a Member, " +
-            "and the Owner can promote them afterwards.",
-        });
-      }
-
       const email = input.email.trim().toLowerCase();
 
       // Fetch inviter name and trip name for email content
@@ -747,7 +737,7 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // sendInvitationBlast — Owner or Organizer sends the trip invitation email to a
+  // sendInvitationBlast — Owner sends the trip invitation email to a
   // selected subset of crew members. Stamps last_emailed_at and bumps
   // email_count per recipient (email_count distinguishes a first-contact
   // invite from a follow-up).
@@ -768,17 +758,19 @@ export const tripMembersRouter = router({
         message: z.string().optional(),
       })
     )
-    // ORGANIZER — moved WHOLESALE, with no input split, because unlike its
-    // sibling this procedure takes NO role: its input is
-    // `{ tripId, memberUserIds, message? }`. It sends email and stamps
-    // send-tracking; it grants nothing, so there is no "role being granted" to
-    // gate on and the plain Organizer guard is the whole answer.
+    // OWNER-ONLY. Unlike its sibling this procedure takes NO role, so it needs
+    // no input split — but it is blocked by the same thing, and an attempt to
+    // move it wholesale (#823) failed in CI: the `last_emailed_at` stamp below
+    // is an UPDATE on `trip_members`, whose policy is Owner-only (plus self),
+    // so for an Organizer it matches zero rows:
     //
-    // #790 reverted it only as `inviteByEmail`'s sibling and because its
-    // `last_emailed_at` UPDATE was unchecked, so for an Organizer the emails
-    // went out while the tracking silently didn't land. That write is checked
-    // as of #796.
-    .use(requireTripRole("Organizer"))
+    //   Failed to record when the invitation emails were sent:
+    //   expected 1 row(s), affected 0.
+    //
+    // #796 made that loud instead of silent; it did not make it permitted.
+    // Moves with `inviteByEmail` once the `trip_members` role-column trigger
+    // lands.
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Fetch trip for email content. locked_destination_location is the
       // real-world location string ("Bandon, OR") that buildCannedInvitation

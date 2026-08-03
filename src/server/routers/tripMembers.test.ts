@@ -152,68 +152,33 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
-  // The input-dependent split. Was Owner-only (#790's revert) because `role` is
-  // written into trip_members and an Organizer-gated version could mint an
-  // Organizer; the guard is Organizer again, with the procedure refusing the
-  // one grant an Organizer may not make. Both directions per #786.
-  it("inviteByEmail — an Organizer CAN invite a Member", async () => {
-    const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId,
-      email: `org-invites-member-${Date.now()}@example.test`,
-      role: "Member",
-    });
-    expect(result.status).toBe("invited_new");
-  });
-
-  it("inviteByEmail — an Organizer CANNOT invite an Organizer", async () => {
+  // Owner-only, and #823 proved it is not a guard problem: widening the guard
+  // let an Organizer through and the DATABASE then refused the trip_members
+  // insert ("new row violates row-level security policy"). Blocked on the
+  // trip_members role-column trigger, not on this procedure's shape.
+  it("inviteByEmail — planner cannot invite (Owner only)", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.inviteByEmail({
-        tripId,
-        email: `org-invites-org-${Date.now()}@example.test`,
-        role: "Organizer",
-      })
+      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("inviteByEmail — the refusal names the rule, and is not UNAUTHORIZED", async () => {
-    // UNAUTHORIZED would send `authExpiry` into a hard /login navigation,
-    // logging someone out mid-invite (#689). And "forbidden" alone leaves the
-    // reader guessing which half was refused (#809).
-    const caller = ctx.callerAs("planner");
-    await expect(
-      caller.tripMembers.inviteByEmail({
-        tripId,
-        email: `org-invites-org-msg-${Date.now()}@example.test`,
-        role: "Organizer",
-      })
-    ).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      message: expect.stringContaining("Only the Owner can invite an Organizer"),
-    });
-  });
-
-  it("inviteByEmail — the Owner CAN invite an Organizer", async () => {
+  it("inviteByEmail — role defaults to Member, not Organizer", async () => {
+    // The default flipped in #823 and is KEPT. It is dead from the UI
+    // (CrewSearchInput always passes `role`), so it only governs a direct API
+    // call — where "Organizer" was a surprising and unsafe value to assume.
+    // Asserted through the created row rather than the schema so a silent flip
+    // back is caught.
     const caller = ctx.caller();
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId,
-      email: `owner-invites-org-${Date.now()}@example.test`,
-      role: "Organizer",
-    });
-    expect(result.status).toBe("invited_new");
-  });
-
-  it("inviteByEmail — role defaults to Member, so an Organizer omitting it succeeds", async () => {
-    // The default flipped from "Organizer" to "Member" (#790's finding). If it
-    // ever flips back, this test fails for an Organizer caller — which is the
-    // point: the unsafe default becomes visible instead of silent.
-    const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId,
-      email: `default-role-${Date.now()}@example.test`,
-    });
-    expect(result.status).toBe("invited_new");
+    const email = `default-role-${Date.now()}@example.test`;
+    await caller.tripMembers.inviteByEmail({ tripId, email });
+    const { data } = await ctx.admin
+      .from("invites")
+      .select("role")
+      .eq("trip_id", tripId)
+      .eq("email", email)
+      .single();
+    expect(data?.role).toBe("Member");
   });
 
   it("inviteByEmail — member cannot invite", async () => {
@@ -525,14 +490,16 @@ describe("tripMembers router — sendInvitationBlast", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // Moved to Organizer WHOLESALE — unlike its sibling it takes no role, so it
-  // grants nothing and needs no input split.
-  it("sendInvitationBlast — an Organizer CAN blast", async () => {
+  // Owner-only alongside inviteByEmail, and blocked by the same thing: #823
+  // widened the guard and the `last_emailed_at` UPDATE on trip_members then
+  // matched zero rows for an Organizer.
+  it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
     const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.sendInvitationBlast({
-      tripId,
-      memberUserIds: [ctx.getUser("member").id],
-    });
-    expect(result).toBeTruthy();
+    await expect(
+      caller.tripMembers.sendInvitationBlast({
+        tripId,
+        memberUserIds: [ctx.getUser("member").id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
