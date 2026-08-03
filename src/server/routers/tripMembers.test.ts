@@ -152,14 +152,33 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
-  // Was briefly Organizer+ (#788) and is Owner-only again: `role` defaults to
-  // "Organizer" and is written into trip_members, so an Organizer-gated version
-  // could mint an Organizer. See the guard comment in tripMembers.ts.
+  // Owner-only, and #823 proved it is not a guard problem: widening the guard
+  // let an Organizer through and the DATABASE then refused the trip_members
+  // insert ("new row violates row-level security policy"). Blocked on the
+  // trip_members role-column trigger, not on this procedure's shape.
   it("inviteByEmail — planner cannot invite (Owner only)", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
       caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("inviteByEmail — role defaults to Member, not Organizer", async () => {
+    // The default flipped in #823 and is KEPT. It is dead from the UI
+    // (CrewSearchInput always passes `role`), so it only governs a direct API
+    // call — where "Organizer" was a surprising and unsafe value to assume.
+    // Asserted through the created row rather than the schema so a silent flip
+    // back is caught.
+    const caller = ctx.caller();
+    const email = `default-role-${Date.now()}@example.test`;
+    await caller.tripMembers.inviteByEmail({ tripId, email });
+    const { data } = await ctx.admin
+      .from("invites")
+      .select("role")
+      .eq("trip_id", tripId)
+      .eq("email", email)
+      .single();
+    expect(data?.role).toBe("Member");
   });
 
   it("inviteByEmail — member cannot invite", async () => {
@@ -471,7 +490,9 @@ describe("tripMembers router — sendInvitationBlast", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // Owner-only again alongside inviteByEmail (#788 reverted).
+  // Owner-only alongside inviteByEmail, and blocked by the same thing: #823
+  // widened the guard and the `last_emailed_at` UPDATE on trip_members then
+  // matched zero rows for an Organizer.
   it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
