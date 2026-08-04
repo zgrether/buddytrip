@@ -200,3 +200,136 @@ describe("StandardGrid — Glorious (9-hole round: the 18−N inertness is inher
     expect(html).not.toContain("glorious-tees-label"); // gloriousCols.size === 0 → label gate is also closed
   });
 });
+
+// ── NET column (#824) ────────────────────────────────────────────────────────
+// The reported bug was "handicaps applied twice in rack standings". They are not:
+// `score_entries` stores GROSS and the subtraction happens exactly once, in
+// `playerStats` / `netStrokeEntries`. What was missing was any way to SEE that on
+// the scorecard — it showed gross totals while the board showed a net-derived
+// to-par, and the unexplained gap read as a second deduction. These pin the
+// column that closes it: gross + dots stay, NET appears beside Total, and the
+// arithmetic is hand-computed here rather than mirrored from the component.
+
+/** The value + vs-par text of a SubCell, by test id (raw slice, tags stripped). */
+const subCell = (html: string, testId: string) => {
+  const i = html.indexOf(`data-testid="${testId}"`);
+  if (i === -1) return null;
+  const raw = html.slice(i, html.indexOf("</div>", i));
+  const spans = [...raw.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
+  return { value: spans[0], vsPar: spans[1], raw };
+};
+
+describe("StandardGrid — NET column", () => {
+  // units: par 4 / 3 / 5 / 4 (holes 1, 2, 10, 18) — par 16 over the four.
+  it("one stroked hole: gross 5 keeps its cell + pip, NET reads 4 (not 3)", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "zach", name: "Zach", color: "#2dd4bf" }]}
+        values={{ zach: { "1": 5 } }}
+        pips={{ zach: new Set(["1"]) }}
+        direction="low_wins"
+      />
+    );
+    // The cell itself is untouched — GROSS is what you shot.
+    expect(html).toContain('data-testid="score-cell-zach-1"');
+    expect(subCell(html, "scorecard-total-zach")?.value).toBe("5");
+    // Net = 5 − 1 = 4. The whole point: exactly ONE stroke comes off.
+    expect(subCell(html, "scorecard-net-zach")?.value).toBe("4");
+    // …and net-to-par on a par 4 is even, which is what the board would show.
+    expect(subCell(html, "scorecard-net-zach")?.vsPar).toBe("E");
+  });
+
+  it("full round, hand-computed: gross 20 / 2 strokes / par 16 → net 18, +2", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "zach", name: "Zach", color: "#2dd4bf" }]}
+        // 5 + 4 + 6 + 5 = 20 gross; strokes fall on holes 1 and 10.
+        values={{ zach: { "1": 5, "2": 4, "10": 6, "18": 5 } }}
+        pips={{ zach: new Set(["1", "10"]) }}
+        direction="low_wins"
+      />
+    );
+    const total = subCell(html, "scorecard-total-zach");
+    const net = subCell(html, "scorecard-net-zach");
+    expect(total?.value).toBe("20"); // gross
+    expect(total?.vsPar).toBe("+4"); // 20 − 16
+    expect(net?.value).toBe("18"); // 20 − 2 strokes, applied ONCE
+    expect(net?.vsPar).toBe("+2"); // 18 − 16 — reconciles the card to the board
+  });
+
+  it("a stroke on an UNPLAYED hole is not credited early", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "zach", name: "Zach", color: "#2dd4bf" }]}
+        // Only hole 1 played; the stroke on hole 10 must not come off yet.
+        values={{ zach: { "1": 5 } }}
+        pips={{ zach: new Set(["1", "10"]) }}
+        direction="low_wins"
+      />
+    );
+    expect(subCell(html, "scorecard-net-zach")?.value).toBe("4"); // not 3
+  });
+
+  it("the leader marker rides NET, so it can't crown the gross leader", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[
+          { id: "zach", name: "Zach", color: "#2dd4bf" },
+          { id: "matt", name: "Matt", color: "#f59e0b" },
+        ]}
+        values={{
+          zach: { "1": 5, "2": 4, "10": 6, "18": 5 }, // gross 20 → net 18
+          matt: { "1": 4, "2": 4, "10": 6, "18": 5 }, // gross 19 → net 19 (scratch)
+        }}
+        pips={{ zach: new Set(["1", "10"]) }}
+        direction="low_wins"
+      />
+    );
+    // Matt is the GROSS leader (19 < 20); Zach is the NET leader (18 < 19).
+    expect(subCell(html, "scorecard-net-zach")?.value).toBe("18");
+    expect(subCell(html, "scorecard-net-matt")?.value).toBe("19");
+    // Green place-1 treatment lands on Zach's net cell, and on nobody's total.
+    expect(subCell(html, "scorecard-net-zach")?.raw).toContain("--color-bt-place-1-text");
+    expect(subCell(html, "scorecard-net-matt")?.raw).not.toContain("--color-bt-place-1-text");
+    expect(subCell(html, "scorecard-total-matt")?.raw).not.toContain("--color-bt-place-1-text");
+  });
+
+  it("no handicaps → no NET column at all (net ≡ gross; a copy of Total is noise)", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "matt", name: "Matt", color: "#f59e0b" }]}
+        values={{ matt: { "1": 4, "2": 3, "10": 5, "18": 4 } }}
+        direction="low_wins"
+      />
+    );
+    expect(html).not.toContain('data-testid="scorecard-net-');
+    expect(html).not.toContain(">Net<"); // no header cell either
+    // Unchanged: gross total still shown, and the leader marker stays on it.
+    expect(subCell(html, "scorecard-total-matt")?.value).toBe("16");
+    expect(subCell(html, "scorecard-total-matt")?.raw).toContain("--color-bt-place-1-text");
+  });
+
+  it("keeps every row aligned — the header gains Net only when the rows do", () => {
+    const withNet = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "zach", name: "Zach", color: "#2dd4bf" }]}
+        values={{ zach: { "1": 5 } }}
+        pips={{ zach: new Set(["1"]) }}
+        direction="low_wins"
+        tee={{ name: "Blue" }}
+      />
+    );
+    expect(withNet).toContain(">Net<");
+    // Structure rows (Par / Yards / Index) each carry a blank Net cell, so the
+    // column stays continuous top to bottom rather than only existing on scores.
+    const cols = (row: string) => (withNet.match(new RegExp(row, "g")) ?? []).length;
+    expect(cols("Par")).toBeGreaterThan(0);
+    expect(cols("Index")).toBeGreaterThan(0);
+  });
+});
