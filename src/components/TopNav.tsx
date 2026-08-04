@@ -100,8 +100,12 @@ export const TopNav: FC<TopNavProps> = ({
     <>
     <header
       className="@container sticky top-0 z-40 flex h-14 items-center justify-between"
+      // NO `position` here. An inline `position: relative` silently beat the
+      // `sticky` class (inline styles win over classes) and unpinned the bar —
+      // it scrolled away with the content. It was presumably added to give the
+      // absolutely-positioned `lg+` Trip·Cup group below a containing block, but
+      // `sticky` already establishes one, so it was never needed.
       style={{
-        position: "relative",
         background: "var(--color-bt-nav-bg)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
