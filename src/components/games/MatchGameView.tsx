@@ -404,7 +404,7 @@ export function MatchGameView() {
   // server layer), so the match-list header and scorecard grid would
   // otherwise show the pre-reset result until the next scheduled poll —
   // refetch right away instead of waiting out GAME_SYNC_INTERVAL_MS.
-  const { values, setValues, saveStatus, onChange, onClear, retryCell, clearAll: clearScores } =
+  const { values, setValues, saveStatus, onChange, onClear, retryCell, reconcile, clearAll: clearScores } =
     useScoreSaver(tripId, gameId, participantTypeOf, () => void scoresQ.refetch());
   // Refactor B: the outcome write path — same durability contract, unconditional
   // (hooks can't be conditional); inert for a score-mode game (nothing calls its
@@ -464,6 +464,17 @@ export function MatchGameView() {
     }
     return v;
   }, [scoresQ.data]);
+
+  // Reconcile server truth into the saver, exactly as rack/stroke do. Match reads
+  // through `mergedFor` (server layer + local edits spread LAST), so the server
+  // layer alone losing a cleared cell isn't enough — a stale local `values` entry
+  // from this device's own earlier entry would keep shadowing it, and the clear
+  // would never appear here. Reconcile prunes that entry (unprotected + absent
+  // from the server = cleared elsewhere), after which both layers agree.
+  useEffect(() => {
+    if (!gameId || !scoresQ.data) return;
+    reconcile(loadedValues);
+  }, [gameId, scoresQ.data, loadedValues, reconcile]);
 
   // Refactor B: this game's entry mode + the loaded outcome-mode counterpart to
   // loadedValues (keyed by match_id, not participant).
