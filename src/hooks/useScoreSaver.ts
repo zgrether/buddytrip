@@ -50,6 +50,24 @@ const MAX_RETRIES = 4;
 /** 0.5s, 1s, 2s, 4s … capped at 8s — a few attempts over ~15s, then surface. */
 const retryDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 8000);
 
+/**
+ * How long a CONFIRMED cell stays protected from removal.
+ *
+ * `reconcileScores` now drops unprotected local cells the server doesn't have,
+ * which is what makes a remote clear propagate. That creates one narrow race the
+ * overlay-only merge didn't have: a score is saved and confirmed, so it leaves
+ * both the outbox and the `saving` flag — and a scores response that was already
+ * in flight, built BEFORE the write landed, arrives without it and would drop a
+ * score the user just watched save. #15's "never roll back to blank" covers
+ * exactly that, so a confirmed cell keeps its protection for a few seconds.
+ *
+ * Generous against the round-trip it guards (a fetch in flight), short against
+ * the thing it delays (someone else's clear reaching this device). Not a
+ * correctness knob: the cell is server truth either way once a fetch issued
+ * after the write lands.
+ */
+const CONFIRM_GRACE_MS = 10_000;
+
 export function useScoreSaver(
   tripId: string | undefined,
   gameId: string | null | undefined,
@@ -87,6 +105,9 @@ export function useScoreSaver(
   useEffect(() => {
     saveStatusRef.current = saveStatus;
   }, [saveStatus]);
+  // cellKey → when the server confirmed it. Read by `reconcile` for the
+  // CONFIRM_GRACE_MS protection; a ref because it must not re-render anything.
+  const confirmedAtRef = useRef<Map<string, number>>(new Map());
 
   // suppressErrorToast: these own per-cell save UI (badge + banner), so the
   // global connectivity toast would double-signal — opt out of it.
@@ -142,6 +163,9 @@ export function useScoreSaver(
         .then(() => {
           mark(key, "saved");
           outboxClear(gameId, participantId, unitLabel);
+          // Hands off to the CONFIRM_GRACE_MS protection as the outbox entry and
+          // the `saving` flag both go — so the cell is never briefly unprotected.
+          confirmedAtRef.current.set(key, Date.now());
         })
         // KEEP the optimistic value AND the outbox entry on failure — flag it,
         // never roll back; the outbox re-sends it on the next mount.
@@ -164,6 +188,9 @@ export function useScoreSaver(
       mark(key, null);
       // A cleared cell has no pending upsert to recover — drop any outbox entry.
       outboxClear(gameId, participantId, unitLabel);
+      // …and its confirmation, or the grace window would protect a cell we are
+      // deliberately removing and the clear would bounce back on the next poll.
+      confirmedAtRef.current.delete(key);
       // mutateAsync per call (see onChange): concurrent clears must each resolve
       // their own outcome, never be orphaned by a later one on the shared observer.
       deleteEntry
@@ -194,18 +221,23 @@ export function useScoreSaver(
    * device's entries reflect here (game-state sync), WITHOUT ever clobbering the
    * person actively entering (the #543 durable-outbox writes win locally).
    *
-   * Semantics: keep every local cell, then OVERLAY the server's value for each
-   * cell the server has — EXCEPT cells with an unconfirmed local write (flagged
-   * `saving`/`error`, or still in the durable outbox), which keep their local
-   * value. So a teammate's new/corrected score appears; a value the enterer just
-   * saved is never overwritten by a poll that raced the save (a server response
-   * lacking that cell can't drop it — overlay only SETS server-present cells).
+   * Semantics: take the server's cells as truth — EXCEPT protected cells, which
+   * keep their local value. Protected means a local write the server hasn't
+   * confirmed (`saving`/`error`, or still in the durable outbox) OR one confirmed
+   * within CONFIRM_GRACE_MS. So a teammate's new/corrected score appears; a value
+   * the enterer just saved is never overwritten or dropped by a poll that raced
+   * the save.
    *
-   * Deliberate gap: a score DELETED on another device isn't removed here (its
-   * cell is simply absent from the server payload, and we never drop a local
-   * cell). Reflecting adds/edits is the requirement; never-clobber-the-enterer is
-   * the hard rule, and full drop-to-server-truth couldn't guarantee both. Remote
-   * clears are rare and self-correct on the next real edit or a reopen.
+   * Removal included: an unprotected local cell the server doesn't have was
+   * CLEARED elsewhere and goes. That used to be a documented gap — the merge only
+   * overlaid, so a clear (expressed as absence) reached no other device until a
+   * full exit and re-entry, the same asymmetry #807 hit on reset. It was
+   * defensible while "never clobber the enterer" and "drop to server truth"
+   * looked mutually exclusive; `protectedKeys` is what makes them compatible.
+   *
+   * This makes the payload's COMPLETENESS load-bearing: only ever pass the whole
+   * game's scores (`scores.listByGame`), never a filtered subset, or the missing
+   * cells read as deletions.
    *
    * Idempotent + safe every poll tick; with TanStack's structural sharing the
    * caller's effect only fires when the fetched scores actually change.
@@ -223,6 +255,14 @@ export function useScoreSaver(
           for (const e of outboxEntries(gameId)) {
             protectedKeys.add(scoreCellKey(e.participantId, e.unitLabel));
           }
+        }
+        // Just-confirmed cells (see CONFIRM_GRACE_MS) — the server has them, but a
+        // response already in flight when the write landed wouldn't. Pruned as we
+        // go so the map can't grow for the life of the round.
+        const now = Date.now();
+        for (const [k, at] of confirmedAtRef.current) {
+          if (now - at < CONFIRM_GRACE_MS) protectedKeys.add(k);
+          else confirmedAtRef.current.delete(k);
         }
         return reconcileScores(cur, server, protectedKeys);
       });

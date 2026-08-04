@@ -132,7 +132,11 @@ describe("A2b — override redistributes; award reads point_value ?? even share"
       .from("game_results").select("entity_id, raw_score").eq("game_id", gameId).eq("entity_type", "team");
     const byTeam = Object.fromEntries((teamRows as { entity_id: string; raw_score: number }[]).map((r) => [r.entity_id, Number(r.raw_score)]));
     expect(byTeam[blue]).toBe(6); // 4 (M1 override) + 2 (M2 even) — locked total, redistributed
-    expect(byTeam[red] ?? 0).toBe(0);
+    // The shut-out team gets a REAL row at 0, not an absent one. This assertion
+    // used to read `byTeam[red] ?? 0`, which passed either way and so accommodated
+    // the missing-row bug rather than catching it.
+    expect(teamRows).toHaveLength(2);
+    expect(byTeam[red]).toBe(0);
 
     // Leaderboard points-in-play = points_total (6), NOT the recomputed even × mc (2×2=4).
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
@@ -222,5 +226,45 @@ describe("A2b — a doubles override awards on the play_group side", () => {
     const byTeam = Object.fromEntries((teamRows as { entity_id: string; raw_score: number }[]).map((r) => [r.entity_id, Number(r.raw_score)]));
     expect(byTeam[blue]).toBe(4); // the override, not the even share of 2
     expect(byTeam[red] ?? 0).toBe(0);
+  }, 60000);
+});
+
+/**
+ * The team-row SET comes from the competition's TEAMS, not from the awards map.
+ *
+ * Building it from awards meant a team only got a row by winning or halving, which
+ * produced two production failures: a shut-out team had no row (asserted above), and
+ * a game where NO side resolved to a team produced an EMPTY row set — which, under
+ * the `entity_type: 'team'` scoped write, DELETED the game's existing team rows and
+ * inserted nothing. `writeGameResults` reports an empty write as success, so nothing
+ * threw and the board read 0–0 while the game's own scoreboard stayed correct.
+ */
+describe("team rows are derived from the competition's teams", () => {
+  it("writes a row per team even when no side resolves to one — never an empty wipe", async () => {
+    // Teams exist, but NOBODY is assigned to them: every match hits the
+    // `!aTeam || !bTeam` skip, so the awards map comes out empty.
+    const comp = await ctx.createCompetition(tripId, "Unassigned Roster");
+    const blue = await ctx.createTeam(comp, "Blue", { color: "#2563eb" });
+    const red = await ctx.createTeam(comp, "Red", { color: "#dc2626" });
+
+    const gameId = await makeGame(comp, "No Assignments");
+    await ctx.caller().matches.setPairings({
+      tripId, gameId,
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
+    });
+    await setTotal(gameId, 2, [], 1);
+    await blueSweeps(gameId, owner, member, "user");
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const { data: teamRows } = await ctx.admin
+      .from("game_results").select("entity_id, raw_score, position").eq("game_id", gameId).eq("entity_type", "team");
+    const rows = (teamRows ?? []) as { entity_id: string; raw_score: number; position: number | null }[];
+
+    // Both teams present at 0 — an honest "nobody earned", not a vanished result set.
+    expect(rows).toHaveLength(2);
+    expect(Object.fromEntries(rows.map((r) => [r.entity_id, Number(r.raw_score)]))).toEqual({ [blue]: 0, [red]: 0 });
+    // position stays null: a per_match game's cup points ARE its match points, so
+    // ranking here would discard the margin the model exists to preserve.
+    expect(rows.every((r) => r.position === null)).toBe(true);
   }, 60000);
 });
