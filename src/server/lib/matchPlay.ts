@@ -387,16 +387,42 @@ async function writeTeamMatchPoints(
     }
   }
 
-  // Replace all team rows for this game with fresh totals. #776: atomic, and
-  // scoped to entity_type='team' so it cannot disturb the user/play_group rows
-  // written moments earlier in the same finalize. `raw_score` here is NUMERIC
-  // (migration 048) — a halved match awards half a point, so this genuinely
-  // carries fractions.
-  const rows = [...teamPoints.entries()].map(([teamId, pts]) => ({
+  // EVERY team in the competition gets a row — including one that won NOTHING.
+  //
+  // This used to build the row set from `teamPoints`, i.e. from the AWARDS, and a
+  // team only enters that map by winning or halving. Two failures followed, both
+  // seen in production:
+  //   · a shut-out team got no row at all (a decisive 1v1 wrote ONE team row);
+  //   · when NO side resolved to a team — an unassigned roster, so every match
+  //     hit the `!aTeam || !bTeam` skip — the map came out empty, and an empty
+  //     `rows` under this entity_type-scoped write DELETED the game's existing
+  //     team rows and inserted nothing. `writeGameResults` reports that as
+  //     success (an empty write is not an error), so nothing threw and the board
+  //     read 0–0 while the game's own scoreboard stayed correct.
+  // Deriving the row set from the TEAMS instead makes both unrepresentable.
+  //
+  // `position` stays null deliberately. A per_match game's cup points ARE its
+  // match points — `competitionLeaderboard.ts` builds a synthetic distribution
+  // that passes them straight through — so ranking here would collapse 4½–3½ and
+  // 7–1 into the same 1st/2nd and discard the margin the model exists to
+  // preserve. `raw_score` is NUMERIC (migration 048) and genuinely carries the
+  // halves.
+  const { data: compTeams } = await supabase
+    .from("teams")
+    .select("id")
+    .eq("competition_id", competitionId);
+  const teamIds = (compTeams ?? []).map((t) => t.id as string);
+
+  // No teams (or the read failed) → there is nothing to say about this game, and
+  // an empty scoped write is destructive rather than neutral: it would delete
+  // whatever team rows already exist. Leave them alone.
+  if (teamIds.length === 0) return;
+
+  const rows = teamIds.map((teamId) => ({
     id: crypto.randomUUID(),
     entity_id: teamId,
     entity_type: "team" as const,
-    raw_score: pts,
+    raw_score: teamPoints.get(teamId) ?? 0,
     position: null as number | null,
     competition_points_earned: null as null,
   }));
