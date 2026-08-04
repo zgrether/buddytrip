@@ -31,6 +31,7 @@ import { useOutcomeSaver } from "@/hooks/useOutcomeSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -496,6 +497,12 @@ export function MatchGameView() {
   // "+ Add match" — no pre-seeded count, so the old crew/roster match caps that
   // sized the initial draft are gone.
   const gameCompId = (gameQ.data?.competition_id as string | null) ?? null;
+
+  // Score/lifecycle events (#20) — see the note in RackGameView. `useRealtimeGame`
+  // covers CONFIG; this covers SCORES, which is what moves the match state and the
+  // standings on this page. Ref-counted, so sharing the topic with a mounted board
+  // costs one channel.
+  useRealtimeScoreEvents(tripId, gameCompId);
   const rosterIds = useMemo(
     () => [...new Set((assignQ.data ?? []).map((a) => a.user_id as string))],
     [assignQ.data]

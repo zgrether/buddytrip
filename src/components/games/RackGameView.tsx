@@ -15,6 +15,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -480,6 +481,17 @@ export function RackGameView() {
   // standalone game inside a competition-bearing trip would still see truthy) — the
   // precise "is THIS game competition-attached" check the points gate below needs.
   const gameCompId = (gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ?? null;
+
+  // Score/lifecycle events (#20). `useRealtimeGame` above covers this game's CONFIG;
+  // this covers SCORES — which is what moves the rack standings rendered on this
+  // page. Without it the only freshness here was the ~20s score poll, so whoever
+  // wasn't typing saw a stale board: the enterer's own scores land optimistically,
+  // everyone else waited out the interval. That read as "live for the owner, not
+  // for members", but nothing here is role-conditional — the split was
+  // enterer-vs-observer. Keyed on the GAME's competition (the topic the trigger
+  // publishes to), not the trip-level one. The hook ref-counts, so a game opened
+  // as a panel over the still-mounted board shares one channel (#12).
+  useRealtimeScoreEvents(tripId, gameCompId);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   // The current persisted groups as a builder draft (one user-id array per group,
