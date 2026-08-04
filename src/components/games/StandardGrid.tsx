@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, Flag, Check } from "lucide-react";
 import { useTeeVisibility } from "@/hooks/useTeeVisibility";
-import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
+import { computeStrokePlayStandings, netStrokeEntries, type RawStrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { Avatar } from "@/components/Avatar";
@@ -115,6 +115,9 @@ export interface ScorecardChromeRenderCtx {
   divider: (l?: string) => React.CSSProperties;
   isGloriousCol: (i: number) => boolean;
   gloriousWash: React.CSSProperties;
+  /** A trailing NET column is rendered — body rows MUST emit one more cell after
+   *  Total or every row below the header falls out of alignment with it. */
+  showNet: boolean;
 }
 
 export interface ScorecardChromeProps {
@@ -126,6 +129,10 @@ export interface ScorecardChromeProps {
    *  the choice survives reloads and is consistent across the scorecard's entry
    *  points. Omit for Quick Game / tests → the filter is in-memory only. */
   gameId?: string | null;
+  /** Render a trailing NET column (header + a blank tinted cell on each
+   *  structure row). The caller's body rows fill it; `OutcomeScorecard` omits it
+   *  (hole outcomes carry no strokes) and is unaffected. */
+  showNet?: boolean;
   /** The player/lead rows — rendered between the Index row and the Glorious
    *  bracket, using the same cell geometry the header above used. */
   children: (ctx: ScorecardChromeRenderCtx) => React.ReactNode;
@@ -141,7 +148,7 @@ export interface ScorecardChromeProps {
  * rendered before the extraction, just wrapped so a second caller can supply
  * different body rows through `children`.
  */
-export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIOUS, gameId, children }: ScorecardChromeProps) {
+export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIOUS, gameId, showNet = false, children }: ScorecardChromeProps) {
   // The ONE predicate — reused, never re-derived. `hole` = the unit's ARRAY
   // POSITION (index + 1), matching the engine's numbering (buildDecided/
   // holeWeight), not a parsed label. A non-contiguous/short `units` array (a
@@ -218,7 +225,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
       ].filter(Boolean).join(" / ")
     : "";
 
-  const ctx: ScorecardChromeRenderCtx = { hasSections, front, back, cellBase, nameCell, divider, isGloriousCol, gloriousWash };
+  const ctx: ScorecardChromeRenderCtx = { hasSections, front, back, cellBase, nameCell, divider, isGloriousCol, gloriousWash, showNet };
 
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
@@ -381,6 +388,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
             {hasSections && <HeaderSub label="Out" />}
             {hasSections && <HeaderSub label="In" />}
             <HeaderSub label="Total" wide />
+            {showNet && <HeaderSub label="Net" wide />}
             <RightGutter />
           </div>
 
@@ -431,6 +439,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
                     {hasSections && <ParSub value={teeSum(row.yards, 0, front.length)} />}
                     {hasSections && <ParSub value={teeSum(row.yards, front.length, units.length)} />}
                     <ParSub value={teeSum(row.yards, 0, units.length)} wide />
+                    {showNet && <BlankSub wide />}
                     <RightGutter />
                   </div>
                 );
@@ -450,6 +459,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
                   {hasSections && <ParSub value={yardSum(front)} />}
                   {hasSections && <ParSub value={yardSum(back)} />}
                   <ParSub value={yardSum(units)} wide />
+                  {showNet && <BlankSub wide />}
                   <RightGutter />
                 </div>
               )}
@@ -470,6 +480,9 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
               {hasSections && <ParSub value={parSum(front)} />}
               {hasSections && <ParSub value={parSum(back)} />}
               <ParSub value={parSum(units)} wide />
+              {/* Par is par — repeating it under NET would imply net has its own
+                  par. The column stays blank on every structure row. */}
+              {showNet && <BlankSub wide />}
               <RightGutter />
             </div>
           )}
@@ -487,9 +500,10 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
                   <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.strokeIndex}</span>
                 </div>
               ))}
-              {hasSections && <IndexSub />}
-              {hasSections && <IndexSub />}
-              <IndexSub wide />
+              {hasSections && <BlankSub />}
+              {hasSections && <BlankSub />}
+              <BlankSub wide />
+              {showNet && <BlankSub wide />}
               <RightGutter />
             </div>
           )}
@@ -562,16 +576,39 @@ export function StandardGrid({
     return scored.reduce((a, u) => a + (valOf(pid, u.label)! - (u.par ?? 0)), 0);
   };
 
-  // Leader (low total among participants who have any score).
-  const scoredIds = participants
-    .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
-    .map((p) => p.id);
-  const entries: StrokeEntry[] = [];
+  // ── Gross → NET (the reported bug's real fix) ──────────────────────────────
+  // The grid renders GROSS (what you shot) with a pip on each stroked hole, and
+  // the standings score NET. With no NET column between them the two were only
+  // reconcilable by knowing the handicap and doing the arithmetic off-screen —
+  // which reads as the standings having deducted a second time. They never did:
+  // the subtraction happens exactly once, and this column shows its result.
+  //
+  // Derived through the SHARED `netStrokeEntries` — the same function the server's
+  // persisted stroke result uses — so the column, the leader below, and the
+  // standings cannot disagree (CLAUDE.md #8). Strokes count only on holes actually
+  // SCORED, so a mid-round net never credits a stroke on a hole not yet played.
+  const rawEntries: RawStrokeEntry[] = [];
   for (const p of participants)
     for (const u of units) {
       const v = valOf(p.id, u.label);
-      if (v != null) entries.push({ participant_id: p.id, value: v });
+      if (v != null) rawEntries.push({ participant_id: p.id, unit_label: u.label, value: v });
     }
+  const entries = netStrokeEntries(rawEntries, pips ?? {});
+  const netTotals = new Map<string, number>();
+  for (const e of entries)
+    netTotals.set(e.participant_id, (netTotals.get(e.participant_id) ?? 0) + (e.value ?? 0));
+  const netTotalOf = (pid: string) => netTotals.get(pid) ?? 0;
+  const scoredParOf = (pid: string) =>
+    units.filter((u) => valOf(pid, u.label) != null).reduce((a, u) => a + (u.par ?? 0), 0);
+  // Only when a stroke is actually in play — with no handicaps net ≡ gross and a
+  // second identical column is noise.
+  const showNet = participants.some((p) => (pips?.[p.id]?.size ?? 0) > 0);
+
+  // Leader (low NET total among participants who have any score). Gross and net
+  // agree when nobody has strokes, so this is unchanged for a scratch game.
+  const scoredIds = participants
+    .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
+    .map((p) => p.id);
   const standings = computeStrokePlayStandings(scoredIds, entries);
   // ALL position-1 entities, so tied co-leaders each get the leader treatment.
   const leaderIds = new Set(
@@ -580,7 +617,7 @@ export function StandardGrid({
 
   return (
     <>
-      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious} gameId={gameId}>
+      <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious} gameId={gameId} showNet={showNet}>
         {({ hasSections, front, back, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => (
           <>
           {participants.map((p, i) => {
@@ -631,7 +668,27 @@ export function StandardGrid({
                 })}
                 {hasSections && <SubCell value={sumOf(p.id, front)} vsPar={hasPar ? vsParOf(p.id, front) : undefined} />}
                 {hasSections && <SubCell value={sumOf(p.id, back)} vsPar={hasPar ? vsParOf(p.id, back) : undefined} />}
-                <SubCell value={totalOf(p.id)} vsPar={hasPar ? vsParOf(p.id, units) : undefined} wide bold leader={isLeader} />
+                {/* Total is GROSS — what you shot. The leader marker rides NET
+                    when strokes are in play (that's what the standings rank on),
+                    and stays on Total when they aren't (net ≡ gross). */}
+                <SubCell
+                  value={totalOf(p.id)}
+                  vsPar={hasPar ? vsParOf(p.id, units) : undefined}
+                  wide
+                  bold
+                  leader={!showNet && isLeader}
+                  testId={`scorecard-total-${p.id}`}
+                />
+                {showNet && (
+                  <SubCell
+                    value={netTotalOf(p.id)}
+                    vsPar={hasPar ? netTotalOf(p.id) - scoredParOf(p.id) : undefined}
+                    wide
+                    bold
+                    leader={isLeader}
+                    testId={`scorecard-net-${p.id}`}
+                  />
+                )}
                 <RightGutter />
               </div>
             );
@@ -736,16 +793,19 @@ export function SubCell({
   wide,
   bold,
   leader,
+  testId,
 }: {
   value: number;
   vsPar?: number;
   wide?: boolean;
   bold?: boolean;
   leader?: boolean;
+  testId?: string;
 }) {
   return (
     <div
       className="flex flex-col items-center justify-center"
+      data-testid={testId}
       style={{
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
@@ -769,9 +829,9 @@ function VsPar({ diff }: { diff: number }) {
   return <span style={{ fontSize: 10, fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>{text}</span>;
 }
 
-/** Blank subtotal cell for the index row — keeps the Out/In/Total tint columns
- *  continuous without showing a meaningless index sum. */
-function IndexSub({ wide }: { wide?: boolean }) {
+/** Blank subtotal cell — keeps the Out/In/Total/Net tint columns continuous on a
+ *  structure row that has no meaningful value there (an index sum, a net par). */
+function BlankSub({ wide }: { wide?: boolean }) {
   return (
     <div
       style={{

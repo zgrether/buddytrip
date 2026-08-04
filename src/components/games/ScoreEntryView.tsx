@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
-import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
+import { computeStrokePlayStandings, netStrokeEntries, type RawStrokeEntry } from "@/lib/strokePlay";
 import { Avatar } from "@/components/Avatar";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
@@ -56,9 +56,11 @@ interface ScoreEntryViewProps {
   /** Re-fire the save for a flagged cell. */
   onRetryCell?: (participantId: string, unitLabel: string) => void;
   /** Handicap stroke holes per participant (`{ [pid]: Set<unitLabel> }`) — a pip
-   *  on each stroked cell + a net hint in the row subtitle. Omit for formats
-   *  with no handicap (stroke play / Quick Game). Net = gross − 1 on a stroked
-   *  hole. */
+   *  on each stroked cell, a net hint in the row subtitle, AND the basis for the
+   *  running total + "Leading" badge, which score NET so this screen can't crown
+   *  a different player than the standings do. Omit for formats with no handicap
+   *  (stroke play / Quick Game) → net ≡ gross and nothing changes. Net = gross −
+   *  1 on a stroked hole. */
   pips?: Record<string, Set<string>>;
   /** #550: hide the view's own header — as a panel the app bar carries
    *  back/title (+ the config gear). The scorecard affordance relocates to the
@@ -129,13 +131,22 @@ export function ScoreEntryView({
       : (participants.find((p) => valueFor(p.id, label) == null)?.id ?? null);
 
   // ── Live standings (shared logic) ────────────────────────────────────
-  const entries: StrokeEntry[] = [];
+  // Run on NET, via the SAME `netStrokeEntries` the persisted result uses — a
+  // handicap game's running total and "Leading" badge otherwise rank on gross
+  // while every standings surface ranks on net, so the entry screen crowns a
+  // different player than the board (the illegibility that read as a
+  // double-applied handicap). No handicaps / no `pips` → net ≡ gross and this is
+  // byte-identical to summing gross directly.
+  const rawEntries: RawStrokeEntry[] = [];
   for (const p of participants) {
     for (const u of units) {
       const v = valueFor(p.id, u.label);
-      if (v != null) entries.push({ participant_id: p.id, value: v });
+      if (v != null) rawEntries.push({ participant_id: p.id, unit_label: u.label, value: v });
     }
   }
+  const entries = netStrokeEntries(rawEntries, pips ?? {});
+  /** Any stroke in play → the running total is a NET total and says so. */
+  const anyStrokes = participants.some((p) => (pips?.[p.id]?.size ?? 0) > 0);
   const scoredIds = participants
     .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
     .map((p) => p.id);
@@ -289,6 +300,9 @@ export function ScoreEntryView({
           const active = p.id === activePid;
           const v = valueFor(p.id, label);
           const total = totalOf(p.id);
+          // "No scores yet" keys on HAVING a score, not on a 0 total: a net total
+          // of 0 is reachable (an ace on a stroked hole) where a gross one wasn't.
+          const hasAnyScore = Object.keys(values[p.id] ?? {}).length > 0;
           const lead = isLeading(p.id);
           const done = doneCount(p.id) === units.length;
           // Handicap: does this player get a stroke on THIS hole? (course index)
@@ -337,12 +351,12 @@ export function ScoreEntryView({
                       while the current hole was unscored). Total leads; the hole's
                       golf word (or "Leading") follows, keeping its own color. */}
                   <div style={{ fontSize: 13 }}>
-                    {total === 0 ? (
+                    {!hasAnyScore ? (
                       <span style={{ fontWeight: 400, color: "var(--color-bt-text-dim)" }}>No scores yet</span>
                     ) : (
                       <>
                         <span style={{ fontWeight: 400, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
-                          {total} total
+                          {total} {anyStrokes ? "net" : "total"}
                         </span>
                         {par != null && v != null ? (
                           <span style={{ fontWeight: 600, color: GOLF_STYLE[golfResult(v, par)!].fg }}>
