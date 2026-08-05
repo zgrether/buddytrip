@@ -26,15 +26,24 @@ export function ScorecardSheet({
   onClose,
   children,
 }: {
+  /** The LABEL — "Scorecard", or "Scorecard · Final" once locked. Secondary. */
   title?: string;
+  /** The COURSE name. Primary when present — it is what identifies this card. */
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  // The course leads. These arrived as title="Scorecard · Final" /
+  // subtitle=<course>, which put the generic label in the heading slot and the
+  // one identifying fact underneath it in smaller dim text — every scorecard in
+  // the app announced itself with the same word. Swapped HERE rather than at the
+  // six call sites so the hierarchy can't be got right in some and wrong in
+  // others; the props keep their caller-facing meaning (label / course).
+  // No course applied → the label leads, since there is nothing else to say.
   return (
     <Sheet
-      title={title}
-      subtitle={subtitle}
+      title={subtitle ?? title}
+      subtitle={subtitle ? title : undefined}
       onClose={onClose}
       maxWidthClass="max-w-2xl"
       bodyClassName="p-0"

@@ -10,6 +10,14 @@ export type TripRoleValue = "Owner" | "Organizer" | "Member" | null | undefined;
 
 export const DEFAULT_CHAT_SEGMENT: ChatSegment = "crew";
 
+/** sessionStorage key for the last-picked segment (per-session, not per-account). */
+export const CHAT_SEGMENT_KEY = "bt.chatSegment.v1";
+
+/** Narrow an unknown stored value back to a segment; anything else → the default. */
+export function parseChatSegment(v: string | null): ChatSegment {
+  return v === "crew" || v === "planning" || v === "news" ? v : DEFAULT_CHAT_SEGMENT;
+}
+
 /**
  * Planning is visible only when the trip has at least one designated
  * Organizer AND the current viewer is that trip's Owner or an Organizer.

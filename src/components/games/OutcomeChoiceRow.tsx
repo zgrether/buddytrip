@@ -32,6 +32,7 @@ export function OutcomeChoiceRow({
   testId,
   saveState,
   onRetry,
+  disabled = false,
 }: {
   selected: boolean;
   dim: boolean;
@@ -51,6 +52,15 @@ export function OutcomeChoiceRow({
    *  feedback, in the same footprint, so the panel below never reflows). */
   saveState?: CellSaveState;
   onRetry?: () => void;
+  /**
+   * Not permitted to choose — a viewer without edit rights.
+   *
+   * This used to be expressed by passing a no-op `onClick`, which leaves a row
+   * that looks and focuses exactly like a live control and simply does nothing
+   * when tapped. Being told is better than being ignored: the row stops taking
+   * focus, reports `aria-disabled` to assistive tech, and reads as unavailable.
+   */
+  disabled?: boolean;
 }) {
   const tint = neutral ? "var(--color-bt-accent)" : color ?? "var(--color-bt-accent)";
   // Only the transient states borrow the badge — once saved, this settles
@@ -67,17 +77,21 @@ export function OutcomeChoiceRow({
     // score entry's PlayerRow.
     <div
       role="button"
-      tabIndex={0}
-      onClick={onClick}
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : onClick}
       className="@container flex w-full items-center gap-3 text-left transition-opacity"
       data-testid={testId}
       style={{
         padding: stacked ? "8px 14px" : 14,
         borderRadius: 12,
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
         background: selected ? `color-mix(in srgb, ${tint} 14%, transparent)` : "var(--color-bt-card)",
         border: `1.5px solid ${selected ? tint : "var(--color-bt-border)"}`,
-        opacity: dim ? 0.5 : 1,
+        // `dim` is the format's own de-emphasis; `disabled` is "you can't do
+        // this". A selected row keeps more presence when disabled — it is still
+        // reporting the recorded outcome, which a member does need to read.
+        opacity: dim ? 0.5 : disabled && !selected ? 0.45 : 1,
       }}
     >
       {players && players.length > 1 ? (

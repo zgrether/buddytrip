@@ -789,9 +789,11 @@ export function StrokeGameView() {
           return { id: uid, name: p?.name ?? "Player", teamColor: p?.color ?? "var(--color-bt-text-dim)" };
         }),
         mine: !!me && g.userIds.includes(me.id),
+        // Every member thru every hole — the SAME predicate that gates finalize.
+        finished: allUnitsComplete(thruVals, scUnits.length),
       };
     }),
-    [surfaceGroups, values, fieldParticipants, me],
+    [surfaceGroups, values, fieldParticipants, me, scUnits.length],
   );
 
   // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear) instead of
@@ -854,7 +856,7 @@ export function StrokeGameView() {
       // summary screen, so the scoreboard behind it kept rendering the
       // pre-finalize `gameQ` row and the cup board stayed stale. With the summary
       // gone the view stays put, which makes these loud by their absence: without
-      // them the "Finish round" button would still be sitting there after a
+      // them the "Save results" button would still be sitting there after a
       // successful finalize.
       await utils.games.getById.invalidate({ tripId, gameId: game.id });
       if (gameCompetitionId) {
@@ -1273,8 +1275,8 @@ export function StrokeGameView() {
           status={gameQ.data?.status ?? null}
           correctionsOpen={strokeCorrectionsOpen}
           allComplete={allGroupsComplete}
-          finalizeLabel="Finish round"
-          finalizePendingLabel="Finishing…"
+          finalizeLabel="Save results"
+          finalizePendingLabel="Saving results…"
           finalizePending={finishGame.isPending}
           correctPending={openCorrection.isPending}
           onFinalize={handleFinish}

@@ -358,10 +358,15 @@ export function ScoreEntryView({
                         <span style={{ fontWeight: 400, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
                           {total} {anyStrokes ? "net" : "total"}
                         </span>
-                        {par != null && v != null ? (
+                        {par != null && v != null && golfWord(v, par) ? (
                           <span style={{ fontWeight: 600, color: GOLF_STYLE[golfResult(v, par)!].fg }}>
                             {" · "}
-                            {stroked ? `${golfWord(v, par)} · net ${golfWord(v - 1, par)}` : golfWord(v, par)}
+                            {/* Gross and net are named independently. Either can be
+                                unnamed (past ±3), in which case that half is simply
+                                omitted rather than printed as a bucket's word. */}
+                            {stroked && golfWord(v - 1, par)
+                              ? `${golfWord(v, par)} · net ${golfWord(v - 1, par)}`
+                              : golfWord(v, par)}
                           </span>
                         ) : lead ? (
                           <span style={{ fontWeight: 600, color: "var(--color-bt-place-1-text)" }}> · Leading</span>

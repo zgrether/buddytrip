@@ -743,13 +743,21 @@ function CompletedPodium({ teams, cells }: { teams: LBTeam[]; cells: Map<string,
     <div className="flex shrink-0 items-center gap-1">
       {ranked.map(({ team, cell }) => {
         const p = Math.min(Math.max(cell.place, 1), 4);
+        // FIRST place carries no place tint. The pills are already sorted by
+        // finishing position, so left-to-right says who won; the tint said it a
+        // second time and washed the winner's pill in place-1 green, leaving the
+        // team's own colour to a 1.5px dot — it obscured the one thing that
+        // identifies WHICH team won. Removed with no replacement: no border, no
+        // weight, no marker. The remaining places keep their tint, which is what
+        // still distinguishes 2nd from 3rd where position alone is subtler.
+        const isFirst = p === 1;
         return (
           <span
             key={team.id}
             className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
             style={{
-              background: `var(--color-bt-place-${p}-bg)`,
-              color: `var(--color-bt-place-${p}-text)`,
+              background: isFirst ? undefined : `var(--color-bt-place-${p}-bg)`,
+              color: isFirst ? "var(--color-bt-text)" : `var(--color-bt-place-${p}-text)`,
             }}
           >
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />

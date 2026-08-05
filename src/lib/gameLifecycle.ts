@@ -57,7 +57,7 @@ export type GameLifecycleState = {
   canFinalize: boolean;
   /** Show the "Correct a score" CTA. */
   canCorrect: boolean;
-  /** Show the "Re-lock result" CTA. */
+  /** Show the "Save scoring changes" CTA. */
   canRelock: boolean;
 };
 

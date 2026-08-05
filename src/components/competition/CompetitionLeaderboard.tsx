@@ -546,8 +546,11 @@ function SessionBreakdown({
                 />
               )}
               {label}
-              {/* Count right-justified to the section's right edge (W3-LB2). */}
-              <span className="ml-auto tabular-nums" style={{ color: "var(--color-bt-text)" }}>{sectionGames.length}</span>
+              {/* Inline, right after the label — "COMPLETED 9". It was
+                  right-justified to the section's right edge (W3-LB2), which read
+                  fine on a sparse board and turned into a column of numbers
+                  floating away from their headings once the board filled up. */}
+              <span className="tabular-nums" style={{ color: "var(--color-bt-text)" }}>{sectionGames.length}</span>
             </p>
             {/* Team short-name column header — sits directly above COMPLETED
                 only (§1.2), match_play only (points cups get their own
