@@ -583,7 +583,15 @@ function ChatBody({
         >
           <div
             className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
-            style={{ background: "linear-gradient(to bottom, var(--color-bt-card-float), transparent)" }}
+            // The fade has to START from whatever surface it sits on, and this
+            // panel has TWO containers with deliberately different ones (#756):
+            // the scrimmed mobile sheet is `card-float`, the desktop aside is
+            // Level-1 `card` because it is a layout region, not a floating dialog.
+            // Hardcoding `card-float` was right for the sheet and visibly wrong in
+            // the aside — the gradient began a shade lighter than the panel behind
+            // it. Neither surface is the mistake; this was. The container declares
+            // `--chat-surface`; the sheet's default keeps its existing behaviour.
+            style={{ background: "linear-gradient(to bottom, var(--chat-surface, var(--color-bt-card-float)), transparent)" }}
           />
           <div className="space-y-1.5 px-3 py-2">
             {loadingOlder && (

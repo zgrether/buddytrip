@@ -511,7 +511,11 @@ export function AppShell({
                   style={{
                     background: "var(--color-bt-card)",
                     border: "1px solid var(--color-bt-border)",
-                  }}
+                    // Tells the panel's scroll fade which surface to start from.
+                    // The surface choice lives HERE, with the container that owns
+                    // it, rather than being guessed inside the panel.
+                    ["--chat-surface" as string]: "var(--color-bt-card)",
+                  } as React.CSSProperties}
                   data-testid="chat-column"
                 >
                   {chat}
