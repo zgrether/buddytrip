@@ -419,10 +419,20 @@ export function AppShell({
         className="min-h-screen lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden"
         style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
       >
-        {/* Pinned by STRUCTURE at lg (a non-shrinking flex child of a bounded
-            column) rather than by `sticky`, which is what it still relies on for
-            the mobile page scroll. Both work; neither fights the other. */}
-        <div className="lg:shrink-0">
+        {/* Pinned by STRUCTURE at lg (a non-shrinking flex child of a bounded,
+            overflow-hidden column) and by `sticky` below lg, where the PAGE is
+            the scroller.
+            The sticky has to live HERE, not only on the bar inside. A sticky
+            element can only travel within its containing block, and this wrapper
+            hugs the bar at exactly its own height (56px) — zero slack, so the bar
+            rode the wrapper straight off screen at precisely the scroll offset
+            (measured: scrollY 800 → the bar's rect.top −800, with
+            `position: sticky` and `top: 0` both computing correctly the whole
+            time). Putting it on the wrapper gives the sticky the SHELL as its
+            containing block, which spans the scrollable content.
+            `lg:static` hands the job back to the flex column at lg, so desktop
+            keeps the structural pinning it already had. */}
+        <div className="sticky top-0 z-40 lg:static lg:z-auto lg:shrink-0">
           {typeof topBar === "function"
             ? topBar({
                 chatOpen,
