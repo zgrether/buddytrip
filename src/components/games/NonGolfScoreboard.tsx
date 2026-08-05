@@ -8,6 +8,7 @@ import {
   type LBTeamLite,
 } from "@/components/competition/CompetitionGamesPanel";
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
+import { GameLifecycleActions } from "./GameLifecycleActions";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { placementsFrom } from "@/lib/placementGroups";
 
@@ -74,12 +75,31 @@ export function NonGolfScoreboard({
   const [result, setResult] = useState<string>(() => initialResult ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  // complete + !corrections_open → "posted" (re-post re-runs the compute); active
-  // → "open"; pending shouldn't reach the board (setup mode), but treat as open.
-  const correcting = game.status === "complete";
-
   const finishGame = trpc.games.finish.useMutation();
+  const openCorrection = trpc.games.openCorrection.useMutation();
   const busy = finishGame.isPending;
+
+  /**
+   * Reopen a posted game for editing — the step non-golf never had.
+   *
+   * It used to jump straight from posted to a bright warning-toned "Re-post",
+   * skipping golf's muted "Correct a score" and the explicit correcting state it
+   * leads to. Same invalidation set rack uses: `corrections_open` is a `games`
+   * column, so it's snapshotted by the bootstrap and carried on the board's
+   * GameRow — invalidating only the game row leaves the board reading the
+   * pre-correction value, and the next re-seed undoes it anyway (CLAUDE.md #10).
+   */
+  async function handleCorrect() {
+    setError(null);
+    try {
+      await openCorrection.mutateAsync({ tripId, gameId: game.id });
+      await utils.games.getById.invalidate({ tripId, gameId: game.id });
+      utils.games.listByTrip.invalidate({ tripId });
+      utils.competitions.faceBootstrap.invalidate({ tripId });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reopen for correction");
+    }
+  }
 
   function teamById(id: string) {
     return teams.find((t) => t.id === id);
@@ -119,15 +139,6 @@ export function NonGolfScoreboard({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 py-5">
-      {correcting && (
-        <div
-          className="rounded-lg px-3 py-2.5 text-[11px] leading-relaxed"
-          style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning)", color: "var(--color-bt-warning)" }}
-        >
-          This game is posted — re-posting recomputes the leaderboard.
-        </div>
-      )}
-
       {winLoseTie ? (
         <NonGolfMatchControl
           teams={teams}
@@ -148,18 +159,28 @@ export function NonGolfScoreboard({
 
       {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
 
-      {canEdit && (
-        <button
-          type="button"
-          onClick={commit}
-          disabled={busy || (winLoseTie && !result)}
-          data-testid="nongolf-post"
-          className="w-full rounded-xl py-3 text-sm font-bold disabled:opacity-50"
-          style={{ background: correcting ? "var(--color-bt-warning)" : "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {correcting ? "Save scoring changes" : "Save results"}
-        </button>
-      )}
+      {/* The SAME lifecycle CTAs golf renders. Non-golf carried its own single
+          button, which is why it looked and behaved differently: one bright
+          warning-toned control the moment a game was posted, with no muted
+          "Correct a score" step and no explicit correcting state. `gameLifecycle`
+          decides which of the three is offered; this component only renders it,
+          so the two can no longer drift.
+          `allComplete` for non-golf means "an outcome has been chosen" — the
+          placement editor always carries an order, so only the win/lose/tie
+          control can be genuinely unanswered. That replaces the old inline
+          `disabled={winLoseTie && !result}`. */}
+      <GameLifecycleActions
+        canEdit={canEdit}
+        status={game.status}
+        correctionsOpen={game.corrections_open}
+        allComplete={!winLoseTie || !!result}
+        finalizeLabel="Save results"
+        finalizePendingLabel="Saving results…"
+        finalizePending={busy}
+        correctPending={openCorrection.isPending}
+        onFinalize={commit}
+        onCorrect={handleCorrect}
+      />
     </div>
   );
 }
