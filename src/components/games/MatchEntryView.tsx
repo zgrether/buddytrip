@@ -532,13 +532,16 @@ function PlayerRow({
   // stroke hole the bold NET word (what counts): "Bogey · net Par".
   let subtitle: React.ReactNode = "Awaiting score";
   if (v != null && par != null) {
+    // Gross and net are named independently, and either can be unnamed (past
+    // ±3) — omit that half rather than printing a bucket's word for it.
     const gw = golfWord(v, par);
-    subtitle = stroked ? (
+    const nw = golfWord(v - 1, par);
+    subtitle = stroked && nw ? (
       <>
-        {gw} · net <span style={{ fontWeight: 700, color: "var(--color-bt-text)" }}>{golfWord(v - 1, par)}</span>
+        {gw ? `${gw} · ` : ""}net <span style={{ fontWeight: 700, color: "var(--color-bt-text)" }}>{nw}</span>
       </>
     ) : (
-      gw
+      gw ?? (stroked ? `Gross ${v} · net ${v - 1}` : "")
     );
   } else if (v != null) {
     subtitle = stroked ? `Gross ${v} · net ${v - 1}` : "";

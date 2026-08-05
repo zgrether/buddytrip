@@ -17,10 +17,37 @@ describe("golfResult", () => {
     expect(golfResult(undefined, 4)).toBeNull();
   });
 
-  it("golfWord maps the result to a label", () => {
-    expect(golfWord(3, 4)).toBe("Birdie");
-    expect(golfWord(4, 4)).toBe("Par");
-    expect(golfWord(7, 4)).toBe("Double");
+  // The WORD is named from the difference, NOT from the style bucket. Naming
+  // through the bucket made a triple say "Double" and an albatross say "Eagle",
+  // and with a stroke in play both halves of "X · net Y" showed the error at once.
+  it("golfWord names the score from the difference, not the style bucket", () => {
+    expect(golfWord(1, 4)).toBe("Albatross"); // −3, where the bucket says 'eagle'
+    expect(golfWord(2, 4)).toBe("Eagle"); // −2
+    expect(golfWord(3, 4)).toBe("Birdie"); // −1
+    expect(golfWord(4, 4)).toBe("Par"); // 0
+    expect(golfWord(5, 4)).toBe("Bogey"); // +1
+    expect(golfWord(6, 4)).toBe("Double"); // +2
+    expect(golfWord(7, 4)).toBe("Triple"); // +3, where the bucket says 'double'
     expect(golfWord(null, 4)).toBeNull();
+  });
+
+  it("declines to name a score past ±3 rather than inventing a term", () => {
+    expect(golfWord(8, 4)).toBeNull(); // +4
+    expect(golfWord(12, 4)).toBeNull(); // +8
+    expect(golfWord(0, 4)).toBeNull(); // −4
+  });
+
+  it("names gross and net independently — the pair that read as an echo", () => {
+    // A triple that nets to a double: was "Double · net Double".
+    expect(golfWord(7, 4)).toBe("Triple");
+    expect(golfWord(6, 4)).toBe("Double");
+    // An eagle that nets to an albatross: was "Eagle · net Eagle".
+    expect(golfWord(2, 4)).toBe("Eagle");
+    expect(golfWord(1, 4)).toBe("Albatross");
+  });
+
+  it("keeps the STYLE buckets grouped — only the words changed", () => {
+    expect(golfResult(7, 4)).toBe("double"); // triple still styled as double
+    expect(golfResult(1, 4)).toBe("eagle"); // albatross still styled as eagle
   });
 });

@@ -38,20 +38,34 @@ export const GOLF_STYLE: Record<GolfResult, GolfStyle> = {
   double: { shape: "square", ring: "double", fg: "#c4b5fd", bg: "rgba(139,92,246,0.20)" },
 };
 
-const WORDS: Record<GolfResult, string> = {
-  eagle: "Eagle",
-  birdie: "Birdie",
-  par: "Par",
-  bogey: "Bogey",
-  double: "Double",
-};
-
-/** Golf word for a gross score vs par (e.g. "Birdie"). null when unscored. */
+/**
+ * The NAME of a score relative to par — deliberately NOT derived from
+ * `GolfResult`, which is a STYLE bucket.
+ *
+ * `golfResult` groups −2-or-better as `eagle` and +2-or-worse as `double` so the
+ * card has a bounded palette, and that grouping is correct for colour. Naming
+ * through it made the buckets speak: a triple announced itself as "Double", and
+ * an albatross as "Eagle". With a stroke in play the row shows gross and net side
+ * by side, which put both errors on screen at once — "Double · net Double" for a
+ * triple that nets to a double, "Eagle · net Eagle" for an eagle that nets to an
+ * albatross. Each figure was already computed independently; they only *read* as
+ * echoes because two different scores share one bucket's word.
+ *
+ * So the name comes from the difference itself, and stops where the real names
+ * stop. Beyond +3 and below −3 there is no name worth printing — golf has words
+ * for those, but nobody uses them, and inventing one is worse than saying
+ * nothing. null means "no name", which reads the same as unscored to callers
+ * that already handle it.
+ */
 export function golfWord(gross: number | null | undefined, par: number): string | null {
-  const r = golfResult(gross, par);
-  return r ? WORDS[r] : null;
-}
-
-export function golfWordFor(result: GolfResult): string {
-  return WORDS[result];
+  if (gross == null) return null;
+  const d = gross - par;
+  if (d === -3) return "Albatross";
+  if (d === -2) return "Eagle";
+  if (d === -1) return "Birdie";
+  if (d === 0) return "Par";
+  if (d === 1) return "Bogey";
+  if (d === 2) return "Double";
+  if (d === 3) return "Triple";
+  return null; // −4 or better, +4 or worse: unnamed on purpose
 }
