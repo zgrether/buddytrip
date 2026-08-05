@@ -151,6 +151,24 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
           )}
 
           <ScrollLock>
+          {/* LOAD-BEARING: this panel's mobile `fixed` placement is anchored to
+              the HEADER, not the viewport.
+              TopNav sets `backdrop-filter`, which per spec makes it a containing
+              block for `position: fixed` descendants — measured: this element's
+              `offsetParent` IS the <header>. The backdrop above is portaled to
+              <body> for exactly that reason; this panel is not, so `top-14`
+              (56px) means "56px below the header's top", and only lands right
+              because the header sits at y=0.
+              #827 is what guarantees that: the bar is pinned by a sticky wrapper
+              below `lg` and by the bounded flex column at `lg`. Before it, the
+              bar scrolled away and took this panel with it — which is the
+              reported "only the bottom line shows" (panel partly above the
+              viewport) and "just the greyed-out scrim" (panel fully above it,
+              while the portaled backdrop still covers the screen). Not
+              reproducible since #827; recorded because the coupling is invisible.
+              If the bar ever stops being pinned at 0, this breaks again — and the
+              fix then is to portal this panel too and anchor it off the trigger's
+              measured rect, NOT to raise z-index. */}
           <div
             role="menu"
             aria-label="Account menu"
