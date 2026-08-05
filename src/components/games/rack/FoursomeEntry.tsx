@@ -23,6 +23,10 @@ export interface FoursomeGroupView {
   thru: number | null; // null = not started
   players: FoursomePlayer[];
   mine: boolean;
+  /** Every hole scored. Recedes the card — the group needs nothing further, so it
+   *  stops competing for attention with the ones still out on the course. The
+   *  CALLER decides this: only it knows the round's unit count. */
+  finished?: boolean;
 }
 
 export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]; onEnter: (groupId: string) => void }) {
@@ -43,12 +47,30 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
             className="min-w-0 rounded-xl border text-left"
             style={{
               padding: "10px 12px",
-              background: g.mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-              borderColor: g.mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
+              // A finished group RECEDES via the surface hierarchy — dropped to
+              // `base`, the recessed surface below `card`, rather than an opacity
+              // value (STYLE_GUIDE §1). Opacity would fade the team dots and the
+              // text unevenly and stack badly with `mine`'s accent wash; a surface
+              // token keeps every colour inside intact and still reads as "done".
+              // `mine` still wins — the group you're scoring stays emphasized even
+              // when complete, because it's still the one you might correct.
+              background: g.mine
+                ? "var(--color-bt-accent-faint)"
+                : g.finished
+                  ? "var(--color-bt-base)"
+                  : "var(--color-bt-card)",
+              borderColor: g.mine
+                ? "var(--color-bt-accent-border)"
+                : g.finished
+                  ? "var(--color-bt-subtle-border)"
+                  : "var(--color-bt-border)",
             }}
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{g.name}</span>
+              <span
+                className="min-w-0 truncate"
+                style={{ fontSize: 15, fontWeight: 600, color: g.finished && !g.mine ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
+              >{g.name}</span>
               {g.mine ? (
                 <span className="flex items-center gap-0.5" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-accent)" }}>
                   Enter <ChevronRight size={15} />

@@ -789,9 +789,11 @@ export function StrokeGameView() {
           return { id: uid, name: p?.name ?? "Player", teamColor: p?.color ?? "var(--color-bt-text-dim)" };
         }),
         mine: !!me && g.userIds.includes(me.id),
+        // Every member thru every hole — the SAME predicate that gates finalize.
+        finished: allUnitsComplete(thruVals, scUnits.length),
       };
     }),
-    [surfaceGroups, values, fieldParticipants, me],
+    [surfaceGroups, values, fieldParticipants, me, scUnits.length],
   );
 
   // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear) instead of

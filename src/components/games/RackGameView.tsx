@@ -383,6 +383,9 @@ export function RackGameView() {
         thru: maxThru > 0 ? maxThru : null,
         players: members.map((p) => ({ id: p.user_id as string, name: nameOf.get(p.user_id as string) ?? "Player", teamColor: colorForUser(p.user_id as string) })),
         mine: !!me && members.some((p) => p.user_id === me.id),
+        // Every member thru every hole — the SAME predicate that gates finalize,
+        // not a second rule about what "done" means.
+        finished: allUnitsComplete(thrus, scUnits.length),
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
