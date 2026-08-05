@@ -10,6 +10,8 @@ import { ChatNotifyToggle } from "@/components/ChatNotifyToggle";
 import { useTripRole } from "@/hooks/useTripRole";
 import {
   DEFAULT_CHAT_SEGMENT,
+  CHAT_SEGMENT_KEY,
+  parseChatSegment,
   canSeePlanningSegment,
   visibleChatSegments,
   resolveActiveChatSegment,
@@ -77,7 +79,28 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   const canSeePlanning = canSeePlanningSegment(role, typedMembers);
   const segments = visibleChatSegments(canSeePlanning);
 
-  const [selected, setSelected] = useState<ChatSegment>(DEFAULT_CHAT_SEGMENT);
+  // Remembered for the SESSION. Chat opens as an overlay and closes back to the
+  // tab beneath it (#756), so an organizer working out of the Organizers channel
+  // was thrown back to Crew on every single open. sessionStorage rather than
+  // localStorage deliberately — "where I was a minute ago" is the useful memory;
+  // "where I was last month" is a surprise. Lazy initializer so it reads once,
+  // and SSR-safe (no `window` during render on the server).
+  const [selected, setSelected] = useState<ChatSegment>(() => {
+    if (typeof window === "undefined") return DEFAULT_CHAT_SEGMENT;
+    try {
+      return parseChatSegment(window.sessionStorage.getItem(CHAT_SEGMENT_KEY));
+    } catch {
+      return DEFAULT_CHAT_SEGMENT;
+    }
+  });
+  const pickSegment = (id: ChatSegment) => {
+    setSelected(id);
+    try {
+      window.sessionStorage.setItem(CHAT_SEGMENT_KEY, id);
+    } catch {
+      // Private mode / storage disabled — the choice just doesn't persist.
+    }
+  };
   // If the role (or the last organizer) flips away while Planning is
   // selected, fall back to Crew during render — the panel refuses the
   // channel anyway, so without this the segment bar would highlight a tab
@@ -146,12 +169,22 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
               type="button"
               role="tab"
               aria-selected={selectedTab}
-              onClick={() => setSelected(id)}
+              onClick={() => pickSegment(id)}
               data-testid={`chat-stream-${id}`}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold"
+              className="flex items-center gap-1.5 px-3 pb-1.5 pt-1 text-[12.5px] font-semibold transition-colors"
               style={{
-                background: selectedTab ? "var(--color-bt-card-raised)" : "transparent",
-                color: selectedTab ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                // TABS, drawn as tabs. These were `rounded-lg` with a
+                // `card-raised` fill when selected, which is the same rounded
+                // filled shape as the message bubbles immediately below them —
+                // so the control read as another message rather than a control.
+                // STYLE_GUIDE §5 gives tabs radius `None`; this is the same
+                // treatment `TopNav`'s Trip/Cup tabs already use — transparent
+                // ground, 2px accent underline, accent text — so the app has one
+                // way of showing a selected tab instead of two. No extra weight.
+                background: "transparent",
+                border: 0,
+                borderBottom: `2px solid ${selectedTab ? "var(--color-bt-accent)" : "transparent"}`,
+                color: selectedTab ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
               }}
             >
               <Icon size={14} />
