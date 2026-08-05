@@ -213,14 +213,32 @@ export function CompetitionHero({
               <TeamName team={b} onEditTeam={onEditTeam} align="right" />
             </div>
 
-            {/* Scores — the two big team-colored numbers flanking the trophy. */}
+            {/* Scores — the two big team-colored numbers flanking the trophy.
+                Sized by CONTENT, not viewport. At a fixed 74px a two-decimal pair
+                ("18.75" – "28.75") needs roughly 460px of digits and gap, so the
+                right-hand number ran off a 375px screen. A media query would fix
+                the phone and still clip a long value on a wider one; the length of
+                the number is what actually decides. Both sides take the SAME size
+                so they stay a matched pair rather than one shrinking alone. */}
             <div className="mt-1 flex items-baseline justify-between gap-4">
-              <span style={{ fontSize: 74, fontWeight: 700, lineHeight: 1, color: a.color }} className="tabular-nums">
-                {fmtPts(aTotal)}
-              </span>
-              <span style={{ fontSize: 74, fontWeight: 700, lineHeight: 1, color: b.color }} className="tabular-nums">
-                {fmtPts(bTotal)}
-              </span>
+              {(() => {
+                const aStr = fmtPts(aTotal);
+                const bStr = fmtPts(bTotal);
+                // tabular digits run ~0.6em wide, so N chars ≈ 0.6·N·size per side;
+                // these steps keep the pair inside 375px minus the card's padding.
+                const longest = Math.max(aStr.length, bStr.length);
+                const size = longest >= 5 ? 46 : longest === 4 ? 58 : longest === 3 ? 66 : 74;
+                return (
+                  <>
+                    <span style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: a.color }} className="tabular-nums">
+                      {aStr}
+                    </span>
+                    <span style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: b.color }} className="tabular-nums">
+                      {bStr}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Clinch bar — track + each team's end-fill + a lead marker. */}
