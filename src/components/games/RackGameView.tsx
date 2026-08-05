@@ -902,7 +902,7 @@ export function RackGameView() {
             // above, no mutation) — the shared default subtext ("Saves results ·
             // shows final standings") describes stroke's games.finish-calling
             // Finish, not rack's. The real rack finalize is the hub's separate
-            // "Lock the result" action.
+            // "Save results" action.
             finishSubtext=""
             pips={groupPips}
           />
@@ -1206,8 +1206,8 @@ export function RackGameView() {
         status={gameQ.data?.status ?? null}
         correctionsOpen={correctionsOpen}
         allComplete={allThru18}
-        finalizeLabel="Lock the result"
-        finalizePendingLabel="Locking…"
+        finalizeLabel="Save results"
+        finalizePendingLabel="Saving results…"
         finalizePending={finishGame.isPending}
         correctPending={openCorrection.isPending}
         onFinalize={finish}

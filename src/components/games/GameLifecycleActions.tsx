@@ -30,14 +30,17 @@ export function GameLifecycleActions({
   onCorrect,
   ...lifecycleInput
 }: GameLifecycleInput & {
-  /** e.g. "Finish round" (stroke) / "Lock the result" (rack). */
+  /** The finalize CTA. One string across all four formats since the vocabulary
+   *  sweep — "Save results". Kept as a prop rather than hardcoded so a format
+   *  that genuinely needs different words can still say so. */
   finalizeLabel: string;
-  /** e.g. "Finishing…" / "Locking…". */
+  /** e.g. "Saving results…". */
   finalizePendingLabel: string;
   finalizePending?: boolean;
   correctPending?: boolean;
   onFinalize: () => void;
-  /** Re-lock reuses `onFinalize` — `games.finish` clears `corrections_open` either way. */
+  /** "Save scoring changes" reuses `onFinalize` — `games.finish` clears
+   *  `corrections_open` either way. */
   onCorrect: () => void;
 }) {
   const state = gameLifecycle(lifecycleInput);
@@ -108,7 +111,7 @@ export function GameLifecycleActions({
             fontWeight: 600,
           }}
         >
-          {finalizePending ? "Re-locking…" : "Re-lock result"}
+          {finalizePending ? "Saving changes…" : "Save scoring changes"}
         </button>
       </div>
     );

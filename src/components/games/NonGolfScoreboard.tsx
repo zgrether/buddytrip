@@ -157,7 +157,7 @@ export function NonGolfScoreboard({
           className="w-full rounded-xl py-3 text-sm font-bold disabled:opacity-50"
           style={{ background: correcting ? "var(--color-bt-warning)" : "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
-          {correcting ? "Re-post" : "Post results"}
+          {correcting ? "Save scoring changes" : "Save results"}
         </button>
       )}
     </div>
@@ -169,7 +169,7 @@ export function NonGolfScoreboard({
  * using the SAME three-choice entry as golf's hole-outcome entry (the shared
  * `OutcomeChoiceRow`): Team A / Halved / Team B, tap-to-select, team-colored with
  * a ✓ and the other rows dimmed. It stops at SELECTION — nothing posts on tap;
- * the board's "Post results" button below commits. Starts unselected (nothing
+ * the board's "Save results" button below commits. Starts unselected (nothing
  * pre-decided) and the outcome feeds the existing path (a team id = that side
  * won; "tie" = halved/split).
  */

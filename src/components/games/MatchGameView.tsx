@@ -3061,8 +3061,8 @@ function Overview({
         status={status}
         correctionsOpen={correctionsOpen}
         allComplete={allOver}
-        finalizeLabel="Finish round"
-        finalizePendingLabel="Finishing…"
+        finalizeLabel="Save results"
+        finalizePendingLabel="Saving results…"
         finalizePending={finishing}
         correctPending={correctingPending}
         onFinalize={onFinish}
