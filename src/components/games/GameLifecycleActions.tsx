@@ -72,7 +72,11 @@ export function GameLifecycleActions({
   // Secondary styling: reopening a locked result is not the encouraged action.
   if (state.canCorrect) {
     return (
-      <div className="px-4 pb-6" data-testid="game-correct">
+      // `pt-4`, unlike the finalize arm above. Before finalize this block follows
+      // the entry surface, which ends in its own spacing; after it the results
+      // land directly above and the button butted straight against them. The
+      // post-finalize arms need the gap the pre-finalize one gets for free.
+      <div className="px-4 pb-6 pt-4" data-testid="game-correct">
         <button
           onClick={onCorrect}
           disabled={correctPending}
@@ -97,7 +101,8 @@ export function GameLifecycleActions({
   // not counting as final until this is tapped.
   if (state.canRelock) {
     return (
-      <div className="px-4 pb-6" data-testid="game-relock">
+      // Same post-finalize context as the correct arm above — same top padding.
+      <div className="px-4 pb-6 pt-4" data-testid="game-relock">
         <button
           onClick={onFinalize}
           disabled={finalizePending}
