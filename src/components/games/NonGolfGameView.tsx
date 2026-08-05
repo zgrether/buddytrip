@@ -449,7 +449,13 @@ export function NonGolfGameView() {
         tripId={tripId}
         competitionId={competitionId}
         projection={
-          isManualGameType(game.game_type_id)
+          // A manual game was excluded outright, so non-golf never showed what it
+          // contributed to the cup — the one thing golf's finished view leads with.
+          // The exclusion only makes sense BEFORE a result exists: `projectionPerTeam`
+          // rolls up the posted leaderboard cells, and with nothing posted that is an
+          // empty map rendering 0–0, which is noise on a game not yet played. Once
+          // complete the cells are real and the row says what golf's says.
+          isManualGameType(game.game_type_id) && game.status !== "complete"
             ? undefined
             : {
                 perTeam: projectionPerTeam,

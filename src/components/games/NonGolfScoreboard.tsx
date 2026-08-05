@@ -139,11 +139,15 @@ export function NonGolfScoreboard({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 py-5">
+      {/* `canEdit` now reaches the outcome rows themselves. It used to be
+          expressed by handing them a no-op `onPick`, which leaves three
+          live-looking, focusable controls that silently do nothing for a member. */}
       {winLoseTie ? (
         <NonGolfMatchControl
           teams={teams}
           result={result}
-          onPick={canEdit ? setResult : () => {}}
+          onPick={setResult}
+          canEdit={canEdit}
         />
       ) : (
         <ManualPlacementEditor
@@ -195,9 +199,9 @@ export function NonGolfScoreboard({
  * won; "tie" = halved/split).
  */
 function NonGolfMatchControl({
-  teams, result, onPick,
+  teams, result, onPick, canEdit,
 }: {
-  teams: LBTeamLite[]; result: string; onPick: (r: string) => void;
+  teams: LBTeamLite[]; result: string; onPick: (r: string) => void; canEdit: boolean;
 }) {
   const [a, b] = teams;
   const aId = a?.id ?? "";
@@ -213,6 +217,7 @@ function NonGolfMatchControl({
         avatarName={a?.name}
         label={a?.name ?? "Team A"}
         onClick={() => onPick(aId)}
+        disabled={!canEdit}
         testId={`match-win-${aId}`}
       />
       <OutcomeChoiceRow
@@ -221,6 +226,7 @@ function NonGolfMatchControl({
         neutral
         label="Halved"
         onClick={() => onPick("tie")}
+        disabled={!canEdit}
         testId="match-draw"
       />
       <OutcomeChoiceRow
@@ -230,6 +236,7 @@ function NonGolfMatchControl({
         avatarName={b?.name}
         label={b?.name ?? "Team B"}
         onClick={() => onPick(bId)}
+        disabled={!canEdit}
         testId={`match-win-${bId}`}
       />
     </div>
