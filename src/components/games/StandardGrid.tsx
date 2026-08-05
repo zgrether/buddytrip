@@ -6,7 +6,6 @@ import { useTeeVisibility } from "@/hooks/useTeeVisibility";
 import { computeStrokePlayStandings, netStrokeEntries, type RawStrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
-import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
 import {
   scoreCellKey,
@@ -623,11 +622,17 @@ export function StandardGrid({
           {participants.map((p, i) => {
             const isLeader = leaderIds.has(p.id);
             const rowBg = i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)";
+            // The per-hole-outcome 2v2 row format (`OutcomeScorecard`): NO avatar
+            // disk, the name free to take the full column, and `minHeight` rather
+            // than a fixed height so the row grows to fit it. The avatar plus a
+            // 124px column left roughly half the width for text, which truncated
+            // real names to "Fake Gret…" and "Johnny D…" — unreadable on the one
+            // surface whose job is telling players apart. Taller rows are the
+            // accepted trade there and here.
             return (
-              <div key={p.id} className="flex" style={{ height: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-                <div className="@container flex items-center gap-1.5" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
-                  <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={18} collapse collapseAt="chip" />
-                  <span style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div key={p.id} className="flex" style={{ minHeight: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+                <div className="@container flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "6px 10px" }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35, overflowWrap: "anywhere" }}>
                     {p.name}
                   </span>
                 </div>
@@ -644,7 +649,10 @@ export function StandardGrid({
                       className="relative flex items-center justify-center"
                       style={{
                         ...cellBase,
-                        height: 44,
+                        // minHeight, so a wrapped two-line name stretches the
+                        // whole row rather than leaving the cells at 44 and the
+                        // name overflowing past them.
+                        minHeight: 44,
                         ...divider(u.label),
                         // Wash sits on the button's OWN background — behind the
                         // GolfChip/content, which always paints on top of an
@@ -809,7 +817,7 @@ export function SubCell({
       style={{
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
-        height: 44,
+        minHeight: 44,
         flexShrink: 0,
         background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
         // Totals are white; only the leader/winner goes green.
