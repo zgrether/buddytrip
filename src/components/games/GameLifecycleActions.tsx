@@ -21,6 +21,28 @@ import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
  * of the focused in-round bottom controls that must anchor to the viewport — a
  * scoreboard is a short, scrollable summary, not a per-hole entry surface.
  */
+/**
+ * Bottom clearance for all three CTA arms.
+ *
+ * These render at the END of the scoreboard's scroll content — deliberately, per
+ * the anchoring note above — which means nothing reserves space for the bottom tab
+ * bar underneath them. A flat `pb-6` (24px) left the button sitting almost against
+ * the nav.
+ *
+ * `--bt-bottomnav-height` is published by `AppTabBar` for exactly this ("so
+ * bottom-anchored surfaces can clear the bar"), so the clearance tracks the real
+ * rendered height — including its safe-area inset — instead of a number that goes
+ * stale when the bar changes. It falls back to 0px where the bar isn't mounted (the
+ * standalone game routes, desktop), leaving the original 24px on its own.
+ *
+ * ONE constant on the shared component: all four formats route their finalize /
+ * correct / save-changes CTAs through here, so this is fixed once for every
+ * affected surface rather than per view.
+ */
+const CTA_BOX: React.CSSProperties = {
+  paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 24px)",
+};
+
 export function GameLifecycleActions({
   finalizeLabel,
   finalizePendingLabel,
@@ -48,7 +70,7 @@ export function GameLifecycleActions({
   // Primary — first finalize.
   if (state.canFinalize) {
     return (
-      <div className="px-4 pb-6" data-testid="game-finalize">
+      <div className="px-4" style={CTA_BOX} data-testid="game-finalize">
         <button
           onClick={onFinalize}
           disabled={finalizePending}
@@ -76,7 +98,7 @@ export function GameLifecycleActions({
       // the entry surface, which ends in its own spacing; after it the results
       // land directly above and the button butted straight against them. The
       // post-finalize arms need the gap the pre-finalize one gets for free.
-      <div className="px-4 pb-6 pt-4" data-testid="game-correct">
+      <div className="px-4 pt-4" style={CTA_BOX} data-testid="game-correct">
         <button
           onClick={onCorrect}
           disabled={correctPending}
@@ -102,7 +124,7 @@ export function GameLifecycleActions({
   if (state.canRelock) {
     return (
       // Same post-finalize context as the correct arm above — same top padding.
-      <div className="px-4 pb-6 pt-4" data-testid="game-relock">
+      <div className="px-4 pt-4" style={CTA_BOX} data-testid="game-relock">
         <button
           onClick={onFinalize}
           disabled={finalizePending}
