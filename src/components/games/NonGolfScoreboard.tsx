@@ -9,6 +9,7 @@ import {
 } from "@/components/competition/CompetitionGamesPanel";
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
+import { gameLockState } from "@/lib/gameLifecycle";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { placementsFrom } from "@/lib/placementGroups";
 
@@ -80,6 +81,29 @@ export function NonGolfScoreboard({
   const busy = finishGame.isPending;
 
   /**
+   * Editable = the role MAY edit AND the game's lifecycle allows it right now.
+   *
+   * `canEdit` alone is a ROLE answer. An owner on a posted game still had live
+   * placement buttons: the highlight moved, nothing was saved, and the next render
+   * put it back — worse than a disabled control, because it looked like the change
+   * had taken. Members were already correct, purely because they fail the role
+   * half.
+   *
+   * `gameLockState` is the same shared predicate `GameLifecycleActions` reads, so
+   * the buttons and the CTA beneath them can't disagree about whether this game is
+   * open: pre-finalize → editable, LOCKED (complete, corrections closed) → not,
+   * CORRECTING (complete, corrections open) → editable again.
+   *
+   * No permission changed — `canEdit` arrives exactly as before and is only ANDed
+   * with lifecycle state.
+   */
+  const { isLocked } = gameLockState({
+    status: game.status,
+    correctionsOpen: game.corrections_open,
+  });
+  const editable = canEdit && !isLocked;
+
+  /**
    * Reopen a posted game for editing — the step non-golf never had.
    *
    * It used to jump straight from posted to a bright warning-toned "Re-post",
@@ -147,14 +171,14 @@ export function NonGolfScoreboard({
           teams={teams}
           result={result}
           onPick={setResult}
-          canEdit={canEdit}
+          canEdit={editable}
         />
       ) : (
         <ManualPlacementEditor
           order={order}
           dist={dist}
           teamById={teamById}
-          canEdit={canEdit}
+          canEdit={editable}
           onReorder={setOrder}
           tiedWithPrev={tiedWithPrev}
           onToggleTie={toggleTie}
