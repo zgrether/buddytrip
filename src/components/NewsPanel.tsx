@@ -119,8 +119,15 @@ function NewsPanelInner({
   }, [tripId, posts, isLoading, markReadMutate]);
 
   // ── "How posts work" help (lives next to the News title) ──────────────────
+  //
+  // Gated on `canPost`, the SAME condition as the "New post" button below — one
+  // flag, not a second one. The help explains how POSTING works (pinning, editing,
+  // who can write); a member can't do any of it, so the affordance was offering to
+  // explain a capability they don't have. Whoever can post is exactly whoever needs
+  // the explanation, so the two travel together by construction rather than by two
+  // conditions someone has to keep in step.
   const [helpOpen, setHelpOpen] = useState(false);
-  const helpBtn = (
+  const helpBtn = !canPost ? null : (
     <button
       type="button"
       onClick={() => setHelpOpen(true)}
