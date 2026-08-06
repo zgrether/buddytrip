@@ -105,6 +105,17 @@ export function setGloriousHoles(modifiers: ModifiersMap, holes: number): Modifi
   return { ...modifiers, glorious_holes: { holes: clampGloriousHoles(holes) } };
 }
 
+/**
+ * Remove a modifier — presence IS enablement, so disabling means deleting the key,
+ * not writing a falsy value into it. Returns a new map; absent key is a no-op.
+ */
+export function withoutModifier(modifiers: ModifiersMap, key: string): ModifiersMap {
+  if (!(key in modifiers)) return modifiers;
+  const next = { ...modifiers };
+  delete next[key];
+  return next;
+}
+
 /** Count of enabled modifiers among the applicable set. */
 export function enabledCount(modifiers: ModifiersMap, available: string[]): number {
   return available.filter((k) => isModifierEnabled(modifiers, k)).length;
