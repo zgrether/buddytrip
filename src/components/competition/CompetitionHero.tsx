@@ -657,16 +657,15 @@ function MiniName({
  */
 export function ProjectionRow({
   teams,
-  teamTotals,
   perTeam,
   final,
 }: {
   teams: LBTeam[];
-  /** Current realized cup totals per team — the projected TOTAL = this + the
-   *  game's projected delta (perTeam). In-progress games aren't yet in the
-   *  totals, so total = realized + projected reads correctly. */
-  teamTotals: Record<string, number>;
+  // `teamTotals` is GONE: it existed only to compute the projected TOTAL that this
+  // row no longer shows. The realized totals are already the hero's own number
+  // directly above, so carrying them down here was what produced the duplicate.
   perTeam: Record<string, number>;
+  /** Drives the label only ("FINAL / this game" vs "PROJECTED / if today holds"). */
   final: boolean;
   // gameName dropped: the app bar (#550) now carries the game title, so repeating
   // it here was redundant. Kept off the projected tier per the tweaked design.
@@ -686,9 +685,9 @@ export function ProjectionRow({
     const [a, b] = teams;
     return (
       <div className="flex items-center justify-between gap-3" data-testid="header-projection">
-        <ProjTeam team={a} perTeam={perTeam} teamTotals={teamTotals} final={final} align="left" />
+        <ProjTeam team={a} perTeam={perTeam} align="left" />
         {label}
-        <ProjTeam team={b} perTeam={perTeam} teamTotals={teamTotals} final={final} align="right" />
+        <ProjTeam team={b} perTeam={perTeam} align="right" />
       </div>
     );
   }
@@ -696,7 +695,7 @@ export function ProjectionRow({
     <div data-testid="header-projection">
       <div className="flex items-stretch justify-between gap-2.5">
         {teams.map((t) => (
-          <ProjTeam key={t.id} team={t} perTeam={perTeam} teamTotals={teamTotals} final={final} align="left" />
+          <ProjTeam key={t.id} team={t} perTeam={perTeam} align="left" />
         ))}
       </div>
       <div className="mt-1.5">{label}</div>
@@ -711,37 +710,29 @@ export function ProjectionRow({
 function ProjTeam({
   team,
   perTeam,
-  teamTotals,
-  final,
   align,
 }: {
   team: LBTeam | undefined;
   perTeam: Record<string, number>;
-  teamTotals: Record<string, number>;
-  final: boolean;
   align: "left" | "right";
 }) {
   if (!team) return <div style={{ minWidth: 80 }} />;
   const p = perTeam[team.id] ?? 0;
-  const total = final ? teamTotals[team.id] ?? 0 : (teamTotals[team.id] ?? 0) + p;
-  const num = (
-    <span
-      className="tabular-nums"
-      style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: team.color }}
-    >
-      {fmtPts(total)}
-    </span>
-  );
-  // The game's point contribution, as the shared ▲ pill (extracted to GameRow so
-  // the hero and the board's live cell share one grammar). No `alwaysTriangle`
-  // here → the ▲ shows only for a positive delta, a plain 0 otherwise.
-  const chip = <ProjectionPill color={team.color} value={p} />;
+  // THE DELTA ONLY. This used to lead with the projected TOTAL (realized + this
+  // game's delta) and trail a small chip. On a finished game that total is the
+  // number already shown directly above it in the hero — the same figure twice,
+  // and the bigger of the two was the duplicate. What this row is FOR is the one
+  // thing not shown anywhere else: what THIS game contributes.
+  //
+  // Sized `lg` so the pill carries the side on its own, matched to the two label
+  // lines it sits beside rather than to the number it replaced — this row is also
+  // the reduction in the projection bar's overall weight, not a swap.
   return (
     <div
       className={`flex min-w-0 items-baseline gap-2 ${align === "right" ? "justify-end" : ""}`}
       style={{ minWidth: 80 }}
     >
-      {align === "left" ? (<>{num}{chip}</>) : (<>{chip}{num}</>)}
+      <ProjectionPill color={team.color} value={p} size="lg" />
     </div>
   );
 }

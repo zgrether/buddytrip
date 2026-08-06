@@ -520,27 +520,33 @@ export function ProjectionPill({
   color,
   value,
   alwaysTriangle = false,
+  size = "sm",
 }: {
   color: string;
   value: number;
   alwaysTriangle?: boolean;
+  /** `lg` is the game-header projection row, where the pill is now the ONLY
+   *  number on its side and is sized to the two label lines it sits beside
+   *  ("PROJECTED" / "if today holds"). `sm` is everywhere else, unchanged. */
+  size?: "sm" | "lg";
 }) {
   const triangle = alwaysTriangle || value > 0;
+  const lg = size === "lg";
   return (
     <span
       className="inline-flex items-center tabular-nums"
       style={{
         gap: 2,
-        padding: "2px 8px",
+        padding: lg ? "4px 11px" : "2px 8px",
         borderRadius: 9999,
-        fontSize: 11.5,
+        fontSize: lg ? 16 : 11.5,
         fontWeight: 700,
         lineHeight: 1,
         background: `color-mix(in srgb, ${color} 16%, transparent)`,
         color,
       }}
     >
-      {triangle && <span style={{ fontSize: 8 }}>&#9650;</span>}
+      {triangle && <span style={{ fontSize: lg ? 10 : 8 }}>&#9650;</span>}
       {fmtPts(value)}
     </span>
   );
