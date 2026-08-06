@@ -389,6 +389,43 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
       matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
   }
+
+  /**
+   * Flip the game to OUTCOME entry and record the given per-hole outcomes.
+   *
+   * The glorious cases below use this rather than `enter` (gross scores): glorious
+   * finishing holes is valid with outcome entry ONLY — you cannot double the value
+   * of a hole whose outcome you never recorded — and `gloriousConfig` now returns
+   * NO_GLORIOUS for `entry_mode='score'`. The MATH under test is unchanged; only
+   * the entry mode the fixture uses had to move to the one the rule permits.
+   */
+  async function enterOutcomes(gameId: string, outcomes: Record<number, "side_a" | "side_b" | "halved">) {
+    await ctx.admin.from("games").update({ entry_mode: "outcome" }).eq("id", gameId);
+    // The outcome write path gates on scoring being enabled, same as score entry.
+    await ctx.caller().games.enableScoring({ tripId, gameId });
+    const { data: rows } = await ctx.admin.from("game_matches").select("id").eq("game_id", gameId);
+    const matchId = (rows ?? [])[0]!.id as string;
+    for (const [hole, result] of Object.entries(outcomes)) {
+      await ctx.caller().matchOutcomes.upsertOutcome({
+        tripId, gameId, matchId, holeNumber: Number(hole), result,
+      });
+    }
+  }
+  /** `downSixThenWinLast` as outcomes: A loses 1–6, halves 7–15, wins 16–18. */
+  function downSixThenWinLastOutcomes(): Record<number, "side_a" | "side_b" | "halved"> {
+    const o: Record<number, "side_a" | "side_b" | "halved"> = {};
+    for (let h = 1; h <= 6; h++) o[h] = "side_b";
+    for (let h = 7; h <= 15; h++) o[h] = "halved";
+    o[16] = "side_a"; o[17] = "side_a"; o[18] = "side_a";
+    return o;
+  }
+  /** `fourUpThru15` as outcomes: A wins 1–4, halves 5–15, nothing after. */
+  function fourUpThru15Outcomes(): Record<number, "side_a" | "side_b" | "halved"> {
+    const o: Record<number, "side_a" | "side_b" | "halved"> = {};
+    for (let h = 1; h <= 4; h++) o[h] = "side_a";
+    for (let h = 5; h <= 15; h++) o[h] = "halved";
+    return o;
+  }
   // A is 6 DOWN thru 15 (loses 1–6, halves 7–15), then A wins 16/17/18.
   function downSixThenWinLast(): [Record<number, number>, Record<number, number>] {
     const a: Record<number, number> = {};
@@ -412,8 +449,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     const gameId = await freshGame("Glorious comeback");
     await ctx.caller().games.update({ tripId, gameId, modifiers: { glorious_holes: { holes: 3 } } });
     await pairOwnerMember(gameId);
-    const [a, b] = downSixThenWinLast();
-    await enter(gameId, owner, member, a, b);
+    await enterOutcomes(gameId, downSixThenWinLastOutcomes());
     const { matches } = await ctx.caller().games.finish({ tripId, gameId });
     expect(matches[0]).toMatchObject({ result: "halve", status: "complete" });
   });
@@ -431,8 +467,7 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     const gameId = await freshGame("Glorious four-up live");
     await ctx.caller().games.update({ tripId, gameId, modifiers: { glorious_holes: { holes: 3 } } });
     await pairOwnerMember(gameId);
-    const [a, b] = fourUpThru15();
-    await enter(gameId, owner, member, a, b);
+    await enterOutcomes(gameId, fourUpThru15Outcomes());
     const { matches } = await ctx.caller().games.finish({ tripId, gameId });
     expect(matches[0]).toMatchObject({ result: null, status: "active" }); // NOT closed out
   });

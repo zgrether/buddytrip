@@ -47,17 +47,39 @@ export interface GloriousConfig {
 export const NO_GLORIOUS: GloriousConfig = { enabled: false, n: 0 };
 
 /**
- * Read the LIVE glorious config off a game, FORMAT-GUARDED. Returns `NO_GLORIOUS`
- * for any game_type_id outside match singles/doubles (via `isMatchPlayFormat`) — so
- * stroke/rack/manual stay inert even if their `modifiers` jsonb somehow carries
- * `glorious_holes`. Guarded on the id, NEVER the competition `scoring_model`: rack is
- * `match_play` by scoring_model yet is excluded here, by design (the §2 trap).
+ * Read the LIVE glorious config off a game, FORMAT- and ENTRY-MODE-GUARDED.
+ *
+ * **Format guard.** Returns `NO_GLORIOUS` for any game_type_id outside match
+ * singles/doubles (via `isMatchPlayFormat`) — so stroke/rack/manual stay inert even
+ * if their `modifiers` jsonb somehow carries `glorious_holes`. Guarded on the id,
+ * NEVER the competition `scoring_model`: rack is `match_play` by scoring_model yet
+ * is excluded here, by design (the §2 trap).
+ *
+ * **Entry-mode guard.** Glorious is valid ONLY with outcome entry. Outcome entry
+ * records who won each hole, so doubling a hole's value means something. Score
+ * entry records a stroke total — you cannot double the value of a hole whose
+ * outcome you never recorded, and the combination is invalid.
+ *
+ * The engine derives per-hole W/L/H from strokes (`buildDecided`) and hands the
+ * SAME `DecidedHole[]` to `matchState` either way, so nothing downstream can tell
+ * the two apart. That equivalence is correct for the parity it was built for — one
+ * engine, two decided-hole sources — and wrong as a licence to weight a score
+ * game. Prevention (availability + the `save_game_config` refusal) stops new
+ * instances; this guard stops the four existing ones recomputing the wrong answer.
+ * `75c95f02` is the measured case: 7W/6L/5H is a 1up win unweighted, and doubling
+ * its lost 18th turns it into a halve.
+ *
+ * `entryMode` is optional and defaults to outcome-permissive, because only match
+ * play has the column — a caller that genuinely has no entry mode (a format that
+ * never had one) is already excluded by the format guard above.
  */
 export function gloriousConfig(
   gameTypeId: string | null | undefined,
-  modifiers: ModifiersMap | null | undefined
+  modifiers: ModifiersMap | null | undefined,
+  entryMode?: string | null
 ): GloriousConfig {
   if (!isMatchPlayFormat(gameTypeId ?? null)) return NO_GLORIOUS;
+  if (entryMode === "score") return NO_GLORIOUS;
   const m = modifiers ?? {};
   if (!isModifierEnabled(m, "glorious_holes")) return NO_GLORIOUS;
   return { enabled: true, n: gloriousHolesCount(m) };

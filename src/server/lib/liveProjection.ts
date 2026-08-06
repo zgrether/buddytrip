@@ -209,7 +209,9 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Record<
   const { schema, matches, parts, playGroups, gross, outcomes, userTeam } = data;
   const strokeIndex = schema?.units?.metadata?.handicap_index;
   const holeCount = schema?.units?.count;
-  const glorious = gloriousConfig(g.gameTypeId, data.modifiers);
+  // Entry mode gates glorious (outcome entry only) — `outcomeMode` is already on
+  // the input, derived from `games.entry_mode` by the leaderboard's bulk read.
+  const glorious = gloriousConfig(g.gameTypeId, data.modifiers, g.outcomeMode ? "outcome" : "score");
 
   // Side handicaps, keyed by SIDE id (1v1 side = a user; 2v2 side = a play_group).
   // Score-mode only — an outcome-mode match has no handicap application (the

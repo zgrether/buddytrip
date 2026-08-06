@@ -94,7 +94,8 @@ import type { ScorecardSchema } from "@/lib/courseIndex";
 import { matchRosterValid } from "@/lib/teamRoster";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
-import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
+import { enabledCount, isModifierEnabled, withoutModifier, type ModifiersMap } from "@/lib/modifiers";
+import { DangerConfirmModal } from "@/components/DangerZone";
 import { unconfirmedCount, type Participant, type ScoreValues, type OutcomeValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
 
@@ -242,6 +243,8 @@ export function MatchGameView() {
   const [scoringDraft, setScoringDraft] = useState<boolean | null>(null);
   const [entryModeDraft, setEntryModeDraft] = useState<string | null>(null);
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
+  // Staged switch to score entry that would invalidate glorious — awaiting confirm.
+  const [pendingScoreEntry, setPendingScoreEntry] = useState(false);
   const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null>(null);
   const [courseDraft, setCourseDraft] = useState<ConfigDraft["course"] | null>(null);
   const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
@@ -970,7 +973,15 @@ export function MatchGameView() {
   // matchState on this page + the entry view, the SAME weight the server scores on,
   // so the live strips and the finished record can't diverge.
   const glorious = useMemo<GloriousConfig>(
-    () => gloriousConfig(gameQ.data?.game_type_id as string | null, gameQ.data?.modifiers as ModifiersMap | null),
+    () =>
+      gloriousConfig(
+        gameQ.data?.game_type_id as string | null,
+        gameQ.data?.modifiers as ModifiersMap | null,
+        // SERVER entry mode, not the draft: this drives the scorecard's live
+        // weighting, which must match what the server computes. A staged-but-
+        // unsaved mode flip changes what's OFFERED (below), not what's scored.
+        (gameQ.data as { entry_mode?: string } | undefined)?.entry_mode ?? null,
+      ),
     [gameQ.data]
   );
 
@@ -1841,7 +1852,17 @@ export function MatchGameView() {
         // Modifiers (W-GAMEPAGE-01 §6.5) — applicability is data-driven from the
         // format's gameTypes.ts compatibleModifiers (NOT the deprecated DB column).
         // Empty → the row is hidden entirely.
-        const availableModifiers = GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? [];
+        // ENTRY MODE narrows the format's list. `glorious_holes` doubles a hole's
+        // value, which only means something when you recorded who won the hole —
+        // in score entry the input is a stroke total and the combination is
+        // invalid. Keyed on the DRAFT entry mode, exactly as the Handicaps row
+        // below is (which hides in outcome mode for the mirror-image reason: a
+        // handicap adjusts gross→net, and there is no gross to adjust). Staging a
+        // mode change therefore updates what's offered live, before Save.
+        const scoreEntry = configDraft.entryMode !== "outcome";
+        const availableModifiers = (
+          GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? []
+        ).filter((k) => !(scoreEntry && k === "glorious_holes"));
         const modifiersOn = enabledCount(configDraft.modifiers, availableModifiers);
         const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "empty";
         const modifiersSubtitle = modifiersOn > 0 ? "Modifiers have been added" : "No modifiers added to your round yet";
@@ -2045,7 +2066,38 @@ export function MatchGameView() {
                 // are entered, so it freezes once ANY score exists.
                 canEdit={canEdit && !scoresExist}
                 locked={scoresExist}
-                onChange={setEntryModeDraft}
+                // Switching TO score entry with glorious staged asks first. The
+                // modifier is only valid with outcome entry, so the switch has to
+                // turn it off — but it was configured deliberately, so it is not
+                // taken away silently. Cancelling leaves BOTH the mode and the
+                // modifier as they were.
+                onChange={(mode) => {
+                  if (mode === "score" && isModifierEnabled(configDraft.modifiers ?? {}, "glorious_holes")) {
+                    setPendingScoreEntry(true);
+                    return;
+                  }
+                  setEntryModeDraft(mode);
+                }}
+              />
+            )}
+            {pendingScoreEntry && (
+              <DangerConfirmModal
+                tone="warning"
+                icon={<TriangleAlert size={18} />}
+                title="Turn off glorious finishing holes?"
+                body="Glorious finishing holes doubles a hole's value, which only works when you record who won each hole. Switching to score entry will turn it off."
+                confirmLabel="Switch and turn it off"
+                pendingLabel="Switching…"
+                isPending={false}
+                testId="glorious-entry-mode-confirm"
+                onCancel={() => setPendingScoreEntry(false)}
+                onConfirm={() => {
+                  // Both slices of the composite draft move together, so ONE Save
+                  // commits a state the server will accept (#18).
+                  setEntryModeDraft("score");
+                  setModifiersDraft(withoutModifier(configDraft.modifiers ?? {}, "glorious_holes"));
+                  setPendingScoreEntry(false);
+                }}
               />
             )}
 

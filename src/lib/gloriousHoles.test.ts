@@ -92,3 +92,40 @@ describe("isGloriousHole — the ONE predicate the visual layer must call", () =
     for (let h = 1; h <= 18; h++) expect(isGloriousHole(h, cfg)).toBe(holeWeight(h, cfg) === 2);
   });
 });
+
+/**
+ * Entry-mode guard — glorious is valid with OUTCOME entry only.
+ *
+ * Outcome entry records who won each hole, so doubling a hole's value means
+ * something. Score entry records a stroke total: you cannot double the value of a
+ * hole whose outcome you never recorded. The engine derives W/L/H from strokes and
+ * hands the same `DecidedHole[]` to `matchState` either way, so nothing downstream
+ * can tell them apart — which is why the guard has to live here.
+ *
+ * Defence in depth, not just prevention: the availability gate and the
+ * `save_game_config` refusal stop NEW invalid games, and this stops the four
+ * existing ones recomputing their wrong result. `75c95f02` is the measured case —
+ * 7W/6L/5H is a 1up win unweighted, and doubling its lost 18th makes it a halve.
+ */
+describe("gloriousConfig — entry-mode guard", () => {
+  const on = { glorious_holes: { holes: 3 } };
+
+  it("is inert in SCORE entry, however the modifier is configured", () => {
+    expect(gloriousConfig("gtt_match_play", on, "score")).toBe(NO_GLORIOUS);
+    expect(gloriousConfig("gtt_match_play", { glorious_holes: { holes: 9 } }, "score")).toBe(NO_GLORIOUS);
+  });
+
+  it("still applies in OUTCOME entry", () => {
+    expect(gloriousConfig("gtt_match_play", on, "outcome")).toEqual({ enabled: true, n: 3 });
+  });
+
+  it("permits it when no entry mode is supplied — the format guard already excludes formats without one", () => {
+    expect(gloriousConfig("gtt_match_play", on)).toEqual({ enabled: true, n: 3 });
+    expect(gloriousConfig("gtt_match_play", on, null)).toEqual({ enabled: true, n: 3 });
+  });
+
+  it("keeps the format guard ahead of the entry-mode guard — rack is out either way", () => {
+    expect(gloriousConfig("gtt_rack_n_stack", on, "outcome")).toBe(NO_GLORIOUS);
+    expect(gloriousConfig("gtt_rack_n_stack", on, "score")).toBe(NO_GLORIOUS);
+  });
+});
