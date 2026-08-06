@@ -1849,7 +1849,17 @@ export function MatchGameView() {
         // Modifiers (W-GAMEPAGE-01 §6.5) — applicability is data-driven from the
         // format's gameTypes.ts compatibleModifiers (NOT the deprecated DB column).
         // Empty → the row is hidden entirely.
-        const availableModifiers = GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? [];
+        // ENTRY MODE narrows the format's list. `glorious_holes` doubles a hole's
+        // value, which only means something when you recorded who won the hole —
+        // in score entry the input is a stroke total and the combination is
+        // invalid. Keyed on the DRAFT entry mode, exactly as the Handicaps row
+        // below is (which hides in outcome mode for the mirror-image reason: a
+        // handicap adjusts gross→net, and there is no gross to adjust). Staging a
+        // mode change therefore updates what's offered live, before Save.
+        const scoreEntry = configDraft.entryMode !== "outcome";
+        const availableModifiers = (
+          GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? []
+        ).filter((k) => !(scoreEntry && k === "glorious_holes"));
         const modifiersOn = enabledCount(configDraft.modifiers, availableModifiers);
         const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "empty";
         const modifiersSubtitle = modifiersOn > 0 ? "Modifiers have been added" : "No modifiers added to your round yet";
