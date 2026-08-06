@@ -970,7 +970,15 @@ export function MatchGameView() {
   // matchState on this page + the entry view, the SAME weight the server scores on,
   // so the live strips and the finished record can't diverge.
   const glorious = useMemo<GloriousConfig>(
-    () => gloriousConfig(gameQ.data?.game_type_id as string | null, gameQ.data?.modifiers as ModifiersMap | null),
+    () =>
+      gloriousConfig(
+        gameQ.data?.game_type_id as string | null,
+        gameQ.data?.modifiers as ModifiersMap | null,
+        // SERVER entry mode, not the draft: this drives the scorecard's live
+        // weighting, which must match what the server computes. A staged-but-
+        // unsaved mode flip changes what's OFFERED (below), not what's scored.
+        (gameQ.data as { entry_mode?: string } | undefined)?.entry_mode ?? null,
+      ),
     [gameQ.data]
   );
 

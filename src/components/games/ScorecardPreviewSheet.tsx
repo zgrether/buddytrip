@@ -42,12 +42,14 @@ export function ScorecardPreviewSheet({
   const { rows: teeRows } = useScorecardTeeRows(tripId, gameQ.data);
   const name = (gameQ.data?.name as string | undefined) ?? undefined;
   const hasCourse = !!(gameQ.data as { course_id?: string | null } | undefined)?.course_id;
-  // Glorious visibility keys off config + format ONLY — zero participants (this
-  // preview never has any) is NOT a suppression condition (§1). A configured
-  // glorious game shows the treatment here exactly as it does in-game.
+  // Glorious visibility keys off config + format + ENTRY MODE — zero participants
+  // (this preview never has any) is NOT a suppression condition (§1). A configured
+  // glorious game shows the treatment here exactly as it does in-game, and a
+  // score-entry game shows none, exactly as it now scores none.
   const glorious = gloriousConfig(
     (gameQ.data as { game_type_id?: string | null } | undefined)?.game_type_id,
-    (gameQ.data as { modifiers?: ModifiersMap | null } | undefined)?.modifiers
+    (gameQ.data as { modifiers?: ModifiersMap | null } | undefined)?.modifiers,
+    (gameQ.data as { entry_mode?: string | null } | undefined)?.entry_mode ?? null,
   );
 
   return (

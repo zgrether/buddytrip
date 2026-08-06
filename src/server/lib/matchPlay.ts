@@ -102,9 +102,13 @@ export async function computeMatchPlayResults(
     .select("game_type_id, modifiers, entry_mode")
     .eq("id", gameId)
     .maybeSingle();
+  // Entry mode is passed too: glorious is valid ONLY with outcome entry, and this
+  // is the guard that stops the four legacy score-mode games recomputing their
+  // wrong result. `entry_mode` is already in the select above.
   const glorious = gloriousConfig(
     gameCfg?.game_type_id as string | null,
-    gameCfg?.modifiers as ModifiersMap | null
+    gameCfg?.modifiers as ModifiersMap | null,
+    gameCfg?.entry_mode as string | null
   );
   const outcomeMode = (gameCfg?.entry_mode as string | null) === "outcome";
 

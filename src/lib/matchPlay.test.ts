@@ -132,7 +132,14 @@ describe("buildDecidedFromOutcomes — emits {hole, result} directly from record
     expect(fromOutcomes).toEqual(fromScores);
   });
 
-  it("byte-identical MATCH STATE too, including a Glorious double-swing", () => {
+  // OUTCOME-ONLY. This was titled as a parity assertion "including a Glorious
+  // double-swing", but its body only ever built from outcome rows — the parity it
+  // claimed was never exercised with glorious. That is now the only correct shape:
+  // glorious is valid with outcome entry ONLY, so there is no score-mode
+  // counterpart to be byte-identical to. The genuine parity property (two
+  // decided-hole sources, one engine — Refactor B's point) is asserted WITHOUT
+  // glorious by the test above, and still holds.
+  it("weights a Glorious hole in OUTCOME entry — the only mode it is valid in", () => {
     // Holes 16-18 glorious (GLOR3). A wins hole 17 (glorious) — should swing 2, not 1.
     const outcomeRows: HoleOutcomeRow[] = [
       ...Array.from({ length: 15 }, (_, i): HoleOutcomeRow => ({ hole: i + 1, result: "halved" })),
