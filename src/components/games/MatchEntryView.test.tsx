@@ -47,7 +47,7 @@ describe("MatchEntryView — Glorious banner (gate c)", () => {
   it("shows the banner on a glorious hole (17, within the last 3)", () => {
     const html = renderAt(17, glor3);
     expect(html).toContain("glorious-entry-banner");
-    expect(html).toContain("Glorious Finishing Hole · Worth Double");
+    expect(html).toContain("This hole counts double in the match");
   });
 
   it("hides the banner on a non-glorious hole (12)", () => {
