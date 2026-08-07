@@ -49,17 +49,22 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
       dependencies: ["setup"],
     },
-    // Instrumentation, not a gate: the correction-latency measurement prints
-    // numbers rather than asserting them, and it mutates a seeded game's
-    // lifecycle in a loop. CI runs a BARE `npx playwright test`, which runs every
-    // registered project — so this one is registered only when explicitly asked
-    // for (`MEASURE=1 npx playwright test --project=measure`). Without the flag
-    // it does not exist as far as the runner is concerned.
+    // Instrumentation, not a gate. CI runs a BARE `npx playwright test`, which
+    // runs every REGISTERED project — so measurement specs are registered only
+    // under MEASURE=1 and do not exist to the runner otherwise. They print
+    // numbers rather than asserting them, and they drive real lifecycle writes
+    // in a loop, which is not something a merge gate should be doing.
     ...(process.env.MEASURE
       ? [
           {
             name: "measure",
             testMatch: /correction-latency\.spec\.ts/,
+            use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
+            dependencies: ["setup"],
+          },
+          {
+            name: "measure-handlers",
+            testMatch: /handler-accumulation\.spec\.ts/,
             use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
             dependencies: ["setup"],
           },
