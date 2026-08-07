@@ -814,7 +814,7 @@ export function StrokeGameView() {
           // its own onConfig). Absent on the final.
           onSettings: !!game && canEdit && !showConfig && !entryGroupId ? openConfig : undefined,
           // Focused scoring (in a group) hides the bottom nav.
-          hideBottomNav: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
+          focusedEntry: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
         }
       : null,
   );

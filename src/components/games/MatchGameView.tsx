@@ -1475,7 +1475,7 @@ export function MatchGameView() {
           // Scorecard affordance now lives ON the match card's header row (Zach's
           // QA), not the app bar — so no onScorecard published here.
           // Focused score-entry surface → hide the trip bottom nav (Task 5).
-          hideBottomNav: screen === "score",
+          focusedEntry: screen === "score",
         }
       : null,
   );

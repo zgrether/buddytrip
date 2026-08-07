@@ -92,18 +92,19 @@ export const AppTabBar: FC<{
   tripId?: string | null;
 }> = (props) => {
   const chrome = useGameChrome();
-  // The focused score-entry surfaces publish `hideBottomNav` (CLAUDE.md #13) —
+  // The focused score-entry surfaces publish `focusedEntry` (CLAUDE.md #13) —
   // match play's score screen, rack's and stroke's group entry. Their exit is the
-  // app-bar back and their CTA anchors to the viewport bottom (#14), so a tab bar
-  // would both crowd the CTA and offer an escape that loses the hole being
-  // entered. The bar this replaces honoured the flag; so does this one.
+  // game action row's back and their CTA anchors to the viewport bottom (#14), so
+  // a tab bar would both crowd the CTA and offer an escape that loses the hole
+  // being entered. The bar this replaces honoured the flag; so does this one.
+  // (The same flag also hides the TOP bar on mobile — see GameChrome.)
   //
   // Gating HERE rather than inside `TabBar` is deliberate: the height-publishing
   // effect lives in the inner component, so hiding by unmounting it runs that
   // effect's cleanup and clears `--bt-bottomnav-height`. An early return after
   // the hook would leave the variable set and every bottom-anchored surface would
   // keep padding for a bar that isn't there.
-  if (chrome?.hideBottomNav) return null;
+  if (chrome?.focusedEntry) return null;
   return <TabBar {...props} />;
 };
 

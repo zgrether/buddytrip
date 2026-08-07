@@ -797,7 +797,7 @@ export function RackGameView() {
           // on the entry, the config page, or the pre-setup steps.
           onSettings:
             gid && !entryGroupId && !showConfig && !needsSetup && canEdit && !rackFinal ? openConfig : undefined,
-          hideBottomNav: !!entryGroupId,
+          focusedEntry: !!entryGroupId,
         }
       : null,
   );
