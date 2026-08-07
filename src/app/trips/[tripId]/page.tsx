@@ -12,6 +12,7 @@ import { pushMarker, replaceMarker, readOwner } from "@/lib/historyMarker";
 const VALID_TABS = ["home", "crew", "lodging", "schedule", "expenses", "comp"] as const;
 
 import { useTripRole } from "@/hooks/useTripRole";
+import { useMyTeamColor } from "@/hooks/useMyTeamColor";
 import type { TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
@@ -93,6 +94,11 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     isLoading,
     error,
   } = trpc.trips.getById.useQuery({ tripId });
+
+  // The viewer's team colour for THIS trip — feeds the account avatar on every
+  // tab, not just Cup. Null until resolved, and null for a trip with no
+  // competition or a viewer on no team, which is the teal default.
+  const myTeamColor = useMyTeamColor(tripId);
 
   // `loading` is destructured now and threaded to `HomeTab`. Role has THREE
   // states, not two: resolved-privileged, resolved-member, and NOT YET KNOWN.
@@ -318,6 +324,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
             chatOpen={chatOpen}
             onOpenChat={onToggleChat}
             onDismissPanels={onDismissPanels}
+            avatarTeamColor={myTeamColor}
             activeView={activeView}
             hasContext={hasContext}
             onSelectView={onSelectView}
@@ -509,6 +516,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           chatOpen={chatOpen}
           onOpenChat={onToggleChat}
           onDismissPanels={onDismissPanels}
+          avatarTeamColor={myTeamColor}
           activeView={activeView}
           hasContext={hasContext}
           onSelectView={onSelectView}

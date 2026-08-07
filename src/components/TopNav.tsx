@@ -57,9 +57,16 @@ interface TopNavProps {
    *  menu, feedback). The page uses it to close the News/Chat rail so those
    *  dropdowns aren't trapped behind the mobile sheet's scrim. */
   onDismissPanels?: () => void;
-  /** In competition context, the current user's TEAM color — passed to the
-   *  account avatar so it reads in the user's team identity instead of teal.
-   *  Undefined off competition pages (avatar stays teal). */
+  /** The current user's TEAM color for the CURRENT TRIP — passed to the account
+   *  avatar so it reads in the user's team identity instead of teal. Null when
+   *  no trip is current, the trip has no competition, or they're on no team.
+   *
+   *  It follows the TRIP, not the tab: the colour shows on Home · Trip · Cup ·
+   *  Chat alike, because this bar is shared across all four and the user's
+   *  identity in a trip doesn't stop applying because they opened Chat. (The
+   *  earlier version of this doc said "undefined off competition pages" — that
+   *  described the retired design, when the competition face owned its own route
+   *  and its own bar. Resolve via `useMyTeamColor`.) */
   avatarTeamColor?: string | null;
   /** Trip · Cup (Task 4) — `lg+` only, x-aligned to the rail's right edge.
    *  Present only when the host has AppShell's tab state to hand it (the

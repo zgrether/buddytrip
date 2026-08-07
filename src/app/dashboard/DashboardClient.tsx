@@ -10,6 +10,7 @@ import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 import { trpc } from "@/lib/trpc-client";
 import { AppShell } from "@/components/shell/AppShell";
 import { TopNav } from "@/components/TopNav";
+import { useMyTeamColor } from "@/hooks/useMyTeamColor";
 import { TripCard } from "@/components/TripCard";
 import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
@@ -126,6 +127,16 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
     priorityOrder[0]?.id ??
     null;
 
+  /**
+   * The account avatar carries the viewer's TEAM colour on Home too, whenever a
+   * current trip is still valid — `remoteTripId` is already exactly that test
+   * (validated against the user's real trips just above, so a pointer at a
+   * deleted or revoked trip resolves to null and the avatar stays teal).
+   *
+   * Called before the loading early-return below, so hook order stays stable.
+   */
+  const myTeamColor = useMyTeamColor(remoteTripId);
+
   if (tripsLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -154,6 +165,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
       topBar={({ activeView, hasContext, onSelectView }) => (
         <TopNav
           title="BuddyTrip"
+          avatarTeamColor={myTeamColor}
           activeView={activeView}
           hasContext={hasContext}
           onSelectView={onSelectView}
