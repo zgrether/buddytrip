@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
 import { assertRosterUnlocked } from "../lib/rosterLock";
+import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 
 /**
  * teams — competition-scoped teams.
@@ -167,6 +168,18 @@ export const teamsRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to delete team: ${error.message}`,
         });
+      }
+
+      // The roster lock above blocks this once ANY score_entries row exists —
+      // but it checks score_entries specifically, not game_results, so a
+      // competition scored entirely through manual (non-golf) games — which
+      // write straight to game_results and never touch score_entries — stays
+      // UNLOCKED for team deletion even after it's fully decided. And for a
+      // per_match rack competition, pointsAvailable is team-size-derived, so
+      // losing a team's assignments can shift it in either direction. Both are
+      // real, if narrow, un-clinch paths this lock doesn't close.
+      if (team?.competition_id) {
+        await reconcileClinchClaim(team.competition_id as string);
       }
 
       return { success: true };

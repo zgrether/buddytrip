@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireCompetitionRole } from "../middleware";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
+import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
 
 const SCOREBOARD_STYLES = [
@@ -453,6 +454,11 @@ export const competitionsRouter = router({
           message: `Failed to reset scoring: ${error.message}`,
         });
       }
+      // Clears every game's results at once — can only lower totals, never
+      // raise pointsAvailable (config/points survive), so this is un-clinch or
+      // no-op, never a fresh clinch. Same reconcile-only helper as the other
+      // paths regardless, rather than a special-cased unconditional clear.
+      await reconcileClinchClaim(input.competitionId);
       return { success: true };
     }),
 
@@ -475,6 +481,9 @@ export const competitionsRouter = router({
           message: `Failed to reset to skeleton: ${error.message}`,
         });
       }
+      // Same reasoning as resetScoring — points survive, so this can't create
+      // a clinch, only remove or leave one.
+      await reconcileClinchClaim(input.competitionId);
       return { success: true };
     }),
 });
