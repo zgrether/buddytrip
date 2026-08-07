@@ -481,6 +481,50 @@ export async function claimClinchNotification(
   return !error && !!data && data.length > 0;
 }
 
+/**
+ * Give the claim back when the cup is no longer decided, so a LATER re-clinch by
+ * the SAME team can announce itself.
+ *
+ * ── The gap this closes ──────────────────────────────────────────────────────
+ * The column only ever moved null → team. "Un-clinched" was not a state it could
+ * express. So: a cup clinches and the push fires; a score correction un-clinches
+ * it; the same team re-clinches — and the push is silently suppressed, because
+ * the claim still names that team. The crew never learns the cup was decided.
+ *
+ * The product rule is unchanged and still right: the same team re-clinching
+ * WITHOUT an intervening un-clinch is not news, and stays suppressed. What
+ * changes is that an intervening un-clinch is now recorded, by releasing the
+ * claim at the moment a recompute observes no clincher.
+ *
+ * ── COMPARE-AND-SWAP, not a blind clear ──────────────────────────────────────
+ * `expectedTeamId` is the value observed in the SAME pass that computed "nobody
+ * has clinched", and the update only lands if the column still holds exactly
+ * that. This is what keeps migration 099's exactly-once property intact.
+ *
+ * Without it: request A recomputes and sees no clincher; concurrently request B
+ * recomputes, sees clincher T, claims it and pushes; A's blind clear then wipes
+ * B's claim, and the next finalize that still sees T pushes a SECOND time for
+ * one clinch. The CAS makes A's clear fail instead — A's view of the world is
+ * stale, and the row says so.
+ *
+ * A plain `.eq()` is correct here (unlike the claim's `.or(is.null, neq)`)
+ * precisely BECAUSE the caller only invokes this with a non-null observed value:
+ * there is nothing to release when the column is already null.
+ */
+export async function releaseClinchClaim(
+  admin: SupabaseClient,
+  competitionId: string,
+  expectedTeamId: string
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("competitions")
+    .update({ clinch_notified_team_id: null })
+    .eq("id", competitionId)
+    .eq("clinch_notified_team_id", expectedTeamId)
+    .select("id");
+  return !error && !!data && data.length > 0;
+}
+
 export interface NotifyCupClinchedInput {
   tripId: string;
   competitionId: string;
@@ -516,11 +560,31 @@ export async function notifyCupClinchedIfDecided(
   try {
     const admin = input.admin ?? createAdminClient();
 
-    const board = await computeCompetitionLeaderboard(admin, input.competitionId);
+    // The claim is read in the SAME pass as the recompute, and in parallel with
+    // it (a PK lookup, so it adds no measurable latency). Reading it here rather
+    // than at release time is what makes the release a compare-and-swap against
+    // the state this decision was actually made on.
+    const [board, claimRow] = await Promise.all([
+      computeCompetitionLeaderboard(admin, input.competitionId),
+      admin
+        .from("competitions")
+        .select("clinch_notified_team_id")
+        .eq("id", input.competitionId)
+        .maybeSingle(),
+    ]);
+    const heldClaim = (claimRow.data?.clinch_notified_team_id as string | null) ?? null;
+
     const teams = (board.teams ?? []) as { id: string; name: string | null }[];
     const clincher =
       teams.find((t) => (board.pointsToClinch?.[t.id] ?? 1) <= 0) ?? null;
-    if (!clincher) return;
+    if (!clincher) {
+      // Nobody has clinched. If we were still holding an announcement for a team
+      // that is no longer decided, give it back — otherwise that team re-clinching
+      // later would be suppressed as "already announced" and go unreported.
+      // Releasing sends NOTHING; it only restores eligibility.
+      if (heldClaim) await releaseClinchClaim(admin, input.competitionId, heldClaim);
+      return;
+    }
 
     const won = await claimClinchNotification(admin, input.competitionId, clincher.id);
     if (!won) return;
