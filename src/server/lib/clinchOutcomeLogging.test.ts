@@ -75,6 +75,9 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  // push_send_log has no FK to anything (deliberately — migration 105), so
+  // ctx.cleanup() does not sweep it. Remove this suite's rows explicitly.
+  await ctx.admin.from("push_send_log").delete().eq("competition_id", compId);
   if (gameIds.length) {
     await ctx.admin.from("game_results").delete().in("game_id", gameIds);
     await ctx.admin.from("games").delete().in("id", gameIds);
@@ -132,19 +135,32 @@ describe("clinch check — every path announces itself", () => {
   }, 60_000);
 
   it("a THROW still announces itself, under the same prefix", async () => {
-    // A REJECTING builder, not a synchronously-throwing one. Both reads run
-    // inside a `Promise.all`, so a synchronous throw escapes before Promise.all
-    // attaches handlers and leaves the sibling read as an unhandled rejection —
-    // real test noise that reads like a product fault. Making every method
-    // chainable and the terminal thenable reject means Promise.all owns both
-    // rejections and the catch below sees exactly one failure.
+    // A client that fails only where the COMPUTE reads, and works everywhere
+    // else — which is production's actual failure shape. A wholly-broken client
+    // would also break the recording, so the row would be missing for a reason
+    // that has nothing to do with the code under test (that was this test's
+    // first draft, and it asserted the wrong thing).
+    //
+    // The rejecting builder is chainable-and-thenable rather than
+    // synchronously-throwing: both reads run inside a `Promise.all`, and a sync
+    // throw escapes before Promise.all attaches handlers, leaving the sibling
+    // read as an unhandled rejection — test noise that reads like a product fault.
     const rejecting: Record<string, unknown> = {};
-    for (const method of ["from", "select", "eq", "in", "order", "update", "insert", "delete"]) {
-      rejecting[method] = () => rejecting;
+    for (const m of ["select", "eq", "in", "order", "update", "insert", "delete"]) {
+      rejecting[m] = () => rejecting;
     }
     rejecting.maybeSingle = () => Promise.reject(new Error("boom"));
     rejecting.then = (_ok: unknown, bad: (e: Error) => void) => bad(new Error("boom"));
-    const exploding = rejecting as unknown as Parameters<typeof notifyCupClinchedIfDecided>[0]["admin"];
+
+    const exploding = new Proxy(ctx.admin, {
+      get(target, prop, receiver) {
+        if (prop !== "from") return Reflect.get(target, prop, receiver);
+        return (table: string) =>
+          table === "teams"
+            ? rejecting
+            : (Reflect.get(target, "from", receiver) as (t: string) => unknown).call(target, table);
+      },
+    }) as unknown as Parameters<typeof notifyCupClinchedIfDecided>[0]["admin"];
 
     await notifyCupClinchedIfDecided({
       tripId,
@@ -156,6 +172,34 @@ describe("clinch check — every path announces itself", () => {
     // Entry fires BEFORE anything can throw — that ordering is the point, and it
     // is what makes "entry with no outcome" mean "it died in between".
     expect(outcomes()).toEqual(["entry", "threw"]);
+  }, 60_000);
+
+  it("every pre-send exit also leaves a ROW, with the outcome recorded", async () => {
+    // The log line answers the question while an incident is live; the row is
+    // what survives Vercel's retention. #842 gave the SEND half that property
+    // and the clinch check's pre-send exits never had it — this is that gap.
+    const { data } = await ctx.admin
+      .from("push_send_log")
+      .select("trigger, outcome, recipients, sent, competition_id")
+      .eq("competition_id", compId)
+      .order("created_at", { ascending: true });
+
+    const rows = data ?? [];
+    expect(rows.length, "the earlier cases in this file each left a row").toBeGreaterThanOrEqual(3);
+    expect(rows.every((r) => r.trigger === "cup_clinched")).toBe(true);
+
+    const recorded = rows.map((r) => r.outcome);
+    // The three that used to be indistinguishable silence.
+    expect(recorded).toContain("no_clincher");
+    expect(recorded).toContain("already_claimed");
+    expect(recorded).toContain("threw");
+
+    // All counters zero — which is exactly WHY the outcome column has to exist:
+    // nothing in the arithmetic separates these cases from one another.
+    for (const r of rows) {
+      expect(r.recipients).toBe(0);
+      expect(r.sent).toBe(0);
+    }
   }, 60_000);
 
   it("EXACTLY ONE outcome per call — never zero, never two", async () => {

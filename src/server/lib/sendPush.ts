@@ -105,6 +105,7 @@ export async function sendPush(
         failed: result.failed,
         removedDead: result.removedDead,
         notConfigured: result.notConfigured,
+        outcome: result.skippedPreferenceOff ? "no_recipients" : "sent",
         error: errorMessage,
       });
     } catch (err) {

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { gameHref } from "@/lib/gameRoutes";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { sendPushToUsers } from "./sendPushToUsers";
+import { recordPushAttempt } from "./recordPushAttempt";
 
 /**
  * The `scores` category's ONE wire point (Push Phase 3).
@@ -712,6 +713,49 @@ export interface NotifyCupClinchedInput {
  * claim would fail SILENTLY for exactly the person most likely to be finishing
  * the deciding game on-site.
  */
+/**
+ * Record a clinch attempt that ended BEFORE the sender.
+ *
+ * The send path records itself from inside `sendPushToUsers` (#842), which works
+ * because it always reaches the recorder. The clinch check's three pre-send
+ * exits never do — so without this they produce no row at all, and
+ * `no_clincher`, `already_claimed` and `threw` are indistinguishable from a call
+ * that never ran. That ambiguity is what made a re-finalize read as "the
+ * transition guard is suppressing the clinch check".
+ *
+ * All counters are zero because nothing was addressed: the `outcome` is the
+ * whole payload here, which is why migration 106 adds it as its own column
+ * rather than trying to encode intent in arithmetic.
+ */
+async function recordClinchOutcome(
+  admin: SupabaseClient,
+  input: NotifyCupClinchedInput,
+  outcome: "no_clincher" | "already_claimed" | "threw",
+  error?: string
+): Promise<void> {
+  await recordPushAttempt(
+    admin,
+    {
+      trigger: "cup_clinched",
+      tripId: input.tripId,
+      competitionId: input.competitionId,
+      actorUserId: input.actorUserId,
+    },
+    {
+      typeKey: "scores",
+      recipients: 0,
+      skippedPreferenceOff: 0,
+      subscriptionsFound: 0,
+      sent: 0,
+      failed: 0,
+      removedDead: 0,
+      notConfigured: false,
+      outcome,
+      error: error ?? null,
+    }
+  );
+}
+
 export async function notifyCupClinchedIfDecided(
   input: NotifyCupClinchedInput
 ): Promise<void> {
@@ -773,6 +817,7 @@ export async function notifyCupClinchedIfDecided(
         pointsToClinch: teams.map((t) => ({ teamId: t.id, toClinch: toClinch[t.id] ?? null })),
         heldClaim,
       });
+      await recordClinchOutcome(admin, input, "no_clincher");
       // Nobody has clinched. If we were still holding an announcement for a team
       // that is no longer decided, give it back — otherwise that team re-clinching
       // later would be suppressed as "already announced" and go unreported.
@@ -826,6 +871,7 @@ export async function notifyCupClinchedIfDecided(
         heldNow: claim.heldNow,
         heldClaimAtPassStart: heldClaim,
       });
+      await recordClinchOutcome(admin, input, "already_claimed");
       return;
     }
 
@@ -887,5 +933,15 @@ export async function notifyCupClinchedIfDecided(
       competitionId: input.competitionId,
       err,
     });
+    // The client is re-resolved here because the one inside the `try` is out of
+    // scope — and if THAT client is what threw, this record attempt fails too and
+    // is swallowed by `recordPushAttempt`. The log line above is the backstop for
+    // that case; it has already fired by this point regardless.
+    await recordClinchOutcome(
+      input.admin ?? createAdminClient(),
+      input,
+      "threw",
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
