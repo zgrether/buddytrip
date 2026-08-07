@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
-import { claimClinchNotification } from "./gameFinishNotify";
+import { claimClinchNotification, releaseClinchClaim } from "./gameFinishNotify";
 
 /**
  * DB-backed test for the clinch-notification claim (migration 099).
@@ -95,5 +95,101 @@ describe("claimClinchNotification — exactly-once, and the un-clinch rule", () 
     await expect(
       claimClinchNotification(ctx.admin, genId("no-such-comp"), teamA)
     ).resolves.toBe(false);
+  });
+});
+
+/**
+ * Releasing the claim — the half the column never had.
+ *
+ * `clinch_notified_team_id` only ever moved null → team, so "un-clinched" was
+ * not a state it could express. A cup clinched, the push fired, a correction
+ * un-clinched it, the SAME team re-clinched — and the push was suppressed as
+ * already-announced. The crew never learned the cup was decided.
+ */
+describe("releaseClinchClaim — restoring eligibility after an un-clinch", () => {
+  let rTrip: string;
+  let rComp: string;
+  let rTeamA: string;
+  let rTeamB: string;
+
+  beforeAll(async () => {
+    rTrip = await ctx.createTrip("Clinch Release Trip");
+    rComp = await ctx.createCompetition(rTrip, "Release Cup");
+    rTeamA = await ctx.createTeam(rComp, "Alpha");
+    rTeamB = await ctx.createTeam(rComp, "Bravo");
+  });
+
+  async function stored(): Promise<string | null> {
+    const { data } = await ctx.admin
+      .from("competitions")
+      .select("clinch_notified_team_id")
+      .eq("id", rComp)
+      .maybeSingle();
+    return (data?.clinch_notified_team_id as string | null) ?? null;
+  }
+
+  it("releases a claim it still holds", async () => {
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamA)).toBe(true);
+    await expect(releaseClinchClaim(ctx.admin, rComp, rTeamA)).resolves.toBe(true);
+    expect(await stored()).toBeNull();
+  });
+
+  /**
+   * THE REPORTED BUG, end to end. Before the release existed, step 4 returned
+   * false and the second clinch went unannounced.
+   */
+  it("clinch → un-clinch → the SAME team re-clinches → the push is eligible again", async () => {
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamA)).toBe(true); // 1. clinched, announced
+    await releaseClinchClaim(ctx.admin, rComp, rTeamA); //                         2. correction un-clinched it
+    expect(await stored()).toBeNull(); //                                          3. eligibility restored
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamA)).toBe(true); // 4. re-clinch DOES announce
+    expect(await stored()).toBe(rTeamA);
+  });
+
+  it("STILL suppresses a same-team re-claim with no un-clinch in between", async () => {
+    // The original product rule, unchanged: one push per clinch, not one per
+    // finalize. Only an intervening release makes it news again.
+    expect(await stored()).toBe(rTeamA);
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamA)).toBe(false);
+  });
+
+  /**
+   * THE RACE the compare-and-swap exists for.
+   *
+   * A recomputes and sees no clincher; concurrently B sees clincher Bravo,
+   * claims it and pushes. A blind `SET null` would then wipe B's claim, and the
+   * next finalize that still sees Bravo would push a SECOND time for one clinch
+   * — reintroducing exactly what migration 099 prevents. A's release is
+   * conditional on the value A observed, so it must lose.
+   */
+  it("a release racing a NEW claim must not wipe it — exactly-once survives", async () => {
+    await ctx.admin.from("competitions").update({ clinch_notified_team_id: null }).eq("id", rComp);
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamA)).toBe(true);
+
+    // A observed Alpha, then B claims Bravo before A's release lands.
+    const observedByA = rTeamA;
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamB)).toBe(true);
+
+    await expect(releaseClinchClaim(ctx.admin, rComp, observedByA)).resolves.toBe(false);
+    expect(await stored(), "B's claim survives A's stale release").toBe(rTeamB);
+  });
+
+  it("releasing a claim nobody holds is a no-op, not a throw", async () => {
+    await ctx.admin.from("competitions").update({ clinch_notified_team_id: null }).eq("id", rComp);
+    await expect(releaseClinchClaim(ctx.admin, rComp, rTeamA)).resolves.toBe(false);
+    expect(await stored()).toBeNull();
+  });
+
+  it("concurrent releases produce exactly one winner (no double-clear surprises)", async () => {
+    expect(await claimClinchNotification(ctx.admin, rComp, rTeamB)).toBe(true);
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => releaseClinchClaim(ctx.admin, rComp, rTeamB))
+    );
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await stored()).toBeNull();
+  });
+
+  it("a release against an unknown competition is a loss, not a throw", async () => {
+    await expect(releaseClinchClaim(ctx.admin, genId("no-such-comp"), rTeamA)).resolves.toBe(false);
   });
 });
