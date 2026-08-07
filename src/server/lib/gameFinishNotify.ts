@@ -525,6 +525,100 @@ export async function releaseClinchClaim(
   return !error && !!data && data.length > 0;
 }
 
+/**
+ * The ONE definition of "decided" — a team's own `pointsToClinch` entry at or
+ * below zero. Shared by the finalize path and the reconcile path below so the
+ * two can never disagree about what a clinch is. `?? 1` is the same "absent
+ * means not decided" default `rollUp` implies for a team with no entry.
+ */
+function isDecided(toClinch: Record<string, number>, teamId: string): boolean {
+  return (toClinch[teamId] ?? 1) <= 0;
+}
+
+/**
+ * Recompute whether the cup is STILL decided the way its held claim says, and
+ * release the claim if it is not — so a later finalize can announce correctly
+ * instead of being silently suppressed by a stale claim.
+ *
+ * ── Why this exists, distinct from `notifyCupClinchedIfDecided` ─────────────
+ * That function has exactly ONE caller: `games.finish`. #839 releases the claim
+ * there when a recompute finds no clincher — which fixes the reported bug
+ * (clinch → correction → re-finish → same team re-clinches) because a
+ * correction cycle always ENDS in a finalize.
+ *
+ * It does NOT fix the same sequence when something OTHER than a finalize does
+ * the un-clinching: `games.delete`, a config edit that changes a point value,
+ * `teams.delete`, or either reset primitive (game- or competition-scoped) can
+ * all move the standings, and none of them call `finish`. This is the shared
+ * call for THOSE paths.
+ *
+ * ── What it deliberately does NOT do ─────────────────────────────────────────
+ * It never CLAIMS. If the recompute shows the cup newly decided — including by
+ * a DIFFERENT team than the one currently held — this function leaves the claim
+ * exactly as it is and sends nothing. Building the announce-a-fresh-clinch half
+ * for these paths is a separate, larger gap (a delete lowering the threshold can
+ * CREATE a clinch, not just remove one) that stays unaddressed here; conflating
+ * "release a stale claim" with "detect and push a new one" is how a small,
+ * boring fix turns into a second copy of `notifyCupClinchedIfDecided` with its
+ * own drift risk.
+ *
+ * ── The compare-and-swap is REUSED, not reimplemented ────────────────────────
+ * This calls `releaseClinchClaim` — the same CAS `notifyCupClinchedIfDecided`
+ * uses — so every call site sharing this function gets the same
+ * concurrent-set-vs-clear safety for free. No call site (delete, reset, a
+ * points edit) implements its own clear.
+ *
+ * ── Why "recompute-then-decide", not an unconditional clear ─────────────────
+ * A blind `SET null` after, say, `games.delete` would be WRONG whenever the
+ * deleted game wasn't the one that decided the cup: the held team is often
+ * STILL clinched after an unrelated game disappears, and clearing anyway would
+ * make a later, unconnected finalize re-announce a clinch that never actually
+ * changed. Gating on a fresh recompute of the HELD team specifically (not "is
+ * anyone decided") avoids that: release only when the team the claim NAMES is
+ * no longer the (or a) clincher — whether because nobody is decided now, or
+ * because a different team has taken the lead.
+ *
+ * ── Cost ──────────────────────────────────────────────────────────────────
+ * One `computeCompetitionLeaderboard` call (measured ~10ms locally) plus a PK
+ * read, only on paths that are rare, deliberate admin actions — never on score
+ * entry or the leaderboard's own read path.
+ *
+ * ── The client defaults to service-role, same reason as the claim itself ────
+ * `competitions_update` requires trip Owner/Organizer, but several of this
+ * function's callers (`setPointsDistribution` via `requireGameEdit`, a
+ * per-game reset's completing organizer) can be satisfied by a plain trip
+ * Member holding only a game-delegate grant. Through the caller's own client
+ * the release would fail SILENTLY for exactly that actor — the same failure
+ * mode #839 built the claim's admin-client default to avoid. Defaulting here
+ * too means no call site has to get this right on its own; `admin` is
+ * exposed only for tests to inject a client bound to a known role.
+ */
+export async function reconcileClinchClaim(
+  competitionId: string,
+  admin?: SupabaseClient
+): Promise<void> {
+  const client = admin ?? createAdminClient();
+  try {
+    const [board, claimRow] = await Promise.all([
+      computeCompetitionLeaderboard(client, competitionId),
+      client
+        .from("competitions")
+        .select("clinch_notified_team_id")
+        .eq("id", competitionId)
+        .maybeSingle(),
+    ]);
+    const held = (claimRow.data?.clinch_notified_team_id as string | null) ?? null;
+    if (!held) return; // nothing held — nothing to reconcile
+
+    const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;
+    if (isDecided(toClinch, held)) return; // the held team is still the clincher — leave it
+
+    await releaseClinchClaim(client, competitionId, held);
+  } catch (err) {
+    console.error("[reconcileClinchClaim] failed", { competitionId, err });
+  }
+}
+
 export interface NotifyCupClinchedInput {
   tripId: string;
   competitionId: string;
@@ -575,8 +669,12 @@ export async function notifyCupClinchedIfDecided(
     const heldClaim = (claimRow.data?.clinch_notified_team_id as string | null) ?? null;
 
     const teams = (board.teams ?? []) as { id: string; name: string | null }[];
-    const clincher =
-      teams.find((t) => (board.pointsToClinch?.[t.id] ?? 1) <= 0) ?? null;
+    const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;
+    // Pure substitution for the inline `(board.pointsToClinch?.[t.id] ?? 1) <= 0`
+    // this replaced — same expression, now shared with `reconcileClinchClaim` via
+    // `isDecided` so the two paths can't drift on what "decided" means. Behaviour
+    // unchanged; #839's tests pin this path's outcomes, not the literal line.
+    const clincher = teams.find((t) => isDecided(toClinch, t.id)) ?? null;
     if (!clincher) {
       // Nobody has clinched. If we were still holding an announcement for a team
       // that is no longer decided, give it back — otherwise that team re-clinching
