@@ -119,7 +119,7 @@ describe("StandardGrid — Glorious Finishing Holes (gate a: marks the right hol
     for (const h of [1, 5, 10, 15]) expect(html).not.toContain(`glorious-diamond-${h}"`);
     expect(html).toContain("glorious-bracket");
     expect(html).toContain("glorious-tees-label");
-    expect(html).toContain("Last 3 holes count double in the match");
+    expect(html).toContain("3 Glorious Finishing Holes · Worth Double");
   });
 
   it("N=4: the marked span shifts to holes 15–18 (not hardcoded to 3)", () => {
@@ -128,7 +128,7 @@ describe("StandardGrid — Glorious Finishing Holes (gate a: marks the right hol
     );
     for (const h of [15, 16, 17, 18]) expect(html).toContain(`glorious-diamond-${h}`);
     expect(html).not.toContain("glorious-diamond-14");
-    expect(html).toContain("Last 4 holes count double in the match");
+    expect(html).toContain("4 Glorious Finishing Holes · Worth Double");
   });
 
   it("off: none of the treatment renders, and the grid is otherwise unchanged", () => {
@@ -161,7 +161,7 @@ describe("StandardGrid — Glorious (gate b: score legend untouched)", () => {
       // never end up folded into the legend — it's a separate DOM region entirely.
       const legendStart = html.indexOf("Eagle");
       const legendEnd = html.lastIndexOf("Dbl+");
-      expect(html.slice(legendStart, legendEnd)).not.toContain("count double in the match");
+      expect(html.slice(legendStart, legendEnd)).not.toContain("Worth Double");
     }
   });
 });

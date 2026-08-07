@@ -392,7 +392,7 @@ export function MatchEntryView({
           }}
         >
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-bt-glorious)" }}>
-            This hole counts double in the match
+            Glorious Finishing Hole · Worth Double
           </span>
         </div>
       )}
