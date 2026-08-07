@@ -57,6 +57,12 @@ export default defineConfig({
     ...(process.env.MEASURE
       ? [
           {
+            name: "verify-game-surface",
+            testMatch: /game-surface-verify\.spec\.ts/,
+            use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
+            dependencies: ["setup"],
+          },
+          {
             name: "measure",
             testMatch: /correction-latency\.spec\.ts/,
             use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
