@@ -688,6 +688,14 @@ export function MatchGameView() {
     return m;
   }, [serverMatches]);
 
+  // The game's EVEN SHARE per match (A2b). Declared here, beside the override map
+  // it pairs with, because `groups` (which resolves `override ?? evenShare` onto
+  // each match) is built above the projection block that used to own this — a
+  // `const` read before its declaration is a temporal-dead-zone throw, not a type
+  // error, so `tsc` would not have caught it.
+  const pointsPerMatch =
+    gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
+
   // This game's delegates (per-game organizers) — a REAL slice of the composite
   // draft, not a placeholder. `save_game_config` replaces the delegate list from
   // the payload for an Owner/Organizer, so the mirror MUST carry the persisted
@@ -1427,6 +1435,10 @@ export function MatchGameView() {
             // Team colors (Slice D) for the strip/entry, when in a 2-team comp.
             leftColor: twoTeams ? teamOfSide(a.id)?.color : undefined,
             rightColor: twoTeams ? teamOfSide(b.id)?.color : undefined,
+            // The award rule, resolved once: this match's own override, else the
+            // game's even share. Same `?? ` order the server uses when paying the
+            // match out, so the number on the card is the number that lands.
+            pointValue: pointValueByMatch.get(mm.id as string) ?? pointsPerMatch,
           };
         }),
     // Team colors come from teamOfSide / sideParticipant, which are plain
@@ -1487,7 +1499,6 @@ export function MatchGameView() {
   // match's CURRENT standing (up → its team wins the match's points; all-square
   // but started → halved; not started → nothing) summed per team. No engine call,
   // no fetch — the same matchState the strips render, keyed by team via teamOfSide.
-  const pointsPerMatch = gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
   const projectionPerTeam = useMemo(() => {
     const projMatches: ProjMatch[] = groups.map((g) => {
       const st = matchState(decidedFor(g), scUnits.length, glorious);
@@ -3096,6 +3107,7 @@ function Overview({
             leftColor={g.leftColor}
             rightColor={g.rightColor}
             hideFormat
+            pointValue={g.pointValue}
             onClick={() => onOpenMatch(g.matchId)}
           />
         ))}

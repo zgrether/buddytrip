@@ -36,6 +36,7 @@ import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
+import { PointsAtStake } from "@/components/games/PointsAtStake";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -1186,6 +1187,17 @@ export function RackGameView() {
             : undefined
         }
       />
+      {/* What each SLOT is worth. Rack's slots are the unit that pays out, so the
+          per-slot value is the number that decides whether a slot matters — the
+          board only ever showed the game total. Sourced from the same
+          `perSlotValue` the projection already computes, so the two can't
+          disagree. (The field is `per_match`; rack DISPLAYS it as slots. Label
+          only — the code field is load-bearing and is not renamed.) */}
+      {perSlotValue > 0 && (
+        <div className="flex justify-end px-4">
+          <PointsAtStake value={perSlotValue} unit="per slot" />
+        </div>
+      )}
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(currentHoleForGroup(id)); setGridOpen(false); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
