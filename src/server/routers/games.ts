@@ -17,7 +17,7 @@ import { isPlacement } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
-import { notifyGameFinished, notifyCupClinchedIfDecided } from "../lib/gameFinishNotify";
+import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { computeConfigHash } from "@/lib/configHash";
 
 /**
@@ -1189,11 +1189,21 @@ export const gamesRouter = router({
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
-        .from("games").select("id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+        .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const { error } = await ctx.supabase
         .from("games").update({ points_total: input.total }).eq("id", input.gameId).eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set total: ${error.message}` });
+      // Raising OR lowering a game's total moves `pointsAvailable` in either
+      // direction — this is the "config edit changing a point value" path, and
+      // it can un-clinch, do nothing, or hand someone a fresh clinch (the last
+      // of those goes unannounced here, same as delete — see the comment on
+      // `reconcileClinchClaim`). No status guard exists on this mutation, so it
+      // is reachable on an already-complete game (confirmed in the item-4 Phase
+      // 0 report), which is exactly the case that needs reconciling.
+      if (game.competition_id) {
+        await reconcileClinchClaim(game.competition_id as string);
+      }
       return { success: true };
     }),
 
@@ -1225,12 +1235,24 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // competition_id read BEFORE the delete — the row (and this column) is gone
+      // after, so it has to come from the pre-delete select.
       const { data: game } = await ctx.supabase
-        .from("games").select("id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+        .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const { error } = await ctx.supabase
         .from("games").delete().eq("id", input.gameId).eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to delete game: ${error.message}` });
+      // Deleting a game removes its whole contribution — both its available total
+      // and, if it won, a team's points — and can move the cup either direction:
+      // un-clinch the current leader, or lower the threshold enough to hand
+      // someone the win outright. `reconcileClinchClaim` only ever RELEASES a
+      // stale claim; it never announces a fresh one (a delete-created clinch is a
+      // separate, unaddressed gap). AFTER the write and its error check, same as
+      // the finalize path — a reconcile failure must never roll back a delete.
+      if (game.competition_id) {
+        await reconcileClinchClaim(game.competition_id as string);
+      }
       return { success: true };
     }),
 
@@ -1257,9 +1279,11 @@ export const gamesRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
+      // Fetched unconditionally (was placement-only before): competition_id is
+      // needed regardless of distribution type, for the reconcile below.
+      const { data: game } = await ctx.supabase
+        .from("games").select("points_total, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
       if (input.distribution?.type === "placement") {
-        const { data: game } = await ctx.supabase
-          .from("games").select("points_total").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
         const total = (game?.points_total as number | null) ?? null;
         // Entity count folded into the SAME call — this path already reads the
         // game, so the places-vs-entities half costs one more query here rather
@@ -1289,6 +1313,13 @@ export const gamesRouter = router({
         1,
         "set the game's points distribution"
       );
+      // A placement SPLIT redistributes a fixed total among positions — it can
+      // shift which team leads without changing `pointsAvailable` at all, in
+      // either direction. Same "config edit changing a point value" class as
+      // setPointsTotal, same unaddressed create-a-fresh-clinch caveat.
+      if (game?.competition_id) {
+        await reconcileClinchClaim(game.competition_id as string);
+      }
       return { success: true };
     }),
 
@@ -1440,6 +1471,13 @@ export const gamesRouter = router({
           message: `Failed to reset game scoring: ${error.message}`,
         });
       }
+      // Clearing results can only LOWER team totals (points_total/distribution
+      // survive a scoring-only reset — see the "keeps" note below), so this can
+      // only un-clinch or leave things unchanged, never create a fresh clinch.
+      // Routed through the same recompute-gated helper as the other paths anyway
+      // — one behaviour to reason about, not a special-cased unconditional clear
+      // that has to independently stay proven safe.
+      await reconcileGameClinch(ctx, input.gameId);
       return { success: true };
     }),
 
@@ -1461,6 +1499,30 @@ export const gamesRouter = router({
           message: `Failed to reset game to skeleton: ${error.message}`,
         });
       }
+      // Same reasoning as resetScoring — points_total survives this primitive
+      // (migration 066 clears only the placement SPLIT, not the total), so
+      // available can't rise and this can't manufacture a clinch either.
+      await reconcileGameClinch(ctx, input.gameId);
       return { success: true };
     }),
 });
+
+/**
+ * Shared by the two per-game reset mutations above: look up the game's
+ * competition (it may be standalone — the common case, not an edge case) and
+ * reconcile the clinch claim if it has one. Kept out of the procedures
+ * themselves so "read competition_id, skip if none" isn't typed twice.
+ */
+async function reconcileGameClinch(
+  ctx: { supabase: SupabaseClient },
+  gameId: string
+): Promise<void> {
+  const { data: game } = await ctx.supabase
+    .from("games")
+    .select("competition_id")
+    .eq("id", gameId)
+    .maybeSingle();
+  if (game?.competition_id) {
+    await reconcileClinchClaim(game.competition_id as string);
+  }
+}
