@@ -196,6 +196,10 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
     // TeamSheet opens OUTSIDE the LiveFace re-seed path, so re-resolve the
     // bootstrap or the board reads stale until the 30s poll.
     utils.competitions.faceBootstrap.invalidate({ tripId });
+    // Moving someone between teams (or off one) changes THEIR avatar colour,
+    // which the app bar reads on every tab — cached with staleTime: Infinity, so
+    // it only refreshes if invalidated here.
+    utils.competitions.myTeamColor.invalidate({ tripId });
   };
 
   const assign = trpc.teamAssignments.assign.useMutation({
@@ -392,6 +396,9 @@ export function TeamsPanel({
       // cascade-cleared team_assignments); the child invalidates above are
       // silently undone by the bootstrap re-seed without this.
       utils.competitions.faceBootstrap.invalidate({ tripId });
+      // Everyone on the deleted team loses their assignment, and with it their
+      // avatar colour — back to teal.
+      utils.competitions.myTeamColor.invalidate({ tripId });
     },
     onSuccess: () => setDeletingTeam(null),
   });
@@ -1455,9 +1462,13 @@ export function TeamSheet({
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       // #10 — the reported bug: a colour/name change repainted teams.list but the
       // stale bootstrap re-seed clobbered it, so the top-right team-colour avatar
-      // (LiveFaceClient's myTeamColor, resolved from boot.teams) needed a hard
-      // refresh to catch up.
+      // needed a hard refresh to catch up. (That avatar used to read
+      // `LiveFaceClient`'s own `myTeamColor` off `boot.teams`; that path was
+      // removed with the standalone face, and the avatar now resolves through
+      // `competitions.myTeamColor` — hence the extra invalidate below.)
       utils.competitions.faceBootstrap.invalidate({ tripId });
+      // Recolouring a team recolours the avatar of everyone on it.
+      utils.competitions.myTeamColor.invalidate({ tripId });
     },
   });
 

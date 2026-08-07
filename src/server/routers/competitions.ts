@@ -23,6 +23,68 @@ const SCOREBOARD_STYLES = [
  * allows multiple to leave the door open for future series-style usage).
  */
 export const competitionsRouter = router({
+  /**
+   * myTeamColor — the VIEWER's team identity for this trip, or null.
+   *
+   * Feeds the account avatar in the app bar, which reads in the user's team
+   * colour instead of the default teal once they are on a team. Deliberately
+   * trip-scoped rather than competition-scoped: the avatar lives on the shared
+   * `TopNav` across Home · Trip · Cup · Chat, and the caller has a trip id in
+   * hand at every one of those, not a competition id.
+   *
+   * ── Why its own procedure and not a field on `trips.getById` ──────────────
+   * The avatar has TWO hosts with different trip sources: `/trips/[tripId]`
+   * (which does call `trips.getById`) and `/dashboard`, whose Home tab knows the
+   * current trip only as `remoteTripId` and fetches `trips.list`. Putting the
+   * answer on `getById` would cover one host; putting it on `list` would mean a
+   * competition + assignment lookup PER ROW of the trip list. One small
+   * trip-keyed query serves both hosts and is precise to invalidate when a
+   * roster or a team colour changes.
+   *
+   * Returns null — not an error — for the ordinary cases: the trip has no
+   * competition, or the viewer simply isn't on a team. Those are the default
+   * state for most trips, and the avatar falls back to teal.
+   */
+  myTeamColor: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      // Same "the trip's competition" rule as getByTrip — earliest created wins
+      // under the one-competition-per-trip MVP rule. Kept identical on purpose:
+      // an avatar reading a different competition than the Cup tab would be a
+      // silent inconsistency nobody would think to check.
+      const { data: comp } = await ctx.supabase
+        .from("competitions")
+        .select("id")
+        .eq("trip_id", ctx.tripId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!comp) return null;
+
+      const { data: assignment } = await ctx.supabase
+        .from("team_assignments")
+        .select("team_id")
+        .eq("competition_id", comp.id)
+        .eq("user_id", ctx.user!.id)
+        .maybeSingle();
+      if (!assignment?.team_id) return null;
+
+      const { data: team } = await ctx.supabase
+        .from("teams")
+        .select("id, name, color, color_dim")
+        .eq("id", assignment.team_id)
+        .maybeSingle();
+      if (!team) return null;
+
+      return {
+        teamId: team.id as string,
+        teamName: team.name as string,
+        color: team.color as string,
+        colorDim: team.color_dim as string,
+      };
+    }),
+
   // -----------------------------------------------------------------------
   // getByTrip — return the trip's competition (or null)
   // -----------------------------------------------------------------------
