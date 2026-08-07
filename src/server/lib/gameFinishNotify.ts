@@ -660,6 +660,25 @@ export interface NotifyCupClinchedInput {
 export async function notifyCupClinchedIfDecided(
   input: NotifyCupClinchedInput
 ): Promise<void> {
+  // ── ENTRY LOG ───────────────────────────────────────────────────────────────
+  // This line exists because its ABSENCE was mistaken for evidence.
+  //
+  // A re-finalize produced no push_send_log row and no push, and that was read
+  // as "the transition guard is suppressing the clinch check". It isn't — the
+  // guard wraps `notifyGameFinished` only, and this call is a separate statement.
+  // But nothing could prove that from the record, because this function emitted
+  // NOTHING until it reached the sender, and all three of its early exits are
+  // silent. A suppressed call and a running-but-undetecting one looked identical.
+  //
+  // So: one line at entry, before anything can fail or return. If this appears
+  // and no outcome line follows, the function threw. If it doesn't appear at all,
+  // the call genuinely wasn't reached — and that is then a fact rather than an
+  // inference from an adjacent row's position.
+  console.info("[push] clinch check: entry", {
+    competitionId: input.competitionId,
+    tripId: input.tripId,
+    actorUserId: input.actorUserId,
+  });
   try {
     const admin = input.admin ?? createAdminClient();
 
@@ -685,6 +704,20 @@ export async function notifyCupClinchedIfDecided(
     // unchanged; #839's tests pin this path's outcomes, not the literal line.
     const clincher = teams.find((t) => isDecided(toClinch, t.id)) ?? null;
     if (!clincher) {
+      // OUTCOME: no_clincher. The exit under investigation — the board says the
+      // cup is decided and this says it isn't. The numbers go in the line so the
+      // disagreement is diagnosable from one log entry instead of a repro: if
+      // `winNumber` and the leader's `pointsToClinch` are here, the arithmetic
+      // this decision was made on is visible, not reconstructed.
+      console.info("[push] clinch check: no_clincher", {
+        competitionId: input.competitionId,
+        teamsOnPayload: teams.length,
+        pointsAvailable: board.pointsAvailable,
+        winNumber: board.winNumber,
+        // Ids and numbers only — this is standings arithmetic, not content.
+        pointsToClinch: teams.map((t) => ({ teamId: t.id, toClinch: toClinch[t.id] ?? null })),
+        heldClaim,
+      });
       // Nobody has clinched. If we were still holding an announcement for a team
       // that is no longer decided, give it back — otherwise that team re-clinching
       // later would be suppressed as "already announced" and go unreported.
@@ -694,7 +727,26 @@ export async function notifyCupClinchedIfDecided(
     }
 
     const won = await claimClinchNotification(admin, input.competitionId, clincher.id);
-    if (!won) return;
+    if (!won) {
+      // OUTCOME: already_claimed. CORRECT suppression — one push per clinch, not
+      // one per finalize. Logged precisely because it is correct: without it,
+      // working suppression and broken detection are the same silence, which is
+      // the property #842 exists to provide and the one place it did not hold.
+      console.info("[push] clinch check: already_claimed", {
+        competitionId: input.competitionId,
+        clincherTeamId: clincher.id,
+        heldClaim,
+      });
+      return;
+    }
+
+    // OUTCOME: claimed. The send follows and records its own row via
+    // `sendPushToUsers`; this marks the moment the claim was won, so a failure
+    // between here and the sender is still bracketed by two lines.
+    console.info("[push] clinch check: claimed", {
+      competitionId: input.competitionId,
+      clincherTeamId: clincher.id,
+    });
 
     const { data: comp } = await admin
       .from("competitions")
@@ -738,7 +790,11 @@ export async function notifyCupClinchedIfDecided(
       }
     );
   } catch (err) {
-    console.error("[notifyCupClinchedIfDecided] failed", {
+    // OUTCOME: threw. Same `[push] clinch check:` prefix as the other three so
+    // one query returns every outcome — a filter that misses the failure case is
+    // the one you needed. Kept as console.error so it also surfaces as an error
+    // level, unlike the outcomes above which are ordinary events.
+    console.error("[push] clinch check: threw", {
       competitionId: input.competitionId,
       err,
     });
