@@ -247,4 +247,94 @@ test.describe("score-events handler accumulation", () => {
 
     expect(sequence.length).toBe(CYCLES);
   });
+
+  /**
+   * THE BLAST-RADIUS TEST — the production shape, end to end.
+   *
+   * Seeds a realistically-scored round, opens board + panel (3 handlers), then
+   * fires the real `reset_game_scoring` primitive that preceded the outage. That
+   * emits one broadcast per deleted row (73, measured), each of which runs every
+   * handler. Counts the refetches that reach the server, and hammers `/login`
+   * throughout — that is the property that actually failed at 10:09, when the
+   * edge started returning 504 for everything.
+   */
+  test("a reset storm costs one refetch per query, and /login stays up", async ({ page }) => {
+    test.setTimeout(600_000);
+    await instrument(page);
+
+    // 4 players × 18 holes on the panel game — the same shape the amplification
+    // measurement used, so the broadcast count is the known 73.
+    const rows: Record<string, unknown>[] = [];
+    for (let p = 0; p < 4; p++) {
+      for (let h = 1; h <= 18; h++) {
+        rows.push({
+          id: crypto.randomUUID(),
+          game_id: panelGameId,
+          participant_id: `${ownerId}-p${p}`,
+          participant_type: "user",
+          unit_label: String(h),
+          value: 4,
+        });
+      }
+    }
+    const seeded = await admin.from("score_entries").insert(rows);
+    if (seeded.error) throw new Error(`seed scores: ${seeded.error.message}`);
+
+    await page.goto(`/trips/${tripId}/leaderboard`);
+    await page.locator('[data-testid="competition-leaderboard"]').first().waitFor({ timeout: 30_000 });
+    const row = page.locator('[data-testid="open-game-panel"]').filter({ hasText: PANEL_GAME_NAME });
+    await row.first().waitFor({ state: "visible", timeout: 30_000 });
+    await row.first().click();
+    await page.locator('[data-testid="game-panel"]').waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(3000);
+
+    await page.evaluate(() => {
+      window.__log = [];
+    });
+
+    // Fire the storm, and probe /login while it is landing.
+    const probes: Array<{ status: number; ms: number }> = [];
+    const probing = (async () => {
+      for (let i = 0; i < 12; i++) {
+        const t0 = Date.now();
+        try {
+          const res = await page.request.get("/login", { timeout: 20_000 });
+          probes.push({ status: res.status(), ms: Date.now() - t0 });
+        } catch {
+          probes.push({ status: -1, ms: Date.now() - t0 });
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    })();
+
+    // The DELETE that `reset_game_scoring` performs, rather than the RPC itself:
+    // the RPC is guarded by `assert_game_owner`, which a service-role client with
+    // no auth.uid() cannot satisfy. What is being measured here is the BROADCAST
+    // STORM, and migration 096's trigger is FOR EACH ROW on the delete — so this
+    // emits the identical event stream (72 rows → 72 broadcasts) without standing
+    // up an authenticated RPC path that this test is not about.
+    const { error: resetErr } = await admin.from("score_entries").delete().eq("game_id", panelGameId);
+    if (resetErr) throw new Error(`reset failed: ${resetErr.message}`);
+
+    await probing;
+    await page.waitForTimeout(4000);
+
+    const counts = await countHandlerInvalidations(page);
+    const worst = Math.max(...probes.map((p) => p.ms));
+    const bad = probes.filter((p) => p.status !== 200);
+
+    console.log(`\n=== reset storm: 73 broadcasts x 3 handlers, board + panel open ===`);
+    console.log(`  competitions.faceBootstrap refetches -> ${counts.boot}`);
+    console.log(`  competitions.leaderboard   refetches -> ${counts.lb}`);
+    console.log(`\n  /login probes during the storm: ${probes.length}`);
+    console.log(`    non-200: ${bad.length}    slowest: ${worst} ms`);
+    console.log(`    statuses: ${probes.map((p) => p.status).join(", ")}\n`);
+
+    // /login staying up is the property that failed in production.
+    expect(bad, "/login must survive the storm").toHaveLength(0);
+    // And the storm must not cost more than a handful of refetches. Without
+    // coalescing this is 73 × 3 per query; the window collapses it.
+    expect(counts.lb, "leaderboard refetches under a 73-broadcast storm").toBeLessThanOrEqual(5);
+    expect(counts.boot, "faceBootstrap refetches under a 73-broadcast storm").toBeLessThanOrEqual(5);
+  });
 });

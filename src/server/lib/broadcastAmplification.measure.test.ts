@@ -28,6 +28,10 @@ let gameId: string;
 let rt: SupabaseClient;
 let channel: RealtimeChannel;
 let received: Array<Record<string, unknown>> = [];
+/** Arrival time of each broadcast, ms since the first of the current burst.
+ *  This is what sets the coalescing window — a window shorter than the burst
+ *  spread collapses nothing. */
+let arrivals: number[] = [];
 let realtimeUp = false;
 
 const rid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -85,6 +89,7 @@ beforeAll(async () => {
   for (;;) {
     channel = rt.channel(scoreEventsTopic(competitionId));
     channel.on("broadcast", { event: SCORE_EVENT }, (m) => {
+      arrivals.push(Date.now());
       received.push((m?.payload ?? {}) as Record<string, unknown>);
     });
     const status = await new Promise<string>((resolve) => {
@@ -128,7 +133,7 @@ describe("broadcast amplification — how many events does one action emit?", ()
     }
 
     // ── Baseline: ONE row changed → how many broadcasts? ────────────────────
-    received = [];
+    received = []; arrivals = [];
     await ctx.admin
       .from("games")
       .update({ corrections_open: true })
@@ -167,7 +172,7 @@ describe("broadcast amplification — how many events does one action emit?", ()
         });
       }
     }
-    received = [];
+    received = []; arrivals = [];
     const ins = await ctx.admin.from("score_entries").insert(rows);
     if (ins.error) throw new Error(`seed scores: ${ins.error.message}`);
     const onInsert = await drain();
@@ -179,11 +184,41 @@ describe("broadcast amplification — how many events does one action emit?", ()
       .select("*", { count: "exact", head: true })
       .eq("game_id", gameId);
 
-    received = [];
+    received = []; arrivals = [];
     await ctx.caller().games.resetScoring({ tripId, gameId });
     const onReset = await drain();
 
     console.log(`games.resetScoring over ${before} score rows -> ${onReset} broadcast(s)`);
+
+    // ── Burst SHAPE — what sets the coalescing window ───────────────────────
+    // A fixed-window batcher flushes at most once per window, so the refetches a
+    // burst costs is (burst spread / window) + 1. Simulating candidate windows
+    // against the real arrival times picks the window from evidence instead of
+    // taste.
+    if (arrivals.length > 1) {
+      const t0 = arrivals[0];
+      const rel = arrivals.map((t) => t - t0);
+      const spread = rel[rel.length - 1];
+      const gaps = rel.slice(1).map((t, i) => t - rel[i]);
+      const maxGap = Math.max(...gaps);
+      console.log(
+        `\nburst shape: ${arrivals.length} messages over ${spread} ms ` +
+          `(largest gap between consecutive messages: ${maxGap} ms)`
+      );
+      console.log(`\nrefetches this burst would cost, by fixed-window size:`);
+      for (const w of [0, 50, 100, 150, 200, 300, 500, 1000]) {
+        let flushes = 0;
+        let windowEnd = -1;
+        for (const t of rel) {
+          if (t > windowEnd) {
+            flushes += 1;
+            windowEnd = t + w;
+          }
+        }
+        const label = w === 0 ? "no coalescing" : `${w} ms window`;
+        console.log(`  ${label.padEnd(16)} -> ${String(flushes).padStart(3)} flush(es)`);
+      }
+    }
     console.log(
       `\nEach broadcast runs EVERY handler on the channel, and each handler` +
         `\ninvalidates faceBootstrap + leaderboard. So one batch carries` +

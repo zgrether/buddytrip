@@ -1,4 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  COALESCE_WINDOW_MS,
+  __resetInvalidationCoalescer,
+} from "@/lib/invalidationCoalescer";
 
 /**
  * useRealtimeScoreEvents — the shared, ref-counted channel registry.
@@ -70,6 +74,15 @@ const TOPIC = scoreEventsTopic("comp-1");
 beforeEach(() => {
   created.length = 0;
   removed.length = 0;
+  // The coalescer defers on a real timer; fake them so the window can be driven
+  // deterministically rather than slept through.
+  vi.useFakeTimers();
+  __resetInvalidationCoalescer();
+});
+
+afterEach(() => {
+  __resetInvalidationCoalescer();
+  vi.useRealTimers();
 });
 
 describe("scoreEventsTopic", () => {
@@ -84,6 +97,20 @@ describe("scoreEventsTopic", () => {
 });
 
 describe("makeScoreEventHandler — what a broadcast is allowed to do to the cache", () => {
+  /**
+   * The handler QUEUES its invalidations through `invalidationCoalescer` instead
+   * of firing them inline, so nothing has run when it returns — `flushWindow()`
+   * closes the window and lets the batch out. These assertions are unchanged
+   * otherwise: same keys, same #10 pairing, same no-setData rule. Only WHEN the
+   * calls happen moved, which is the whole point of the coalescer.
+   */
+  beforeEach(() => {
+    __resetInvalidationCoalescer();
+  });
+  function flushWindow() {
+    vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+  }
+
   /** A utils double that records calls and would expose any cache WRITE. */
   function fakeUtils() {
     const calls: string[] = [];
@@ -105,6 +132,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    flushWindow();
 
     // The bug this pins: invalidating only `leaderboard` is SILENTLY undone,
     // because LiveFaceClient re-seeds the child from the bootstrap via setData
@@ -118,6 +146,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    flushWindow();
 
     expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-1"})');
 
@@ -134,6 +163,61 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    flushWindow();
+    expect(calls).toContain("scores.invalidate()");
+  });
+
+  /**
+   * THE POINT OF THE COALESCER, pinned at the handler level.
+   *
+   * This is the production shape in miniature: a reset emits ~73 broadcasts
+   * (measured) and a board with an open panel carries 3 handlers (measured), so
+   * without coalescing one tap costs 73 × 3 invalidations per query. Here: 73
+   * events across 3 handlers, and the assertion is that each query is
+   * invalidated exactly ONCE.
+   */
+  it("collapses a whole broadcast storm to one invalidation per query", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handlers = [0, 1, 2].map(() => makeScoreEventHandler(utils as any, "trip-1", "comp-1"));
+
+    for (let i = 0; i < 73; i++) for (const h of handlers) h("g-1");
+    expect(calls, "nothing should fire before the window closes").toEqual([]);
+
+    flushWindow();
+
+    const count = (needle: string) => calls.filter((c) => c.startsWith(needle)).length;
+    expect(count("faceBootstrap.invalidate")).toBe(1);
+    expect(count("leaderboard.invalidate")).toBe(1);
+    expect(count("scores.invalidate")).toBe(1);
+    expect(calls).toHaveLength(3); // 219 handler calls per query → 1 refetch each
+  });
+
+  it("keeps DIFFERENT games separate — the key is not too coarse", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h = makeScoreEventHandler(utils as any, "trip-1", "comp-1");
+    h("g-1");
+    h("g-2");
+    flushWindow();
+
+    // Collapsing these onto one key would drop a real refetch for a second game
+    // scored in the same window — the failure mode a too-coarse key produces.
+    expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-2"})');
+  });
+
+  it("does not let a per-game event swallow a reconnect backfill", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h = makeScoreEventHandler(utils as any, "trip-1", "comp-1");
+    h("g-1");
+    h(null); // reconnect: "something moved while you were away, refetch all"
+    flushWindow();
+
+    // The backfill is strictly BROADER than the per-game invalidation. If both
+    // shared a key the narrower one would win and the reconnect would silently
+    // refetch only one game.
     expect(calls).toContain("scores.invalidate()");
   });
 });
