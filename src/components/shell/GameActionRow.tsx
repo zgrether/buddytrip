@@ -67,12 +67,35 @@ function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameCh
         <ChevronLeft size={19} />
       </button>
 
+      {/**
+       * `game name — Match 1`, as TWO elements with opposite shrink behaviour.
+       *
+       * The game name takes `min-w-0 truncate` and gives up width first; the
+       * suffix is `shrink-0` and is never clipped. That ordering is the whole
+       * point: one truncated string clips from the right, so at 375px "Match Play
+       * 2v2 Test 33 — Match 1" would lose "— Match 1" — the only part that
+       * distinguishes this screen from its siblings. Losing the head of the game
+       * name is recoverable (it's on the scoreboard one tap back, and the trip
+       * has few games); losing which match you're scoring is not.
+       *
+       * The testid stays on the WRAPPER so `textContent` still returns the whole
+       * title and the merge-blocking specs keep reading what they always read.
+       */}
       <span
-        className="min-w-0 flex-1 truncate text-[14.5px] font-semibold"
+        className="flex min-w-0 flex-1 items-baseline gap-1 text-[14.5px] font-semibold"
         style={{ color: "var(--color-bt-text)" }}
         data-testid="game-title"
       >
-        {chrome.title}
+        <span className="min-w-0 truncate">{chrome.title}</span>
+        {chrome.titleSuffix && (
+          <span
+            className="shrink-0"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="game-title-suffix"
+          >
+            — {chrome.titleSuffix}
+          </span>
+        )}
       </span>
 
       <div className="flex shrink-0 gap-1">

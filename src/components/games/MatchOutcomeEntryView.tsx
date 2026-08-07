@@ -211,6 +211,7 @@ export function MatchOutcomeEntryView({
           leftColor={m.leftColor}
           rightColor={m.rightColor}
           hideFormat
+          pointValue={m.pointValue}
         />
         {st.over && (
           <div

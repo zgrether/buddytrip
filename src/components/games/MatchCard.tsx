@@ -1,5 +1,6 @@
 "use client";
 
+import { PointsAtStake } from "./PointsAtStake";
 import { Table2 } from "lucide-react";
 import { matchState, type DecidedHole } from "@/lib/matchPlay";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
@@ -53,6 +54,11 @@ interface MatchCardProps {
    *  header row (the MATCH # · THRU/FINAL row). Only pass when the card itself is
    *  NOT a tap target (no `onClick`) — nesting a button in a button is invalid. */
   onScorecard?: () => void;
+  /** What THIS match is worth — its own `point_value` override, else the game's
+   *  even share. Shown in the header so the person playing it can see what's at
+   *  stake; the board has always shown the game total and this surface showed
+   *  nothing. Omit (or 0) for a standalone match with no competition points. */
+  pointValue?: number;
 }
 
 export function MatchCard({
@@ -69,6 +75,7 @@ export function MatchCard({
   bPlayers,
   youId,
   hideFormat,
+  pointValue,
   onScorecard,
 }: MatchCardProps) {
   const st = matchState(results, holeCount, glorious);
@@ -107,8 +114,14 @@ export function MatchCard({
         >
           {headerWord}
         </span>
-        {/* Scorecard affordance — right of the header row (moved off the app bar). */}
-        <span className="flex flex-1 items-center justify-end">
+        {/* Scorecard affordance + what this match is worth — right of the header
+            row. The points sit BEFORE the scorecard button so the glyph stays the
+            outermost element, matching the board's row where the value column is
+            pinned right of the scorecard affordance. */}
+        <span className="flex flex-1 items-center justify-end gap-2">
+          {!!pointValue && pointValue > 0 && (
+            <PointsAtStake value={pointValue} className="!text-[10px]" />
+          )}
           {onScorecard && (
             <button
               type="button"

@@ -141,9 +141,9 @@ export function CompetitionFace({
   // that KEEP the nav (scoreboards — not the nav-hiding score-entry surfaces), pad
   // the panel's scroll by the nav height so its last content clears the nav
   // instead of hiding behind it. Read from the published chrome so it tracks each
-  // format's hideBottomNav automatically.
+  // format's focusedEntry flag automatically.
   const chrome = useGameChrome();
-  const navUnderPanel = panelOpen && !chrome?.hideBottomNav;
+  const navUnderPanel = panelOpen && !chrome?.focusedEntry;
   // Lock the PAGE scroll while a panel is open: the panel is `fixed` with its own
   // `overflow-y-auto`, so without this the board behind it keeps its own window
   // scrollbar → two vertical scrollbars (Zach's QA). The panel owns the only
@@ -443,7 +443,21 @@ export function CompetitionFace({
            * card reads as a box in a box, and STYLE_GUIDE §1 puts contextual
            * structure on the page background rather than a chrome surface.
            */
-          className={`fixed inset-x-0 bottom-0 top-14 z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : "lg:mx-auto"} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          /**
+           * `top-0` on a focused ENTRY surface, `top-14` everywhere else.
+           *
+           * This is the half that actually BUYS the space. `TopBarSlot` hides the
+           * 56px app bar on mobile while entering scores, but the panel is a
+           * `fixed` box offset below where that bar used to be — leave it at
+           * `top-14` and hiding the bar just exposes 56px of page background.
+           * The two must move together, which is why both read the same
+           * `focusedEntry` flag rather than each deciding for itself.
+           *
+           * `lg:top-0` is unchanged and still load-bearing for its own reason
+           * (see above) — at `lg+` the bar never hides, so this expression only
+           * ever differs below the breakpoint.
+           */
+          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : "lg:mx-auto"} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the

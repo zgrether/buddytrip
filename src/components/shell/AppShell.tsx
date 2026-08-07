@@ -2,7 +2,7 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { GameChromeProvider } from "@/components/games/GameChrome";
+import { GameChromeProvider, useGameChrome } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
 import { AppTabBar } from "./AppTabBar";
 import { ContextIntro, LockedTabExplainer, type LockedExplainerView } from "./LockedTabExplainer";
@@ -432,7 +432,7 @@ export function AppShell({
             containing block, which spans the scrollable content.
             `lg:static` hands the job back to the flex column at lg, so desktop
             keeps the structural pinning it already had. */}
-        <div className="sticky top-0 z-40 lg:static lg:z-auto lg:shrink-0">
+        <TopBarSlot>
           {typeof topBar === "function"
             ? topBar({
                 chatOpen,
@@ -446,7 +446,7 @@ export function AppShell({
                 onSelectView: select,
               })
             : topBar}
-        </div>
+        </TopBarSlot>
         {/* ONE tree, reflowed by CSS. The rail and AppTabBar are `hidden lg:*` /
             `lg:hidden`, so crossing a breakpoint changes which chrome paints —
             it never rebuilds the content beneath, which is what keeps scroll,
@@ -542,5 +542,41 @@ export function AppShell({
         {chat}
       </ChatSheet>
     </GameChromeProvider>
+  );
+}
+
+/**
+ * The top bar's positioning wrapper — its own component so it can READ the game
+ * chrome published from inside the provider `AppShell` itself renders. A
+ * `useGameChrome()` call in AppShell's body would resolve against whatever
+ * provider is ABOVE AppShell (none), not the one below it in its own JSX.
+ *
+ * ── Why it hides at all ──────────────────────────────────────────────────────
+ * On a focused SCORE-ENTRY surface the bar is covered on mobile: keeping score
+ * is a mis-tap-prone task that already owns the screen, and the bar puts targets
+ * near the thumbs for no benefit. It costs no affordance — back · title ·
+ * scorecard · settings live in `GameActionRow` inside the panel, not up here.
+ * A game SCOREBOARD keeps both bars: chat matters mid-round precisely because it
+ * reaches the other groups.
+ *
+ * `lg:block` is load-bearing. At `lg+` this bar carries the Trip/Cup tabs and the
+ * chat toggle, which `GameActionRow` does NOT duplicate — hiding it there would
+ * remove navigation, not noise. Desktop is untouched at every depth.
+ *
+ * Hidden by CSS rather than unmounted: the bar owns chat/news state and the
+ * sticky containing block, and remounting it on every entry/exit would churn
+ * both for a surface the user leaves constantly.
+ */
+function TopBarSlot({ children }: { children: React.ReactNode }) {
+  const chrome = useGameChrome();
+  return (
+    <div
+      className={`sticky top-0 z-40 lg:static lg:z-auto lg:shrink-0 ${
+        chrome?.focusedEntry ? "hidden lg:block" : ""
+      }`}
+      data-testid="top-bar-slot"
+    >
+      {children}
+    </div>
   );
 }

@@ -10,6 +10,7 @@ import {
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { placementsFrom } from "@/lib/placementGroups";
 
@@ -163,6 +164,13 @@ export function NonGolfScoreboard({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 py-5">
+      {/* What the game is worth — the board has always shown this and the game
+          surface never did, so the person deciding whether this matters couldn't
+          see it. `points_total` is the SAME field the board's "N PTS" reads, via
+          the same formatter, so the two numbers agree by construction. */}
+      <div className="flex justify-end">
+        <PointsAtStake value={Number(game.points_total ?? 0)} />
+      </div>
       {/* `canEdit` now reaches the outcome rows themselves. It used to be
           expressed by handing them a no-op `onPick`, which leaves three
           live-looking, focusable controls that silently do nothing for a member. */}

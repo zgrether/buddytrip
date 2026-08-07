@@ -56,6 +56,11 @@ export interface MatchGroupData {
    *  color. Omit for the neutral standalone (non-team) default. */
   leftColor?: string;
   rightColor?: string;
+  /** What THIS match is worth: its own `point_value` override, else the game's
+   *  even share (`points_distribution.value`). The `?? ` order is the award rule
+   *  the server applies — the two must not disagree, so it is resolved once where
+   *  the matches are built rather than per surface. */
+  pointValue?: number;
 }
 
 interface MatchEntryViewProps {
@@ -298,6 +303,7 @@ export function MatchEntryView({
                 leftColor={m.leftColor}
                 rightColor={m.rightColor}
                 hideFormat
+                pointValue={m.pointValue}
               />
 
               {/* Closed-out result banner (§4) */}

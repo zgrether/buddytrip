@@ -804,17 +804,18 @@ export function StrokeGameView() {
   usePublishGameChrome(
     inPanel
       ? {
-          // In a group's entry the bar names the GROUP (rack's idiom); the surface + settings
-          // name the game.
-          title:
-            ((entryGroupId ? surfaceGroups.find((g) => g.id === entryGroupId)?.name : undefined) ??
-              (gameQ.data?.name as string | undefined)?.trim()) ||
-            "Stroke Play",
+          // The GAME's name at every depth; a group's entry appends "— Group N"
+          // rather than replacing it (rack's idiom, same change there). The row
+          // truncates the name and keeps the suffix whole.
+          title: (gameQ.data?.name as string | undefined)?.trim() || "Stroke Play",
+          titleSuffix: entryGroupId
+            ? surfaceGroups.find((g) => g.id === entryGroupId)?.name
+            : undefined,
           // Settings gear on the SURFACE only (not inside a group's entry — that view carries
           // its own onConfig). Absent on the final.
           onSettings: !!game && canEdit && !showConfig && !entryGroupId ? openConfig : undefined,
           // Focused scoring (in a group) hides the bottom nav.
-          hideBottomNav: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
+          focusedEntry: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
         }
       : null,
   );

@@ -278,7 +278,7 @@ These patterns have been established through prior work. Follow them exactly —
     recommendation was made once and was wrong; Phase 0 caught it).
 13. **GameChrome context-aware app bar.** Game views publish chrome up to `TopNav`
     via the `GameChrome` context (a two-context store, so the publisher's effect
-    can't loop): `{ title, onSettings?, onScorecard?, hideBottomNav? }`, published
+    can't loop): `{ title, onSettings?, onScorecard?, focusedEntry? }`, published
     via `usePublishGameChrome` gated on `useInGamePanel()`. Board mode =
     flag/wordmark left; chat + news + team-color avatar right. Game mode = back +
     single-line game title left (NO format subtitle — dropped as cruft);
@@ -286,10 +286,19 @@ These patterns have been established through prior work. Follow them exactly —
     reachable inside games). The panel sits at `top-14 z-30`, BELOW the 56px bar.
     Header suppression is PROVIDER-AWARE: a game view keeps its own header on a
     standalone route (no `TopNav` there) and suppresses it only when a `GameChrome`
-    provider is present. `hideBottomNav` is published only on focused entry surfaces
-    (stroke entry / match score / rack entry group). A scorecard Sheet covers the
-    app bar when open (a modal owns the screen). **Follow this for any game-surface
-    chrome.**
+    provider is present. `focusedEntry` is published only on focused entry surfaces
+    (stroke entry / match score / rack entry group). It names the CONDITION, not one
+    effect — it hides the trip bottom nav at every width AND the top app bar on
+    MOBILE (measured: 56px gained; the panel drops from `top-14` to `top-0` in the
+    same breath, or hiding the bar would just expose 56px of background). Both
+    consumers read the ONE flag; two booleans that must always agree is how they
+    drift (#24). **Desktop keeps its bar at every depth** — at `lg+` it carries the
+    Trip/Cup tabs and the chat toggle, which `GameActionRow` does not duplicate.
+    Nothing is lost by hiding it on mobile: back · title · scorecard · settings live
+    in `GameActionRow` INSIDE the panel (49px), not in the bar. The scoreboard keeps
+    BOTH bars deliberately — chat matters mid-round precisely because it reaches the
+    other groups. A scorecard Sheet covers the app bar when open (a modal owns the
+    screen). **Follow this for any game-surface chrome.**
 14. **Bottom-control anchoring.** Bottom CTAs (next-hole, Finish, primary in-game
     actions) anchor to the VIEWPORT bottom — the way rack-n-stack's slide-up keypad
     does — NEVER placed at the end of the CONTENT. Content-anchored CTAs fall below

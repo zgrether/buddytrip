@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 /**
  * GameChrome — a tiny context so a game view can publish its bar chrome (title +
- * the owner/delegate settings gear + the scorecard affordance + a hide-bottom-nav
+ * the owner/delegate settings gear + the scorecard affordance + a focused-entry
  * flag) UP to the shared app bar (TopNav), instead of rendering its own second
  * header on the panel (the double-decker #550 removes). The bar's BACK is always
  * `history.back()` — the game views' existing popstate listeners (useScreenHistory
@@ -22,18 +22,63 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
  * so a publisher's effect doesn't loop when the value changes).
  */
 export interface GameChromeData {
-  /** Single-line game title shown in the bar (NO format subtitle — dropped). */
+  /** The GAME's name — the anchor, at every depth. Never the match/group name;
+   *  that goes in `titleSuffix` so the two can be truncated differently. */
   title: string;
+  /**
+   * Depth inside the game — "Match 1", "Group 3" — rendered after the game name
+   * as `game name — Match 1`.
+   *
+   * ── Why it is a separate field and not concatenated by the publisher ────────
+   * Because the two halves need OPPOSITE truncation. At 375px "Match Play 2v2
+   * Test 33 — Match 1" does not fit, and a single truncated string clips from the
+   * right, eating the suffix — which is the part that says which match you're on,
+   * i.e. the only part that differs between this screen and its three siblings.
+   * Kept separate, the row can shrink the game NAME and hold the suffix whole.
+   *
+   * Drilling in used to REPLACE the title with "Match 1" / "Group 3", which threw
+   * away the one piece of context the entry screen doesn't otherwise carry (the
+   * match number is already in the strip directly beneath it; a group number
+   * means little alone).
+   */
+  titleSuffix?: string;
   /** Owner/delegate-only settings gear. Present ⇒ the bar shows it. The VIEW
    *  gates on `useGameEditAccess`, so a member simply never passes it. */
   onSettings?: () => void;
   /** Opens the scorecard overlay (the entry surface's Table2 affordance, moved
    *  into the bar when the entry header is removed). Present ⇒ the bar shows it. */
   onScorecard?: () => void;
-  /** Hide the trip bottom nav (#550 Task 5) — true on the focused SCORE-ENTRY
-   *  surface (exit is the app-bar back), false on the scoreboard (a viewing
-   *  surface where trip nav stays useful). */
-  hideBottomNav?: boolean;
+  /**
+   * This is a focused SCORE-ENTRY surface — keeping score, not reading a board.
+   *
+   * ── What it does, and why it isn't called `hideBottomNav` any more ──────────
+   * It used to name one effect (hide the trip bottom nav). It now names the
+   * CONDITION, because entry hides chrome in two directions:
+   *
+   *   - the trip bottom nav, at every width (as before);
+   *   - the top app bar, on MOBILE ONLY.
+   *
+   * Two booleans that must always agree is how they drift apart (CLAUDE.md #24),
+   * and there is no surface that wants one without the other — so there is one
+   * signal and each consumer derives its own effect from it.
+   *
+   * ── Why entry and not the scoreboard ────────────────────────────────────────
+   * Entering scores is a focused, mis-tap-prone task, and it already covers the
+   * screen; the bars are targets you don't want near your thumbs. A game
+   * SCOREBOARD is the opposite — chat matters mid-round precisely because it
+   * reaches the OTHER groups (nobody chats with the three people they're standing
+   * next to), so both bars stay there.
+   *
+   * ── Desktop keeps its top bar ───────────────────────────────────────────────
+   * At `lg+` the bar carries the Trip/Cup tabs and the chat toggle, which the
+   * game's own `GameActionRow` does not duplicate — so hiding it there would
+   * remove navigation rather than noise. Mobile only.
+   *
+   * Nothing is lost by hiding it: back · title · scorecard · settings live in
+   * `GameActionRow` INSIDE the panel, not in the top bar (they moved there in
+   * Phase 6). Exit stays exactly where it was.
+   */
+  focusedEntry?: boolean;
 }
 
 type SetChrome = (c: GameChromeData | null) => void;
@@ -80,7 +125,7 @@ export function usePublishGameChrome(data: GameChromeData | null) {
     ref.current = data;
   });
   const key = data
-    ? `${data.title}|${!!data.onSettings}|${!!data.onScorecard}|${!!data.hideBottomNav}`
+    ? `${data.title}|${data.titleSuffix ?? ""}|${!!data.onSettings}|${!!data.onScorecard}|${!!data.focusedEntry}`
     : "";
   useEffect(() => {
     if (!setChrome) return;
@@ -90,9 +135,10 @@ export function usePublishGameChrome(data: GameChromeData | null) {
     }
     setChrome({
       title: ref.current.title,
+      titleSuffix: ref.current.titleSuffix,
       onSettings: ref.current.onSettings ? () => ref.current?.onSettings?.() : undefined,
       onScorecard: ref.current.onScorecard ? () => ref.current?.onScorecard?.() : undefined,
-      hideBottomNav: ref.current.hideBottomNav,
+      focusedEntry: ref.current.focusedEntry,
     });
     return () => setChrome(null);
   }, [setChrome, key]);
