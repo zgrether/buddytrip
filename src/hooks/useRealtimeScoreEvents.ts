@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getRealtimeClient } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc-client";
+import { coalesceInvalidation } from "@/lib/invalidationCoalescer";
 
 /**
  * useRealtimeScoreEvents — pushes SCORE and game-lifecycle changes to every open
@@ -159,6 +160,13 @@ type ScoreEventUtils = {
  * `reconcileScores(local, server, protectedKeys)`) is what protects the active
  * enterer's in-flight cells, and it only runs on refetched server data. Writing
  * the cache directly would bypass it and clobber the cell someone is typing in.
+ *
+ * COALESCED. The invalidations are queued through `invalidationCoalescer` rather
+ * than fired inline, so a burst costs one refetch per query instead of one per
+ * broadcast per handler. The SET of keys is unchanged — this is a timing change,
+ * not a scope change, and #10's faceBootstrap pairing still holds. A caller that
+ * needs the refetch to have HAPPENED by the time it returns must not rely on
+ * this function; it schedules work, it does not await it.
  */
 export function makeScoreEventHandler(
   utils: ScoreEventUtils,
@@ -166,17 +174,44 @@ export function makeScoreEventHandler(
   competitionId: string,
 ): Handler {
   return (gameId) => {
+    // COALESCED, not fired directly — see `invalidationCoalescer.ts`. Migration
+    // 096's `FOR EACH ROW` triggers make one reset emit ~73 broadcasts (measured),
+    // and every handler on the channel runs for each one, so the naive version
+    // costs broadcasts × handlers × queries refetches for a single tap. That is
+    // what took production down. The keys below collapse BOTH multipliers: the
+    // handlers on a topic share tripId + competitionId, and a burst carries one
+    // gameId, so the whole storm reduces to one refetch per query per window.
+    //
+    // WHAT IS INVALIDATED IS UNCHANGED — same three keys, same #10 pairing, same
+    // invalidate-only posture. Only the timing changed.
+
     // #10 — faceBootstrap IN ADDITION TO the child query, never instead of.
     // Dropping either leaves a surface stale: the face re-seeds from the
     // bootstrap, while the standalone game routes read the child key directly.
-    void utils.competitions.faceBootstrap.invalidate({ tripId });
-    void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    coalesceInvalidation(`faceBootstrap:${tripId}`, () => {
+      void utils.competitions.faceBootstrap.invalidate({ tripId });
+    });
+    coalesceInvalidation(`leaderboard:${tripId}:${competitionId}`, () => {
+      void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    });
 
     // #15 — hand the score change to the view's EXISTING reconcile rather than
     // applying anything here. On a reconnect backfill (no gameId) we don't know
     // which game moved while we were away, so invalidate the whole key.
-    if (gameId) void utils.scores.listByGame.invalidate({ tripId, gameId });
-    else void utils.scores.listByGame.invalidate();
+    //
+    // The two arms get DIFFERENT keys on purpose: the backfill is a strictly
+    // broader invalidation, and collapsing it onto a specific game's key would
+    // let a per-game event swallow the "everything moved while you were away"
+    // refetch that a reconnect depends on.
+    if (gameId) {
+      coalesceInvalidation(`scores:${tripId}:${gameId}`, () => {
+        void utils.scores.listByGame.invalidate({ tripId, gameId });
+      });
+    } else {
+      coalesceInvalidation(`scores:${tripId}:*`, () => {
+        void utils.scores.listByGame.invalidate();
+      });
+    }
   };
 }
 
