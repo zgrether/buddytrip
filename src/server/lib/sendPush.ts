@@ -6,6 +6,7 @@ import {
   type NotificationPrefs,
 } from "@/lib/notificationTypes";
 import { getWebPush, pushConfigured } from "./vapid";
+import { recordPushAttempt, type PushAttemptContext } from "./recordPushAttempt";
 
 /**
  * The shared push send helper (Push Phase 2). Phase 3 calls this from domain
@@ -37,6 +38,11 @@ export interface SendPushResult {
   skippedPreferenceOff: boolean;
   removedDead: number;
   notConfigured: boolean;
+  /** Device rows found for this user — distinguishes "no device registered"
+   *  from "every send failed", which were both `sent: 0` before. */
+  subscriptionsFound: number;
+  /** Sends that failed for a reason other than a dead endpoint. */
+  failed: number;
 }
 
 interface SubRow {
@@ -54,6 +60,10 @@ export interface SendPushOptions {
    *  user has toggled the category off, or it reads as broken. Phase 3 event
    *  wiring NEVER sets this — automated pushes are always preference-gated. */
   bypassPreference?: boolean;
+  /** What this send is FOR — recorded to `push_send_log` (migration 105) plus a
+   *  structured log line. Same field, same reasoning as `sendPushToUsers`: the
+   *  recording is SENDER-scoped so every caller is covered by construction. */
+  context?: PushAttemptContext;
 }
 
 /** HTTP status codes from the push service that mean "this endpoint is gone". */
@@ -73,8 +83,38 @@ export async function sendPush(
     skippedPreferenceOff: false,
     removedDead: 0,
     notConfigured: false,
+    subscriptionsFound: 0,
+    failed: 0,
   };
+  let errorMessage: string | null = null;
 
+  // Same shape as `sendPushToUsers`: the work runs in an inner function so its
+  // early returns stay natural, and the record below runs on EVERY path.
+  await runSend();
+
+  if (opts.context) {
+    try {
+      await recordPushAttempt(admin, opts.context, {
+        typeKey,
+        // A single-user send addresses exactly one recipient, unless the
+        // preference gate turned it away.
+        recipients: result.skippedPreferenceOff ? 0 : 1,
+        skippedPreferenceOff: result.skippedPreferenceOff ? 1 : 0,
+        subscriptionsFound: result.subscriptionsFound,
+        sent: result.sent,
+        failed: result.failed,
+        removedDead: result.removedDead,
+        notConfigured: result.notConfigured,
+        error: errorMessage,
+      });
+    } catch (err) {
+      console.error("[sendPush] recording failed", { typeKey, err });
+    }
+  }
+
+  return result;
+
+  async function runSend(): Promise<void> {
   try {
     // 1 · Preference gate — the recipient's effective on/off for this type.
     // Skipped only for an explicit self-test (bypassPreference); Phase 3 events
@@ -88,7 +128,7 @@ export async function sendPush(
       const prefs = (userRow?.notification_prefs ?? null) as NotificationPrefs | null;
       if (!isTypeEnabled(prefs, typeKey)) {
         result.skippedPreferenceOff = true;
-        return result;
+        return;
       }
     }
 
@@ -96,7 +136,7 @@ export async function sendPush(
     const wp = getWebPush();
     if (!wp || !pushConfigured()) {
       result.notConfigured = true;
-      return result;
+      return;
     }
 
     // 3 · Fan out to every device.
@@ -104,6 +144,10 @@ export async function sendPush(
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth")
       .eq("user_id", userId);
+
+    // Recorded BEFORE the sends: "this user has no device registered" stays a
+    // fact in the log even if every send below then throws.
+    result.subscriptionsFound = (subs ?? []).length;
 
     const body = JSON.stringify(payload);
     const deadIds: string[] = [];
@@ -121,6 +165,8 @@ export async function sendPush(
           if (isGoneStatus(status)) {
             deadIds.push(s.id); // uninstalled / revoked → prune
           } else {
+            result.failed += 1;
+            errorMessage ??= `delivery failed (status ${String(status ?? "unknown")})`;
             console.error("[sendPush] delivery failed", {
               userId,
               typeKey,
@@ -137,9 +183,10 @@ export async function sendPush(
       result.removedDead = deadIds.length;
     }
   } catch (err) {
-    // Fire-and-forget: a push failure must never surface to the domain write.
+    // Fire-and-forget: a push failure must never surface to the domain write —
+    // but it IS recorded now rather than only logged into a 1-day retention.
+    errorMessage = err instanceof Error ? err.message : String(err);
     console.error("[sendPush] unexpected error", { userId, typeKey, err });
   }
-
-  return result;
+  }
 }

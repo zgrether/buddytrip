@@ -7,6 +7,7 @@ import {
 } from "@/lib/notificationTypes";
 import { getWebPush, pushConfigured } from "./vapid";
 import type { PushPayload } from "./sendPush";
+import { recordPushAttempt, type PushAttemptContext } from "./recordPushAttempt";
 
 /**
  * BATCHED multi-recipient push fan-out (Push Phase 3).
@@ -48,6 +49,16 @@ export interface SendPushToUsersResult {
   removedDead: number;
   /** True when VAPID keys are absent — nothing was sent, and that's not an error. */
   notConfigured: boolean;
+  /**
+   * Device rows found for the eligible audience. THE FIELD THAT WAS MISSING:
+   * without it, "nobody has a device" (`subscriptionsFound: 0`) and "every send
+   * threw" both surfaced as `sent: 0`, which is precisely what made two
+   * investigations unfalsifiable.
+   */
+  subscriptionsFound: number;
+  /** Per-device sends that failed for a reason OTHER than a dead endpoint
+   *  (those are counted in `removedDead` and pruned). */
+  failed: number;
 }
 
 export interface SendPushToUsersOptions {
@@ -57,6 +68,13 @@ export interface SendPushToUsersOptions {
   admin?: SupabaseClient;
   /** The user who caused the event. Excluded from the audience. */
   excludeUserId?: string | null;
+  /**
+   * What this send is FOR — recorded to `push_send_log` (migration 105) and to
+   * a structured log line. Optional so a caller that genuinely has no context
+   * still compiles, but every real trigger should pass one: a row without a
+   * trigger label is a row nobody can interpret six weeks later.
+   */
+  context?: PushAttemptContext;
 }
 
 interface SubRow {
@@ -84,8 +102,41 @@ export async function sendPushToUsers(
     recipients: 0,
     removedDead: 0,
     notConfigured: false,
+    subscriptionsFound: 0,
+    failed: 0,
   };
+  let errorMessage: string | null = null;
 
+  // The send itself, unchanged. Wrapped so its several early returns stay
+  // natural while the recording below still runs on EVERY path — an exit that
+  // skipped the record would put back exactly the blind spot this adds.
+  await runSend();
+
+  // Recording is best-effort and last: `recordPushAttempt` swallows its own
+  // failures, and this extra guard covers the client construction itself. The
+  // record is never worth the send.
+  if (opts.context) {
+    try {
+      const admin = opts.admin ?? createAdminClient();
+      await recordPushAttempt(admin, opts.context, {
+        typeKey,
+        recipients: result.recipients,
+        skippedPreferenceOff: result.skippedPreferenceOff,
+        subscriptionsFound: result.subscriptionsFound,
+        sent: result.sent,
+        failed: result.failed,
+        removedDead: result.removedDead,
+        notConfigured: result.notConfigured,
+        error: errorMessage,
+      });
+    } catch (err) {
+      console.error("[sendPushToUsers] recording failed", { typeKey, err });
+    }
+  }
+
+  return result;
+
+  async function runSend(): Promise<void> {
   try {
     // 1 · Audience: de-duplicate and drop the actor. A user can appear twice in
     // a resolved audience (e.g. on two teams), and sending twice for one event
@@ -94,7 +145,7 @@ export async function sendPushToUsers(
       (id) => !!id && id !== opts.excludeUserId
     );
     result.recipients = audience.length;
-    if (audience.length === 0) return result;
+    if (audience.length === 0) return;
 
     const admin = opts.admin ?? createAdminClient();
 
@@ -118,7 +169,7 @@ export async function sendPushToUsers(
       if (!on) result.skippedPreferenceOff += 1;
       return on;
     });
-    if (eligible.length === 0) return result;
+    if (eligible.length === 0) return;
 
     // 3 · No keys → nothing to send with. Checked AFTER the preference gate so
     // the returned counts still describe the audience truthfully in CI, where
@@ -126,7 +177,7 @@ export async function sendPushToUsers(
     const wp = getWebPush();
     if (!wp || !pushConfigured()) {
       result.notConfigured = true;
-      return result;
+      return;
     }
 
     // 4 · Devices — ONE query for every eligible recipient.
@@ -134,6 +185,10 @@ export async function sendPushToUsers(
       .from("push_subscriptions")
       .select("id, user_id, endpoint, p256dh, auth")
       .in("user_id", eligible);
+
+    // Recorded BEFORE the sends, so "the audience had no devices" is a fact in
+    // the log even if every send below then throws.
+    result.subscriptionsFound = (subs ?? []).length;
 
     const body = JSON.stringify(payload);
     const deadIds: string[] = [];
@@ -151,6 +206,12 @@ export async function sendPushToUsers(
           if (isGoneStatus(status)) {
             deadIds.push(s.id); // uninstalled / revoked → prune
           } else {
+            result.failed += 1;
+            // Kept as the FIRST failure's status rather than the last: with a
+            // whole fan-out failing the same way, the first is as informative
+            // as any, and overwriting would hide an early distinct cause behind
+            // a later common one.
+            errorMessage ??= `delivery failed (status ${String(status ?? "unknown")})`;
             console.error("[sendPushToUsers] delivery failed", {
               userId: s.user_id,
               typeKey,
@@ -168,8 +229,10 @@ export async function sendPushToUsers(
     }
   } catch (err) {
     // Fire-and-forget: a push failure must never surface to the domain write.
+    // It IS now recorded, though — the swallow is what made the last two
+    // investigations end in "unfalsifiable from here".
+    errorMessage = err instanceof Error ? err.message : String(err);
     console.error("[sendPushToUsers] unexpected error", { typeKey, err });
   }
-
-  return result;
+  }
 }

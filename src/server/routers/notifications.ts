@@ -148,7 +148,13 @@ export const notificationsRouter = router({
         url: "/dashboard",
         tag: "bt-test",
       },
-      { bypassPreference: true }
+      {
+        bypassPreference: true,
+        // Recorded like every other send. A test send that delivers while real
+        // triggers appear not to is exactly the comparison an investigation
+        // needs, and it is only possible if BOTH leave a row.
+        context: { trigger: "test_send", actorUserId: ctx.user.id },
+      }
     );
     return result;
   }),
