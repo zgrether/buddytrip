@@ -446,7 +446,16 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
       // Coalesce per game: a correction → re-finish replaces the earlier notice
       // on the device instead of stacking a second one next to it.
       tag: `bt-game-${input.gameId}`,
-    }, { excludeUserId: input.actorUserId });
+    }, {
+      excludeUserId: input.actorUserId,
+      context: {
+        trigger: "game_finished",
+        tripId: input.tripId,
+        gameId: input.gameId,
+        competitionId: input.competitionId,
+        actorUserId: input.actorUserId,
+      },
+    });
   } catch (err) {
     console.error("[notifyGameFinished] failed", { gameId: input.gameId, err });
   }
@@ -718,7 +727,15 @@ export async function notifyCupClinchedIfDecided(
         url: cupUrl(input.tripId),
         tag: `bt-clinch-${input.competitionId}`,
       },
-      { excludeUserId: input.actorUserId }
+      {
+        excludeUserId: input.actorUserId,
+        context: {
+          trigger: "cup_clinched",
+          tripId: input.tripId,
+          competitionId: input.competitionId,
+          actorUserId: input.actorUserId,
+        },
+      }
     );
   } catch (err) {
     console.error("[notifyCupClinchedIfDecided] failed", {
