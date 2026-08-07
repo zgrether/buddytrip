@@ -49,6 +49,22 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
       dependencies: ["setup"],
     },
+    // Instrumentation, not a gate: the correction-latency measurement prints
+    // numbers rather than asserting them, and it mutates a seeded game's
+    // lifecycle in a loop. CI runs a BARE `npx playwright test`, which runs every
+    // registered project — so this one is registered only when explicitly asked
+    // for (`MEASURE=1 npx playwright test --project=measure`). Without the flag
+    // it does not exist as far as the runner is concerned.
+    ...(process.env.MEASURE
+      ? [
+          {
+            name: "measure",
+            testMatch: /correction-latency\.spec\.ts/,
+            use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
+            dependencies: ["setup"],
+          },
+        ]
+      : []),
   ],
   webServer: {
     // CI runs the prebuilt app (the workflow does `npm run build` first) so
