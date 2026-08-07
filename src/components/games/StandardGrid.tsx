@@ -268,7 +268,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
           {/* Glorious label — a sibling of the pill (never nested in a button). */}
           {gloriousCols.size > 0 && (
             <span data-testid="glorious-tees-label" className="ml-auto truncate" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-glorious)" }}>
-              {glorious.n === 1 ? "Last hole counts double in the match" : `Last ${glorious.n} holes count double in the match`}
+              {glorious.n} Glorious Finishing Holes · Worth Double
             </span>
           )}
           {teePanelOpen && (
@@ -330,7 +330,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
               data-testid="glorious-tees-label"
               style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "var(--color-bt-glorious)" }}
             >
-              {glorious.n === 1 ? "Last hole counts double in the match" : `Last ${glorious.n} holes count double in the match`}
+              {glorious.n} Glorious Finishing Holes · Worth Double
             </span>
           )}
         </div>
