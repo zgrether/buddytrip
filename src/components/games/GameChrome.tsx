@@ -22,8 +22,26 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
  * so a publisher's effect doesn't loop when the value changes).
  */
 export interface GameChromeData {
-  /** Single-line game title shown in the bar (NO format subtitle — dropped). */
+  /** The GAME's name — the anchor, at every depth. Never the match/group name;
+   *  that goes in `titleSuffix` so the two can be truncated differently. */
   title: string;
+  /**
+   * Depth inside the game — "Match 1", "Group 3" — rendered after the game name
+   * as `game name — Match 1`.
+   *
+   * ── Why it is a separate field and not concatenated by the publisher ────────
+   * Because the two halves need OPPOSITE truncation. At 375px "Match Play 2v2
+   * Test 33 — Match 1" does not fit, and a single truncated string clips from the
+   * right, eating the suffix — which is the part that says which match you're on,
+   * i.e. the only part that differs between this screen and its three siblings.
+   * Kept separate, the row can shrink the game NAME and hold the suffix whole.
+   *
+   * Drilling in used to REPLACE the title with "Match 1" / "Group 3", which threw
+   * away the one piece of context the entry screen doesn't otherwise carry (the
+   * match number is already in the strip directly beneath it; a group number
+   * means little alone).
+   */
+  titleSuffix?: string;
   /** Owner/delegate-only settings gear. Present ⇒ the bar shows it. The VIEW
    *  gates on `useGameEditAccess`, so a member simply never passes it. */
   onSettings?: () => void;
@@ -107,7 +125,7 @@ export function usePublishGameChrome(data: GameChromeData | null) {
     ref.current = data;
   });
   const key = data
-    ? `${data.title}|${!!data.onSettings}|${!!data.onScorecard}|${!!data.focusedEntry}`
+    ? `${data.title}|${data.titleSuffix ?? ""}|${!!data.onSettings}|${!!data.onScorecard}|${!!data.focusedEntry}`
     : "";
   useEffect(() => {
     if (!setChrome) return;
@@ -117,6 +135,7 @@ export function usePublishGameChrome(data: GameChromeData | null) {
     }
     setChrome({
       title: ref.current.title,
+      titleSuffix: ref.current.titleSuffix,
       onSettings: ref.current.onSettings ? () => ref.current?.onSettings?.() : undefined,
       onScorecard: ref.current.onScorecard ? () => ref.current?.onScorecard?.() : undefined,
       focusedEntry: ref.current.focusedEntry,

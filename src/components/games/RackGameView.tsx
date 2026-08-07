@@ -790,9 +790,11 @@ export function RackGameView() {
   usePublishGameChrome(
     inPanel
       ? {
-          title: entryGroupId
-            ? rackGroupName ?? "Group"
-            : (gameQ.data?.name as string | undefined)?.trim() || "Rack-n-Stack",
+          // The GAME's name at every depth; the group rides along as a suffix so
+          // the row can truncate the name and keep "— Group 3" whole. It used to
+          // REPLACE the title, and a group number alone says very little.
+          title: (gameQ.data?.name as string | undefined)?.trim() || "Rack-n-Stack",
+          titleSuffix: entryGroupId ? (rackGroupName ?? "Group") : undefined,
           // Gear on the scoreboard screens only (owner/delegate, not final) — not
           // on the entry, the config page, or the pre-setup steps.
           onSettings:

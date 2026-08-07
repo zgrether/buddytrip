@@ -1452,22 +1452,24 @@ export function MatchGameView() {
   // route (no provider) `inPanel` is false → we keep our own headers below.
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
-  const chromeTitle =
-    screen === "score" && selectedGroup
-      // Item 5: the app-bar title is "Match N" — the player names truncate on a
-      // 2v2 and are redundant (they're in the state band + choice rows). label is
-      // already "Match N" from the groups builder.
-      ? selectedGroup.label
-      // The DRAFT's name, not the server's. GameIdentityHeader renders
-      // `configDraft.name`, so reading `gameQ.data.name` here put two different names
-      // for the same game on screen at once — a stale app bar directly above the live
-      // field editing it. Untouched, the draft IS the mirror, so this is identical to
-      // the old behaviour everywhere except mid-edit, which is the case that was wrong.
-      : configDraft.name.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
+  // The GAME's name at every depth — the anchor. The DRAFT's name, not the
+  // server's: GameIdentityHeader renders `configDraft.name`, so reading
+  // `gameQ.data.name` here put two different names for the same game on screen at
+  // once — a stale app bar directly above the live field editing it. Untouched,
+  // the draft IS the mirror, so this matches the old behaviour everywhere except
+  // mid-edit, which is the case that was wrong.
+  const chromeTitle = configDraft.name.trim() || (sided ? "2v2 Match Play" : "1v1 Match Play");
+  // Depth, carried separately so the row can truncate the name and keep this
+  // whole. `label` is already "Match N" from the groups builder. It used to
+  // REPLACE the title, which discarded the game name — and the match number is
+  // already in the strip directly below, so the swap gave up context to repeat
+  // something on screen.
+  const chromeTitleSuffix = screen === "score" && selectedGroup ? selectedGroup.label : undefined;
   usePublishGameChrome(
     inPanel
       ? {
           title: chromeTitle,
+          titleSuffix: chromeTitleSuffix,
           onSettings:
             !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete"
               ? openConfig
