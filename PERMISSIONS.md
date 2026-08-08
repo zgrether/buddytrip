@@ -343,6 +343,29 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > FORBIDDEN) until the owner/delegate opens correction; results stay visible to
 > everyone throughout.
 
+> **WHO TYPED A SCORE IS A RECORD, NEVER A PERMISSION.**
+> `score_entries.submitted_by` (and `match_hole_outcomes.submitted_by`) records
+> who entered a number, for audit only. It is **never** read by a gate — not by
+> a tRPC guard, not by an RLS policy, not in a `WHERE`. Verified: the column is
+> only ever written (`scores.ts:107`, `matchOutcomes.ts:100`) and reassigned by
+> the guest-merge function; migration 033 declares it inline as *"WHO typed it —
+> audit only, never a gate."*
+>
+> **This is a deliberate product decision, not an oversight.** Anyone permitted
+> to score a unit may enter scores for anyone in it — one person keeps the card
+> for the group, which is how golf actually works. Gating on `submitted_by`
+> would mean every player has their own phone out for every hole, which is
+> precisely what we decided not to build. The permission question is always
+> *"may this person score this UNIT?"* (the three-tier scoped model above) and
+> never *"is this their own row?"*.
+>
+> The tell to watch for: a change that adds `submitted_by` to a policy, a guard,
+> or a filter — usually proposed as tightening score integrity. Integrity here
+> lives in the unit scope, which is already server-enforced at both layers.
+> (Recorded here by the 2026-08-08 rules audit. It was a *permission* rule that
+> lived only in `COMPETITION_ENGINE.md` — a document the repo's own audit marks
+> stale — so it was one cleanup away from being lost.)
+
 > **Per-hole scoring is member-facing and SCOPED** (`scores.upsertEntry`/
 > `deleteEntry`, mig 072): a member enters scores for the match/group they play
 > in; owner/organizer/delegate score more broadly. See the scoped-model note under
