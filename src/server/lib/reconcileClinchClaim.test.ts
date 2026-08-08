@@ -182,7 +182,7 @@ describe("reconcileClinchClaim — the internal release is a CAS, so a stale one
     // — before the stale release below executes — a genuine finalize decides
     // the cup for loser instead and claims it for real.
     await ctx.admin.from("game_results").delete().in("game_id", gameIds);
-    expect(await claimClinchNotification(ctx.admin, compId, loser)).toBe(true);
+    expect((await claimClinchNotification(ctx.admin, compId, loser)).outcome).toBe("claimed");
     expect(await stored()).toBe(loser);
 
     // Step 2 of reconcileClinchClaim, replicated: release using the value read
