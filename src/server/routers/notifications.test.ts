@@ -103,13 +103,13 @@ describe("notifications router", () => {
   });
 
   // ── gate 3: preferences default from the registry, setPreference persists ──
-  it("getPreferences returns registry defaults when unset (chat OFF)", async () => {
+  it("getPreferences returns registry defaults when unset (every category ON)", async () => {
     const prefs = await ctx.caller().notifications.getPreferences();
     expect(prefs).toEqual({
-      scores: true,
+      game_results: true,
       planning: true,
       invites: true,
-      chat: false,
+      chat: true,
     });
   });
 
@@ -130,11 +130,14 @@ describe("notifications router", () => {
   });
 
   it("a member's subscription is theirs — a second user's getPreferences is independent", async () => {
-    // Owner turns chat on; member still sees the default OFF (per-user prefs).
-    await ctx.caller().notifications.setPreference({ key: "chat", enabled: true });
-    const memberPrefs = await ctx.callerAs("member").notifications.getPreferences();
-    expect(memberPrefs.chat).toBe(false);
+    // Owner turns chat OFF; the member is unaffected and still resolves to the
+    // registry default. Storing FALSE rather than TRUE is deliberate: every
+    // category now defaults ON, so a stored TRUE would match the default and
+    // this would pass whether or not preferences are per-user.
     await ctx.caller().notifications.setPreference({ key: "chat", enabled: false });
+    const memberPrefs = await ctx.callerAs("member").notifications.getPreferences();
+    expect(memberPrefs.chat).toBe(true);
+    await ctx.caller().notifications.setPreference({ key: "chat", enabled: true });
   });
 
   it("testSend delivers to the caller's own devices EVEN with the category off (bypasses the gate)", async () => {
@@ -186,7 +189,11 @@ describe("sendPush helper", () => {
   }
 
   it("gate 4: type OFF → NO send", async () => {
-    await seedDevice(); // a device exists, but chat is OFF by default
+    await seedDevice();
+    // Every category defaults ON now, so the gate must be tested with an EXPLICIT
+    // opt-out — the only input that distinguishes "reads the stored value" from
+    // "assumes on", and the one standing between a muted user and the push.
+    await sctx.admin.from("users").update({ notification_prefs: { chat: false } }).eq("id", sctx.user.id);
     sendMock.mockClear();
 
     const res = await sendPush(

@@ -22,11 +22,15 @@ import { notificationDefault, type NotificationKey } from "@/lib/notificationTyp
  *
  * ── The default matters, and is derived ─────────────────────────────────────
  * Before the query resolves, the value falls back to the REGISTRY default
- * (`notificationDefault`), not to a literal. `scores` defaults ON and `chat`
- * defaults OFF, so a hardcoded `?? false` would render `scores` as off for the
- * ~200ms before prefs land — showing every user, correctly opted in, a switch
- * that says they are not. Deriving it from the registry makes the fallback
- * right for every key by construction, including keys added later.
+ * (`notificationDefault`), not to a literal. EVERY category now defaults ON, so
+ * a hardcoded `?? false` would render every switch as off for the ~200ms before
+ * prefs land — showing every user, correctly opted in, a control that says they
+ * are not. Deriving it from the registry makes the fallback right for every key
+ * by construction, including keys added later.
+ *
+ * The literal this replaced was `?? false`, inherited from when `chat` was the
+ * only caller and defaulted OFF. It was correct exactly once, for one key, and
+ * silently wrong for the next one.
  */
 export interface NotificationPreferenceControl {
   /** Effective value: stored if set, else the registry default. */
