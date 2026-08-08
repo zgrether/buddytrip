@@ -509,47 +509,42 @@ export async function claimClinchNotification(
   competitionId: string,
   teamId: string
 ): Promise<ClinchClaimResult> {
-  const { data, error } = await admin
-    .from("competitions")
-    .update({ clinch_notified_team_id: teamId })
-    .eq("id", competitionId)
-    .or(`clinch_notified_team_id.is.null,clinch_notified_team_id.neq.${teamId}`)
-    // `clinch_notified_team_id` MUST be in this select even though nothing reads
-    // it. THIS LINE IS THE BUG FIX, and it is not a style choice:
-    //
-    // On a mutation, PostgREST applies an `or=(…)` filter in the scope of the
-    // RETURNING projection. With `select=id` the projection carries only `id`,
-    // so the filter's reference resolves against a relation that no longer has
-    // the column, and Postgres raises 42703 —
-    // `column competitions.clinch_notified_team_id does not exist` — naming a
-    // column that demonstrably DOES exist. Adding it to the select puts it back
-    // in scope.
-    //
-    // It is version-dependent, which is why every test passed while production
-    // never once worked: the identical request returns `[]` on the local stack's
-    // PostgREST 14.5 and 42703 on the deployed one. Verified both directions.
-    // `.eq()` filters are NOT affected — only `or=(…)` — so `releaseClinchClaim`
-    // below is fine and deliberately left alone.
-    .select("id, clinch_notified_team_id");
+  // Migration 107. The CAS is ONE SQL statement whose WHERE sees the PRE-image.
+  //
+  // It used to carry its predicate as a PostgREST `or=(…)` filter on the
+  // mutation, which cannot work: on the deployed PostgREST that filter is
+  // applied in the scope of the RETURNING projection, so after
+  // `SET clinch_notified_team_id = teamId` the row no longer satisfies
+  // `IS NULL OR <> teamId` and the projection excludes the row it just wrote.
+  // The write landed and reported itself lost — the caller read "already
+  // claimed" and sent nothing. (With the column absent from the select it was
+  // louder and easier: 42703 naming a column that plainly exists.)
+  //
+  // A compare-and-swap is falsified BY THE WRITE IT GUARDS, so no arrangement
+  // of select and filter expresses one. Do NOT move this back into a filter.
+  const { data, error } = await admin.rpc("claim_clinch_notification", {
+    p_competition_id: competitionId,
+    p_team_id: teamId,
+  });
 
   if (error) {
     return {
       outcome: "claim_error",
       message: error.message,
-      // PostgrestError carries `code`; it is the field that names the class of
-      // failure (42501 permission, PGRST204 schema cache, 23503 FK, …) and is
-      // exactly what six weeks of `false` could not say.
+      // The field that names the class of failure (42501 permission, PGRST202
+      // function-not-found, …) and is exactly what a bare `false` could not say.
       code: (error as { code?: string }).code ?? null,
     };
   }
-  if (data && data.length > 0) return { outcome: "claimed" };
+  if (data === true) return { outcome: "claimed" };
 
-  // Zero rows and no error. The ONLY legitimate reading is that the column
-  // already holds this team — the one row state `.or(is.null, neq)` excludes.
-  // So CONFIRM it rather than assume it, with a fresh read: the value observed
-  // at the start of the pass is stale by construction (a concurrent claim
-  // between that read and this write is the precise race the CAS exists for),
-  // so it cannot be the thing that decides this.
+  // The function returned false: it updated no row. The only legitimate reading
+  // is that the column already holds this team — the one state the WHERE
+  // excludes. CONFIRM that rather than assume it, with a fresh read, because
+  // false ALSO covers a competition id that matches nothing. The value observed
+  // at the start of the pass cannot decide it: a concurrent claim between that
+  // read and this write is the precise race the CAS exists for, so it is stale
+  // by construction.
   const { data: now } = await admin
     .from("competitions")
     .select("clinch_notified_team_id")
@@ -588,22 +583,31 @@ export async function claimClinchNotification(
  * one clinch. The CAS makes A's clear fail instead — A's view of the world is
  * stale, and the row says so.
  *
- * A plain `.eq()` is correct here (unlike the claim's `.or(is.null, neq)`)
- * precisely BECAUSE the caller only invokes this with a non-null observed value:
- * there is nothing to release when the column is already null.
+ * A plain `=` is correct here (unlike the claim's `IS DISTINCT FROM`) precisely
+ * BECAUSE the caller only invokes this with a non-null observed value: there is
+ * nothing to release when the column is already null.
+ *
+ * ── Why this moved to SQL too (migration 107) ────────────────────────────────
+ * It SETS the column it FILTERS on, which is the same shape that broke the
+ * claim: if the filter is applied to the post-update projection, the row is
+ * null by then, the `eq` no longer matches, and every SUCCESSFUL release
+ * reports `false`. Its `.eq()` form never raised 42703, which made it look
+ * unaffected — but that was never established: the probe that "cleared" it used
+ * an id matching nothing, where zero rows is the right answer either way. It
+ * tested error-vs-no-error, not row-return semantics. Rather than reason about
+ * filter placement per operator, both halves now sit where the semantics are
+ * unambiguous.
  */
 export async function releaseClinchClaim(
   admin: SupabaseClient,
   competitionId: string,
   expectedTeamId: string
 ): Promise<boolean> {
-  const { data, error } = await admin
-    .from("competitions")
-    .update({ clinch_notified_team_id: null })
-    .eq("id", competitionId)
-    .eq("clinch_notified_team_id", expectedTeamId)
-    .select("id");
-  return !error && !!data && data.length > 0;
+  const { data, error } = await admin.rpc("release_clinch_claim", {
+    p_competition_id: competitionId,
+    p_expected_team_id: expectedTeamId,
+  });
+  return !error && data === true;
 }
 
 /**

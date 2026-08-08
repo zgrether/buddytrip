@@ -136,14 +136,16 @@ describe("claimClinchNotification — exactly-once, and the un-clinch rule", () 
    * return reported each failure as correct suppression.
    */
   it("a REFUSED write returns claim_error carrying the message and code", async () => {
-    const chain: Record<string, unknown> = {};
-    for (const m of ["from", "update", "eq", "or", "select"]) chain[m] = () => chain;
-    chain.then = (ok: (v: unknown) => void) =>
-      ok({ data: null, error: { message: "permission denied for table competitions", code: "42501" } });
+    const stub = {
+      rpc: async () => ({
+        data: null,
+        error: { message: "permission denied for table competitions", code: "42501" },
+      }),
+    };
 
     await expect(
       claimClinchNotification(
-        chain as unknown as Parameters<typeof claimClinchNotification>[0],
+        stub as unknown as Parameters<typeof claimClinchNotification>[0],
         competitionId,
         teamA
       )
@@ -155,13 +157,11 @@ describe("claimClinchNotification — exactly-once, and the un-clinch rule", () 
   });
 
   it("an error with no code still reports claim_error rather than degrading to a loss", async () => {
-    const chain: Record<string, unknown> = {};
-    for (const m of ["from", "update", "eq", "or", "select"]) chain[m] = () => chain;
-    chain.then = (ok: (v: unknown) => void) => ok({ data: null, error: { message: "network reset" } });
+    const stub = { rpc: async () => ({ data: null, error: { message: "network reset" } }) };
 
     await expect(
       claimClinchNotification(
-        chain as unknown as Parameters<typeof claimClinchNotification>[0],
+        stub as unknown as Parameters<typeof claimClinchNotification>[0],
         competitionId,
         teamA
       )
