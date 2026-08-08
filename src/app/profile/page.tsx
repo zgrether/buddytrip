@@ -13,10 +13,8 @@ import {
   IconTrash,
   IconArrowLeft,
   IconBell,
-  IconBellRinging,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
-import { showToast } from "@/lib/toast";
 import { useNotificationPreference } from "@/lib/useNotificationPreference";
 import { NOTIFICATION_TYPES, type NotificationKey } from "@/lib/notificationTypes";
 import { useDevicePush } from "@/lib/useDevicePush";
@@ -369,7 +367,6 @@ export default function ProfilePage() {
                     onClick={() => router.push("/profile/archived-ideas")}
                   />
                   <NotificationSettings />
-                  <NotificationTestRow />
                 </div>
               </Section>
 
@@ -748,39 +745,6 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
         className="mt-0.5"
       />
     </div>
-  );
-}
-
-// ── Notification test row (Push Phase 2) ───────────────────────────────────
-// Fires a self-only test push (notifications.testSend → the caller's own
-// devices). Toast reflects the outcome so it's usable from the installed PWA on
-// a phone — the practical way to confirm delivery without a console.
-function NotificationTestRow() {
-  const testSend = trpc.notifications.testSend.useMutation({
-    onSuccess(res) {
-      if (res.notConfigured) {
-        showToast("Push isn't configured on the server yet.", "info");
-      } else if (res.sent > 0) {
-        showToast(`Test notification sent to ${res.sent} device${res.sent === 1 ? "" : "s"}.`, "info");
-      } else {
-        showToast("No devices subscribed — enable notifications first.", "info");
-      }
-    },
-    onError() {
-      showToast("Couldn't send the test notification.");
-    },
-  });
-
-  return (
-    <SettingsRow
-      icon={<IconBellRinging size={16} stroke={1.75} />}
-      label={testSend.isPending ? "Sending…" : "Send test notification"}
-      sub="Check push is working on this device"
-      onClick={() => {
-        if (!testSend.isPending) testSend.mutate();
-      }}
-      lastRow
-    />
   );
 }
 
