@@ -1,56 +1,34 @@
 "use client";
 
 import { Bell, BellOff } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
+import { useNotificationPreference } from "@/lib/useNotificationPreference";
 
 /**
  * Chat notifications bell — the in-context toggle for the `chat` notification
  * preference (Push Phase 2). Lives inline with the ✕ in the chat header.
  *
  * ONE source of truth: it reads/writes `notifications.getPreferences` /
- * `setPreference` — the SAME stored `users.notification_prefs.chat` the future
+ * `setPreference` — the SAME stored `users.notification_prefs.chat` the
  * settings screen reads. No local pref state, so the header bell and the
  * settings control can never disagree. This is what makes the OFF-by-default
  * chat category safe: the switch is exactly where someone would look for it.
  *
+ * The cache mechanics moved to `useNotificationPreference` when the `scores`
+ * control landed, so one piece of code reads and writes every category. This is
+ * a PURE refactor of this component — same query, same optimistic write, same
+ * rollback, and the `?? false` fallback is now derived from the registry
+ * (`chat.defaultOn === false`) rather than written out.
+ *
  * Filled bell + accent = on; outline bell + dim = off.
  */
 export function ChatNotifyToggle() {
-  const utils = trpc.useUtils();
-  const prefs = trpc.notifications.getPreferences.useQuery(undefined, {
-    staleTime: 60_000,
-  });
-  const setPref = trpc.notifications.setPreference.useMutation({
-    async onMutate({ key, enabled }) {
-      await utils.notifications.getPreferences.cancel();
-      const prev = utils.notifications.getPreferences.getData();
-      if (prev) {
-        utils.notifications.getPreferences.setData(undefined, {
-          ...prev,
-          [key]: enabled,
-        });
-      }
-      return { prev };
-    },
-    onError(_err, _vars, ctx) {
-      if (ctx?.prev) utils.notifications.getPreferences.setData(undefined, ctx.prev);
-    },
-    onSettled() {
-      utils.notifications.getPreferences.invalidate();
-    },
-  });
-
-  // Until prefs load, assume the registry default (chat OFF) so the bell never
-  // flashes the wrong state.
-  const on = prefs.data?.chat ?? false;
-
-  const toggle = () => setPref.mutate({ key: "chat", enabled: !on });
+  const { enabled: on, loading, toggle } = useNotificationPreference("chat");
 
   return (
     <button
       type="button"
       onClick={toggle}
-      disabled={prefs.isLoading}
+      disabled={loading}
       aria-label={on ? "Turn off chat notifications" : "Turn on chat notifications"}
       aria-pressed={on}
       title={on ? "Chat notifications on" : "Chat notifications off"}
