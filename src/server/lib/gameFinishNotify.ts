@@ -514,7 +514,23 @@ export async function claimClinchNotification(
     .update({ clinch_notified_team_id: teamId })
     .eq("id", competitionId)
     .or(`clinch_notified_team_id.is.null,clinch_notified_team_id.neq.${teamId}`)
-    .select("id");
+    // `clinch_notified_team_id` MUST be in this select even though nothing reads
+    // it. THIS LINE IS THE BUG FIX, and it is not a style choice:
+    //
+    // On a mutation, PostgREST applies an `or=(…)` filter in the scope of the
+    // RETURNING projection. With `select=id` the projection carries only `id`,
+    // so the filter's reference resolves against a relation that no longer has
+    // the column, and Postgres raises 42703 —
+    // `column competitions.clinch_notified_team_id does not exist` — naming a
+    // column that demonstrably DOES exist. Adding it to the select puts it back
+    // in scope.
+    //
+    // It is version-dependent, which is why every test passed while production
+    // never once worked: the identical request returns `[]` on the local stack's
+    // PostgREST 14.5 and 42703 on the deployed one. Verified both directions.
+    // `.eq()` filters are NOT affected — only `or=(…)` — so `releaseClinchClaim`
+    // below is fine and deliberately left alone.
+    .select("id, clinch_notified_team_id");
 
   if (error) {
     return {
