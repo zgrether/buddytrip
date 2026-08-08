@@ -150,9 +150,30 @@ export const TopNav: FC<TopNavProps> = ({
                 aria-selected={selected}
                 data-testid={`desktop-tab-${id}`}
                 onClick={() => onSelectView(id)}
-                className="flex h-full items-center gap-1.5 px-4 text-[13.5px] font-semibold transition-colors"
+                // THE DESKTOP TAB STRIP the survey names explicitly — it had
+                // no hover, no press, and no focus ring before this edit.
+                //
+                // The inline `background: "transparent"` above WAS the reason
+                // a hover class would have been silently inert: an inline
+                // style always wins over a class-based rule regardless of the
+                // inline VALUE, which is the exact trap `ToolButton`'s own
+                // comment in this file documents further down ("an inline
+                // background... would otherwise win over the class"). Removed
+                // rather than worked around — Tailwind's preflight already
+                // resets `<button>` to `background-color: transparent`, so
+                // dropping the redundant inline value changes nothing at rest
+                // and lets `hover:bg-[...]` actually take effect.
+                //
+                // `active:scale-[0.98]` — same STYLE_GUIDE.md §5 value as
+                // every other element in this task. `focus-visible` ring —
+                // same uniform treatment. `transition-colors` becomes
+                // `transition-[color,border-color,background-color,transform]`
+                // to cover the color/border-color the SELECTED prop already
+                // animates, plus the two new hover/press properties, as one
+                // unambiguous list (see AppTabBar's comment on why two
+                // `transition-*` classes can't safely combine).
+                className="flex h-full items-center gap-1.5 px-4 text-[13.5px] font-semibold transition-[color,border-color,background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
                 style={{
-                  background: "transparent",
                   border: 0,
                   borderBottom: `2px solid ${selected ? "var(--color-bt-accent)" : "transparent"}`,
                   color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
@@ -175,7 +196,15 @@ export const TopNav: FC<TopNavProps> = ({
           type="button"
           onClick={() => router.push("/dashboard")}
           aria-label="Go to dashboard"
-          className="flex items-center gap-[7px] rounded-[9px] px-2 py-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
+          // Hover already existed (`hover:bg-[...]`) — keep it. Adding: a real
+          // PRESS (`active:scale-[0.98]`, STYLE_GUIDE.md §5's documented value,
+          // matching AppTabBar's mobile cells rather than picking a different
+          // number for the desktop equivalent) and the same uniform
+          // `focus-visible` ring this task applies everywhere. `transition-colors`
+          // becomes `transition-[background-color,transform]` — see AppTabBar's
+          // comment for why two separate `transition-*` classes can't safely
+          // combine (they each set the FULL `transition-property` value).
+          className="flex items-center gap-[7px] rounded-[9px] px-2 py-1.5 transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
         >
           <svg
             width="18"
@@ -379,7 +408,34 @@ function ToolButton({
       onPointerDown={() => onPrefetch?.()}
       aria-label={ariaLabel}
       data-testid={testId}
-      className="relative inline-flex h-9 items-center gap-[7px] rounded-[9px] px-2.5 transition-colors @max-[600px]:w-9 @max-[600px]:justify-center @max-[600px]:gap-0 @max-[600px]:px-0"
+      // The hover wash above is DELIBERATELY JS-state-driven (see the comment
+      // on `hovered`/`background` above) rather than a Tailwind `hover:`
+      // class, because the resting `background` is itself inline — so a
+      // class-based hover here would lose to it, same trap as the desktop
+      // tab strip. Left untouched; it already works and is load-bearing.
+      //
+      // `active:scale-[0.98]` is added as a plain class and is SAFE alongside
+      // that: `transform` is a different CSS property than `background`, so
+      // there is nothing inline for it to lose to. This is what gives touch
+      // users real press feedback even though the JS hover state above never
+      // fires on touch (mouseenter/mouseleave don't fire on tap) — and this
+      // button is `hidden lg:block` at its call site anyway, so touch is
+      // reachable only via a trackpad-as-mouse or similar, but the press
+      // treatment costs nothing and stays consistent with every other
+      // element in this task.
+      //
+      // `transition-colors` → `transition-[background-color,transform]`:
+      // the JS-driven background swap was already being smoothed by
+      // `transition-colors` (a CSS transition applies to inline style changes
+      // too, not only class toggles), so replacing it with a single-property
+      // `transition-transform` would have silently DROPPED that existing
+      // smoothing rather than added to it.
+      //
+      // The focus-visible ring is a box-shadow, an entirely different CSS
+      // property from `background` — so unlike a hover CLASS, it has nothing
+      // to lose to the inline background logic and is added the same as
+      // everywhere else in this task, uniformly.
+      className="relative inline-flex h-9 items-center gap-[7px] rounded-[9px] px-2.5 transition-[background-color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)] @max-[600px]:w-9 @max-[600px]:justify-center @max-[600px]:gap-0 @max-[600px]:px-0"
       style={{
         background,
         border: restingBorder ?? "none",
