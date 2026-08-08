@@ -76,18 +76,31 @@ describe("devicePushCopy — the states the app cannot fix say so", () => {
     expect(devicePushCopy("unsupported").actionable).toBe(false);
   });
 
-  it("on and off are both actionable, and their labels are distinguishable", () => {
+  it("on and off are both actionable, and are a fixed NAME plus a distinguishable STATE", () => {
+    // Replaces an earlier assertion that the two LABELS were distinguishable.
+    // That was true under the old copy ("Notifications are on for this
+    // device" vs "Enable notifications on this device") and is now false on
+    // purpose — the control's identity ("Notifications") doesn't change
+    // between on and off, only its state does, matching the shape of the
+    // static "Idea archive" row beside it ("Idea archive" / a description).
     const on = devicePushCopy("on");
     const off = devicePushCopy("off");
     expect(on.actionable).toBe(true);
     expect(off.actionable).toBe(true);
-    expect(on.label).not.toBe(off.label);
+    expect(on.label).toBe("Notifications");
+    expect(off.label).toBe("Notifications");
+    expect(on.sub).not.toBe(off.sub);
   });
 
-  it("turning off promises not to touch other devices", () => {
-    // The server delete is endpoint-scoped AND user-scoped; the copy has to
-    // match, or someone with two phones can't tell what the button does.
-    expect(devicePushCopy("on").sub).toMatch(/other devices/i);
+  it("on/off copy doesn't explain the tap or disclaim scope", () => {
+    // Replaces an earlier assertion that pinned "Your other devices are
+    // unaffected" as REQUIRED copy. That disclaimer told people the scope
+    // MIGHT not have been what they expected, which is the opposite of
+    // reassuring — removed on purpose, not lost by accident.
+    for (const copy of [devicePushCopy("on"), devicePushCopy("off")]) {
+      expect(copy.sub).not.toMatch(/tap/i);
+      expect(copy.sub).not.toMatch(/other device/i);
+    }
   });
 
   it("no state claims the app can grant or revoke browser permission", () => {

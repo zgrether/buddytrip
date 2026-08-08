@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ChevronDown } from "lucide-react";
 import {
   IconUser,
   IconMail,
@@ -13,14 +13,13 @@ import {
   IconTrash,
   IconArrowLeft,
   IconBell,
-  IconBellRinging,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
-import { showToast } from "@/lib/toast";
 import { useNotificationPreference } from "@/lib/useNotificationPreference";
 import { NOTIFICATION_TYPES, type NotificationKey } from "@/lib/notificationTypes";
 import { useDevicePush } from "@/lib/useDevicePush";
 import { Checkbox } from "@/components/games/Checkbox";
+import { Collapse } from "@/components/games/Collapse";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
@@ -368,7 +367,6 @@ export default function ProfilePage() {
                     onClick={() => router.push("/profile/archived-ideas")}
                   />
                   <NotificationSettings />
-                  <NotificationTestRow />
                 </div>
               </Section>
 
@@ -502,6 +500,7 @@ function SettingsRow({
   right,
   onClick,
   lastRow = false,
+  disclosure,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -509,9 +508,80 @@ function SettingsRow({
   right?: React.ReactNode;
   onClick?: () => void;
   lastRow?: boolean;
+  /**
+   * Splits the row into TWO independent tap targets instead of one: the
+   * icon+label area still triggers `onClick` exactly as before, and a
+   * SEPARATE trailing chevron toggles this disclosure.
+   *
+   * Reused, not invented — this is `ChecklistRow`'s "headerControl" accordion
+   * shape (`src/components/games/ChecklistRow.tsx`): "the icon+title toggle
+   * the panel; the control sits beside the chevron OUTSIDE that button,
+   * owning its own taps... so we never nest buttons." A row can have its own
+   * tap action AND a disclosure at the same time — the notifications row
+   * toggles the device on tap, and separately discloses the category list —
+   * and nesting a button inside a button isn't valid HTML, so the two have to
+   * be siblings rather than one control wearing two meanings.
+   *
+   * Mutually exclusive with `right` — the chevron IS the trailing content
+   * in this mode, so `right` is ignored.
+   */
+  disclosure?: { open: boolean; onToggle: () => void; label: string };
 }) {
   const Tag: keyof JSX.IntrinsicElements = onClick ? "button" : "div";
   const interactive = !!onClick;
+  const borderStyle: React.CSSProperties = {
+    borderBottom: lastRow ? undefined : "0.5px solid var(--color-bt-border)",
+  };
+  const iconBlock = (
+    <span
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
+      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+    >
+      {icon}
+    </span>
+  );
+  const textBlock = (
+    <div className="min-w-0 flex-1">
+      <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>{label}</p>
+      {sub && (
+        <p className="mt-0.5 truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+
+  if (disclosure) {
+    return (
+      <div className="flex w-full items-center gap-3 px-4 py-3" style={borderStyle}>
+        <Tag
+          type={interactive ? "button" : undefined}
+          onClick={onClick}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          {iconBlock}
+          {textBlock}
+        </Tag>
+        <button
+          type="button"
+          onClick={disclosure.onToggle}
+          aria-label={disclosure.label}
+          aria-expanded={disclosure.open}
+          className="flex shrink-0 items-center rounded-lg p-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
+        >
+          <ChevronDown
+            size={16}
+            style={{
+              color: "var(--color-bt-text-dim)",
+              transform: disclosure.open ? "rotate(180deg)" : undefined,
+              transition: "transform 120ms",
+            }}
+          />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <Tag
       type={interactive ? "button" : undefined}
@@ -519,24 +589,10 @@ function SettingsRow({
       className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
         interactive ? "hover:bg-[var(--color-bt-hover)]" : ""
       }`}
-      style={{
-        borderBottom: lastRow ? undefined : "0.5px solid var(--color-bt-border)",
-      }}
+      style={borderStyle}
     >
-      <span
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-        style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-      >
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>{label}</p>
-        {sub && (
-          <p className="mt-0.5 truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {sub}
-          </p>
-        )}
-      </div>
+      {iconBlock}
+      {textBlock}
       {right ?? (interactive ? (
         <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
       ) : null)}
@@ -561,25 +617,80 @@ function SettingsRow({
 // alone. `planning` and `invites` stay defined in the registry — their triggers
 // exist and are waiting on senders — but a row for them would be a control over
 // nothing, which is worse than an absent one. See NOTIFICATIONS.md.
+//
+// ── The chevron is a DISCLOSURE now, not a decoration ───────────────────────
+// It used to be a trailing `ChevronRight` inherited from `SettingsRow`'s
+// default — a right-pointing "go to" arrow on a row that never navigates
+// anywhere, it just toggles in place. Now it drives the category list open and
+// closed, hidden by default, and it disappears entirely in every state where
+// there is nothing to disclose (off, blocked, unsupported, still settling) —
+// a chevron on an empty list is the same "pointing at nothing" bug, just moved.
+// The row's own tap keeps doing what it always did (toggle the device); the
+// chevron is a second, independent control (`SettingsRow`'s `disclosure` prop).
 function NotificationSettings() {
   const device = useDevicePush();
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
 
-  const deviceLabel = device.settling
-    ? "Checking notifications…"
-    : device.busy
-      ? "Working…"
-      : device.copy.label;
+  // Hidden by default means hidden every time it BECOMES available again, not
+  // just on first mount — leaving "on" for any reason (turned off, blocked,
+  // unsupported, a re-settle) collapses the list, so re-enabling later never
+  // resumes into a list that was left open pointing at nothing.
+  //
+  // Render-phase adjustment, not an effect — the same idiom `Collapse` itself
+  // uses ("via React's render-phase 'adjust state on change' pattern — not an
+  // effect, that would be a synchronous-setState-in-effect cascade"). A
+  // `useEffect` doing this exact `setState` is what `react-hooks/set-state-in-effect`
+  // exists to catch, and this codebase already has the alternative on hand.
+  const [prevDeviceState, setPrevDeviceState] = useState(device.state);
+  if (device.state !== prevDeviceState) {
+    setPrevDeviceState(device.state);
+    if (device.state !== "on") setCategoriesOpen(false);
+  }
+
+  const hasDisclosure = device.state === "on";
+
+  // Same "name + state" shape as the resolved copy (`devicePushCopy`) — the
+  // label is the control's fixed identity, the sub is what's currently true.
+  // Transient states get their own short sub rather than swallowing the label
+  // into a full sentence ("Checking notifications…") the way this used to.
+  const deviceLabel = device.settling || device.busy ? "Notifications" : device.copy.label;
+  const deviceSub = device.settling ? "Checking…" : device.busy ? "Working…" : device.copy.sub;
 
   return (
     <>
       <SettingsRow
         icon={<IconBell size={16} stroke={1.75} />}
         label={deviceLabel}
-        sub={device.settling ? undefined : device.copy.sub}
+        sub={deviceSub}
         onClick={device.copy.actionable && !device.settling ? device.toggle : undefined}
+        // The device row is the true last row in the card whenever there's no
+        // disclosure below it (off/blocked/unsupported/settling) — nothing
+        // used to follow it here either, before the test row was removed.
+        lastRow={!hasDisclosure}
+        disclosure={
+          hasDisclosure
+            ? {
+                open: categoriesOpen,
+                onToggle: () => setCategoriesOpen((v) => !v),
+                label: categoriesOpen
+                  ? "Hide notification categories"
+                  : "Show notification categories",
+              }
+            : undefined
+        }
+        // No trailing chevron AT ALL outside the "on" state — suppresses the
+        // default `ChevronRight` explicitly rather than falling through to it.
+        // Off is still a real toggle (tap turns it on) but doesn't NAVIGATE,
+        // so a right-pointing arrow there is the same orphaned-chevron bug
+        // this whole change exists to fix; blocked/unsupported/settling were
+        // never actionable and never had a legitimate chevron either.
+        right={hasDisclosure ? undefined : <></>}
       />
-      {device.state === "on" &&
-        EXPOSED_CATEGORIES.map((key) => <NotificationCategoryRow key={key} categoryKey={key} />)}
+      {hasDisclosure && (
+        <Collapse open={categoriesOpen}>
+          {EXPOSED_CATEGORIES.map((key) => <NotificationCategoryRow key={key} categoryKey={key} />)}
+        </Collapse>
+      )}
     </>
   );
 }
@@ -594,7 +705,15 @@ function NotificationSettings() {
 const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results"];
 
 /**
- * One category row. Indented under the device toggle it depends on.
+ * One category row. Indented under the device toggle it depends on, and now
+ * rendered inside that row's `Collapse` body — a peer of it visually,
+ * beneath it structurally.
+ *
+ * NO top border of its own: the device row above it always carries a bottom
+ * border while a disclosure exists (`SettingsRow`'s `lastRow={!hasDisclosure}`),
+ * so this row drawing ANOTHER divider immediately below it would double the
+ * hairline whenever the list is open. This is also the true last row in the
+ * card now that the test row is gone, so no bottom border either.
  *
  * Uses `Checkbox` — the app's boolean control, extracted precisely so surfaces
  * stop inventing their own. There is no switch/pill primitive in this codebase
@@ -606,10 +725,7 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
   const def = NOTIFICATION_TYPES.find((t) => t.key === categoryKey);
 
   return (
-    <div
-      className="flex w-full items-start gap-3 px-4 py-3 pl-11"
-      style={{ borderTop: "0.5px solid var(--color-bt-border)" }}
-    >
+    <div className="flex w-full items-start gap-3 px-4 py-3 pl-11">
       <div className="min-w-0 flex-1">
         <div style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
           {/* The user-facing LABEL, never the key. "Competition & game alerts",
@@ -629,39 +745,6 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
         className="mt-0.5"
       />
     </div>
-  );
-}
-
-// ── Notification test row (Push Phase 2) ───────────────────────────────────
-// Fires a self-only test push (notifications.testSend → the caller's own
-// devices). Toast reflects the outcome so it's usable from the installed PWA on
-// a phone — the practical way to confirm delivery without a console.
-function NotificationTestRow() {
-  const testSend = trpc.notifications.testSend.useMutation({
-    onSuccess(res) {
-      if (res.notConfigured) {
-        showToast("Push isn't configured on the server yet.", "info");
-      } else if (res.sent > 0) {
-        showToast(`Test notification sent to ${res.sent} device${res.sent === 1 ? "" : "s"}.`, "info");
-      } else {
-        showToast("No devices subscribed — enable notifications first.", "info");
-      }
-    },
-    onError() {
-      showToast("Couldn't send the test notification.");
-    },
-  });
-
-  return (
-    <SettingsRow
-      icon={<IconBellRinging size={16} stroke={1.75} />}
-      label={testSend.isPending ? "Sending…" : "Send test notification"}
-      sub="Check push is working on this device"
-      onClick={() => {
-        if (!testSend.isPending) testSend.mutate();
-      }}
-      lastRow
-    />
   );
 }
 
