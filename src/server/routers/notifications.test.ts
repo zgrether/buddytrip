@@ -118,7 +118,7 @@ describe("notifications router", () => {
     await caller.notifications.setPreference({ key: "chat", enabled: true });
     const prefs = await caller.notifications.getPreferences();
     expect(prefs.chat).toBe(true);
-    expect(prefs.scores).toBe(true); // unchanged
+    expect(prefs.game_results).toBe(true); // unchanged
     // reset
     await caller.notifications.setPreference({ key: "chat", enabled: false });
   });
@@ -147,7 +147,7 @@ describe("notifications router", () => {
       p256dh: "k",
       auth: "a",
     });
-    await caller.notifications.setPreference({ key: "scores", enabled: false });
+    await caller.notifications.setPreference({ key: "game_results", enabled: false });
     sendMock.mockClear();
     sendMock.mockResolvedValue({ statusCode: 201 });
 
@@ -155,7 +155,7 @@ describe("notifications router", () => {
     expect(res.skippedPreferenceOff).toBe(false); // gate bypassed
     expect(res.sent).toBeGreaterThanOrEqual(1);
 
-    await caller.notifications.setPreference({ key: "scores", enabled: true });
+    await caller.notifications.setPreference({ key: "game_results", enabled: true });
   });
 });
 
@@ -207,7 +207,7 @@ describe("sendPush helper", () => {
 
     const res = await sendPush(
       sctx.user.id,
-      "scores", // default ON
+      "game_results", // default ON
       { title: "t", body: "b" },
       { admin: sctx.admin }
     );
@@ -222,7 +222,7 @@ describe("sendPush helper", () => {
 
     const res = await sendPush(
       sctx.user.id,
-      "scores",
+      "game_results",
       { title: "t", body: "b" },
       { admin: sctx.admin }
     );

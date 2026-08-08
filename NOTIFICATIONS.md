@@ -4,7 +4,7 @@ Companion to the registry (`src/lib/notificationTypes.ts`). The registry is the
 code source of truth for the four **categories**; this doc is the source of truth
 for which **write sites** may fan out to them, and how.
 
-**Status: the `scores` category is WIRED (Phase 3).** One wire point —
+**Status: the `game_results` category is WIRED (Phase 3).** One wire point —
 `games.finish`, which covers all four formats — produces two notifications: "a
 game is final" and, when it becomes true, "the cup is clinched". Everything else
 in the table below is still unwired: `planning`, `invites` and `chat` are
@@ -22,7 +22,7 @@ import that slips through.
 
 | Key | Label | Default | Covers | Excludes (load-bearing) |
 |-----|-------|:-------:|--------|--------|
-| `scores` | Scores & results | **ON** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
+| `game_results` | Competition & game alerts | **ON** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
 | `planning` | Trip planning | **ON** | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
 | `chat` | Chat messages | **OFF** | new messages, any channel | per-channel prefs — one global switch |
@@ -51,13 +51,13 @@ disappearance of that row raises the volume budget.
 
 | Write site (tRPC) | What happened | Category | Eligibility | Est. volume |
 |---|---|---|---|---|
-| `scores.upsertEntry` | A hole score entered | `scores` | **NEVER** | ~540/day (30×18). Mechanical. Never wire. |
-| `scores.deleteEntry` | A hole score cleared | `scores` | **NEVER** | churny corrections; mechanical |
-| `games.finish` | Game/round finalized (EVERY format, incl. a non-golf result posted to the cup) | `scores` | **ELIGIBLE** | ~5–15/day golf + ~1–5/**trip** non-golf. **The natural Phase 3 first wire.** |
-| `games.openCorrection` | Correction window opened | `scores` | BATCH | rare; only notify affected players |
-| competition leaderboard → cup decided | **Cup clinched** | `scores` | **ELIGIBLE** | ~1–3/trip. **Highest-value push in the app** — "Manhattans clinched." |
-| `matches.setPairings` / `assignPlayer` / `reorder` | Pairings/roster setup | `scores` | **NEVER** | setup-time mechanical churn |
-| `matches.setHandicap` / `setPointValue` | Config tweak | `scores` | **NEVER** | mechanical |
+| `scores.upsertEntry` | A hole score entered | `game_results` | **NEVER** | ~540/day (30×18). Mechanical. Never wire. |
+| `scores.deleteEntry` | A hole score cleared | `game_results` | **NEVER** | churny corrections; mechanical |
+| `games.finish` | Game/round finalized (EVERY format, incl. a non-golf result posted to the cup) | `game_results` | **ELIGIBLE** | ~5–15/day golf + ~1–5/**trip** non-golf. **The natural Phase 3 first wire.** |
+| `games.openCorrection` | Correction window opened | `game_results` | BATCH | rare; only notify affected players |
+| competition leaderboard → cup decided | **Cup clinched** | `game_results` | **ELIGIBLE** | ~1–3/trip. **Highest-value push in the app** — "Manhattans clinched." |
+| `matches.setPairings` / `assignPlayer` / `reorder` | Pairings/roster setup | `game_results` | **NEVER** | setup-time mechanical churn |
+| `matches.setHandicap` / `setPointValue` | Config tweak | `game_results` | **NEVER** | mechanical |
 | `datePoll.lockDateWindow` | Dates locked | `planning` | **ELIGIBLE** | ~1/trip |
 | `datePoll.castDateVote` / `castVoteForMember` | A vote cast | `planning` | **NEVER** | ~hundreds during polling |
 | `trips.lockDestination` | Destination locked | `planning` | **ELIGIBLE** | ~1/trip |
@@ -87,7 +87,7 @@ disappearance of that row raises the volume budget.
    (per-recipient debounce window) before it's wired — out of scope until Phase 3
    picks up chat/itinerary.
 
-## What the `scores` wiring actually does (Phase 3, shipped)
+## What the `game_results` wiring actually does (Phase 3, shipped)
 
 One call site — `games.finish` — because there is now one finalize for every
 format. `src/server/lib/gameFinishNotify.ts` owns it, and all the copy lives

@@ -170,7 +170,7 @@ export const notificationsRouter = router({
   testSend: authedProcedure.mutation(async ({ ctx }) => {
     const result = await sendPush(
       ctx.user.id,
-      "scores",
+      "game_results",
       {
         title: "BuddyTrip",
         body: "🔔 Test notification — push is working.",

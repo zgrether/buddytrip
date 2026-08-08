@@ -688,8 +688,8 @@ function NotificationEnableRow() {
 // user may not even be looking at, so it has no in-context home — settings is
 // where someone goes looking for it.
 function ScoresNotifyRow() {
-  const { enabled, loading, saving, toggle } = useNotificationPreference("scores");
-  const def = NOTIFICATION_TYPES.find((t) => t.key === "scores");
+  const { enabled, loading, saving, toggle } = useNotificationPreference("game_results");
+  const def = NOTIFICATION_TYPES.find((t) => t.key === "game_results");
 
   return (
     <SettingsRow

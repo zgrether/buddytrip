@@ -3,11 +3,11 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 import { sendPushToUsers } from "../lib/sendPushToUsers";
 
 /**
- * The `scores` preference, end to end: the toggle writes it, and the SERVER
+ * The `game_results` preference, end to end: the toggle writes it, and the SERVER
  * honours it.
  *
  * ── Why this test and not a UI one ──────────────────────────────────────────
- * `scores` is the one wired category — `games.finish` and the cup clinch both
+ * `game_results` is the one wired category — `games.finish` and the cup clinch both
  * send under it — and until now it had no off switch anywhere. Adding one is
  * only worth doing if the preference is ENFORCED; a switch over an unenforced
  * preference is worse than no switch, because it tells someone they have opted
@@ -22,18 +22,18 @@ import { sendPushToUsers } from "../lib/sendPushToUsers";
 
 let ctx: TestContext;
 let userId: string;
-const TRIGGER = `test:scores-pref-${genId("t")}`;
+const TRIGGER = `test:game-results-pref-${genId("t")}`;
 
 const PAYLOAD = { title: "Final: Test", body: "Alpha 2 – Bravo 1" };
 
 /** Set the preference through the REAL front door the toggle uses. */
-async function setScores(enabled: boolean) {
-  await ctx.caller().notifications.setPreference({ key: "scores", enabled });
+async function setGameResults(enabled: boolean) {
+  await ctx.caller().notifications.setPreference({ key: "game_results", enabled });
 }
 
-/** Send under `scores` with the log context a real trigger passes. */
+/** Send under `game_results` with the log context a real trigger passes. */
 async function send() {
-  return sendPushToUsers([userId], "scores", PAYLOAD, {
+  return sendPushToUsers([userId], "game_results", PAYLOAD, {
     admin: ctx.admin,
     context: { trigger: TRIGGER, actorUserId: "someone-else" },
   });
@@ -63,15 +63,15 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 60_000);
 
-describe("the scores preference is enforced, not decorative", () => {
-  it("UNSET resolves to the registry default (scores is ON) — the state of every user today", async () => {
+describe("the game_results preference is enforced, not decorative", () => {
+  it("UNSET resolves to the registry default (game_results is ON) — the state of every user today", async () => {
     // What the toggle must render for someone who has never touched it. If this
     // were false, every correctly-opted-in user would see a switch saying they
     // are opted out.
     await ctx.admin.from("users").update({ notification_prefs: {} }).eq("id", userId);
 
     const prefs = await ctx.caller().notifications.getPreferences();
-    expect(prefs.scores).toBe(true);
+    expect(prefs.game_results).toBe(true);
 
     const res = await send();
     expect(res.skippedPreferenceOff, "an unset preference must not skip").toBe(0);
@@ -79,8 +79,8 @@ describe("the scores preference is enforced, not decorative", () => {
   }, 60_000);
 
   it("OFF removes the user at SEND time, and the skip is RECORDED", async () => {
-    await setScores(false);
-    expect((await ctx.caller().notifications.getPreferences()).scores).toBe(false);
+    await setGameResults(false);
+    expect((await ctx.caller().notifications.getPreferences()).game_results).toBe(false);
 
     const res = await send();
 
@@ -95,27 +95,27 @@ describe("the scores preference is enforced, not decorative", () => {
   }, 60_000);
 
   it("ON again puts the user back in the audience", async () => {
-    await setScores(true);
-    expect((await ctx.caller().notifications.getPreferences()).scores).toBe(true);
+    await setGameResults(true);
+    expect((await ctx.caller().notifications.getPreferences()).game_results).toBe(true);
 
     const res = await send();
     expect(res.skippedPreferenceOff).toBe(0);
     expect(res.recipients).toBe(1);
   }, 60_000);
 
-  it("toggling scores does NOT disturb chat — the categories are independent", async () => {
+  it("toggling game_results does NOT disturb chat — the categories are independent", async () => {
     // One stored jsonb map holds both, and `setPreference` read-modify-writes
     // it. A clobbering write would silently flip a category the user never
     // touched — and chat defaults OFF, so the damage would run the other way
     // (someone opted IN to chat quietly opted back out).
     await ctx.caller().notifications.setPreference({ key: "chat", enabled: true });
-    await setScores(false);
+    await setGameResults(false);
 
     const prefs = await ctx.caller().notifications.getPreferences();
-    expect(prefs.chat, "chat survives a scores write").toBe(true);
-    expect(prefs.scores).toBe(false);
+    expect(prefs.chat, "chat survives a game_results write").toBe(true);
+    expect(prefs.game_results).toBe(false);
 
-    await setScores(true);
+    await setGameResults(true);
     expect((await ctx.caller().notifications.getPreferences()).chat).toBe(true);
   }, 60_000);
 });

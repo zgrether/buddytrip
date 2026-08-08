@@ -52,7 +52,7 @@ describe("push_send_log — the three outcomes are distinguishable", () => {
       ctx.admin,
       { trigger, gameId: "game-1", actorUserId: "actor-1" },
       {
-        typeKey: "scores",
+        typeKey: "game_results",
         recipients: 3, // the audience DID resolve — 3 non-actor participants
         skippedPreferenceOff: 0,
         subscriptionsFound: 0, // …none of whom has a registered device
@@ -80,7 +80,7 @@ describe("push_send_log — the three outcomes are distinguishable", () => {
       ctx.admin,
       { trigger, gameId: "game-2", actorUserId: "actor-1" },
       {
-        typeKey: "scores",
+        typeKey: "game_results",
         recipients: 3,
         skippedPreferenceOff: 0,
         subscriptionsFound: 2, // devices WERE there
@@ -106,7 +106,7 @@ describe("push_send_log — the three outcomes are distinguishable", () => {
       ctx.admin,
       { trigger, gameId: "game-3" },
       {
-        typeKey: "scores",
+        typeKey: "game_results",
         recipients: 3,
         skippedPreferenceOff: 0,
         subscriptionsFound: 0,
@@ -128,7 +128,7 @@ describe("push_send_log — the three outcomes are distinguishable", () => {
       ctx.admin,
       { trigger },
       {
-        typeKey: "scores",
+        typeKey: "game_results",
         recipients: 1,
         skippedPreferenceOff: 2, // two people had the category off
         subscriptionsFound: 1,
@@ -156,7 +156,7 @@ describe("push_send_log — the record can never break the send", () => {
         ctx.admin,
         { trigger: null as unknown as string },
         {
-          typeKey: "scores",
+          typeKey: "game_results",
           recipients: 1,
           skippedPreferenceOff: 0,
           subscriptionsFound: 1,
@@ -185,7 +185,7 @@ describe("push_send_log — the record can never break the send", () => {
         exploding,
         { trigger: "test:throwing" },
         {
-          typeKey: "scores",
+          typeKey: "game_results",
           recipients: 0,
           skippedPreferenceOff: 0,
           subscriptionsFound: 0,
@@ -210,7 +210,7 @@ describe("the REAL send helper writes a row — end to end", () => {
     // excluded, and nobody left has a registered device.
     const result = await sendPushToUsers(
       [owner, member, "ghost-a"],
-      "scores",
+      "game_results",
       { title: "t", body: "b", url: "/", tag: "x" },
       {
         admin: ctx.admin,
@@ -227,7 +227,7 @@ describe("the REAL send helper writes a row — end to end", () => {
     expect(row.subscriptions_found).toBe(result.subscriptionsFound);
     expect(row.actor_user_id).toBe(owner);
     expect(row.game_id).toBe("game-e2e");
-    expect(row.type_key).toBe("scores");
+    expect(row.type_key).toBe("game_results");
     // 2 non-actor recipients, no devices, nothing sent, nothing failed.
     expect(row.recipients).toBe(2);
     expect(row.sent).toBe(0);
@@ -242,7 +242,7 @@ describe("the REAL send helper writes a row — end to end", () => {
 
     await sendPushToUsers(
       [owner], // the only recipient IS the actor
-      "scores",
+      "game_results",
       { title: "t", body: "b" },
       { admin: ctx.admin, excludeUserId: owner, context: { trigger, actorUserId: owner } }
     );
@@ -264,7 +264,7 @@ describe("push_send_log — no message content is stored", () => {
       ctx.admin,
       { trigger },
       {
-        typeKey: "scores",
+        typeKey: "game_results",
         recipients: 1,
         skippedPreferenceOff: 0,
         subscriptionsFound: 1,
