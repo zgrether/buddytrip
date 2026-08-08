@@ -55,6 +55,16 @@ export interface PushAttemptOutcome {
   notConfigured: boolean;
   /** Message text only, never a payload. Null on a clean run. */
   error?: string | null;
+  /**
+   * WHY this attempt ended as it did — `sent`, `no_clincher`, `already_claimed`,
+   * `threw`, `no_recipients` (migration 106).
+   *
+   * The counters alone cannot express the clinch check's pre-send exits:
+   * `no_clincher` and `already_claimed` are both zero on recipients,
+   * subscriptions, sent, failed AND error, so nothing but stated intent
+   * separates "detection found nobody" from "correctly suppressed a duplicate".
+   */
+  outcome?: string | null;
 }
 
 export async function recordPushAttempt(
@@ -80,6 +90,7 @@ export async function recordPushAttempt(
     failed: outcome.failed,
     removedDead: outcome.removedDead,
     notConfigured: outcome.notConfigured,
+    outcome: outcome.outcome ?? null,
     error: outcome.error ?? null,
   });
 
@@ -98,6 +109,7 @@ export async function recordPushAttempt(
       failed: outcome.failed,
       removed_dead: outcome.removedDead,
       not_configured: outcome.notConfigured,
+      outcome: outcome.outcome ?? null,
       error: outcome.error ?? null,
     });
     // The error is CHECKED, not destructured-and-ignored — the swallowing shape

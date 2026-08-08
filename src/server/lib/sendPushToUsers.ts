@@ -127,6 +127,11 @@ export async function sendPushToUsers(
         failed: result.failed,
         removedDead: result.removedDead,
         notConfigured: result.notConfigured,
+        // `no_recipients` where the audience emptied out (actor exclusion, or an
+        // audience that was empty to begin with) — the production case that
+        // looked like a failure for a week. Anything that reached the devices is
+        // `sent`, whatever the delivery count.
+        outcome: result.recipients === 0 ? "no_recipients" : "sent",
         error: errorMessage,
       });
     } catch (err) {
