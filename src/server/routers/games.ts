@@ -1176,6 +1176,30 @@ export const gamesRouter = router({
         if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
         else if (strategy === "stroke_total") await computeStrokePlayResults(ctx.supabase, input.gameId);
       }
+
+      // 4 · Reconcile the clinch claim — the hole #841 left. It wired the
+      //     individual setters (setPointsTotal, setPointsDistribution, delete,
+      //     both resets, teams.delete) and missed THIS one, which is the path
+      //     the settings page actually uses: all four formats commit their whole
+      //     page through `save_game_config` and nothing self-persists per row
+      //     (CLAUDE.md #18). So the wired setters were the ones nobody takes.
+      //
+      //     Two independent ways this call can move the standings, either of
+      //     which can un-clinch a cup: the RPC writes `points_total` and
+      //     `points_distribution` (migration 081 §1), which move
+      //     `pointsAvailable` and therefore `winNumber`; and step 3 above
+      //     re-derives game results, which moves team totals directly.
+      //
+      //     AFTER the recompute, deliberately: `reconcileClinchClaim` reads the
+      //     leaderboard, and running it first would judge the claim against
+      //     pre-recompute standings and reach the wrong verdict on exactly the
+      //     edits that matter.
+      //
+      //     Only ever RELEASES. An edit that CREATES a clinch leaves the claim
+      //     untouched and sends nothing — announcing a newly-decided cup from a
+      //     config edit is the separate, larger gap documented on the helper,
+      //     and this must not become a second copy of the finalize path.
+      await reconcileGameClinch(ctx, input.gameId);
       return { ok: true };
     }),
 
