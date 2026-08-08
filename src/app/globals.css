@@ -310,34 +310,3 @@ summary,
 @media (prefers-reduced-motion: reduce) {
   [style*="golfHalo"], [style*="golfPop"] { animation: none !important; }
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TEMPORARY DIAGNOSTIC — REVERT IMMEDIATELY AFTER READING THE COLOUR (#848)
-   ═══════════════════════════════════════════════════════════════════════════
-   This makes the iOS overscroll band identify itself. Two rounds of structural
-   theories were wrong, and a DOM measurement showed `html`, `body` and the
-   shell root are all `#0a0e1a` on BOTH the route that shows the band
-   (/trips/[tripId]) and the route that does not (/dashboard) — so nothing in
-   the app's own markup explains it. Giving the candidate surfaces distinct
-   colours is the only thing that can name the source rather than guess it.
-
-   Read the band on the phone, then revert:
-
-     RED band    -> the CANVAS beyond the document is what shows.
-                    Fix: overscroll-behavior-y: none on html, scoped to
-                    @media (display-mode: standalone).
-     GREEN band  -> the BODY BOX is shorter than the painted area.
-                    Fix: a height / min-height correction. NOT an overscroll one.
-     STILL DARK  -> neither of ours. It is the standalone webview chrome (the
-                    status-bar region at the top, the home-indicator region at
-                    the bottom). Lever is apple-mobile-web-app-status-bar-style
-                    / theme-color, not CSS on our elements.
-
-   The page itself stays dark: the shell root paints #0a0e1a over its own box,
-   so only the areas OUTSIDE it — exactly where the band appears — take these
-   colours. `!important` because both rules are already set above.
-
-   The revert PR is open and ready to merge the moment the colour is read.
-   ═══════════════════════════════════════════════════════════════════════════ */
-html { background: red !important; }
-body { background: green !important; }
