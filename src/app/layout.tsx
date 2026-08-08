@@ -22,11 +22,28 @@ export const metadata: Metadata = {
     // precomposed file, which stays on disk for legacy crawler requests.
     apple: '/apple-touch-icon.png',
   },
-  // iOS standalone (Home Screen) identity — without this, an added-to-home
-  // BuddyTrip opens as a plain Safari bookmark instead of a standalone app.
+  // iOS standalone (Home Screen) identity.
+  //
+  // `capable: true` does NOT emit `apple-mobile-web-app-capable`. Next 15.5.12's
+  // `AppleWebAppMeta` emits the un-prefixed `mobile-web-app-capable` for it, and
+  // the apple-prefixed string appears NOWHERE in `next/dist` — so this metadata
+  // API cannot produce that tag at all. `tsc` is clean, the config reads
+  // correctly, and the deployed `<head>` simply lacked it.
+  //
+  // CLAUDE.md #23: a declared behaviour the library does not deliver. The tell
+  // was the same — the config says it arrived, the output says it didn't — and
+  // the fix is the same: believe the output. The previous comment here asserted
+  // the tag was present, which is how it went unnoticed.
   appleWebApp: {
     capable: true,
     title: "BuddyTrip",
+  },
+  // So the prefixed tag is set by hand, ALONGSIDE what the API emits. Both are
+  // wanted: modern iOS reads `mobile-web-app-capable`, older versions and some
+  // contexts still want the apple-prefixed one, and having both is the
+  // documented safe state. Do not "de-duplicate" these — they are not duplicates.
+  other: {
+    "apple-mobile-web-app-capable": "yes",
   },
 };
 
