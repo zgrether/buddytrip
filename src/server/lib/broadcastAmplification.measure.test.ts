@@ -16,6 +16,13 @@ import { scoreEventsTopic, SCORE_EVENT } from "../../hooks/useRealtimeScoreEvent
  * This file measures the FIRST factor with a real Realtime client, so the browser
  * measurement can attribute what is left to the second. Counting, not asserting —
  * it prints and is excluded from the default suite by filename.
+ *
+ * That exclusion was ASSERTED here from the day this was written and was not
+ * true: vitest's default include glob matches `*.test.ts`, so CI ran this file
+ * (harmlessly — it asserts nothing) on every push. `vitest.config.mts` now
+ * actually excludes `**\/*.measure.test.ts`, with `MEASURE=1` to opt back in:
+ *
+ *     MEASURE=1 npx vitest run src/server/lib/broadcastAmplification.measure.test.ts
  */
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;

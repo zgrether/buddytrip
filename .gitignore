@@ -53,3 +53,4 @@ next-env.d.ts
 
 # Playwright auth state (session — never commit)
 e2e/.auth/
+.next-measure/

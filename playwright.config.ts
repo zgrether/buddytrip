@@ -8,6 +8,17 @@ loadEnv({ path: ".env.local" });
 
 const STORAGE_STATE = "e2e/.auth/owner.json";
 
+/**
+ * Where the app under test is served.
+ *
+ * Defaults to :3000 — unchanged for CI and for an ordinary local run. The
+ * override exists so a MEASUREMENT run can serve a PRODUCTION build on a free
+ * port while a dev server already holds :3000; measuring `next dev` measures the
+ * dev server's on-demand compilation rather than the app. Inert unless set.
+ */
+const PORT = process.env.E2E_PORT ?? "3000";
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -16,7 +27,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "html",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: BASE_URL,
     trace: "on-first-retry",
   },
   projects: [
@@ -69,6 +80,14 @@ export default defineConfig({
             dependencies: ["setup"],
           },
           {
+            // The three slow paths (Home / correct / save-scoring-changes),
+            // instrumented at identical marks so before-and-after are comparable.
+            name: "measure-slow-paths",
+            testMatch: /slow-paths-latency\.spec\.ts/,
+            use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
+            dependencies: ["setup"],
+          },
+          {
             name: "measure-handlers",
             testMatch: /handler-accumulation\.spec\.ts/,
             use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
@@ -81,8 +100,11 @@ export default defineConfig({
     // CI runs the prebuilt app (the workflow does `npm run build` first) so
     // there's no flaky on-demand route compilation mid-test; locally, dev is
     // fine and reuses an already-running server.
-    command: process.env.CI ? "npm run start" : "npm run dev",
-    url: "http://localhost:3000",
+    // `E2E_PORT` also selects the PROD server: the only reason to move off :3000
+    // is to measure a production build, and `next dev` on a custom port would
+    // defeat the point of moving.
+    command: process.env.CI || process.env.E2E_PORT ? `npm run start -- --port ${PORT}` : "npm run dev",
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
