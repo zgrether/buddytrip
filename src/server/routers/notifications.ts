@@ -61,6 +61,35 @@ export const notificationsRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * Does the server hold a row for THIS endpoint, for THIS caller?
+   *
+   * The third of the three inputs the toggle needs (permission and the live
+   * browser subscription are readable on the client; this one is not). Without
+   * it the label can only ever guess, which is what it used to do — it read
+   * nothing at all and said "Enable" forever, on every platform.
+   *
+   * Scoped to the caller's own rows via the RLS client, so this cannot be used
+   * to probe whether some other account has registered a given endpoint.
+   */
+  isRegistered: authedProcedure
+    .input(z.object({ endpoint: z.string().url().max(2000) }))
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("push_subscriptions")
+        .select("endpoint")
+        .eq("endpoint", input.endpoint)
+        .eq("user_id", ctx.user.id)
+        .maybeSingle();
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to read subscription: ${error.message}`,
+        });
+      }
+      return { registered: !!data };
+    }),
+
   /** Remove this device's subscription (the caller's own, by endpoint). */
   unsubscribe: authedProcedure
     .input(z.object({ endpoint: z.string().url().max(2000) }))

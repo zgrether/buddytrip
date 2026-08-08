@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronRight } from "lucide-react";
@@ -17,7 +17,9 @@ import {
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { showToast } from "@/lib/toast";
-import { subscribeBrowser } from "@/lib/pushClient";
+import { subscribeBrowser, unsubscribeBrowser, currentPushEndpoint, getVapidPublicKey } from "@/lib/pushClient";
+import { deriveDevicePushState, devicePushCopy } from "@/lib/devicePushState";
+import { isUnauthorizedError } from "@/lib/authExpiry";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
@@ -543,45 +545,126 @@ function SettingsRow({
 // (a no-op prompt when already granted), then subscribes this device.
 function NotificationEnableRow() {
   const [busy, setBusy] = useState(false);
-  const subscribe = trpc.notifications.subscribe.useMutation();
+  // The three inputs, read rather than assumed. `permission` and `endpoint`
+  // start null/undefined because both are async and neither is knowable during
+  // SSR — the row shows a neutral "Checking…" until they resolve rather than
+  // guessing a state and correcting itself a tick later.
+  const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [endpoint, setEndpoint] = useState<string | null>(null);
+  const [probed, setProbed] = useState(false);
 
-  const enable = async () => {
-    if (busy) return;
-    if (typeof Notification === "undefined") {
-      showToast("This browser doesn't support notifications.", "info");
+  const subscribe = trpc.notifications.subscribe.useMutation();
+  const unsubscribe = trpc.notifications.unsubscribe.useMutation();
+
+  // Only meaningful once we HAVE an endpoint; `enabled` keeps it from firing
+  // with a placeholder and caching a false negative against the wrong key.
+  const registered = trpc.notifications.isRegistered.useQuery(
+    { endpoint: endpoint ?? "" },
+    { enabled: !!endpoint }
+  );
+
+  const readBrowserState = useCallback(async () => {
+    if (typeof window === "undefined" || typeof Notification === "undefined") {
+      setProbed(true);
       return;
     }
+    setPermission(Notification.permission);
+    setEndpoint(await currentPushEndpoint());
+    setProbed(true);
+  }, []);
+
+  useEffect(() => {
+    void readBrowserState();
+    // Permission and subscription can BOTH change outside this tab — the user
+    // can revoke in browser settings, or another tab can unsubscribe. Re-read on
+    // return so the label is right after a reload or a trip to settings, which
+    // is verification step 5.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void readBrowserState();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [readBrowserState]);
+
+  const state = deriveDevicePushState({
+    supported:
+      typeof window !== "undefined" &&
+      typeof Notification !== "undefined" &&
+      "serviceWorker" in navigator &&
+      !!getVapidPublicKey(),
+    permission,
+    hasBrowserSubscription: !!endpoint,
+    // While the query is in flight, treat it as NOT registered rather than
+    // optimistically on — an over-claiming label is the defect being fixed.
+    registeredOnServer: registered.data?.registered ?? false,
+  });
+
+  const copy = devicePushCopy(state);
+  const settling = !probed || (!!endpoint && registered.isPending);
+
+  /** Never surface a raw UNAUTHORIZED on this path — it reads as a broken
+   *  button when it means a dead session, and it is the one message that must
+   *  tell someone what to actually do. */
+  const failed = (fallback: string) => (err: unknown) => {
+    showToast(isUnauthorizedError(err) ? "Your session expired — sign in again to change this." : fallback);
+  };
+
+  const toggle = async () => {
+    if (busy || !copy.actionable) return;
     setBusy(true);
     try {
-      const perm = await Notification.requestPermission();
-      if (perm === "denied") {
-        showToast("Notifications are blocked — turn them on in your phone's settings.", "info");
-        return;
+      if (state === "on") {
+        // OFF means genuinely off: drop the browser subscription AND the row.
+        // A preference flip would leave this device subscribed and is a
+        // different act entirely.
+        const removed = await unsubscribeBrowser();
+        // Fall back to the endpoint we already read, so a browser-side
+        // unsubscribe that returns null still clears the server row rather than
+        // stranding it as a permanent phantom device.
+        const target = removed ?? endpoint;
+        if (target) await unsubscribe.mutateAsync({ endpoint: target });
+        showToast("Notifications turned off for this device.", "info");
+      } else {
+        const perm = await Notification.requestPermission();
+        setPermission(perm);
+        if (perm !== "granted") {
+          // `denied` re-renders the row into its blocked state, which carries
+          // the settings instruction — so the toast doesn't repeat it.
+          showToast(
+            perm === "denied"
+              ? "Notifications are blocked for this site."
+              : "Notifications weren't enabled.",
+            "info"
+          );
+          return;
+        }
+        const sub = await subscribeBrowser();
+        if (!sub) {
+          showToast("Couldn't subscribe on this device — try reopening BuddyTrip from your Home Screen.", "info");
+          return;
+        }
+        await subscribe.mutateAsync(sub);
+        showToast("Notifications enabled on this device.", "info");
       }
-      if (perm !== "granted") {
-        showToast("Notifications weren't enabled.", "info");
-        return;
-      }
-      const sub = await subscribeBrowser();
-      if (!sub) {
-        showToast("Couldn't subscribe on this device.", "info");
-        return;
-      }
-      await subscribe.mutateAsync(sub);
-      showToast("Notifications enabled on this device.", "info");
-    } catch {
-      showToast("Couldn't enable notifications.");
+      // Re-read rather than assume the write landed: the label's whole job is
+      // to report reality, so it re-derives from the browser and the server.
+      await readBrowserState();
+      await registered.refetch();
+    } catch (err) {
+      failed(state === "on" ? "Couldn't turn notifications off." : "Couldn't enable notifications.")(err);
     } finally {
       setBusy(false);
     }
   };
 
+  const label = settling ? "Checking notifications…" : busy ? "Working…" : copy.label;
+
   return (
     <SettingsRow
       icon={<IconBell size={16} stroke={1.75} />}
-      label={busy ? "Enabling…" : "Enable notifications on this device"}
-      sub="Turn on push for this phone or tablet"
-      onClick={enable}
+      label={label}
+      sub={settling ? undefined : copy.sub}
+      onClick={copy.actionable && !settling ? toggle : undefined}
     />
   );
 }

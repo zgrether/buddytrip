@@ -56,6 +56,52 @@ describe("notifications router", () => {
     expect(data ?? []).toHaveLength(0);
   });
 
+  /**
+   * `isRegistered` is the third input the device toggle needs — permission and
+   * the live browser subscription are readable client-side, this one is not.
+   * Without it the label could only guess, and it guessed by not looking at all.
+   */
+  it("isRegistered tracks subscribe and unsubscribe for THIS endpoint", async () => {
+    const caller = ctx.caller();
+    const endpoint = `https://example.test/ep/${genId("ep")}`;
+
+    expect((await caller.notifications.isRegistered({ endpoint })).registered).toBe(false);
+    await caller.notifications.subscribe({ endpoint, p256dh: "k", auth: "a" });
+    expect((await caller.notifications.isRegistered({ endpoint })).registered).toBe(true);
+    await caller.notifications.unsubscribe({ endpoint });
+    expect((await caller.notifications.isRegistered({ endpoint })).registered).toBe(false);
+  });
+
+  it("isRegistered is scoped to the caller — another account's endpoint reads false", async () => {
+    // It must not be usable to probe whether some other user has registered a
+    // given endpoint, and turning one device off must never report on another's.
+    const endpoint = `https://example.test/ep/${genId("other")}`;
+    const other = ctx.getUser("member");
+    await ctx.admin.from("push_subscriptions").insert({
+      user_id: other.id,
+      endpoint,
+      p256dh: "k",
+      auth: "a",
+    });
+
+    expect((await ctx.caller().notifications.isRegistered({ endpoint })).registered).toBe(false);
+
+    await ctx.admin.from("push_subscriptions").delete().eq("endpoint", endpoint);
+  });
+
+  it("unsubscribing one device leaves the caller's OTHER devices registered", async () => {
+    const caller = ctx.caller();
+    const a = `https://example.test/ep/${genId("a")}`;
+    const b = `https://example.test/ep/${genId("b")}`;
+    await caller.notifications.subscribe({ endpoint: a, p256dh: "k", auth: "a" });
+    await caller.notifications.subscribe({ endpoint: b, p256dh: "k", auth: "a" });
+
+    await caller.notifications.unsubscribe({ endpoint: a });
+
+    expect((await caller.notifications.isRegistered({ endpoint: a })).registered).toBe(false);
+    expect((await caller.notifications.isRegistered({ endpoint: b })).registered).toBe(true);
+  });
+
   // ── gate 3: preferences default from the registry, setPreference persists ──
   it("getPreferences returns registry defaults when unset (chat OFF)", async () => {
     const prefs = await ctx.caller().notifications.getPreferences();

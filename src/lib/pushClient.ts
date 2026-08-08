@@ -79,6 +79,24 @@ export async function subscribeBrowser(): Promise<BrowserSubscription | null> {
   }
 }
 
+/**
+ * The endpoint of the LIVE subscription on this device, or null.
+ *
+ * Read-only and side-effect free — deliberately NOT `subscribeBrowser`, which
+ * creates a subscription if none exists. The toggle has to be able to ask "is
+ * this device subscribed?" without the act of asking making it true.
+ */
+export async function currentPushEndpoint(): Promise<string | null> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return sub?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Best-effort browser-side unsubscribe (returns the endpoint that was removed,
  *  so the caller can tell the server to drop it). */
 export async function unsubscribeBrowser(): Promise<string | null> {
