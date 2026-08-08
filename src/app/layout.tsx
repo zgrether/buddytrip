@@ -52,6 +52,17 @@ export const metadata: Metadata = {
 // the single dark value is correct (no white flash on standalone launch).
 export const viewport: Viewport = {
   themeColor: "#0a0e1a",
+  // WITHOUT this, iOS in standalone mode insets the layout viewport away from
+  // the safe areas, and the region outside it — but inside the webview — is
+  // painted with the BODY background. That was the reported "band" at the top
+  // of every scoped route, and it took a colour diagnostic to find, because the
+  // space is not in the DOM at all: no wrapper, padding or background could ever
+  // have explained it (two rounds of theories tried).
+  //
+  // It also means every `env(safe-area-inset-*)` resolves to 0 until this is
+  // set. Six rules in this codebase were written expecting real values and had
+  // never once executed with one — see the PR for the audit of each.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

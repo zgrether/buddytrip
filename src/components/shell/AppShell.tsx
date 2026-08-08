@@ -470,7 +470,7 @@ export function AppShell({
               className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${
                 chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""
               }`}
-              style={{ paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 16px)" }}
+              style={{ paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)" }}
             >
               {/*
                * ── EXACTLY ONE SCROLLER PER VERTICAL CHAIN ────────────────────
@@ -574,6 +574,32 @@ function TopBarSlot({ children }: { children: React.ReactNode }) {
       className={`sticky top-0 z-40 lg:static lg:z-auto lg:shrink-0 ${
         chrome?.focusedEntry ? "hidden lg:block" : ""
       }`}
+      style={{
+        /**
+         * The ONLY top safe-area inset in the app, and it exists because
+         * `viewport-fit=cover` (root layout) lets content run under the status
+         * bar / notch. Before that, `env()` resolved to 0 everywhere and this
+         * would have been a no-op; after it, WITHOUT this the 56px bar sits
+         * under the notch and its left content is unreadable on a notched phone.
+         *
+         * On the WRAPPER, not on `TopNav` itself: this is the sticky element, so
+         * the padding has to be part of what sticks — padding inside the bar
+         * would scroll its own background away from the inset region and leave a
+         * gap at the top, which is the same class of artefact the cover fix is
+         * removing.
+         *
+         * Padding rather than height, so the bar keeps its 56px and only the
+         * inset is added — `--bt-bottomnav-height`'s counterpart at this end is
+         * nothing that reads a top height, so there is no measurement to keep in
+         * step.
+         *
+         * Background travels with it so the inset region is painted by the bar,
+         * not by body — otherwise `cover` would simply move the band under the
+         * status bar rather than remove it.
+         */
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        background: "var(--color-bt-nav-bg)",
+      }}
       data-testid="top-bar-slot"
     >
       {children}

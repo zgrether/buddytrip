@@ -105,7 +105,18 @@ export function BottomCTA({
       style={{
         background: "var(--color-bt-card-float)",
         borderTop: "1px solid var(--color-bt-border)",
-        padding: "12px 16px 24px",
+        // The inset is ADDED outright here, unlike `GameLifecycleActions`, and
+        // the asymmetry is deliberate: this chrome only ever renders on focused
+        // entry surfaces, where `focusedEntry` hides the tab bar (CLAUDE.md #13)
+        // and `--bt-bottomnav-height` is therefore removed. There is no measured
+        // height to prefer, so there is nothing to double-count against.
+        //
+        // Flat `24px` was correct while `env()` resolved to 0. Under
+        // `viewport-fit=cover` the viewport bottom moves into the home-indicator
+        // region, and 24px alone would put the next-hole / finish CTA under it —
+        // the exact failure CLAUDE.md #14 exists to prevent, arriving from the
+        // viewport rather than from the layout.
+        padding: "12px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
       }}
     >
       <button
