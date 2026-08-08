@@ -147,12 +147,29 @@ describe("sendPushToUsers — preference gate", () => {
     expect(res.sent).toBe(1);
   });
 
-  it("chat defaults OFF — the same audience gets nothing for a chat-category send", async () => {
-    // Pins that the gate reads the REGISTRY per key rather than assuming "on".
-    const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
+  it("an EXPLICIT opt-out is honoured per key, not just the default", async () => {
+    // This replaces a "chat defaults OFF" case. Chat now defaults ON like every
+    // other category, so an unset chat preference no longer distinguishes
+    // "reads the registry" from "assumes on" — both produce a send.
+    //
+    // The discriminating input is a stored `false` against an ON default, which
+    // is what actually has to work: it is the only thing standing between a user
+    // who muted a category and the push they muted.
+    const { admin } = makeAdmin(
+      [{ id: "u1", notification_prefs: { chat: false } }],
+      [sub("u1", 1)]
+    );
     const res = await sendPushToUsers(["u1"], "chat", PAYLOAD, { admin });
     expect(res.sent).toBe(0);
     expect(res.skippedPreferenceOff).toBe(1);
+  });
+
+  it("an unset preference now SENDS for every category — the default flip", async () => {
+    const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
+    sendMock.mockResolvedValue(undefined);
+    const res = await sendPushToUsers(["u1"], "chat", PAYLOAD, { admin });
+    expect(res.sent).toBe(1);
+    expect(res.skippedPreferenceOff).toBe(0);
   });
 });
 

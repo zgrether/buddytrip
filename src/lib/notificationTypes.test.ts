@@ -9,13 +9,21 @@ import {
 } from "./notificationTypes";
 
 describe("notification registry", () => {
-  it("declares the confirmed taxonomy with chat OFF, the rest ON", () => {
+  it("declares the confirmed taxonomy, and EVERY category defaults ON", () => {
     const byKey = Object.fromEntries(NOTIFICATION_TYPES.map((t) => [t.key, t]));
     expect(NOTIFICATION_KEYS).toEqual(["game_results", "planning", "invites", "chat"]);
-    expect(byKey.game_results.defaultOn).toBe(true);
-    expect(byKey.planning.defaultOn).toBe(true);
-    expect(byKey.invites.defaultOn).toBe(true);
-    expect(byKey.chat.defaultOn).toBe(false);
+
+    // The device toggle is the consent gate. Enabling notifications is the
+    // deliberate act; the category list is a menu of what to MUTE, not a set of
+    // switches to hunt for. A category defaulting OFF means someone enables
+    // notifications and receives nothing, which reads as broken.
+    //
+    // Asserted over the whole registry rather than key-by-key so a NEW category
+    // added with `defaultOn: false` fails here instead of shipping silently.
+    for (const t of NOTIFICATION_TYPES) {
+      expect(t.defaultOn, `${t.key} must default ON`).toBe(true);
+    }
+    expect(byKey.chat.defaultOn, "flipped from OFF — see the registry comment").toBe(true);
   });
 
   it("every entry carries a label, description and a non-empty excludes field", () => {
@@ -35,12 +43,15 @@ describe("notification registry", () => {
 
   it("isTypeEnabled falls back to the registry default when unset", () => {
     expect(isTypeEnabled(null, "game_results")).toBe(true);
-    expect(isTypeEnabled({}, "chat")).toBe(false);
+    expect(isTypeEnabled({}, "chat")).toBe(true);
     expect(isTypeEnabled(undefined, "planning")).toBe(true);
   });
 
   it("isTypeEnabled honours a stored preference over the default", () => {
-    expect(isTypeEnabled({ chat: true }, "chat")).toBe(true); // opted in
+    // Both assertions must OPPOSE the default, or they pass without proving the
+    // stored value is consulted at all. Now that every category defaults ON, a
+    // stored `true` proves nothing — only a stored `false` does.
+    expect(isTypeEnabled({ chat: false }, "chat")).toBe(false); // opted out
     expect(isTypeEnabled({ game_results: false }, "game_results")).toBe(false); // opted out
   });
 
@@ -55,6 +66,6 @@ describe("notification registry", () => {
 
   it("notificationDefault matches the registry", () => {
     expect(notificationDefault("game_results")).toBe(true);
-    expect(notificationDefault("chat")).toBe(false);
+    expect(notificationDefault("chat")).toBe(true);
   });
 });

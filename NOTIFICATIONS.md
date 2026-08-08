@@ -25,7 +25,7 @@ import that slips through.
 | `game_results` | Competition & game alerts | **ON** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
 | `planning` | Trip planning | **ON** | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
-| `chat` | Chat messages | **OFF** | new messages, any channel | per-channel prefs — one global switch |
+| `chat` | Chat messages | **ON** (was OFF) | new messages, any channel | per-channel prefs — one global switch |
 
 ## Eligibility markings
 

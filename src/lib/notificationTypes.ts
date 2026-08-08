@@ -77,7 +77,17 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     key: "chat",
     label: "Chat messages",
     description: "New messages in any trip or team channel.",
-    defaultOn: false,
+    // ON, like every other category. THE DEVICE TOGGLE IS THE CONSENT GATE:
+    // enabling notifications is a deliberate act, and the category list shown at
+    // that moment is a menu of what you can MUTE — not a set of things to hunt
+    // for and switch on. A category defaulting OFF means someone enables
+    // notifications and receives nothing, which reads as broken rather than as
+    // respectful.
+    //
+    // This flipped from OFF, which was set when volume was the only
+    // consideration. Free to change: the only stored `chat` values in production
+    // are two test rows, both already `true`.
+    defaultOn: true,
     excludes:
       "Per-channel preferences — this is ONE global switch. High-volume (hundreds/day on a " +
       "live day), which is why it defaults OFF and carries an in-context bell toggle.",
