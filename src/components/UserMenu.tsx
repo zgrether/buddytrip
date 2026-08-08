@@ -127,7 +127,14 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
             return !p;
           })
         }
-        className="flex items-center rounded-full transition-opacity hover:opacity-80"
+        // Hover already existed (`hover:opacity-80`) — kept. Added: press
+        // (STYLE_GUIDE.md §5's `active:scale-[0.98]`) and the same uniform
+        // focus-visible ring this task applies everywhere. `rounded-full`
+        // stays on the button itself so the ring — a box-shadow — clips to a
+        // circle rather than a square around a circular avatar.
+        // `transition-opacity` → `transition-[opacity,transform]`, same
+        // reasoning as every other multi-property change in this task.
+        className="flex items-center rounded-full transition-[opacity,transform] hover:opacity-80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
       >
         <Avatar
           name={me?.name ?? me?.email ?? "?"}
@@ -216,7 +223,19 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
                 setOpen(false);
                 router.push("/profile");
               }}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-bt-hover)]"
+              // All three `role="menuitem"` rows share this exact className,
+              // so the same fix applies identically to all three (Account
+              // preferences / About BuddyTrip / Sign out) — one `replace_all`,
+              // not three near-duplicate edits that could drift.
+              //
+              // `active:scale-[0.99]`, not `0.98` — reuses the GENTLER value
+              // this codebase already keeps for wide `w-full` rows
+              // (`MatchCard.tsx`'s `active:scale-[0.99]` on its own
+              // `block w-full text-left` row), distinct from the more
+              // aggressive `0.98` used on compact icon-sized nav cells
+              // elsewhere in this task. Reusing an existing DISTINCTION, not
+              // inventing a third number.
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
               style={{ color: "var(--color-bt-text)" }}
             >
               <IconSettings
@@ -240,7 +259,19 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
                 setOpen(false);
                 setAboutOpen(true);
               }}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-bt-hover)]"
+              // All three `role="menuitem"` rows share this exact className,
+              // so the same fix applies identically to all three (Account
+              // preferences / About BuddyTrip / Sign out) — one `replace_all`,
+              // not three near-duplicate edits that could drift.
+              //
+              // `active:scale-[0.99]`, not `0.98` — reuses the GENTLER value
+              // this codebase already keeps for wide `w-full` rows
+              // (`MatchCard.tsx`'s `active:scale-[0.99]` on its own
+              // `block w-full text-left` row), distinct from the more
+              // aggressive `0.98` used on compact icon-sized nav cells
+              // elsewhere in this task. Reusing an existing DISTINCTION, not
+              // inventing a third number.
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
               style={{ color: "var(--color-bt-text)" }}
             >
               <IconInfoCircle
@@ -258,7 +289,19 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
               role="menuitem"
               data-testid="user-menu-signout"
               onClick={handleSignOut}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-bt-hover)]"
+              // All three `role="menuitem"` rows share this exact className,
+              // so the same fix applies identically to all three (Account
+              // preferences / About BuddyTrip / Sign out) — one `replace_all`,
+              // not three near-duplicate edits that could drift.
+              //
+              // `active:scale-[0.99]`, not `0.98` — reuses the GENTLER value
+              // this codebase already keeps for wide `w-full` rows
+              // (`MatchCard.tsx`'s `active:scale-[0.99]` on its own
+              // `block w-full text-left` row), distinct from the more
+              // aggressive `0.98` used on compact icon-sized nav cells
+              // elsewhere in this task. Reusing an existing DISTINCTION, not
+              // inventing a third number.
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
               style={{
                 color: "var(--color-bt-text)",
                 borderTop: "0.5px solid var(--color-bt-border)",

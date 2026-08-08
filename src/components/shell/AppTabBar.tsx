@@ -159,7 +159,39 @@ const TabBar: FC<{
               aria-selected={selected}
               aria-disabled={locked || undefined}
               onClick={() => (locked ? onLockedTap(id) : onSelect(id))}
-              className="relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 transition-colors"
+              // PRESS STATE — none of these cells showed anything on tap before
+              // this. `active:scale-[0.98]` reuses STYLE_GUIDE.md §5's own
+              // documented "Active/pressed" treatment verbatim (also the value
+              // 12 other sites in this app already use), rather than inventing
+              // a nav-specific number. It fires from `:active` alone — SELECTED
+              // is a separate, `color`-driven state, so pressing the already-
+              // active tab still scales down exactly like any other cell (the
+              // spec's own constraint).
+              //
+              // No `hover:` here — this bar is `lg:hidden` (mobile only), and a
+              // hover class on a touch-only surface is how you get "sticky
+              // hover" (a tapped cell staying visually hovered until something
+              // else is tapped) rather than a real affordance.
+              //
+              // `transition-[color,transform]`, not two separate `transition-*`
+              // classes — `transition-colors` (existing, for SELECTED's color
+              // swap) and a plain `transition-transform` class each set the
+              // FULL `transition-property` value, so combining them as two
+              // classes is a coin flip on which one wins. The arbitrary-value
+              // list form is the one unambiguous way to animate both, and this
+              // repo already proves the syntax works (`Collapse.tsx`'s
+              // `transition-[grid-template-rows]`).
+              //
+              // No stated focus convention exists anywhere on a BUTTON in this
+              // app (only text inputs use `focus:ring-*`) — flagged in the
+              // survey as a real gap, not assumed away. `focus-visible` (not
+              // bare `focus`) so it shows for keyboard users only, never on a
+              // tap/click; `ring-inset` keeps the ring inside the cell rather
+              // than overflowing past the bar's own edge for the outermost
+              // tabs. This exact ring is applied uniformly everywhere in this
+              // task, which is what makes it read as a convention rather than
+              // four different guesses.
+              className="relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 transition-[color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
               style={{
                 color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
                 // Locked reads as "not yet", not "broken" — dimmed, still legible,
@@ -195,7 +227,11 @@ const TabBar: FC<{
           data-testid="app-tab-chat"
           data-locked={chatLocked || undefined}
           onClick={() => (chatLocked ? onLockedTap("chat") : onToggleChat())}
-          className="relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 transition-colors"
+          // Same treatment as the three destination tabs above, same
+          // reasoning — see their comment. This cell isn't a `role="tab"` and
+          // never carries `aria-selected`, but it's identically a chrome
+          // button that showed no press before this.
+          className="relative flex min-w-0 flex-col items-center justify-center gap-1 py-2 transition-[color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
           style={{
             color: chatLocked
               ? "var(--color-bt-text-dim)"
