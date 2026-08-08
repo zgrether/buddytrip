@@ -22,9 +22,16 @@ import { ScrollLock } from "@/hooks/useScrollLock";
  *   │  ⎋  Log out              │   ← separate section
  *   └──────────────────────────┘
  *
- * Dismiss + positioning mirror the notifications bell / trip switcher
- * panels in TopNav (mousedown-outside + Escape; fixed below the nav on
- * mobile, absolute-anchored on desktop).
+ * Dismiss + positioning: mousedown-outside + Escape, fixed below the nav on
+ * mobile, absolute-anchored on desktop. Implemented in this file (see the
+ * effect below) — it is a pattern several dropdown/popover components each
+ * carry their own copy of, not something inherited from a shared primitive.
+ *
+ * This used to say the behaviour "mirrors the notifications bell / trip
+ * switcher panels in TopNav". Both of those are gone from TopNav, so the
+ * comment pointed a reader at a reference implementation that no longer
+ * exists. Naming a specific sibling to copy is what rotted; describing the
+ * behaviour does not.
  */
 interface UserMenuProps {
   /** Hands a callback through to AboutModal so the "Send feedback" row

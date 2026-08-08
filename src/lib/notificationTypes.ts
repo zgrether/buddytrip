@@ -2,7 +2,7 @@
  * Notification type registry (Push Phase 2) — the SINGLE SOURCE OF TRUTH for
  * three consumers that must never disagree:
  *   1. the send-time preference filter (server: sendPush),
- *   2. the preferences UI (Phase 4) + the chat bell toggle,
+ *   2. the preferences UI — profile → Preferences, the ONE entry point,
  *   3. Phase 3's call sites at domain write points.
  * A call site sending a key the UI doesn't toggle = someone gets notified
  * about something they switched off, which is how people disable notifications
@@ -89,8 +89,9 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     // are two test rows, both already `true`.
     defaultOn: true,
     excludes:
-      "Per-channel preferences — this is ONE global switch. High-volume (hundreds/day on a " +
-      "live day), which is why it defaults OFF and carries an in-context bell toggle.",
+      "Per-channel preferences — this is ONE global switch, muted from profile → Preferences " +
+      "and nowhere else. High-volume (hundreds/day on a live day), which is why muting it has " +
+      "to be easy to find rather than why it starts off.",
   },
 ];
 

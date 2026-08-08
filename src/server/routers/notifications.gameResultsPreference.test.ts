@@ -106,8 +106,12 @@ describe("the game_results preference is enforced, not decorative", () => {
   it("toggling game_results does NOT disturb chat — the categories are independent", async () => {
     // One stored jsonb map holds both, and `setPreference` read-modify-writes
     // it. A clobbering write would silently flip a category the user never
-    // touched — and chat defaults OFF, so the damage would run the other way
-    // (someone opted IN to chat quietly opted back out).
+    // touched — and since chat defaults ON, the damage runs toward NOISE:
+    // someone who deliberately muted the firehose gets quietly unmuted, which
+    // is the fastest route to an OS-level opt-out. (This comment used to say
+    // chat defaulted OFF and reasoned the opposite direction; the default was
+    // flipped and the comment was not. The test itself sets chat explicitly, so
+    // it never depended on the default — only the explanation was wrong.)
     await ctx.caller().notifications.setPreference({ key: "chat", enabled: true });
     await setGameResults(false);
 
