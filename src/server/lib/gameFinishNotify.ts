@@ -475,19 +475,74 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
  *
  * `.select()` is required — without it Supabase reports no affected rows and the
  * claim would always read as lost.
+ *
+ * ── Why this returns a RESULT and not a boolean ──────────────────────────────
+ * It used to return `!error && !!data && data.length > 0`. That single `false`
+ * collapsed three different events — the update ERRORED, the update matched
+ * zero rows because the claim genuinely holds this team, and the update matched
+ * zero rows for no reason we can name — and it DISCARDED `error` entirely. The
+ * caller then printed "already_claimed" over all three, which is a confident
+ * label on top of an unverified state (CLAUDE.md #16: the error is consulted and
+ * then thrown away, so a real failure and a correct no-op are the same value).
+ *
+ * That is not hypothetical. In production this write has succeeded ZERO times
+ * across 41 competitions, while passing in every local test — and each failure
+ * was recorded as "already claimed" on a competition whose claim column was
+ * null. The message and code this now returns are the only things that can say
+ * what the PostgREST layer is actually refusing.
  */
+export type ClinchClaimResult =
+  /** The claim is ours; the caller sends. */
+  | { outcome: "claimed" }
+  /** VERIFIED suppression — the column really does hold this team. */
+  | { outcome: "already_claimed"; heldBy: string }
+  /** PostgREST refused the write. The message/code are the diagnosis. */
+  | { outcome: "claim_error"; message: string; code: string | null }
+  /** Zero rows, no error, and the column does NOT hold this team — so the
+   *  filter should have matched and didn't. The unexplained case; before this
+   *  split it was indistinguishable from `already_claimed`. */
+  | { outcome: "claim_no_row"; heldNow: string | null };
+
 export async function claimClinchNotification(
   admin: SupabaseClient,
   competitionId: string,
   teamId: string
-): Promise<boolean> {
+): Promise<ClinchClaimResult> {
   const { data, error } = await admin
     .from("competitions")
     .update({ clinch_notified_team_id: teamId })
     .eq("id", competitionId)
     .or(`clinch_notified_team_id.is.null,clinch_notified_team_id.neq.${teamId}`)
     .select("id");
-  return !error && !!data && data.length > 0;
+
+  if (error) {
+    return {
+      outcome: "claim_error",
+      message: error.message,
+      // PostgrestError carries `code`; it is the field that names the class of
+      // failure (42501 permission, PGRST204 schema cache, 23503 FK, …) and is
+      // exactly what six weeks of `false` could not say.
+      code: (error as { code?: string }).code ?? null,
+    };
+  }
+  if (data && data.length > 0) return { outcome: "claimed" };
+
+  // Zero rows and no error. The ONLY legitimate reading is that the column
+  // already holds this team — the one row state `.or(is.null, neq)` excludes.
+  // So CONFIRM it rather than assume it, with a fresh read: the value observed
+  // at the start of the pass is stale by construction (a concurrent claim
+  // between that read and this write is the precise race the CAS exists for),
+  // so it cannot be the thing that decides this.
+  const { data: now } = await admin
+    .from("competitions")
+    .select("clinch_notified_team_id")
+    .eq("id", competitionId)
+    .maybeSingle();
+  const heldNow = (now?.clinch_notified_team_id as string | null) ?? null;
+
+  return heldNow === teamId
+    ? { outcome: "already_claimed", heldBy: heldNow }
+    : { outcome: "claim_no_row", heldNow };
 }
 
 /**
@@ -726,16 +781,50 @@ export async function notifyCupClinchedIfDecided(
       return;
     }
 
-    const won = await claimClinchNotification(admin, input.competitionId, clincher.id);
-    if (!won) {
-      // OUTCOME: already_claimed. CORRECT suppression — one push per clinch, not
-      // one per finalize. Logged precisely because it is correct: without it,
-      // working suppression and broken detection are the same silence, which is
-      // the property #842 exists to provide and the one place it did not hold.
+    const claim = await claimClinchNotification(admin, input.competitionId, clincher.id);
+
+    if (claim.outcome === "already_claimed") {
+      // CORRECT suppression — one push per clinch, not one per finalize. Logged
+      // precisely because it is correct: without it, working suppression and
+      // broken detection are the same silence.
+      //
+      // This branch now requires the column to ACTUALLY hold this team. It used
+      // to be the default for any falsy return, which is how a failing write
+      // spent six weeks reporting itself as correct behaviour.
       console.info("[push] clinch check: already_claimed", {
         competitionId: input.competitionId,
         clincherTeamId: clincher.id,
-        heldClaim,
+        heldBy: claim.heldBy,
+        heldClaimAtPassStart: heldClaim,
+      });
+      return;
+    }
+
+    if (claim.outcome === "claim_error") {
+      // The write was REFUSED. Not a no-op, not suppression — a failure, and the
+      // first time this path can say so. `console.error` deliberately: this is
+      // the line that should page someone, and it is the whole reason the
+      // discriminated result exists.
+      console.error("[push] clinch check: claim_error", {
+        competitionId: input.competitionId,
+        clincherTeamId: clincher.id,
+        code: claim.code,
+        message: claim.message,
+      });
+      return;
+    }
+
+    if (claim.outcome === "claim_no_row") {
+      // Zero rows, no error, and the column does not hold this team — so the
+      // filter should have matched and didn't. Nothing in the schema explains
+      // this (verified in prod: the same predicate as SQL matches the row), so
+      // it is logged as its own unexplained state rather than folded into
+      // suppression, which is exactly the conflation that hid it.
+      console.error("[push] clinch check: claim_no_row", {
+        competitionId: input.competitionId,
+        clincherTeamId: clincher.id,
+        heldNow: claim.heldNow,
+        heldClaimAtPassStart: heldClaim,
       });
       return;
     }
