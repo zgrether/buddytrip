@@ -20,7 +20,7 @@
  * eligibility (ELIGIBLE / BATCH / NEVER) lives in NOTIFICATIONS.md.
  */
 
-export type NotificationKey = "scores" | "planning" | "invites" | "chat";
+export type NotificationKey = "game_results" | "planning" | "invites" | "chat";
 
 export interface NotificationTypeDef {
   key: NotificationKey;
@@ -37,12 +37,19 @@ export interface NotificationTypeDef {
 
 export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
-    key: "scores",
-    label: "Scores & results",
+    // NOT `scores` — the old name WAS the bug. It reads as "every score
+    // entered", which is precisely what this category must never send:
+    // `scores.upsertEntry` / `deleteEntry` are NEVER-marked (~540/day), and
+    // wiring one is how you lose thirty phones' permissions in an afternoon.
+    // `game_results` says what actually fires and cannot be misread.
+    // No stored row ever held the old key (verified against production: 0 of 88
+    // users), so the rename needed no jsonb migration.
+    key: "game_results",
+    label: "Competition & game alerts",
     // Deliberately does NOT say "a result is posted" — that phrasing belongs to
     // `scores.upsertEntry` (a NEVER-marked site), so using it here would promise
     // the one thing this category must never send.
-    description: "A game or round is finalized, or a cup is clinched.",
+    description: "A game finishes, or the cup is decided.",
     defaultOn: true,
     excludes:
       "Per-hole score entry (scores.upsertEntry — a ~540/day firehose, NEVER-eligible), " +
@@ -70,7 +77,17 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     key: "chat",
     label: "Chat messages",
     description: "New messages in any trip or team channel.",
-    defaultOn: false,
+    // ON, like every other category. THE DEVICE TOGGLE IS THE CONSENT GATE:
+    // enabling notifications is a deliberate act, and the category list shown at
+    // that moment is a menu of what you can MUTE — not a set of things to hunt
+    // for and switch on. A category defaulting OFF means someone enables
+    // notifications and receives nothing, which reads as broken rather than as
+    // respectful.
+    //
+    // This flipped from OFF, which was set when volume was the only
+    // consideration. Free to change: the only stored `chat` values in production
+    // are two test rows, both already `true`.
+    defaultOn: true,
     excludes:
       "Per-channel preferences — this is ONE global switch. High-volume (hundreds/day on a " +
       "live day), which is why it defaults OFF and carries an in-context bell toggle.",

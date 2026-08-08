@@ -441,7 +441,7 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
       ? formatStrokeSummary(entries)
       : formatResultSummary(entries);
 
-    await sendPushToUsers(audience, "scores", {
+    await sendPushToUsers(audience, "game_results", {
       ...COPY.gameFinal(input.gameName, summary),
       url: gameUrl(input.tripId, input.gameId, input.gameTypeId, input.competitionId),
       // Coalesce per game: a correction → re-finish replaces the earlier notice
@@ -767,7 +767,7 @@ async function recordClinchOutcome(
       actorUserId: input.actorUserId,
     },
     {
-      typeKey: "scores",
+      typeKey: "game_results",
       recipients: 0,
       skippedPreferenceOff: 0,
       subscriptionsFound: 0,
@@ -940,7 +940,7 @@ export async function notifyCupClinchedIfDecided(
 
     await sendPushToUsers(
       audience,
-      "scores",
+      "game_results",
       {
         ...COPY.clinched(
           clincher.name ?? "A team",

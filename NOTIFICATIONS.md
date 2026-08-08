@@ -4,12 +4,19 @@ Companion to the registry (`src/lib/notificationTypes.ts`). The registry is the
 code source of truth for the four **categories**; this doc is the source of truth
 for which **write sites** may fan out to them, and how.
 
-**Status: the `scores` category is WIRED (Phase 3).** One wire point —
+**Status: the `game_results` category is WIRED (Phase 3).** One wire point —
 `games.finish`, which covers all four formats — produces two notifications: "a
 game is final" and, when it becomes true, "the cup is clinched". Everything else
 in the table below is still unwired: `planning`, `invites` and `chat` are
 untouched, every BATCH row is untouched (their coalescing is undesigned), and
 every **NEVER** row is untouched and must stay that way.
+
+**Exactly one category is EXPOSED in settings**, and it is the one with a sender.
+Settings live in a single place (profile → Preferences); the category list
+renders only when the device is subscribed, because muting a category without a
+subscription changes nothing. The chat header bell was removed — one stored value
+with two entry points meant a user who muted from the bell had no way to know
+settings governed the same thing.
 
 That last one is enforced MECHANICALLY, not remembered:
 `src/server/lib/pushCallSites.guard.test.ts` fails the build if any file outside
@@ -20,12 +27,54 @@ import that slips through.
 
 ## Categories (registry — confirmed)
 
-| Key | Label | Default | Covers | Excludes (load-bearing) |
-|-----|-------|:-------:|--------|--------|
-| `scores` | Scores & results | **ON** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
-| `planning` | Trip planning | **ON** | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
-| `invites` | Invites & admin | **ON** | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
-| `chat` | Chat messages | **OFF** | new messages, any channel | per-channel prefs — one global switch |
+| Key | Label | Default | Exposed? | Covers | Excludes (load-bearing) |
+|-----|-------|:-------:|:--------:|--------|--------|
+| `game_results` | Competition & game alerts | **ON** | **yes** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
+| `planning` | Trip planning | **ON** | no | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
+| `invites` | Invites & admin | **ON** | no | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
+| `chat` | Chat messages | **ON** | no | new messages, any channel | per-channel prefs — one global switch |
+
+### `game_results` was called `scores`, and the rename was a bug fix
+
+"Scores" read as *every score entered* — precisely what this category must never
+send. `scores.upsertEntry` / `deleteEntry` are NEVER-marked (~540/day), and the
+category name was the most likely thing to talk someone into wiring one. What it
+actually sends is a game finishing and the cup clinching. No stored row ever held
+the old key (0 of 88 production users), so no migration was needed.
+
+### EVERY category defaults ON — and that is deliberate
+
+The **device toggle is the consent gate**. Enabling notifications is the
+deliberate act, and the category list shown at that moment is a menu of what you
+can *mute*, not a set of switches to hunt for and turn on. A category defaulting
+OFF means someone enables notifications and then receives nothing, which reads as
+broken rather than as respectful. `chat` was flipped from OFF to match.
+
+### `planning` and `invites` are UNEXPOSED ON PURPOSE, not abandoned
+
+**Do not delete these registry entries when tidying.** They render no row in
+settings because neither has a wired sender, and a control that mutes nothing is
+worse than an absent one. But both have real triggers already built and waiting:
+`datePoll.lockDateWindow`, `trips.lockDestination`, `trips.changeDestination`,
+and the invite mutations — all live procedures with live UI.
+
+This is written down because the next person tidying the registry finds two
+entries nobody renders and reasonably concludes they are dead. They are not. An
+audit in Aug 2026 corrected exactly that wrong premise once already; the finding
+should not have to be re-derived. Wiring them is tracked as its own issue.
+
+### News must NOT inherit `chat`'s category
+
+When News gets a sender it gets **its own category**. Not `chat`, and not
+`planning` — which is where this doc filed `news.create` until Aug 2026, and
+which the shipped UI contradicts: News is a segment of the *chat* surface
+(Crew · Organizers · News).
+
+The reason is the default, not the taxonomy. Chat is hundreds/day. News is ~1–5
+per trip, organizer-authored, and high-signal. Folding News into `chat` means it
+is muted by anyone who mutes the firehose — so the highest-signal non-scoring
+notification in the app would reach nobody who had not opted into the noisiest
+thing in it. That outcome would be produced entirely by a categorisation choice.
 
 ## Eligibility markings
 
@@ -51,13 +100,13 @@ disappearance of that row raises the volume budget.
 
 | Write site (tRPC) | What happened | Category | Eligibility | Est. volume |
 |---|---|---|---|---|
-| `scores.upsertEntry` | A hole score entered | `scores` | **NEVER** | ~540/day (30×18). Mechanical. Never wire. |
-| `scores.deleteEntry` | A hole score cleared | `scores` | **NEVER** | churny corrections; mechanical |
-| `games.finish` | Game/round finalized (EVERY format, incl. a non-golf result posted to the cup) | `scores` | **ELIGIBLE** | ~5–15/day golf + ~1–5/**trip** non-golf. **The natural Phase 3 first wire.** |
-| `games.openCorrection` | Correction window opened | `scores` | BATCH | rare; only notify affected players |
-| competition leaderboard → cup decided | **Cup clinched** | `scores` | **ELIGIBLE** | ~1–3/trip. **Highest-value push in the app** — "Manhattans clinched." |
-| `matches.setPairings` / `assignPlayer` / `reorder` | Pairings/roster setup | `scores` | **NEVER** | setup-time mechanical churn |
-| `matches.setHandicap` / `setPointValue` | Config tweak | `scores` | **NEVER** | mechanical |
+| `scores.upsertEntry` | A hole score entered | `game_results` | **NEVER** | ~540/day (30×18). Mechanical. Never wire. |
+| `scores.deleteEntry` | A hole score cleared | `game_results` | **NEVER** | churny corrections; mechanical |
+| `games.finish` | Game/round finalized (EVERY format, incl. a non-golf result posted to the cup) | `game_results` | **ELIGIBLE** | ~5–15/day golf + ~1–5/**trip** non-golf. **The natural Phase 3 first wire.** |
+| `games.openCorrection` | Correction window opened | `game_results` | BATCH | rare; only notify affected players |
+| competition leaderboard → cup decided | **Cup clinched** | `game_results` | **ELIGIBLE** | ~1–3/trip. **Highest-value push in the app** — "Manhattans clinched." |
+| `matches.setPairings` / `assignPlayer` / `reorder` | Pairings/roster setup | `game_results` | **NEVER** | setup-time mechanical churn |
+| `matches.setHandicap` / `setPointValue` | Config tweak | `game_results` | **NEVER** | mechanical |
 | `datePoll.lockDateWindow` | Dates locked | `planning` | **ELIGIBLE** | ~1/trip |
 | `datePoll.castDateVote` / `castVoteForMember` | A vote cast | `planning` | **NEVER** | ~hundreds during polling |
 | `trips.lockDestination` | Destination locked | `planning` | **ELIGIBLE** | ~1/trip |
@@ -69,9 +118,9 @@ disappearance of that row raises the volume budget.
 | `teamAssignments.assign` | Added to a team | `invites` | BATCH | ~30/trip setup burst; coalesce per recipient |
 | `tripMembers.updateTravel` / `updateMemberTravel` | RSVP / travel change | `invites` | **NEVER** (or heavily BATCH) | ~30–60 over trip life; low signal |
 | `tripMembers.updateRole` | Role changed | `invites` | **ELIGIBLE** | rare; notify the affected user |
-| `messages.send` (trip channel) | New chat message | `chat` | BATCH | hundreds/day live; coalesce hard. OFF by default. |
+| `messages.send` (trip channel) | New chat message | `chat` | BATCH | hundreds/day live; coalesce hard. |
 | `messages.send` (team channel) | New team-chat message | `chat` | BATCH | same |
-| `news.create` | News posted | `planning` | **ELIGIBLE** | ~1–5/trip (see open question) |
+| `news.create` | News posted | **its own category** (NOT `chat`, NOT `planning`) | **ELIGIBLE** | ~1–5/trip. See the News note above — folding it into `chat` mutes it for anyone who mutes the firehose. |
 
 ## Open questions for Phase 3 (not blocking Phase 2)
 
@@ -87,7 +136,7 @@ disappearance of that row raises the volume budget.
    (per-recipient debounce window) before it's wired — out of scope until Phase 3
    picks up chat/itinerary.
 
-## What the `scores` wiring actually does (Phase 3, shipped)
+## What the `game_results` wiring actually does (Phase 3, shipped)
 
 One call site — `games.finish` — because there is now one finalize for every
 format. `src/server/lib/gameFinishNotify.ts` owns it, and all the copy lives

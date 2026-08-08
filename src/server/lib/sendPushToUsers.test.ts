@@ -89,7 +89,7 @@ describe("sendPushToUsers — audience", () => {
     );
     sendMock.mockResolvedValue(undefined);
 
-    const res = await sendPushToUsers(["u1", "u2"], "scores", PAYLOAD, {
+    const res = await sendPushToUsers(["u1", "u2"], "game_results", PAYLOAD, {
       admin,
       excludeUserId: "u1",
     });
@@ -106,7 +106,7 @@ describe("sendPushToUsers — audience", () => {
     const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
     sendMock.mockResolvedValue(undefined);
 
-    const res = await sendPushToUsers(["u1", "u1", "u1"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["u1", "u1", "u1"], "game_results", PAYLOAD, { admin });
 
     expect(res.recipients).toBe(1);
     expect(res.sent).toBe(1);
@@ -114,7 +114,7 @@ describe("sendPushToUsers — audience", () => {
 
   it("an empty audience sends nothing and touches no client", async () => {
     const { admin } = makeAdmin([], []);
-    const res = await sendPushToUsers([], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers([], "game_results", PAYLOAD, { admin });
     expect(res).toMatchObject({ recipients: 0, sent: 0 });
     expect(sendMock).not.toHaveBeenCalled();
   });
@@ -124,14 +124,14 @@ describe("sendPushToUsers — preference gate", () => {
   it("a recipient with scores OFF gets nothing; the rest still do", async () => {
     const { admin } = makeAdmin(
       [
-        { id: "off", notification_prefs: { scores: false } },
+        { id: "off", notification_prefs: { game_results: false } },
         { id: "on", notification_prefs: { scores: true } },
       ],
       [sub("off", 1), sub("on", 1)]
     );
     sendMock.mockResolvedValue(undefined);
 
-    const res = await sendPushToUsers(["off", "on"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["off", "on"], "game_results", PAYLOAD, { admin });
 
     expect(res.skippedPreferenceOff).toBe(1);
     expect(res.sent).toBe(1);
@@ -143,16 +143,33 @@ describe("sendPushToUsers — preference gate", () => {
   it("an UNSET preference falls back to the registry default (scores is ON)", async () => {
     const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
     sendMock.mockResolvedValue(undefined);
-    const res = await sendPushToUsers(["u1"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["u1"], "game_results", PAYLOAD, { admin });
     expect(res.sent).toBe(1);
   });
 
-  it("chat defaults OFF — the same audience gets nothing for a chat-category send", async () => {
-    // Pins that the gate reads the REGISTRY per key rather than assuming "on".
-    const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
+  it("an EXPLICIT opt-out is honoured per key, not just the default", async () => {
+    // This replaces a "chat defaults OFF" case. Chat now defaults ON like every
+    // other category, so an unset chat preference no longer distinguishes
+    // "reads the registry" from "assumes on" — both produce a send.
+    //
+    // The discriminating input is a stored `false` against an ON default, which
+    // is what actually has to work: it is the only thing standing between a user
+    // who muted a category and the push they muted.
+    const { admin } = makeAdmin(
+      [{ id: "u1", notification_prefs: { chat: false } }],
+      [sub("u1", 1)]
+    );
     const res = await sendPushToUsers(["u1"], "chat", PAYLOAD, { admin });
     expect(res.sent).toBe(0);
     expect(res.skippedPreferenceOff).toBe(1);
+  });
+
+  it("an unset preference now SENDS for every category — the default flip", async () => {
+    const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
+    sendMock.mockResolvedValue(undefined);
+    const res = await sendPushToUsers(["u1"], "chat", PAYLOAD, { admin });
+    expect(res.sent).toBe(1);
+    expect(res.skippedPreferenceOff).toBe(0);
   });
 });
 
@@ -164,7 +181,7 @@ describe("sendPushToUsers — devices", () => {
     );
     sendMock.mockResolvedValue(undefined);
 
-    const res = await sendPushToUsers(["u1"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["u1"], "game_results", PAYLOAD, { admin });
 
     expect(res.recipients).toBe(1);
     expect(res.sent).toBe(2); // phone + tablet, not a double of one device
@@ -172,7 +189,7 @@ describe("sendPushToUsers — devices", () => {
 
   it("a recipient with no subscribed device is not an error", async () => {
     const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], []);
-    const res = await sendPushToUsers(["u1"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["u1"], "game_results", PAYLOAD, { admin });
     expect(res).toMatchObject({ recipients: 1, sent: 0, removedDead: 0 });
   });
 });
@@ -191,7 +208,7 @@ describe("sendPushToUsers — dead endpoints", () => {
       return Promise.resolve(undefined);
     });
 
-    const res = await sendPushToUsers(["gone", "live"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["gone", "live"], "game_results", PAYLOAD, { admin });
 
     expect(res.removedDead).toBe(1);
     expect(res.sent).toBe(1);
@@ -205,7 +222,7 @@ describe("sendPushToUsers — dead endpoints", () => {
     );
     sendMock.mockRejectedValue({ statusCode: 500 });
 
-    const res = await sendPushToUsers(["u1"], "scores", PAYLOAD, { admin });
+    const res = await sendPushToUsers(["u1"], "game_results", PAYLOAD, { admin });
 
     expect(res.removedDead).toBe(0);
     expect(res.sent).toBe(0);
@@ -217,7 +234,7 @@ describe("sendPushToUsers — failure isolation", () => {
   it("never throws when the push service rejects", async () => {
     const { admin } = makeAdmin([{ id: "u1", notification_prefs: {} }], [sub("u1", 1)]);
     sendMock.mockRejectedValue(new Error("network down"));
-    await expect(sendPushToUsers(["u1"], "scores", PAYLOAD, { admin })).resolves.toMatchObject(
+    await expect(sendPushToUsers(["u1"], "game_results", PAYLOAD, { admin })).resolves.toMatchObject(
       { sent: 0 }
     );
   });
@@ -231,7 +248,7 @@ describe("sendPushToUsers — failure isolation", () => {
       },
     } as never;
     await expect(
-      sendPushToUsers(["u1"], "scores", PAYLOAD, { admin: exploding })
+      sendPushToUsers(["u1"], "game_results", PAYLOAD, { admin: exploding })
     ).resolves.toMatchObject({ sent: 0 });
   });
 });
