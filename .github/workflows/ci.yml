@@ -24,6 +24,20 @@ jobs:
       # fails with ECONNRESET in CI. We install the CLI separately via
       # supabase/setup-cli below, so the npm-bundled binary isn't needed.
       - run: npm ci --ignore-scripts
+      # Lint is merge-blocking, and runs BEFORE the Supabase stack because it
+      # needs no database — a lint failure should cost seconds, not a Docker boot.
+      #
+      # It did not run in CI at all until the 2026-08-08 rules audit
+      # (RULES_AUDIT.md §1C), which is why "never hardcode a colour" and every
+      # other stated style rule had no way of being true or false.
+      # `--max-warnings 0` because a gate that tolerates warnings just accrues
+      # them invisibly; the repo is at zero errors AND zero warnings, so holding
+      # that line costs nothing and is the only threshold that stays meaningful.
+      #
+      # NOTE the limit: this enforces the rules ESLint is CONFIGURED with. It does
+      # NOT enforce the no-raw-hex rule — that needs a custom rule, which needs an
+      # exemption list, which is blocked on the open marketing-CSS question.
+      - run: npx eslint --max-warnings 0
       - uses: supabase/setup-cli@v1
         with:
           # Pinned (not `latest`): `latest` resolves the newest release from a

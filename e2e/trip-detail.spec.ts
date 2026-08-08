@@ -33,7 +33,10 @@ const MOCK_TRIP = {
   created_at: new Date().toISOString(),
 };
 
-const MOCK_TRIP_LOCKED = {
+// Underscore-prefixed to match the configured `varsIgnorePattern` — this is a
+// deliberately-kept fixture for the deferred locked-destination specs, not dead
+// code. (These mocked specs match no Playwright project and don't run yet.)
+const _MOCK_TRIP_LOCKED = {
   ...MOCK_TRIP,
   id: "trip-locked-001",
   locked_destination_title: "St Andrews",
