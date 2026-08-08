@@ -33,7 +33,8 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
  * one, with no interaction with `?view=` at all.
  *
  * ── Placement: never covers the tab bar ──────────────────────────────────
- * `bottom: var(--bt-bottomnav-height, 0px)` leaves the mobile tab bar (and,
+ * `bottom: var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px))` leaves
+ * the mobile tab bar (and,
  * ≥1024, its own toggle in `TopNav`) visible and tappable beneath the sheet —
  * that visibility is the whole point of chat not being a destination:
  * closing it (including via the SAME control that opened it) always works,
@@ -135,7 +136,7 @@ export function ChatSheet({
         ref={sheetRef}
         className="fixed left-0 right-0 z-30 flex flex-col overflow-hidden rounded-t-2xl"
         style={{
-          bottom: "var(--bt-bottomnav-height, 0px)",
+          bottom: "var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px))",
           height: `${heightFrac * 100}%`,
           maxHeight: "88vh",
           background: "var(--color-bt-card-float)",

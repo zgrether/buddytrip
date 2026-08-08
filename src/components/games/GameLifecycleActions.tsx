@@ -40,7 +40,22 @@ import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
  * affected surface rather than per view.
  */
 const CTA_BOX: React.CSSProperties = {
-  paddingBottom: "calc(var(--bt-bottomnav-height, 0px) + 24px)",
+  /**
+   * The fallback is `env(safe-area-inset-bottom)`, NOT `0px`, and the difference
+   * only started mattering when `viewport-fit=cover` landed.
+   *
+   * `--bt-bottomnav-height` is `AppTabBar`'s measured `offsetHeight`, which
+   * already INCLUDES its own safe-area padding — so where the bar is showing,
+   * adding `env()` on top would double-count the inset and leave a visible gap.
+   * But `AppTabBar` REMOVES the variable when it unmounts, and it unmounts on
+   * exactly the focused-entry surfaces where this CTA anchors to the viewport
+   * bottom. There the fallback is what applies, and a `0px` fallback would put
+   * the button under the home indicator.
+   *
+   * Fallback, not addition — that is the whole trick: whichever of the two is
+   * present carries the inset, and they are never both counted.
+   */
+  paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 24px)",
 };
 
 export function GameLifecycleActions({
