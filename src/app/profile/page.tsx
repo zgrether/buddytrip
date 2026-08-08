@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronRight } from "lucide-react";
@@ -17,11 +17,10 @@ import {
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { showToast } from "@/lib/toast";
-import { subscribeBrowser, unsubscribeBrowser, currentPushEndpoint, getVapidPublicKey } from "@/lib/pushClient";
-import { deriveDevicePushState, devicePushCopy } from "@/lib/devicePushState";
-import { isUnauthorizedError } from "@/lib/authExpiry";
 import { useNotificationPreference } from "@/lib/useNotificationPreference";
-import { NOTIFICATION_TYPES } from "@/lib/notificationTypes";
+import { NOTIFICATION_TYPES, type NotificationKey } from "@/lib/notificationTypes";
+import { useDevicePush } from "@/lib/useDevicePush";
+import { Checkbox } from "@/components/games/Checkbox";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
@@ -345,7 +344,15 @@ export default function ProfilePage() {
               </div>
             )}
 
-            <div className="block md:hidden">
+            {/* Was `block md:hidden`, which hid the whole card on desktop. That
+                was tolerable while it held only device-scoped controls, and
+                stopped being tolerable when it gained a CATEGORY preference:
+                muting a category is stored on the USER and applies to every
+                device, so a desktop-only user could not reach a setting that
+                governs their phone. The device rows come along, which is
+                correct — desktop browsers support push, and the row reports its
+                real state on any of them. */}
+            <div className="block">
               <Section label="Preferences">
                 <div
                   className="overflow-hidden rounded-xl"
@@ -360,8 +367,7 @@ export default function ProfilePage() {
                     sub="Saved destinations for future trips"
                     onClick={() => router.push("/profile/archived-ideas")}
                   />
-                  <NotificationEnableRow />
-                  <ScoresNotifyRow />
+                  <NotificationSettings />
                   <NotificationTestRow />
                 </div>
               </Section>
@@ -538,186 +544,91 @@ function SettingsRow({
   );
 }
 
-// ── Notification enable row (Push Phase 2) ─────────────────────────────────
-// Explicit (re)subscribe for THIS install, independent of the install banner.
-// Needed because the banner's enable prompt only shows when permission is
-// "default" — but on Android the notification permission is per-ORIGIN and a
-// WebAPK shares it, so after a prior grant + uninstall/reinstall the permission
-// reads "granted" (no banner) while the new install has no live subscription.
-// This row works in every permission state: requests permission if needed
-// (a no-op prompt when already granted), then subscribes this device.
-function NotificationEnableRow() {
-  const [busy, setBusy] = useState(false);
-  // The three inputs, read rather than assumed. `permission` and `endpoint`
-  // start null/undefined because both are async and neither is knowable during
-  // SSR — the row shows a neutral "Checking…" until they resolve rather than
-  // guessing a state and correcting itself a tick later.
-  const [permission, setPermission] = useState<NotificationPermission | null>(null);
-  const [endpoint, setEndpoint] = useState<string | null>(null);
-  const [probed, setProbed] = useState(false);
+// ── Notification settings — the ONE location ───────────────────────────────
+//
+// Device subscription, then the categories it can deliver. Everything a user
+// can mute is here; there is no second entry point. The chat header bell used to
+// be one, which meant a single stored value had two controls and someone who
+// muted from the bell had no way to know this page governed the same thing.
+//
+// THE CATEGORY LIST RENDERS ONLY WHEN THE DEVICE IS ON, and that is a real
+// constraint rather than tidiness: muting a category without a subscription
+// changes nothing, so showing the switches would offer control that does not
+// exist. Enabling is the deliberate act; the list that appears is a menu of what
+// to mute, which is also why every category defaults ON.
+//
+// Only categories with a LIVE SENDER appear. Today that is `game_results`
+// alone. `planning` and `invites` stay defined in the registry — their triggers
+// exist and are waiting on senders — but a row for them would be a control over
+// nothing, which is worse than an absent one. See NOTIFICATIONS.md.
+function NotificationSettings() {
+  const device = useDevicePush();
 
-  const subscribe = trpc.notifications.subscribe.useMutation();
-  const unsubscribe = trpc.notifications.unsubscribe.useMutation();
-
-  // Only meaningful once we HAVE an endpoint; `enabled` keeps it from firing
-  // with a placeholder and caching a false negative against the wrong key.
-  const registered = trpc.notifications.isRegistered.useQuery(
-    { endpoint: endpoint ?? "" },
-    { enabled: !!endpoint }
-  );
-
-  const readBrowserState = useCallback(async () => {
-    if (typeof window === "undefined" || typeof Notification === "undefined") {
-      setProbed(true);
-      return;
-    }
-    setPermission(Notification.permission);
-    setEndpoint(await currentPushEndpoint());
-    setProbed(true);
-  }, []);
-
-  useEffect(() => {
-    void readBrowserState();
-    // Permission and subscription can BOTH change outside this tab — the user
-    // can revoke in browser settings, or another tab can unsubscribe. Re-read on
-    // return so the label is right after a reload or a trip to settings, which
-    // is verification step 5.
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void readBrowserState();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [readBrowserState]);
-
-  const state = deriveDevicePushState({
-    supported:
-      typeof window !== "undefined" &&
-      typeof Notification !== "undefined" &&
-      "serviceWorker" in navigator &&
-      !!getVapidPublicKey(),
-    permission,
-    hasBrowserSubscription: !!endpoint,
-    // While the query is in flight, treat it as NOT registered rather than
-    // optimistically on — an over-claiming label is the defect being fixed.
-    registeredOnServer: registered.data?.registered ?? false,
-  });
-
-  const copy = devicePushCopy(state);
-  const settling = !probed || (!!endpoint && registered.isPending);
-
-  /** Never surface a raw UNAUTHORIZED on this path — it reads as a broken
-   *  button when it means a dead session, and it is the one message that must
-   *  tell someone what to actually do. */
-  const failed = (fallback: string) => (err: unknown) => {
-    showToast(isUnauthorizedError(err) ? "Your session expired — sign in again to change this." : fallback);
-  };
-
-  const toggle = async () => {
-    if (busy || !copy.actionable) return;
-    setBusy(true);
-    try {
-      if (state === "on") {
-        // OFF means genuinely off: drop the browser subscription AND the row.
-        // A preference flip would leave this device subscribed and is a
-        // different act entirely.
-        const removed = await unsubscribeBrowser();
-        // Fall back to the endpoint we already read, so a browser-side
-        // unsubscribe that returns null still clears the server row rather than
-        // stranding it as a permanent phantom device.
-        const target = removed ?? endpoint;
-        if (target) await unsubscribe.mutateAsync({ endpoint: target });
-        showToast("Notifications turned off for this device.", "info");
-      } else {
-        const perm = await Notification.requestPermission();
-        setPermission(perm);
-        if (perm !== "granted") {
-          // `denied` re-renders the row into its blocked state, which carries
-          // the settings instruction — so the toast doesn't repeat it.
-          showToast(
-            perm === "denied"
-              ? "Notifications are blocked for this site."
-              : "Notifications weren't enabled.",
-            "info"
-          );
-          return;
-        }
-        const sub = await subscribeBrowser();
-        if (!sub) {
-          showToast("Couldn't subscribe on this device — try reopening BuddyTrip from your Home Screen.", "info");
-          return;
-        }
-        await subscribe.mutateAsync(sub);
-        showToast("Notifications enabled on this device.", "info");
-      }
-      // Re-read rather than assume the write landed: the label's whole job is
-      // to report reality, so it re-derives from the browser and the server.
-      await readBrowserState();
-      await registered.refetch();
-    } catch (err) {
-      failed(state === "on" ? "Couldn't turn notifications off." : "Couldn't enable notifications.")(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const label = settling ? "Checking notifications…" : busy ? "Working…" : copy.label;
+  const deviceLabel = device.settling
+    ? "Checking notifications…"
+    : device.busy
+      ? "Working…"
+      : device.copy.label;
 
   return (
-    <SettingsRow
-      icon={<IconBell size={16} stroke={1.75} />}
-      label={label}
-      sub={settling ? undefined : copy.sub}
-      onClick={copy.actionable && !settling ? toggle : undefined}
-    />
+    <>
+      <SettingsRow
+        icon={<IconBell size={16} stroke={1.75} />}
+        label={deviceLabel}
+        sub={device.settling ? undefined : device.copy.sub}
+        onClick={device.copy.actionable && !device.settling ? device.toggle : undefined}
+      />
+      {device.state === "on" &&
+        EXPOSED_CATEGORIES.map((key) => <NotificationCategoryRow key={key} categoryKey={key} />)}
+    </>
   );
 }
 
-// ── Scores & results category toggle ───────────────────────────────────────
-// The ONE wired category (`games.finish` and the cup clinch both send under
-// `scores`) had no off switch anywhere: subscribing meant taking both with no
-// opt-out short of disabling the device entirely.
-//
-// This is a CATEGORY preference, not a device one — it is stored on the user
-// (`users.notification_prefs`) and applies to every device they own. That is
-// why it reads "your devices" rather than "this device", and why it sits below
-// the device row it does not duplicate.
-//
-// Same mechanism as chat's header bell (`useNotificationPreference`), different
-// PLACEMENT, and deliberately: chat's bell is a mute-this-now affordance living
-// where the interruption happens. `scores` fires from a finalize on a screen the
-// user may not even be looking at, so it has no in-context home — settings is
-// where someone goes looking for it.
-function ScoresNotifyRow() {
-  const { enabled, loading, saving, toggle } = useNotificationPreference("game_results");
-  const def = NOTIFICATION_TYPES.find((t) => t.key === "game_results");
+/**
+ * The categories that have a live sender, in registry order.
+ *
+ * Deliberately NOT `NOTIFICATION_KEYS` — the registry defines four and only one
+ * can currently produce a notification. Rendering the other three would put
+ * three switches on screen that mute nothing.
+ */
+const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results"];
+
+/**
+ * One category row. Indented under the device toggle it depends on.
+ *
+ * Uses `Checkbox` — the app's boolean control, extracted precisely so surfaces
+ * stop inventing their own. There is no switch/pill primitive in this codebase
+ * (nothing renders `role="switch"`), so building one here would be the
+ * divergence this project has spent weeks removing.
+ */
+function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey }) {
+  const { enabled, loading, toggle } = useNotificationPreference(categoryKey);
+  const def = NOTIFICATION_TYPES.find((t) => t.key === categoryKey);
 
   return (
-    <SettingsRow
-      icon={<IconBellRinging size={16} stroke={1.75} />}
-      label={def?.label ?? "Scores & results"}
-      // The registry's own description, not a second copy of it — the registry
-      // is the single source of truth for what a category covers, and its
-      // wording is careful (it must never promise per-hole score entry, a
-      // NEVER-eligible site).
-      sub={def?.description ?? "A game or round is finalized, or a cup is clinched."}
-      right={
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: loading
-              ? "var(--color-bt-text-dim)"
-              : enabled
-                ? "var(--color-bt-accent)"
-                : "var(--color-bt-text-dim)",
-            opacity: saving ? 0.5 : 1,
-          }}
-        >
-          {loading ? "…" : enabled ? "On" : "Off"}
-        </span>
-      }
-      onClick={loading ? undefined : toggle}
-    />
+    <div
+      className="flex w-full items-start gap-3 px-4 py-3 pl-11"
+      style={{ borderTop: "0.5px solid var(--color-bt-border)" }}
+    >
+      <div className="min-w-0 flex-1">
+        <div style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
+          {/* The user-facing LABEL, never the key. "Competition & game alerts",
+              not "game_results" — the old name read as "every score entered",
+              which is the one thing this category must never send. */}
+          {def?.label ?? categoryKey}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
+          {def?.description ?? ""}
+        </div>
+      </div>
+      <Checkbox
+        on={enabled}
+        onClick={toggle}
+        disabled={loading}
+        label={`${def?.label ?? categoryKey} notifications`}
+        className="mt-0.5"
+      />
+    </div>
   );
 }
 

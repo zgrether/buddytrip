@@ -6,7 +6,6 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, useNewsUnreadCount, type NewsAuthorMeta } from "@/components/NewsPanel";
-import { ChatNotifyToggle } from "@/components/ChatNotifyToggle";
 import { useTripRole } from "@/hooks/useTripRole";
 import {
   DEFAULT_CHAT_SEGMENT,
@@ -210,9 +209,6 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
             </button>
           );
         })}
-        <div className="ml-auto flex-shrink-0">
-          <ChatNotifyToggle />
-        </div>
       </div>
 
       {/* Crew and Planning are the SAME panel on different channels — this

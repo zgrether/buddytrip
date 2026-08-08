@@ -6,18 +6,19 @@ import { notificationDefault, type NotificationKey } from "@/lib/notificationTyp
 /**
  * Read/write ONE notification category preference.
  *
- * ── Why a hook and not a second toggle ──────────────────────────────────────
- * `ChatNotifyToggle` already owned this: the `getPreferences` query, the
+ * ── Why a hook ──────────────────────────────────────────────────────────────
+ * The chat header bell used to own this: the `getPreferences` query, the
  * optimistic `setData` on mutate, the snapshot restore on error, the invalidate
- * on settle. Adding a `scores` control by copying that block would make two
+ * on settle. Adding a second control by copying that block would have made two
  * cache-manipulating code paths over one stored value — the shape CLAUDE.md #22
  * names directly ("one invalidator, not two lists that happen to match"), and
  * the delta between them IS the bug when they drift.
  *
- * So the mechanism moved here and both callers use it. There is still exactly
- * ONE source of truth for a preference — `users.notification_prefs` via
- * `notifications.getPreferences` / `setPreference` — and now exactly one piece
- * of code that reads and writes it.
+ * The bell has since been REMOVED — one stored value with two entry points is
+ * the same divergence in the UI layer, and someone who muted from the bell had
+ * no way to know settings governed the same thing. Notification settings now
+ * live in exactly one place, and this is the one piece of code that reads and
+ * writes a preference.
  *
  * ── The default matters, and is derived ─────────────────────────────────────
  * Before the query resolves, the value falls back to the REGISTRY default
