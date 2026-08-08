@@ -234,9 +234,25 @@ function RailTripRow({
       disabled={pending}
       data-testid="rail-trip"
       data-pending={pending || undefined}
-      className="relative mb-1 flex w-full items-center gap-2.5 rounded-[9px] p-2.5 text-left transition-colors"
+      // The desktop context rail — no hover/press/focus existed on any of its
+      // rows before this. `RailTripRow` needed one change first: the inline
+      // `background` below used to fall through to a literal `"transparent"`
+      // string for a non-current row, which — same trap as TopNav's desktop
+      // tab strip — would have made a `hover:bg-[...]` class silently inert
+      // (an inline style always wins over a class rule, whatever its value).
+      // Changed to `undefined` so the CSS class can take over exactly when
+      // there's nothing else claiming the background (the CURRENT row keeps
+      // its accent-faint fill, inline, untouched).
+      //
+      // `active:scale-[0.99]` — the wide-row value (see UserMenu's dropdown
+      // items for the same reuse), not the compact `0.98`.
+      //
+      // `disabled={pending}` above means a mid-switch row can't be
+      // re-triggered or refocused — expected, not a gap: it's already
+      // showing its own spinner state.
+      className="relative mb-1 flex w-full items-center gap-2.5 rounded-[9px] p-2.5 text-left transition-[background-color,border-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
       style={{
-        background: current ? "var(--color-bt-accent-faint)" : "transparent",
+        background: current ? "var(--color-bt-accent-faint)" : undefined,
         border: `1px solid ${current ? "var(--color-bt-accent-border)" : "transparent"}`,
         cursor: pending ? "wait" : "pointer",
       }}
@@ -289,7 +305,14 @@ function RailLoadError({ onRetry }: { onRetry: () => void }) {
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1 text-[12px] font-semibold underline"
+        // Ghost/text-link treatment (STYLE_GUIDE.md §5's "Ghost" variant
+        // covers text links). `hover:opacity-70` reuses an existing
+        // convention already used for text links elsewhere in the app
+        // (e.g. archived-ideas' back link) rather than inventing a value —
+        // opacity, not a background wash, since this is bare underlined
+        // text with no surface of its own to tint. `active:scale-[0.98]`
+        // and the uniform focus ring, same as every other element here.
+        className="mt-1 text-[12px] font-semibold underline transition-[opacity,transform] hover:opacity-70 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
         style={{ color: "var(--color-bt-accent)" }}
       >
         Try again
@@ -322,11 +345,14 @@ function RailAction({
     <button
       type="button"
       onClick={onClick}
-      className="mt-1 flex w-full items-center justify-center gap-2 rounded-[9px] p-2.5 text-[12.5px] font-semibold"
+      // Had NO transition, hover, press, or focus at all before this — the
+      // inline `background: "transparent"` (removed below) blocked a hover
+      // class the same way it did on the two rows above, so it's dropped
+      // here too rather than worked around.
+      className="mt-1 flex w-full items-center justify-center gap-2 rounded-[9px] p-2.5 text-[12.5px] font-semibold transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
       style={{
         border: "1px dashed var(--color-bt-border)",
         color: "var(--color-bt-text-dim)",
-        background: "transparent",
       }}
     >
       {icon}
