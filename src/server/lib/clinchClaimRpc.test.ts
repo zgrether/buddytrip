@@ -147,6 +147,40 @@ describe("release_clinch_claim — conditional, never a blind clear", () => {
     expect(await held()).toBeNull();
     expect(await release(teamB)).toBe(false);
   }, 60_000);
+
+  /**
+   * THE PRE-IMAGE DISCRIMINATOR — release's correctness was assumed, never shown.
+   *
+   * Release SETS the column it FILTERS on, which is the shape that broke the
+   * claim: if the predicate were evaluated against the post-update row, then
+   * after `SET clinch_notified_team_id = null` the filter
+   * `clinch_notified_team_id = expected` could never match. That would produce
+   * row_count 0 — so the function returns FALSE — AND leave the column still
+   * set, because nothing was updated.
+   *
+   * The original probe could not tell those apart: it used an id matching
+   * nothing, where zero rows is the correct answer either way. It tested
+   * error-versus-no-error, not row-return semantics.
+   *
+   * These three observations together are inconsistent with post-image
+   * evaluation, and only the three together — `true` alone would not rule out a
+   * blind clear, and a null column alone would not rule out a false negative.
+   * Confirmed directly against the DB (`UPDATE 1` on the function's own
+   * statement, in a rolled-back transaction).
+   */
+  it("release returns TRUE and the column goes null — the WHERE sees the pre-image", async () => {
+    expect(await claim(teamA)).toBe(true);
+    expect(await held()).toBe(teamA);
+
+    expect(await release(teamA), "row_count > 0 — a post-image filter would match nothing").toBe(
+      true
+    );
+    expect(await held(), "and the write landed — not merely reported").toBeNull();
+
+    // The same call again now genuinely matches nothing: FALSE here is the
+    // honest zero, which is what makes the TRUE above meaningful.
+    expect(await release(teamA)).toBe(false);
+  }, 60_000);
 });
 
 describe("the functions are not reachable by end users", () => {
