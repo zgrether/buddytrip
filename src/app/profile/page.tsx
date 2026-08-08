@@ -652,18 +652,19 @@ function NotificationSettings() {
 
   const hasDisclosure = device.state === "on";
 
-  const deviceLabel = device.settling
-    ? "Checking notifications…"
-    : device.busy
-      ? "Working…"
-      : device.copy.label;
+  // Same "name + state" shape as the resolved copy (`devicePushCopy`) — the
+  // label is the control's fixed identity, the sub is what's currently true.
+  // Transient states get their own short sub rather than swallowing the label
+  // into a full sentence ("Checking notifications…") the way this used to.
+  const deviceLabel = device.settling || device.busy ? "Notifications" : device.copy.label;
+  const deviceSub = device.settling ? "Checking…" : device.busy ? "Working…" : device.copy.sub;
 
   return (
     <>
       <SettingsRow
         icon={<IconBell size={16} stroke={1.75} />}
         label={deviceLabel}
-        sub={device.settling ? undefined : device.copy.sub}
+        sub={deviceSub}
         onClick={device.copy.actionable && !device.settling ? device.toggle : undefined}
         // The device row is the true last row in the card whenever there's no
         // disclosure below it (off/blocked/unsupported/settling) — nothing

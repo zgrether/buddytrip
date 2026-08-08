@@ -70,6 +70,26 @@ export interface DevicePushCopy {
  * What the row says. Co-located with the state so the label CANNOT drift from
  * the thing it describes — the previous label lived beside the handler and
  * described neither.
+ *
+ * ── "on" and "off": a NAME plus a STATE, not an instruction ──────────────────
+ * These two used to read as status + instruction + disclaimer in one row —
+ * "Notifications are on for this device" / "Tap to turn them off here. Your
+ * other devices are unaffected." The second line explained how tapping the
+ * control works (which the control's own affordance already says) and
+ * pre-empted a worry nobody had (disclaiming scope tells someone it might NOT
+ * have been scoped, which is the opposite of reassuring).
+ *
+ * Matches the shape of the row above it in the same card — "Idea archive" /
+ * "Saved destinations for future trips" — a fixed name and a short
+ * description. Here the "description" is the current STATE rather than a
+ * static one, which is why `label` no longer varies between "on" and "off":
+ * the identity of the control doesn't change, only what it currently is.
+ *
+ * `blocked` and `unsupported` are deliberately left in their older, fuller
+ * shape — they name a REQUIRED external action (go to browser settings; try
+ * the Home Screen install) rather than explaining a tap the row itself
+ * performs, so the "don't explain the interaction" rule doesn't apply to them
+ * the same way. Not an oversight; narrower in scope on purpose.
  */
 export function devicePushCopy(state: DevicePushState): DevicePushCopy {
   switch (state) {
@@ -90,14 +110,14 @@ export function devicePushCopy(state: DevicePushState): DevicePushCopy {
       };
     case "on":
       return {
-        label: "Notifications are on for this device",
-        sub: "Tap to turn them off here. Your other devices are unaffected.",
+        label: "Notifications",
+        sub: "On for this device",
         actionable: true,
       };
     case "off":
       return {
-        label: "Enable notifications on this device",
-        sub: "Turn on push for this phone or tablet",
+        label: "Notifications",
+        sub: "Off for this device",
         actionable: true,
       };
   }
