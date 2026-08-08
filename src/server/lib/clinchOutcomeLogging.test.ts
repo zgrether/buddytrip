@@ -202,6 +202,40 @@ describe("clinch check — every path announces itself", () => {
     }
   }, 60_000);
 
+  /**
+   * THE ROW MUST AGREE WITH THE LINE. A branch that logs one outcome and
+   * records another is worse than recording nothing: the durable table is what
+   * outlives the logs, so a mislabelled row is the version that survives.
+   *
+   * Not hypothetical, and this test exists because of it. Rebasing this work
+   * onto #846 — which split the old `if (!won)` branch into `already_claimed` /
+   * `claim_error` / `claim_no_row` — applied with NO conflict and silently moved
+   * the `recordClinchOutcome(..., "already_claimed")` call into the
+   * `claim_no_row` branch. Clean merge, wrong code: `already_claimed` and
+   * `claim_error` stopped recording at all, and `claim_no_row` recorded itself
+   * as correct suppression — re-creating in the table the exact lie #846 had
+   * just removed from the logs.
+   *
+   * The assertions above only checked that certain labels appeared SOMEWHERE,
+   * so all of that passed. Pairing them per-call is what catches it.
+   */
+  it("the recorded row's outcome MATCHES the logged outcome, per call", async () => {
+    await ctx.admin.from("push_send_log").delete().eq("competition_id", compId);
+
+    // Currently DECIDED and claimed (from the cases above) → already_claimed.
+    await run();
+    const logged = outcomes().filter((o) => o !== "entry");
+    expect(logged).toHaveLength(1);
+
+    const { data } = await ctx.admin
+      .from("push_send_log")
+      .select("outcome")
+      .eq("competition_id", compId);
+
+    expect(data ?? []).toHaveLength(1);
+    expect((data ?? [])[0]?.outcome).toBe(logged[0]);
+  }, 60_000);
+
   it("EXACTLY ONE outcome per call — never zero, never two", async () => {
     // The invariant that makes the log readable: one call, one verdict. Zero
     // would restore the blind spot; two would mean a path fell through.

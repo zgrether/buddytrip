@@ -730,7 +730,12 @@ export interface NotifyCupClinchedInput {
 async function recordClinchOutcome(
   admin: SupabaseClient,
   input: NotifyCupClinchedInput,
-  outcome: "no_clincher" | "already_claimed" | "threw",
+  // Mirrors the exits one-for-one. `claim_error` and `claim_no_row` arrived with
+  // the discriminated claim result (#846): before it, both were reported as
+  // `already_claimed`, so a REFUSED write recorded itself as correct
+  // suppression. Recording them under that label would have re-created the lie
+  // in the durable table, which is the one place it would outlive the logs.
+  outcome: "no_clincher" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
   error?: string
 ): Promise<void> {
   await recordPushAttempt(
@@ -842,6 +847,7 @@ export async function notifyCupClinchedIfDecided(
         heldBy: claim.heldBy,
         heldClaimAtPassStart: heldClaim,
       });
+      await recordClinchOutcome(admin, input, "already_claimed");
       return;
     }
 
@@ -856,6 +862,16 @@ export async function notifyCupClinchedIfDecided(
         code: claim.code,
         message: claim.message,
       });
+      // The message goes in the ROW too. This is the outcome most likely to be
+      // read days later by someone who no longer has the logs, and "it failed"
+      // without the reason would leave them exactly where this whole
+      // investigation started.
+      await recordClinchOutcome(
+        admin,
+        input,
+        "claim_error",
+        claim.code ? `${claim.code}: ${claim.message}` : claim.message
+      );
       return;
     }
 
@@ -871,7 +887,7 @@ export async function notifyCupClinchedIfDecided(
         heldNow: claim.heldNow,
         heldClaimAtPassStart: heldClaim,
       });
-      await recordClinchOutcome(admin, input, "already_claimed");
+      await recordClinchOutcome(admin, input, "claim_no_row");
       return;
     }
 
