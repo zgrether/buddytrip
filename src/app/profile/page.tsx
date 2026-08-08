@@ -20,6 +20,8 @@ import { showToast } from "@/lib/toast";
 import { subscribeBrowser, unsubscribeBrowser, currentPushEndpoint, getVapidPublicKey } from "@/lib/pushClient";
 import { deriveDevicePushState, devicePushCopy } from "@/lib/devicePushState";
 import { isUnauthorizedError } from "@/lib/authExpiry";
+import { useNotificationPreference } from "@/lib/useNotificationPreference";
+import { NOTIFICATION_TYPES } from "@/lib/notificationTypes";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
@@ -359,6 +361,7 @@ export default function ProfilePage() {
                     onClick={() => router.push("/profile/archived-ideas")}
                   />
                   <NotificationEnableRow />
+                  <ScoresNotifyRow />
                   <NotificationTestRow />
                 </div>
               </Section>
@@ -665,6 +668,55 @@ function NotificationEnableRow() {
       label={label}
       sub={settling ? undefined : copy.sub}
       onClick={copy.actionable && !settling ? toggle : undefined}
+    />
+  );
+}
+
+// ── Scores & results category toggle ───────────────────────────────────────
+// The ONE wired category (`games.finish` and the cup clinch both send under
+// `scores`) had no off switch anywhere: subscribing meant taking both with no
+// opt-out short of disabling the device entirely.
+//
+// This is a CATEGORY preference, not a device one — it is stored on the user
+// (`users.notification_prefs`) and applies to every device they own. That is
+// why it reads "your devices" rather than "this device", and why it sits below
+// the device row it does not duplicate.
+//
+// Same mechanism as chat's header bell (`useNotificationPreference`), different
+// PLACEMENT, and deliberately: chat's bell is a mute-this-now affordance living
+// where the interruption happens. `scores` fires from a finalize on a screen the
+// user may not even be looking at, so it has no in-context home — settings is
+// where someone goes looking for it.
+function ScoresNotifyRow() {
+  const { enabled, loading, saving, toggle } = useNotificationPreference("scores");
+  const def = NOTIFICATION_TYPES.find((t) => t.key === "scores");
+
+  return (
+    <SettingsRow
+      icon={<IconBellRinging size={16} stroke={1.75} />}
+      label={def?.label ?? "Scores & results"}
+      // The registry's own description, not a second copy of it — the registry
+      // is the single source of truth for what a category covers, and its
+      // wording is careful (it must never promise per-hole score entry, a
+      // NEVER-eligible site).
+      sub={def?.description ?? "A game or round is finalized, or a cup is clinched."}
+      right={
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: loading
+              ? "var(--color-bt-text-dim)"
+              : enabled
+                ? "var(--color-bt-accent)"
+                : "var(--color-bt-text-dim)",
+            opacity: saving ? 0.5 : 1,
+          }}
+        >
+          {loading ? "…" : enabled ? "On" : "Off"}
+        </span>
+      }
+      onClick={loading ? undefined : toggle}
     />
   );
 }
