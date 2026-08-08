@@ -573,6 +573,38 @@ These patterns have been established through prior work. Follow them exactly —
     `status` / `corrections_open` directly, anywhere outside this module, is
     the eighth instance arriving.
 
+25. **A game's three go-live signals move TOGETHER, always — `status`,
+    `scoring_enabled`, `pairings_published_at`.** Going live sets all three;
+    coming back out of live clears all three. There is no legitimate state where
+    one has moved and the others have not, and nothing in the type system says
+    so — they are three ordinary columns that happen to have to agree.
+    **Never write one without the other two.**
+
+    **What breaks, concretely.** `matches.listByGame` reads TWO of them a few
+    lines apart: the access gate keys on `status === "pending"`
+    (`matches.ts:739`), while the `published` flag it returns to the client keys
+    on `pairings_published_at` (`matches.ts:732`). So the two ways to get this
+    wrong produce two different silent failures — move `status` alone and a
+    member is let through the gate but told the pairings aren't announced yet
+    (a live game reading as "not announced"); move `pairings_published_at` alone
+    and members are refused outright while the game looks live to staff. The
+    third, `scoring_enabled`, gates the score WRITE, so getting that one out of
+    step leaves members able to see a game they cannot enter a score into.
+    Nobody gets an error in any of these cases.
+
+    **Today all three writes are correct and atomic** — `games.enableScoring` /
+    the disable path (`games.ts:902` / `games.ts:923`) and
+    `matches.enableScoring` (`matches.ts:700`) each set all three in ONE update.
+    The risk is entirely in what gets added next: a new mutation, a partial
+    reset, or an optimistic client `setData` that patches the one field it cares
+    about. **The tell:** any write to one of these three columns that isn't
+    setting the other two in the same statement.
+
+    This lived only in `DEFERRED.md` under deferred work until the 2026-08-08
+    rules audit — a load-bearing invariant filed under a heading that invites
+    pruning, with no test. It still has no test; the mechanism above is what
+    you'd need to write one.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative

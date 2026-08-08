@@ -534,56 +534,86 @@ Until a shared component is created, copy these patterns exactly.
 
 ---
 
-## Section 7: Migration Checklist
+## Section 7: Token migration — status, and how to re-check it
 
-Every hardcoded value found in the audit. This is the backlog — fix
-incrementally in follow-up PRs.
+**Status: essentially done.** Of the five patterns the original audit listed,
+three have shipped, one was withdrawn as incorrect, and one remains — plus a
+second that needs a design decision rather than a find-and-replace. This is no
+longer a backlog you work through; it is two known items.
 
-### `#00d4aa` (hardcoded teal CTA) → `var(--color-bt-accent)`
+**This section no longer lists file paths and line numbers, deliberately.**
+The version it replaces did, and by Aug 2026 it named three files that no longer
+existed, said a colour was hardcoded "in 17+ places" when it was in two, listed
+two whole patterns that were already finished, and — the part that matters —
+*missed* new instances of a pattern it did list. A hand-maintained path list
+decays in both directions at once, and a reader cannot tell which entries are
+still true without re-checking every one, at which point the list has cost more
+than it saved. (Established by `RULES_AUDIT.md`, whose own finding was that
+counts and paths are the two things that decay fastest and that a reader cannot
+verify.)
 
-- [ ] `src/components/LocationHero.tsx:91` — city pin fill
-- [ ] `src/components/TripCard.tsx:114` — city pin fill
+**Re-derive it instead**, which takes a second and is always current:
 
-### `#f59e0b` (hardcoded amber) → `var(--color-bt-warning)`
+```bash
+grep -rEn "#[0-9a-fA-F]{6}\b" src --include=*.tsx --include=*.ts | grep -v "\.test\."
+```
 
-- [ ] `src/app/trips/[tripId]/tabs/HomeTab.tsx:883` — PlanningRow noteWarn icon
-- [ ] `src/app/trips/[tripId]/tabs/HomeTab.tsx:893` — PlanningRow noteWarn text
-- [ ] `src/app/trips/[tripId]/tabs/CompTab.tsx:916-918` — submitted status badge
+Read the results against the *deliberate exceptions* table below — most hits are
+in it. Note this rule is **not enforced by anything**: ESLint runs in CI but has
+no raw-colour rule, so the grep is the only check that exists.
 
-### `rgba(0,0,0,0.4)` (modal overlay) → `var(--color-bt-overlay)`
+### Still open
 
-- [ ] `src/app/trips/[tripId]/tabs/CrewTab.tsx:431`
+**1. The city-pin fill.** The teal accent is hardcoded as an SVG `fill` on the
+location map pin, in the two components that draw it. Should be
+`var(--color-bt-accent)` — SVG `fill` accepts a CSS custom property, so there is
+no technical blocker here, it just never got done.
 
-### `#fff` / `white` on colored buttons → consider `--color-bt-on-accent` token
+**2. The title colour over photographic headers.** A conditional picking white
+or near-black for a title sitting on a background *photo*. **Not a simple swap:**
+the correct colour depends on the image behind it, not on light/dark mode, so
+`var(--color-bt-text)` would be wrong roughly half the time. This needs a
+decision about how text over imagery is themed — a scrim, a computed luminance
+(the `teamTextColor` approach), or an explicit pair of tokens for the case.
+Until that decision exists, the hardcoded pair is the honest implementation.
 
-- [ ] `src/app/trips/[tripId]/compare/page.tsx:890` — `#fff` on danger
-- [ ] `src/app/trips/[tripId]/compare/page.tsx:1593` — `#fff` on warning
-- [ ] `src/app/trips/[tripId]/tabs/MoreTab.tsx:772` — `#fff` on danger
-- [ ] `src/components/TripSettingsModal.tsx:78` — `#fff` on danger
+### Withdrawn — this entry was not just stale, it was wrong
 
-### `#ffffff` / `rgba(0,0,0,0.85)` (conditional title color) → `var(--color-bt-text)`
+**White text on Danger buttons is CORRECT. Do not migrate it.** The old entry
+asked for `#fff` on danger fills to move to `--color-bt-on-accent`. That token is
+`#0d1f1a` — a near-black chosen to sit on the **teal** accent fill. Putting it on
+a red danger fill produces dark-on-red. Meanwhile **Section 5 of this very guide
+specifies the Danger button's text as `white`**, and the code follows Section 5.
+There is no `--color-bt-on-danger` token and nothing needs one unless the danger
+fill changes. The entry contradicted Section 5 of the document it lived in, and
+following it would have made contrast worse.
 
-- [ ] `src/components/TripCard.tsx:63` — isDark branch
-- [ ] `src/components/TripHeader.tsx:185` — isDark branch
+### Deliberate exceptions — not migrations, and not violations
 
-### `--color-bt-subtle-border` diverges from `--color-bt-border` (intentional — no migration needed)
+Named by **where they live**, never by value, so this table cannot rot the way
+the checklist did. The previous version listed team colours by hex and had
+already drifted: it named four of the eight, and six "dim variants" that are not
+in the palette at all — so anyone auditing raw colours against it would have
+flagged half the real team palette as violations.
+
+| What | Lives in | Why it is outside the token system |
+|---|---|---|
+| Team identity colours + their dim variants | `src/lib/teamColors.ts` | A team's colour is an identity choice made by users, not a theme value. The module is the palette — read it there. |
+| Per-player chart colours | `src/lib/strokePlayConfig.ts` | Needs N visually distinct series colours, which the semantic tokens don't provide. |
+| Golf tee-marker colours | `src/lib/courseService.ts`, `src/lib/golfCourseApi.ts` | **Real-world data, not styling.** A gold tee is gold on the actual course; theming it would make it wrong. |
+| Score colours (eagle/birdie/par/bogey/dbl+) | `src/components/games/golfScore.ts` | Deliberately outside the button-token system — the file explains why, and requires they never read as interactive. |
+| Transactional email styling | `src/lib/email.ts` | Email clients do not support CSS custom properties. Tokens cannot work here. |
+| PWA theme colour + manifest | `src/app/manifest.ts`, `src/app/layout.tsx` | The browser reads these before any stylesheet; they must be literal values. |
+| Image-overlay `rgba(255,255,255,*)` | competition/lodging image tiles | Sits on a dark photo, not on a theme surface. |
+| The marketing page | `src/components/marketing/` | ⚠️ **OPEN QUESTION.** `design/README.md` says the marketing page keeps raw hex on purpose and must NOT be unified with the product token system. That instruction and this guide's "migrate every raw colour" have been in direct conflict; nothing is broken, but whoever gets there first will follow one and be wrong. Tracked as `RULES_AUDIT.md` §7 Q5 — **do not migrate these until it is answered.** |
+
+### `--color-bt-subtle-border` diverges from `--color-bt-border` (intentional)
 
 After the light-mode contrast pass (`fix/light-mode-contrast`), `--color-bt-border`
 moved from `#e2e8f0` to `#c8d0da`. `--color-bt-subtle-border` remains `#e2e8f0`
 because it is used as a **background fill** (zebra rows, inactive chip backgrounds)
 in scoring components — not as a CSS border. The two tokens now serve different
 purposes and should not be unified.
-
-### Team/competition colors (intentional — no migration needed)
-
-These are team identity colors, intentionally outside the design system:
-`#3b82f6` (blue), `#22c55e` (green), `#a855f7` (purple), `#06b6d4` (cyan),
-`#7f1d1d`, `#1e3a8a`, `#14532d`, `#78350f`, `#581c87`, `#164e63` (dim variants).
-
-### Image overlay rgba values (acceptable exception)
-
-`rgba(255,255,255,0.*)` values in HomeTab competition tile are inside
-dark image-overlay contexts where tokens don't apply. No migration needed.
 
 ---
 
@@ -651,6 +681,6 @@ threshold is immune to that class of drift.)
 
 This is the active style guide. The `--color-bt-*` token system is fully implemented in `src/app/globals.css` with light/dark mode support. CLAUDE.md references this document ("Before making any styling change, read STYLE_GUIDE.md").
 
-**Migration checklist (Section 7):** Many hardcoded hex values have been fixed in recent commits (e.g., vote cell styles unified via `VoteCell` component). Some items may remain — the checklist should be re-audited against current code to update completion status.
+**Migration checklist (Section 7): re-audited 2026-08-08 — this request is now closed.** The checklist asked to be re-audited against current code, and it has been: three of five patterns had already shipped, one was withdrawn as incorrect (it contradicted Section 5), and the remaining two are described in Section 7. The per-file checklist was replaced with a re-derivation command, because a hand-maintained list of paths and counts is what went stale in the first place — it should not be rebuilt.
 
 **Note:** The vote answer color tokens (`--color-bt-vote-yes`, `--color-bt-vote-maybe`, `--color-bt-vote-no`) were added after the initial guide was written and are now documented in Section 3. These are the authoritative vote colors.

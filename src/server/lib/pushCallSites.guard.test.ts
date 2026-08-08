@@ -77,11 +77,17 @@ function importsSendHelper(source: string): boolean {
 
 describe("push call-site allowlist", () => {
   const files = walk(SRC);
-  const offenders = files
+
+  /**
+   * EVERY file that imports a send helper — the raw fact, before any policy is
+   * applied. Both checks below derive from this INDEPENDENTLY.
+   */
+  const senders = files
     .map((f) => ({ rel: relative(SRC, f).replace(/\\/g, "/"), src: readFileSync(f, "utf8") }))
     .filter(({ src }) => importsSendHelper(src))
-    .map(({ rel }) => rel)
-    .filter((rel) => !(rel in ALLOWED));
+    .map(({ rel }) => rel);
+
+  const offenders = senders.filter((rel) => !(rel in ALLOWED));
 
   it("only allowlisted files import a send helper", () => {
     expect(
@@ -93,11 +99,43 @@ describe("push call-site allowlist", () => {
     ).toEqual([]);
   });
 
-  it("no NEVER-marked router sends a push", () => {
-    const breached = Object.keys(NEVER_ROUTERS).filter((rel) => offenders.includes(rel));
+  /**
+   * DERIVED FROM `senders`, NEVER FROM `offenders` — and that is the whole point
+   * of this check.
+   *
+   * It used to filter `offenders`, which the allowlist had already been applied
+   * to. So adding a NEVER-marked router to ALLOWED silenced BOTH checks at once:
+   * the 2026-08-08 rules audit wired a push into `scores.upsertEntry`, added the
+   * router to ALLOWED, and watched all four tests pass green. The backstop
+   * inherited its input from the thing it was supposed to be backstopping.
+   *
+   * Reading `senders` directly makes this UNWAIVABLE by editing a list. Wiring a
+   * push to one of these routers now requires deleting a test that says why not
+   * to — which is a decision someone makes, not an import that slips through.
+   */
+  it("no NEVER-marked router sends a push (independent of ALLOWED)", () => {
+    const breached = Object.keys(NEVER_ROUTERS).filter((rel) => senders.includes(rel));
     expect(
       breached.map((r) => `${r} — ${NEVER_ROUTERS[r]}`),
-      "A NEVER-marked write site is wired to push. This is the check that protects delivery reputation."
+      "A NEVER-marked write site is wired to push. This is the check that protects delivery reputation. " +
+        "Allowlisting the file does NOT satisfy it, deliberately — see the comment above."
+    ).toEqual([]);
+  });
+
+  /**
+   * The near-miss that motivated this: renaming the `scores` notification
+   * category to `game_results` nearly rewrote the string `server/routers/scores.ts`
+   * INSIDE this file. A NEVER_ROUTERS key that no longer names a real file matches
+   * nothing, so the check above would pass forever while protecting nothing —
+   * silently, and with no other test to notice. ALLOWED has had this staleness
+   * check since it was written; the list that matters more did not.
+   */
+  it("every NEVER-marked router still exists (a stale key protects nothing)", () => {
+    const present = new Set(files.map((f) => relative(SRC, f).replace(/\\/g, "/")));
+    const stale = Object.keys(NEVER_ROUTERS).filter((rel) => !present.has(rel));
+    expect(
+      stale,
+      "stale NEVER_ROUTERS key — the file moved or was renamed, so this prohibition now matches nothing"
     ).toEqual([]);
   });
 
