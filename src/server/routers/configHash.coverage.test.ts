@@ -24,10 +24,18 @@ import { HASH_COLS } from "./games";
  *     result / margin / status. (CLAUDE.md #16: score-derived fields are excluded on
  *     purpose so entering scores never moves the config hash.)
  *   • scheduling (not part of the config the RPC writes): scheduled_at.
+ *   • BOARD PRESENTATION (not game config): display_order. Same category as
+ *     scheduled_at. The hash is polled per-GAME by open game surfaces to detect
+ *     config drift, and nothing a game surface renders or computes depends on
+ *     where the game sits on the leaderboard. Hashing it would move the
+ *     fingerprint on every reorder and make every open game view on every device
+ *     re-pull its whole config for a change that doesn't affect it. Propagation
+ *     is the leaderboard's job — the reorder mutation invalidates
+ *     `competitions.leaderboard` AND `competitions.faceBootstrap` (CLAUDE.md #10).
  */
 
 const NOT_HASHED: Record<keyof typeof HASH_COLS, string[]> = {
-  games: ["id", "trip_id", "competition_id", "scheduled_at", "created_at", "schedule_item_id"],
+  games: ["id", "trip_id", "competition_id", "scheduled_at", "created_at", "schedule_item_id", "display_order"],
   game_participants: ["id", "game_id", "created_at"],
   play_groups: ["game_id", "created_at"],
   game_matches: ["game_id", "result", "margin", "status", "created_at"],
