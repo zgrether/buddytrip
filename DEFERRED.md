@@ -683,6 +683,42 @@ should be designed rather than resurrected.
 
 ---
 
+## Lifecycle editability — the fuller intent behind `FINAL_LOCKED`
+
+**Where this is going, recorded here because a migration header is not where
+forward intent survives.**
+
+Migration 111 REFUSES standings-affecting edits on a finished game (course,
+matchups, groupings, handicaps) while leaving name / rules / assignee / points
+editable. That refusal is a **first step, deliberately shipped to see how it
+feels in use** — not the intended end state.
+
+The intent is that **everything becomes editable through the whole lifecycle**,
+with the consequence named at the moment of the edit rather than the edit being
+refused:
+
+- A standings-affecting change on a game that has scores raises a prompt that
+  says what it costs — *"scores exist. Reset them before changing the course?"* —
+  and the person decides.
+- Anything **points-only is always allowed**, at every stage, with no prompt.
+  This is already true and is the half that needs no further work: `game_results`
+  stores a `position` and the payout derives at READ time, so re-pointing a
+  finished game recomputes the board correctly with nothing rewritten.
+
+Two things the eventual work has to solve that the refusal sidesteps:
+
+1. **What happens to the posted result.** Recomputing silently rewrites a result
+   the crew has already seen on the board; leaving it snapshotted makes the
+   settings page describe a game that no longer exists. The prompt is what makes
+   a third answer possible — the user chooses, having been told.
+2. **Where the prompt lives.** The refusal is server-side, which is the right
+   place for a rule. A warn-then-proceed flow needs the client to know the
+   consequence BEFORE the save, so the server's refusal set has to become
+   readable (a dry-run, or a `wouldRefuse` field) rather than only throwable.
+
+Until then, `FINAL_LOCKED`'s message names the edit and points at the Danger
+zone, which is the honest version of "not yet".
+
 ## UX Polish (logged, not urgent)
 
 - **Member setup-surface consolidation (`SetupPlaceholder` vs `MemberNotReady`)** —
