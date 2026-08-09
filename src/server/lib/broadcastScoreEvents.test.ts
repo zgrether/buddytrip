@@ -288,3 +288,88 @@ describe("096 broadcast trigger — game lifecycle", () => {
     expect(received).toEqual([]);
   }, 60_000);
 });
+
+/**
+ * Migration 109 — a game APPEARING or DISAPPEARING.
+ *
+ * 096 covered UPDATE only, so creating or deleting a game emitted nothing and
+ * every other client waited out the 5-minute `LEADERBOARD_QUERY` backstop.
+ *
+ * DELETE is the one that needs an end-to-end test rather than an assertion,
+ * because the obvious implementation silently does nothing: `broadcast_score_event`
+ * used to resolve the competition by looking the game up, and in an AFTER DELETE
+ * the row is already gone (measured: `rows_visible=0, lookup=<NULL>`). Adding
+ * `OR DELETE` to the old trigger would have compiled, run, and emitted zero
+ * broadcasts. Only reading `competition_id` off the row works — and only a test
+ * that subscribes for real can tell the two apart.
+ */
+describe("109 broadcast trigger — a game appears or disappears", () => {
+  it("broadcasts on INSERT of a game in a competition", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const id = rid("game-new");
+    const r = await ctx.admin.from("games").insert({
+      id,
+      trip_id: tripId,
+      competition_id: competitionId,
+      game_type_id: "gtt_manual",
+      name: "Freshly added",
+    });
+    expect(r.error).toBeNull();
+
+    await waitFor(1);
+    expect(received).toHaveLength(1);
+    expect(received[0].gameId).toBe(id);
+    expect(received[0].competitionId).toBe(competitionId);
+
+    await ctx.admin.from("games").delete().eq("id", id);
+  }, 60_000);
+
+  it("broadcasts on DELETE — the case the lookup could not serve", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const id = rid("game-doomed");
+    const ins = await ctx.admin.from("games").insert({
+      id,
+      trip_id: tripId,
+      competition_id: competitionId,
+      game_type_id: "gtt_manual",
+      name: "Doomed",
+    });
+    expect(ins.error).toBeNull();
+    await waitFor(1); // the INSERT broadcast
+    received.length = 0;
+
+    const del = await ctx.admin.from("games").delete().eq("id", id);
+    expect(del.error).toBeNull();
+
+    await waitFor(1);
+    expect(received).toHaveLength(1);
+    expect(received[0].gameId).toBe(id);
+    // Resolved from OLD.competition_id, since the row no longer exists to look up.
+    expect(received[0].competitionId).toBe(competitionId);
+  }, 60_000);
+
+  it("stays silent for a STANDALONE game on both insert and delete", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // ~40% of production games have no competition. There is no board to update,
+    // so the null-competition early return must still hold on the new triggers —
+    // and the writes must still succeed.
+    const id = rid("game-solo-new");
+    const ins = await ctx.admin.from("games").insert({
+      id,
+      trip_id: tripId,
+      competition_id: null,
+      game_type_id: "gtt_manual",
+      name: "Standalone",
+    });
+    expect(ins.error).toBeNull();
+
+    const del = await ctx.admin.from("games").delete().eq("id", id);
+    expect(del.error).toBeNull();
+
+    await settle();
+    expect(received).toEqual([]);
+  }, 60_000);
+});
