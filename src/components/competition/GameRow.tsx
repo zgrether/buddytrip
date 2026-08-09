@@ -9,6 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
 import { pushMarker } from "@/lib/historyMarker";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
+import { gameLockState } from "@/lib/gameLifecycle";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
@@ -625,6 +626,14 @@ export function CompletedRow({
 }) {
   const pathname = usePathname();
   const href = gameHref(tripId, game.gameTypeId, game.id);
+  // The SHARED predicate (CLAUDE.md #24), not a second reading of the same two
+  // columns. `isCorrecting` is already "complete AND re-opened", so this is false
+  // for a game that was never finalized — no badge on an in-progress game.
+  // NOT role-gated: members can correct their own scores in this mode.
+  const { isCorrecting: inReview } = gameLockState({
+    status: game.status,
+    correctionsOpen: game.correctionsOpen === true,
+  });
   // A completed panel-capable game (match/rack/non-golf) opens its final scoreboard
   // as the SAME panel a live game does (Spec 2) — no full-page nav to view results.
   // Complete → never setup, so no `?settings=1`. Stroke keeps the route <Link>.
@@ -645,7 +654,20 @@ export function CompletedRow({
       >
         {game.name}
       </span>
-      {scoringModel === "points" ? (
+      {/* IN REVIEW REPLACES the result — it does not sit beside it, and the
+          numbers are not dimmed behind it. A game re-opened for a correction has
+          a result that is being looked at, and showing it (even faintly) next to
+          a badge invites reading it as still-true. The badge covers BOTH result
+          shapes from one place, so the podium and grid arms cannot disagree.
+
+          The cup TOTALS above are deliberately untouched: a game in review still
+          contributes exactly what it contributed before. Most corrections are
+          historical accuracy rather than outcome changes, and dropping a game's
+          contribution mid-edit would be a bigger lie than leaving it. So the ROW
+          is flagged provisional while the standings stay honest. */}
+      {inReview ? (
+        <InReviewBadge />
+      ) : scoringModel === "points" ? (
         <CompletedPodium teams={teams} cells={cells} />
       ) : (
         <CompletedGridCells teams={teams} cells={cells} />
@@ -677,6 +699,37 @@ export function CompletedRow({
     </Link>
   ) : (
     <div>{inner}</div>
+  );
+}
+
+/**
+ * IN REVIEW — a completed game whose result has been re-opened for a correction.
+ *
+ * Warning-toned per STYLE_GUIDE §3 ("Maybe / Pending" / "Warning": faint bg,
+ * warning text, warning border) — the same trio the shared scoring banner uses
+ * inside the game, so the board and the game surface read as one state rather
+ * than two coincidentally-amber things. Warning is marked STATUS DISPLAY ONLY in
+ * the guide, which is exactly what this is: it is inside the row's link, not a
+ * control of its own.
+ *
+ * `shrink-0` and the same right-edge alignment as the result it replaces, so a
+ * column of completed rows keeps its right margin when one row is in review.
+ */
+function InReviewBadge() {
+  return (
+    <span
+      data-testid="game-in-review"
+      className="shrink-0 rounded-md text-[10px] font-bold uppercase"
+      style={{
+        letterSpacing: "0.07em",
+        padding: "3px 7px",
+        background: "var(--color-bt-warning-faint)",
+        color: "var(--color-bt-warning)",
+        border: "1px solid var(--color-bt-warning-border)",
+      }}
+    >
+      In review
+    </span>
   );
 }
 
