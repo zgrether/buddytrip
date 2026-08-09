@@ -40,6 +40,12 @@ export interface LBGame {
   /** ≥1 score entry exists (R1) — splits `active` into On Tap (started) vs Ready
    *  for Play (enabled, not started) for the board's game sections. */
   started?: boolean;
+  /** Re-opened for a score correction — the game is complete but its result is
+   *  being looked at again. Drives the board's `IN REVIEW` badge. Only meaningful
+   *  alongside `status === "complete"`; `gameLockState` is the shared reading of
+   *  the pair. Optional so existing fixtures/tests that build an `LBGame` by hand
+   *  stay valid — absent reads as "not in review", which is the safe default. */
+  correctionsOpen?: boolean;
   /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
    *  the match-play total too (whose `distribution` is null pre-decision). */
   pointsTotal?: number | null;

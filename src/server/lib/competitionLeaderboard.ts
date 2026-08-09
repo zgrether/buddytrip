@@ -54,7 +54,16 @@ export async function computeCompetitionLeaderboard(
     // Games of this competition — all feed the roll-up.
     supabase
       .from("games")
-      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled, entry_mode")
+      // `corrections_open` rides here so the board can flag a game that has been
+      // re-opened for a correction. It was NOT selected before — #838 found the
+      // board had no way to know, for any role, and that is why a game in review
+      // read on the leaderboard exactly like a settled one.
+      //
+      // Note this contradicts a parenthetical in CLAUDE.md #10 ("carried on the
+      // board's GameRow"). That is true of `games.listByTrip`, which selects `*`
+      // and feeds different consumers; it was never true of THIS payload, which
+      // names its columns. The invalidation advice in #10 is unaffected.
+      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled, entry_mode, corrections_open")
       .eq("competition_id", competitionId)
       .order("created_at", { ascending: true }),
     // Team sizes drive the team-size-derived per_match formats (rack-n-stack):
@@ -361,6 +370,12 @@ export async function computeCompetitionLeaderboard(
         // Has ≥1 score entry (R1) — splits `active` into On Tap (started) vs
         // Ready for Play (enabled/pairings up, not started) for the board sections.
         started: startedByGame.has(gid),
+        // Re-opened for a score correction. Only meaningful once `status` is
+        // "complete" (`gameLockState` is the shared reading of the pair) — the
+        // board uses it to mark the row provisional. Deliberately NOT role-gated:
+        // a member can correct their own scores in this mode, so it is a state
+        // they participate in rather than someone else's private edit.
+        correctionsOpen: g.corrections_open === true,
         // Points in play (§A5 outer column). Match-play games carry it here even
         // though `distribution` is null pre-decision.
         pointsTotal: ptsInPlayByGame.get(gid) ?? null,
