@@ -87,8 +87,11 @@ export function GameConfigurationView({
   onChanged: () => void;
   /** Game deleted from the danger zone — leave the page (back to the board). */
   onDeleted: () => void;
-  /** Danger-zone score reset — forwarded to `GameDangerZone`. */
-  onScoresReset?: () => void;
+  /** Danger-zone score reset — forwarded to `GameDangerZone`. REQUIRED for the
+   *  reason stated there: a host that can't say what reset means locally will
+   *  show stale scores until it remounts. Both callers (rack, stroke) already
+   *  pass `clearScores`; this stops a third from forgetting. */
+  onScoresReset: () => void;
   /** Summary + drill-down into the format's who's-playing/handicaps editor. Omit when
    *  the format has no post-create roster editor. */
   whosPlayingLabel?: string;

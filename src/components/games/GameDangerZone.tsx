@@ -68,7 +68,7 @@ export function GameDangerZone({
    * format cannot be wired without answering "what does reset mean here?", so
    * the omission is a compile error instead of a bug report.
    */
-  onScoresReset?: () => void;
+  onScoresReset: () => void;
 }) {
   const utils = trpc.useUtils();
   const [confirm, setConfirm] = useState<"scoring" | "skeleton" | "delete" | null>(null);

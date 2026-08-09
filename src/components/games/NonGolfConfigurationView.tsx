@@ -53,6 +53,7 @@ export function NonGolfConfigurationView({
   canManageGame,
   onChanged,
   onDeleted,
+  onScoresReset,
   draft,
   onNameChange,
   onRulesChange,
@@ -86,6 +87,11 @@ export function NonGolfConfigurationView({
   /** Server-direct refresh after a Danger-Zone action (reset/delete) — NOT a draft edit. */
   onChanged: () => void;
   onDeleted: () => void;
+  /** Danger-zone score reset — clears the host's local result drafts. Required:
+   *  non-golf's `resultDraft`/`orderDraft`/`tiedDraft` are null-sentinels that
+   *  fall back to the server mirror ONLY while untouched, so once the picker has
+   *  been used the local value outlives an emptied server response. */
+  onScoresReset: () => void;
   /** Draft-then-save (P2): the whole page is controlled off this composite draft; the
    *  parent (NonGolfGameView) owns it + commits via ONE atomic save_game_config. */
   draft: NonGolfConfigDraft;
@@ -230,6 +236,7 @@ export function NonGolfConfigurationView({
               competitionId={competitionId}
               onChanged={onChanged}
               onDeleted={onDeleted}
+              onScoresReset={onScoresReset}
             />
           )}
         </SettingsColumn>
