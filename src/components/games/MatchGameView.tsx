@@ -1713,8 +1713,12 @@ export function MatchGameView() {
           // Settings back routes through history.back() so it's the SAME action as the
           // browser/OS back — both return to the game page.
           onBack={cfgOpen ? closeConfig : goBack}
+          // No `status !== "complete"` — a completed game's settings stay
+          // reachable (#882). This is the STANDALONE-route header, which #882
+          // missed: it fixed the gear published to `GameChrome` for the panel
+          // path and left the second gear each view renders for its own route.
           right={
-            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete" ? (
+            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit ? (
               <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
                 <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
               </button>

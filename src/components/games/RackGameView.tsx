@@ -1208,8 +1208,14 @@ export function RackGameView() {
       onBack={() => router.back()}
       title="Rack-n-Stack"
       subtitle={rackSubtitle}
+      // `canEdit` alone — the `&& !final` is gone. A completed game's settings
+      // stay reachable (#882), and this is the STANDALONE-route header, which
+      // #882 missed: it fixed the gear published to `GameChrome` for the panel
+      // path and left the second gear each view renders for its own route.
+      // Rack was disagreeing with itself — the setup screen's gear (above) never
+      // had the gate, this one did.
       right={
-        canEdit && !final ? (
+        canEdit ? (
           <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
             <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
