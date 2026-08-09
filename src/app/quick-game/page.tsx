@@ -2,32 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X } from "lucide-react";
+import { Plus, X, RotateCcw } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry, type StrokeStanding } from "@/lib/strokePlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS } from "@/lib/strokePlayConfig";
+import { QUICK_GAME_STORAGE_KEY, type QuickGameState } from "@/lib/quickGame";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
-import type { Participant, ScoreValues } from "@/components/games/types";
-
-const STORAGE_KEY = "bt-quick-game";
+import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
+import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
+import type { Participant } from "@/components/games/types";
 
 /**
- * Quick Game ⚡ (Slice A2) — a context-free stroke-play game.
+ * Quick Stroke Play ⚡ (Slice A2) — a context-free stroke-play game. Renamed
+ * from "Quick Game" (#879 item 1a): the old name promised a format picker that
+ * doesn't exist — it only ever does stroke play. The route (`/quick-game`) and
+ * the localStorage key stay as they were; those are identifiers, not the
+ * user-facing name.
  *
  * Reuses ScoreEntryView / StandardGrid / FinalStandings UNCHANGED — only the
  * persistence backend differs: the whole game state lives in **local storage**,
  * no DB row, no tRPC, no auth, free-text player names. Finish computes standings
  * client-side via the SAME shared `computeStrokePlayStandings`. This is exactly
  * what the persistence-agnostic split (CLAUDE.md pattern #7/#8) was built for.
+ *
+ * `QuickGameState` and the storage key now live in `@/lib/quickGame` — the
+ * dashboard card (#879 item 1c) reads the same saved state to show what's in
+ * progress, and needed the type/key without importing this page component.
  */
-interface QuickGameState {
-  players: Participant[];
-  values: ScoreValues;
-  finished: boolean;
-  currentHole: number;
-}
-
 function gridStandings(state: QuickGameState): StrokeStanding[] {
   const entries: StrokeEntry[] = [];
   for (const p of state.players)
@@ -51,13 +53,16 @@ export default function QuickGamePage() {
   const setCurrentHole = (h: number) =>
     setState((s) => (s ? { ...s, currentHole: h } : s));
   const [hydrated, setHydrated] = useState(false);
+  // Settings gear (#879 item 1b) — a lightweight panel with one action.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Resume any in-progress game from local storage. Must be in an effect (not a
   // useState initializer) so it stays client-only — localStorage is undefined
   // during SSR. The set-state-in-effect rule over-flags this legitimate case.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(QUICK_GAME_STORAGE_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setState(JSON.parse(raw) as QuickGameState);
     } catch {
@@ -72,8 +77,8 @@ export default function QuickGamePage() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      else localStorage.removeItem(STORAGE_KEY);
+      if (state) localStorage.setItem(QUICK_GAME_STORAGE_KEY, JSON.stringify(state));
+      else localStorage.removeItem(QUICK_GAME_STORAGE_KEY);
     } catch {
       /* ignore */
     }
@@ -114,6 +119,30 @@ export default function QuickGamePage() {
     setState(null);
     router.push("/dashboard");
   }
+  /**
+   * Reset Game (#879 item 1b) — clears scores and hole progress, KEEPS the
+   * players. This is the ONE reset path Quick Stroke Play has: before this
+   * there was no way to start over mid-round short of playing to Finish
+   * (which unlocks `playAgain`, and that one wipes the roster too) or leaving
+   * via `discard`, which exits to the dashboard entirely.
+   *
+   * "Clear scores, keep players" over "delete the game" to match the app's
+   * one other reset ladder (`games.resetScoring` — "clears this game's
+   * results; config kept", `GameDangerZone.tsx`): reset means start the SAME
+   * game over, not lose it. It also means not re-typing 2–4 names.
+   *
+   * Not a `useScoreSaver.clearAll` situation (#807's fix target): that bug was
+   * specific to `reconcileScores`' overlay-only merge dropping an empty SERVER
+   * response — there is no server here, no reconcile, no outbox. Quick Stroke
+   * Play's whole state is one local object with no other writer, so replacing
+   * it is atomic and there is nothing this can race against.
+   */
+  function resetGame() {
+    setState((s) => (s ? { ...s, values: {}, finished: false, currentHole: 1 } : s));
+    setView("entry");
+    setConfirmReset(false);
+    setSettingsOpen(false);
+  }
 
   const gridHeader = (
     <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
@@ -127,7 +156,7 @@ export default function QuickGamePage() {
     return (
       <div className="mx-auto max-w-md px-4 py-6" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
         <div className="flex items-center justify-between">
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>⚡ Quick Game</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>⚡ Quick Stroke Play</h1>
           <button onClick={() => router.push("/dashboard")} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full" style={{ color: "var(--color-bt-text-dim)" }}>
             <X size={18} />
           </button>
@@ -216,7 +245,7 @@ export default function QuickGamePage() {
         </div>
       ) : (
         <ScoreEntryView
-          gameName="Quick Game"
+          gameName="Quick Stroke Play"
           units={STROKE_PLAY_UNITS}
           participants={state.players}
           values={state.values}
@@ -228,7 +257,54 @@ export default function QuickGamePage() {
           onBack={() => router.push("/dashboard")}
           onOpenGrid={() => setView("grid")}
           onFinish={finish}
+          onConfig={() => setSettingsOpen(true)}
         />
+      )}
+
+      {/* Settings gear (#879 item 1b) — top-right of the game page header, same
+          affordance every other game surface uses (`ScoreEntryView`'s existing
+          `onConfig` slot — no new chrome). One action for now: Reset Game. The
+          gear is placed here, not a bare Reset in the header, so the row below
+          (hole-navigation chevron) doesn't have to share the corner — and so a
+          format picker has somewhere to land later without moving anything. */}
+      {settingsOpen && (
+        <SettingsSlideOver
+          title="Quick Stroke Play settings"
+          onClose={() => setSettingsOpen(false)}
+          testId="quick-game-settings-panel"
+        >
+          <SectionLabel danger>Danger zone</SectionLabel>
+          <div className="mt-2">
+            <DangerRow
+              icon={<RotateCcw size={16} />}
+              tone="warning"
+              label="Reset game"
+              blurb="Clears all scores. Players stay — it's ready to score again."
+              onClick={() => setConfirmReset(true)}
+              testId="quick-game-reset-btn"
+            />
+          </div>
+
+          {/* Nested INSIDE the panel, not a sibling — `SettingsSlideOver` portals
+              to `document.body` and `DangerConfirmModal` does not, so a sibling
+              render loses the stacking fight (same z-50, but the portal's DOM
+              node lands later in `body` and paints over it). `GameConfigurationView`
+              nests `GameDangerZone`'s confirm the same way; this follows it. */}
+          {confirmReset && (
+            <DangerConfirmModal
+              tone="warning"
+              icon={<RotateCcw size={18} />}
+              title="Reset this game?"
+              body="Clears every score and returns to hole 1. Your players stay — it's ready to score again."
+              confirmLabel="Reset game"
+              pendingLabel="Resetting…"
+              isPending={false}
+              testId="quick-game-reset-confirm"
+              onCancel={() => setConfirmReset(false)}
+              onConfirm={resetGame}
+            />
+          )}
+        </SettingsSlideOver>
       )}
     </div>
   );
