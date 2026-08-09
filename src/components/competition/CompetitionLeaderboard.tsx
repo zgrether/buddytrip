@@ -7,6 +7,9 @@ import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { useFirstClinchView } from "@/hooks/useFirstClinchView";
+import { useMyTeamId } from "@/hooks/useMyTeamColor";
+import { isCupComplete } from "@/lib/cupCompletion";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
@@ -214,6 +217,23 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     [utils, tripId],
   );
 
+  // The clincher's team id, derived ABOVE the early returns because
+  // `useFirstClinchView` is a hook and hook order has to be stable across every
+  // render — including the loading and no-teams branches below, which return
+  // before `clincher` exists. Same predicate as the real `clincher` further
+  // down (which stays the single source used for rendering); this is only the
+  // id, only for the storage key.
+  const clincherTeamId =
+    data?.teams.find((t) => (data.pointsToClinch[t.id] ?? 1) <= 0)?.id ?? null;
+  const { isFirstView: isFirstClinchView, markSeen: markClinchSeen } = useFirstClinchView(
+    competitionId,
+    clincherTeamId,
+  );
+  // The viewer's own team — "did the person looking at this actually win?".
+  // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so
+  // this is a cache read, not a second request.
+  const myTeamId = useMyTeamId(tripId);
+
   // Never blank-on-error (Connectivity Layer 1). TanStack keeps the last `data`
   // through a failed refetch, so a flaky poll keeps showing the board. Only when
   // there's NO data yet do we branch: a spinner while the first load is in
@@ -232,10 +252,54 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 
   const clincher = teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null;
 
+  // Decided vs FINISHED — the distinction the celebration turns on. Clinch
+  // itself is not re-derived: `isCupComplete` takes the existing `clincher`
+  // above as its input and only adds "is anything still in play" on top.
+  //
+  // Match-play only, matching the hero's own `showScores`. The trophy, the glow
+  // and the two-score treatment are all match-play constructs — a points cup has
+  // no hero centrepiece to celebrate on, so lighting one there would mean
+  // inventing the surface first.
+  const isMatchPlay = scoringModel === "match_play";
+  const cupComplete = isMatchPlay && isCupComplete(data.games, !!clincher);
+
+  /**
+   * ── Who gets the burst ──────────────────────────────────────────────────
+   *
+   * The line is drawn between the RESULT and the CELEBRATION, not between
+   * winners and everyone else wholesale:
+   *
+   *   - The still treatment — lit trophy, winner-colour wash, "Final · X wins"
+   *     — renders for EVERYONE. It is the trophy ceremony, and the losing team
+   *     stands there for that. It is also just the result, which nobody should
+   *     be shown a lesser version of.
+   *   - The spark BURST fires only for someone on the winning team. Sparks are
+   *     the app cheering *with you*; firing them at the team that just lost is
+   *     the app cheering *at* them.
+   *
+   * A viewer on no team at all (an organiser who isn't playing) gets the still
+   * state — the result, without the confetti that isn't theirs.
+   */
+  const viewerWon = cupComplete && clincher != null && myTeamId === clincher.id;
+
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
-      {/* Win banner */}
-      {clincher && (
+      {/* Win banner — the RESTRAINED state, and only that.
+
+          Two gates, both new:
+
+          1. `!cupComplete` — once the cup is finished the hero below carries the
+             result as a lit trophy, and a second trophy strip stacked above it is
+             worse than either alone. The banner gives way.
+          2. `isMatchPlay` — this rendered unconditionally before, so a POINTS cup
+             showed a clinch strip with a hero behind it that has no trophy, no
+             glow and no two-score treatment (all gated on `showScores`). That
+             was a pre-existing inconsistency: a clinch announcement floating
+             above a surface that never acknowledges clinch. Points cups accrue
+             open-endedly and the board deliberately strips every match-play
+             clinch construct (no "first to X", no ceiling); the banner was the
+             one that got missed. */}
+      {clincher && isMatchPlay && !cupComplete && (
         <ClinchedBanner
           clincher={clincher}
           isDefender={clincher.id === defendingTeamId}
@@ -259,6 +323,16 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         pointsAvailable={pointsAvailable}
         winNumber={winNumber}
         clincher={clincher}
+        cupComplete={cupComplete}
+        // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
+        // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never
+        // burns the one showing — the flag must still be unspent when the cup
+        // actually ends. A non-winner never fires and so never marks it seen,
+        // which costs nothing: they have no burst to spend.
+        celebrateFirstView={viewerWon && isFirstClinchView}
+        onCelebrated={markClinchSeen}
+        // The re-fire button — winners only, for the same reason the burst is.
+        canReplayCelebration={viewerWon}
         scoringModel={scoringModel}
         canEdit={canEdit}
         onSettings={onSettings}
@@ -798,7 +872,13 @@ function ClinchedBanner({
     .map((t) => fmtPts(teamTotals[t.id] ?? 0))
     .join("–");
 
-  const verb = isDefender ? "retains" : "wins the cup";
+  // Present perfect, not the simple present. This banner now renders in exactly
+  // ONE state — decided, still being played — and "wins the cup" sat directly
+  // above the hero's own "games remain", contradicting it on a single screen.
+  // "has clinched" is the thing that is actually true: the result is settled,
+  // the golf isn't over. The defender keeps its own verb, for the same reason it
+  // always had one — retaining and winning are different achievements.
+  const verb = isDefender ? "has retained the cup" : "has clinched the cup";
 
   return (
     <div

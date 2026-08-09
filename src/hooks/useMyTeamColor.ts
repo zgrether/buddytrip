@@ -35,3 +35,23 @@ export function useMyTeamColor(tripId: string | null | undefined): string | null
   );
   return data?.color ?? null;
 }
+
+/**
+ * The viewer's TEAM ID for a trip, or null (no competition, or not on a team).
+ *
+ * Same query, same cache entry, same `STRUCTURE_QUERY` policy as
+ * `useMyTeamColor` — React Query dedupes them to one request, so reading the id
+ * costs nothing extra. `myTeamColor` has always returned `teamId`; only the
+ * colour was being exposed.
+ *
+ * Used by the clinch celebration to answer "did the person looking at this
+ * screen actually win?" — which decides whether the spark burst fires and
+ * whether the re-fire button exists.
+ */
+export function useMyTeamId(tripId: string | null | undefined): string | null {
+  const { data } = trpc.competitions.myTeamColor.useQuery(
+    { tripId: tripId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId },
+  );
+  return data?.teamId ?? null;
+}
