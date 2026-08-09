@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { Send, ChevronDown, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -360,6 +360,7 @@ function FloatingChatPanelInner({
       onLoadOlder={activeQuery.fetchNextPage}
       hasOlder={!!activeQuery.hasNextPage}
       loadingOlder={activeQuery.isFetchingNextPage}
+      loading={activeQuery.isLoading}
     />
   );
 
@@ -373,6 +374,71 @@ function FloatingChatPanelInner({
   // single per-account preference, not per-channel, so it doesn't belong to
   // any one panel instance.
   return <div className="flex h-full min-h-0 flex-col">{body}</div>;
+}
+
+/**
+ * Reserved-height stand-in for the first page of history.
+ *
+ * Exists so the panel does not paint the "No messages yet" empty-state card
+ * while the fetch is in flight and then swap it for 50 rows — a content swap
+ * that reads as movement even though nothing scrolled. Bubble-shaped and
+ * bottom-anchored (it is a child of the reversed scroll container), so the
+ * real messages land in the same place these occupy.
+ *
+ * DELIBERATELY NOT ANIMATED — no pulse, no shimmer. The whole point of this
+ * change is that opening chat is still; a throbbing placeholder would put the
+ * motion back in a different costume. Matches the app's existing loading idiom
+ * (`profile/page.tsx`): a plain reserved box on a surface token.
+ *
+ * Fixed widths, never random — a random width would differ between the server
+ * and client renders.
+ */
+const PLACEHOLDER_ROWS: readonly { mine: boolean; width: string }[] = [
+  { mine: false, width: "62%" },
+  { mine: true, width: "45%" },
+  { mine: false, width: "76%" },
+  { mine: false, width: "38%" },
+  { mine: true, width: "56%" },
+  { mine: false, width: "67%" },
+];
+
+function ChatMessagesPlaceholder() {
+  return (
+    <div
+      className="space-y-1.5 px-3 py-2"
+      aria-hidden
+      data-testid="chat-messages-placeholder"
+    >
+      {PLACEHOLDER_ROWS.map((row, i) => (
+        <div
+          key={i}
+          className={`flex flex-col ${row.mine ? "items-end" : "items-start"}`}
+        >
+          {/* Stands in for the time + author line above each bubble. */}
+          <div
+            className="mb-0.5"
+            style={{
+              height: 12,
+              width: 54,
+              borderRadius: 3,
+              background: "var(--color-bt-card-raised)",
+              opacity: 0.55,
+            }}
+          />
+          {/* Same geometry as a real bubble: rounded-2xl, ~34px tall. */}
+          <div
+            style={{
+              height: 34,
+              width: row.width,
+              maxWidth: "85%",
+              borderRadius: 16,
+              background: "var(--color-bt-card-raised)",
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── ChatBody ────────────────────────────────────────────────────────────────
@@ -403,6 +469,11 @@ interface ChatBodyProps {
   onLoadOlder: () => void;
   hasOlder: boolean;
   loadingOlder: boolean;
+  /** First page still in flight. Drives the reserved-height placeholder — WITHOUT
+   *  it the empty-state card ("No messages yet") renders during the fetch and is
+   *  then replaced by 50 rows, which is a second source of visible motion on a
+   *  cold open, independent of scrolling. */
+  loading: boolean;
 }
 
 function ChatBody({
@@ -423,8 +494,10 @@ function ChatBody({
   onLoadOlder,
   hasOlder,
   loadingOlder,
+  loading,
 }: ChatBodyProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Messenger-style jump-to-latest affordance. `isAtBottom` drives button
@@ -434,14 +507,13 @@ function ChatBody({
   const atBottomRef = useRef(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [hasNew, setHasNew] = useState(false);
-  // When older history is pulled in at the top, the list grows upward and would
-  // shove the viewport down. We record the distance-from-bottom at fetch time
-  // and restore it after the prepend lands (in the layout effect below) so the
-  // messages you were reading stay visually fixed.
-  const pendingAnchorRef = useRef<number | null>(null);
-  // Anchor for the "New" divider so we can scroll it into view when the channel
-  // first opens (rather than always jumping to the very bottom).
-  const dividerRef = useRef<HTMLDivElement>(null);
+  // One in-flight "load older" at a time. `loadingOlder` alone can't guard it:
+  // a burst of scroll events all fire before React re-renders with
+  // `isFetchingNextPage` true, so the flag is still false for several of them.
+  const olderRequestedRef = useRef(false);
+  useEffect(() => {
+    if (!loadingOlder) olderRequestedRef.current = false;
+  }, [loadingOlder]);
 
   // The first message from someone else that's newer than the frozen last-read
   // boundary — the divider renders just above it. null when there's nothing to
@@ -468,105 +540,115 @@ function ChatBody({
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    bottomRef.current?.scrollIntoView({ behavior });
+  // `instant` by DEFAULT, not `auto`. Per CSSOM-View, `auto` DEFERS to the
+  // scrolled box's `scroll-behavior` CSS property — it is not a promise of no
+  // animation. `globals.css` sets `html { scroll-behavior: smooth }`, and below
+  // `lg` the document is the scroller, so `auto` is a live risk rather than a
+  // theoretical one. `instant` is the value that actually guarantees no travel.
+  //
+  // `scrollIntoView` (not a `scrollTop` write) because this container is
+  // `column-reverse`, where Chromium reports `scrollTop` in [-maxScroll, 0]
+  // with 0 at the visual BOTTOM. `scrollIntoView` is agnostic to that
+  // convention; arithmetic on `scrollTop` is not.
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
     atBottomRef.current = true;
     setIsAtBottom(true);
     setHasNew(false);
   }, []);
 
-  // Land on the "New" divider (channel-switch case). No setState here: the
-  // scrollIntoView moves the container's scrollTop, which fires handleScroll
-  // and mirrors the real position into isAtBottom. The synchronous ref write
-  // is what the append logic below reads.
-  const scrollToDivider = useCallback(() => {
-    dividerRef.current?.scrollIntoView({ block: "center" });
-    atBottomRef.current = false;
-  }, []);
-
+  // Distances measured off two zero-height sentinels rather than off
+  // `scrollTop`, for the reason above: under `column-reverse` the sign
+  // convention is engine-specific (Chromium: 0 = bottom, negative upward;
+  // other engines have historically used 0 = top), but the geometry never is.
+  // Both distances below are non-negative and grow the way their names say in
+  // every convention, so nothing here depends on which model the browser uses.
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = distanceFromBottom < 80;
-    atBottomRef.current = atBottom;
-    setIsAtBottom(atBottom);
-    if (atBottom) setHasNew(false);
+    const box = el.getBoundingClientRect();
 
-    // Near the top — pull in the next page of older history. Capture the
-    // distance-from-bottom now so the layout effect can pin the viewport once
-    // the older messages prepend. Guard on pendingAnchorRef so a burst of
-    // scroll events doesn't queue multiple fetches before the first lands.
-    if (el.scrollTop < 120 && hasOlder && !loadingOlder && pendingAnchorRef.current == null) {
-      pendingAnchorRef.current = el.scrollHeight - el.scrollTop;
-      onLoadOlder();
+    const bottom = bottomRef.current;
+    if (bottom) {
+      const distanceFromBottom = bottom.getBoundingClientRect().top - box.bottom;
+      const atBottom = distanceFromBottom < 80;
+      atBottomRef.current = atBottom;
+      setIsAtBottom(atBottom);
+      if (atBottom) setHasNew(false);
+    }
+
+    // Near the top — pull in the next page of older history. No anchor capture
+    // and no post-prepend restore: `column-reverse` holds the scroll origin at
+    // the bottom, so content arriving above the viewport does not move what
+    // you are reading (measured: a 10-row prepend left the anchored message at
+    // an unchanged offset). That used to be `pendingAnchorRef`'s job.
+    const top = topRef.current;
+    if (top && hasOlder && !loadingOlder && !olderRequestedRef.current) {
+      const distanceFromTop = box.top - top.getBoundingClientRect().bottom;
+      if (distanceFromTop < 120) {
+        olderRequestedRef.current = true;
+        onLoadOlder();
+      }
     }
   }, [hasOlder, loadingOlder, onLoadOlder]);
 
-  // React to changes in the message list. Three distinct cases, told apart by
-  // length growth + whether the NEWEST message (last in the chronological list)
-  // changed:
-  //   • channel switch  → jump instantly to the newest message
-  //   • prepend (older history loaded) → length grew but the last id is the
-  //     same; restore the saved scroll position so the view doesn't jump
-  //   • append (a new message arrived) → last id changed; auto-scroll if you're
-  //     pinned to the bottom or it's your own send, otherwise flag `hasNew`
-  // Runs as a layout effect so the prepend anchor is applied before the browser
-  // paints — no visible jump. prevChannelRef starts as "" so the first run
-  // jumps instantly to the newest message on open.
+  // React to changes in the message list.
   //
-  // This is a genuine DOM-synchronization effect: it reconciles scroll position
-  // and the unread-pill flag against the message list (external data). React
-  // Compiler's set-state-in-effect rule fires on the scroll/flag writes here,
-  // but those are exactly the "update React state from an external system" case
-  // the rule's own docs allow — so the few writes below are disabled inline.
+  // This used to own FOUR positioning jobs — open, channel switch, prepend and
+  // append. Three of them are now the CONTAINER's job (`flex-col-reverse`, see
+  // the JSX below), which is why they are gone from here rather than fixed
+  // here: opening lands at the bottom on the first frame by construction, a
+  // prepend does not move the viewport, and an append while you are pinned
+  // keeps you pinned. All three were verified by measurement, not assumed.
+  //
+  // What remains is the one case that is genuinely a REACTION to data and not a
+  // starting position: a message arrived while you were scrolled up. Your own
+  // send pulls you back down (an animated, self-initiated scroll is correct
+  // there); anyone else's just lights the pill and leaves you where you are.
+  //
+  // The old version classified the FIRST PAGE ARRIVING as an append-while-
+  // pinned and therefore ran `scrollToBottom("smooth")` across 50 rows — that
+  // animation was the visible travel on every cold open. It cannot recur here:
+  // there is no code path left that scrolls in response to history loading.
+  //
+  // A plain effect, not `useLayoutEffect`. The layout phase existed to apply
+  // the prepend anchor before paint; with no pre-paint DOM write left, the
+  // honest phase is the passive one.
   const prevLenRef = useRef(0);
   const prevLastIdRef = useRef<string | null>(null);
   const prevChannelRef = useRef<string>("");
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
+  useEffect(() => {
     const len = displayed.length;
     const lastId = len > 0 ? displayed[len - 1].id : null;
 
+    // Channel switch: re-baseline only, so the first list we see on the new
+    // channel is never mistaken for an append. No scroll — the container
+    // already renders it at the bottom.
     if (prevChannelRef.current !== activeChannel) {
       prevChannelRef.current = activeChannel;
       prevLenRef.current = len;
       prevLastIdRef.current = lastId;
-      pendingAnchorRef.current = null;
-      // Land on the "New" divider if this channel has unread history, so you
-      // start reading exactly where you left off; otherwise jump to the newest.
-      if (dividerRef.current && el) {
-        scrollToDivider();
-      } else {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM sync: mirrors scroll position into state
-        scrollToBottom("auto");
-      }
       return;
     }
 
     const grew = len > prevLenRef.current;
-    const prepended = grew && lastId === prevLastIdRef.current;
     const appended = grew && lastId !== prevLastIdRef.current;
     prevLenRef.current = len;
     prevLastIdRef.current = lastId;
 
-    // Older history landed at the top — pin the viewport by distance-from-bottom.
-    if (prepended && el && pendingAnchorRef.current != null) {
-      el.scrollTop = el.scrollHeight - pendingAnchorRef.current;
-      pendingAnchorRef.current = null;
-      return;
-    }
+    if (!appended) return; // prepend / refetch — the container holds position
+    if (atBottomRef.current) return; // pinned — the container keeps us pinned
 
-    if (!appended) return;
-
-    const last = displayed[len - 1];
-    const isMine = last?.user_id === currentUserId;
-    if (isMine || atBottomRef.current) {
+    // Both arms write state from an effect, which is the case the rule exists
+    // to catch. It is the sanctioned exception here: the trigger is an external
+    // system (a message arrived over realtime), not React state we already had.
+    if (displayed[len - 1]?.user_id === currentUserId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- external data: your own send pulls you back down
       scrollToBottom("smooth");
     } else {
       setHasNew(true);
     }
-  }, [displayed, activeChannel, currentUserId, scrollToBottom, scrollToDivider]);
+  }, [displayed, activeChannel, currentUserId, scrollToBottom]);
 
   return (
     <>
@@ -611,78 +693,58 @@ function ChatBody({
 
       {/* Messages */}
       <div className="relative flex-1 min-h-0">
+        {/*
+          * ── BOTTOM-ANCHORED BY CONSTRUCTION ──────────────────────────────
+          * `flex-col-reverse` is what makes "the newest message is on screen"
+          * true on the FIRST FRAME, with no effect, no measurement and no
+          * scroll write. A reversed flex container puts its scroll origin at
+          * the block-END, so the initial scroll position IS the bottom.
+          *
+          * This replaced an effect that scrolled to the bottom after the
+          * messages arrived. The effect was not merely slow — it classified
+          * the first page landing as "a new message arrived while you were
+          * pinned" and animated (`behavior: "smooth"`) from the top of 50
+          * rows, which is the travel this container removes. A correct effect
+          * was one edge case away from being wrong again; a container cannot
+          * be.
+          *
+          * DOM ORDER IS REVERSED, VISUAL ORDER IS NOT. Reversal applies only
+          * to this element's DIRECT children, so the messages stay in one
+          * normal-flow wrapper in chronological order — DOM order still
+          * matches reading order, which is what keeps selection, copy/paste
+          * and screen-reader order correct. Do NOT reverse the message array
+          * to "match" the container.
+          *
+          * Direct children below are therefore listed BOTTOM-first.
+          *
+          * Three behaviours come free and are load-bearing (all measured in
+          * Chromium before this was written, not assumed):
+          *   • open / reveal → newest visible on the first layout, including
+          *     when the panel is revealed after mounting `display: none`
+          *     (the hidden Organizers segment — an effect could never have
+          *     fixed that case, since a hidden box has no layout to scroll)
+          *   • append while pinned → stays pinned
+          *   • prepend (older history) → viewport does not move
+          */}
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="absolute inset-0 overflow-y-auto overflow-x-hidden"
+          data-testid="chat-scroll"
+          className="absolute inset-0 flex flex-col-reverse overflow-y-auto overflow-x-hidden"
         >
-          <div
-            className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
-            // The fade has to START from whatever surface it sits on, and this
-            // panel has TWO containers with deliberately different ones (#756):
-            // the scrimmed mobile sheet is `card-float`, the desktop aside is
-            // Level-1 `card` because it is a layout region, not a floating dialog.
-            // Hardcoding `card-float` was right for the sheet and visibly wrong in
-            // the aside — the gradient began a shade lighter than the panel behind
-            // it. Neither surface is the mistake; this was. The container declares
-            // `--chat-surface`; the sheet's default keeps its existing behaviour.
-            style={{ background: "linear-gradient(to bottom, var(--chat-surface, var(--color-bt-card-float)), transparent)" }}
-          />
-          <div className="space-y-1.5 px-3 py-2">
-            {loadingOlder && (
-              <p
-                className="py-1 text-center text-[10px] italic"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Loading earlier messages…
-              </p>
-            )}
-            {displayed.length === 0 && (
-              <div
-                className="flex items-center justify-center text-center"
-                style={{ padding: "40px 8px" }}
-              >
-                <div className="flex max-w-[320px] flex-col items-center gap-[13px]">
-                  <span
-                    className="inline-flex items-center justify-center"
-                    style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 15,
-                      background: "var(--color-bt-accent-faint)",
-                      border: "1px solid var(--color-bt-accent-border)",
-                    }}
-                  >
-                    <MessageCircle size={24} style={{ color: "var(--color-bt-accent)" }} />
-                  </span>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>
-                      {isPlanningChannel ? "Organizers only" : "No messages yet"}
-                    </div>
-                    <p
-                      style={{
-                        margin: "7px 0 0",
-                        fontSize: 13,
-                        lineHeight: 1.45,
-                        color: "var(--color-bt-text-dim)",
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {isPlanningChannel
-                        ? "Just owners and organizers in here. Hash out the plans the crew doesn't need to see yet."
-                        : "Say something — this is where the whole crew talks. Your first message sets the tone."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {displayed.map((msg) => {
+          {/* Bottom-most. The scroll target for `scrollToBottom`, and the
+              sentinel `handleScroll` measures distance-from-bottom against. */}
+          <div ref={bottomRef} aria-hidden />
+          {loading && <ChatMessagesPlaceholder />}
+          {!loading && displayed.length > 0 && (
+            <div className="space-y-1.5 px-3 py-2">
+              {displayed.map((msg) => {
               // "New" divider — sits just above the first message that arrived
               // since you last read this channel. accent-colored hairline so it
               // reads as a soft boundary, not an alarm.
               const divider =
                 msg.id === firstUnreadId ? (
-                  <div ref={dividerRef} className="flex items-center gap-2 py-1.5">
+                  <div className="flex items-center gap-2 py-1.5">
                     <div className="h-px flex-1" style={{ background: accentBorder }} />
                     <span
                       className="text-[10px] font-semibold uppercase tracking-wider"
@@ -744,10 +806,81 @@ function ChatBody({
                   </div>
                 </Fragment>
               );
-            })}
-            <div ref={bottomRef} />
-          </div>
+              })}
+            </div>
+          )}
+          {/* Empty state — `m-auto` centers it in the flex container rather than
+              letting it sit at the bottom where the messages would be. */}
+          {!loading && displayed.length === 0 && (
+            <div
+              className="m-auto flex items-center justify-center text-center"
+              style={{ padding: "40px 8px" }}
+            >
+              <div className="flex max-w-[320px] flex-col items-center gap-[13px]">
+                <span
+                  className="inline-flex items-center justify-center"
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 15,
+                    background: "var(--color-bt-accent-faint)",
+                    border: "1px solid var(--color-bt-accent-border)",
+                  }}
+                >
+                  <MessageCircle size={24} style={{ color: "var(--color-bt-accent)" }} />
+                </span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>
+                    {isPlanningChannel ? "Organizers only" : "No messages yet"}
+                  </div>
+                  <p
+                    style={{
+                      margin: "7px 0 0",
+                      fontSize: 13,
+                      lineHeight: 1.45,
+                      color: "var(--color-bt-text-dim)",
+                      textWrap: "pretty",
+                    }}
+                  >
+                    {isPlanningChannel
+                      ? "Just owners and organizers in here. Hash out the plans the crew doesn't need to see yet."
+                      : "Say something — this is where the whole crew talks. Your first message sets the tone."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Sits ABOVE the list — it belongs to the older history being pulled
+              in at the top, and under `flex-col-reverse` a later sibling is a
+              higher one. */}
+          {loadingOlder && (
+            <p
+              className="py-1 text-center text-[10px] italic"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Loading earlier messages…
+            </p>
+          )}
+          {/* Top-most. Sentinel for the near-the-top "load older" trigger. */}
+          <div ref={topRef} aria-hidden />
         </div>
+        {/* The top fade. Lifted OUT of the scroll container (it was a `sticky`
+            child with a `-mb-8` pull) — `sticky` inside a reversed flex
+            container is a needless puzzle, and this never needed to scroll at
+            all. Same gradient, now a plain overlay on the relative parent.
+
+            The fade has to START from whatever surface it sits on, and this
+            panel has TWO containers with deliberately different ones (#756):
+            the scrimmed mobile sheet is `card-float`, the desktop aside is
+            Level-1 `card` because it is a layout region, not a floating dialog.
+            Hardcoding `card-float` was right for the sheet and visibly wrong in
+            the aside — the gradient began a shade lighter than the panel behind
+            it. Neither surface is the mistake; that was. The container declares
+            `--chat-surface`; the sheet's default keeps its existing behaviour. */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8"
+          style={{ background: "linear-gradient(to bottom, var(--chat-surface, var(--color-bt-card-float)), transparent)" }}
+        />
         {/* Messenger-style jump-to-latest — hovers above the message window
             whenever you're scrolled up. Neutral by default; fills with the
             channel accent (plus a badge dot) when new messages arrived while
