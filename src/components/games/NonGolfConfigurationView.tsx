@@ -230,7 +230,6 @@ export function NonGolfConfigurationView({
               competitionId={competitionId}
               onChanged={onChanged}
               onDeleted={onDeleted}
-              disabled={serverScoringEnabled}
             />
           )}
         </SettingsColumn>

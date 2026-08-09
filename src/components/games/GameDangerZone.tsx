@@ -24,7 +24,17 @@ import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/Danger
  * for the owner). The resets call the Phase A primitives (migration 066). After a
  * reset it invalidates the game's own caches AND the faceBootstrap-seeded board
  * (pattern #10) so the page + the leaderboard reflect the cleared state without a
- * hard reload; `onChanged` lets the host refetch its local game query.
+ * hard reload; `onChanged` lets the host refetch its local game query, and
+ * `onScoresReset` (REQUIRED) drops what it holds locally.
+ *
+ * **Available in every game state.** There is no `disabled` prop: the zone used
+ * to lock itself while scoring was live (#501) and no longer does — see the note
+ * at the render site for why the confirmation, not a hidden mode change, is what
+ * guards these. `reset_game_scoring` (migration 066) returns the game to
+ * `status = 'pending'` with `corrections_open = false` and `scoring_enabled`
+ * KEPT, from `active` OR `complete` alike (its only exclusion is the retired
+ * `dropped`), so resetting a finalized game lands it back at ready-to-score
+ * rather than in a state nothing can leave.
  */
 export function GameDangerZone({
   tripId,
@@ -33,7 +43,6 @@ export function GameDangerZone({
   onChanged,
   onDeleted,
   onScoresReset,
-  disabled = false,
 }: {
   tripId: string;
   gameId: string;
@@ -45,16 +54,21 @@ export function GameDangerZone({
   /**
    * Scores were wiped server-side — drop whatever the host is holding locally.
    *
-   * Deliberately SEPARATE from `onChanged`, which fires for ordinary config
-   * changes too; clearing the board's scores on a tee-time edit would be worse
-   * than the bug this fixes. Invalidation alone is not enough here — see
-   * `useScoreSaver.clearAll`.
+   * **REQUIRED, and that is the fix.** Deliberately SEPARATE from `onChanged`,
+   * which fires for ordinary config changes too; clearing the board's scores on
+   * a tee-time edit would be worse than the bug this fixes. Invalidation alone
+   * is not enough — the server answering "there are no scores" is expressed as
+   * ABSENCE, and every local model here ignores absence: `reconcileScores`
+   * overlays server values onto local ones (#807), and non-golf's result drafts
+   * are null-sentinels that fall back to the server mirror only while untouched.
+   * Either way the old scores stay on screen until the view remounts.
+   *
+   * It was optional, and non-golf simply never passed it — the eleventh instance
+   * of the divergence CLAUDE.md #24 describes. Making it required means the next
+   * format cannot be wired without answering "what does reset mean here?", so
+   * the omission is a compile error instead of a bug report.
    */
   onScoresReset?: () => void;
-  /** #501: the whole zone is locked while the game is LIVE (scoring mode) — wiping
-   *  scores / settings or deleting mid-competition is a terrible UX. Switch back to
-   *  Setup (the toggle) to manage the game. Every action row disables. */
-  disabled?: boolean;
 }) {
   const utils = trpc.useUtils();
   const [confirm, setConfirm] = useState<"scoring" | "skeleton" | "delete" | null>(null);
@@ -93,12 +107,27 @@ export function GameDangerZone({
 
   return (
     <section className="mt-8 space-y-3">
-      {/* In scoring mode the header dims to match its already-locked rows (it was
-          the lone un-dimmed element). The per-section "locked" descriptor is dropped
-          — the top-of-page explainer already states the lock. */}
-      <div style={{ opacity: disabled ? 0.55 : undefined }}>
-        <SectionLabel danger>Danger zone</SectionLabel>
-      </div>
+      {/* ── No `disabled`. This REVERSES #501, deliberately. ─────────────────
+          #501 locked the whole zone while the game was live, reasoning that
+          wiping scores or deleting mid-competition is a terrible UX. The
+          terrible UX is real; locking the zone is not what prevents it.
+
+          What #501's lock actually does is make the destructive action
+          UNREACHABLE until you find an unrelated, non-obvious state change —
+          flip the game back to Setup mode first. Nobody guesses that. The
+          concrete case: a mate messes with the app before the round, someone
+          wants to clear the bogus scores, and the only visible answer is a
+          greyed-out row with no explanation of what would un-grey it.
+
+          Answering #501 on its own terms: the mis-tap it worried about is
+          already covered by the confirmation sheet, which names the cost in
+          full before anything happens. That is the gate that works, because
+          it appears at the moment of the mistake. The hidden state change
+          covers nothing — it deters the confused, not the careless. Three
+          gates remain (owner/organizer role, the danger zone's own row→confirm
+          friction, and the cost-naming confirm); a fourth that nobody can
+          discover is not protection, it is a dead end. */}
+      <SectionLabel danger>Danger zone</SectionLabel>
       <div className="space-y-2.5">
         <DangerRow
           icon={<RotateCcw size={16} />}
@@ -107,7 +136,6 @@ export function GameDangerZone({
           blurb="Clears scores; pairings, course, handicaps, and points stay."
           onClick={() => setConfirm("scoring")}
           testId="game-reset-scoring-btn"
-          disabled={disabled}
         />
         <DangerRow
           icon={<Eraser size={16} />}
@@ -116,7 +144,6 @@ export function GameDangerZone({
           blurb="Clears the setup; the name and point value are kept."
           onClick={() => setConfirm("skeleton")}
           testId="game-reset-skeleton-btn"
-          disabled={disabled}
         />
         <DangerRow
           icon={<Trash2 size={16} />}
@@ -125,7 +152,6 @@ export function GameDangerZone({
           blurb="Removes the game and everything in it. This can’t be undone."
           onClick={() => setConfirm("delete")}
           testId="game-delete-btn"
-          disabled={disabled}
         />
       </div>
 

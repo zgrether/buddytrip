@@ -291,7 +291,6 @@ export function GameConfigurationView({
               onChanged={onChanged}
               onDeleted={onDeleted}
               onScoresReset={onScoresReset}
-              disabled={serverScoringEnabled}
             />
           )}
         </SettingsColumn>

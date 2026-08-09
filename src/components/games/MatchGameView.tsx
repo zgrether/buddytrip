@@ -2289,7 +2289,6 @@ export function MatchGameView() {
                 onChanged={onSetupChanged}
                 onScoresReset={clearScores}
                 onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-                disabled={scoringEnabled}
               />
             )}
           </SettingsColumn>
