@@ -207,6 +207,14 @@ export function GameSheet({
       utils.games.listByTrip.invalidate({ tripId });
       utils.games.listOrganizers.invalidate({ tripId, gameId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      // #10 — NEVER the child alone. `LiveFaceClient` re-seeds
+      // `competitions.leaderboard` FROM `faceBootstrap` on mount, so invalidating
+      // only the child is silently undone: the re-seed writes the bootstrap's
+      // stale value back AND marks the query fresh, so no refetch fires and the
+      // new game doesn't appear until the 5-minute backstop poll. This was the
+      // ONLY create/delete/reorder path missing it — `GameDangerZone`'s delete and
+      // reset, the team mutations, and competition settings all pair the two.
+      utils.competitions.faceBootstrap.invalidate({ tripId });
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save game");

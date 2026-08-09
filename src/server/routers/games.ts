@@ -217,12 +217,38 @@ export const gamesRouter = router({
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const id = crypto.randomUUID();
+      // A new game lands at the BOTTOM of the board — globally, so one created
+      // while others are already Live still sits below them in every section.
+      //
+      // Computed here rather than as a column default because the value a new
+      // game needs is "the highest number in use WITHIN MY COMPETITION, plus
+      // one", which a default cannot express. Standalone games (no competition)
+      // have no board to be ordered on and stay NULL.
+      //
+      // A racing pair of creates can both read the same max and collide on a
+      // number. That is deliberately not defended against: the read sorts
+      // `(display_order, created_at)`, so a tie breaks by creation order — the
+      // exact order they would have had anyway — and the next reorder rewrites
+      // both. A lock here would buy nothing a tiebreak doesn't.
+      let displayOrder: number | null = null;
+      if (input.competitionId) {
+        const { data: last } = await ctx.supabase
+          .from("games")
+          .select("display_order")
+          .eq("competition_id", input.competitionId)
+          .not("display_order", "is", null)
+          .order("display_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        displayOrder = ((last?.display_order as number | null) ?? 0) + 1;
+      }
       // The creator is a trip member, so games_select passes on the new row —
       // no INSERT/SELECT split needed (unlike trips.create).
       const { error: insertErr } = await ctx.supabase.from("games").insert({
         id,
         trip_id: ctx.tripId,
         competition_id: input.competitionId ?? null,
+        display_order: displayOrder,
         game_type_id: input.gameTypeId,
         name: input.name ?? null,
         tee_time: input.teeTime ?? null,
@@ -1387,6 +1413,72 @@ export const gamesRouter = router({
 
       const count = await writeManualResults(ctx.supabase, input.gameId, input.placements);
       return { success: true, count };
+    }),
+
+  // reorder — set the board order for a competition's games (migration 108).
+  //
+  // Takes the FULL ordered list of the competition's game ids and writes
+  // `display_order` = 1..N. Full-list rather than a single {gameId, position}
+  // because the order is GLOBAL across the board's five lifecycle sections: a
+  // drag inside Ready moves the game past its neighbours in the one shared
+  // sequence, and sending the whole sequence is what makes the result
+  // unambiguous no matter which section the drag happened in.
+  //
+  // Gate: `requireTripRole("Organizer")` — the SAME gate `games.create` and
+  // `games.delete` already use, and the same population the leaderboard's
+  // `canEdit` (owner + co_admin) shows the affordance to. Reordering is neither
+  // changing who is trusted nor ending a container, so a gate that let someone
+  // create a game but not move it would be arbitrary. No permission changes here.
+  reorder: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        competitionId: z.string(),
+        // Capped, like every other array input in this router. A competition
+        // with more than 200 games is not a thing; the bound is here so a
+        // malformed client cannot ask for an unbounded write.
+        gameIds: z.array(z.string().min(1)).min(1).max(200),
+      })
+    )
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      // Scope check BEFORE writing: every id must belong to THIS competition in
+      // THIS trip. Without it the ids are caller-supplied and a crafted list
+      // could stamp display_order onto another trip's games — RLS would likely
+      // refuse, but "likely" is not a guard, and an id that silently no-ops
+      // would also renumber the survivors wrongly.
+      const { data: owned, error: readErr } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("trip_id", ctx.tripId)
+        .eq("competition_id", input.competitionId);
+      if (readErr) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read games: ${readErr.message}` });
+      }
+      const ownedIds = new Set((owned ?? []).map((g) => g.id as string));
+      const unknown = input.gameIds.filter((id) => !ownedIds.has(id));
+      if (unknown.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Not games of this competition: ${unknown.join(", ")}`,
+        });
+      }
+
+      // Sequential, not Promise.all — the same seeding convention the test suite
+      // learned the hard way, and the write is tiny (a handful of rows, once,
+      // when someone drags). Ordering the updates also means a failure partway
+      // leaves a prefix correctly numbered rather than an arbitrary scatter.
+      for (let i = 0; i < input.gameIds.length; i++) {
+        const { error } = await ctx.supabase
+          .from("games")
+          .update({ display_order: i + 1 })
+          .eq("id", input.gameIds[i])
+          .eq("trip_id", ctx.tripId);
+        if (error) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to reorder: ${error.message}` });
+        }
+      }
+      return { success: true, count: input.gameIds.length };
     }),
 
   // openCorrection — RUN action (owner / game-delegate only). Enters score-

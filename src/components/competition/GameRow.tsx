@@ -763,12 +763,30 @@ function InReviewBadge({ teams }: { teams: LBTeam[] }) {
   );
 }
 
-/** match_play completed grid cells — each team's points as a bare, bold,
- *  team-colored number in a fixed-width column aligned to `GridColumnHeader`.
- *  The winner's cell carries a faint team-tinted chip (fill + 1px team
- *  border); the loser's number is team-colored at reduced opacity; a tie gives
- *  both equal weight (no chip) — the colorblind-safe distinction is the chip's
- *  FILL, not a hue. */
+/**
+ * match_play completed grid cells — each team's points as a bare, bold,
+ * team-colored number in a fixed-width column aligned to `GridColumnHeader`.
+ * The winner's cell carries a faint team-tinted chip (fill + 1px team border);
+ * a tie gives both equal weight (no chip). The colorblind-safe distinction is
+ * the chip's FILL, not a hue.
+ *
+ * ── The loser's number is NOT dimmed ─────────────────────────────────────────
+ * It used to be, at `opacity: 0.62`. Removed: a score is a score, and dimming
+ * makes a real number look like an absence rather than a result. The effect was
+ * most obvious on a losing ZERO — which read as "nothing here" rather than
+ * "this team got nothing" — but it was never a zero rule: the test was
+ * `v !== max`, so a losing 1 against a 2 was dimmed identically and lied in the
+ * same way.
+ *
+ * Nothing is lost by removing it. The chip is the primary winner signal and the
+ * line above says so; the opacity was secondary emphasis on top of a distinction
+ * that already carries on its own.
+ *
+ * NOT related to the finished-group treatment in stroke and rack
+ * (`rack/FoursomeEntry.tsx`), which recedes a completed group by dropping it to
+ * `--color-bt-base` through the surface hierarchy and deliberately avoids
+ * opacity. Different mechanism, different rule, untouched.
+ */
 function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
   const values = teams.map((t) => cells?.get(t.id)?.points ?? null);
   const numeric = values.filter((v): v is number => v != null);
@@ -779,7 +797,6 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
       {teams.map((t, i) => {
         const v = values[i];
         const isWinner = !isTie && v != null && max != null && v === max;
-        const isLoser = v != null && max != null && v !== max;
         return (
           <span
             key={t.id}
@@ -788,7 +805,6 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
               width: GRID_COLW,
               padding: "3px 0",
               color: t.color,
-              opacity: isLoser ? 0.62 : 1,
               background: isWinner
                 ? `color-mix(in srgb, ${t.color} 14%, transparent)`
                 : undefined,

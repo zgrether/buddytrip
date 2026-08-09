@@ -122,6 +122,20 @@ describe("CompletedRow — IN REVIEW replaces the result", () => {
     expect(html).toContain("width:260px"); // 4 × 56 + 3 × 12 gaps
   });
 
+  it("a losing score is NOT dimmed — a score is a score", () => {
+    // The rule removed here was `opacity: isLoser ? 0.62 : 1`, and it was never a
+    // ZERO rule: the test was `v !== max`, so a losing 1 against a 2 dimmed
+    // identically. Dimming makes a real number read as an absence rather than a
+    // result. The winner's team-tinted chip is the primary signal and carries the
+    // distinction on its own.
+    const html = render(game({ correctionsOpen: false })); // cells: 7 vs 3
+    expect(html).toContain(">7<");
+    expect(html).toContain(">3<");
+    expect(html).not.toContain("opacity:0.62");
+    // The winner chip survives — it is what still says who won.
+    expect(html).toMatch(/color-mix\(in srgb, #3b82f6 14%/);
+  });
+
   it("the badge uses WARNING tokens, never a hex literal", () => {
     const html = render(game({ correctionsOpen: true }));
     expect(html).toContain("var(--color-bt-warning-faint)");

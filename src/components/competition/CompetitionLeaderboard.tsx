@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
-import { Trophy, CloudOff, RefreshCw, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -9,6 +9,7 @@ import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
 import { PointsMatrix } from "./PointsMatrix";
+import { ReorderableSection } from "./ReorderableGames";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -292,6 +293,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
       {/* Games — the session list once games exist, the empty prompt before. */}
       <GamesSection
         games={liveGames}
+        competitionId={competitionId}
         teams={teams}
         cellsByGame={cellsByGame}
         projections={data.projections ?? {}}
@@ -312,9 +314,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, teams, cellsByGame, projections, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
+  games, competitionId, teams, cellsByGame, projections, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
+  competitionId: string;
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
   projections: Record<string, Record<string, number>>;
@@ -326,6 +329,55 @@ function GamesSection({
   canEdit: boolean;
   onAddGame?: () => void;
 }) {
+  /**
+   * SESSION-ONLY, deliberately: plain `useState`, no localStorage, no URL param.
+   * Reordering is a once-before-the-trip act, and a mode that survived a revisit
+   * would leave handles in front of everyone who came back to read the board.
+   * It also resets whenever this unmounts, which is the behaviour we want.
+   */
+  const [reorderMode, setReorderMode] = useState(false);
+  const utils = trpc.useUtils();
+  const reorder = trpc.games.reorder.useMutation();
+
+  /**
+   * A drag inside one section, folded into the ONE board-wide sequence.
+   *
+   * The section's rows are a subsequence of the global order, so applying the
+   * section's new order back onto the positions those games occupy globally
+   * moves the dragged game past its section neighbours and leaves every other
+   * game exactly where it was. That is what keeps a game's place when it later
+   * changes state: nothing else is renumbered relative to it.
+   */
+  const handleReorderSection = useCallback(
+    (_key: GameSection, nextIds: string[]) => {
+      const positions: number[] = [];
+      games.forEach((g, i) => {
+        if (nextIds.includes(g.id)) positions.push(i);
+      });
+      const next = games.map((g) => g.id);
+      positions.forEach((pos, i) => {
+        next[pos] = nextIds[i];
+      });
+      if (!competitionId) return;
+      reorder.mutate(
+        { tripId, competitionId, gameIds: next },
+        {
+          onSettled: () => {
+            // CLAUDE.md #10 — NEVER the child alone. The Live face re-seeds
+            // `competitions.leaderboard` FROM `faceBootstrap` on mount, so
+            // invalidating only the child is silently undone: the re-seed writes
+            // the bootstrap's stale value back AND marks the query fresh, so no
+            // refetch fires and the board reads the old order until the poll.
+            void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+            void utils.competitions.faceBootstrap.invalidate({ tripId });
+            void utils.games.listByTrip.invalidate({ tripId });
+          },
+        }
+      );
+    },
+    [games, competitionId, tripId, reorder, utils]
+  );
+
   const addBtn = canEdit && onAddGame && (
     <button
       type="button"
@@ -397,8 +449,34 @@ function GamesSection({
         viewer={viewer}
         onPrefetch={onPrefetch}
         canEdit={canEdit}
+        reorderMode={reorderMode}
+        onReorderSection={handleReorderSection}
       />
-      {addBtn}
+      {/* ASYMMETRIC on purpose: adding a game is the frequent action and keeps
+          the full-width invitation; reordering happens roughly once, before the
+          trip, so it gets a compact button beside it rather than equal billing. */}
+      {addBtn && (
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => setReorderMode((v) => !v)}
+            aria-pressed={reorderMode}
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-3"
+            style={{
+              background: reorderMode ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+              border: `1.5px ${reorderMode ? "solid var(--color-bt-accent-border)" : "dashed var(--color-bt-border)"}`,
+              color: reorderMode ? "var(--color-bt-accent)" : "var(--color-bt-text)",
+              fontSize: 14,
+              fontWeight: 600,
+              WebkitTapHighlightColor: "transparent",
+            }}
+            data-testid="comp-reorder-toggle"
+          >
+            <ArrowUpDown size={16} /> Reorder
+          </button>
+          <div className="min-w-0 flex-1">{addBtn}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -503,6 +581,8 @@ function SessionBreakdown({
   viewer,
   onPrefetch,
   canEdit,
+  reorderMode,
+  onReorderSection,
 }: {
   games: LBGame[];
   teams: LBTeam[];
@@ -514,10 +594,59 @@ function SessionBreakdown({
   viewer: LBViewer;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
+  reorderMode: boolean;
+  /** The section's ids in their new order. The caller folds that into the
+   *  board-wide sequence — the order is GLOBAL, and only it knows the rest. */
+  onReorderSection: (key: GameSection, nextIds: string[]) => void;
 }) {
+  const gameById = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
+
+  /**
+   * One row, rendered the same way for the list, the sortable wrapper and the
+   * drag overlay — so the floating copy can't drift from the real row.
+   *
+   * `isLast` drives the completed list's between-rows hairline, and is computed
+   * against the SECTION rather than passed down, so the reorder path and the
+   * plain path agree.
+   */
+  const renderGameRow = useCallback(
+    (game: LBGame, sectionGames: LBGame[], key: GameSection) => {
+      const isLast = sectionGames[sectionGames.length - 1]?.id === game.id;
+      return key === "completed" ? (
+        <CompletedRow
+          key={game.id}
+          game={game}
+          teams={teams}
+          cells={cellsByGame.get(game.id)}
+          scoringModel={scoringModel}
+          tripId={tripId}
+          isLast={isLast}
+          onPrefetch={onPrefetch}
+        />
+      ) : (
+        <GameRow
+          key={game.id}
+          game={game}
+          teams={teams}
+          cells={cellsByGame.get(game.id)}
+          projection={projections[game.id]}
+          scoringModel={scoringModel}
+          tripId={tripId}
+          mine={mineSet.has(game.id)}
+          canEdit={canEdit}
+          viewerName={viewer.name}
+          viewerAvatarIcon={viewer.avatarIcon}
+          viewerTeamColor={viewer.teamColor}
+          onPrefetch={onPrefetch}
+        />
+      );
+    },
+    [teams, cellsByGame, scoringModel, tripId, projections, mineSet, canEdit, viewer, onPrefetch]
+  );
+
   // Group games by board section (single source: sectionOf) — every game lands
-  // in exactly one bucket (R1 clean partition). Server order (created_at asc) is
-  // preserved within each section.
+  // in exactly one bucket (R1 clean partition). The server's global
+  // `display_order` sort is preserved within each section.
   const bySection = useMemo(() => {
     const m = new Map<GameSection, LBGame[]>();
     for (const g of games) {
@@ -564,38 +693,26 @@ function SessionBreakdown({
             {key === "completed" && scoringModel === "match_play" && (
               <GridColumnHeader teams={teams} />
             )}
-            <div className={key === "completed" ? "flex flex-col" : "flex flex-col gap-2"}>
-              {sectionGames.map((game, i) =>
-                key === "completed" ? (
-                  <CompletedRow
-                    key={game.id}
-                    game={game}
-                    teams={teams}
-                    cells={cellsByGame.get(game.id)}
-                    scoringModel={scoringModel}
-                    tripId={tripId}
-                    isLast={i === sectionGames.length - 1}
-                    onPrefetch={onPrefetch}
-                  />
-                ) : (
-                  <GameRow
-                    key={game.id}
-                    game={game}
-                    teams={teams}
-                    cells={cellsByGame.get(game.id)}
-                    projection={projections[game.id]}
-                    scoringModel={scoringModel}
-                    tripId={tripId}
-                    mine={mineSet.has(game.id)}
-                    canEdit={canEdit}
-                    viewerName={viewer.name}
-                    viewerAvatarIcon={viewer.avatarIcon}
-                    viewerTeamColor={viewer.teamColor}
-                    onPrefetch={onPrefetch}
-                  />
-                )
-              )}
-            </div>
+            {/* Reordering wraps the section's rows in its OWN drag context, so a
+                cross-section drag is structurally impossible rather than
+                rejected: a Ready row has no droppable target in Completed to
+                begin with. A game's section IS its lifecycle state, and dragging
+                can't change state. Off (the default) this renders the identical
+                list with no context and no handles. */}
+            <ReorderableSection
+              enabled={reorderMode}
+              ids={sectionGames.map((g) => g.id)}
+              labelOf={(id) => gameById.get(id)?.name ?? "game"}
+              renderRow={(id) => {
+                const g = gameById.get(id);
+                return g ? renderGameRow(g, sectionGames, key) : null;
+              }}
+              onReorder={(nextIds) => onReorderSection(key, nextIds)}
+            >
+              <div className={key === "completed" ? "flex flex-col" : "flex flex-col gap-2"}>
+                {sectionGames.map((game) => renderGameRow(game, sectionGames, key))}
+              </div>
+            </ReorderableSection>
           </div>
         );
       })}
