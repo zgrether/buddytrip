@@ -146,6 +146,7 @@ export function ReorderableSection({
   renderRow,
   children,
   onReorder,
+  listClassName,
 }: {
   enabled: boolean;
   ids: string[];
@@ -156,6 +157,18 @@ export function ReorderableSection({
   /** What to render when reordering is off — the untouched existing list. */
   children: ReactNode;
   onReorder: (nextIds: string[]) => void;
+  /**
+   * The SAME className the caller's own list wrapper uses when reordering is
+   * off (`"flex flex-col"` for Completed, `"flex flex-col gap-2"` elsewhere).
+   *
+   * Reordering used to hardcode `"flex flex-col"` here regardless of section,
+   * which silently DROPPED the row spacing on every non-Completed section the
+   * moment the toggle went on — the squish was supposed to narrow the columns,
+   * not collapse the vertical rhythm between rows. Taking the class as a prop
+   * is what keeps the two paths from being able to disagree again: there is
+   * only one place either of them could get it from.
+   */
+  listClassName: string;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -183,7 +196,7 @@ export function ReorderableSection({
     >
       {/* Stable ids — the game id, never the index. */}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col">
+        <div className={listClassName}>
           {ids.map((id) => (
             <SortableRow key={id} id={id} label={labelOf(id)}>
               {renderRow(id)}

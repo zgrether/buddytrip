@@ -101,6 +101,25 @@ function liveBroadcastTriggers(): Map<string, { table: string; stmt: string }> {
 
 const TRIGGERS = liveBroadcastTriggers();
 const tableOf = (table: string) => [...TRIGGERS.values()].find((t) => t.table === table);
+/**
+ * Look up a trigger by its own NAME, not by "any trigger on this table".
+ *
+ * `tableOf` was written when `games` carried exactly one broadcast trigger, so
+ * ".find() the first one on this table" and "the one I mean" were the same
+ * thing. Migration 109 added two more on `games` (INSERT, DELETE) for a
+ * different purpose, which made that coincidence stop holding — and it broke in
+ * a specifically confusing way: `TRIGGERS` is a `Map` keyed by trigger name, and
+ * deleting+re-inserting a key (a DROP + CREATE of the SAME trigger, which
+ * migration 110's reorder-broadcast fix does to `games_lifecycle_broadcast`)
+ * moves it to the END of the map's iteration order. `.find()` then returns
+ * whichever OTHER `games` trigger happens to sort first — not a broken trigger,
+ * a mis-aimed assertion.
+ *
+ * The WHEN-clause guard is a property of `games_lifecycle_broadcast`
+ * specifically (the UPDATE trigger), not of "the games table" in general — so
+ * naming it is also the more correct query, independent of the bug it fixes.
+ */
+const triggerNamed = (name: string) => TRIGGERS.get(name);
 
 describe("the effective emit/listen contract (all migrations, not one filename)", () => {
   it("finds migrations and an emitter at all — the scan must not pass on zero", () => {
@@ -154,14 +173,28 @@ describe("the effective emit/listen contract (all migrations, not one filename)"
     }
   });
 
-  it("guards the live games trigger to the three lifecycle columns", () => {
+  it("guards the games UPDATE trigger to the columns that move the board", () => {
     // Without this WHEN clause every settings save would broadcast — the
-    // high-frequency behaviour migration 084 was right to refuse.
-    const games = tableOf("games");
-    expect(games, "no live trigger on public.games").toBeTruthy();
-    for (const col of ["status", "corrections_open", "scoring_enabled"]) {
-      expect(games!.stmt).toMatch(new RegExp(`OLD\\.${col}\\s+IS DISTINCT FROM NEW\\.${col}`));
+    // high-frequency behaviour migration 084 was right to refuse. Named
+    // specifically (not "any trigger on games") because 109 gave `games` two
+    // OTHER live triggers — INSERT and DELETE, unguarded on purpose, since a
+    // game appearing or vanishing is always board-relevant — and this
+    // assertion is about the UPDATE one's guard, not about the table.
+    const lifecycle = triggerNamed("games_lifecycle_broadcast");
+    expect(lifecycle, "no live games_lifecycle_broadcast trigger").toBeTruthy();
+    // 110 added display_order (the reorder gap) to the three 096 established.
+    for (const col of ["status", "corrections_open", "scoring_enabled", "display_order"]) {
+      expect(lifecycle!.stmt).toMatch(new RegExp(`OLD\\.${col}\\s+IS DISTINCT FROM NEW\\.${col}`));
     }
+  });
+
+  it("games gains INSERT/DELETE broadcast triggers, unguarded (109)", () => {
+    // Appearing/vanishing is always board-relevant, unlike a settings save — so
+    // unlike the UPDATE trigger these carry no WHEN clause. Pinned so the
+    // Map-ordering fragility `triggerNamed`'s doc comment describes can't creep
+    // back in as "tableOf('games') happens to still find the right one."
+    expect(triggerNamed("games_insert_broadcast"), "no live games_insert_broadcast trigger").toBeTruthy();
+    expect(triggerNamed("games_delete_broadcast"), "no live games_delete_broadcast trigger").toBeTruthy();
   });
 
   it("cannot fail the write it observes", () => {

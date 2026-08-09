@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -66,6 +68,15 @@ export interface LBViewer {
   avatarIcon: string | null;
   teamColor: string | null;
 }
+
+/** The cached `competitions.leaderboard` row, taken from the ROUTER rather than
+ *  the local `LeaderboardData` interface below (CLAUDE.md #2 — cache writes
+ *  carry their own type). The two are not interchangeable: the router's real
+ *  output additionally carries `scoringModel`, which `LeaderboardData` omits —
+ *  a `setData` updater typed against the narrower local shape does not satisfy
+ *  tRPC's cache type, and widening `LeaderboardData` to match would duplicate a
+ *  shape the router already owns. */
+type LeaderboardQueryData = inferRouterOutputs<AppRouter>["competitions"]["leaderboard"];
 
 interface LeaderboardData {
   teams: LBTeam[];
@@ -336,6 +347,13 @@ function GamesSection({
    * It also resets whenever this unmounts, which is the behaviour we want.
    */
   const [reorderMode, setReorderMode] = useState(false);
+  // Nothing to reorder against with zero or one game — the toggle is hidden
+  // rather than shown-and-inert, per the same "don't render a control that does
+  // nothing" instinct as #833's placement buttons. `games` here is the WHOLE
+  // competition's list (this component's own prop), not one section's — the
+  // question is "is there more than one game on the board at all", not
+  // "does this section have more than one".
+  const canReorder = games.length > 1;
   const utils = trpc.useUtils();
   const reorder = trpc.games.reorder.useMutation();
 
@@ -359,18 +377,46 @@ function GamesSection({
         next[pos] = nextIds[i];
       });
       if (!competitionId) return;
+      const input = { tripId, competitionId };
+
+      // Optimistic: reorder the cached `games` ARRAY to the new sequence before
+      // the round trip. Without this the drop was worse than a plain wait — the
+      // row snapped BACK to its pre-drag slot on release (nothing in the cache
+      // had changed yet) and only jumped to the right place 3-5s later once the
+      // mutation answered, which read as the drag having failed and then
+      // un-failing. `GameRow`/`CompletedRow` render unchanged; only the order of
+      // the array they're mapped over does, so a plain reorder is the whole fix
+      // — unlike `useOpenCorrection`'s single-boolean flip, this patches a list.
+      const byId = new Map(games.map((g) => [g.id, g]));
+      utils.competitions.leaderboard.setData(input, (prev: LeaderboardQueryData | undefined) =>
+        prev
+          ? {
+              ...prev,
+              games: next.map((id) => byId.get(id)).filter((g): g is LBGame => !!g) as LeaderboardQueryData["games"],
+            }
+          : prev
+      );
+
       reorder.mutate(
-        { tripId, competitionId, gameIds: next },
+        { ...input, gameIds: next },
         {
-          onSettled: () => {
-            // CLAUDE.md #10 — NEVER the child alone. The Live face re-seeds
-            // `competitions.leaderboard` FROM `faceBootstrap` on mount, so
-            // invalidating only the child is silently undone: the re-seed writes
-            // the bootstrap's stale value back AND marks the query fresh, so no
-            // refetch fires and the board reads the old order until the poll.
-            void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+          onSuccess: () => {
+            // Server truth, un-awaited — the optimistic order is already on
+            // screen; this only reconciles it. CLAUDE.md #10 — NEVER the child
+            // alone: the Live face re-seeds `competitions.leaderboard` FROM
+            // `faceBootstrap` on mount, so invalidating only the child is
+            // silently undone.
+            void utils.competitions.leaderboard.invalidate(input);
             void utils.competitions.faceBootstrap.invalidate({ tripId });
             void utils.games.listByTrip.invalidate({ tripId });
+          },
+          onError: () => {
+            // Rollback = re-pull server truth (CLAUDE.md #1), not a snapshot
+            // restore. By the time a rejection lands, migration 109's UPDATE
+            // broadcast (or another client's own reorder) may already have
+            // moved the cache, and restoring a snapshot would put back a value
+            // that is stale in a second, unrelated way.
+            void utils.competitions.leaderboard.invalidate(input);
           },
         }
       );
@@ -449,7 +495,7 @@ function GamesSection({
         viewer={viewer}
         onPrefetch={onPrefetch}
         canEdit={canEdit}
-        reorderMode={reorderMode}
+        reorderMode={reorderMode && canReorder}
         onReorderSection={handleReorderSection}
       />
       {/* ASYMMETRIC on purpose: adding a game is the frequent action and keeps
@@ -457,23 +503,25 @@ function GamesSection({
           trip, so it gets a compact button beside it rather than equal billing. */}
       {addBtn && (
         <div className="flex items-stretch gap-2">
-          <button
-            type="button"
-            onClick={() => setReorderMode((v) => !v)}
-            aria-pressed={reorderMode}
-            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-3"
-            style={{
-              background: reorderMode ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-              border: `1.5px ${reorderMode ? "solid var(--color-bt-accent-border)" : "dashed var(--color-bt-border)"}`,
-              color: reorderMode ? "var(--color-bt-accent)" : "var(--color-bt-text)",
-              fontSize: 14,
-              fontWeight: 600,
-              WebkitTapHighlightColor: "transparent",
-            }}
-            data-testid="comp-reorder-toggle"
-          >
-            <ArrowUpDown size={16} /> Reorder
-          </button>
+          {canReorder && (
+            <button
+              type="button"
+              onClick={() => setReorderMode((v) => !v)}
+              aria-pressed={reorderMode}
+              className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-3"
+              style={{
+                background: reorderMode ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+                border: `1.5px ${reorderMode ? "solid var(--color-bt-accent-border)" : "dashed var(--color-bt-border)"}`,
+                color: reorderMode ? "var(--color-bt-accent)" : "var(--color-bt-text)",
+                fontSize: 14,
+                fontWeight: 600,
+                WebkitTapHighlightColor: "transparent",
+              }}
+              data-testid="comp-reorder-toggle"
+            >
+              <ArrowUpDown size={16} /> Reorder
+            </button>
+          )}
           <div className="min-w-0 flex-1">{addBtn}</div>
         </div>
       )}
@@ -693,26 +741,36 @@ function SessionBreakdown({
             {key === "completed" && scoringModel === "match_play" && (
               <GridColumnHeader teams={teams} />
             )}
-            {/* Reordering wraps the section's rows in its OWN drag context, so a
-                cross-section drag is structurally impossible rather than
-                rejected: a Ready row has no droppable target in Completed to
-                begin with. A game's section IS its lifecycle state, and dragging
-                can't change state. Off (the default) this renders the identical
-                list with no context and no handles. */}
-            <ReorderableSection
-              enabled={reorderMode}
-              ids={sectionGames.map((g) => g.id)}
-              labelOf={(id) => gameById.get(id)?.name ?? "game"}
-              renderRow={(id) => {
-                const g = gameById.get(id);
-                return g ? renderGameRow(g, sectionGames, key) : null;
-              }}
-              onReorder={(nextIds) => onReorderSection(key, nextIds)}
-            >
-              <div className={key === "completed" ? "flex flex-col" : "flex flex-col gap-2"}>
-                {sectionGames.map((game) => renderGameRow(game, sectionGames, key))}
-              </div>
-            </ReorderableSection>
+            {/* ONE className, read by both paths below, so squish and no-squish
+                can't disagree about row spacing the way they used to (reordering
+                hardcoded "flex flex-col" and silently dropped the gap on every
+                non-Completed section). */}
+            {(() => {
+              const listClassName = key === "completed" ? "flex flex-col" : "flex flex-col gap-2";
+              return (
+                /* Reordering wraps the section's rows in its OWN drag context, so
+                   a cross-section drag is structurally impossible rather than
+                   rejected: a Ready row has no droppable target in Completed to
+                   begin with. A game's section IS its lifecycle state, and
+                   dragging can't change state. Off (the default) this renders
+                   the identical list with no context and no handles. */
+                <ReorderableSection
+                  enabled={reorderMode}
+                  ids={sectionGames.map((g) => g.id)}
+                  labelOf={(id) => gameById.get(id)?.name ?? "game"}
+                  renderRow={(id) => {
+                    const g = gameById.get(id);
+                    return g ? renderGameRow(g, sectionGames, key) : null;
+                  }}
+                  onReorder={(nextIds) => onReorderSection(key, nextIds)}
+                  listClassName={listClassName}
+                >
+                  <div className={listClassName}>
+                    {sectionGames.map((game) => renderGameRow(game, sectionGames, key))}
+                  </div>
+                </ReorderableSection>
+              );
+            })()}
           </div>
         );
       })}
