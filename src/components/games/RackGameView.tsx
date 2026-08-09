@@ -696,16 +696,33 @@ export function RackGameView() {
   // above. The invalidation set is unchanged, #10 included; errors are still
   // surfaced by the global mutationCache.onError.)
 
-  // Lifecycle #7: Final = locked. `locked` (posted) → read-only; `correcting`
-  // (owner re-opened) → editable until re-locked.
+  // Lifecycle #7: Final = locked. `locked` (posted) → read-only; re-opened for a
+  // correction → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
   // Derived from the SHARED predicate rather than re-stated here. Same inputs,
   // same result — rack's behaviour is unchanged; it just stops being the third
   // private copy of a rule stroke turned out not to have at all.
-  const { isLocked: locked, isCorrecting: correcting } = gameLockState({
+  //
+  // `isCorrecting` is no longer destructured: the two things that needed it now
+  // take the raw columns instead — the banner resolves them itself (so every
+  // format reads one predicate), and the subtitle wants `locked`, which already
+  // means "complete and NOT correcting".
+  const { isLocked: locked } = gameLockState({
     status: gameQ.data?.status,
     correctionsOpen,
   });
+
+  // `· final` is DROPPED while correcting, not swapped for "· correcting" — the
+  // matching change to match's section label, for the same reason. A re-opened
+  // game is live again (scores editable, entry surfaces back), so the subtitle
+  // reads exactly as it does before a finalize. Swapping the word WAS the old
+  // behaviour and it was the problem: small-caps text doing alert work in a
+  // label nobody reads. The warning-toned banner carries the state now.
+  //
+  // `locked` IS "complete and not correcting" — the shared predicate already
+  // computes that exact pair, so this reads it rather than re-deriving
+  // `final && !correcting` (CLAUDE.md #24).
+  const rackSubtitle = locked ? "Net stroke play · final" : "Net stroke play · standings";
 
   // Browser/OS back steps through the score-entry sub-screens (group entry → grid)
   // instead of jumping to the leaderboard. Depth: 0 = play screen, 1 = a group's
@@ -1165,7 +1182,7 @@ export function RackGameView() {
       hideHeader={inPanel}
       onBack={() => router.back()}
       title="Rack-n-Stack"
-      subtitle={correcting ? "Net stroke play · correcting" : final ? "Net stroke play · final" : "Net stroke play · standings"}
+      subtitle={rackSubtitle}
       right={
         canEdit && !final ? (
           <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">

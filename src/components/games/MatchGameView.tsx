@@ -3103,10 +3103,15 @@ function Overview({
           swapped in here. */}
       <div className="mb-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          {complete
-            ? correcting
-              ? `${matchWord} · correcting`
-              : `${matchWord} · final`
+          {/* `final` is DROPPED while correcting, not swapped for "correcting".
+              A re-opened game is live again — scores are editable and the entry
+              surfaces are back — so the label reads exactly as it does before a
+              finalize. Swapping the word was the old behaviour and it was the
+              whole problem: small-caps text doing alert work, in a label nobody
+              was reading. The state now lives in the banner above (warning-toned,
+              shared by all four formats) and in the board's IN REVIEW badge. */}
+          {complete && !correcting
+            ? `${matchWord} · final`
             : `${matchWord} · tap to enter scores`}
         </span>
       </div>
