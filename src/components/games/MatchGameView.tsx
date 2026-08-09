@@ -46,7 +46,7 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection } from "@/hooks/useOpenCorrection";
+import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
@@ -451,6 +451,7 @@ export function MatchGameView() {
   // `utils.games.getById.invalidate()` — which is the divergence-by-coincidence
   // #24 describes, in a handler nobody had reason to look at twice.
   const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
+  const markLocked = useMarkGameLocked(tripId, gameId);
 
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -1343,6 +1344,8 @@ export function MatchGameView() {
     }
     try {
       await finishGame.mutateAsync({ tripId, gameId });
+      // The symmetric half of the optimistic correction flip — see the hook.
+      markLocked();
       // NOT awaited — and this was the WORST of the four, because it awaited
       // THREE refetches rather than one. All three feed this panel, which
       // `exitToBoard()` below is about to close, so the close was gated on data

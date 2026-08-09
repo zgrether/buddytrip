@@ -412,4 +412,107 @@ for (const [label, gameName, getId] of [
     timeline(correctSamples[correctSamples.length - 1], `PATH 2 ${label}`);
     timeline(saveSamples[saveSamples.length - 1], `PATH 3 ${label}`);
   });
+
+  /**
+   * PATH 3b — the STALE-LOCK-STATE window after a save.
+   *
+   * Re-opening a just-saved game showed "Save scoring changes" (the CORRECTING
+   * CTA) for a moment before settling to "Correct a score". The game is locked in
+   * the database by then, so the panel is rendering a cached lock state as if it
+   * were a definite answer — the #751 role-flash class.
+   *
+   * Two things have to be measured, not reasoned about, because the fix differs:
+   *  - HOW LONG the wrong CTA is on screen, and which response ends it. That
+   *    names the stale query.
+   *  - WHICH CTA is first painted at all. If the panel paints nothing until the
+   *    lock state is known, this is a non-issue; if it paints the wrong one, the
+   *    button is live and tappable while wrong.
+   */
+  test(`PATH 3b — lock state on re-open after save — ${label}`, async ({ page }) => {
+    test.setTimeout(600_000);
+    await instrument(page);
+
+    // Device-like latency. Localhost answers in ~100 ms, which is faster than a
+    // user can tap back in; the reported window only exists when a round trip is
+    // slower than the gesture. 150 ms RTT is an ordinary 4G figure and is the
+    // variable under test, not a way to manufacture a failure — the run below
+    // also reports what happens without it.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8,
+    });
+
+    const wrongCtaMs: number[] = [];
+    const firstPainted: string[] = [];
+    let lastLog: { t: number; state: string }[] = [];
+    let lastFetches: FetchRecord[] = [];
+
+    for (let i = 0; i < ITERATIONS; i++) {
+      await admin.from("games").update({ status: "complete", corrections_open: false }).eq("id", getId());
+
+      // Correct, then save — the real sequence, not a seeded shortcut, because
+      // the optimistic flip's residue in the cache is the thing under test.
+      await openPanel(page, gameName);
+      await page.locator('[data-testid="game-correct"] button').click();
+      await page.locator('[data-testid="game-relock"]').waitFor({ state: "visible", timeout: 60_000 });
+      await page.locator('[data-testid="game-relock"] button').click();
+      await page.locator('[data-testid="game-relock"]').waitFor({ state: "detached", timeout: 90_000 });
+
+      // NO settle wait here, deliberately. The trailing `games.getById` refetch
+      // is what corrects the cache, and on this stack it lands in ~100 ms — so
+      // pausing before re-opening measures a window that has already closed.
+      // The reported behaviour is a user tapping straight back in, on a phone
+      // where that refetch takes far longer than the tap. Re-open IMMEDIATELY.
+
+      // Sample which CTA is mounted, every frame, from the moment of the tap.
+      await page.evaluate(() => {
+        window.__spFetchLog = [];
+        (window as unknown as { __cta: { t: number; state: string }[] }).__cta = [];
+        const t0 = performance.now();
+        const sample = () => {
+          const has = (id: string) => !!document.querySelector(`[data-testid="${id}"]`);
+          const state = has("game-relock") ? "relock(WRONG)" : has("game-correct") ? "correct(right)" : has("game-finalize") ? "finalize" : "none";
+          const log = (window as unknown as { __cta: { t: number; state: string }[] }).__cta;
+          const prev = log[log.length - 1];
+          if (!prev || prev.state !== state) log.push({ t: performance.now() - t0, state });
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      });
+
+      // `waitFor` before clicking, not as a settle pause: under throttling the
+      // board's own rows can still be painting when the panel closes, and a bare
+      // `.click()` then burns the whole test timeout. This waits for the row to
+      // exist, which is not the `games.getById` refetch being measured.
+      const row = page.locator('[data-testid="open-game-panel"]').filter({ hasText: gameName }).first();
+      await row.waitFor({ state: "visible", timeout: 60_000 });
+      await row.click();
+      await page.waitForTimeout(4000);
+
+      const out = await page.evaluate(() => ({
+        cta: (window as unknown as { __cta: { t: number; state: string }[] }).__cta,
+        fetches: window.__spFetchLog,
+      }));
+      lastLog = out.cta;
+      lastFetches = out.fetches as FetchRecord[];
+
+      const firstReal = out.cta.find((s) => s.state !== "none");
+      firstPainted.push(firstReal?.state ?? "none");
+      const wrongStart = out.cta.find((s) => s.state === "relock(WRONG)");
+      const wrongEnd = wrongStart ? out.cta.find((s) => s.t > wrongStart.t && s.state !== "relock(WRONG)") : undefined;
+      if (wrongStart) wrongCtaMs.push((wrongEnd?.t ?? 4000) - wrongStart.t);
+    }
+
+    console.log(`\n=== PATH 3b · lock state on re-open after save — ${label} (n=${ITERATIONS}) ===`);
+    console.log(`first CTA painted per run: ${firstPainted.join(", ")}`);
+    if (wrongCtaMs.length) report("WRONG CTA on screen for", wrongCtaMs);
+    else console.log("WRONG CTA never appeared — panel showed the correct state immediately");
+    console.log(`\n--- CTA state timeline, last run (ms from re-open tap) ---`);
+    for (const s of lastLog) console.log(`${s.t.toFixed(0).padStart(7)} ms   ${s.state}`);
+    console.log(`--- requests, last run ---`);
+    for (const f of lastFetches) {
+      console.log(`${f.start.toFixed(0).padStart(9)} → ${f.end.toFixed(0).padStart(8)} ms  ${opsOf(f.url)}${f.correctionsOpen === undefined ? "" : `  <= corrections_open:${f.correctionsOpen}`}`);
+    }
+  });
 }
