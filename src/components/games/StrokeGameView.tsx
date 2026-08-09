@@ -825,6 +825,17 @@ export function StrokeGameView() {
           // its own onConfig). Absent on the final.
           onSettings: !!game && canEdit && !showConfig && !entryGroupId ? openConfig : undefined,
           // Focused scoring (in a group) hides the bottom nav.
+          // Rules reachable at every depth — see GameChrome's `rules` note.
+          rules:
+            gameQ.data && tripId && !showConfig
+              ? {
+                  tripId,
+                  gameId: gameQ.data.id as string,
+                  gameTypeId: (gameQ.data as unknown as GameRow).game_type_id,
+                  text: (gameQ.data.rules_for_today as string | null) ?? null,
+                  canEdit,
+                }
+              : undefined,
           focusedEntry: !!game && scoringEnabled && !showConfig && !!entryGroupId && canScoreStroke,
         }
       : null,

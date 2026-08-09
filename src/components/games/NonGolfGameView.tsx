@@ -414,6 +414,17 @@ export function NonGolfGameView() {
       ? {
           title: (game?.name as string | undefined)?.trim() || typeName,
           onSettings: game && !showConfig && canEdit ? openConfig : undefined,
+          // Rules reachable at every depth — see GameChrome's `rules` note.
+          rules:
+            game && tripId && !showConfig
+              ? {
+                  tripId,
+                  gameId: game.id as string,
+                  gameTypeId: (game as unknown as GameRow).game_type_id,
+                  text: (game.rules_for_today as string | null) ?? null,
+                  canEdit,
+                }
+              : undefined,
         }
       : null,
   );

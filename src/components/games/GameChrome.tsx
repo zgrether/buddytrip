@@ -49,6 +49,37 @@ export interface GameChromeData {
    *  into the bar when the entry header is removed). Present ⇒ the bar shows it. */
   onScorecard?: () => void;
   /**
+   * Rules of the day. Present ⇒ the action row shows the affordance AND owns the
+   * sheet.
+   *
+   * Rules had no path at all once a game went into scoring: they live on the
+   * settings page, the settings page is behind the owner/delegate gear, and the
+   * people who most need to check the rules mid-round are the ones playing.
+   * This is the scorecard's precedent applied to the other thing you look up
+   * without wanting to change anything.
+   *
+   * ── DATA, not a callback, and that is deliberate ────────────────────────────
+   * A `onRules: () => void` would put the open/closed state and the `<Sheet>`
+   * mount in the VIEW — and three of the four views return from several
+   * branches (config / entry / board), so the sheet would have to be mounted in
+   * each, or be unreachable from the branch you were on. That is four
+   * implementations of one overlay, which is the divergence CLAUDE.md #24
+   * describes, pre-built.
+   *
+   * Publishing the data instead lets `GameActionRow` — which already renders for
+   * exactly the surfaces this belongs on — own the state and the mount once.
+   */
+  rules?: {
+    tripId: string;
+    gameId: string;
+    /** Seeds the starter text (the format explanation). */
+    gameTypeId: string | null;
+    /** Current persisted rules; null/empty → the starter shows. */
+    text: string | null;
+    /** Owner/delegate edits; a member reads. */
+    canEdit: boolean;
+  };
+  /**
    * This is a focused SCORE-ENTRY surface — keeping score, not reading a board.
    *
    * ── What it does, and why it isn't called `hideBottomNav` any more ──────────
@@ -125,7 +156,7 @@ export function usePublishGameChrome(data: GameChromeData | null) {
     ref.current = data;
   });
   const key = data
-    ? `${data.title}|${data.titleSuffix ?? ""}|${!!data.onSettings}|${!!data.onScorecard}|${!!data.focusedEntry}`
+    ? `${data.title}|${data.titleSuffix ?? ""}|${!!data.onSettings}|${!!data.onScorecard}|${data.rules ? data.rules.gameId + data.rules.canEdit + (data.rules.text ?? "") : ""}|${!!data.focusedEntry}`
     : "";
   useEffect(() => {
     if (!setChrome) return;
@@ -138,6 +169,7 @@ export function usePublishGameChrome(data: GameChromeData | null) {
       titleSuffix: ref.current.titleSuffix,
       onSettings: ref.current.onSettings ? () => ref.current?.onSettings?.() : undefined,
       onScorecard: ref.current.onScorecard ? () => ref.current?.onScorecard?.() : undefined,
+      rules: ref.current.rules,
       focusedEntry: ref.current.focusedEntry,
     });
     return () => setChrome(null);

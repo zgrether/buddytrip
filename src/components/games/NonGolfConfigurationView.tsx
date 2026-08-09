@@ -6,7 +6,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
-import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
+import { formatExplanation } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
@@ -134,13 +134,6 @@ export function NonGolfConfigurationView({
     >
         <SettingsColumn>
 
-          {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
-              header (cross-format layout consistency pass; matches Match Play's
-              canonical order). */}
-          <div className="mb-2">
-            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-          </div>
-
           {/* Identity — controlled: name + assigned-to are draft slices now. */}
           <GameIdentityHeader
             tripId={tripId}
@@ -225,6 +218,7 @@ export function NonGolfConfigurationView({
             canEdit={canEdit}
             value={draft.rulesForToday ?? ""}
             onChange={onRulesChange}
+            starterText={formatExplanation(game.game_type_id) ?? undefined}
           />
 
           {/* Danger Zone — owner-only. Its `disabled` is the ONE deliberate SERVER read

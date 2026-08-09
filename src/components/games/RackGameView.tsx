@@ -835,6 +835,19 @@ export function RackGameView() {
           // directly rather than through the shared predicate.
           onSettings:
             gid && !entryGroupId && !showConfig && !needsSetup && canEdit ? openConfig : undefined,
+          // Rules stay reachable at every depth INCLUDING focused entry — that is
+          // the depth where "are gimmes on?" actually gets asked. Not gated on
+          // `canEdit`: a member reads them, an owner/delegate edits them.
+          rules:
+            gid && tripId && !showConfig && gameQ.data
+              ? {
+                  tripId,
+                  gameId: gid,
+                  gameTypeId: (gameQ.data as unknown as GameRow).game_type_id,
+                  text: (gameQ.data.rules_for_today as string | null) ?? null,
+                  canEdit,
+                }
+              : undefined,
           focusedEntry: !!entryGroupId,
         }
       : null,

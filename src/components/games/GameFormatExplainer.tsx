@@ -23,6 +23,21 @@ import { formatIcon } from "@/components/competition/GameRow";
  *
  * Renders nothing for an unregistered game type (defensive — no blank label).
  */
+/**
+ * The format's explanation as a plain string — the same `description` the
+ * `member` variant renders, for callers that need the TEXT rather than the
+ * block. `GameRulesNote` uses it as starter text on the settings page, which is
+ * why the `settings` variant of the block itself is gone: two descriptions of
+ * how the game is played, one editable and one not, was a distinction with no
+ * purpose. The member setup placeholder still renders the block.
+ *
+ * Null for an unregistered game type, so a caller can omit the starter entirely
+ * rather than seed an empty string.
+ */
+export function formatExplanation(gameTypeId: string | null): string | null {
+  return getGameTypeDefinition(gameTypeId)?.description ?? null;
+}
+
 export function GameFormatExplainer({
   gameTypeId,
   variant,
