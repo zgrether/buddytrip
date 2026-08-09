@@ -1495,8 +1495,16 @@ export function MatchGameView() {
       ? {
           title: chromeTitle,
           titleSuffix: chromeTitleSuffix,
+          // No `status !== "complete"` any more — a finished game's settings stay
+          // reachable. Name / rules / assignee / points remain legitimately
+          // editable (points recompute at read from the stored `position`), and
+          // the standings-affecting edits are refused server-side by
+          // `save_game_config`'s FINAL_LOCKED guard (migration 111) with a
+          // message that names the reason. Rack carried the same gate; stroke and
+          // non-golf never did — CLAUDE.md #24's divergence, with all four
+          // reading `status` directly rather than through the shared predicate.
           onSettings:
-            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete"
+            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit
               ? openConfig
               : undefined,
           // Scorecard affordance now lives ON the match card's header row (Zach's
