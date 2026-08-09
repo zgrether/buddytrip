@@ -849,6 +849,49 @@ snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 browser** — verify it's up to date with `origin`. An observation from the wrong
 tree is worse than no observation: it already cost one long debugging session.
 
+**The general rule that entry is one case of: YOU DO NOT HAVE THIS MACHINE TO
+YOURSELF.** Worktrees share a port space and a Supabase stack, and more than one
+Claude Code session can be running at once. Before treating any local result as
+evidence — a passing test, a failing test, a rendered page — confirm WHAT
+produced it. Three channels have actually bitten:
+
+- **Playwright's `webServer` is the same trap as the browser pane, and looks
+  nothing like it.** `playwright.config.ts` pins `PORT = 3000` with
+  `reuseExistingServer: !CI`, so locally it does not start a server — it ADOPTS
+  whatever already answers on :3000. If another worktree (or the main repo) has
+  `next dev` up, your specs run against THAT tree and your branch is never under
+  test. Nothing warns you; the run looks normal and reports real-looking
+  failures. **The tell is a failure SET that changes across identical runs**
+  (observed: 2 → 4 → 5 failures on one unchanged commit, eventually including a
+  spec unrelated to the change) — code cannot do that, a moving tree can. Check
+  with `netstat -ano | grep :3000` and read the owning PID's command line; the
+  path in it is the tree you are actually testing. Run against your own server
+  with `E2E_PORT=<your port>`, which `reuseExistingServer` then adopts correctly.
+  The earlier symptom is `preview_start` reporting "port 3000 was in use, so
+  port N was assigned instead" — that message is the warning, not a detail.
+- **The local Supabase stack is ONE stack per repo, shared by every worktree and
+  every concurrent session.** Another session running `supabase start` / `db
+  reset` restarts the containers under you mid-run. Symptoms are not obviously
+  environmental: seeded rows vanish between two queries, `listUsers` returns 502,
+  and auth throws `column users.banned_until does not exist` (the GoTrue
+  container talking to a database that is still re-initialising). **The tell is a
+  broad, drifting set of failures across DB-dependent suites while pure unit
+  tests stay green.** Do not diagnose that as your regression, and do not "repair"
+  the stack — a `supabase stop`/`start` wipes local data that another session may
+  be mid-way through using. Confirm in isolation (`vitest run <file>`, which is
+  what the local-stack conventions above already prescribe) and let CI adjudicate:
+  CI boots its OWN ephemeral stack per job (#636) and is immune to all of this.
+- **A background job you started can contend with the one you are watching.**
+  Running the Vitest suite and Playwright against the same stack simultaneously
+  manufactures exactly the flakiness you would then go debug.
+
+**Why this is worth its own rule: the failure mode is believing a result, not
+missing one.** Every case above returns a confident, well-formatted answer about
+code that was never executed. Cost so far — one long debugging session (wrong
+tree), plus four Playwright runs and two rounds of misdiagnosis (adopted server +
+shared stack) in a single session, where the wrong conclusion "this change broke
+the golf specs" was reported before anyone checked what had been under test.
+
 **Stale `.next` / Turbopack cache replays phantom parse errors — `rm -rf .next` and
 restart the dev server.** After a heavy edit session on a large component (e.g.
 `MatchGameView.tsx`), the dev server can surface persistent syntax/parse errors whose
