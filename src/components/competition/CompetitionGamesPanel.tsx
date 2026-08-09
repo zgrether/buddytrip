@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DelegatePicker } from "@/components/games/DelegatePicker";
 import {
   DndContext,
   DragOverlay,
@@ -30,7 +31,6 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -86,7 +86,6 @@ export interface GameRow {
   corrections_open: boolean;
 }
 
-interface Member { memberId: string; displayName: string }
 
 // ── Static option tables ──────────────────────────────────────────────────────
 
@@ -156,8 +155,9 @@ export function GameSheet({
     selectedType?.resultStrategy === "match_play" || selectedType?.resultStrategy === "rack_n_stack";
   const isGolf = category === "golf";
 
-  // Members for the delegate picker + name resolution.
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, { ...STRUCTURE_QUERY, enabled: canEdit });
+  // No crew query here any more — `DelegatePicker` fetches its own, which is what
+  // let this sheet stop passing a `members` list down two levels. Same React
+  // Query key either way, so the request count is unchanged.
 
   const create = trpc.games.create.useMutation();
   const addOrg = trpc.games.addOrganizer.useMutation();
@@ -267,7 +267,8 @@ export function GameSheet({
                 title={title}
                 setTitle={setTitle}
                 isGolf={isGolf}
-                members={members as Member[]}
+                tripId={tripId}
+                competitionId={competitionId}
                 delegateId={delegateId}
                 setDelegateId={setDelegateId}
               />
@@ -298,13 +299,16 @@ export function GameSheet({
 function GameTab({
   canEdit, categoriesPresent, category, setCategory, categoryTypes, effectiveTypeId,
   setGameTypeId, selectedType, title, setTitle, isGolf,
-  members, delegateId, setDelegateId,
+  delegateId, setDelegateId, tripId, competitionId,
 }: {
   canEdit: boolean; categoriesPresent: readonly string[]; category: string;
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
   setTitle: (s: string) => void; isGolf: boolean;
-  members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+  delegateId: string | null; setDelegateId: (id: string | null) => void;
+  /** Both threaded to the shared `DelegatePicker` — it fetches the crew itself
+   *  (so `members` is no longer passed down) and resolves team colours. */
+  tripId: string; competitionId: string;
 }) {
   const readOnly = !canEdit;
   return (
@@ -346,7 +350,7 @@ function GameTab({
       {/* Delegate (A1 P-A) — moved here from the retired Configuration tab. It's the
           one config keeper with no setup-page edit-home (the setup page shows the
           grant read-only in GameIdentityHeader). */}
-      <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
+      <DelegationBlock canEdit={canEdit} competitionId={competitionId} tripId={tripId} delegateId={delegateId} setDelegateId={setDelegateId} />
 
       {/* Course (A1 P-C), points (#503), and Matches (build-as-you-go) all live on
           the game's settings pages now — the Add modal is the pure skeleton
@@ -379,15 +383,27 @@ export function PointStepper({
   );
 }
 
-// ── Delegate picker (on the Game tab since A1 P-A) ─────────────────────────────
-
+// ── Delegate block — a thin wrapper over the SHARED DelegatePicker ───────────
+//
+// This used to be its own picker, and it was the weaker of the two that existed:
+// an "Assign a game organizer" button under a "Delegate" header, opening a list
+// of bare names with a Users glyph and a +. No avatars, and — the real gap — no
+// statement of who it is assigned to RIGHT NOW, so the owner-implicit default
+// read as "unset" rather than "yours".
+//
+// Game settings had the better one. Rather than port its markup (a second copy
+// that drifts), the picker was extracted to `DelegatePicker` and both sites now
+// render it. What is left here is the surrounding Field label and the
+// explanatory line, which are this surface's own framing.
 function DelegationBlock({
-  canEdit, members, delegateId, setDelegateId,
+  canEdit, tripId, competitionId, delegateId, setDelegateId,
 }: {
-  canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+  canEdit: boolean;
+  tripId: string;
+  competitionId: string;
+  delegateId: string | null;
+  setDelegateId: (id: string | null) => void;
 }) {
-  const [picking, setPicking] = useState(false);
-
   if (!canEdit) {
     return (
       <div className="flex items-start gap-2.5 rounded-xl px-3 py-3" style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}>
@@ -401,49 +417,15 @@ function DelegationBlock({
       </div>
     );
   }
-
-  const assigned = members.find((m) => m.memberId === delegateId);
   return (
     <Field label="Delegate">
-      {assigned ? (
-        <div
-          className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm"
-          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span className="flex items-center gap-2"><Users size={14} style={{ color: "var(--color-bt-accent)" }} />{assigned.displayName}</span>
-          <button type="button" onClick={() => { setDelegateId(null); setPicking(false); }} aria-label="Remove delegate" className="flex h-6 w-6 items-center justify-center rounded-md" style={{ color: "var(--color-bt-text-dim)" }}>
-            <X size={13} />
-          </button>
-        </div>
-      ) : !picking ? (
-        <button
-          type="button"
-          onClick={() => setPicking(true)}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm"
-          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <Users size={15} style={{ color: "var(--color-bt-accent)" }} />
-          Assign a game organizer
-        </button>
-      ) : (
-        <div className="space-y-1.5">
-          {members.map((m) => (
-            <button
-              key={m.memberId}
-              type="button"
-              onClick={() => { setDelegateId(m.memberId); setPicking(false); }}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <span>{m.displayName}</span>
-              <Plus size={13} style={{ color: "var(--color-bt-accent)" }} />
-            </button>
-          ))}
-          {members.length === 0 && (
-            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>No crew to assign yet.</p>
-          )}
-        </div>
-      )}
+      <DelegatePicker
+        tripId={tripId}
+        competitionId={competitionId}
+        canAssign={canEdit}
+        value={delegateId}
+        onChange={setDelegateId}
+      />
       <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
         Hand this game&rsquo;s setup and running to one person — they can configure it on the game page.
       </p>

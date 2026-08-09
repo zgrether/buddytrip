@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pencil, UserCircle2, X } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { Avatar } from "@/components/Avatar";
+import { Pencil } from "lucide-react";
+import { DelegatePicker } from "@/components/games/DelegatePicker";
 
 /**
  * Zone 1 (W-EDITMODAL-01) — the IDENTITY header at the top of the game-setup page:
@@ -33,10 +31,13 @@ import { Avatar } from "@/components/Avatar";
  * `removeOrganizer` path is gone — every render site is draft-then-save.)
  */
 export function GameIdentityHeader({
-  tripId, canEdit, isOwner, children,
+  tripId, competitionId, canEdit, isOwner, children,
   nameValue, onNameChange, delegateValue, onDelegateChange,
 }: {
   tripId: string;
+  /** Resolves team colours in the delegate picker. Optional — a game outside a
+   *  competition renders neutral avatars and nothing else changes. */
+  competitionId?: string | null;
   /** Can edit the NAME (owner or delegate). */
   canEdit: boolean;
   /** Can change the ASSIGNMENT (owner-only — matches the server gate). */
@@ -53,7 +54,6 @@ export function GameIdentityHeader({
   /** The assignment changed. */
   onDelegateChange: (next: string | null) => void;
 }) {
-  const me = useCurrentUser();
 
   // ── Name (tap-to-edit inline) ──────────────────────────────────────────────
   const name = nameValue;
@@ -67,49 +67,6 @@ export function GameIdentityHeader({
     const next = draft.trim();
     if (!next || next === name) { setDraft(name); return; }
     onNameChange(next); // the parent owns persistence (Save commits it)
-  }
-
-  // ── Assigned to (delegate, owner-gated) ────────────────────────────────────
-  // Enabled for ALL viewers, not just the owner: the picker is owner-only, but the
-  // no-delegate DISPLAY needs the OWNER's name for a non-owner viewer ("Assigned to
-  // [owner]"). tripMembers.list is any-member-allowed and cached on most surfaces.
-  //
-  // F8 documented exception — deliberately NOT STRUCTURE_QUERY. This header is
-  // rendered inside the standalone game routes (MatchGameView etc.), which do
-  // NOT mount useRealtimeMembers — that subscription only lives on the trip
-  // page and the competition face, and is what makes staleTime: Infinity safe
-  // for this key everywhere else. See useTripRole.ts for the fuller version of
-  // this note.
-  const membersQ = trpc.tripMembers.list.useQuery({ tripId });
-  const members = (membersQ.data ?? []) as {
-    memberId: string;
-    displayName: string;
-    role: string;
-    user?: { avatar_icon?: string | null } | null;
-  }[];
-  const delegateId = delegateValue ?? null;
-  const [picking, setPicking] = useState(false);
-
-  // The trip Owner — the implicit assignee when no delegate is set. Their NAME frames
-  // the no-delegate display for a non-owner viewer; the OWNER is removed from the
-  // picker list entirely (assigning is "hand it to someone ELSE", and absence = owner).
-  const ownerMember = members.find((m) => m.role === "Owner");
-  const ownerName = ownerMember?.displayName ?? "the owner";
-  const avatarIconFor = (id: string) => members.find((m) => m.memberId === id)?.user?.avatar_icon ?? null;
-  // Everyone assignable — the crew MINUS the owner (no self-assign; absence = owner).
-  const assignable = members.filter((m) => m.memberId !== ownerMember?.memberId);
-
-  const delegateName = delegateId
-    ? (delegateId === me?.id ? "you" : members.find((m) => m.memberId === delegateId)?.displayName ?? "a delegate")
-    : null;
-  // The no-delegate frame: say the PERSON, not the role — "you" to the owner, the
-  // owner's name to anyone else.
-  const assignedLabel = delegateName ?? (isOwner ? "you" : ownerName);
-
-  function assign(next: string | null) {
-    setPicking(false);
-    if (next === delegateId) return;
-    onDelegateChange(next); // the parent owns persistence (Save commits it)
   }
 
   return (
@@ -140,59 +97,19 @@ export function GameIdentityHeader({
         </button>
       )}
 
-      {/* Assigned to — the page frame */}
+      {/* Assigned to — the page frame. The control itself is the SHARED
+          `DelegatePicker` (one picker app-wide): trigger + panel + team-coloured
+          avatars. This header used to inline its own copy, which was the better
+          of the two that existed; extracting it is what let add-a-game adopt it
+          rather than keep the weaker one. */}
       <div className="mt-1.5">
-        {picking ? (
-          <div className="flex flex-col gap-1.5 rounded-xl p-2" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
-            {/* Header + close: with the owner gone from the list there's no "pick me"
-                row to back out with, so the panel needs its own × (STYLE_GUIDE §5). */}
-            <div className="flex items-center justify-between">
-              <span className="px-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Assign to</span>
-              <button
-                type="button"
-                onClick={() => setPicking(false)}
-                aria-label="Close"
-                className="flex h-8 w-8 items-center justify-center rounded-full"
-                style={{ color: "var(--color-bt-text-dim)" }}
-                data-testid="assign-close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            {/* Only OTHER people — the owner is never in the list (absence = owner). */}
-            {assignable.map((m) => (
-              <button key={m.memberId} type="button" onClick={() => assign(m.memberId)} className="@container flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)" }}>
-                <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} sizePx={28} collapse collapseAt="chip" />
-                <span className="truncate">{m.displayName}</span>
-              </button>
-            ))}
-            {assignable.length === 0 && <span className="px-3 py-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>No crew to assign yet.</span>}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { if (isOwner) setPicking(true); }}
-            disabled={!isOwner}
-            className="flex items-center gap-1.5 text-sm"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="game-assigned-to"
-          >
-            {delegateId
-              ? <Avatar name={assignedLabel} avatarIcon={avatarIconFor(delegateId)} sizePx={22} />
-              : <UserCircle2 size={14} style={{ color: "var(--color-bt-text-dim)" }} />}
-            <span>
-              Assigned to{" "}
-              <span style={{ color: delegateName ? "var(--color-bt-accent)" : "var(--color-bt-text)", fontWeight: 600 }}>
-                {assignedLabel}
-              </span>
-            </span>
-            {/* The × clears a real delegate (→ back to the owner). Absent when already
-                the owner default — there's nothing to clear. */}
-            {isOwner && delegateName && (
-              <X size={13} style={{ color: "var(--color-bt-text-dim)" }} onClick={(e) => { e.stopPropagation(); assign(null); }} />
-            )}
-          </button>
-        )}
+        <DelegatePicker
+          tripId={tripId}
+          competitionId={competitionId}
+          canAssign={isOwner}
+          value={delegateValue}
+          onChange={onDelegateChange}
+        />
       </div>
 
       {/* Mode-controls slot (A2-precursor) — the Game Management panel/toggle mounts

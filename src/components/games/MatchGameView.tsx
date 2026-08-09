@@ -1939,6 +1939,7 @@ export function MatchGameView() {
             {gameCompId && gameQ.data && (
               <GameIdentityHeader
                 tripId={tripId}
+                competitionId={gameCompId}
                 canEdit={canEdit}
                 isOwner={isOwner}
                 nameValue={configDraft.name}

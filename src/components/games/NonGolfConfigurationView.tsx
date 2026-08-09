@@ -144,6 +144,7 @@ export function NonGolfConfigurationView({
           {/* Identity — controlled: name + assigned-to are draft slices now. */}
           <GameIdentityHeader
             tripId={tripId}
+            competitionId={competitionId}
             canEdit={canEdit}
             isOwner={isOwner}
             nameValue={draft.name}

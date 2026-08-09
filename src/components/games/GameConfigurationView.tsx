@@ -200,6 +200,7 @@ export function GameConfigurationView({
           {competitionId && (
             <GameIdentityHeader
               tripId={tripId}
+              competitionId={competitionId}
               canEdit={canEdit}
               isOwner={isOwner}
               nameValue={nameValue}
