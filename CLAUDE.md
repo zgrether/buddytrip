@@ -556,6 +556,14 @@ These patterns have been established through prior work. Follow them exactly —
       size and spacing than `GameLifecycleActions`, agreeing with it only by
       coincidence of nobody having changed either side yet (found and closed
       in the same sitting #809 predicted it, rather than as an eighth incident)
+    - **the correction ENTRY handler itself** — four near-identical
+      `handleCorrect`s, of which match had already drifted to `gameQ.refetch()`
+      where the other three used `utils.games.getById.invalidate()`. Now
+      `useOpenCorrection`, which is also where the optimistic flip lives, so a
+      format cannot be slow (or wrong) by having been forgotten. The eighth
+      instance, arriving exactly as this entry predicted — from a PERFORMANCE
+      investigation rather than a bug report, which is the new part: a shared
+      predicate with four private callers costs four times to make faster.
 
     **The two shapes this takes, both real, both worth checking for:** logic
     can drift while the markup happens to still look the same (rack/stroke's
