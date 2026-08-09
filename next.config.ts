@@ -47,6 +47,17 @@ const buildDate = gitDate();
 const buildSha = gitSha();
 
 const nextConfig: NextConfig = {
+  /**
+   * Build output directory. `.next` unless overridden.
+   *
+   * The override exists so a PRODUCTION build can be made and served while a
+   * `next dev` server is already running in the same working tree. Dev
+   * continuously rewrites `.next`, so `next start` against it fails at runtime
+   * with a `webpack-runtime` require error — the two cannot share one directory.
+   * Measurement runs need a production build (see `slow-paths-latency.spec.ts`),
+   * hence this. Inert unless `NEXT_DIST_DIR` is set.
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   env: {
     NEXT_PUBLIC_BUILD_DATE: buildDate,
     NEXT_PUBLIC_BUILD_SHA: buildSha,

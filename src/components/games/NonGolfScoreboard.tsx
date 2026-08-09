@@ -10,6 +10,7 @@ import {
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { useOpenCorrection } from "@/hooks/useOpenCorrection";
 import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { placementsFrom } from "@/lib/placementGroups";
@@ -78,7 +79,12 @@ export function NonGolfScoreboard({
   const [error, setError] = useState<string | null>(null);
 
   const finishGame = trpc.games.finish.useMutation();
-  const openCorrection = trpc.games.openCorrection.useMutation();
+  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(
+    tripId,
+    game.id,
+    competitionId,
+    setError
+  );
   const busy = finishGame.isPending;
 
   /**
@@ -105,26 +111,12 @@ export function NonGolfScoreboard({
   const editable = canEdit && !isLocked;
 
   /**
-   * Reopen a posted game for editing — the step non-golf never had.
-   *
-   * It used to jump straight from posted to a bright warning-toned "Re-post",
-   * skipping golf's muted "Correct a score" and the explicit correcting state it
-   * leads to. Same invalidation set rack uses: `corrections_open` is a `games`
-   * column, so it's snapshotted by the bootstrap and carried on the board's
-   * GameRow — invalidating only the game row leaves the board reading the
-   * pre-correction value, and the next re-seed undoes it anyway (CLAUDE.md #10).
+   * Reopening a posted game for editing — the step non-golf never had — now runs
+   * through the SHARED `useOpenCorrection`, which is where the invalidation set
+   * (#10: `faceBootstrap` too, not just the game row) and the optimistic flip
+   * both live. This view's private copy is gone; see the hook for why the flip
+   * is safe and why the rollback is a refetch rather than a snapshot.
    */
-  async function handleCorrect() {
-    setError(null);
-    try {
-      await openCorrection.mutateAsync({ tripId, gameId: game.id });
-      await utils.games.getById.invalidate({ tripId, gameId: game.id });
-      utils.games.listByTrip.invalidate({ tripId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reopen for correction");
-    }
-  }
 
   function teamById(id: string) {
     return teams.find((t) => t.id === id);
@@ -213,7 +205,7 @@ export function NonGolfScoreboard({
         finalizeLabel="Save results"
         finalizePendingLabel="Saving results…"
         finalizePending={busy}
-        correctPending={openCorrection.isPending}
+        correctPending={correctPending}
         onFinalize={commit}
         onCorrect={handleCorrect}
       />

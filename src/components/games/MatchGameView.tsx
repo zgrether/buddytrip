@@ -46,6 +46,7 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { useOpenCorrection } from "@/hooks/useOpenCorrection";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
@@ -445,7 +446,11 @@ export function MatchGameView() {
   });
   // #7 correction path: reopen score entry on a posted game (owner/co-admin/
   // delegate — server-gated by requireGameRunAction). "Re-lock" is handleFinish.
-  const openCorrection = trpc.games.openCorrection.useMutation();
+  // Shared with the other three formats (CLAUDE.md #24). Match had already
+  // drifted — it used `gameQ.refetch()` where the other three used
+  // `utils.games.getById.invalidate()` — which is the divergence-by-coincidence
+  // #24 describes, in a handler nobody had reason to look at twice.
+  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
 
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -1338,7 +1343,18 @@ export function MatchGameView() {
     }
     try {
       await finishGame.mutateAsync({ tripId, gameId });
-      await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+      // NOT awaited — and this was the WORST of the four, because it awaited
+      // THREE refetches rather than one. All three feed this panel, which
+      // `exitToBoard()` below is about to close, so the close was gated on data
+      // nothing would render; and `Promise.all` means it waited for the slowest.
+      // Measured as the difference between a match-play save (9 requests, ~5
+      // sequential waves) and non-golf's (which never awaited any of this).
+      //
+      // `refetch()` rather than `invalidate()` is kept — it is what this view
+      // already used, and swapping it would be an unrelated change. Dropping the
+      // await does not weaken it: the board's own queries are invalidated below
+      // and the board is mounted, so what the user returns to is refreshed.
+      void Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
       // #6: finalize changes the leaderboard — invalidate it so the board
       // reflects the result IMMEDIATELY. The board has no realtime sub (only a
       // 30s poll), so without this it updates only on leave-and-return.
@@ -1386,23 +1402,16 @@ export function MatchGameView() {
 
   // #7: reopen a posted game for correction, then land on the overview so the
   // editor can tap the match to fix (entry is editable again while correcting).
+  //
+  // The reopen itself is `useOpenCorrection` (shared, optimistic, same
+  // invalidation set incl. #10); the `go("overview")` is genuinely
+  // match-specific and stays here. It fires unconditionally rather than only on
+  // success: the hook rolls the optimistic flip back on failure, so the overview
+  // then correctly shows a still-locked game — better than stranding the user on
+  // a sub-screen with no error surface, which is what the old `catch` did.
   async function handleCorrect() {
-    if (!tripId || !gameId) return;
-    try {
-      await openCorrection.mutateAsync({ tripId, gameId });
-      await gameQ.refetch();
-      // #10: `corrections_open` is a `games` column, so it rides the bootstrap
-      // snapshot and the board's GameRow type. Refetching only gameQ leaves the
-      // board reading the pre-correction row (still "final") — and the next
-      // bootstrap re-seed would clobber games.listByTrip back anyway.
-      utils.games.listByTrip.invalidate({ tripId });
-      if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
-      go("overview");
-    } catch {
-      // Surfaced by the global mutationCache.onError (lib/providers.tsx), which
-      // covers server rejections as well as connectivity failures. It did not
-      // before, which made this comment false and this block silent.
-    }
+    await correctGame();
+    go("overview");
   }
 
   // Scoreable groups (fully-paired matches) for the entry view + grid.
@@ -2302,7 +2311,7 @@ export function MatchGameView() {
           status={status}
           correctionsOpen={correctionsOpen}
           onCorrect={handleCorrect}
-          correctingPending={openCorrection.isPending}
+          correctingPending={correctPending}
           onOpenMatch={(matchId) => {
             const g = groups.find((x) => x.matchId === matchId);
             if (g) setCurrentHole(currentHoleFor(g));

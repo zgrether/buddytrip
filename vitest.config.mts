@@ -26,7 +26,30 @@ export default defineConfig({
     // games.saveConfig / matches) while the 60s tests pass. Match it to testTimeout; a
     // genuinely hung hook still fails, just with real headroom.
     hookTimeout: 60_000,
-    exclude: ["e2e/**", "node_modules/**"],
+    /**
+     * `**\/*.measure.test.ts` — instrumentation, not a gate.
+     *
+     * These files PRINT numbers and assert nothing (`grep -c 'expect('` on both:
+     * zero), drive real writes in loops, and one of them needs a live Realtime
+     * socket. `broadcastAmplification.measure.test.ts` has said in its own header
+     * since it was written that it is "excluded from the default suite by
+     * filename" — it was NOT: the default include glob matches `*.test.ts`, so
+     * CI has been running it all along. Same shape as Playwright's `MEASURE=1`
+     * gate on its measurement projects; this makes the vitest side match the
+     * claim rather than leaving the claim false.
+     *
+     * `MEASURE=1` opts them back in — the SAME switch the Playwright config uses
+     * for its measurement projects, so there is one thing to remember rather than
+     * two. (vitest's CLI `--exclude` APPENDS to this list rather than replacing
+     * it, so a per-run flag cannot undo an exclusion; it has to be the config.)
+     *
+     *     MEASURE=1 npx vitest run src/server/routers/slowPaths.measure.test.ts
+     */
+    exclude: [
+      "e2e/**",
+      "node_modules/**",
+      ...(process.env.MEASURE ? [] : ["**/*.measure.test.ts"]),
+    ],
     globalSetup: ["src/__tests__/helpers/global-setup.ts"],
     // Mirror Playwright's CI retry (playwright.config.ts: `process.env.CI ? 2 : 0`).
     // Post-Step-0 the whole suite hits ONE local Supabase PostgREST/Kong, which can
