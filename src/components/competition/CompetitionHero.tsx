@@ -3,6 +3,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Settings, Trophy } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
+import { ClinchCelebration } from "./ClinchCelebration";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
 
@@ -84,6 +87,11 @@ export function CompetitionHero({
   onSettings,
   onEditTeam,
   variant = "expanded",
+  cupComplete = false,
+  celebrateFirstView = false,
+  canReplayCelebration = false,
+  onCelebrated,
+  trophy,
 }: {
   cupName: string;
   tagline: string | null;
@@ -110,11 +118,35 @@ export function CompetitionHero({
    *  / gear / roster. Same DATA as expanded (a restyle, not new data). Used as the
    *  leaderboard's sticky bar and row 1 of the game-page header. */
   variant?: "expanded" | "collapsed";
+  /** The cup is decided AND finished (`isCupComplete`) — not merely clinched.
+   *  Drives the lit trophy + winner-colour wash. Clinched-with-games-remaining
+   *  stays on the resting watermark; that distinction is the whole feature. */
+  cupComplete?: boolean;
+  /** This device hasn't seen this cup's celebration yet → play the burst once.
+   *  Only ever true alongside `cupComplete` and `variant === "expanded"`. */
+  celebrateFirstView?: boolean;
+  /** The viewer is on the winning team → offer the "set off the fireworks"
+   *  re-fire. Same gate as the automatic burst: sparks belong to whoever won. */
+  canReplayCelebration?: boolean;
+  /** Fired once the burst has rendered, so the caller can record the showing. */
+  onCelebrated?: () => void;
+  /** Swap the centrepiece artwork (defaults to the gold cup). One line — the
+   *  animation wraps the slot and never references its geometry. */
+  trophy?: TrophySlot;
 }) {
   // The two-score + trophy treatment is the match_play hero; points keeps its own
   // standings body below (untouched), so the hero there is identity + gear only.
   const showScores = scoringModel === "match_play" && teams.length >= 2;
   const [a, b] = teams;
+
+  // Manual re-fire (winners only). A counter, not a boolean — see
+  // `ClinchCelebration`'s `replayNonce` doc for why.
+  const [replayNonce, setReplayNonce] = useState(0);
+  // The button is HIDDEN, not merely inert, under reduced motion: the CSS
+  // suppresses the burst there, so the control would be tappable and do
+  // visibly nothing. Offering nothing is better than offering a lie.
+  const reducedMotion = usePrefersReducedMotion();
+  const showReplay = showScores && cupComplete && canReplayCelebration && !reducedMotion;
 
   if (variant === "collapsed") {
     return (
@@ -152,23 +184,25 @@ export function CompetitionHero({
       }}
       data-testid="competition-hero"
     >
-      {/* Warm gold glow behind the trophy — ties it into the surface (ART). */}
+      {/* The hero's centre: glow + trophy, in one component so the resting
+          watermark and the lit celebration share a single placement. Was two
+          separate blocks here (a warm gold wash and the trophy); they moved
+          together because the celebration changes both and drifting them apart
+          is how the trophy ends up lit but off-centre.
+
+          `celebrate` is gated on `variant === "expanded"` at the callsite —
+          `StickyCollapseHero` renders this component TWICE (the pinned collapsed
+          bar and the expanded card), and an ungated burst would fire in both. */}
       {showScores && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "radial-gradient(ellipse 52% 82% at 50% 50%, rgba(216,180,82,0.14), transparent 64%)",
-            pointerEvents: "none",
-          }}
+        <ClinchCelebration
+          cupComplete={cupComplete}
+          winnerColor={clincher?.color ?? null}
+          celebrate={celebrateFirstView}
+          replayNonce={replayNonce}
+          onCelebrated={onCelebrated}
+          trophy={trophy}
         />
       )}
-
-      {/* Dimensional gold trophy — authoritative geometry from
-          hero_trophy_reference.html, group opacity 0.17, centered + cropped. */}
-      {showScores && <HeroTrophy />}
 
       {/* CONTENT — sharp, in front of the art. Horizontal padding matches the
           trip-header card (16px) rather than the mockup's standalone 24px, since
@@ -228,12 +262,30 @@ export function CompetitionHero({
                 // these steps keep the pair inside 375px minus the card's padding.
                 const longest = Math.max(aStr.length, bStr.length);
                 const size = longest >= 5 ? 46 : longest === 4 ? 58 : longest === 3 ? 66 : 74;
+                // On a FINISHED cup the loser's number steps back to 62% — the
+                // winner reads first, but 39½–28 stays a scoreline. It is dimmed,
+                // never removed or greyed to the muted token: keeping the team's
+                // own colour is what makes this read as emphasis on the winner
+                // rather than an error state on the loser. Only on `cupComplete`
+                // — dimming a team while games remain would be editorialising
+                // about a result that isn't in yet.
+                const loserOpacity = 0.62;
+                const aDim = cupComplete && clincher != null && clincher.id !== a.id;
+                const bDim = cupComplete && clincher != null && clincher.id !== b.id;
                 return (
                   <>
-                    <span style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: a.color }} className="tabular-nums">
+                    <span
+                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: a.color, opacity: aDim ? loserOpacity : 1 }}
+                      className="tabular-nums"
+                      data-testid={aDim ? "hero-score-dimmed" : undefined}
+                    >
                       {aStr}
                     </span>
-                    <span style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: b.color }} className="tabular-nums">
+                    <span
+                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: b.color, opacity: bDim ? loserOpacity : 1 }}
+                      className="tabular-nums"
+                      data-testid={bDim ? "hero-score-dimmed" : undefined}
+                    >
                       {bStr}
                     </span>
                   </>
@@ -265,13 +317,44 @@ export function CompetitionHero({
 
             {/* Below the bar: ONLY the win target. Sized as a peer of the
                 mini-bar's labels (13/600), not a tiny afterthought. */}
+            {/* "Final" is claimed ONLY when the cup is actually finished.
+                Previously this read `Final · X wins` the moment anyone clinched,
+                which is wrong in the common clinch-early case: the cup is
+                DECIDED, the games keep being played, and the hero announced the
+                event was over while people were still on the course. Deciding
+                and finishing are different, and this line now says which. */}
             <p className="mt-2 text-center" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
               {clincher
-                ? `Final · ${clincher.name} wins`
+                ? cupComplete
+                  ? `Final · ${clincher.name} wins`
+                  : `${clincher.name} has clinched · games remain`
                 : pointsAvailable > 0
                 ? `First to ${fmtPts(winNumber)} wins`
                 : "No points in play yet"}
             </p>
+
+            {/* Set off the fireworks — the winning team's own re-fire.
+                Deliberately quiet: a ghost pill in the winner's colour, not a
+                filled CTA. The screen's job is announcing the result; this is a
+                small toy underneath it, and a loud button would compete with
+                the scoreline it sits below. */}
+            {showReplay && (
+              <div className="mt-2.5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setReplayNonce((n) => n + 1)}
+                  data-testid="clinch-replay-btn"
+                  className="rounded-full px-3 py-1.5 text-[12px] font-semibold transition-[background-color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
+                  style={{
+                    color: clincher?.color ?? "var(--color-bt-text)",
+                    background: "rgba(255,255,255,0.07)",
+                    border: `1px solid ${clincher ? `color-mix(in srgb, ${clincher.color} 40%, transparent)` : "var(--color-bt-border)"}`,
+                  }}
+                >
+                  Set off the fireworks
+                </button>
+              </div>
+            )}
 
             {/* PROJECTED "if today holds" tier (Path A) — banked + Σ live-game
                 projections per team, with a ▲ delta pill. TIER GATE: only when ≥1
@@ -412,8 +495,15 @@ export function StickyCollapseHero({
   }, [stickyTop]);
   return (
     <>
+      {/* TWO CompetitionHero instances render here, and the celebration must fire
+          in exactly ONE. The collapsed branch returns `CollapsedHero` before it
+          reaches `ClinchCelebration`, so today the burst couldn't play here
+          anyway — but `onCelebrated` marking the showing seen is driven by props,
+          and a future collapsed bar that grows a trophy would silently burn the
+          one showing from a 40px-tall pinned strip. Cut it off at the prop
+          instead of relying on an early return two hundred lines away. */}
       <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
-        <CompetitionHero {...hero} variant="collapsed" />
+        <CompetitionHero {...hero} variant="collapsed" celebrateFirstView={false} onCelebrated={undefined} />
       </div>
       <div ref={expandedRef} style={{ position: "relative", zIndex: 20, marginTop: -pull }}>
         <CompetitionHero {...hero} variant="expanded" />
@@ -862,59 +952,4 @@ function HeroProjSide({
   );
 }
 
-/** The dimensional gold trophy — verbatim geometry from the approved
- *  hero_trophy_reference.html (viewBox 0 0 300 380, group opacity 0.17). Open
- *  modeled mouth, gradient-lit round body, slim knopped pedestal, engraved star.
- *  Raw hex is the sanctioned hero art. IDs are prefixed to avoid <defs> clashes. */
-function HeroTrophy() {
-  return (
-    <svg
-      width="300"
-      viewBox="0 0 300 380"
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        left: "50%",
-        top: "50%",
-        transform: "translate(-50%,-46%)",
-        pointerEvents: "none",
-      }}
-    >
-      <defs>
-        <linearGradient id="btHeroBowl" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#f6e0a0" />
-          <stop offset="0.42" stopColor="#d9b350" />
-          <stop offset="1" stopColor="#8a6a24" />
-        </linearGradient>
-        <linearGradient id="btHeroBase" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#ecd282" />
-          <stop offset="1" stopColor="#87682a" />
-        </linearGradient>
-      </defs>
-      <g opacity="0.17">
-        {/* base (two tiers) + knop + narrow tall pedestal */}
-        <rect x="96" y="320" width="108" height="24" rx="6" fill="url(#btHeroBase)" />
-        <rect x="120" y="305" width="60" height="15" rx="4" fill="url(#btHeroBase)" />
-        <ellipse cx="150" cy="298" rx="19" ry="8" fill="url(#btHeroBase)" />
-        <rect x="142" y="258" width="16" height="42" fill="url(#btHeroBase)" />
-        {/* slim handles (lit left / shadow right) */}
-        <path d="M60,104 Q24,114 32,166 Q38,204 82,198" fill="none" stroke="#cfa94e" strokeWidth="13" strokeLinecap="round" />
-        <path d="M240,104 Q276,114 268,166 Q262,204 218,198" fill="none" stroke="#a5822f" strokeWidth="13" strokeLinecap="round" />
-        {/* bowl body: left->right gradient = round modeling */}
-        <path d="M58,88 Q58,228 150,260 Q242,228 242,88 Z" fill="url(#btHeroBowl)" />
-        {/* soft highlight on the lit side */}
-        <ellipse cx="106" cy="152" rx="11" ry="52" fill="#fff0bf" opacity="0.5" />
-        {/* engraved 5-point star (darker gold = recessed) */}
-        <path
-          d="M150,132 L157.6,151.5 L178.5,152.7 L162.4,166 L167.6,186.3 L150,175 L132.4,186.3 L137.6,166 L121.5,152.7 L142.4,151.5 Z"
-          fill="#57411a"
-        />
-        {/* open mouth: light rim ellipse + dark inner hollow + faint far-wall shadow */}
-        <ellipse cx="150" cy="86" rx="92" ry="19" fill="url(#btHeroBowl)" />
-        <ellipse cx="150" cy="85" rx="75" ry="13" fill="#4a3915" />
-        <ellipse cx="133" cy="82" rx="38" ry="6" fill="#6b5320" opacity="0.7" />
-      </g>
-    </svg>
-  );
-}
 

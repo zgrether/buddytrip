@@ -310,3 +310,41 @@ summary,
 @media (prefers-reduced-motion: reduce) {
   [style*="golfHalo"], [style*="golfPop"] { animation: none !important; }
 }
+
+/* Cup clinch celebration — plays ONCE, on the first view of a cup that is both
+   decided and finished (never on clinched-with-games-remaining, and never on a
+   replay). The still state it settles into — lit trophy + winner-colour wash —
+   is plain CSS with no animation, so reduced-motion simply arrives there
+   directly: every rule below drops to `none`, nothing is hidden.
+
+   Same shape as the golfHalo/golfPop celebration above: keyframes, a class, and
+   the reduced-motion guard immediately after. */
+@keyframes cupTrophyRise {
+  0%   { opacity: 0; transform: translate(-50%, -38%) scale(0.86); }
+  60%  { opacity: 1; transform: translate(-50%, -47%) scale(1.04); }
+  100% { opacity: 1; transform: translate(-50%, -46%) scale(1); }
+}
+@keyframes cupGlowIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* One spark: outward along its own --dx/--dy, fading and shrinking as it goes.
+   The travel vector is a custom property so a single keyframe set serves every
+   particle — the burst's shape lives in the component, not in fourteen
+   near-identical rules here. */
+@keyframes cupSpark {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  12%  { opacity: 1; transform: translate(calc(var(--dx) * 0.16), calc(var(--dy) * 0.16)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.35); }
+}
+.cup-trophy-rise { animation: cupTrophyRise 0.72s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.cup-glow-in     { animation: cupGlowIn 0.9s ease-out both; }
+.cup-spark       { animation: cupSpark 1.5s cubic-bezier(0.16, 0.8, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .cup-trophy-rise, .cup-glow-in { animation: none; }
+  /* The sparks don't just stop — they must not be PAINTED. A frozen burst is a
+     ring of dots stuck mid-air over the score, which is worse than no burst.
+     `both` would otherwise hold frame 0 (opacity 0) but the element still
+     occupies the layer; display:none removes it outright. */
+  .cup-spark { animation: none; display: none; }
+}
