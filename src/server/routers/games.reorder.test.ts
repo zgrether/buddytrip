@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext, genId } from "../../__tests__/helpers/test-setup";
+import { TestContext } from "../../__tests__/helpers/test-setup";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 
 /**
@@ -77,7 +77,7 @@ describe("games.create — a new game lands at the bottom, globally", () => {
 describe("games.reorder — one global order, honoured across state changes", () => {
   it("reorders, and the new order survives being read back", async () => {
     const x = await makeGame("X");
-    const y = await makeGame("Y");
+    await makeGame("Y");
     const z = await makeGame("Z");
     const before = await boardOrder();
     expect(before.slice(-3)).toEqual(["X", "Y", "Z"]);
