@@ -31,8 +31,14 @@ import {
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
+import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
+import { gameLockState } from "@/lib/gameLifecycle";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
+
+/** Shared empty tie-set, so the untouched case keeps a stable identity across
+ *  renders and doesn't retrigger the memos that depend on it. */
+const EMPTY_TIES: ReadonlySet<string> = new Set<string>();
 
 function Spinner() {
   return (
@@ -135,24 +141,127 @@ export function NonGolfGameView() {
       .sort((a, b) => a.place - b.place),
     [lbQ.data, urlGameId]
   );
-  // #533 projection (non-golf) — a presentation rollup of the results already on
-  // the page: the posted per-team points for THIS game (the leaderboard cells).
-  // Nothing declared → an empty map → the row shows 0s. No engine call.
-  const projectionPerTeam = useMemo(() => {
+  // #533 projection (non-golf) — the POSTED per-team points for THIS game (the
+  // leaderboard cells). This is the committed picture; the live preview below is
+  // what moves before a save.
+  const postedPerTeam = useMemo(() => {
     const out: Record<string, number> = {};
     for (const c of gameCells) out[c.teamId] = (out[c.teamId] ?? 0) + c.points;
     return out;
   }, [gameCells]);
-  const initialOrder = useMemo(
+  const serverOrder = useMemo(
     () => (gameCells.length ? gameCells.map((c) => c.teamId) : teams.map((t) => t.id)),
     [gameCells, teams]
   );
   // Seed the match control's declared outcome from the posted cells — a draw is
   // both sides at place 1 (the win/lose/tie post writes both → position 1).
-  const initialResult = useMemo(() => {
+  const serverResult = useMemo(() => {
     if (gameCells.length === 2 && gameCells.every((c) => c.place === 1)) return "tie";
     return gameCells[0]?.teamId;
   }, [gameCells]);
+
+  // ── Result entry, lifted (the projection fix) ───────────────────────────────
+  // The outcome selection used to live inside `NonGolfScoreboard` while the
+  // header projection was computed HERE off the posted leaderboard cells. Two
+  // places, no connection — so picking a winner moved the buttons and nothing
+  // else, because the number was reading committed server state that by
+  // definition cannot move until you save. Golf does not work this way: its
+  // projection is a `useMemo` over the SAME unsaved entry state the scorecard
+  // renders (MatchGameView's `projectionPerTeam` → `rollupMatchPlay`). Lifting
+  // the selection to the component that draws the projection is what lets
+  // non-golf use that identical mechanism instead of a second one.
+  //
+  // Null sentinel = "untouched, read the server mirror", the draft idiom this
+  // file already uses for config (CLAUDE.md #18). Two things fall out of it for
+  // free that a `useState(initialX)` seed does not give:
+  //   - the seed is not captured on first render. `initialOrder`/`initialResult`
+  //     derive from `lbQ`, which this view does NOT gate rendering on (only
+  //     `gameQ`), so a scoreboard that mounted before the leaderboard resolved
+  //     kept an empty seed forever — a correcting game silently lost its
+  //     recorded outcome.
+  //   - `!== null` IS the "has the user expressed an intent yet" signal the
+  //     resting state needs (see `hasDeclaredOutcome`).
+  const [resultDraft, setResultDraft] = useState<string | null>(null);
+  const [orderDraft, setOrderDraft] = useState<string[] | null>(null);
+  const [tiedDraft, setTiedDraft] = useState<ReadonlySet<string> | null>(null);
+
+  const result = resultDraft ?? serverResult ?? "";
+  const order = orderDraft ?? serverOrder;
+  const tiedWithPrev = tiedDraft ?? EMPTY_TIES;
+  const toggleTie = useCallback((teamId: string) => {
+    setTiedDraft((prev) => {
+      const next = new Set(prev ?? EMPTY_TIES);
+      if (next.has(teamId)) next.delete(teamId);
+      else next.add(teamId);
+      return next;
+    });
+  }, []);
+
+  // Head-to-head win/lose/tie vs the finishing-order editor — the same split
+  // `NonGolfScoreboard` branches its control on, needed here too because the two
+  // shapes build different placements. Derived from the same inputs, so they
+  // cannot disagree.
+  const winLoseTie = scoringModel === "match_play" && teams.length === 2;
+
+  /**
+   * The EXACT payload `games.finish` will be given — built here, previewed here,
+   * and handed to the scoreboard to post unchanged. One array, two consumers, so
+   * a preview that disagrees with the committed result is not expressible.
+   * `null` = nothing declared yet (win/lose/tie with no pick).
+   */
+  const draftPlacements = useMemo(() => {
+    if (winLoseTie) {
+      if (!result) return null;
+      return result === "tie"
+        ? teams.map((t) => ({ entityId: t.id, position: 1 }))
+        : teams.map((t) => ({ entityId: t.id, position: t.id === result ? 1 : 2 }));
+    }
+    return placementsFrom(order, tiedWithPrev);
+  }, [winLoseTie, result, teams, order, tiedWithPrev]);
+
+  /**
+   * Which payout array scores this game — chosen the SAME way the server chooses
+   * it (competitionLeaderboard.ts), which is what makes the preview match:
+   *   - manual match-play → `[points_total, 0]`, winner-take-all, tie averages
+   *   - placement        → the configured `points_distribution.values`
+   */
+  const draftDistribution = useMemo<number[]>(() => {
+    if (winLoseTie) {
+      const total = Number(game?.points_total ?? 0);
+      return total > 0 ? [total, 0] : [];
+    }
+    const d = game?.points_distribution as PointsDistribution | null | undefined;
+    return isPlacement(d) ? d.values : [];
+  }, [winLoseTie, game?.points_total, game?.points_distribution]);
+
+  /**
+   * Has anyone actually declared an outcome? Guards the resting state: an
+   * untouched game must NOT start claiming a result.
+   *
+   * The two shapes answer it differently and genuinely so. Win/lose/tie has a
+   * real unselected state (`result === ""`). A finishing order does not — `order`
+   * always holds SOMETHING, falling back to roster order — so for that shape the
+   * question is whether the user has touched it, or whether a result is already
+   * posted.
+   */
+  const hasDeclaredOutcome = winLoseTie
+    ? result !== ""
+    : orderDraft !== null || tiedDraft !== null || gameCells.length > 0;
+
+  const draftProjection = useMemo(() => {
+    if (!hasDeclaredOutcome || !draftPlacements) return null;
+    const pts = pointsForPlacements(draftPlacements, draftDistribution);
+    const out: Record<string, number> = {};
+    for (const [teamId, v] of pts) out[teamId] = v;
+    return out;
+  }, [hasDeclaredOutcome, draftPlacements, draftDistribution]);
+
+  // The same shared predicate the scoreboard's controls read (CLAUDE.md #24), so
+  // "are the buttons live?" and "is the header previewing?" cannot disagree.
+  const { isLocked: resultLocked } = gameLockState({
+    status: game?.status,
+    correctionsOpen: !!game?.corrections_open,
+  });
 
   // SERVER scoring state — drives which PAGE renders (setup placeholder vs scoreboard):
   // the game's actual visibility follows the server, not a staged toggle. The settings
@@ -449,19 +558,33 @@ export function NonGolfGameView() {
         tripId={tripId}
         competitionId={competitionId}
         projection={
-          // A manual game was excluded outright, so non-golf never showed what it
-          // contributed to the cup — the one thing golf's finished view leads with.
-          // The exclusion only makes sense BEFORE a result exists: `projectionPerTeam`
-          // rolls up the posted leaderboard cells, and with nothing posted that is an
-          // empty map rendering 0–0, which is noise on a game not yet played. Once
-          // complete the cells are real and the row says what golf's says.
-          isManualGameType(game.game_type_id) && game.status !== "complete"
-            ? undefined
-            : {
-                perTeam: projectionPerTeam,
-                gameName,
-                final: game.status === "complete",
-              }
+          // Three states, in order of precedence.
+          //
+          // 1. EDITABLE with an outcome declared → preview the DRAFT. This is the
+          //    fix: the number now answers "what does the selection I am looking
+          //    at pay?" instead of "what did the last save pay?". Covers active
+          //    AND correcting — correcting seeds from the posted cells, so
+          //    entering a correction shows the posted values and then moves as
+          //    you change the pick, with no jump on entry.
+          // 2. Nothing declared and nothing posted → OMITTED, unchanged. The
+          //    empty rollup renders 0–0, which is a claim about a game nobody has
+          //    played. `hasDeclaredOutcome` is what keeps that hidden.
+          // 3. Otherwise → the posted cells, as before. A LOCKED game keeps
+          //    reading committed server state rather than a recomputation, so the
+          //    final record stays the record.
+          //
+          // `final` drives the label only ("FINAL / this game" vs "PROJECTED / if
+          // today holds"). It now requires corrections to be CLOSED: a reopened
+          // game previously announced FINAL while its result was being edited.
+          !resultLocked && draftProjection
+            ? { perTeam: draftProjection, gameName, final: false }
+            : isManualGameType(game.game_type_id) && game.status !== "complete"
+              ? undefined
+              : {
+                  perTeam: postedPerTeam,
+                  gameName,
+                  final: game.status === "complete" && !game.corrections_open,
+                }
         }
       />
       {competitionId && (
@@ -471,8 +594,16 @@ export function NonGolfGameView() {
           game={game}
           teams={teams}
           scoringModel={scoringModel}
-          initialOrder={initialOrder}
-          initialResult={initialResult}
+          // Entry state is owned HERE now (see the lift above) so the header
+          // projection can be derived from it. The scoreboard renders the
+          // controls and posts; it no longer holds the answer.
+          order={order}
+          onReorder={setOrderDraft}
+          tiedWithPrev={tiedWithPrev}
+          onToggleTie={toggleTie}
+          result={result}
+          onPick={setResultDraft}
+          placements={draftPlacements}
           canEdit={canEdit}
           onPosted={() => router.back()}
         />
