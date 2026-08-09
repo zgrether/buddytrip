@@ -50,7 +50,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection } from "@/hooks/useOpenCorrection";
+import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 
 const RACK = "gtt_rack_n_stack";
@@ -184,6 +184,7 @@ export function RackGameView() {
   // optimistic flip that stops the CTA waiting on a round trip for a boolean
   // whose value is already known. See `useOpenCorrection`.
   const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(tripId, gid, competitionId);
+  const markLocked = useMarkGameLocked(tripId, gid);
 
   // ── Names / teams ────────────────────────────────────────────────────
   const nameOf = useMemo(() => {
@@ -641,6 +642,11 @@ export function RackGameView() {
     // and stroke/match, which already wrap their finish calls.
     try {
       await finishGame.mutateAsync({ tripId, gameId: gid });
+      // Record the lock in the cache BEFORE the panel closes — the symmetric half
+      // of `useOpenCorrection`'s optimistic flip. Without it the last settled
+      // value here stays the optimistic `corrections_open: true`, and tapping
+      // straight back in paints "Save scoring changes" on a locked game.
+      markLocked();
       // NOT awaited. The comment below already says the board invalidations are
       // "deliberately not awaited" and gives the reason — this one was, and the
       // same reason applies to it more strongly: `games.getById` feeds THIS
