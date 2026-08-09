@@ -276,6 +276,23 @@ describe("096 broadcast trigger — game lifecycle", () => {
     expect(received).toEqual([]);
   }, 60_000);
 
+  // 110 — reordering was the gap: display_order was not in the WHEN clause, so
+  // a drag reached no one but the client that dragged. `games.reorder` writes
+  // this column on every game in a competition, which is why the fix belongs on
+  // the SAME trigger rather than a fourth one — the row is still there on an
+  // UPDATE, so the existing lookup-by-id path needs nothing else.
+  it("broadcasts when display_order changes — the reorder gap", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const r = await ctx.admin.from("games").update({ display_order: 7 }).eq("id", compGameId);
+    expect(r.error).toBeNull();
+
+    await waitFor(1);
+    expect(received).toHaveLength(1);
+    expect(received[0].gameId).toBe(compGameId);
+    expect(received[0].competitionId).toBe(competitionId);
+  }, 60_000);
+
   it("does not re-broadcast when a lifecycle column is written to its current value", async (t) => {
     if (!requireRealtime(t)) return;
 
