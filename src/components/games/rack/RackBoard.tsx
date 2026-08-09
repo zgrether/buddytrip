@@ -3,6 +3,7 @@
 import { TrendingUp } from "lucide-react";
 import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 import { teamTextColor } from "@/lib/teamTextColor";
+import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -33,7 +34,15 @@ interface RackBoardProps {
   showProjectedToggle?: boolean;
   nameOf: (id: string) => string;
   variant?: "carded" | "stacked";
+  /** Drives the projected-results toggle only. The BANNER no longer reads this —
+   *  it takes the lifecycle columns below, so a re-opened game gets a banner
+   *  instead of silently losing the one it had. */
   final?: boolean;
+  /** `games.status` + `games.corrections_open` — passed straight through to the
+   *  shared banner rather than pre-reduced to a boolean here, so this component
+   *  keeps no private opinion about what "final" means (CLAUDE.md #24). */
+  status?: string | null;
+  correctionsOpen?: boolean;
 }
 
 // ── The board (label + toggle + rack + sit-out) ──────────────────────────────
@@ -47,6 +56,8 @@ export function RackBoard({
   showProjectedToggle = true,
   nameOf,
   variant = "stacked",
+  status,
+  correctionsOpen,
   final,
 }: RackBoardProps) {
   const colorOf = (t: "A" | "B") => (t === "A" ? teamA.color : teamB.color);
@@ -64,11 +75,12 @@ export function RackBoard({
         {showProjectedToggle && !final && <RsToggle mode={mode} onMode={onMode} />}
       </div>
 
-      {final && (
-        <div className="mb-2 flex items-center justify-center rounded-lg" style={{ height: 30, background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-bt-accent)" }}>All in · result locked</span>
-        </div>
-      )}
+      {/* Rack's inline locked banner used to live here, and it is where the
+          shared one came from — the markup is unchanged, it just answers to
+          `gameLockState` now so the CORRECTING case exists at all. Before, this
+          was gated on `final` alone and so disappeared exactly when there was
+          something worth saying. */}
+      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen === true} />
 
       {slots.length === 0 ? (
         <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", padding: "8px 2px" }}>

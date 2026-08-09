@@ -48,6 +48,7 @@ import { strokeHoles } from "@/lib/matchPlay";
 import { pointsReady } from "@/lib/matchDraft";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
+import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
@@ -1257,6 +1258,15 @@ export function StrokeGameView() {
         style={{ background: "var(--color-bt-base)" }}
         data-testid="stroke-surface"
       >
+        {/* Stroke had NO lifecycle banner and no state label — it was the format
+            that had no correction arm at all until #769, and it never grew a
+            signal for the state that arm produces. Same shared component, same
+            words and tone as the other three; it reads the same two columns
+            `GameLifecycleActions` below already takes. Above the leaderboard, so
+            "these standings are being revisited" is read before the standings. */}
+        <div className="px-4 pt-3">
+          <ScoringStateBanner status={gameQ.data?.status ?? null} correctionsOpen={strokeCorrectionsOpen} />
+        </div>
         <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} />
         <FoursomeEntry
           groups={groupViews}

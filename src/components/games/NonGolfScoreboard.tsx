@@ -9,6 +9,7 @@ import {
 } from "@/components/competition/CompetitionGamesPanel";
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
+import { ScoringStateBanner } from "./ScoringStateBanner";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { PointsAtStake } from "./PointsAtStake";
@@ -168,6 +169,13 @@ export function NonGolfScoreboard({
       <div className="flex justify-end">
         <PointsAtStake value={Number(game.points_total ?? 0)} />
       </div>
+
+      {/* Non-golf had NO lifecycle banner and no state label of any kind — the
+          only tell that a posted game had been re-opened was the placement
+          controls becoming live again (#833). Same shared component, same words
+          and tone as the other three formats. Reads the same two columns the
+          `gameLockState` call above already uses. */}
+      <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
       {/* `canEdit` now reaches the outcome rows themselves. It used to be
           expressed by handing them a no-op `onPick`, which leaves three
           live-looking, focusable controls that silently do nothing for a member. */}
