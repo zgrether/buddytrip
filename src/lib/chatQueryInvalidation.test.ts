@@ -15,10 +15,10 @@ import { invalidateChatQueries, type ChatInvalidationUtils } from "./chatQueryIn
  */
 
 function fakeUtils() {
-  const calls: Array<[string, unknown]> = [];
+  const calls: Array<[string, unknown, unknown]> = [];
   const rec = (name: string) => ({
-    invalidate: (input: unknown) => {
-      calls.push([name, input]);
+    invalidate: (input: unknown, opts?: unknown) => {
+      calls.push([name, input, opts]);
     },
   });
   const utils: ChatInvalidationUtils = {
@@ -82,5 +82,59 @@ describe("invalidateChatQueries", () => {
     const { utils, names } = fakeUtils();
     invalidateChatQueries(utils, { tripId: "t1", channel: "team", teamId: "team-2" });
     expect(names()).toEqual(["list"]);
+  });
+
+  // ── Refetch policy ─────────────────────────────────────────────────────────
+  //
+  // The policy is a flag, NOT a second key list. These tests exist to pin that
+  // distinction: the KEYS must be identical across policies (that is #22's rule
+  // and the bug this module was written for), and only the refetch timing moves.
+
+  it("defaults to refetching everything — the post path is unchanged", () => {
+    const { utils, calls } = fakeUtils();
+    invalidateChatQueries(utils, { tripId: "t1", channel: "trip" });
+    expect(calls.find(([n]) => n === "list")![2]).toEqual({ refetchType: "all" });
+  });
+
+  it("'none' marks the list stale without refetching it now", () => {
+    // The realtime path after a successful prepend: the row is already in page
+    // 0, so refetching would re-download every loaded page of an INFINITE query
+    // to learn what the cache was just told.
+    const { utils, calls } = fakeUtils();
+    invalidateChatQueries(
+      utils,
+      { tripId: "t1", channel: "trip" },
+      { messagesListRefetch: "none" }
+    );
+    expect(calls.find(([n]) => n === "list")![2]).toEqual({ refetchType: "none" });
+  });
+
+  it("the KEY SET is identical under both policies — only the timing differs", () => {
+    // If a future change made one policy skip a query, this is what catches it:
+    // that is the exact shape of the drift #762 fixed, re-entering through a
+    // flag instead of through a duplicated list.
+    const all = fakeUtils();
+    invalidateChatQueries(all.utils, { tripId: "t1", channel: "trip" });
+    const none = fakeUtils();
+    invalidateChatQueries(
+      none.utils,
+      { tripId: "t1", channel: "trip" },
+      { messagesListRefetch: "none" }
+    );
+    expect(none.names()).toEqual(all.names());
+    expect(none.calls.map(([, input]) => input)).toEqual(all.calls.map(([, input]) => input));
+  });
+
+  it("the unread counts always refetch, whatever the list policy", () => {
+    // They are cheap scalar COUNTs and they drive the badges — deferring those
+    // would make the dot lie, which is the visible half of the feature.
+    const { utils, calls } = fakeUtils();
+    invalidateChatQueries(
+      utils,
+      { tripId: "t1", channel: "trip" },
+      { messagesListRefetch: "none" }
+    );
+    expect(calls.find(([n]) => n === "unreadCount")![2]).toBeUndefined();
+    expect(calls.find(([n]) => n === "unreadCountByChannel")![2]).toBeUndefined();
   });
 });

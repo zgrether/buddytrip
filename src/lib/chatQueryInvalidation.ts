@@ -25,15 +25,35 @@
  * testable without a React tree.
  */
 
+/**
+ * What to do with `messages.list` after marking it stale.
+ *
+ * `"all"` — the default and the historical behaviour. For an INFINITE query
+ * React Query refetches EVERY loaded page, which is what makes this expensive:
+ * measured at 4 page-fetches / 200 rows / 63 kB for one incoming message with
+ * two pages loaded, to deliver ~200 bytes of text. The cost scales with how far
+ * back the reader has scrolled, so it grows over a trip rather than with the
+ * channel's size.
+ *
+ * `"none"` — mark stale, refetch nothing now. For the realtime path, where the
+ * row has ALREADY been written into page 0 by the handler's own prepend, so a
+ * refetch would re-download the history to learn what the cache was just told.
+ * Staleness is preserved, so the next mount or refocus still reconciles.
+ */
+export type MessagesListRefetch = "all" | "none";
+
 export type ChatInvalidationUtils = {
   messages: {
     list: {
-      invalidate: (input: {
-        tripId: string;
-        channel: "trip" | "team";
-        teamId?: string;
-        visibility?: "crew" | "planning";
-      }) => unknown;
+      invalidate: (
+        input: {
+          tripId: string;
+          channel: "trip" | "team";
+          teamId?: string;
+          visibility?: "crew" | "planning";
+        },
+        opts?: { refetchType?: MessagesListRefetch }
+      ) => unknown;
     };
     unreadCount: { invalidate: (input: { tripId: string }) => unknown };
     unreadCountByChannel: { invalidate: (input: { tripId: string }) => unknown };
@@ -55,14 +75,25 @@ export function invalidateChatQueries(
      * both sub-channels, which is what a realtime insert wants.
      */
     visibility?: "crew" | "planning";
-  }
+  },
+  /**
+   * How to refetch `messages.list`. Deliberately a POLICY flag and not a second
+   * key list — CLAUDE.md #22's rule is that the set of keys lives in one place,
+   * because two hand-maintained lists drift the moment someone adds a third
+   * query. A new chat query is still added here once and every caller picks it
+   * up; all this changes is whether the list refetches NOW or on next mount.
+   *
+   * Defaults to `"all"`, so `messages.send.onSuccess` is untouched.
+   */
+  opts: { messagesListRefetch?: MessagesListRefetch } = {}
 ): void {
   const { tripId, channel, teamId, visibility } = input;
+  const refetchType = opts.messagesListRefetch ?? "all";
 
   if (visibility !== undefined) {
-    utils.messages.list.invalidate({ tripId, channel, teamId, visibility });
+    utils.messages.list.invalidate({ tripId, channel, teamId, visibility }, { refetchType });
   } else {
-    utils.messages.list.invalidate({ tripId, channel, teamId });
+    utils.messages.list.invalidate({ tripId, channel, teamId }, { refetchType });
   }
 
   // Unread counts are trip-scoped and summed server-side, so ONE invalidation

@@ -10,7 +10,41 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 // Chat history page size — how many messages each lazy "load older" fetch pulls.
-const CHAT_PAGE_SIZE = 50;
+export const CHAT_PAGE_SIZE = 50;
+
+/**
+ * What we actually ASK the server for: one more than a page.
+ *
+ * The extra row is a has-more SIGNAL, not content. Asking for exactly
+ * `CHAT_PAGE_SIZE` makes "is there older history?" unanswerable at the boundary:
+ * a full page means either "exactly this many exist" or "more exist", and the
+ * old `length === CHAT_PAGE_SIZE` test guessed the second. A channel with
+ * exactly 50 messages therefore reported more history and spent a fetch proving
+ * otherwise — and 50 is, as it happens, the size of the largest real channel in
+ * production, so this was the common case rather than a corner.
+ *
+ * Asking for 51 makes the test exact: >50 rows back means at least one message
+ * exists beyond the page, full stop.
+ */
+export const CHAT_FETCH_SIZE = CHAT_PAGE_SIZE + 1;
+
+/**
+ * Cursor for the next (older) page, or `undefined` when the history is exhausted.
+ *
+ * The cursor is the 50th row's timestamp — the last row of the PAGE, not of the
+ * over-fetched response. The 51st row is therefore re-fetched as the first row of
+ * the next page, which is why the flattened list is de-duplicated by id below.
+ * Paying one duplicated row per page is what buys an exact has-more answer.
+ */
+export const olderCursor = (lastPage: { created_at: string }[]): string | undefined =>
+  lastPage.length > CHAT_PAGE_SIZE ? lastPage[CHAT_PAGE_SIZE - 1].created_at : undefined;
+
+/** First occurrence wins — the pages are newest-first, so that keeps the copy
+ *  from the newer page and drops the overlapped one from the older page. */
+export function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+}
 
 type Visibility = "crew" | "planning";
 
@@ -123,34 +157,35 @@ function FloatingChatPanelInner({
   // PAGE_SIZE messages older than the previous page's cursor (server orders
   // created_at DESC and applies `.lt(created_at, cursor)`). Older history is
   // pulled in on demand as the viewer scrolls toward the top — so opening a
-  // trip with 10k messages fetches 50 rows, not 10k. `getNextPageParam` hands
-  // back the oldest loaded row's timestamp as the next cursor, and returns
-  // undefined once a short page proves there's nothing older left.
+  // trip with 10k messages fetches 50 rows, not 10k. `olderCursor` derives the
+  // next cursor and decides when the history is exhausted — see its note for why
+  // that answer needs the over-fetched 51st row rather than a full-page guess.
   const crewQuery = trpc.messages.list.useInfiniteQuery(
-    { tripId, channel: "trip", visibility: "crew", limit: CHAT_PAGE_SIZE },
-    {
-      getNextPageParam: (lastPage) =>
-        lastPage.length === CHAT_PAGE_SIZE
-          ? lastPage[lastPage.length - 1].created_at
-          : undefined,
-    }
+    { tripId, channel: "trip", visibility: "crew", limit: CHAT_FETCH_SIZE },
+    { getNextPageParam: olderCursor }
   );
   const planningQuery = trpc.messages.list.useInfiniteQuery(
-    { tripId, channel: "trip", visibility: "planning", limit: CHAT_PAGE_SIZE },
-    {
-      enabled: canSeeOrganizers,
-      getNextPageParam: (lastPage) =>
-        lastPage.length === CHAT_PAGE_SIZE
-          ? lastPage[lastPage.length - 1].created_at
-          : undefined,
-    }
+    { tripId, channel: "trip", visibility: "planning", limit: CHAT_FETCH_SIZE },
+    { enabled: canSeeOrganizers, getNextPageParam: olderCursor }
   );
 
   // Pages come back newest-first within each page and progressively older across
   // pages, so the flattened list is fully created_at DESC. buildDisplayed
   // reverses it to chronological order for rendering.
-  const crewMessages = (crewQuery.data?.pages.flat() ?? []) as ChatMessage[];
-  const planningMessages = (planningQuery.data?.pages.flat() ?? []) as ChatMessage[];
+  //
+  // De-duplicated by id, which the over-fetch makes load-bearing rather than
+  // defensive: consecutive pages OVERLAP by exactly one row (see `olderCursor`),
+  // so without this every page boundary would render a repeated message. It also
+  // absorbs the realtime prepend racing a refetch that already carried the row.
+  // Keeps the FIRST occurrence, so the newest copy wins.
+  const crewMessages = useMemo(
+    () => dedupeById((crewQuery.data?.pages.flat() ?? []) as ChatMessage[]),
+    [crewQuery.data]
+  );
+  const planningMessages = useMemo(
+    () => dedupeById((planningQuery.data?.pages.flat() ?? []) as ChatMessage[]),
+    [planningQuery.data]
+  );
 
   // Roster of the people who can see the Organizers channel — Owner + Planners
   // who are actually on the trip. Powers the explainer at the top of that tab.

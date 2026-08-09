@@ -199,7 +199,17 @@ export function useRealtimeChat(
     // channel; team chat is flat and keyed by teamId instead. The unread
     // COUNT itself is server-computed (F3) and isn't in this cache shape at
     // all — it's invalidated separately, not patched here.
-    const prepend = (row: MessageRow) => {
+    /**
+     * Returns whether it actually wrote into a live `messages.list` cache.
+     *
+     * That answer is what decides the invalidation policy below: if the row is
+     * already in page 0, refetching the whole history to learn it is pure waste.
+     * If nothing was patched (panel closed, or a channel with no cache), the
+     * refetch is the only way the data arrives — and it is free in that case,
+     * because a query with no observers doesn't refetch on invalidate anyway.
+     */
+    const prepend = (row: MessageRow): boolean => {
+      let patched = false;
       const partialInput =
         channel === "trip"
           ? {
@@ -221,33 +231,63 @@ export function useRealtimeChat(
           // the newest rows (server orders created_at DESC), so prepend there.
           if (!Array.isArray(old) && "pages" in old) {
             if (old.pages.some((page) => page.some((m) => m.id === row.id))) {
+              // ALREADY PRESENT COUNTS AS PATCHED. `patched` asks "does this
+              // cache hold the row?", not "did I personally write it" — and the
+              // difference is not academic: two panels mount (`ChatView` renders
+              // Crew and Organizers separately), so two handlers run per event
+              // and the second always finds the row the first just inserted.
+              // Reading that as "nothing patched" sent the second handler down
+              // the full-refetch path and left half the storm in place —
+              // measured, after the first version of this fix.
+              patched = true;
               return old;
             }
             const pages = old.pages.slice();
             pages[0] = [row, ...(pages[0] ?? [])];
+            patched = true;
             return { ...old, pages };
           }
 
           // Flat-array cache, also created_at DESC.
           if (Array.isArray(old)) {
-            if (old.some((m) => m.id === row.id)) return old;
+            if (old.some((m) => m.id === row.id)) {
+              patched = true; // already present — see the note above
+              return old;
+            }
+            patched = true;
             return [row, ...old];
           }
 
           return old;
         }
       );
+      return patched;
     };
 
     const release = acquire(topic, filter, (event) => {
-      if (event.type === "insert") prepend(event.row);
-      // Both paths invalidate the SAME set the post mutation does. A closed
-      // panel has no messages.list cache for prepend() to patch, and a patch
-      // alone can't heal a gap the socket missed — which is why receiving used
-      // to lag while POSTING appeared to work: only the post mutation
-      // invalidated messages.list, so a refetch was the sender's private
-      // recovery path. One shared helper now, so that gap can't reopen.
-      invalidateChatQueries(utils, { tripId, channel, teamId });
+      const patched = event.type === "insert" ? prepend(event.row) : false;
+      // Both paths invalidate the SAME set the post mutation does — one shared
+      // helper, so the gap #762 closed can't reopen (receiving used to lag while
+      // POSTING appeared to work, because only the post mutation invalidated
+      // messages.list and the refetch was the sender's private recovery path).
+      //
+      // What changed is the REFETCH POLICY, not the key set. When the prepend
+      // landed, the open panel already has this row in page 0, and `messages.list`
+      // is an INFINITE query — so refetching would re-download every loaded page
+      // to learn what the cache was just told. Measured: 4 page-fetches / 200 rows
+      // / 63 kB for one ~200-byte message with two pages open, and it grows with
+      // how far back the reader has scrolled.
+      //
+      // Marking stale without refetching keeps the reconciliation: the next mount
+      // or refocus still pulls fresh. When nothing was patched (panel closed, or
+      // a channel this client holds no cache for) the full refetch stays — and it
+      // costs nothing there, because an unobserved query doesn't refetch on
+      // invalidate; it just becomes stale for the next open.
+      invalidateChatQueries(
+        utils,
+        { tripId, channel, teamId },
+        { messagesListRefetch: patched ? "none" : "all" }
+      );
     });
 
     return release;
