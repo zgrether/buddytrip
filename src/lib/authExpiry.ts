@@ -36,7 +36,6 @@ function isPublicPath(path: string): boolean {
     path === "/privacy" ||
     path === "/terms" ||
     path.startsWith("/auth/") ||
-    path.startsWith("/scoreboard/") ||
     path.startsWith("/invite")
   );
 }

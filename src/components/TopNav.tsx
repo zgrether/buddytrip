@@ -219,8 +219,15 @@ export const TopNav: FC<TopNavProps> = ({
               fill="currentColor"
             />
           </svg>
+          {/* Wordmark shows at every width now — no `@max-[600px]:hidden`. That
+              collapse (#279) existed to free room for the TripSwitcher dropdown
+              and labeled tool buttons that used to sit beside it below 600px.
+              TripSwitcher is gone (#816); the tools that remain in this bar are
+              icon-only and `lg+`-gated (ChatToolButton), so nothing left of
+              lg competes with the wordmark for space. Below that, the bar was
+              just the flag glyph and the avatar with the whole middle empty —
+              this is desktop's exact treatment, not a new mobile variant. */}
           <span
-            className="@max-[600px]:hidden"
             style={{
               fontSize: 16,
               fontWeight: 600,
