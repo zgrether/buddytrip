@@ -1,37 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import dynamic from "next/dynamic";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, ChevronDown, ArrowLeft } from "lucide-react";
 import {
   IconUser,
   IconMail,
   IconLock,
   IconArchive,
-  IconLogout,
   IconTrash,
-  IconArrowLeft,
   IconBell,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
+import { createClient } from "@/lib/supabase";
 import { useNotificationPreference } from "@/lib/useNotificationPreference";
 import { NOTIFICATION_TYPES, type NotificationKey } from "@/lib/notificationTypes";
 import { useDevicePush } from "@/lib/useDevicePush";
 import { Checkbox } from "@/components/games/Checkbox";
 import { Collapse } from "@/components/games/Collapse";
 import { ScrollLock } from "@/hooks/useScrollLock";
-import { createClient } from "@/lib/supabase";
-import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
-import { TopNav } from "@/components/TopNav";
+import { useAuthUser } from "@/lib/auth-context";
 import { Avatar } from "@/components/Avatar";
+import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 // Lazy-loaded — both panels are heavy (AvatarIconPicker statically
 // references all 96 Tabler icons via AVATAR_ICON_COMPONENTS; the
 // archived-ideas panel pulls its own tRPC query and list UI). Splitting
-// them into their own chunks keeps the profile route's initial JS
-// payload small so the page paints sooner. Each ships a tiny skeleton
-// placeholder so the layout doesn't reflow when the chunk lands.
+// them into their own chunks keeps the panel's own chunk small so it paints
+// as soon as it opens. Each ships a tiny skeleton placeholder so the layout
+// doesn't reflow when the chunk lands. This matters MORE as an overlay than
+// it did as a route: there is no navigation to hide the load behind, so the
+// panel is expected on screen the instant the menu item is tapped —
+// `UserMenu` warms this chunk when the dropdown opens for the same reason.
 const AvatarIconPicker = dynamic(
   () =>
     import("@/components/AvatarIconPicker").then((m) => ({
@@ -93,30 +95,79 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
   marginBottom: 6,
 };
 
-type SidebarTab = "profile" | "ideas";
+/** Which screen the panel is showing. The idea archive was its own ROUTE
+ *  (`/profile/archived-ideas`) reached by a `router.push`; inside an overlay it
+ *  is a second view of the same panel, so it needs no URL. */
+type PanelView = "settings" | "ideas";
 
-// ── Page ──────────────────────────────────────────────────────────────────
+// ── Panel ─────────────────────────────────────────────────────────────────
 
-export default function ProfilePage() {
-  const router = useRouter();
-  const authLoaded = useAuthLoaded();
+/**
+ * PreferencesPanel — account settings as an OVERLAY.
+ *
+ * ── Why this stopped being a route ───────────────────────────────────────────
+ * It was `/profile`, the last surface in the app that still navigated: trip
+ * settings, game settings, chat and the danger confirmations are all overlays.
+ * It survived the navigation refactor the same way `TripSwitcher` did — nobody
+ * re-homed it. Nothing about it ever needed a URL: no deep link pointed at it,
+ * no form required one, no OAuth flow returned to it (auth callbacks resolve to
+ * `/dashboard`, `/trips/new`, `/login` or `/`), and the name / email / password /
+ * delete flows were ALREADY overlays (`SheetShell`) nested inside the page.
+ *
+ * ── The shell is reused, not rebuilt ─────────────────────────────────────────
+ * `SettingsSlideOver` — full-page on mobile, 440px right drawer at sm+, portaled
+ * to body, scroll-locked. Its own doc calls it "the crew/lodging trip-settings
+ * idiom", and issue #647 tracks migrating more surfaces onto it, so this is the
+ * codebase's stated direction rather than a new pattern. No footer: game settings
+ * are draft-then-save and need a save bar, account rows self-persist and have
+ * nothing to commit.
+ *
+ * `useModalBackButton` gives it back-button dismissal, the same hook
+ * `TripSettingsModal` uses — an overlay that ignores back would be worse than the
+ * route it replaced, which at least popped.
+ *
+ * NO new dismiss implementation: scrim tap comes from the shell, back from the
+ * hook. The seven hand-rolled `mousedown`-outside copies (#877) stay seven —
+ * `UserMenu`, which opens this, was already one of them.
+ *
+ * ── What is deliberately NOT here ────────────────────────────────────────────
+ * Sign out. It lived here AND in the avatar dropdown AND in this page's old
+ * desktop sidebar — three entry points to one action. It is a single tap with no
+ * structure, so it belongs in the dropdown and only there. Delete account is the
+ * mirror of that argument: it keeps its danger-zone home below and is reachable
+ * ONLY from here, because it should not be one tap from an avatar.
+ */
+export function PreferencesPanel({ onClose }: { onClose: () => void }) {
   const authUser = useAuthUser();
   const utils = trpc.useUtils();
 
-  const { data: me } = trpc.users.getMe.useQuery(undefined, {
-    enabled: authLoaded && !!authUser,
-  });
+  // No `enabled` gate and no auth bounce: the panel only mounts from the avatar
+  // menu, which only renders for a signed-in user. The route needed both because
+  // it could be navigated to cold.
+  const { data: me } = trpc.users.getMe.useQuery();
 
-  // Auth gate — bounce to the marketing homepage if not authenticated.
-  // We can't send users to /login here: the sign-out button below clears
-  // the auth state and then router.push("/"); but the moment authUser
-  // becomes null React re-renders this page and the gate would race ahead
-  // with router.replace("/login"), landing the user on /login instead of
-  // the homepage. Pointing the gate at "/" matches the sign-out intent
-  // and the homepage already shows the marketing site for unauthed visits.
-  useEffect(() => {
-    if (authLoaded && !authUser) router.replace("/");
-  }, [authLoaded, authUser, router]);
+  // ── View state ────────────────────────────────────────────────────────
+  // Replaces the desktop-only sidebar tabs AND the mobile `/profile/archived-ideas`
+  // route with one thing. The old page had both: tabs that swapped the main area
+  // at md+, and a separate route for the same content on mobile.
+  const [view, setView] = useState<PanelView>("settings");
+
+  // ── Back button ───────────────────────────────────────────────────────
+  // TWO layers, not one, because the archive used to be its own ROUTE: back from
+  // it returned to `/profile`, and collapsing both into a single handler would
+  // have made back from the archive dismiss the whole panel — strictly worse
+  // than the route it replaced. `useModalBackButton` is already stack-aware
+  // (only the top layer answers a pop; a layer's own teardown pops its own
+  // phantom and marks it programmatic), so the second call with `enabled` is the
+  // hook's documented pattern, not a new mechanism.
+  //
+  // Do NOT collapse these into `useModalBackButton(view === "ideas" ? backToSettings : onClose)`.
+  // The hook pushes ONE phantom entry per enabled mount and only re-runs on
+  // `enabled`; a handler that returns without unmounting consumes that entry and
+  // leaves the panel open holding nothing, so the NEXT back navigates off the
+  // page instead of closing it.
+  useModalBackButton(onClose);
+  useModalBackButton(() => setView("settings"), view === "ideas");
 
   // ── Avatar icon save (debounced, optimistic) ──────────────────────────
   const updateAvatar = trpc.users.updateAvatar.useMutation({
@@ -143,64 +194,49 @@ export default function ProfilePage() {
   });
   const [savedFlash, setSavedFlash] = useState(false);
 
-  // ── Sidebar tab state (desktop) ───────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<SidebarTab>("profile");
-
   // ── Edit sheet state ──────────────────────────────────────────────────
   const [openSheet, setOpenSheet] = useState<null | "name" | "email" | "password" | "delete">(
     null
   );
 
-
   // ── OAuth detection ───────────────────────────────────────────────────
   const isGoogleUser = authUser?.app_metadata?.provider === "google";
 
-  // Page-data readiness — gates ONLY the content area. The chrome
-  // (TopNav, sidebar, mobile back button) renders immediately so the
-  // user sees something useful while users.getMe is in flight.
-  const dataReady = authLoaded && !!me;
+  const dataReady = !!me;
   const displayName = me?.name ?? me?.email ?? "You";
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
+    <SettingsSlideOver
+      title={view === "ideas" ? "Idea archive" : "Settings"}
+      onClose={onClose}
+      testId="preferences-panel"
     >
-      <TopNav />
-
-      <div className="flex">
-        {/* ── Desktop sidebar ─────────────────────────────────────────── */}
-        <DesktopSidebar
-          activeTab={activeTab}
-          onChangeTab={setActiveTab}
-          onBack={() => router.back()}
-          onSignOut={() => handleSignOut(router)}
-          onDelete={() => setOpenSheet("delete")}
-        />
-
-        {/* ── Main scroll container ───────────────────────────────────── */}
-        <main className="w-full md:flex-1">
-          <div className="mx-auto max-w-2xl pb-24 md:pt-8">
-            {/* Mobile back button — collapses the desktop sidebar's
-                "Back" link into a single arrow in the top-left of the
-                title bar (Supabase-style). */}
-            <div className="px-2 pt-2 md:hidden">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                aria-label="Back"
-                className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <IconArrowLeft size={20} stroke={1.75} />
-              </button>
-            </div>
-
+      {/* The archive is a SECOND VIEW of this panel, not a route. Its own back
+          arrow returns to the settings list; the panel's ✕ / scrim / browser-back
+          still close the whole thing. */}
+      {view === "ideas" ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => setView("settings")}
+            className="mb-3 flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="preferences-archive-back"
+          >
+            <ArrowLeft size={14} /> Settings
+          </button>
+          <ArchivedIdeasPanel />
+        </div>
+      ) : (
+        // `-mx-4` cancels the shell body's own `px-4`, because every `Section`
+        // already supplies that padding — without it the rows inset twice and
+        // stop lining up with the header. One stacked column at every width: the
+        // old page split this between a desktop sidebar (tabs swapping a main
+        // area) and a mobile stack, and a 440px drawer has room for neither.
+        <div className="-mx-4">
             {!dataReady ? (
-              // Content-area loading state. The shell above (TopNav +
-              // sidebar) has already rendered, so the page reads as
-              // "loaded" while users.getMe finishes. Subsumes both the
-              // auth-hydration race and the initial query.
+              // Body-only loading state — the shell's header has already
+              // rendered, so the panel reads as open while users.getMe finishes.
               <div className="flex justify-center py-16">
                 <div
                   className="h-6 w-6 animate-spin rounded-full border-2"
@@ -212,20 +248,14 @@ export default function ProfilePage() {
               </div>
             ) : (
             <>
-            {/* Mobile shows everything stacked. Desktop renders only the
-                section matching the active sidebar tab. */}
-
-            {/* AVATAR HERO + PICKER + COMPETITION PREVIEW + PROFILE
-                Mobile: always visible. Desktop: visible only when the
-                Profile tab is active (otherwise hidden at md+). */}
-            <div className={activeTab === "profile" ? "block" : "md:hidden"}>
+            <div>
                 <AvatarHero
                   name={displayName}
                   email={me.email}
                   avatarIcon={me.avatar_icon}
                 />
 
-                <Section label="Avatar icon" mobileOnlyLabel>
+                <Section label="Avatar icon">
                   <AvatarIconPicker
                     value={me.avatar_icon ?? null}
                     onChange={(iconId) => updateAvatar.mutate({ avatarIcon: iconId })}
@@ -333,16 +363,6 @@ export default function ProfilePage() {
                 </Section>
               </div>
 
-            {/* Desktop-only inline panels — render the actual page content
-                inside the main area when its sidebar tab is active.
-                Mobile path still navigates to the dedicated
-                /profile/archived-ideas route via the Preferences card below. */}
-            {activeTab === "ideas" && (
-              <div className="hidden px-4 md:block">
-                <ArchivedIdeasPanel />
-              </div>
-            )}
-
             {/* Was `block md:hidden`, which hid the whole card on desktop. That
                 was tolerable while it held only device-scoped controls, and
                 stopped being tolerable when it gained a CATEGORY preference:
@@ -351,7 +371,7 @@ export default function ProfilePage() {
                 governs their phone. The device rows come along, which is
                 correct — desktop browsers support push, and the row reports its
                 real state on any of them. */}
-            <div className="block">
+            <div>
               <Section label="Preferences">
                 <div
                   className="overflow-hidden rounded-xl"
@@ -364,39 +384,20 @@ export default function ProfilePage() {
                     icon={<IconArchive size={16} stroke={1.75} />}
                     label="Idea archive"
                     sub="Saved destinations for future trips"
-                    onClick={() => router.push("/profile/archived-ideas")}
+                    onClick={() => setView("ideas")}
                   />
                   <NotificationSettings />
                 </div>
               </Section>
 
-              {/* Sign out card (mobile only) */}
-              <Section>
-                <button
-                  type="button"
-                  onClick={() => handleSignOut(router)}
-                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{
-                    background: "var(--color-bt-card)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
-                >
-                  <span
-                    className="flex h-8 w-8 items-center justify-center rounded-lg"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    <IconLogout size={16} stroke={1.75} />
-                  </span>
-                  <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    Sign out
-                  </span>
-                </button>
-              </Section>
+              {/* NO sign-out card. It was here, in the avatar dropdown, AND in
+                  this page's desktop sidebar — three routes to one action. It is
+                  a single tap with no structure, so the dropdown is its home and
+                  its only one. Delete account, below, is the mirror: it stays
+                  here and nowhere else, because it should not be one tap from an
+                  avatar. */}
 
-              {/* Danger zone (mobile only) */}
+              {/* Danger zone */}
               <Section label="Danger zone">
                 <button
                   type="button"
@@ -435,11 +436,13 @@ export default function ProfilePage() {
             </div>
             </>
             )}
-          </div>
-        </main>
-      </div>
+        </div>
+      )}
 
-      {/* ── Sheets ─────────────────────────────────────────────────────── */}
+      {/* ── Sheets ─────────────────────────────────────────────────────────
+          Unchanged: these were already overlays nested inside the page, so
+          they nest inside the panel exactly as they did. Each portals/fixes to
+          the viewport at z-50, above the slide-over's own body. */}
       {me && openSheet === "name" && (
         <NameSheet currentName={me.name ?? ""} onClose={() => setOpenSheet(null)} />
       )}
@@ -452,42 +455,34 @@ export default function ProfilePage() {
       {openSheet === "delete" && (
         <DeleteAccountSheet onClose={() => setOpenSheet(null)} />
       )}
-    </div>
+    </SettingsSlideOver>
   );
-}
-
-// ── Sign out helper ───────────────────────────────────────────────────────
-
-async function handleSignOut(router: ReturnType<typeof useRouter>) {
-  const supabase = createClient();
-  await supabase.auth.signOut();
-  router.push("/");
-  router.refresh();
 }
 
 // ── Layout primitives ─────────────────────────────────────────────────────
 
+/**
+ * A labelled block of rows.
+ *
+ * The `mobileOnly` / `mobileOnlyLabel` props are GONE, and their removal is the
+ * point rather than a tidy-up. They existed because the route had two layouts —
+ * a stacked mobile page and a sidebar-plus-main desktop one — so a `md:hidden`
+ * meant "the desktop layout shows this another way". The panel is a 440px column
+ * at every viewport, so `md:` no longer describes the panel; it describes the
+ * SCREEN BEHIND the panel. Left in place, `mobileOnlyLabel` on the avatar-icon
+ * section would have hidden that label on a desktop browser while showing it on
+ * a phone — at identical rendered widths.
+ */
 function Section({
   label,
   children,
-  mobileOnly = false,
-  mobileOnlyLabel = false,
 }: {
   label?: string;
   children: React.ReactNode;
-  mobileOnly?: boolean;
-  mobileOnlyLabel?: boolean;
 }) {
   return (
-    <div className={`px-4 pb-3 ${mobileOnly ? "md:hidden" : ""}`}>
-      {label && (
-        <p
-          style={SECTION_LABEL_STYLE}
-          className={mobileOnlyLabel ? "md:hidden" : ""}
-        >
-          {label}
-        </p>
-      )}
+    <div className="px-4 pb-3">
+      {label && <p style={SECTION_LABEL_STYLE}>{label}</p>}
       {children}
     </div>
   );
@@ -759,219 +754,35 @@ function AvatarHero({
   email: string | null;
   avatarIcon: string | null;
 }) {
+  // ONE centered column, at every width. There were two variants — this one and
+  // a left-aligned `md:flex` row for the old page's wide main column. The row
+  // has nowhere to be now: the panel is 440px whether the viewport is a phone or
+  // a 27" monitor, so the `md:` variant would have swapped the layout based on
+  // the size of the screen BEHIND the drawer. Same reasoning as `Section`'s
+  // removed `mobileOnly*` props.
   return (
-    <>
-      {/* Mobile: centered column */}
-      <div className="flex flex-col items-center px-4 pb-4 pt-6 md:hidden">
-        <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
-        <p
-          className="mt-3 text-[18px] font-medium"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {name}
-        </p>
-        {email && (
-          <p
-            className="mt-0.5 text-[13px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {email}
-          </p>
-        )}
-      </div>
-
-      {/* Desktop: flex row */}
-      <div className="hidden items-center gap-4 px-4 pb-5 md:flex">
-        <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {name}
-          </p>
-          {email && (
-            <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {email}
-            </p>
-          )}
-          {/* The "icon stays / background becomes team color" explainer
-              lives inside the Competition preview panel below, so it's
-              omitted here to avoid duplication. */}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── Desktop sidebar ───────────────────────────────────────────────────────
-
-function DesktopSidebar({
-  activeTab,
-  onChangeTab,
-  onBack,
-  onSignOut,
-  onDelete,
-}: {
-  activeTab: SidebarTab;
-  onChangeTab: (t: SidebarTab) => void;
-  onBack: () => void;
-  onSignOut: () => void;
-  onDelete: () => void;
-}) {
-  const items: { id: SidebarTab; label: string; icon: React.ReactNode; group: "account" | "library" }[] = [
-    { id: "profile", label: "Profile", icon: <IconUser size={16} stroke={1.75} />, group: "account" },
-    { id: "ideas", label: "Idea archive", icon: <IconArchive size={16} stroke={1.75} />, group: "library" },
-  ];
-  const account = items.filter((i) => i.group === "account");
-  const library = items.filter((i) => i.group === "library");
-
-  return (
-    <aside
-      className="hidden w-[200px] flex-col md:flex"
-      style={{
-        background: "var(--color-bt-card)",
-        borderRight: "0.5px solid var(--color-bt-border)",
-        padding: "10px 0 20px",
-        // Stick to the viewport (below the 56px TopNav) and cap at one
-        // viewport height so the bottom block (Sign out / Delete) stays
-        // pinned to the bottom of the screen as the main panel scrolls.
-        // Without this, default flex `align-items: stretch` stretches
-        // the sidebar to match main content height, leaving the bottom
-        // items way down the page.
-        position: "sticky",
-        top: 56,
-        height: "calc(100vh - 56px)",
-        overflowY: "auto",
-        alignSelf: "flex-start",
-      }}
-    >
-      {/* Back — sits above the section groups, mirroring Supabase's
-          left-column back link. Collapses to a single arrow button in
-          the mobile title bar (rendered in the main area). Returns to
-          the previous page rather than a fixed destination. */}
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center transition-colors hover:text-[var(--color-bt-text)]"
-        style={{ gap: 6, padding: "0 16px 10px", color: "var(--color-bt-text-dim)" }}
-      >
-        <IconArrowLeft size={15} stroke={1.75} />
-        <span style={{ fontSize: 13 }}>Back</span>
-      </button>
-
-      <div
-        style={{
-          borderBottom: "0.5px solid var(--color-bt-border)",
-          marginBottom: 12,
-        }}
-      />
-
-      <SidebarGroup label="Account">
-        {account.map((i) => (
-          <SidebarItem
-            key={i.id}
-            label={i.label}
-            icon={i.icon}
-            active={activeTab === i.id}
-            onClick={() => onChangeTab(i.id)}
-          />
-        ))}
-      </SidebarGroup>
-      <SidebarGroup label="Library">
-        {library.map((i) => (
-          <SidebarItem
-            key={i.id}
-            label={i.label}
-            icon={i.icon}
-            active={activeTab === i.id}
-            onClick={() => onChangeTab(i.id)}
-          />
-        ))}
-      </SidebarGroup>
-
-      <div
-        style={{ marginTop: "auto", borderTop: "0.5px solid var(--color-bt-border)", paddingTop: 8 }}
-      >
-        <SidebarItem
-          label="Sign out"
-          icon={<IconLogout size={16} stroke={1.75} />}
-          onClick={onSignOut}
-        />
-        <SidebarItem
-          label="Delete account"
-          icon={<IconTrash size={16} stroke={1.75} />}
-          onClick={onDelete}
-          danger
-        />
-      </div>
-    </aside>
-  );
-}
-
-function SidebarGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-2">
+    <div className="flex flex-col items-center px-4 pb-4 pt-2">
+      <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
       <p
-        style={{
-          ...SECTION_LABEL_STYLE,
-          padding: "6px 16px",
-          margin: 0,
-        }}
+        className="mt-3 text-[18px] font-medium"
+        style={{ color: "var(--color-bt-text)" }}
       >
-        {label}
+        {name}
       </p>
-      {children}
+      {email && (
+        <p
+          className="mt-0.5 text-[13px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {email}
+        </p>
+      )}
+      {/* The "icon stays / background becomes team color" explainer lives inside
+          the Competition preview below, with the visual it explains. */}
     </div>
   );
 }
 
-function SidebarItem({
-  label,
-  icon,
-  active = false,
-  onClick,
-  danger = false,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  active?: boolean;
-  onClick?: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]"
-      style={{
-        gap: 10,
-        padding: "9px 16px",
-        background: active ? "rgba(45,212,191,.08)" : "transparent",
-        color: danger
-          ? "rgba(248,113,113,.7)"
-          : active
-          ? "var(--color-bt-text)"
-          : "var(--color-bt-text)",
-      }}
-    >
-      <span
-        style={{
-          color: danger
-            ? "rgba(248,113,113,.7)"
-            : active
-            ? "var(--color-bt-accent)"
-            : "var(--color-bt-text-dim)",
-        }}
-      >
-        {icon}
-      </span>
-      <span style={{ fontSize: 13 }}>{label}</span>
-    </button>
-  );
-}
-
-// (PreferencesPanel removed — desktop now renders the full
-// ArchivedIdeasPanel inline in the main area when its sidebar tab is
-// active. Mobile still uses the Preferences card with a row that
-// navigates to the dedicated page.)
 
 // ── Sheets ────────────────────────────────────────────────────────────────
 

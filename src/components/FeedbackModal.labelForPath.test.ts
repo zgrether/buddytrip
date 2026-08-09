@@ -39,9 +39,17 @@ describe("labelForPath — per-tab labels (reachable again after Phase 2)", () =
 
   it("still labels the non-trip screens", () => {
     expect(labelForPath("/dashboard", null)).toBe("Dashboard");
-    expect(labelForPath("/profile", null)).toBe("Profile");
-    expect(labelForPath("/profile/archived-ideas", null)).toBe("Profile · Archived ideas");
     expect(labelForPath("/login", null)).toBe("Login");
     expect(labelForPath("/", null)).toBe("Landing");
+  });
+
+  it("has no /profile arm — preferences is an overlay, not a route", () => {
+    // Deliberate, not an omission. The route is gone, so the path can't occur;
+    // the arms are removed rather than left as dead lookups. Documented here
+    // because this is the referrer class that dies SILENTLY (a lookup, not a
+    // link) — the assertion is what makes a re-add visible. The fallback is the
+    // raw path, which is also the honest answer: if that string ever shows up on
+    // a feedback report, a route came back.
+    expect(labelForPath("/profile", null)).toBe("/profile");
   });
 });

@@ -277,8 +277,10 @@ export const TopNav: FC<TopNavProps> = ({
       {/* FeedbackModal calls useSearchParams() to capture the active tab
           (?tab=crew etc). Next.js requires any useSearchParams() caller to
           be wrapped in Suspense during static prerendering — without this,
-          build fails on pages like /profile/archived-ideas that are
-          statically generated. fallback={null} keeps the UX unchanged. */}
+          the build fails on any statically-generated page that renders this
+          bar. fallback={null} keeps the UX unchanged. (The page that first
+          forced this was /profile/archived-ideas, now retired into the
+          preferences overlay; the requirement is structural, not that page's.) */}
       <Suspense fallback={null}>
         <FeedbackModal
           open={feedbackOpen}

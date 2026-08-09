@@ -9,10 +9,11 @@ import { ideaGradient } from "@/lib/temporalGradient";
  * Lists every destination idea the current user has archived (across all
  * their trips) and lets them delete entries permanently.
  *
- * Rendered inside the desktop sidebar layout on /profile (when the
- * "Idea archive" tab is active) and also inside the dedicated mobile
- * page at /profile/archived-ideas. The headline + intro copy live here
- * so both surfaces render identically.
+ * Rendered in ONE place: the "Idea archive" view of `PreferencesPanel`,
+ * reached from the archive row. It used to have two hosts — a desktop
+ * sidebar tab and a separate mobile route — which is why the headline and
+ * intro copy live in here rather than in the host; they no longer have to,
+ * but keeping them here means the panel doesn't have to know the copy.
  *
  * Import/reuse of archived ideas happens from the Add-Destination-Ideas
  * flow inside a trip, not from here.

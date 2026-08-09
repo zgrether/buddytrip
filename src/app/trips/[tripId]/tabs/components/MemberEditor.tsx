@@ -56,7 +56,7 @@ export type MemberEditorTarget = {
     name?: string | null;
     email: string | null;
     is_guest?: boolean;
-    /** Tabler icon id the user chose in /profile (e.g. "flag-2"). The
+    /** Tabler icon id the user chose in preferences (e.g. "flag-2"). The
      *  drawer header surfaces this, NOT users.avatar_url (the OAuth /
      *  Google photo), so the avatar reflects the user's explicit
      *  in-app identity rather than their login provider's photo. */
@@ -424,7 +424,7 @@ export function MemberEditor({
         >
           <div className="flex min-w-0 items-center gap-3">
             {/* Avatar — surfaces the user's in-app profile choice
-                (users.avatar_icon, the Tabler icon picked in /profile)
+                (users.avatar_icon, the Tabler icon picked in preferences)
                 with users.name as the initials fallback. Trip-scoped
                 nickname does NOT drive the avatar — typing a new
                 nickname here leaves the avatar alone. We deliberately
