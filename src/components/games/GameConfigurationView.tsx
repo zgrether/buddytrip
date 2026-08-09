@@ -7,7 +7,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
-import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
+import { formatExplanation } from "@/components/games/GameFormatExplainer";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
@@ -87,8 +87,11 @@ export function GameConfigurationView({
   onChanged: () => void;
   /** Game deleted from the danger zone — leave the page (back to the board). */
   onDeleted: () => void;
-  /** Danger-zone score reset — forwarded to `GameDangerZone`. */
-  onScoresReset?: () => void;
+  /** Danger-zone score reset — forwarded to `GameDangerZone`. REQUIRED for the
+   *  reason stated there: a host that can't say what reset means locally will
+   *  show stale scores until it remounts. Both callers (rack, stroke) already
+   *  pass `clearScores`; this stops a third from forgetting. */
+  onScoresReset: () => void;
   /** Summary + drill-down into the format's who's-playing/handicaps editor. Omit when
    *  the format has no post-create roster editor. */
   whosPlayingLabel?: string;
@@ -184,19 +187,11 @@ export function GameConfigurationView({
     >
         <SettingsColumn>
 
-          {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
-              header: it frames the whole game before any settings (cross-format layout
-              consistency pass; matches Match Play's canonical order). */}
-          {competitionId && (
-            <div className="mb-2">
-              <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-            </div>
-          )}
-
           {/* IDENTITY: name (tap-to-edit) + assigned-to — draft slices. */}
           {competitionId && (
             <GameIdentityHeader
               tripId={tripId}
+              competitionId={competitionId}
               canEdit={canEdit}
               isOwner={isOwner}
               nameValue={nameValue}
@@ -273,7 +268,7 @@ export function GameConfigurationView({
               it reads before the WARNED Modifiers accordion — matching Match Play's
               canonical order (cross-format layout consistency pass). */}
           {competitionId && (
-            <GameRulesNote canEdit={canEdit} value={rulesValue ?? ""} onChange={onRulesChange} />
+            <GameRulesNote canEdit={canEdit} value={rulesValue ?? ""} onChange={onRulesChange} starterText={formatExplanation(game.game_type_id) ?? undefined} />
           )}
 
           {/* Game Modifiers — stroke only (rack has none, Phase 0 confirmed). Sits AFTER
@@ -291,7 +286,6 @@ export function GameConfigurationView({
               onChanged={onChanged}
               onDeleted={onDeleted}
               onScoresReset={onScoresReset}
-              disabled={serverScoringEnabled}
             />
           )}
         </SettingsColumn>

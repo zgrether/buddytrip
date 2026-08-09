@@ -69,7 +69,7 @@ import { SettingsColumn } from "@/components/games/SettingsColumn";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver"; // P1: full-page settings shell
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
-import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
+import { formatExplanation } from "@/components/games/GameFormatExplainer";
 import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
@@ -1495,12 +1495,31 @@ export function MatchGameView() {
       ? {
           title: chromeTitle,
           titleSuffix: chromeTitleSuffix,
+          // No `status !== "complete"` any more — a finished game's settings stay
+          // reachable. Name / rules / assignee / points remain legitimately
+          // editable (points recompute at read from the stored `position`), and
+          // the standings-affecting edits are refused server-side by
+          // `save_game_config`'s FINAL_LOCKED guard (migration 111) with a
+          // message that names the reason. Rack carried the same gate; stroke and
+          // non-golf never did — CLAUDE.md #24's divergence, with all four
+          // reading `status` directly rather than through the shared predicate.
           onSettings:
-            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit && status !== "complete"
+            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit
               ? openConfig
               : undefined,
           // Scorecard affordance now lives ON the match card's header row (Zach's
           // QA), not the app bar — so no onScorecard published here.
+          // Rules reachable at every depth — see GameChrome's `rules` note.
+          rules:
+            gameQ.data && tripId && !cfgOpen
+              ? {
+                  tripId,
+                  gameId: gameQ.data.id as string,
+                  gameTypeId: (gameQ.data as unknown as GameRow).game_type_id,
+                  text: (gameQ.data.rules_for_today as string | null) ?? null,
+                  canEdit,
+                }
+              : undefined,
           // Focused score-entry surface → hide the trip bottom nav (Task 5).
           focusedEntry: screen === "score",
         }
@@ -1920,17 +1939,10 @@ export function MatchGameView() {
           >
           <SettingsColumn className="pb-4">
 
-            {/* Format explainer — "HOW YOU COMPETE · MATCH PLAY" — at the TOP of the
-                page (freeze redesign resequence §3.1): it frames the whole game before
-                the identity/settings, so it moved above the identity header. */}
-            {gameCompId && gameQ.data && (
-              <div className="mb-2">
-                <GameFormatExplainer
-                  gameTypeId={(gameQ.data as unknown as GameRow).game_type_id}
-                  variant="settings"
-                />
-              </div>
-            )}
+            {/* The "HOW YOU COMPETE" block that used to lead the page is gone — the
+                format explanation is now the STARTER TEXT of Rules of the Day
+                below, so there is one description of how the game is played
+                instead of two, and the editable one continues the given one. */}
 
             {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
                 "Assigned to" frame. Competition games only. CONTROLLED: name + delegate
@@ -1939,6 +1951,7 @@ export function MatchGameView() {
             {gameCompId && gameQ.data && (
               <GameIdentityHeader
                 tripId={tripId}
+                competitionId={gameCompId}
                 canEdit={canEdit}
                 isOwner={isOwner}
                 nameValue={configDraft.name}
@@ -2232,6 +2245,9 @@ export function MatchGameView() {
                 canEdit={canEdit}
                 value={configDraft.rulesForToday ?? ""}
                 onChange={setRulesDraft}
+                starterText={
+                  formatExplanation((gameQ.data as unknown as GameRow).game_type_id) ?? undefined
+                }
               />
             )}
 
@@ -2289,7 +2305,6 @@ export function MatchGameView() {
                 onChanged={onSetupChanged}
                 onScoresReset={clearScores}
                 onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-                disabled={scoringEnabled}
               />
             )}
           </SettingsColumn>

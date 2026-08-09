@@ -414,6 +414,17 @@ export function NonGolfGameView() {
       ? {
           title: (game?.name as string | undefined)?.trim() || typeName,
           onSettings: game && !showConfig && canEdit ? openConfig : undefined,
+          // Rules reachable at every depth — see GameChrome's `rules` note.
+          rules:
+            game && tripId && !showConfig
+              ? {
+                  tripId,
+                  gameId: game.id as string,
+                  gameTypeId: (game as unknown as GameRow).game_type_id,
+                  text: (game.rules_for_today as string | null) ?? null,
+                  canEdit,
+                }
+              : undefined,
         }
       : null,
   );
@@ -461,6 +472,22 @@ export function NonGolfGameView() {
         entityCount={teams.length || null}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
+        // Scores wiped server-side → drop the local outcome the picker is
+        // holding. Non-golf's counterpart to the golf formats' `clearScores`.
+        //
+        // Without this the reset LOOKED like it failed: the three drafts below
+        // are null-sentinels that read the server mirror only while untouched,
+        // so once someone had picked a winner the local value won permanently
+        // over the emptied server response, and the old outcome stayed on
+        // screen until the view remounted. Same symptom #807 fixed for the
+        // golf formats (`reconcileScores` overlays and so ignores absence),
+        // reached by a different mechanism — which is exactly why the handler
+        // is now required rather than optional.
+        onScoresReset={() => {
+          setResultDraft(null);
+          setOrderDraft(null);
+          setTiedDraft(null);
+        }}
         // Draft-then-save: the whole page is controlled off configDraft; Save commits.
         draft={configDraft}
         onNameChange={setNameDraft}

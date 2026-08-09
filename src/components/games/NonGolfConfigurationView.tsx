@@ -6,7 +6,7 @@ import { GameDangerZone } from "@/components/games/GameDangerZone";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
-import { GameFormatExplainer } from "@/components/games/GameFormatExplainer";
+import { formatExplanation } from "@/components/games/GameFormatExplainer";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
@@ -53,6 +53,7 @@ export function NonGolfConfigurationView({
   canManageGame,
   onChanged,
   onDeleted,
+  onScoresReset,
   draft,
   onNameChange,
   onRulesChange,
@@ -86,6 +87,11 @@ export function NonGolfConfigurationView({
   /** Server-direct refresh after a Danger-Zone action (reset/delete) — NOT a draft edit. */
   onChanged: () => void;
   onDeleted: () => void;
+  /** Danger-zone score reset — clears the host's local result drafts. Required:
+   *  non-golf's `resultDraft`/`orderDraft`/`tiedDraft` are null-sentinels that
+   *  fall back to the server mirror ONLY while untouched, so once the picker has
+   *  been used the local value outlives an emptied server response. */
+  onScoresReset: () => void;
   /** Draft-then-save (P2): the whole page is controlled off this composite draft; the
    *  parent (NonGolfGameView) owns it + commits via ONE atomic save_game_config. */
   draft: NonGolfConfigDraft;
@@ -128,16 +134,10 @@ export function NonGolfConfigurationView({
     >
         <SettingsColumn>
 
-          {/* Format explainer — "HOW YOU COMPETE" — leads the page, above the identity
-              header (cross-format layout consistency pass; matches Match Play's
-              canonical order). */}
-          <div className="mb-2">
-            <GameFormatExplainer gameTypeId={game.game_type_id} variant="settings" />
-          </div>
-
           {/* Identity — controlled: name + assigned-to are draft slices now. */}
           <GameIdentityHeader
             tripId={tripId}
+            competitionId={competitionId}
             canEdit={canEdit}
             isOwner={isOwner}
             nameValue={draft.name}
@@ -218,6 +218,7 @@ export function NonGolfConfigurationView({
             canEdit={canEdit}
             value={draft.rulesForToday ?? ""}
             onChange={onRulesChange}
+            starterText={formatExplanation(game.game_type_id) ?? undefined}
           />
 
           {/* Danger Zone — owner-only. Its `disabled` is the ONE deliberate SERVER read
@@ -230,7 +231,7 @@ export function NonGolfConfigurationView({
               competitionId={competitionId}
               onChanged={onChanged}
               onDeleted={onDeleted}
-              disabled={serverScoringEnabled}
+              onScoresReset={onScoresReset}
             />
           )}
         </SettingsColumn>

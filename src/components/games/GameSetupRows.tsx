@@ -226,6 +226,10 @@ export function GameSetupRows({
           <ChecklistRow
             icon={Hash}
             title="Total Points"
+            // The SUBTITLE is the only thing that needs a slot count — it reports
+            // the DERIVED per-slot share, which is total ÷ slots and therefore
+            // undefined at zero. The total itself needs nothing, so the control
+            // below no longer waits for groupings (see its note).
             subtitle={
               slotCount > 0 ? (
                 <>
@@ -243,8 +247,10 @@ export function GameSetupRows({
                   </span>
                 </>
               ) : (
-                // Pre-match: nothing to distribute across yet (W3-Rack4).
-                <span style={{ color: "var(--color-bt-text-dim)" }}>Add a group first — points split across the rack&rsquo;s slots.</span>
+                // No groups yet: the total is settable, the SPLIT isn't knowable.
+                // Says what will happen rather than issuing an instruction — the
+                // row is no longer blocking on it.
+                <span style={{ color: "var(--color-bt-text-dim)" }}>Splits across the rack&rsquo;s slots once groups are set.</span>
               )
             }
             // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
@@ -253,17 +259,25 @@ export function GameSetupRows({
             disabled={!canEdit}
             locked={locked}
             testId="row-format-points"
-            // The total-points control (dropdown/stepper) only renders once at least
-            // one match/slot exists — there's nothing to distribute across otherwise
-            // (W3-Rack4). Before that the row is a plain pre-match prompt.
+            // ── No slot-count gate on the CONTROL (was `slotCount > 0 &&`). ──
+            // W3-Rack4 withheld the stepper until at least one group existed, on
+            // the reasoning that there is nothing to distribute across yet. But
+            // the owner is setting a TOTAL — "this game is worth 12" is a
+            // complete, meaningful statement with no groups in sight, and it is
+            // how match play has always behaved. Only the per-slot SPLIT needs
+            // the count, and that lives in the subtitle above, which still waits.
+            //
+            // Withholding it also made the order of setup load-bearing for no
+            // reason: points before groups was simply impossible, and nothing
+            // said why.
+            //
+            // `evenShare` is never reached at zero slots — the subtitle is the
+            // only caller and it is guarded — so this cannot divide by zero.
             control={
-              slotCount > 0 && rackPoints ? (
+              rackPoints ? (
                 <RackTotalPointsControl
                   slotCount={slotCount}
                   defaultTotal={defaultTotal ?? 0}
-                  // P3: locked until ≥1 valid match exists (points mean nothing before
-                  // a match). Locked → the stepper is disabled (read-only), matching the
-                  // gated rows. Otherwise live.
                   disabled={configLocked || !canEdit}
                   controlled={rackPoints}
                 />

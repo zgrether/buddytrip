@@ -810,7 +810,6 @@ export function RackGameView() {
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
   const rackGroupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
-  const rackFinal = gameQ.data?.status === "complete";
   usePublishGameChrome(
     inPanel
       ? {
@@ -819,10 +818,36 @@ export function RackGameView() {
           // REPLACE the title, and a group number alone says very little.
           title: (gameQ.data?.name as string | undefined)?.trim() || "Rack-n-Stack",
           titleSuffix: entryGroupId ? (rackGroupName ?? "Group") : undefined,
-          // Gear on the scoreboard screens only (owner/delegate, not final) — not
-          // on the entry, the config page, or the pre-setup steps.
+          // Gear on the scoreboard screens (owner/delegate) — not on the entry,
+          // the config page, or the pre-setup steps.
+          //
+          // No `!rackFinal` any more. A finished game's settings stay reachable:
+          // the name, the rules, the assignee and the POINTS are all still
+          // legitimately editable afterwards, and points in particular recompute
+          // for free (`game_results` stores a position; the payout derives at
+          // read). The standings-affecting edits are refused SERVER-side by
+          // `save_game_config`'s FINAL_LOCKED guard (migration 111) with a
+          // message naming which edit and what to do — which is a better answer
+          // than an invisible gear, because it says why.
+          //
+          // Stroke and non-golf never had this gate; rack and match did. Same
+          // divergence CLAUDE.md #24 describes, and all four read `status`
+          // directly rather than through the shared predicate.
           onSettings:
-            gid && !entryGroupId && !showConfig && !needsSetup && canEdit && !rackFinal ? openConfig : undefined,
+            gid && !entryGroupId && !showConfig && !needsSetup && canEdit ? openConfig : undefined,
+          // Rules stay reachable at every depth INCLUDING focused entry — that is
+          // the depth where "are gimmes on?" actually gets asked. Not gated on
+          // `canEdit`: a member reads them, an owner/delegate edits them.
+          rules:
+            gid && tripId && !showConfig && gameQ.data
+              ? {
+                  tripId,
+                  gameId: gid,
+                  gameTypeId: (gameQ.data as unknown as GameRow).game_type_id,
+                  text: (gameQ.data.rules_for_today as string | null) ?? null,
+                  canEdit,
+                }
+              : undefined,
           focusedEntry: !!entryGroupId,
         }
       : null,
