@@ -50,7 +50,7 @@ import { unconfirmedCount, type Participant, type ScoreValues } from "@/componen
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection } from "@/hooks/useOpenCorrection";
+import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 
 const STROKE_PLAY = "gtt_stroke_play";
@@ -601,6 +601,7 @@ export function StrokeGameView() {
     game?.id,
     gameCompetitionId
   );
+  const markLocked = useMarkGameLocked(tripId, game?.id);
 
   // Reflect scores from OTHER devices: reconcile server truth into the view each
   // time the poll returns changed data, merged so the active enterer's unsaved
@@ -867,6 +868,8 @@ export function StrokeGameView() {
       // gone the view stays put, which makes these loud by their absence: without
       // them the "Save results" button would still be sitting there after a
       // successful finalize.
+      // The symmetric half of the optimistic correction flip — see rack's note.
+      markLocked();
       // NOT awaited — see rack's note. This feeds the panel `exitToBoard()` is
       // about to close, and the awaited refetch was routinely cancelled and
       // restarted by the waves the same write triggers. Still invalidated, so a

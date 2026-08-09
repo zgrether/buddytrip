@@ -106,3 +106,46 @@ export function useOpenCorrection(
 
   return { correct, isPending: openCorrection.isPending };
 }
+
+/**
+ * The OTHER half of the same flip — record that a finalize locked the game.
+ *
+ * ── Why this exists (a bug this PR introduced, then fixed) ───────────────────
+ * `useOpenCorrection` writes `corrections_open: true` optimistically. The exit
+ * did not: `finish` fired an UN-awaited `games.getById.invalidate()` and closed
+ * the panel on the next line. So the last SETTLED value in that cache entry was
+ * the optimistic `true`, and `games.getById` is `STRUCTURE_QUERY`
+ * (`staleTime: Infinity`, `gcTime: 30 min`) — the entry survives the panel
+ * closing, and React Query renders a stale entry while revalidating it.
+ *
+ * Result: tapping straight back into a just-saved game painted "Save scoring
+ * changes" — the CORRECTING CTA — on a game the database had already locked.
+ * Measured at **387 ms median (max 421 ms) over a 150 ms-RTT link**, and it did
+ * NOT reproduce on an unthrottled localhost, because there the trailing refetch
+ * lands faster than a person can tap. The window scales with round-trip time,
+ * which is why it shows up on a phone and not on a laptop.
+ *
+ * The flip was optimistic in one direction only. This makes it symmetric: the
+ * cache is correct at the moment the panel closes, with no round trip added
+ * back. The invalidation still fires — this is not a replacement for it, it is
+ * what makes the cache right during the window before it lands.
+ *
+ * **This is a cosmetic window, not a data one** — `games.relockIdempotence.test.ts`
+ * pins that `games.finish` on an already-locked game is admitted and changes
+ * nothing (same results, margins, hole outcomes and scores), including under a
+ * concurrent double-tap. That is what makes the wrong-but-tappable button a
+ * display bug rather than a corruption risk. It is still worth fixing: a control
+ * that does nothing is exactly as confusing as #833's non-golf placement buttons.
+ */
+export function useMarkGameLocked(
+  tripId: string | null | undefined,
+  gameId: string | null | undefined
+) {
+  const utils = trpc.useUtils();
+  return useCallback(() => {
+    if (!tripId || !gameId) return;
+    utils.games.getById.setData({ tripId, gameId }, (prev: GameById | undefined) =>
+      prev ? { ...prev, status: "complete", corrections_open: false } : prev
+    );
+  }, [tripId, gameId, utils]);
+}

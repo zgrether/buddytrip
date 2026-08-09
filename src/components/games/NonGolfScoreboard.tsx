@@ -10,7 +10,7 @@ import {
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection } from "@/hooks/useOpenCorrection";
+import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { placementsFrom } from "@/lib/placementGroups";
@@ -85,6 +85,7 @@ export function NonGolfScoreboard({
     competitionId,
     setError
   );
+  const markLocked = useMarkGameLocked(tripId, game.id);
   const busy = finishGame.isPending;
 
   /**
@@ -143,6 +144,10 @@ export function NonGolfScoreboard({
         // real tie group and are paid the pooled share.
         : placementsFrom(order, tiedWithPrev);
       await finishGame.mutateAsync({ tripId, gameId: game.id, placements });
+      // The symmetric half of `useOpenCorrection`'s optimistic flip. `game` here
+      // is a prop, but it is read from the same `games.getById` entry one level
+      // up (`NonGolfGameView`), so this is the same cache and the same window.
+      markLocked();
       utils.games.listByTrip.invalidate({ tripId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       // The Live face seeds its board from faceBootstrap — invalidate it so the
