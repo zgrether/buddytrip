@@ -96,6 +96,32 @@ describe("CompletedRow — IN REVIEW replaces the result", () => {
     expect(html).not.toContain('data-testid="game-in-review"');
   });
 
+  it("is centered across the score columns, not parked at the right edge", () => {
+    // The badge stands in for the WHOLE result, so it spans the same
+    // `teams.length × GRID_COLW` the completed grid occupies (56px per team) and
+    // centers inside it — landing under BLU/RED together rather than under RED
+    // alone. Asserting the computed width is what catches a future column-width
+    // change silently un-centering it.
+    const html = render(game({ correctionsOpen: true }));
+    expect(html).toContain("width:124px"); // 2 × 56 + 1 × 12 gap
+    expect(html).toContain("justify-center"); // Tailwind class, not an inline style
+  });
+
+  it("the span tracks the team count", () => {
+    const four = [...teams, team("c", "Green", "GRN", "#22c55e"), team("d", "Gold", "GLD", "#eab308")];
+    const html = renderToStaticMarkup(
+      <CompletedRow
+        game={game({ correctionsOpen: true })}
+        teams={four}
+        cells={cells}
+        scoringModel="points"
+        tripId="t1"
+        onPrefetch={() => {}}
+      />
+    );
+    expect(html).toContain("width:260px"); // 4 × 56 + 3 × 12 gaps
+  });
+
   it("the badge uses WARNING tokens, never a hex literal", () => {
     const html = render(game({ correctionsOpen: true }));
     expect(html).toContain("var(--color-bt-warning-faint)");

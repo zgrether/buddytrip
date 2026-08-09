@@ -507,6 +507,17 @@ function OuterColumn({
 const GRID_COLW = 56;
 
 /**
+ * The row's own flex gap, in px — `gap-3` on `CompletedRow`'s inner container.
+ *
+ * Needed because the completed grid cells are SIBLINGS in that flex row, so the
+ * span they occupy is `n × GRID_COLW + (n − 1) × gap`, not `n × GRID_COLW`.
+ * Centering the IN REVIEW badge over the former without the gaps put it 6px
+ * right of the true centre on a two-team cup — measured, not guessed. If the
+ * row's `gap-3` changes, this changes with it.
+ */
+const ROW_GAP = 12;
+
+/**
  * ProjectionPill — the ▲ projected-points pill (leaderboard grid Phase 2). A
  * team-tinted pill: team color on a 16%-alpha team fill, the value in team color.
  * The SAME visual grammar as the game-page projection strip (this is the extracted
@@ -666,7 +677,7 @@ export function CompletedRow({
           contribution mid-edit would be a bigger lie than leaving it. So the ROW
           is flagged provisional while the standings stay honest. */}
       {inReview ? (
-        <InReviewBadge />
+        <InReviewBadge teams={teams} />
       ) : scoringModel === "points" ? (
         <CompletedPodium teams={teams} cells={cells} />
       ) : (
@@ -715,20 +726,39 @@ export function CompletedRow({
  * `shrink-0` and the same right-edge alignment as the result it replaces, so a
  * column of completed rows keeps its right margin when one row is in review.
  */
-function InReviewBadge() {
+function InReviewBadge({ teams }: { teams: LBTeam[] }) {
   return (
+    /**
+     * CENTERED ACROSS THE SCORE COLUMNS, not parked at the right edge.
+     *
+     * The badge stands in for the whole result, so it reads as belonging to all
+     * of it rather than to the last team's column. The span is the same
+     * `teams.length × GRID_COLW` the completed grid occupies, which is what
+     * `GridColumnHeader` measures its team labels against — so on a match-play
+     * cup the badge lands centered under the BLU/RED headers instead of under
+     * RED alone.
+     *
+     * The same span is used on a points cup, where the podium it replaces is
+     * variable-width and there are no column headers: one rule, and the right
+     * edge of every completed row still lines up either way.
+     */
     <span
-      data-testid="game-in-review"
-      className="shrink-0 rounded-md text-[10px] font-bold uppercase"
-      style={{
-        letterSpacing: "0.07em",
-        padding: "3px 7px",
-        background: "var(--color-bt-warning-faint)",
-        color: "var(--color-bt-warning)",
-        border: "1px solid var(--color-bt-warning-border)",
-      }}
+      className="flex shrink-0 items-center justify-center"
+      style={{ width: teams.length * GRID_COLW + (teams.length - 1) * ROW_GAP }}
     >
-      In review
+      <span
+        data-testid="game-in-review"
+        className="rounded-md text-[10px] font-bold uppercase"
+        style={{
+          letterSpacing: "0.07em",
+          padding: "3px 7px",
+          background: "var(--color-bt-warning-faint)",
+          color: "var(--color-bt-warning)",
+          border: "1px solid var(--color-bt-warning-border)",
+        }}
+      >
+        In review
+      </span>
     </span>
   );
 }
