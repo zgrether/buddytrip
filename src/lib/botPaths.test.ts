@@ -51,7 +51,7 @@ describe("middleware matcher", () => {
     ["/trips/11111111-2222-4333-8444-555555555555", true, "real trip route"],
     ["/login", true, "matched; isPublicRoute lets it through in the body"],
     ["/", true, "matched; the marketing/root route is public in the body"],
-    ["/profile/archived-ideas", true, "nested page route"],
+    ["/courses/new", true, "nested page route"],
     // — not matched: never auth-gated —
     ["/favicon.ico", false, "browser fetches it with no auth context"],
     ["/manifest.webmanifest", false, "Android install sends no auth context"],
@@ -120,8 +120,6 @@ describe("isObviouslyBogusPath", () => {
     "/privacy",
     "/terms",
     "/dashboard",
-    "/profile",
-    "/profile/archived-ideas",
     "/invite",
     "/quick-game",
     "/courses/new",

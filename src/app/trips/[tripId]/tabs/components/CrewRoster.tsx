@@ -53,7 +53,7 @@ export type Member = {
     name?: string | null;
     email: string | null;
     is_guest?: boolean;
-    /** Tabler icon id the user chose in /profile (e.g. "flag-2") — the
+    /** Tabler icon id the user chose in preferences (e.g. "flag-2") — the
      *  in-app profile avatar. We surface this, NOT users.avatar_url
      *  (the Google / OAuth-supplied photo), so crew rows reflect what
      *  the user explicitly picked as their identity in this app. */
@@ -154,7 +154,7 @@ export function CrewRow({
       >
         {/* Avatar — three variants per derived status. Surfaces the
             user's in-app profile avatar (users.avatar_icon, the Tabler
-            icon they picked in /profile) with users.name as the
+            icon they picked in preferences) with users.name as the
             initials fallback. Trip-scoped nickname does NOT drive the
             avatar. We deliberately ignore users.avatar_url (the
             Google/OAuth profile photo) so the avatar reflects an in-app

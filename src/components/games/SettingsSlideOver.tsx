@@ -41,8 +41,17 @@ export function SettingsSlideOver({
   /** The confirm-gated close (header ✕ + scrim tap both route here). */
   onClose: () => void;
   children: React.ReactNode;
-  /** The pinned-bottom commit row (the shared SettingsSaveBar). */
-  footer: React.ReactNode;
+  /**
+   * The pinned-bottom commit row (the shared SettingsSaveBar).
+   *
+   * OPTIONAL, because not every settings surface commits as a batch. Game
+   * settings are draft-then-save (CLAUDE.md #18) and always have a save bar;
+   * account preferences self-persist per row, so there is nothing to commit and
+   * a footer would be an empty bordered strip at the bottom of the panel. Omit
+   * it and the footer is not rendered at all — including its top border, which
+   * would otherwise read as a divider under the last row.
+   */
+  footer?: React.ReactNode;
   testId?: string;
 }) {
   // Client-only (portal needs document); the overlay only ever mounts behind a user
@@ -88,13 +97,16 @@ export function SettingsSlideOver({
         {/* Body — the settings content scrolls here. */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">{children}</div>
 
-        {/* Pinned footer — Save / Cancel. */}
-        <div
-          className="flex-shrink-0 px-4 py-3"
-          style={{ borderTop: "1px solid var(--color-bt-border)", background: "var(--color-bt-base)" }}
-        >
-          {footer}
-        </div>
+        {/* Pinned footer — Save / Cancel. Absent entirely for surfaces that
+            self-persist (see the prop's note), rather than rendered empty. */}
+        {footer !== undefined && (
+          <div
+            className="flex-shrink-0 px-4 py-3"
+            style={{ borderTop: "1px solid var(--color-bt-border)", background: "var(--color-bt-base)" }}
+          >
+            {footer}
+          </div>
+        )}
       </div>
     </ScrollLock>,
     document.body

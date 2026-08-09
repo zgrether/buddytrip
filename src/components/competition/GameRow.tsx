@@ -325,13 +325,18 @@ export function GameRow({
           {showDelegate && (
             // The delegate marker IS the viewer's avatar in their COMPETITION-TEAM
             // color (§10) — competition identity, not a separate "Yours" word-chip.
-            // Reuses the one Avatar primitive (R3). teamColor null (viewer not on a
-            // team) → Avatar's accent ("you") fallback.
+            // Reuses the one Avatar primitive (R3).
+            //
+            // No `accent`: the no-team fallback used to be a solid TEAL disk, which
+            // on a competition board — where a solid disk means "this is my team's
+            // color" — read as an assignment to a teal team. Avatar's default
+            // (outlined, teal glyph) is the honest no-team rendering, and it's the
+            // same fix applied to the top-nav account avatar. The teamColor-set
+            // path is unchanged.
             <Avatar
               name={viewerName || "You"}
               avatarIcon={viewerAvatarIcon ?? null}
               teamColor={viewerTeamColor ?? null}
-              accent
               sizePx={20}
               className="shrink-0"
             />

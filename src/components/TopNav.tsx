@@ -255,18 +255,14 @@ export const TopNav: FC<TopNavProps> = ({
             to the user's dashboard, where a scratch game belongs — it's a
             user-level action, not trip context. See the dashboard strip. */}
 
-        {/* Divider between tools and identity. */}
-        <span
-          aria-hidden="true"
-          className="mx-1.5"
-          style={{
-            width: 1,
-            height: 24,
-            background: "var(--color-bt-border)",
-            flexShrink: 0,
-          }}
-        />
-
+        {/* No divider before the avatar. There used to be a "tools | identity"
+            rule here, earned when the left side of it held a cluster —
+            chat, news, feedback, Quick Game. Those left one at a time (Quick
+            Game to the dashboard, news and feedback elsewhere) until the only
+            survivor was ChatToolButton, which is itself `hidden lg:block` and
+            trip-scoped. So the rule separated identity from nothing at all on
+            the dashboard and on every viewport below `lg` — a divider with one
+            side empty reads as a stray mark, not a grouping. */}
         <UserMenu
           onOpen={onDismissPanels}
           onOpenFeedback={() => setFeedbackOpen(true)}
@@ -277,8 +273,10 @@ export const TopNav: FC<TopNavProps> = ({
       {/* FeedbackModal calls useSearchParams() to capture the active tab
           (?tab=crew etc). Next.js requires any useSearchParams() caller to
           be wrapped in Suspense during static prerendering — without this,
-          build fails on pages like /profile/archived-ideas that are
-          statically generated. fallback={null} keeps the UX unchanged. */}
+          the build fails on any statically-generated page that renders this
+          bar. fallback={null} keeps the UX unchanged. (The page that first
+          forced this was /profile/archived-ideas, now retired into the
+          preferences overlay; the requirement is structural, not that page's.) */}
       <Suspense fallback={null}>
         <FeedbackModal
           open={feedbackOpen}

@@ -3,12 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { IconInfoCircle, IconSettings, IconLogout } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { AboutModal } from "@/components/AboutModal";
 import { ScrollLock } from "@/hooks/useScrollLock";
+
+/** Lazy — the panel pulls the avatar icon picker (96 Tabler icons) and the
+ *  archive's own query. Keeping it out of the shell bundle is why the route
+ *  code-split it; the split survives the move. Warmed on menu-open below. */
+const PreferencesPanel = dynamic(
+  () => import("@/components/profile/PreferencesPanel").then((m) => ({ default: m.PreferencesPanel })),
+  { ssr: false },
+);
 
 /**
  * Top-right user affordance — the avatar opens a dropdown menu:
@@ -17,10 +26,17 @@ import { ScrollLock } from "@/hooks/useScrollLock";
  *   │  Name                    │   ← account header
  *   │  email@example.com       │
  *   ├──────────────────────────┤
- *   │  ⚙  Account preferences  │   → /profile
+ *   │  ⚙  Settings             │   → PreferencesPanel (overlay)
+ *   │  ⓘ  About BuddyTrip      │   → AboutModal
  *   ├──────────────────────────┤
  *   │  ⎋  Log out              │   ← separate section
  *   └──────────────────────────┘
+ *
+ * DROPDOWN FOR QUICK ACTIONS, PANEL FOR ANYTHING WITH STRUCTURE. Log out is one
+ * tap and lives here and ONLY here — it used to be here AND on the preferences
+ * route AND in that route's desktop sidebar. Delete account is the inverse: it
+ * lives only in the panel's danger zone, because it should not be one tap from
+ * an avatar.
  *
  * Dismiss + positioning: mousedown-outside + Escape, fixed below the nav on
  * mobile, absolute-anchored on desktop. Implemented in this file (see the
@@ -57,6 +73,8 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
   // (vs. inside a sub-component) keeps the close-the-menu-then-open-the-
   // modal sequencing trivially correct.
   const [aboutOpen, setAboutOpen] = useState(false);
+  // Preferences overlay — same close-the-menu-then-open sequencing as About.
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   // SSR-safe portal target — the mobile dim backdrop has to render
   // outside the TopNav (which sets backdrop-filter, creating a
@@ -68,19 +86,20 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
     // Canonical "are we in the browser" flag for the portal target.
     // Synchronizing with an external system (document) is exactly the
     // setState-in-effect use the React docs whitelist.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
-  // Warm the /profile route chunk the moment the menu opens. The user
-  // has signalled intent (they tapped the avatar); by the time they
-  // pick "Account preferences" the JS for /profile is already downloaded
-  // so router.push lands the page instantly instead of waiting on the
-  // route bundle.
+  // Warm the preferences chunk the moment the menu opens. The user has
+  // signalled intent (they tapped the avatar); by the time they pick
+  // "Settings" the JS is already downloaded, so the panel paints instantly.
+  //
+  // This used to be `router.prefetch("/profile")` — a ROUTE prefetch, which is
+  // what it needed while preferences was a page. It is a lazy component now, so
+  // the equivalent warm-up is importing the chunk directly.
   useEffect(() => {
     if (!open) return;
-    router.prefetch("/profile");
-  }, [open, router]);
+    void import("@/components/profile/PreferencesPanel");
+  }, [open]);
 
   // Outside-click + Escape to close. Listeners are only attached while
   // open, so they're registered AFTER the click that opened the menu —
@@ -140,10 +159,18 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
           name={me?.name ?? me?.email ?? "?"}
           avatarIcon={me?.avatar_icon ?? null}
           sizePx={32}
-          // teamColor wins over accent inside Avatar (competition mode); when
-          // absent, the avatar stays the default teal accent.
+          // The ONE avatar treatment, both states. With a team color this is
+          // competition mode (solid team fill) — #837's path, untouched. Without
+          // one it is now Avatar's DEFAULT (teal glyph on a raised circle),
+          // where it used to pass `accent` for a solid teal fill.
+          //
+          // Solid teal was indistinguishable from a team assignment: it is the
+          // same shape and weight as the team-colored avatar, so the no-team
+          // state read as "your team is teal". The preferences panel's
+          // Competition preview states the model directly — Default → Blue /
+          // Purple / Orange / Green — and the bar contradicted the row
+          // explaining it. Default is the honest rendering of "no team yet".
           teamColor={teamColor ?? undefined}
-          accent
         />
       </button>
 
@@ -215,13 +242,16 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
               )}
             </div>
 
-            {/* Account preferences → loads the profile page */}
+            {/* Settings → opens the preferences OVERLAY. It used to
+                `router.push("/profile")`; preferences was the last surface in
+                the app that navigated. */}
             <button
               type="button"
               role="menuitem"
+              data-testid="user-menu-settings"
               onClick={() => {
                 setOpen(false);
-                router.push("/profile");
+                setPrefsOpen(true);
               }}
               // All three `role="menuitem"` rows share this exact className,
               // so the same fix applies identically to all three (Account
@@ -244,7 +274,7 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
                 style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
                 aria-hidden="true"
               />
-              Account preferences
+              Settings
             </button>
 
             {/* About BuddyTrip — styled identically to Account
@@ -335,6 +365,12 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
             : undefined
         }
       />
+
+      {/* Preferences overlay — a sibling of the dropdown for the same reason
+          AboutModal is: the panel portals to body, and rendering it inside the
+          dropdown would entangle its scrim with the dropdown's outside-click
+          logic and containing block. */}
+      {prefsOpen && <PreferencesPanel onClose={() => setPrefsOpen(false)} />}
     </div>
   );
 }

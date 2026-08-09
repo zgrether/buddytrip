@@ -500,8 +500,12 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 export function labelForPath(path: string, tab?: string | null): string {
   if (!path || path === "/") return "Landing";
   if (path.startsWith("/dashboard")) return "Dashboard";
-  if (path.startsWith("/profile/archived-ideas")) return "Profile · Archived ideas";
-  if (path.startsWith("/profile")) return "Profile";
+  // No `/profile` arm: preferences is an OVERLAY now, not a route, so that path
+  // can no longer occur. These were the one referrer that would have died
+  // SILENTLY — a lookup rather than a link, so nothing would break visibly;
+  // feedback would just stop being labelled. Feedback isn't reachable from
+  // inside the panel anyway (it covers the nav that opens it), so the enclosing
+  // page's label is the correct answer while it's open.
   if (path.startsWith("/changelog")) return "Changelog";
   if (path.startsWith("/privacy")) return "Privacy";
   if (path.startsWith("/login")) return "Login";
