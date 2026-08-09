@@ -32,14 +32,27 @@ let ownerId: string;
 let memberId: string;
 const gameIds: string[] = [];
 
+/**
+ * SIX holes, not eighteen, and it matters for the suite as a whole.
+ *
+ * Idempotence needs a decided match with results to re-derive — it does not need
+ * a full round, and an 18-hole seed here is 72 `score_entries` rows per game.
+ * The whole vitest suite shares ONE local PostgREST/Kong, which 502s under peak
+ * concurrency (the documented flake, and the reason `retry` is on in CI) — and
+ * `retry` covers TESTS, not `beforeAll` hooks, so seeding load that pushes
+ * another file's hook over the edge fails the run un-retried. Adding a heavy
+ * seed to prove a light property is how a green suite becomes a flaky one.
+ */
+const HOLES = 6;
+
 async function makeCompletedMatch(): Promise<string> {
   const id = genId("relock-idem");
   gameIds.push(id);
-  const par = Array.from({ length: 18 }, () => 4);
+  const par = Array.from({ length: HOLES }, () => 4);
   await ctx.admin.from("games").insert({
     id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play",
     name: "Relock Idempotence", status: "complete", corrections_open: false, scoring_enabled: true,
-    scorecard_schema: { units: { count: 18, label: "hole", metadata: { par, handicap_index: par.map((_, i) => i + 1) } } },
+    scorecard_schema: { units: { count: HOLES, label: "hole", metadata: { par, handicap_index: par.map((_, i) => i + 1) } } },
     points_distribution: { type: "per_match", value: 2 }, points_total: 2,
     modifiers: {}, competition_format: "head_to_head",
     pairings_published_at: new Date(0).toISOString(),
@@ -49,7 +62,7 @@ async function makeCompletedMatch(): Promise<string> {
     { id: genId("p"), game_id: id, user_id: memberId, handicap_strokes: 0 },
   ]);
   const entries = [];
-  for (let h = 1; h <= 18; h++) {
+  for (let h = 1; h <= HOLES; h++) {
     entries.push(
       { id: genId("se"), game_id: id, participant_id: ownerId, participant_type: "user", unit_label: String(h), value: 4 },
       { id: genId("se"), game_id: id, participant_id: memberId, participant_type: "user", unit_label: String(h), value: 5 }
