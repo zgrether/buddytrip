@@ -63,8 +63,17 @@ export async function computeCompetitionLeaderboard(
       // board's GameRow"). That is true of `games.listByTrip`, which selects `*`
       // and feeds different consumers; it was never true of THIS payload, which
       // names its columns. The invalidation advice in #10 is unaffected.
-      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled, entry_mode, corrections_open")
+      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled, entry_mode, corrections_open, display_order")
       .eq("competition_id", competitionId)
+      // ONE global order for the whole board (migration 108). Every lifecycle
+      // section sorts by this, which is what makes a game keep its place as it
+      // moves Ready -> Live -> Completed instead of being re-sorted by arrival.
+      //
+      // `nullsFirst: false` and the created_at tiebreak together are the reason
+      // `display_order` can be nullable: a game the backfill missed, or one
+      // created by a path that forgot to number it, sorts to the BOTTOM in
+      // creation order rather than vanishing or jumping to the top.
+      .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
     // Team sizes drive the team-size-derived per_match formats (rack-n-stack):
     // value × min team size. Match play instead counts its configured rows.
