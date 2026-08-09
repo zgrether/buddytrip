@@ -159,10 +159,18 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
           name={me?.name ?? me?.email ?? "?"}
           avatarIcon={me?.avatar_icon ?? null}
           sizePx={32}
-          // teamColor wins over accent inside Avatar (competition mode); when
-          // absent, the avatar stays the default teal accent.
+          // The ONE avatar treatment, both states. With a team color this is
+          // competition mode (solid team fill) — #837's path, untouched. Without
+          // one it is now Avatar's DEFAULT (teal glyph on a raised circle),
+          // where it used to pass `accent` for a solid teal fill.
+          //
+          // Solid teal was indistinguishable from a team assignment: it is the
+          // same shape and weight as the team-colored avatar, so the no-team
+          // state read as "your team is teal". The preferences panel's
+          // Competition preview states the model directly — Default → Blue /
+          // Purple / Orange / Green — and the bar contradicted the row
+          // explaining it. Default is the honest rendering of "no team yet".
           teamColor={teamColor ?? undefined}
-          accent
         />
       </button>
 

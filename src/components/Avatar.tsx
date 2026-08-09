@@ -44,9 +44,26 @@ interface AvatarProps {
   muted?: boolean;
   /**
    * Inverted "filled" treatment: solid accent (teal) circle with a dark
-   * foreground, instead of the default teal-on-raised. Used for the
-   * top-nav account avatar so it reads as a distinct identity affordance.
-   * Ignored in competition mode (teamColor wins).
+   * foreground, instead of the default teal-on-raised. Ignored in competition
+   * mode (teamColor wins).
+   *
+   * **NOT for identity avatars — only for SELECTION state.** A solid teal disk
+   * is the same shape, size and weight as a solid TEAM disk, so on any surface
+   * that also renders team colors it makes "no team yet" read as a team
+   * assignment. The preferences panel's Competition preview states the model
+   * literally (Default → Blue / Purple / Orange / Green); a filled no-team
+   * avatar contradicts the row explaining it. The two identity states are meant
+   * to differ in KIND — outlined vs filled — not in hue.
+   *
+   * Removed from the two identity sites for exactly that reason: the top-nav
+   * account avatar, and `GameRow`'s delegate marker (a competition surface,
+   * where the ambiguity was sharpest — it passed `teamColor` AND `accent`, so
+   * the fallback for "viewer not on a team" was a teal team-shaped disk).
+   *
+   * The one remaining caller is `ExpensesSection`'s split chips, where it means
+   * something else entirely: filled = in the split, `muted` = out. No team color
+   * is in play there, so there is nothing to be confused with, and filled-vs-grey
+   * is the contrast that makes the toggle readable.
    */
   accent?: boolean;
   /**
@@ -150,10 +167,13 @@ export function Avatar({
     : SIZE_MAP[size];
   const isResponsive = size === "sm" && fixedPx === null;
 
-  // Competition context (team color set) → readable foreground computed for the
-  // team color (dark on light team colors, light on dark — teamTextColor is the
-  // one shared contrast helper). Accent ("filled") → dark foreground on a solid
-  // teal circle. Default → teal (or muted grey) foreground on a neutral raised surface.
+  // For IDENTITY avatars the split is FILLED vs OUTLINED, not two hues:
+  //   • Competition (team color set) → solid team fill, readable foreground
+  //     computed for it (teamTextColor is the one shared contrast helper).
+  //   • Default → teal (or muted grey) foreground on a neutral raised circle
+  //     with a border. Outlined is what makes "no team yet" legible AS no-team.
+  // `accent` is the selection-state treatment and does not belong on an
+  // identity avatar — see its prop doc.
   const competitionMode = !!teamColor;
   const background = competitionMode
     ? (teamColor as string)

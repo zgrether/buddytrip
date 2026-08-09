@@ -255,18 +255,14 @@ export const TopNav: FC<TopNavProps> = ({
             to the user's dashboard, where a scratch game belongs — it's a
             user-level action, not trip context. See the dashboard strip. */}
 
-        {/* Divider between tools and identity. */}
-        <span
-          aria-hidden="true"
-          className="mx-1.5"
-          style={{
-            width: 1,
-            height: 24,
-            background: "var(--color-bt-border)",
-            flexShrink: 0,
-          }}
-        />
-
+        {/* No divider before the avatar. There used to be a "tools | identity"
+            rule here, earned when the left side of it held a cluster —
+            chat, news, feedback, Quick Game. Those left one at a time (Quick
+            Game to the dashboard, news and feedback elsewhere) until the only
+            survivor was ChatToolButton, which is itself `hidden lg:block` and
+            trip-scoped. So the rule separated identity from nothing at all on
+            the dashboard and on every viewport below `lg` — a divider with one
+            side empty reads as a stray mark, not a grouping. */}
         <UserMenu
           onOpen={onDismissPanels}
           onOpenFeedback={() => setFeedbackOpen(true)}
