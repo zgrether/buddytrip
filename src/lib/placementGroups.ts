@@ -91,3 +91,37 @@ export function placementPointsByTeam(
   );
   return placementPoints([...distribution], standings, "low_wins");
 }
+
+/**
+ * Points for an ALREADY-BUILT placements payload — the exact array `games.finish`
+ * is handed.
+ *
+ * `placementPointsByTeam` above answers "what would this finishing order pay?"
+ * from the order + ties. This answers the same question from the POSTABLE form,
+ * which is what makes it usable as a pre-save preview: the projection and the
+ * mutation read one array, so "what the header promised" and "what was sent"
+ * cannot be different things. Feed it the payload you are about to post and the
+ * preview is the result by construction rather than by two implementations
+ * agreeing.
+ *
+ * Still the same `placementPoints` the leaderboard scores with — this adds a
+ * calling convention, NOT a second scoring path. `position` becomes the standing
+ * `value` exactly as the server's placement branch does when it reads
+ * `game_results.position`, so equal positions arrive as a genuine tie group.
+ *
+ * The DISTRIBUTION is the caller's to supply, because it differs by how the game
+ * is scored, and the server picks it the same way (competitionLeaderboard.ts):
+ *   - manual match-play → `[points_total, 0]`: winner takes all, and a tie (both
+ *     at position 1) averages to half each, the same convention a golf halve uses
+ *   - placement        → `points_distribution.values`
+ */
+export function pointsForPlacements(
+  placements: readonly { entityId: string; position: number }[],
+  distribution: readonly number[]
+): Map<string, number> {
+  return placementPoints(
+    [...distribution],
+    placements.map((p) => ({ entityId: p.entityId, value: p.position })),
+    "low_wins"
+  );
+}

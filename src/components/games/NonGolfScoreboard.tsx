@@ -14,7 +14,6 @@ import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { placementsFrom } from "@/lib/placementGroups";
 
 /**
  * NonGolfScoreboard — the scoring-mode body of the non-golf scoreboard page
@@ -41,8 +40,13 @@ export function NonGolfScoreboard({
   game,
   teams,
   scoringModel,
-  initialOrder,
-  initialResult,
+  order,
+  onReorder,
+  tiedWithPrev,
+  onToggleTie,
+  result,
+  onPick,
+  placements,
   canEdit,
   onPosted,
 }: {
@@ -51,11 +55,32 @@ export function NonGolfScoreboard({
   game: GameRow;
   teams: LBTeamLite[];
   scoringModel: ScoringModel;
-  /** Seed order for the placement editor (posted cells when correcting, else roster). */
-  initialOrder: string[];
-  /** Seed declared outcome for the match control — a team id (that side won) or
-   *  "tie", derived from the posted cells (a draw = both at place 1). */
-  initialResult?: string;
+  /**
+   * ── CONTROLLED result entry ───────────────────────────────────────────────
+   * This component used to own the outcome selection as local state, seeded from
+   * `initialOrder`/`initialResult`. It doesn't any more, because the header
+   * PROJECTION is drawn by the parent and a projection cannot react to state it
+   * cannot see — picking a winner moved these buttons and nothing else.
+   *
+   * The parent (`NonGolfGameView`) holds the state, derives the projection from
+   * it the way golf does, and hands the postable payload back down as
+   * `placements`. Nothing here writes on selection; `onPick`/`onReorder` are
+   * pure state lifts and the commit is still the explicit CTA below.
+   */
+  /** Finishing order for the placement editor. */
+  order: string[];
+  onReorder: (next: string[]) => void;
+  /** Teams tied with the row above. */
+  tiedWithPrev: ReadonlySet<string>;
+  onToggleTie: (teamId: string) => void;
+  /** Declared outcome for the match control — a team id (that side won), "tie",
+   *  or "" for nothing picked yet. */
+  result: string;
+  onPick: (next: string) => void;
+  /** Exactly what `commit` posts, built by the parent so the projection it
+   *  previews and the result this saves are one array. `null` = nothing declared
+   *  yet, which is also what disables the finalize CTA. */
+  placements: { entityId: string; position: number }[] | null;
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
@@ -66,17 +91,6 @@ export function NonGolfScoreboard({
   const winLoseTie = scoringModel === "match_play" && teams.length === 2;
   const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
 
-  const [order, setOrder] = useState<string[]>(initialOrder.length ? initialOrder : teams.map((t) => t.id));
-  // Teams tied with the row ABOVE. Non-golf produces genuine ties (cornhole,
-  // euchre) and a drag list expresses a strict sequence, so the tie is a separate
-  // explicit toggle rather than a second meaning overloaded onto the drop target.
-  // `placementPoints` already pools and splits the shared places, so the game's
-  // total is preserved by construction — there is nothing to validate here.
-  const [tiedWithPrev, setTiedWithPrev] = useState<ReadonlySet<string>>(new Set());
-  // Start with NO outcome selected on a fresh game so nothing reads as
-  // pre-decided (and the Post button stays disabled until the user picks).
-  // When correcting a posted game, seed from the recorded outcome.
-  const [result, setResult] = useState<string>(() => initialResult ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const finishGame = trpc.games.finish.useMutation();
@@ -123,27 +137,14 @@ export function NonGolfScoreboard({
   function teamById(id: string) {
     return teams.find((t) => t.id === id);
   }
-  function toggleTie(teamId: string) {
-    setTiedWithPrev((prev) => {
-      const next = new Set(prev);
-      if (next.has(teamId)) next.delete(teamId);
-      else next.add(teamId);
-      return next;
-    });
-  }
 
   async function commit() {
     setError(null);
+    // The parent built this from the same state the header just previewed, so
+    // what gets posted is definitionally what was shown. It used to be rebuilt
+    // here, which is a second place the win/tie→position mapping could drift.
+    if (!placements) return;
     try {
-      const placements = winLoseTie
-        ? result === "tie"
-          ? teams.map((t) => ({ entityId: t.id, position: 1 }))
-          : teams.map((t) => ({ entityId: t.id, position: t.id === result ? 1 : 2 }))
-        // Tied teams share a position — `writeManualResults` has never required
-        // positions to be unique, and the leaderboard reads `position` as the
-        // standing value, so equal positions arrive at `placementPoints` as a
-        // real tie group and are paid the pooled share.
-        : placementsFrom(order, tiedWithPrev);
       await finishGame.mutateAsync({ tripId, gameId: game.id, placements });
       // The symmetric half of `useOpenCorrection`'s optimistic flip. `game` here
       // is a prop, but it is read from the same `games.getById` entry one level
@@ -183,7 +184,7 @@ export function NonGolfScoreboard({
         <NonGolfMatchControl
           teams={teams}
           result={result}
-          onPick={setResult}
+          onPick={onPick}
           canEdit={editable}
         />
       ) : (
@@ -192,9 +193,9 @@ export function NonGolfScoreboard({
           dist={dist}
           teamById={teamById}
           canEdit={editable}
-          onReorder={setOrder}
+          onReorder={onReorder}
           tiedWithPrev={tiedWithPrev}
-          onToggleTie={toggleTie}
+          onToggleTie={onToggleTie}
         />
       )}
 
@@ -206,15 +207,18 @@ export function NonGolfScoreboard({
           "Correct a score" step and no explicit correcting state. `gameLifecycle`
           decides which of the three is offered; this component only renders it,
           so the two can no longer drift.
-          `allComplete` for non-golf means "an outcome has been chosen" — the
-          placement editor always carries an order, so only the win/lose/tie
-          control can be genuinely unanswered. That replaces the old inline
-          `disabled={winLoseTie && !result}`. */}
+          `allComplete` for non-golf means "an outcome has been chosen", which is
+          now exactly "the parent could build a postable payload" — the placement
+          editor always carries an order, so only the win/lose/tie control can be
+          genuinely unanswered. Reading `placements` rather than re-testing
+          `winLoseTie && result` keeps the CTA's enablement and the commit's own
+          guard on ONE value, so the button cannot be live for a state that
+          `commit` would refuse. */}
       <GameLifecycleActions
         canEdit={canEdit}
         status={game.status}
         correctionsOpen={game.corrections_open}
-        allComplete={!winLoseTie || !!result}
+        allComplete={!!placements}
         finalizeLabel="Save results"
         finalizePendingLabel="Saving results…"
         finalizePending={busy}
