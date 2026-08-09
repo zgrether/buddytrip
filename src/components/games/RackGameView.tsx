@@ -1217,6 +1217,8 @@ export function RackGameView() {
         onMode={setMode}
         nameOf={(id) => nameOf.get(id) ?? "Player"}
         final={final}
+        status={gameQ.data?.status}
+        correctionsOpen={correctionsOpen}
       />
       {/* Finalize / #7's deliberate, auditable correction path / re-lock — all
           three now decided by the SHARED `gameLifecycle` predicate and rendered

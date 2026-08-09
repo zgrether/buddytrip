@@ -44,6 +44,7 @@ import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
+import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
@@ -3087,10 +3088,19 @@ function Overview({
   const matchWord = groups.length === 1 ? "Match" : "Matches";
   return (
     <div>
+      {/* The shared lifecycle banner. Match had NO banner at all — the freeze
+          redesign (§3.5) removed `ScoringLockBanner` and left the section label
+          below carrying the state as a word, which is the arrangement this
+          change is undoing. Same component, same words, same tone as the other
+          three formats; it reads the same two lifecycle columns
+          `GameLifecycleActions` already receives here. */}
+      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen} />
+
       {/* Section header — mirrors Rack's "GROUPS · TAP TO ENTER SCORES" above-list
-          label (one shared header pattern across formats). The banner is gone; the
-          suffix carries state — scorable states nudge "tap to enter scores", a
-          posted round reads "· final", and a re-opened one "· correcting". */}
+          label (one shared header pattern across formats). The suffix nudges
+          "tap to enter scores" while scorable and reads "· final" once posted;
+          the CORRECTING state is carried by the banner above, not by a word
+          swapped in here. */}
       <div className="mb-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
           {complete
