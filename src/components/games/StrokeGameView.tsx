@@ -50,6 +50,7 @@ import { unconfirmedCount, type Participant, type ScoreValues } from "@/componen
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { useOpenCorrection } from "@/hooks/useOpenCorrection";
 import { showToast } from "@/lib/toast";
 
 const STROKE_PLAY = "gtt_stroke_play";
@@ -592,7 +593,14 @@ export function StrokeGameView() {
   // complete-and-not-correcting game (`scores.ts:53`), and no UI could clear that
   // flag. Rack has had it since #7; this is the same procedure and the same
   // invalidation set.
-  const openCorrection = trpc.games.openCorrection.useMutation();
+  // Shared with the other three formats (CLAUDE.md #24) — this view is the one
+  // that had no correction arm at all until #769, which is precisely the argument
+  // for the action living in one place rather than four. See `useOpenCorrection`.
+  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(
+    tripId,
+    game?.id,
+    gameCompetitionId
+  );
 
   // Reflect scores from OTHER devices: reconcile server truth into the view each
   // time the poll returns changed data, merged so the active enterer's unsaved
@@ -859,7 +867,11 @@ export function StrokeGameView() {
       // gone the view stays put, which makes these loud by their absence: without
       // them the "Save results" button would still be sitting there after a
       // successful finalize.
-      await utils.games.getById.invalidate({ tripId, gameId: game.id });
+      // NOT awaited — see rack's note. This feeds the panel `exitToBoard()` is
+      // about to close, and the awaited refetch was routinely cancelled and
+      // restarted by the waves the same write triggers. Still invalidated, so a
+      // re-open re-reads it.
+      void utils.games.getById.invalidate({ tripId, gameId: game.id });
       if (gameCompetitionId) {
         utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
         utils.games.listByTrip.invalidate({ tripId });
@@ -889,23 +901,9 @@ export function StrokeGameView() {
     }
   }
 
-  // #769: the correction path, mirroring rack's `handleCorrect` exactly.
-  async function handleCorrect() {
-    if (!tripId || !game) return;
-    try {
-      await openCorrection.mutateAsync({ tripId, gameId: game.id });
-      await utils.games.getById.invalidate({ tripId, gameId: game.id });
-      // `corrections_open` is a `games` column — snapshotted by the bootstrap and
-      // carried on the board's GameRow, so both need invalidating for the same
-      // reason as above.
-      utils.games.listByTrip.invalidate({ tripId });
-      if (gameCompetitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
-    } catch {
-      // Surfaced by the global mutationCache.onError (lib/providers.tsx), which
-      // covers server rejections as well as connectivity failures. It did not
-      // before, which made this comment false and this block silent.
-    }
-  }
+  // (#769's `handleCorrect` — "mirroring rack's exactly" — is now literally the
+  // same code as rack's, in `useOpenCorrection`, rather than a copy asserted to
+  // match. Invalidation set unchanged, #10 included.)
 
   // P3 3.3 — Handicaps + Game Modifiers are now INLINE accordion panels inside the
   // settings page (built in the config-view block below), not full-page drill-downs.
@@ -1279,7 +1277,7 @@ export function StrokeGameView() {
           finalizeLabel="Save results"
           finalizePendingLabel="Saving results…"
           finalizePending={finishGame.isPending}
-          correctPending={openCorrection.isPending}
+          correctPending={correctPending}
           onFinalize={handleFinish}
           onCorrect={handleCorrect}
         />

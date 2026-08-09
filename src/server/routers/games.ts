@@ -18,6 +18,7 @@ import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 
 /**
@@ -782,12 +783,24 @@ export const gamesRouter = router({
       // `competitions.clinch_notified_team_id` (migration 099), so running it
       // more often is safe — it is the correct place for that responsibility,
       // rather than borrowing the game push's guard.
+      //
+      // Deferred past the response (`afterResponse`), not skipped and not
+      // un-awaited. It runs on every finalize exactly as before — the paragraph
+      // above is the reason and it still holds — but the caller no longer waits
+      // for it. Measured: of `games.finish`'s 16 sequential DB round trips on a
+      // match re-lock, SEVEN are this check (it recomputes the whole leaderboard
+      // and writes a `push_send_log` row even when the outcome is
+      // `no_clincher`), and nothing in the response depends on its result. See
+      // `afterResponse` for why `after()` rather than a bare `void` — #829
+      // called that out.
       if (game.competition_id) {
-        await notifyCupClinchedIfDecided({
-          tripId: ctx.tripId,
-          competitionId: game.competition_id as string,
-          actorUserId: ctx.user!.id,
-        });
+        await afterResponse(() =>
+          notifyCupClinchedIfDecided({
+            tripId: ctx.tripId,
+            competitionId: game.competition_id as string,
+            actorUserId: ctx.user!.id,
+          })
+        );
       }
 
       return { standings, matches, teams };

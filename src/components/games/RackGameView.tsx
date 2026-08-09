@@ -50,6 +50,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { useOpenCorrection } from "@/hooks/useOpenCorrection";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 
 const RACK = "gtt_rack_n_stack";
@@ -179,7 +180,10 @@ export function RackGameView() {
   const finishGame = trpc.games.finish.useMutation();
   // #7 correction path (owner/co-admin/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
-  const openCorrection = trpc.games.openCorrection.useMutation();
+  // Shared with the other three formats (CLAUDE.md #24) — including the
+  // optimistic flip that stops the CTA waiting on a round trip for a boolean
+  // whose value is already known. See `useOpenCorrection`.
+  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(tripId, gid, competitionId);
 
   // ── Names / teams ────────────────────────────────────────────────────
   const nameOf = useMemo(() => {
@@ -637,7 +641,18 @@ export function RackGameView() {
     // and stroke/match, which already wrap their finish calls.
     try {
       await finishGame.mutateAsync({ tripId, gameId: gid });
-      await utils.games.getById.invalidate({ tripId, gameId: gid });
+      // NOT awaited. The comment below already says the board invalidations are
+      // "deliberately not awaited" and gives the reason — this one was, and the
+      // same reason applies to it more strongly: `games.getById` feeds THIS
+      // panel, which `exitToBoard()` is about to close. Awaiting it held the
+      // close on a refetch whose result nothing would render, and (per
+      // `invalidateCancelsRefetch.test.ts`) that refetch was frequently cancelled
+      // and restarted by the realtime + config-hash waves the same write triggers
+      // — so the wait was for a round trip that got thrown away.
+      //
+      // Invalidating is still correct and still happens: it marks the entry
+      // stale, so re-opening the game re-reads it. Nothing is left fresh-but-wrong.
+      void utils.games.getById.invalidate({ tripId, gameId: gid });
       // #6: finalize changes the leaderboard — invalidate it so the board reflects
       // the result IMMEDIATELY (no realtime sub, only a 30s poll), instead of only
       // after leave-and-return ("showed 4 to 2 only after I left and came back").
@@ -670,25 +685,10 @@ export function RackGameView() {
     }
   }
 
-  // #7: reopen a posted rack for correction (foursome cards become editable again
-  // until re-locked via finish()).
-  async function handleCorrect() {
-    if (!tripId || !gid) return;
-    try {
-      await openCorrection.mutateAsync({ tripId, gameId: gid });
-      await utils.games.getById.invalidate({ tripId, gameId: gid });
-      // #10: `corrections_open` is a `games` column — snapshotted by the
-      // bootstrap and carried on the board's GameRow. Without these the board
-      // keeps reading the pre-correction row, and the next re-seed undoes any
-      // child invalidate anyway.
-      utils.games.listByTrip.invalidate({ tripId });
-      if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId });
-    } catch {
-      // Surfaced by the global mutationCache.onError (lib/providers.tsx), which
-      // covers server rejections as well as connectivity failures. It did not
-      // before, which made this comment false and this block silent.
-    }
-  }
+  // (#7's inline `handleCorrect` — reopen a posted rack so foursome cards become
+  // editable again until re-locked via finish() — moved to `useOpenCorrection`
+  // above. The invalidation set is unchanged, #10 included; errors are still
+  // surfaced by the global mutationCache.onError.)
 
   // Lifecycle #7: Final = locked. `locked` (posted) → read-only; `correcting`
   // (owner re-opened) → editable until re-locked.
@@ -1226,7 +1226,7 @@ export function RackGameView() {
         finalizeLabel="Save results"
         finalizePendingLabel="Saving results…"
         finalizePending={finishGame.isPending}
-        correctPending={openCorrection.isPending}
+        correctPending={correctPending}
         onFinalize={finish}
         onCorrect={handleCorrect}
       />
