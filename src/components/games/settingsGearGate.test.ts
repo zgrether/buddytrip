@@ -7,36 +7,36 @@ import { resolve, join } from "path";
  *
  * ── Why this test exists ────────────────────────────────────────────────────
  * #882 opened settings on completed games and removed the `status === "complete"`
- * gate from the gear each view publishes to `GameChrome` (the panel path). Every
- * view ALSO renders a second gear in its own standalone-route header, and there
- * the gate survived — in match and rack, the same two formats. Rack ended up
- * disagreeing with itself: its setup-screen gear had never had the gate, its
- * play-screen gear did.
+ * gate from the gear each view published to `GameChrome` (the panel path). Every
+ * view ALSO rendered a second gear in its own route header, and there the gate
+ * survived — in match and rack, the same two formats. Rack disagreed with
+ * itself: the gear on its setup screen never had the gate, the one on its play
+ * screen did. #883 fixed both.
  *
- * That is the twelfth instance of CLAUDE.md #24's pattern, and its distinguishing
- * feature is that it was created by the FIX for the eleventh. A shared shell with
- * two render paths means a behaviour can be corrected in one and left in the
- * other, and nothing says so.
+ * ── Where the gate lives NOW ────────────────────────────────────────────────
+ * There used to be FIVE gear render sites, and the gate was the JSX condition
+ * wrapped around each. Phase 2 collapsed them: there is ONE gear, in
+ * `GameChromeActions`, rendering on `chrome.onSettings`. So the condition that
+ * decides whether an editor sees settings moved out of five pieces of markup and
+ * into the one `onSettings:` expression each surface publishes.
  *
- * ── Why a source scan rather than a render test ─────────────────────────────
- * The gate is a JSX condition on a header that only appears on a standalone
- * route, on a specific screen, for a configured game — three coincidences to
- * arrange before a render test can even look at it, per format, which is
- * precisely why nobody had. The condition itself is a few characters of source,
- * and reading the source is the cheapest thing that could have caught this.
+ * This scan followed it, and had to. Checking the gear's JSX now would pass
+ * forever while saying nothing, because that guard is simply
+ * `chrome.onSettings &&`; the interesting expression is upstream. A guard that
+ * survives a refactor by going vacuous is worse than no guard, because it still
+ * looks like coverage. (Its old floor of "at least 5 gear sites" is what caught
+ * this — the collapse dropped it to 1 and the assertion failed loudly.)
  *
- * A source scan cannot go stale the way a hand-maintained list does: it finds
- * gear sites by their test id, so a NEW gear in a fifth format is checked the
- * moment it is written, without anyone remembering to add it here.
+ * It matches `final` as well as `status`, because that is how the gate hid in
+ * rack: the guard read `!final`, where `final` was a local
+ * `status === "complete"` a few hundred lines up. Nothing on the line named the
+ * column.
  */
 
-const GAMES_DIR = resolve(__dirname);
-const GEAR_TESTID = 'data-testid="game-settings-gear"';
+const GAMES = resolve(__dirname);
 
-/** Lifecycle words that must not appear in a gear's guard. `final` catches the
- *  local aliases (`const final = status === "complete"`) that are how the gate
- *  hid in rack — the raw column name never appeared on the guard line itself. */
-const LIFECYCLE = /\b(status|final|complete|corrections_open|correctionsOpen|isFinal|isLocked)\b/;
+/** Lifecycle words that must not appear in the gate. */
+const LIFECYCLE = /\b(status|final|complete|corrections_open|correctionsOpen|isFinal|isLocked|isCorrecting)\b/;
 
 function tsxFiles(dir: string): string[] {
   const out: string[] = [];
@@ -48,60 +48,51 @@ function tsxFiles(dir: string): string[] {
   return out;
 }
 
-/**
- * The guard for a gear is the source between the enclosing `right={` / `{` and
- * the gear's own test id — i.e. the condition that decides whether it renders.
- * Six lines back is comfortably more than any current guard spans and stops the
- * scan swallowing unrelated code above it.
- */
-function guardsForGear(source: string): string[] {
+/** Every `onSettings:` expression, comment lines stripped — prose explaining
+ *  why there is NO gate legitimately says "complete". */
+function onSettingsExpressions(source: string): string[] {
   const lines = source.split("\n");
-  const guards: string[] = [];
+  const out: string[] = [];
   lines.forEach((line, i) => {
-    if (!line.includes(GEAR_TESTID)) return;
-    // Walk back to the nearest line opening a conditional render, skipping
-    // comment lines — the explanation of WHY there is no gate legitimately
-    // mentions `complete`, and commentary must not fail the test.
-    const window = lines
-      .slice(Math.max(0, i - 6), i)
-      .filter((l) => {
-        const t = l.trim();
-        return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
-      })
-      .join("\n");
-    guards.push(window);
+    if (!/\bonSettings:/.test(line)) return;
+    out.push(
+      lines
+        .slice(i, i + 4)
+        .filter((l) => {
+          const t = l.trim();
+          return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
+        })
+        .join("\n"),
+    );
   });
-  return guards;
+  return out;
 }
 
 describe("the settings gear is role-gated, never lifecycle-gated", () => {
-  const files = tsxFiles(GAMES_DIR);
+  const files = tsxFiles(GAMES);
 
-  it("finds every gear render site (the scan itself is working)", () => {
-    // A guard that finds nothing passes vacuously forever. Pin the count's
-    // floor so deleting the test ids — or renaming them — fails loudly here
-    // rather than silently disarming this.
-    const total = files.reduce(
-      (n, f) => n + guardsForGear(readFileSync(f, "utf8")).length,
-      0,
-    );
-    expect(total).toBeGreaterThanOrEqual(5);
+  it("finds every surface's onSettings expression (the scan is working)", () => {
+    // One per game surface. A scan that finds nothing passes vacuously forever,
+    // and this one has already had to move once — pin the floor to the number of
+    // formats so a rename, or a refactor that orphans it, fails loudly here.
+    const total = files.reduce((n, f) => n + onSettingsExpressions(readFileSync(f, "utf8")).length, 0);
+    expect(total).toBeGreaterThanOrEqual(4);
   });
 
-  it("no gear's guard reads lifecycle state", () => {
+  it("no surface gates its settings gear on lifecycle state", () => {
     const offenders: string[] = [];
     for (const file of files) {
-      for (const guard of guardsForGear(readFileSync(file, "utf8"))) {
-        const hit = guard.match(LIFECYCLE);
-        if (hit) offenders.push(`${file.replace(GAMES_DIR, "")} — "${hit[0]}" in:\n${guard}`);
+      for (const expr of onSettingsExpressions(readFileSync(file, "utf8"))) {
+        const hit = expr.match(LIFECYCLE);
+        if (hit) offenders.push(`${file.replace(GAMES, "")} — "${hit[0]}" in:\n${expr}`);
       }
     }
     expect(
       offenders,
-      "A settings gear is gated on lifecycle state. Settings stay reachable on a " +
-        "completed game (#882) — the standings-affecting edits are refused " +
-        "SERVER-side by save_game_config's FINAL_LOCKED guard, which explains " +
-        "itself; an invisible gear does not. Gate on `canEdit` only.\n\n" +
+      "Settings stay reachable on a completed game (#882) — the " +
+        "standings-affecting edits are refused SERVER-side by save_game_config's " +
+        "FINAL_LOCKED guard, which explains itself; an invisible gear does not. " +
+        "Gate `onSettings` on role and screen only.\n\n" +
         offenders.join("\n\n"),
     ).toEqual([]);
   });

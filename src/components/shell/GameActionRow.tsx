@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ScrollText, Settings, Table2 } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useGameChrome } from "@/components/games/GameChrome";
-import { GameRulesSheet } from "@/components/games/GameRulesSheet";
+import { GameChromeActions } from "@/components/games/GameChromeActions";
 
 /**
  * GameActionRow — the contextual row that appears ONLY at game depth (Phase 6):
@@ -41,12 +40,7 @@ export function GameActionRow() {
   return <ActionRow chrome={chrome} />;
 }
 
-function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameChrome>> }) {
-    // The rules sheet is hosted HERE, not in the four game views. Three of them
-    // return from several branches (config / entry / board), so a view-owned
-    // sheet would have to be mounted in each — four copies of one overlay. This
-    // row already renders on exactly the surfaces the affordance belongs on.
-    const [rulesOpen, setRulesOpen] = useState(false);
+function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameChrome>> }) {
     return (
     <div
       /**
@@ -105,62 +99,10 @@ function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameCh
         )}
       </span>
 
-      <div className="flex shrink-0 gap-1">
-        {/* Rules of the day — the other thing you look up mid-round without
-            wanting to change anything, so it sits beside the scorecard and
-            reads the same way. Before this there was NO path to the rules once
-            a game went into scoring: they live on the settings page, which is
-            behind the owner/delegate gear, and the people who need to check
-            them are the ones playing. */}
-        {chrome.rules && (
-          <button
-            type="button"
-            onClick={() => setRulesOpen(true)}
-            aria-label="Rules of the day"
-            data-testid="game-rules"
-            className="grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--color-bt-card-raised)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <ScrollText size={18} />
-          </button>
-        )}
-        {chrome.onScorecard && (
-          <button
-            type="button"
-            onClick={chrome.onScorecard}
-            aria-label="Scorecard"
-            data-testid="game-scorecard"
-            className="grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--color-bt-card-raised)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Table2 size={18} />
-          </button>
-        )}
-        {chrome.onSettings && (
-          <button
-            type="button"
-            onClick={chrome.onSettings}
-            aria-label="Settings"
-            data-testid="game-settings-gear"
-            className="grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--color-bt-card-raised)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Settings size={18} />
-          </button>
-        )}
-      </div>
-
-      {chrome.rules && (
-        <GameRulesSheet
-          open={rulesOpen}
-          onClose={() => setRulesOpen(false)}
-          tripId={chrome.rules.tripId}
-          gameId={chrome.rules.gameId}
-          gameTypeId={chrome.rules.gameTypeId}
-          rules={chrome.rules.text}
-          canEdit={chrome.rules.canEdit}
-        />
-      )}
+      {/* Actions come from the SHARED cluster, which the standalone-route
+          header also renders. #883 (divergence #12) was the two hosts carrying
+          different actions; they now render one expression from one object. */}
+      <GameChromeActions chrome={chrome} size="panel" />
     </div>
   );
 }

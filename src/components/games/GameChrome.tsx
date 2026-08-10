@@ -147,6 +147,29 @@ export function useInGamePanel(): boolean {
  * latest. Clears on unmount so closing the panel restores board mode. Depends on
  * the STABLE setter (not the value) so it never loops.
  */
+/**
+ * Publish this surface's chrome and get back what the STANDALONE header should
+ * render — one object, one decision about where it goes.
+ *
+ * The two hosts used to be fed separately: a view built a chrome object for
+ * `usePublishGameChrome` (the panel) and, further down, wrote a `right={…}` slot
+ * for its own route header. Two expressions for one question is how #883's
+ * divergence #12 happened — the gear's condition was corrected in the published
+ * object and left alone in the slot.
+ *
+ * Passing the same value through here makes that shape unavailable: whatever the
+ * panel shows is what the route header shows, because it is the same object.
+ *
+ * @returns the chrome when this surface is on its own route (render
+ *          `GameStandaloneHeader` with it), or null when it is a panel (the
+ *          published chrome is already being drawn by `GameActionRow`).
+ */
+export function useGameSurfaceChrome(data: GameChromeData | null): GameChromeData | null {
+  const inPanel = useInGamePanel();
+  usePublishGameChrome(inPanel ? data : null);
+  return inPanel ? null : data;
+}
+
 export function usePublishGameChrome(data: GameChromeData | null) {
   const setChrome = useContext(SetChromeCtx);
   // Keep the latest data (with its fresh callbacks) in a ref the published proxy

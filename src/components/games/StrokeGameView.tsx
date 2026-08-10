@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Scale, Settings, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { Scale, Settings, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
@@ -14,7 +14,8 @@ import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
-import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
+import { useInGamePanel, useGameSurfaceChrome } from "@/components/games/GameChrome";
+import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameConfigurationView } from "@/components/games/GameConfigurationView";
@@ -811,8 +812,8 @@ export function StrokeGameView() {
   // drill-down that covers the bar. Standalone route keeps its headers.
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompetitionId);
-  usePublishGameChrome(
-    inPanel
+  const standaloneChrome = useGameSurfaceChrome(
+    gameQ.data
       ? {
           // The GAME's name at every depth; a group's entry appends "— Group N"
           // rather than replacing it (rack's idiom, same change there). The row
@@ -933,22 +934,16 @@ export function StrokeGameView() {
   if (game && !scoringEnabled && !showConfig) {
     return (
       <div className="flex flex-col" style={{ minHeight: inPanel ? "100%" : "100vh", background: "var(--color-bt-base)" }}>
-        {/* #550: as a panel the app bar carries back/title/gear. Standalone keeps it. */}
-        {!inPanel && (
-          <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-            <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-              <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-            </button>
-            <div className="min-w-0 text-center">
-              <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Stroke Play</div>
-              <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}</div>
-            </div>
-            {canEdit ? (
-              <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-                <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-            ) : <div className="h-9 w-9" />}
-          </header>
+        {/* #550: as a panel the app bar carries back/title/actions. Standalone
+            keeps its own header — now the SHARED one, whose actions come from
+            the same chrome object the panel publishes. */}
+        {standaloneChrome && (
+          <GameStandaloneHeader
+            title="Stroke Play"
+            subtitle={`${game.participants.length} player${game.participants.length === 1 ? "" : "s"}`}
+            onBack={() => router.back()}
+            chrome={standaloneChrome}
+          />
         )}
         <div className="flex-1">
           <SetupPlaceholder
