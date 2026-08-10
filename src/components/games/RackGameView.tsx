@@ -83,6 +83,7 @@ export function RackGameView() {
   // would look like the handicaps/scores were lost.
   const gamesList = trpc.games.listByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const resumeId = useMemo(() => {
+    // lifecycle-guard-allow: a filter over the trip's game LIST picking a rack game to resume — it asks about other games, not about this one's lock state, so there is no gameLockState call site to route it through.
     const g = (gamesList.data ?? []).find((x) => x.game_type_id === RACK && x.status !== "complete");
     return (g?.id as string | undefined) ?? null;
   }, [gamesList.data]);
@@ -707,7 +708,7 @@ export function RackGameView() {
   // take the raw columns instead — the banner resolves them itself (so every
   // format reads one predicate), and the subtitle wants `locked`, which already
   // means "complete and NOT correcting".
-  const { isLocked: locked } = gameLockState({
+  const { isFinal: final, isLocked: locked } = gameLockState({
     status: gameQ.data?.status,
     correctionsOpen,
   });
@@ -1196,7 +1197,9 @@ export function RackGameView() {
   }
 
   // Play screen.
-  const final = gameQ.data?.status === "complete";
+  // `final` comes from the shared `gameLockState` above — it used to be
+  // re-derived here as `status === "complete"`, which is the same expression the
+  // module exists to own.
   // Shared finalize gate: every slot side thru every hole, live over the derived
   // slot set (mid-round groups re-block). Same check stroke uses.
   const allThru18 = allUnitsComplete(rack.slots.flatMap((s) => [s.a.thru, s.b.thru]), scUnits.length);

@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
 import { pushMarker } from "@/lib/historyMarker";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
-import { gameLockState } from "@/lib/gameLifecycle";
+import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
@@ -112,7 +112,9 @@ export function formatIcon(gameTypeId: string | null): LucideIcon {
  */
 export type GameSection = "completed" | "on-tap" | "ready" | "preparing" | "skeleton";
 export function sectionOf(game: LBGame): GameSection {
+  // lifecycle-guard-allow: board SECTIONING is a 5-way partition over status × started × configured, which gameLifecycle deliberately does not model — it answers only end-of-life questions (final/locked/correcting). Routing the first line through isFinal and leaving the rest would split one partition across two vocabularies for no gain.
   if (game.status === "complete") return "completed";
+  // lifecycle-guard-allow: the same 5-way partition — `active` split on `started` is the On Tap ↔ Ready distinction, which has no counterpart in gameLifecycle.
   if (game.status === "active") return game.started === true ? "on-tap" : "ready";
   return game.configured ? "preparing" : "skeleton";
 }
@@ -195,7 +197,7 @@ export function GameRow({
   // get the settings link — they hit the server-walled placeholder.
   const canEditThisGame = !!canEdit || mine;
   const pathname = usePathname();
-  const setupMode = !(game.status === "complete" || game.status === "active" || game.scoringEnabled === true);
+  const setupMode = isPreScoring({ status: game.status, scoringEnabled: game.scoringEnabled === true });
   const href = gameHref(tripId, game.gameTypeId, game.id, {
     settings: canEditThisGame && setupMode,
   });

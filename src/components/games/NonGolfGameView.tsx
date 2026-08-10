@@ -258,7 +258,7 @@ export function NonGolfGameView() {
 
   // The same shared predicate the scoreboard's controls read (CLAUDE.md #24), so
   // "are the buttons live?" and "is the header previewing?" cannot disagree.
-  const { isLocked: resultLocked } = gameLockState({
+  const { isFinal: resultFinal, isLocked: resultLocked } = gameLockState({
     status: game?.status,
     correctionsOpen: !!game?.corrections_open,
   });
@@ -605,12 +605,12 @@ export function NonGolfGameView() {
           // game previously announced FINAL while its result was being edited.
           !resultLocked && draftProjection
             ? { perTeam: draftProjection, gameName, final: false }
-            : isManualGameType(game.game_type_id) && game.status !== "complete"
+            : isManualGameType(game.game_type_id) && !resultFinal
               ? undefined
               : {
                   perTeam: postedPerTeam,
                   gameName,
-                  final: game.status === "complete" && !game.corrections_open,
+                  final: resultLocked,
                 }
         }
       />

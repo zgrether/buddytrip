@@ -95,6 +95,33 @@ export function gameLockState({
   };
 }
 
+/**
+ * Has this game left SETUP — is it armed or under way?
+ *
+ * A different axis from `gameLockState`, which only answers questions about the
+ * END of a game's life. This one answers the question at the start, and it was
+ * being asked in two places in two shapes that happen to be exact inverses:
+ *
+ *   GameRow    `!(complete || active || scoringEnabled)`   → setupMode
+ *   MatchGameView `complete || active || scoringEnabled`   → show the overview
+ *
+ * Same predicate, opposite polarity, no shared home — so a fifth format would
+ * have written a third copy, and a change to what "started" means would have had
+ * to find all of them. `scoringEnabled` is part of it because arming a game is
+ * what ends setup, before any score exists (CLAUDE.md #25: the three go-live
+ * signals move together, and this reads the one that moves first).
+ */
+export function isPreScoring({
+  status,
+  scoringEnabled,
+}: {
+  status: string | null | undefined;
+  /** `games.scoring_enabled`. Armed → setup is over even with no scores yet. */
+  scoringEnabled: boolean;
+}): boolean {
+  return !(status === "complete" || status === "active" || scoringEnabled);
+}
+
 export function gameLifecycle({
   canEdit,
   status,

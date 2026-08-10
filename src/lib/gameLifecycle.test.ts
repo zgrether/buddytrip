@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gameLifecycle, gameLockState } from "./gameLifecycle";
+import { gameLifecycle, gameLockState, isPreScoring } from "./gameLifecycle";
 
 /**
  * The regression this file exists for: stroke and rack each carried their own
@@ -120,5 +120,37 @@ describe("gameLockState — the piece each view kept re-implementing", () => {
       isLocked: false,
       isCorrecting: false,
     });
+  });
+});
+
+/**
+ * `isPreScoring` — the start-of-life axis, extracted because it was being asked
+ * in two places in two shapes that are exact inverses of each other:
+ *
+ *   GameRow       `!(complete || active || scoringEnabled)`  → setupMode
+ *   MatchGameView  `complete || active || scoringEnabled`    → show the overview
+ *
+ * The table below is the full truth table for both call sites, so "the two agree"
+ * is asserted rather than assumed.
+ */
+describe("isPreScoring — has setup ended?", () => {
+  const cases: [string, boolean, boolean][] = [
+    // status,    scoringEnabled, isPreScoring
+    ["pending", false, true], // untouched — the only true setup state
+    ["pending", true, false], // ARMED but unscored: setup is over (#25 — the flag moves first)
+    ["active", false, false], // under way
+    ["active", true, false],
+    ["complete", false, false], // finished
+    ["complete", true, false], // finished + still armed (finish keeps the flag — #882)
+  ];
+
+  it.each(cases)("status=%s scoringEnabled=%s → %s", (status, scoringEnabled, expected) => {
+    expect(isPreScoring({ status, scoringEnabled })).toBe(expected);
+  });
+
+  it("an unknown or absent status reads as pre-scoring unless armed", () => {
+    // Defensive: a row that hasn't loaded shouldn't claim the game is under way.
+    expect(isPreScoring({ status: undefined, scoringEnabled: false })).toBe(true);
+    expect(isPreScoring({ status: null, scoringEnabled: true })).toBe(false);
   });
 });
