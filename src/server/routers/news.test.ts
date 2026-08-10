@@ -58,7 +58,7 @@ describe("news router", () => {
       createdAt: "2026-02-01T00:00:00Z",
     });
 
-    const posts = await ctx.caller().news.list({ tripId });
+    const { posts } = await ctx.caller().news.list({ tripId });
     expect(posts.length).toBe(3);
     // Pinned floats above unpinned regardless of its own date…
     expect(posts[0].pinned).toBe(true);
@@ -68,14 +68,14 @@ describe("news router", () => {
   });
 
   it("list — blocks round-trip as a typed array", async () => {
-    const posts = await ctx.caller().news.list({ tripId });
+    const { posts } = await ctx.caller().news.list({ tripId });
     const callout = posts.find((p) => p.blocks[0]?.type === "callout");
     expect(callout).toBeTruthy();
     expect(callout!.blocks[0]).toEqual({ type: "callout", text: "Pinned (older)" });
   });
 
   it("list — any member can read", async () => {
-    const posts = await ctx.callerAs("member").news.list({ tripId });
+    const { posts } = await ctx.callerAs("member").news.list({ tripId });
     expect(posts.length).toBe(3);
   });
 
@@ -135,7 +135,7 @@ describe("news router", () => {
     expect(post.pinned).toBe(true);
     expect(post.blocks).toHaveLength(2);
 
-    const posts = await ctx.caller().news.list({ tripId });
+    const { posts } = await ctx.caller().news.list({ tripId });
     expect(posts.some((p) => p.id === post.id)).toBe(true);
   });
 
@@ -254,7 +254,7 @@ describe("news router", () => {
     });
     const res = await ctx.caller().news.setPinned({ tripId, postId: post.id, pinned: true });
     expect(res.pinned).toBe(true);
-    const posts = await ctx.caller().news.list({ tripId });
+    const { posts } = await ctx.caller().news.list({ tripId });
     expect(posts.find((p) => p.id === post.id)?.pinned).toBe(true);
   });
 
@@ -269,7 +269,7 @@ describe("news router", () => {
 
     const res = await ctx.caller().news.delete({ tripId, postId: post.id });
     expect(res.id).toBe(post.id);
-    const posts = await ctx.caller().news.list({ tripId });
+    const { posts } = await ctx.caller().news.list({ tripId });
     expect(posts.some((p) => p.id === post.id)).toBe(false);
   });
 

@@ -42,6 +42,18 @@ async function getCompetitionId(
 // else, newer than the caller's last_read_at. RLS gates everything; the
 // role checks here just produce clean errors instead of silent empties.
 
+/**
+ * Ceiling on the pinned tier, which page 1 returns in full (see `list`).
+ *
+ * Pinned posts sort above the paged tier, so they cannot ride the cursor without
+ * a composite keyset. Returning them all is right for the feature — a pinned post
+ * you have to scroll to find isn't pinned — but "return them all" is the exact
+ * shape of the unbounded query #868 is about, so it gets an explicit bound
+ * instead of an implicit assumption that nobody pins many. Generous on purpose:
+ * a trip that reaches it has a pinning problem, not a paging one.
+ */
+const PINNED_CAP = 50;
+
 interface NewsPostRow {
   id: string;
   trip_id: string;
@@ -66,28 +78,91 @@ function toPost(row: NewsPostRow): NewsPost {
 
 export const newsRouter = router({
   // -----------------------------------------------------------------------
-  // list — every post for a trip, feed order: pinned first, then newest.
-  // Any trip member may read.
+  // list — a PAGE of the trip's feed: pinned first, then newest. Any trip
+  // member may read.
+  //
+  // ── Why this paginates, and why not exactly like chat (#868) ─────────────
+  // This was the one unbounded query on the chat surface — no limit, no cursor,
+  // every post and its whole block payload on every load. Prevention rather than
+  // repair (production holds one post), and it reuses `messages.list`'s
+  // mechanism: a page size and a `created_at` cursor with `.lt()`.
+  //
+  // The one place it CANNOT be identical is the shape of the cursor, because the
+  // feed has a tier `messages` does not: `pinned` sorts above `created_at`, so a
+  // bare timestamp cursor is not a keyset over this ordering — an older pinned
+  // post would be paged past and then sort to the top of a later page.
+  //
+  // So the tiers are paged separately, which needs no composite cursor and no
+  // `.or()` keyset predicate:
+  //   • page 1 (no cursor) returns EVERY pinned post plus the newest `limit`
+  //     unpinned ones. Pinned is the "always visible at the top" tier — pinning
+  //     a post the reader has to scroll to find is not pinning it.
+  //   • later pages are unpinned only, `created_at < cursor`.
+  //
+  // `nextCursor` is returned EXPLICITLY rather than letting the client infer it
+  // from the last row (chat's approach). Chat can infer because it has one tier
+  // and a short page means the end; here page 1 mixes tiers, so its length says
+  // nothing about whether more unpinned posts exist. Inferring would work until
+  // someone pins enough posts, which is the kind of correctness nobody re-checks.
   // -----------------------------------------------------------------------
   list: authedProcedure
-    .input(z.object({ tripId: z.string() }))
+    .input(
+      z.object({
+        tripId: z.string(),
+        limit: z.number().min(1).max(100).default(50),
+        /** `created_at` of the oldest unpinned post already loaded. */
+        cursor: z.string().optional(),
+      })
+    )
     .use(requireTripMember)
-    .query(async ({ ctx }): Promise<NewsPost[]> => {
-      const { data, error } = await ctx.supabase
-        .from("news_posts")
-        .select("id, trip_id, author_id, blocks, pinned, created_at, updated_at")
-        .eq("trip_id", ctx.tripId!)
-        .order("pinned", { ascending: false })
-        .order("created_at", { ascending: false });
+    .query(async ({ ctx, input }): Promise<{ posts: NewsPost[]; nextCursor: string | null }> => {
+      const select = "id, trip_id, author_id, blocks, pinned, created_at, updated_at";
 
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to load news",
-        });
+      // The pinned tier, in full, on the first page only. Capped so this cannot
+      // quietly become the unbounded query it replaced — a trip that hits the cap
+      // has a pinning problem, not a paging one, and the cap keeps the failure
+      // bounded instead of unbounded.
+      let pinned: NewsPostRow[] = [];
+      if (!input.cursor) {
+        const { data, error } = await ctx.supabase
+          .from("news_posts")
+          .select(select)
+          .eq("trip_id", ctx.tripId!)
+          .eq("pinned", true)
+          .order("created_at", { ascending: false })
+          .limit(PINNED_CAP);
+        if (error) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to load news" });
+        }
+        pinned = (data ?? []) as NewsPostRow[];
       }
 
-      return ((data ?? []) as NewsPostRow[]).map(toPost);
+      // The unpinned tier — the actually-paged one. One row over the page size,
+      // so "is there more" is answered by the query rather than by assuming a
+      // full page means more (which reports a phantom next page on an exact
+      // multiple of `limit`).
+      let unpinnedQ = ctx.supabase
+        .from("news_posts")
+        .select(select)
+        .eq("trip_id", ctx.tripId!)
+        .eq("pinned", false)
+        .order("created_at", { ascending: false })
+        .limit(input.limit + 1);
+      if (input.cursor) unpinnedQ = unpinnedQ.lt("created_at", input.cursor);
+
+      const { data: unpinnedData, error: unpinnedErr } = await unpinnedQ;
+      if (unpinnedErr) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to load news" });
+      }
+
+      const unpinnedRows = (unpinnedData ?? []) as NewsPostRow[];
+      const hasMore = unpinnedRows.length > input.limit;
+      const page = unpinnedRows.slice(0, input.limit);
+
+      return {
+        posts: [...pinned, ...page].map(toPost),
+        nextCursor: hasMore ? page[page.length - 1]!.created_at : null,
+      };
     }),
 
   // -----------------------------------------------------------------------

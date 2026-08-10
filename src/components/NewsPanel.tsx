@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Pin, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -96,7 +96,24 @@ function NewsPanelInner({
   authors,
 }: Omit<NewsPanelProps, "isOpen">) {
   const utils = trpc.useUtils();
-  const { data: posts = [], isLoading } = trpc.news.list.useQuery({ tripId });
+  // The feed is PAGED, not loaded whole (#868): page 1 is every pinned post plus
+  // the newest `limit` unpinned ones, and older history arrives on demand. The
+  // server returns `nextCursor` explicitly rather than letting this infer it from
+  // the last row the way chat does — page 1 mixes the pinned and unpinned tiers,
+  // so its length says nothing about whether more history exists.
+  const listQ = trpc.news.list.useInfiniteQuery(
+    { tripId },
+    { getNextPageParam: (last) => last.nextCursor ?? undefined }
+  );
+  // No de-duplication needed: pages do not overlap. The cursor is the last row
+  // KEPT and the next page filters strictly `< cursor`, where chat over-fetches
+  // one row and de-dupes. (Chat pays that row to get an exact has-more answer;
+  // returning the cursor from the server buys the same answer for free.)
+  const posts = useMemo(
+    () => listQ.data?.pages.flatMap((p) => p.posts) ?? [],
+    [listQ.data]
+  );
+  const isLoading = listQ.isLoading;
 
   // Freeze "now" at mount so relative timestamps stay put for the session.
   const [now] = useState(() => Date.now());
@@ -216,7 +233,34 @@ function NewsPanelInner({
       />
     ))
   );
-  const feedScroll = <NewsFeedScroll>{feedContent}</NewsFeedScroll>;
+  // Older history, on demand. An explicit control rather than a scroll sentinel:
+  // the feed is read top-down and reaching the bottom is a deliberate act, unlike
+  // chat, where scrolling UP through history is the normal reading motion.
+  const loadOlder = listQ.hasNextPage ? (
+    <button
+      type="button"
+      onClick={() => void listQ.fetchNextPage()}
+      disabled={listQ.isFetchingNextPage}
+      className="mx-auto my-3 flex items-center justify-center rounded-lg px-4 disabled:opacity-50"
+      style={{
+        height: 36,
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
+        fontSize: 13,
+        fontWeight: 600,
+      }}
+      data-testid="news-load-older"
+    >
+      {listQ.isFetchingNextPage ? "Loading…" : "Load older posts"}
+    </button>
+  ) : null;
+  const feedScroll = (
+    <NewsFeedScroll>
+      {feedContent}
+      {loadOlder}
+    </NewsFeedScroll>
+  );
 
   // Always renders this way now — normal flow, no scrim, no drag-resize, no
   // close × (a segment has nothing to close; you leave by choosing another
