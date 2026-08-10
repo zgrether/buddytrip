@@ -18,7 +18,8 @@ import { useInGamePanel, useGameSurfaceChrome } from "@/components/games/GameChr
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
-import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { GameSettingsPage } from "@/components/games/GameSettingsPage";
+import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -599,7 +600,7 @@ export function StrokeGameView() {
     tripId,
     game?.id,
     gameCompetitionId
-  );
+  );
   // Reflect scores from OTHER devices: reconcile server truth into the view each
   // time the poll returns changed data, merged so the active enterer's unsaved
   // cells win (game-state sync). This also handles the initial load — an empty
@@ -1050,58 +1051,71 @@ export function StrokeGameView() {
         <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={persistModifiers} readOnly={!canEdit} />
       </ChecklistRow>
     ) : undefined;
+    // Shared by the two GAME MANAGEMENT slots — see the note in RackGameView: the
+    // canonical Total Points → Golf Course sequence needs two slots, not one "both".
+    const setupRowsProps = {
+      tripId,
+      competitionId: gameCompetitionId,
+      game: draftGameRow,
+      canEdit,
+      locked: false,
+      onChanged: () => void refreshGame(),
+      onApplyFront: applyFrontToDraft,
+      onApplyBack: applyBackToDraft,
+      onRemoveBackNine: removeBackNineFromDraft,
+      onClearCourse: clearCourseInDraft,
+      courseBusy,
+    };
     return (
       <>
-        <GameConfigurationView
-          onBack={closeConfig}
+        <GameSettingsPage
+          surface="stroke"
+          onClose={closeConfig}
           tripId={tripId}
           competitionId={gameCompetitionId}
           game={draftGameRow}
           canEdit={canEdit}
           isOwner={isOwner}
           canManageGame={canManageGame}
-          settingsZoneLabel="Group Settings"
-          // GROUP SETTINGS (P3): Point Distribution → Groupings → Handicaps (all inline).
-          // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
-          // distribution divides across the groups, so Groupings leads (dependency order).
-          leadingSettingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}
           onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-          // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —
-          // an inline accordion now (P3 3.3), not a drill-down trigger.
-          modifiersRow={modifiersInlineRow}
-          serverScoringEnabled={scoringEnabled}
-          draftScoringEnabled={configDraft.scoringEnabled}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}
           onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
-          rulesValue={configDraft.rulesForToday}
-          onRulesChange={setRulesDraft}
-          onApplyFront={applyFrontToDraft}
-          onApplyBack={applyBackToDraft}
-          onRemoveBackNine={removeBackNineFromDraft}
-          onClearCourse={clearCourseInDraft}
-          courseBusy={courseBusy}
-          // Stroke = PLACEMENT points: the bare Total (GAME MANAGEMENT) and the Point
-          // Distribution row (GROUP SETTINGS, above) share this ONE controlled slice so the
-          // split can't drift (P3 3.1).
-          placementPoints={placementControlled}
+          // Stroke = PLACEMENT points: the bare Total (here) and the Point Distribution
+          // row (GROUP SETTINGS, below) share this ONE controlled slice so the split
+          // can't drift (P3 3.1).
+          totalPointsRow={
+            <GameSetupRows {...setupRowsProps} slot="config" placementPoints={placementControlled} />
+          }
+          courseRow={<GameSetupRows {...setupRowsProps} slot="course" />}
           // Points term of the go-live gate (competition games only) — mirrors Match's
           // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
           // no client readiness gate at all before this (server still enforces mandatory
           // groupings independently; that gap is untouched — out of scope here, tracked
           // separately) — this adds ONLY the points term, not a general readiness gate.
-          ready={!gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0)}
-          readyBlockedReason={
-            gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
-              ? "Set a point value before enabling scoring"
-              : null
-          }
-          onEnable={handleEnable}
-          onDisable={handleDisable}
-          busy={saving}
+          management={{
+            scoringEnabled: configDraft.scoringEnabled,
+            ready: !gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0),
+            blockedReason:
+              gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+                ? "Set a point value before enabling scoring"
+                : null,
+            onEnable: handleEnable,
+            onDisable: handleDisable,
+            pending: saving,
+            staged: configDraft.scoringEnabled !== scoringEnabled,
+          }}
+          // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
+          // distribution divides across the groups, so Groupings leads (dependency order).
+          settingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
+          rulesValue={configDraft.rulesForToday}
+          onRulesChange={setRulesDraft}
+          // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —
+          // an inline accordion now (P3 3.3), not a drill-down trigger.
+          modifiersRow={modifiersInlineRow}
           saveBar={
             <SettingsSaveBar
               dirty={dirty}
