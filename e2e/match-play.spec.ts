@@ -250,14 +250,24 @@ async function driveToSetupWithHandicap(page: Page) {
 
 /** The page's ONE commit. Save is disabled until the draft differs from the frozen
  *  baseline, so gating on enabled also proves the dirty check saw the edits. */
-async function saveSettings(page: Page) {
+async function saveSettings(page: Page, opts: { staysOpen?: boolean } = {}) {
   const save = page.getByTestId("settings-save");
   await expect(save).toBeEnabled({ timeout: 10_000 });
   await save.click();
-  // Exit-behavior alignment: Save now COMMITS + CLOSES the panel on success. The panel
+  // Exit-behavior alignment: Save COMMITS + CLOSES the panel on success. The panel
   // going away IS the landed-save signal — a failure keeps it OPEN with the inline error
   // banner (readiness / conflict / frozen), so the save-bar staying visible would fail
   // here and name the regression. (Was: wait for the "Saved" hint + a separate ✕ close.)
+  if (opts.staysOpen) {
+    // ...EXCEPT when the save changed the Setup/Scoring toggle (#881). That field's
+    // effect is the surface this panel is covering, so committing it used to eject
+    // you and force a re-entry to keep editing. The panel now stays put, the
+    // confirmation is the landed-save signal in its place, and the ghost button
+    // becomes the way out.
+    await expect(page.getByTestId("settings-saved-in-place")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("settings-cancel")).toHaveText("Done");
+    await page.getByTestId("settings-cancel").click();
+  }
   await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
 }
 
@@ -424,7 +434,9 @@ test("match-play spine (competition-attached, real path) — create via board �
   await expect(scoringSeg).toBeEnabled({ timeout: 10_000 });
   await scoringSeg.click();
 
-  await saveSettings(page);
+  // This save flips the Setup/Scoring toggle, so it deliberately keeps the panel
+  // open and is closed by hand (#881).
+  await saveSettings(page, { staysOpen: true });
 
   expect(await filledMatchCount(await latestGameId())).toBeGreaterThan(0);
 

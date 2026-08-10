@@ -176,8 +176,18 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   await expect(saveBtn).toBeEnabled({ timeout: 20_000 });
   await saveBtn.click();
 
-  // 6. Save on a freshly-completed game closes the WHOLE panel back to the
-  //    board (nothing else was open underneath) — the row reappears there.
+  // 5b. This save flips the Setup/Scoring toggle, so it deliberately does NOT
+  //     close the panel (#881): that field's effect is the surface the panel is
+  //     covering, so committing it used to eject you and force a re-entry to keep
+  //     editing. The confirmation is the landed-save signal in place of the panel
+  //     disappearing, and the ghost button becomes the way out.
+  await expect(page.getByTestId("settings-saved-in-place")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("settings-cancel")).toHaveText("Done");
+  await page.getByTestId("settings-cancel").click();
+  await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
+
+  // 6. Closing lands back on the board (nothing else was open underneath) — the
+  //    row reappears there.
   //    Its settings-vs-surface routing (GameRow's `setupMode`) reads
   //    `scoringEnabled` off the leaderboard query, which the save's
   //    invalidate-then-refetch lands a beat after the panel closes — wait for

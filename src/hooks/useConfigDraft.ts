@@ -5,7 +5,8 @@ import { trpc } from "@/lib/trpc-client";
 import { GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import type { DraftView } from "@/lib/draftOutbox";
-import type { SaveConfigPayload } from "@/lib/configDraft";
+import { scoringToggleChanged } from "@/lib/configDraft";
+import type { SaveConfigPayload, BaseConfigDraft } from "@/lib/configDraft";
 
 /**
  * useConfigDraft — the ONE draft-then-save lifecycle for the game-settings page, shared by
@@ -42,7 +43,7 @@ import type { SaveConfigPayload } from "@/lib/configDraft";
  * two latest-refs, passes them to the overlay's `isDirty`/`onDiscard`, and hands the hook
  * `showConfig` + the refs; the hook writes them (guardDirty sync) each render.
  */
-export function useConfigDraft<D, B>(params: {
+export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
   tripId: string | undefined;
   gameId: string | null | undefined;
   view: DraftView;
@@ -205,11 +206,33 @@ export function useConfigDraft<D, B>(params: {
     discardRef.current = handleCancel;
   });
 
+  /**
+   * The Setup/Scoring toggle CHANGED during this editing session — so a landed
+   * save must NOT close the panel.
+   *
+   * ── Why this one field is the exception ─────────────────────────────────────
+   * Every other setting's result is visible right where you changed it: rename
+   * the game and the header updates, set a course and the row fills in. Closing
+   * on save is a fine default for those. The toggle is the only field whose
+   * effect is OUTSIDE the panel — it decides which surface the game view renders
+   * (setup placeholder vs the live board), and the panel is covering that
+   * surface. So committing it used to eject you, and you had to re-enter to keep
+   * editing. Reported as "you have to click save to leave and then come back in
+   * to edit something", which was literal: Save was how you left.
+   *
+   * The comparison itself — against the frozen baseline rather than the live
+   * server value, and "changed" rather than "is set" — lives in
+   * `scoringToggleChanged`, which is where both of those choices are explained
+   * and where they are unit-tested.
+   */
+  const stayOpenOnSave = scoringToggleChanged(configDraft, baseline?.draft);
+
   return {
     dirty,
     baseline,
     justSaved,
     saveError,
+    stayOpenOnSave,
     /** Exposed so a view's course-staging handlers can surface a course-load failure into
      *  the SAME error slot the Save uses (rack / stroke / match). */
     setSaveError,

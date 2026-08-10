@@ -66,6 +66,34 @@ export interface DraftMatchConfig {
 }
 
 /**
+ * Did the Setup/Scoring toggle CHANGE between the baseline and the draft?
+ *
+ * Used by `useConfigDraft` to decide whether a landed save may close the settings
+ * panel. It may not when this is true: the toggle is the ONE field whose effect is
+ * outside the panel — it decides which surface the game view renders, and the
+ * panel is covering that surface — so committing it used to eject you, and you had
+ * to re-enter to keep editing.
+ *
+ * **Changed, not set.** Flip the toggle and flip it back and this is false, so that
+ * save closes like any other. A truthiness test (`draft.scoringEnabled`) would keep
+ * the panel open for every save on an already-live game, which is most of them.
+ *
+ * **Against the BASELINE, not the live server value.** The baseline is what Save
+ * commits against (it is the optimistic-concurrency base) and it is frozen on the
+ * `anyTouched` transition, so the ~20s config poll cannot move it mid-edit. Reading
+ * the live server flag would let a poll change this answer underneath the user
+ * between their tap and their Save.
+ *
+ * A `null` baseline means nothing is committable yet, so nothing has changed.
+ */
+export function scoringToggleChanged(
+  draft: Pick<BaseConfigDraft, "scoringEnabled">,
+  baseline: Pick<BaseConfigDraft, "scoringEnabled"> | null | undefined,
+): boolean {
+  return !!baseline && draft.scoringEnabled !== baseline.scoringEnabled;
+}
+
+/**
  * The COMMON base every format's draft shares (P2 §8: three variants over one base,
  * not one shape). These are the format-agnostic settings — identity, rules, the
  * points pool, delegates, the visibility flag, and non-golf's structure label. Each

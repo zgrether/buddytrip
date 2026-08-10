@@ -542,6 +542,7 @@ export function StrokeGameView() {
   const {
     dirty, saveError, setSaveError, saving,
     handleSave: handleSaveConfig,
+    stayOpenOnSave,
   } = useConfigDraft<StrokeConfigDraft, typeof draftBundle>({
     tripId, gameId: activeGameId, view: "stroke", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -1124,6 +1125,7 @@ export function StrokeGameView() {
               onSave={handleSaveConfig}
               onDiscard={confirmDiscard}
               onLeave={leave}
+              stayOpenOnSave={stayOpenOnSave}
               saveDisabledReason={distSaveBlock}
             />
           }

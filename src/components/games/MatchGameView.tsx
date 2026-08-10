@@ -1260,6 +1260,7 @@ export function MatchGameView() {
   const {
     dirty, saveError, setSaveError, saving,
     handleSave,
+    stayOpenOnSave,
   } = useConfigDraft<ConfigDraft, SettingsDraftBundle | DraftMatch[]>({
     tripId, gameId, view: "match", canEdit,
     showConfig: cfgOpen, dirtyRef, discardRef,
@@ -2179,6 +2180,7 @@ export function MatchGameView() {
                 onSave={handleSave}
                 onDiscard={confirmDiscard}
                 onLeave={leave}
+                stayOpenOnSave={stayOpenOnSave}
               />
             }
           />
