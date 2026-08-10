@@ -380,6 +380,7 @@ export function NonGolfGameView() {
   // the overlay refs) are passed in.
   const {
     dirty, saveError, saving, handleSave: handleSaveConfig,
+    stayOpenOnSave,
   } = useConfigDraft<NonGolfConfigDraft, typeof draftBundle>({
     tripId, gameId: urlGameId, view: "nongolf", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -538,6 +539,7 @@ export function NonGolfGameView() {
             onSave={handleSaveConfig}
             onDiscard={confirmDiscard}
             onLeave={leave}
+            stayOpenOnSave={stayOpenOnSave}
             saveDisabledReason={distSaveBlock}
           />
         }
