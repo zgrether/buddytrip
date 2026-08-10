@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
-import { ChevronLeft, Users, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Users, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { allUnitsComplete } from "@/lib/gameCompleteness";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
-import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
+import { useInGamePanel, useGameSurfaceChrome, type GameChromeData } from "@/components/games/GameChrome";
+import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -811,8 +812,8 @@ export function RackGameView() {
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
   const rackGroupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
-  usePublishGameChrome(
-    inPanel
+  const standaloneChrome = useGameSurfaceChrome(
+    gameQ.data || gid
       ? {
           // The GAME's name at every depth; the group rides along as a suffix so
           // the row can truncate the name and keep "— Group 3" whole. It used to
@@ -866,7 +867,7 @@ export function RackGameView() {
 
   if (!hasCompetition) {
     return (
-      <Shell hideHeader={inPanel} onBack={() => router.back()} title="Rack-n-Stack">
+      <Shell chrome={standaloneChrome} onBack={() => router.back()} title="Rack-n-Stack">
         <div className="flex flex-col items-center text-center" style={{ paddingTop: 72 }}>
           <div className="flex items-center justify-center" style={{ width: 56, height: 56, borderRadius: 16, background: "var(--color-bt-card-raised)", marginBottom: 16 }}>
             <Users size={24} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -1122,13 +1123,13 @@ export function RackGameView() {
   if (!gid || needsSetup) {
     if (!canEdit) {
       return (
-        <Shell hideHeader={inPanel} onBack={() => router.back()} title="Rack-n-Stack">
+        <Shell chrome={standaloneChrome} onBack={() => router.back()} title="Rack-n-Stack">
           <SetupPlaceholder tripId={tripId} game={gameQ.data as unknown as GameRow | undefined} />
         </Shell>
       );
     }
     return (
-      <Shell hideHeader={inPanel} onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
+      <Shell chrome={standaloneChrome} onBack={() => router.back()} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
         <div className="w-full px-4 py-5">
           <div className="flex flex-col gap-3.5">
             <div>
@@ -1162,16 +1163,9 @@ export function RackGameView() {
   if (!scoringEnabled) {
     return (
       <Shell
-        hideHeader={inPanel}
+        chrome={standaloneChrome}
         onBack={() => router.back()}
         title="Rack-n-Stack"
-        right={
-          canEdit ? (
-            <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-          ) : undefined
-        }
       >
         <SetupPlaceholder
           tripId={tripId}
@@ -1207,23 +1201,10 @@ export function RackGameView() {
     // Title-bar (back + name/status + gear) then the GamePageHeader below — the same
     // header pattern the match/stroke game pages use.
     <Shell
-      hideHeader={inPanel}
+      chrome={standaloneChrome}
       onBack={() => router.back()}
       title="Rack-n-Stack"
       subtitle={rackSubtitle}
-      // `canEdit` alone — the `&& !final` is gone. A completed game's settings
-      // stay reachable (#882), and this is the STANDALONE-route header, which
-      // #882 missed: it fixed the gear published to `GameChrome` for the panel
-      // path and left the second gear each view renders for its own route.
-      // Rack was disagreeing with itself — the setup screen's gear (above) never
-      // had the gate, this one did.
-      right={
-        canEdit ? (
-          <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-            <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
-        ) : undefined
-      }
     >
       {/* Standard game header — row 1 (the collapsed cup hero, team names +
           cup totals) + row 2 (this game's projected/final per-team
@@ -1296,23 +1277,32 @@ export function RackGameView() {
 // #550: as a panel the app bar carries back/title/gear, so the header is
 // suppressed and the shell fills the panel height (no forced 100vh). Standalone
 // route (no bar) keeps the header.
-function Shell({ title, subtitle, onBack, right, children, hideHeader = false }: { title: string; subtitle?: string; onBack: () => void; right?: React.ReactNode; children: React.ReactNode; hideHeader?: boolean }) {
+/**
+ * Rack's page frame. The header itself is the SHARED `GameStandaloneHeader` —
+ * this used to inline its own copy of markup that stroke, match and non-golf
+ * each had their own copy of too.
+ *
+ * `chrome` replaces the old `right` slot: the actions are whatever this surface
+ * published, so the route header and the panel row cannot show different ones
+ * (that was divergence #12). Null chrome → panel mode, and the panel's own
+ * `GameActionRow` is already drawing them, so no header here.
+ */
+function Shell({
+  title, subtitle, onBack, children, chrome,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack: () => void;
+  children: React.ReactNode;
+  chrome: GameChromeData | null;
+}) {
   return (
     // min-height (not h-full): the scoreboard content isn't in its own scroll
     // container, so it must GROW and let the panel scroll (h-full capped it and
     // clipped the bottom rows). Fills the panel when short; grows when tall.
-    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: hideHeader ? "100%" : "100vh" }}>
-      {!hideHeader && (
-        <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-          <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-            <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-          </button>
-          <div className="min-w-0 text-center">
-            <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
-            {subtitle && <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>}
-          </div>
-          <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
-        </header>
+    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: chrome ? "100vh" : "100%" }}>
+      {chrome && (
+        <GameStandaloneHeader title={title} subtitle={subtitle} onBack={onBack} chrome={chrome} />
       )}
       <div className="flex-1">{children}</div>
     </div>

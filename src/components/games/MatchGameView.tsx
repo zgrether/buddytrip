@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
-import { ChevronLeft, ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
+import { ChevronRight, Plus, X, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert, GripVertical } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -35,7 +35,8 @@ import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
-import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
+import { useInGamePanel, useGameSurfaceChrome } from "@/components/games/GameChrome";
+import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MatchOutcomeEntryView } from "@/components/games/MatchOutcomeEntryView";
@@ -1490,8 +1491,8 @@ export function MatchGameView() {
   // already in the strip directly below, so the swap gave up context to repeat
   // something on screen.
   const chromeTitleSuffix = screen === "score" && selectedGroup ? selectedGroup.label : undefined;
-  usePublishGameChrome(
-    inPanel
+  const standaloneChrome = useGameSurfaceChrome(
+    gameQ.data || !gameId
       ? {
           title: chromeTitle,
           titleSuffix: chromeTitleSuffix,
@@ -1706,24 +1707,14 @@ export function MatchGameView() {
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: inPanel ? "100%" : "100vh" }}>
       {/* #550: as a panel the app bar carries back/title/gear (published above), so
           the view's own header is suppressed. Standalone route (no bar) keeps it. */}
-      {!inPanel && (
-        <SetupHeader
+      {standaloneChrome && (
+        <GameStandaloneHeader
           title={headerTitle}
           subtitle={sided ? "Doubles · 2v2 Match Play" : "Singles · 1v1 Match Play"}
           // Settings back routes through history.back() so it's the SAME action as the
           // browser/OS back — both return to the game page.
           onBack={cfgOpen ? closeConfig : goBack}
-          // No `status !== "complete"` — a completed game's settings stay
-          // reachable (#882). This is the STANDALONE-route header, which #882
-          // missed: it fixed the gear published to `GameChrome` for the panel
-          // path and left the second gear each view renders for its own route.
-          right={
-            !cfgOpen && (screen === "overview" || screen === "setup") && canEdit ? (
-              <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-                <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-            ) : null
-          }
+          chrome={standaloneChrome}
         />
       )}
 
@@ -2447,40 +2438,6 @@ function ZoneHeader({ children }: { children: React.ReactNode }) {
       </span>
       <span className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
     </div>
-  );
-}
-
-function SetupHeader({
-  title,
-  subtitle,
-  onBack,
-  right,
-}: {
-  title: string;
-  subtitle: string;
-  onBack: () => void;
-  right?: React.ReactNode;
-}) {
-  return (
-    <header
-      className="flex shrink-0 items-center justify-between"
-      style={{
-        height: 52,
-        padding: "0 8px",
-        background: "var(--color-bt-nav-bg)",
-        backdropFilter: "blur(14px)",
-        borderBottom: "1px solid var(--color-bt-subtle-border)",
-      }}
-    >
-      <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-        <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-      </button>
-      <div className="min-w-0 text-center">
-        <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
-        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
-      </div>
-      <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
-    </header>
   );
 }
 

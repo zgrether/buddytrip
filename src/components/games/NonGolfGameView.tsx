@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import {useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
@@ -15,7 +15,8 @@ import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
-import { useInGamePanel, usePublishGameChrome } from "@/components/games/GameChrome";
+import { useInGamePanel, useGameSurfaceChrome } from "@/components/games/GameChrome";
+import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useConfigSync } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
@@ -409,8 +410,8 @@ export function NonGolfGameView() {
   // instead of a second header. Non-golf has no focused entry surface (posted
   // results), so the bottom nav stays. Standalone route keeps its own header.
   const inPanel = useInGamePanel();
-  usePublishGameChrome(
-    inPanel
+  const standaloneChrome = useGameSurfaceChrome(
+    game
       ? {
           title: (game?.name as string | undefined)?.trim() || typeName,
           onSettings: game && !showConfig && canEdit ? openConfig : undefined,
@@ -434,22 +435,18 @@ export function NonGolfGameView() {
 
   // As a panel the app bar carries back/title/gear (published above) → no own
   // header. Standalone route (no bar) keeps it.
-  const header = (title: string) => inPanel ? null : (
-    <header className="flex shrink-0 items-center justify-between" style={{ height: 52, padding: "0 8px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-      <button onClick={() => router.back()} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
-        <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-      </button>
-      <div className="min-w-0 text-center">
-        <div className="truncate" style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
-        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{typeName}</div>
-      </div>
-      {canEdit ? (
-        <button onClick={openConfig} aria-label="Settings" className="flex h-9 w-9 items-center justify-center" data-testid="game-settings-gear">
-          <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-      ) : <div className="h-9 w-9" />}
-    </header>
-  );
+  // The SHARED route header — actions come from the same chrome object the panel
+  // publishes, so the two hosts cannot show different ones. Null chrome = panel
+  // mode, where `GameActionRow` is already drawing them.
+  const header = (title: string) =>
+    standaloneChrome ? (
+      <GameStandaloneHeader
+        title={title}
+        subtitle={typeName}
+        onBack={() => router.back()}
+        chrome={standaloneChrome}
+      />
+    ) : null;
 
   // ── The ONE settings page — reached via the corner gear in BOTH modes. ──
   // Returned DIRECTLY (not in a `fixed inset-0` wrapper): it's a full-page view,
