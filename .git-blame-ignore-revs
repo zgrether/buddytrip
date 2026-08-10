@@ -1,0 +1,10 @@
+# Commits to skip when reading history with `git blame`.
+#
+# Enable once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only ever add commits that change NO content. Each entry below is verifiable:
+# `git show --ignore-cr-at-eol <sha>` produces an empty diff.
+
+# Renormalise the tree to LF (#888) — line endings only, 6 files.
+559b4e08b0fa9ed4192c68d5e8aac7b5bbae7b15
