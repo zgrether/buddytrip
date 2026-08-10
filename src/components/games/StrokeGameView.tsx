@@ -1272,8 +1272,6 @@ export function StrokeGameView() {
           status={gameQ.data?.status ?? null}
           correctionsOpen={strokeCorrectionsOpen}
           allComplete={allGroupsComplete}
-          finalizeLabel="Save results"
-          finalizePendingLabel="Saving results…"
           finalizePending={finalizePending}
           correctPending={correctPending}
           onFinalize={handleFinish}

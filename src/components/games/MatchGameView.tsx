@@ -3002,8 +3002,6 @@ function Overview({
         status={status}
         correctionsOpen={correctionsOpen}
         allComplete={allOver}
-        finalizeLabel="Save results"
-        finalizePendingLabel="Saving results…"
         finalizePending={finishing}
         correctPending={correctingPending}
         onFinalize={onFinish}

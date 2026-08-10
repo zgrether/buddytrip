@@ -1240,8 +1240,6 @@ export function RackGameView() {
         status={gameQ.data?.status ?? null}
         correctionsOpen={correctionsOpen}
         allComplete={allThru18}
-        finalizeLabel="Save results"
-        finalizePendingLabel="Saving results…"
         finalizePending={finalizePending}
         correctPending={correctPending}
         onFinalize={finish}
