@@ -46,7 +46,7 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
-import { gameLockState } from "@/lib/gameLifecycle";
+import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
 import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
@@ -554,7 +554,7 @@ export function MatchGameView() {
   // `correcting` (owner re-opened) → editable again until re-locked.
   const correctionsOpen = !!(gameQ.data as { corrections_open?: boolean } | undefined)?.corrections_open;
   // Shared predicate, same inputs, same result — match's behaviour is unchanged.
-  const { isLocked: locked, isCorrecting: correcting } = gameLockState({
+  const { isFinal: final, isLocked: locked, isCorrecting: correcting } = gameLockState({
     status,
     correctionsOpen,
   });
@@ -1036,7 +1036,7 @@ export function MatchGameView() {
   // Active/complete → the flat overview; pending → setup (owner) or wait (member).
   const derived: Screen = !gameId
     ? "new"
-    : status === "complete" || status === "active" || scoringEnabled
+    : !isPreScoring({ status, scoringEnabled })
       ? "overview"
       : !canEdit
         ? "member-wait"
@@ -1737,7 +1737,7 @@ export function MatchGameView() {
           projection={{
             perTeam: projectionPerTeam,
             gameName: (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "Singles Match Play"),
-            final: status === "complete",
+            final,
           }}
         />
       )}
@@ -2323,7 +2323,7 @@ export function MatchGameView() {
           groups={groups}
           myId={me?.id}
           published={published}
-          complete={status === "complete"}
+          complete={final}
           canEdit={canEdit}
           decidedFor={decidedFor}
           glorious={glorious}
