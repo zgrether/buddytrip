@@ -695,14 +695,32 @@ export const matchesRouter = router({
       // A2-core: the mode toggle OWNS status — Setup→Scoring sets status:'active'
       // (no longer "first score owns Live"), gated by the server readiness guard.
       await assertGameReady(ctx.supabase, input.gameId);
-      const { error } = await ctx.supabase
+      // #889 — the SAME complete-preserving guard as `games.enableScoring`, for the
+      // same reason. This procedure carried a character-identical unconditional
+      // write, so fixing only the one the issue named would have left the second
+      // instance of one defect: exactly the divergence pattern (CLAUDE.md #24) that
+      // produced the bug in the first place. A complete game matches zero rows and
+      // all three go-live signals stay untouched together.
+      const { error, count } = await ctx.supabase
         .from("games")
-        .update({ pairings_published_at: new Date().toISOString(), scoring_enabled: true, status: "active" })
-        .eq("id", input.gameId);
+        .update(
+          { pairings_published_at: new Date().toISOString(), scoring_enabled: true, status: "active" },
+          { count: "exact" },
+        )
+        .eq("id", input.gameId)
+        .neq("status", "complete");
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to enable scoring: ${error.message}`,
+        });
+      }
+      // `assertGameInTrip` + `assertGameReady` above already proved existence and
+      // scope, so zero rows means the game is complete.
+      if (count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This game is finished. Reopen it for corrections instead of switching it back to scoring.",
         });
       }
       await ctx.supabase
