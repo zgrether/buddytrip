@@ -51,8 +51,9 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
+import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { useGameFinalize } from "@/hooks/useGameFinalize";
 
 const RACK = "gtt_rack_n_stack";
 
@@ -178,16 +179,12 @@ export function RackGameView() {
   );
 
   const createGame = trpc.games.create.useMutation();
-  const applyCourse = trpc.games.applyCourse.useMutation();
-  const finishGame = trpc.games.finish.useMutation();
-  // #7 correction path (owner/co-admin/delegate — server-gated by
+  const applyCourse = trpc.games.applyCourse.useMutation();  // #7 correction path (owner/co-admin/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
   // Shared with the other three formats (CLAUDE.md #24) — including the
   // optimistic flip that stops the CTA waiting on a round trip for a boolean
   // whose value is already known. See `useOpenCorrection`.
-  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(tripId, gid, competitionId);
-  const markLocked = useMarkGameLocked(tripId, gid);
-
+  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(tripId, gid, competitionId);
   // ── Names / teams ────────────────────────────────────────────────────
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -634,63 +631,15 @@ export function RackGameView() {
       );
       return;
     }
-    // #776 PREREQUISITE: this await was bare. `games.finish` is about to start
-    // THROWING when its results write fails (today it swallows the failure and
-    // marks the game complete anyway), and without a catch here a rejection
-    // became an unhandled promise rejection: the user saw nothing, and the
-    // invalidations below silently never ran. Making finish throw while this
-    // view couldn't display the throw would have produced exactly the silent
-    // failure #776 exists to remove. Matches `handleCorrect` directly below,
-    // and stroke/match, which already wrap their finish calls.
-    try {
-      await finishGame.mutateAsync({ tripId, gameId: gid });
-      // Record the lock in the cache BEFORE the panel closes — the symmetric half
-      // of `useOpenCorrection`'s optimistic flip. Without it the last settled
-      // value here stays the optimistic `corrections_open: true`, and tapping
-      // straight back in paints "Save scoring changes" on a locked game.
-      markLocked();
-      // NOT awaited. The comment below already says the board invalidations are
-      // "deliberately not awaited" and gives the reason — this one was, and the
-      // same reason applies to it more strongly: `games.getById` feeds THIS
-      // panel, which `exitToBoard()` is about to close. Awaiting it held the
-      // close on a refetch whose result nothing would render, and (per
-      // `invalidateCancelsRefetch.test.ts`) that refetch was frequently cancelled
-      // and restarted by the realtime + config-hash waves the same write triggers
-      // — so the wait was for a round trip that got thrown away.
-      //
-      // Invalidating is still correct and still happens: it marks the entry
-      // stale, so re-opening the game re-reads it. Nothing is left fresh-but-wrong.
-      void utils.games.getById.invalidate({ tripId, gameId: gid });
-      // #6: finalize changes the leaderboard — invalidate it so the board reflects
-      // the result IMMEDIATELY (no realtime sub, only a 30s poll), instead of only
-      // after leave-and-return ("showed 4 to 2 only after I left and came back").
-      if (competitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        utils.games.listByTrip.invalidate({ tripId });
-        // The Live face re-seeds competitions.leaderboard FROM faceBootstrap on
-        // mount (setData), which marks it fresh and clobbers the invalidate above
-        // with the bootstrap's cached value — so invalidate the bootstrap too, or
-        // a re-locked correction reads stale until the 30s poll.
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
-      // Finalize is a terminal act: the result now lives on the board, not here.
-      // Fired AFTER the invalidations above and deliberately not awaited with
-      // them — the board is still mounted underneath (CLAUDE.md #12), so it
-      // repaints instantly from its warm cache and the just-invalidated queries
-      // refetch behind that paint. `back()` POPS the `?game=` entry rather than
-      // pushing a second one; see the hook for why that distinction is #550's.
-      exitToBoard();
-    } catch {
-      // Swallowed HERE on purpose, and only because the toast is now real: the
-      // global `mutationCache.onError` (lib/providers.tsx) surfaces every
-      // server-rejected mutation, not just connectivity ones. Until that fix
-      // this comment was FALSE — the global handler explicitly skipped server
-      // rejections and this block showed nothing, so a failed finalize looked
-      // exactly like a success that didn't navigate.
-      //
-      // Staying put is the right recovery: no silent advance, and the CTA stays
-      // tappable because the recompute is idempotent.
-    }
+    // The whole aftermath — optimistic lock, self-refresh, the three board
+    // invalidations, and the exit — lives in `useGameFinalize`. Rack, stroke,
+    // match and non-golf each hand-wrote it, and non-golf was missing a step.
+    //
+    // #776's catch requirement is satisfied there: the hook swallows a
+    // rejection and returns false, so a `games.finish` that throws can never
+    // become an unhandled rejection that silently skips the invalidations. The
+    // global `mutationCache.onError` still surfaces it to the user.
+    await finalize();
   }
 
   // (#7's inline `handleCorrect` — reopen a posted rack so foursome cards become
@@ -811,6 +760,15 @@ export function RackGameView() {
   // its own Shell/ScoreEntryView headers below.
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
+  const { finalize, isPending: finalizePending } = useGameFinalize({
+    tripId,
+    gameId: gid,
+    competitionId,
+    // Rack invalidates its own read rather than refetching it: the panel this
+    // feeds is about to close, so marking it stale is enough.
+    refreshSelf: () => void utils.games.getById.invalidate({ tripId: tripId!, gameId: gid! }),
+    onExit: exitToBoard,
+  });
   const rackGroupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
   const standaloneChrome = useGameSurfaceChrome(
     gameQ.data || gid
@@ -1265,7 +1223,7 @@ export function RackGameView() {
         allComplete={allThru18}
         finalizeLabel="Save results"
         finalizePendingLabel="Saving results…"
-        finalizePending={finishGame.isPending}
+        finalizePending={finalizePending}
         correctPending={correctPending}
         onFinalize={finish}
         onCorrect={handleCorrect}

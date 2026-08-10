@@ -51,8 +51,9 @@ import { unconfirmedCount, type Participant, type ScoreValues } from "@/componen
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
+import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 
 const STROKE_PLAY = "gtt_stroke_play";
@@ -585,10 +586,6 @@ export function StrokeGameView() {
   // server rejections as well as connectivity failures. That claim was untrue
   // when first written: the handler skipped server rejections, so "loud +
   // retryable" was in fact silent + retryable.
-  const finishGame = trpc.games.finish.useMutation({
-    retry: 4,
-    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
-  });
   // #769: reopen a finalized stroke round for correction (scores become editable
   // again until re-locked via handleFinish). Stroke shipped its finalize without
   // this, so `status='complete'` was a DEAD END — `scores.upsertEntry` refuses a
@@ -602,9 +599,7 @@ export function StrokeGameView() {
     tripId,
     game?.id,
     gameCompetitionId
-  );
-  const markLocked = useMarkGameLocked(tripId, game?.id);
-
+  );
   // Reflect scores from OTHER devices: reconcile server truth into the view each
   // time the poll returns changed data, merged so the active enterer's unsaved
   // cells win (game-state sync). This also handles the initial load — an empty
@@ -812,6 +807,14 @@ export function StrokeGameView() {
   // drill-down that covers the bar. Standalone route keeps its headers.
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompetitionId);
+  const { finalize, isPending: finalizePending } = useGameFinalize({
+    tripId,
+    gameId: gameQ.data?.id as string | undefined,
+    competitionId: gameCompetitionId,
+    refreshSelf: () =>
+      void utils.games.getById.invalidate({ tripId: tripId!, gameId: gameQ.data?.id as string }),
+    onExit: exitToBoard,
+  });
   const standaloneChrome = useGameSurfaceChrome(
     gameQ.data
       ? {
@@ -873,48 +876,10 @@ export function StrokeGameView() {
       );
       return;
     }
-    try {
-      await finishGame.mutateAsync({ tripId, gameId: game.id });
-      // Stroke previously invalidated NOTHING here — it just swapped to a local
-      // summary screen, so the scoreboard behind it kept rendering the
-      // pre-finalize `gameQ` row and the cup board stayed stale. With the summary
-      // gone the view stays put, which makes these loud by their absence: without
-      // them the "Save results" button would still be sitting there after a
-      // successful finalize.
-      // The symmetric half of the optimistic correction flip — see rack's note.
-      markLocked();
-      // NOT awaited — see rack's note. This feeds the panel `exitToBoard()` is
-      // about to close, and the awaited refetch was routinely cancelled and
-      // restarted by the waves the same write triggers. Still invalidated, so a
-      // re-open re-reads it.
-      void utils.games.getById.invalidate({ tripId, gameId: game.id });
-      if (gameCompetitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-        utils.games.listByTrip.invalidate({ tripId });
-        // CLAUDE.md #10: the Live face re-seeds `competitions.leaderboard` FROM
-        // `faceBootstrap` on mount, which marks it fresh and silently undoes the
-        // child invalidate above. Invalidate the bootstrap or the board reads
-        // stale until the poll. Rack learned this the same way.
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
-      // Finalize is a terminal act: the result now lives on the board, not here.
-      // Fired AFTER the invalidations above and deliberately not awaited with
-      // them — the board is still mounted underneath (CLAUDE.md #12), so it
-      // repaints instantly from its warm cache and the just-invalidated queries
-      // refetch behind that paint. `back()` POPS the `?game=` entry rather than
-      // pushing a second one; see the hook for why that distinction is #550's.
-      exitToBoard();
-    } catch {
-      // Swallowed HERE on purpose, and only because the toast is now real: the
-      // global `mutationCache.onError` (lib/providers.tsx) surfaces every
-      // server-rejected mutation, not just connectivity ones. Until that fix
-      // this comment was FALSE — the global handler explicitly skipped server
-      // rejections and this block showed nothing, so a failed finalize looked
-      // exactly like a success that didn't navigate.
-      //
-      // Staying put is the right recovery: no silent advance, and the CTA stays
-      // tappable because the recompute is idempotent.
-    }
+    // The aftermath is shared — see useGameFinalize. Stroke once invalidated
+    // NOTHING here (the board stayed stale until leave-and-return); that fix
+    // and the three others now live in one place.
+    await finalize();
   }
 
   // (#769's `handleCorrect` — "mirroring rack's exactly" — is now literally the
@@ -1295,7 +1260,7 @@ export function StrokeGameView() {
           allComplete={allGroupsComplete}
           finalizeLabel="Save results"
           finalizePendingLabel="Saving results…"
-          finalizePending={finishGame.isPending}
+          finalizePending={finalizePending}
           correctPending={correctPending}
           onFinalize={handleFinish}
           onCorrect={handleCorrect}
