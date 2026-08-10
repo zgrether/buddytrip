@@ -47,8 +47,9 @@ import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
-import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
+import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { ChecklistRow, type ChecklistRowState } from "@/components/games/ChecklistRow";
@@ -442,19 +443,13 @@ export function MatchGameView() {
   // rejections as well as connectivity failures. That claim was untrue when
   // first written: the handler skipped server rejections, so "loud" was silent.
   // Score writes go through useScoreSaver (above).
-  const finishGame = trpc.games.finish.useMutation({
-    retry: 4,
-    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 8000),
-  });
   // #7 correction path: reopen score entry on a posted game (owner/co-admin/
   // delegate — server-gated by requireGameRunAction). "Re-lock" is handleFinish.
   // Shared with the other three formats (CLAUDE.md #24). Match had already
   // drifted — it used `gameQ.refetch()` where the other three used
   // `utils.games.getById.invalidate()` — which is the divergence-by-coincidence
   // #24 describes, in a handler nobody had reason to look at twice.
-  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
-  const markLocked = useMarkGameLocked(tripId, gameId);
-
+  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of crew.data ?? []) m.set(c.user_id, c.displayName ?? c.user?.name ?? "Player");
@@ -1344,59 +1339,11 @@ export function MatchGameView() {
       );
       return;
     }
-    try {
-      await finishGame.mutateAsync({ tripId, gameId });
-      // The symmetric half of the optimistic correction flip — see the hook.
-      markLocked();
-      // NOT awaited — and this was the WORST of the four, because it awaited
-      // THREE refetches rather than one. All three feed this panel, which
-      // `exitToBoard()` below is about to close, so the close was gated on data
-      // nothing would render; and `Promise.all` means it waited for the slowest.
-      // Measured as the difference between a match-play save (9 requests, ~5
-      // sequential waves) and non-golf's (which never awaited any of this).
-      //
-      // `refetch()` rather than `invalidate()` is kept — it is what this view
-      // already used, and swapping it would be an unrelated change. Dropping the
-      // await does not weaken it: the board's own queries are invalidated below
-      // and the board is mounted, so what the user returns to is refreshed.
-      void Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
-      // #6: finalize changes the leaderboard — invalidate it so the board
-      // reflects the result IMMEDIATELY. The board has no realtime sub (only a
-      // 30s poll), so without this it updates only on leave-and-return.
-      if (competitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        utils.games.listByTrip.invalidate({ tripId });
-        // The Live face re-seeds competitions.leaderboard FROM faceBootstrap on
-        // mount (setData), which marks it fresh and clobbers the invalidate
-        // above with the bootstrap's cached value — so invalidate the bootstrap
-        // too, or a re-locked correction reads stale until the 30s poll.
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
-      // #550 Task 4 left this navigating NOWHERE, and the reason is still load
-      // bearing: the old `go("overview")` PUSHED another overview onto the nav
-      // stack and produced a two-backs-to-leave bug. `exitToBoard` is the
-      // resolution of that, not a reversal of it — in a panel it POPS the
-      // `?game=` entry (the true inverse of opening the panel) instead of
-      // pushing a second one, and on a standalone route it navigates explicitly
-      // because there is nothing to pop.
-      // Finalize is a terminal act: the result now lives on the board, not here.
-      // Fired AFTER the invalidations above and deliberately not awaited with
-      // them — the board is still mounted underneath (CLAUDE.md #12), so it
-      // repaints instantly from its warm cache and the just-invalidated queries
-      // refetch behind that paint. `back()` POPS the `?game=` entry rather than
-      // pushing a second one; see the hook for why that distinction is #550's.
-      exitToBoard();
-    } catch {
-      // Swallowed HERE on purpose, and only because the toast is now real: the
-      // global `mutationCache.onError` (lib/providers.tsx) surfaces every
-      // server-rejected mutation, not just connectivity ones. Until that fix
-      // this comment was FALSE — the global handler explicitly skipped server
-      // rejections and this block showed nothing, so a failed finalize looked
-      // exactly like a success that didn't navigate.
-      //
-      // Staying put is the right recovery: no silent advance, and the CTA stays
-      // tappable because the recompute is idempotent.
-    }
+    // Shared aftermath — see useGameFinalize. Match kept THREE awaited
+    // refetches here where the others invalidated one; the hook keeps the
+    // refetch (it is what this view reads) but drops the await, for the reason
+    // rack documented: the panel it feeds is about to close.
+    await finalize();
   }
 
   // (Phase 2B.3's standalone `handleDisable` — a direct games.disableScoring call —
@@ -1478,6 +1425,16 @@ export function MatchGameView() {
   // route (no provider) `inPanel` is false → we keep our own headers below.
   const inPanel = useInGamePanel();
   const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
+  const { finalize, isPending: finishing } = useGameFinalize({
+    tripId,
+    gameId,
+    competitionId,
+    // Match REFETCHES its three reads rather than invalidating one — kept as-is
+    // (it is what this view already did; swapping it would be an unrelated
+    // change). The hook is what stops it being awaited.
+    refreshSelf: () => void Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]),
+    onExit: exitToBoard,
+  });
   // The GAME's name at every depth — the anchor. The DRAFT's name, not the
   // server's: GameIdentityHeader renders `configDraft.name`, so reading
   // `gameQ.data.name` here put two different names for the same game on screen at
@@ -2320,7 +2277,7 @@ export function MatchGameView() {
           glorious={glorious}
           holeCount={scUnits.length}
           onFinish={handleFinish}
-          finishing={finishGame.isPending}
+          finishing={finishing}
           correcting={correcting}
           status={status}
           correctionsOpen={correctionsOpen}

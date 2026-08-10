@@ -11,7 +11,8 @@ import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
 import { ScoringStateBanner } from "./ScoringStateBanner";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { useOpenCorrection, useMarkGameLocked } from "@/hooks/useGameCorrection";
+import { useOpenCorrection } from "@/hooks/useGameCorrection";
+import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
 
@@ -93,15 +94,26 @@ export function NonGolfScoreboard({
 
   const [error, setError] = useState<string | null>(null);
 
-  const finishGame = trpc.games.finish.useMutation();
   const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(
     tripId,
     game.id,
     competitionId,
     setError
   );
-  const markLocked = useMarkGameLocked(tripId, game.id);
-  const busy = finishGame.isPending;
+  const { finalize, isPending: busy } = useGameFinalize({
+    tripId,
+    gameId: game.id,
+    competitionId,
+    // Non-golf had NO self-refresh: it relied on the optimistic `markLocked` and
+    // never revalidated its own row. Added so all four agree — invisible in the
+    // happy path (the optimistic value is what the server returns), and the
+    // difference when they disagree.
+    refreshSelf: () => void utils.games.getById.invalidate({ tripId, gameId: game.id }),
+    onExit: onPosted,
+    // Non-golf shows the server's message INLINE beside the button that failed,
+    // rather than relying only on the global toast. Kept.
+    onError: (e) => setError(e instanceof Error ? e.message : "Failed to post"),
+  });
 
   /**
    * Editable = the role MAY edit AND the game's lifecycle allows it right now.
@@ -144,21 +156,12 @@ export function NonGolfScoreboard({
     // what gets posted is definitionally what was shown. It used to be rebuilt
     // here, which is a second place the win/tie→position mapping could drift.
     if (!placements) return;
-    try {
-      await finishGame.mutateAsync({ tripId, gameId: game.id, placements });
-      // The symmetric half of `useOpenCorrection`'s optimistic flip. `game` here
-      // is a prop, but it is read from the same `games.getById` entry one level
-      // up (`NonGolfGameView`), so this is the same cache and the same window.
-      markLocked();
-      utils.games.listByTrip.invalidate({ tripId });
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      // The Live face seeds its board from faceBootstrap — invalidate it so the
-      // posted result lands without a hard refresh (CLAUDE.md #10).
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      onPosted();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to post");
-    }
+    // The shared aftermath — optimistic lock, self-refresh, the three board
+    // invalidations, the exit. Non-golf's copy was the one missing a step
+    // (`games.getById` was never revalidated), which is the argument for it
+    // living in one place. `placements` is the only per-format input
+    // `games.finish` takes — the golf formats compute their result server-side.
+    await finalize(placements);
   }
 
   return (
