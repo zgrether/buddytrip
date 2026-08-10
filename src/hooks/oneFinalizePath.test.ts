@@ -71,6 +71,41 @@ describe("one finalize path", () => {
     ).toEqual([OWNER]);
   });
 
+  it("every game surface leaves through useExitToBoard", () => {
+    /**
+     * The guard above targets the mutation CALL, deliberately — it proves there
+     * is one finalize and one aftermath. It cannot prove that what each caller
+     * PASSES to that aftermath agrees, and #808 is exactly that gap:
+     * `useGameFinalize` takes `onExit` as a parameter, three formats passed
+     * `exitToBoard`, and non-golf passed a bare `router.back()` for two phases
+     * after the hook existed. A shared pipeline with a per-format argument is
+     * CLAUDE.md #24's first shape — inputs diverging under a shared output —
+     * and finalizing from a cold push-notification deep-link ejected you out of
+     * the app, because there was no `?game=` entry to pop.
+     *
+     * Scoped to the game SURFACES (the files publishing chrome), the same
+     * derivation `oneGameHeader.test.ts` uses, so a fifth format is in scope
+     * automatically rather than by being added to a list here.
+     */
+    const surfaces = ALL.filter((f) => {
+      const src = readFileSync(f, "utf8");
+      return src.includes("useGameSurfaceChrome") && !f.endsWith("GameChrome.tsx");
+    });
+    expect(surfaces.length, "the surface scan found nothing — did the hook get renamed?")
+      .toBeGreaterThanOrEqual(4);
+
+    const offenders = surfaces
+      .filter((f) => !readFileSync(f, "utf8").includes("useExitToBoard"))
+      .map((f) => f.split(/[\\/]/).pop()!);
+
+    expect(
+      offenders,
+      "Leave a finished game through `useExitToBoard`. A bare `router.back()` " +
+        "is only the inverse of a PANEL open; on a standalone route or a cold " +
+        "deep-link there is no entry to pop and it exits the app (#808).",
+    ).toEqual([]);
+  });
+
   it("the scan sees the owner (not passing vacuously)", () => {
     // A regex that stops matching would make the test above pass with an empty
     // list forever. Assert the one legitimate caller is actually found.

@@ -20,6 +20,7 @@ import { useInGamePanel, useGameSurfaceChrome } from "@/components/games/GameChr
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useConfigSync } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
@@ -90,6 +91,10 @@ export function NonGolfGameView() {
   const game = gameQ.data as unknown as GameRow | undefined;
   const competitionId = game?.competition_id ?? (compQ.data?.id as string | undefined) ?? null;
   const scoringModel = ((compQ.data?.scoring_model as ScoringModel | undefined) ?? "match_play") as ScoringModel;
+  // Where posting a result leaves you. The three golf formats adopted this in
+  // #806; non-golf kept a bare `router.back()` and so kept the cold-deep-link
+  // exposure the hook exists to close (#808).
+  const exitToBoard = useExitToBoard(tripId, competitionId);
 
   // Live standings. useRealtimeGame (below) covers this game's CONFIG; this
   // covers score/lifecycle events across the whole competition, which is what
@@ -650,7 +655,13 @@ export function NonGolfGameView() {
           onPick={setResultDraft}
           placements={draftPlacements}
           canEdit={canEdit}
-          onPosted={() => router.back()}
+          // #808 — was a bare `router.back()`. Correct from a panel, wrong
+          // everywhere else: on a standalone route or a cold deep-link from a
+          // push notification there is no `?game=` entry to pop, so `back()`
+          // went wherever the user came from — out of the app entirely. The
+          // shared hook branches on `useInGamePanel()` and gives the non-panel
+          // case an explicit destination.
+          onPosted={exitToBoard}
         />
       )}
     </div>

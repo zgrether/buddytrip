@@ -37,10 +37,21 @@ import { useInGamePanel } from "@/components/games/GameChrome";
  * That destination mirrors what every game view's `onDeleted` already does, so
  * "left the game" lands in one place regardless of why you left.
  *
- * **Note:** `NonGolfGameView` still calls bare `router.back()` and therefore still
- * has the standalone exposure described above. Left alone deliberately — it was
- * out of scope for the change that added this — and adopting this hook there is a
- * one-line swap.
+ * ── All four formats use this (#808 closed the last one) ────────────────────
+ * `NonGolfGameView` kept a bare `router.back()` for two more phases after this
+ * hook existed, with the standalone exposure above intact — finalizing a
+ * non-golf game reached from a push notification ejected you out of the app.
+ *
+ * Worth knowing why the machinery didn't catch it. Phase 3's `useGameFinalize`
+ * unified the finalize AFTERMATH (optimistic lock, self-refresh, the three board
+ * invalidations, the exit CALL) and `oneFinalizePath.test.ts` guards it — but
+ * that guard targets the `games.finish` MUTATION CALL, deliberately, so it
+ * proves there is one call site and one aftermath. It says nothing about what
+ * each caller PASSES to that aftermath. `onExit` was a parameter, and three
+ * formats passed `exitToBoard` while the fourth passed `router.back()` — a
+ * shared pipeline with a per-format argument, which is CLAUDE.md #24's first
+ * shape (inputs diverging under a shared output) wearing the hook's clothes.
+ * A guard on the call site cannot see it; only a guard on the argument can.
  */
 export function useExitToBoard(
   tripId: string | undefined,
