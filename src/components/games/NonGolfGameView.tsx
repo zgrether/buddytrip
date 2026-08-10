@@ -7,7 +7,8 @@ import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
-import { NonGolfConfigurationView } from "@/components/games/NonGolfConfigurationView";
+import { GameSettingsPage } from "@/components/games/GameSettingsPage";
+import { NonGolfTotalPointsRow, NonGolfSettingsRows } from "@/components/games/NonGolfSettingsRows";
 import { NonGolfScoreboard } from "@/components/games/NonGolfScoreboard";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
@@ -457,16 +458,15 @@ export function NonGolfGameView() {
   if (showConfig && canEdit && competitionId) {
     return (
       <>
-      <NonGolfConfigurationView
-        onBack={closeConfig}
+      <GameSettingsPage
+        surface="nongolf"
+        onClose={closeConfig}
         tripId={tripId}
         competitionId={competitionId}
         game={game}
-        scoringModel={scoringModel}
         canEdit={canEdit}
         isOwner={isOwner}
         canManageGame={canManageGame}
-        entityCount={teams.length || null}
         onChanged={() => void refreshGame()}
         onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
         // Scores wiped server-side → drop the local outcome the picker is
@@ -486,29 +486,50 @@ export function NonGolfGameView() {
           setTiedDraft(null);
         }}
         // Draft-then-save: the whole page is controlled off configDraft; Save commits.
-        draft={configDraft}
+        nameValue={configDraft.name}
         onNameChange={setNameDraft}
+        delegateValue={configDraft.delegates[0] ?? null}
+        onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
+        rulesValue={configDraft.rulesForToday}
         onRulesChange={setRulesDraft}
-        onDelegatesChange={setDelegatesDraft}
-        onFormatChange={setFormatDraft}
-        onPointsTotalChange={setPointsTotalDraft}
-        onPointsDistChange={setPointsDistDraft}
-        // The toggle reads the DRAFT; `staged` = draft ≠ the live server flag.
-        serverScoringEnabled={scoringEnabled}
-        // Was "configured" (non-null) — a 0-point game satisfied that. Now "nonzero",
-        // mirroring Match's C3 gate: a 0-point competition game can be scored end-to-end
-        // and finalized without moving the standings. `!competitionId ||` for shape-
-        // parity with the other three formats, though this view's settings panel only
-        // ever renders when competitionId is set (see the render gate above).
-        ready={!competitionId || pointsReady(configDraft.pointsTotal ?? 0)}
-        readyBlockedReason={
-          competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
-            ? "Set a point value before enabling scoring"
-            : null
+        totalPointsRow={
+          <NonGolfTotalPointsRow
+            scoringModel={scoringModel}
+            value={configDraft.pointsTotal}
+            canEdit={canEdit}
+            onChange={setPointsTotalDraft}
+          />
         }
-        onEnable={handleEnable}
-        onDisable={handleDisable}
-        saving={saving}
+        settingsRows={
+          <NonGolfSettingsRows
+            game={game}
+            scoringModel={scoringModel}
+            draft={configDraft}
+            canEdit={canEdit}
+            entityCount={teams.length || null}
+            onFormatChange={setFormatDraft}
+            onPointsTotalChange={setPointsTotalDraft}
+            onPointsDistChange={setPointsDistDraft}
+          />
+        }
+        // The toggle reads the DRAFT; `staged` = draft ≠ the live server flag.
+        // `ready` was "configured" (non-null) — a 0-point game satisfied that. Now
+        // "nonzero", mirroring Match's C3 gate: a 0-point competition game can be
+        // scored end-to-end and finalized without moving the standings.
+        // `!competitionId ||` for shape-parity with the other three formats, though
+        // this view's settings panel only ever renders when competitionId is set.
+        management={{
+          scoringEnabled: configDraft.scoringEnabled,
+          ready: !competitionId || pointsReady(configDraft.pointsTotal ?? 0),
+          blockedReason:
+            competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+              ? "Set a point value before enabling scoring"
+              : null,
+          onEnable: handleEnable,
+          onDisable: handleDisable,
+          pending: saving,
+          staged: configDraft.scoringEnabled !== scoringEnabled,
+        }}
         saveBar={
           <SettingsSaveBar
             dirty={dirty}

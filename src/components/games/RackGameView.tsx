@@ -26,7 +26,8 @@ import { StandardGrid } from "@/components/games/StandardGrid";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
-import { GameConfigurationView } from "@/components/games/GameConfigurationView";
+import { GameSettingsPage } from "@/components/games/GameSettingsPage";
+import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { configToRackDraft, rackDraftToPayload, rackDraftsEqual, type RackConfigDraft } from "@/lib/configDraft";
@@ -184,7 +185,7 @@ export function RackGameView() {
   // Shared with the other three formats (CLAUDE.md #24) — including the
   // optimistic flip that stops the CTA waiting on a round trip for a boolean
   // whose value is already known. See `useOpenCorrection`.
-  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(tripId, gid, competitionId);
+  const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(tripId, gid, competitionId);
   // ── Names / teams ────────────────────────────────────────────────────
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -998,10 +999,28 @@ export function RackGameView() {
         <HandicapList players={draftHandicapPlayers} holeCount={scUnits.length} strokeIndex={scIndex} onSetStrokes={onSetStrokes} raised />
       </ChecklistRow>
     );
+    // Shared by the two GAME MANAGEMENT slots. `GameSetupRows`' own "both" order is
+    // Course-then-Points, so the two are rendered as separate slots to get the
+    // canonical Total Points → Golf Course sequence. Course ACTIONS stage into the
+    // draft; points report up through the rack stepper.
+    const setupRowsProps = {
+      tripId: tripId!,
+      competitionId: competitionId ?? null,
+      game: draftGameRow,
+      canEdit,
+      locked: false,
+      onChanged: () => void refreshGame(),
+      onApplyFront: applyFrontToDraft,
+      onApplyBack: applyBackToDraft,
+      onRemoveBackNine: removeBackNineFromDraft,
+      onClearCourse: clearCourseInDraft,
+      courseBusy,
+    };
     return (
       <>
-        <GameConfigurationView
-          onBack={closeConfig}
+        <GameSettingsPage
+          surface="rack"
+          onClose={closeConfig}
           tripId={tripId!}
           competitionId={competitionId ?? null}
           game={draftGameRow}
@@ -1011,48 +1030,48 @@ export function RackGameView() {
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}
           onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-          leadingSettingsRows={groupingsRow}
-          extraRows={optionRows}
-          // Game Modifiers — an inline ModifierCards panel (rack's row went live in the
-          // matrix reconcile; edits the modifiers draft slice, committed on Save).
-          modifiersRow={modifiersInlineRow}
-          // Total-points: the DRAFT slot count is the per-slot divisor. New games default to
-          // 0 (item 2) — no roster-derived default, no auto-seed. Rack labels the derived
-          // readout "Points per Slot".
-          matchCount={draftSlotCount}
-          pointsRowTitle="Points per Slot"
-          // Draft-then-save controlled wiring:
-          serverScoringEnabled={scoringEnabled}
-          draftScoringEnabled={configDraft.scoringEnabled}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}
           onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
-          rulesValue={configDraft.rulesForToday}
-          onRulesChange={setRulesDraft}
-          onApplyFront={applyFrontToDraft}
-          onApplyBack={applyBackToDraft}
-          onRemoveBackNine={removeBackNineFromDraft}
-          onClearCourse={clearCourseInDraft}
-          courseBusy={courseBusy}
-          rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
+          // Total-points: the DRAFT slot count is the per-slot divisor. New games default to
+          // 0 (item 2) — no roster-derived default, no auto-seed. Rack labels the derived
+          // readout "Points per Slot".
+          totalPointsRow={
+            <GameSetupRows
+              {...setupRowsProps}
+              slot="config"
+              matchCount={draftSlotCount}
+              pointsTitle="Points per Slot"
+              rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
+            />
+          }
+          courseRow={<GameSetupRows {...setupRowsProps} slot="course" />}
           // Gate the Setup→Scoring toggle on a drafted cart AND (competition games only,
           // mirroring Match's C3 gate) a real point value — a 0-point competition game can
           // play a full round and finalize contributing nothing to the cup, invisibly, until
           // it's too late to fix. Standalone games (gameCompId null) are unaffected — same
           // `!gameCompId ||` short-circuit shape as Match. `pointsReady` is the SAME truth
           // GameSetupRows' Points-per-Slot row already reads (row-resolved ⟺ gate satisfied).
-          ready={draftGroupsAssigned && (!gameCompId || pointsReady(configDraft.pointsTotal ?? 0))}
-          readyBlockedReason={
-            !draftGroupsAssigned
+          management={{
+            scoringEnabled: configDraft.scoringEnabled,
+            ready: draftGroupsAssigned && (!gameCompId || pointsReady(configDraft.pointsTotal ?? 0)),
+            blockedReason: !draftGroupsAssigned
               ? "Add at least one group before enabling scoring"
               : gameCompId && !pointsReady(configDraft.pointsTotal ?? 0)
                 ? "Set a point value before enabling scoring"
-                : null
-          }
-          onEnable={handleEnable}
-          onDisable={handleDisable}
-          busy={saving}
+                : null,
+            onEnable: handleEnable,
+            onDisable: handleDisable,
+            pending: saving,
+            staged: configDraft.scoringEnabled !== scoringEnabled,
+          }}
+          settingsRows={<>{groupingsRow}{optionRows}</>}
+          rulesValue={configDraft.rulesForToday}
+          onRulesChange={setRulesDraft}
+          // Game Modifiers — an inline ModifierCards panel (rack's row went live in the
+          // matrix reconcile; edits the modifiers draft slice, committed on Save).
+          modifiersRow={modifiersInlineRow}
           saveBar={
             <SettingsSaveBar
               dirty={dirty}
@@ -1221,8 +1240,6 @@ export function RackGameView() {
         status={gameQ.data?.status ?? null}
         correctionsOpen={correctionsOpen}
         allComplete={allThru18}
-        finalizeLabel="Save results"
-        finalizePendingLabel="Saving results…"
         finalizePending={finalizePending}
         correctPending={correctPending}
         onFinalize={finish}

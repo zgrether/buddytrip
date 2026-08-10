@@ -59,20 +59,25 @@ const CTA_BOX: React.CSSProperties = {
 };
 
 export function GameLifecycleActions({
-  finalizeLabel,
-  finalizePendingLabel,
+  finalizeLabel = "Save results",
+  finalizePendingLabel = "Saving results…",
   finalizePending = false,
   correctPending = false,
   onFinalize,
   onCorrect,
   ...lifecycleInput
 }: GameLifecycleInput & {
-  /** The finalize CTA. One string across all four formats since the vocabulary
-   *  sweep — "Save results". Kept as a prop rather than hardcoded so a format
-   *  that genuinely needs different words can still say so. */
-  finalizeLabel: string;
+  /**
+   * The finalize CTA. One string across all four formats since the vocabulary
+   * sweep, so it is the DEFAULT rather than something each caller repeats — all
+   * four passed the identical literal, which is four chances for a fifth format
+   * to differ by accident instead of by decision. Still a prop: a format that
+   * genuinely needs different words can say so, and now that is visible as an
+   * override rather than hidden among four copies of the same string.
+   */
+  finalizeLabel?: string;
   /** e.g. "Saving results…". */
-  finalizePendingLabel: string;
+  finalizePendingLabel?: string;
   finalizePending?: boolean;
   correctPending?: boolean;
   onFinalize: () => void;

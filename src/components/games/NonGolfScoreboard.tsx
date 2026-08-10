@@ -222,8 +222,6 @@ export function NonGolfScoreboard({
         status={game.status}
         correctionsOpen={game.corrections_open}
         allComplete={!!placements}
-        finalizeLabel="Save results"
-        finalizePendingLabel="Saving results…"
         finalizePending={busy}
         correctPending={correctPending}
         onFinalize={commit}

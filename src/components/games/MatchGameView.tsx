@@ -43,7 +43,6 @@ import { MatchOutcomeEntryView } from "@/components/games/MatchOutcomeEntryView"
 import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
-import { GameManagementPanel } from "@/components/games/GameManagementPanel";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
@@ -67,12 +66,7 @@ import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
-import { SettingsColumn } from "@/components/games/SettingsColumn";
-import { SettingsSlideOver } from "@/components/games/SettingsSlideOver"; // P1: full-page settings shell
-import { GameIdentityHeader } from "@/components/games/GameIdentityHeader";
-import { GameRulesNote } from "@/components/games/GameRulesNote";
-import { formatExplanation } from "@/components/games/GameFormatExplainer";
-import { GameDangerZone } from "@/components/games/GameDangerZone";
+import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
@@ -449,7 +443,7 @@ export function MatchGameView() {
   // drifted — it used `gameQ.refetch()` where the other three used
   // `utils.games.getById.invalidate()` — which is the divergence-by-coincidence
   // #24 describes, in a handler nobody had reason to look at twice.
-  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
+  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of crew.data ?? []) m.set(c.user_id, c.displayName ?? c.user?.name ?? "Player");
@@ -1872,133 +1866,98 @@ export function MatchGameView() {
           }
         };
         return (
-          <SettingsSlideOver
-            title={configDraft.name || "Game settings"}
+          <GameSettingsPage
+            surface="match"
             onClose={closeConfig}
-            testId="game-settings-slideover"
-            footer={
-              canEdit ? (
-                <SettingsSaveBar
-                  dirty={dirty}
-                  saving={saving}
-                  error={saveError}
-                  onSave={handleSave}
-                  onDiscard={confirmDiscard}
-                  onLeave={leave}
+            tripId={tripId}
+            competitionId={gameCompId}
+            game={draftGameRow}
+            canEdit={canEdit}
+            isOwner={isOwner}
+            /* #789 — the danger zone's three procedures moved to requireTripRole
+               ("Organizer") in #788; the delegation grant did NOT, which is why
+               these are two flags rather than one. The `gameQ.data` term keeps the
+               pre-collapse guard: `draftGameRow` spreads a possibly-undefined query
+               result, so before the row settles its `id` is undefined and the zone
+               would target nothing. */
+            canManageGame={canManageGame && !!gameQ.data}
+            onChanged={onSetupChanged}
+            onScoresReset={clearScores}
+            onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+            nameValue={configDraft.name}
+            onNameChange={setNameDraft}
+            delegateValue={configDraft.delegates[0] ?? null}
+            onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
+            /* Total Points — the bare owner-set number (§3.2 split): NO match
+               dependency, so it lives up in Game Management, settable before a
+               single match exists. The per-match Point Distribution is a separate
+               row down in Match Settings. WARNED tier — never locked (points are an
+               award input; results recalculate). */
+            totalPointsRow={
+              gameQ.data ? (
+                <MatchPointsRow
+                  part="total"
+                  matches={pointsMatches}
+                  pointsTotal={configDraft.pointsTotal}
+                  defaultTotal={0}
+                  canEdit={settingsEditable}
+                  locked={false}
+                  onTotalChange={onPointsTotalChange}
+                  onOverrideChange={onPointsOverrideChange}
                 />
-              ) : null
+              ) : undefined
             }
-          >
-          <SettingsColumn className="pb-4">
-
-            {/* The "HOW YOU COMPETE" block that used to lead the page is gone — the
-                format explanation is now the STARTER TEXT of Rules of the Day
-                below, so there is one description of how the game is played
-                instead of two, and the editable one continues the given one. */}
-
-            {/* Zone 1 — IDENTITY header (W-EDITMODAL-01): name (tap-to-edit) +
-                "Assigned to" frame. Competition games only. CONTROLLED: name + delegate
-                are draft slices — a live write here would move the config hash out from
-                under our frozen baseHash. */}
-            {gameCompId && gameQ.data && (
-              <GameIdentityHeader
-                tripId={tripId}
-                competitionId={gameCompId}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                nameValue={configDraft.name}
-                onNameChange={setNameDraft}
-                delegateValue={configDraft.delegates[0] ?? null}
-                onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
-              />
-            )}
-
-            {/* RULES OF THE DAY moved to AFTER Match Settings (§3.1) — see below. */}
-
-            {/* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control,
-                now on the ONE settings page (this checklist's home) in BOTH directions.
-                Setup mode → the Scoring segment enables (attemptReady → status:'active'),
-                gated by enableReady; scoring mode → the Setup segment disables (back to
-                setup, scores kept). Rendered for any canEdit game (NOT competition-gated,
-                so a standalone match game still toggles — it has no GameIdentityHeader). */}
-            {canEdit && (
-              <>
-                {/* #512 §4: GAME MANAGEMENT is a peer section — a labeled divider above
-                    the toggle matching SETTINGS / OPTIONS (the panel's own caption is
-                    suppressed via hideLabel so it isn't double-labeled). */}
-                <ZoneHeader>Game Management</ZoneHeader>
-
-                {/* Total Points — the bare owner-set number (§3.2 split): NO match
-                    dependency, so it lives here in Game Management, settable before a
-                    single match exists. The per-match Point Distribution is a separate
-                    row down in Match Settings. Competition games only. WARNED tier —
-                    never locked (points are an award input; results recalculate). */}
-                {gameCompId && gameQ.data && (
-                  <MatchPointsRow
-                    part="total"
-                    matches={pointsMatches}
-                    pointsTotal={configDraft.pointsTotal}
-                    defaultTotal={0}
-                    canEdit={settingsEditable}
-                    locked={false}
-                    onTotalChange={onPointsTotalChange}
-                    onOverrideChange={onPointsOverrideChange}
-                  />
-                )}
-
-                {/* Golf Course — moved up into Game Management (§3.1): an independent
-                    lookup, not the match-by-match spine. LOCKED tier: any score freezes
-                    the whole row (server parity with the blanket COURSE_LOCKED). Range-
-                    scoping was descoped — composing a back re-indexes the front, so an
-                    add-back-while-scored is a warned-tier recompute, not a clean add. */}
-                {gameQ.data && (
-                  <GameSetupRows
-                    slot="course"
-                    tripId={tripId}
-                    competitionId={gameCompId}
-                    game={draftGameRow}
-                    canEdit={settingsEditable}
-                    locked={scoresExist}
-                    outcomeMode={configDraft.entryMode === "outcome"}
-                    courseOpen={openRows.has("course")}
-                    onOpenCourse={() => toggleRow("course")}
-                    onCloseEditor={() => closeRow("course")}
-                    onChanged={onSetupChanged}
-                    onApplyFront={applyFrontToDraft}
-                    onApplyBack={applyBackToDraft}
-                    onRemoveBackNine={removeBackNineFromDraft}
-                    onClearCourse={clearCourseInDraft}
-                    courseBusy={courseBusy}
-                  />
-                )}
-
-                {/* The Setup/Scoring toggle — pure visibility gate now. Reads the DRAFT
-                    (`configDraft.scoringEnabled`); Save commits the flip with the config. */}
-                <GameManagementPanel
-                  mode={configDraft.scoringEnabled ? "scoring" : "setup"}
-                  ready={enableReady}
-                  blockedReason={enableBlockedReason}
-                  onEnable={attemptReady}
-                  onDisable={handleDisable}
-                  pending={saving}
-                  // The toggle answers the tap from the DRAFT, but until Save lands the
-                  // server disagrees — say so rather than claim a live game that isn't.
-                  staged={configDraft.scoringEnabled !== scoringEnabled}
+            /* Golf Course — an independent lookup, not the match-by-match spine
+               (§3.1). LOCKED tier: any score freezes the whole row (server parity
+               with the blanket COURSE_LOCKED). Range-scoping was descoped — composing
+               a back re-indexes the front, so an add-back-while-scored is a
+               warned-tier recompute, not a clean add. CONTROLLED: the course is a
+               DRAFT slice, and it cannot be deferred to a later pass — a course
+               applied straight to the server while the rest of the page drafts would
+               be reverted by Save writing the draft's older course back, and it would
+               move the config hash out from under our frozen baseHash. */
+            courseRow={
+              gameQ.data ? (
+                <GameSetupRows
+                  slot="course"
+                  tripId={tripId}
+                  competitionId={gameCompId}
+                  game={draftGameRow}
+                  canEdit={settingsEditable}
+                  locked={scoresExist}
+                  outcomeMode={configDraft.entryMode === "outcome"}
+                  courseOpen={openRows.has("course")}
+                  onOpenCourse={() => toggleRow("course")}
+                  onCloseEditor={() => closeRow("course")}
+                  onChanged={onSetupChanged}
+                  onApplyFront={applyFrontToDraft}
+                  onApplyBack={applyBackToDraft}
+                  onRemoveBackNine={removeBackNineFromDraft}
+                  onClearCourse={clearCourseInDraft}
+                  courseBusy={courseBusy}
                 />
-              </>
-            )}
-
-            {/* ScoringLockBanner deleted from the match page (freeze redesign §3.5): the
-                lock no longer follows scoring mode, so a page-level "settings are frozen
-                while live" banner is a lie — a live score-less game is fully editable.
-                Per-row lock treatment + the scores-conditional MATCH SETTINGS notice say
-                what's actually locked/warned. (The component stays for the P2 formats.) */}
-
-            {/* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
-                competition the rosters live on the competition face (the leaderboard
-                + RostersOverlay own team membership), so this read-only echo is
-                redundant noise here; the row is hidden entirely. */}
-            {!gameCompId && (
+              ) : undefined
+            }
+            /* A2-ux: the single Setup/Scoring toggle — the keystone game-mode control.
+               Setup mode → the Scoring segment enables (attemptReady → status:'active'),
+               gated by enableReady; scoring mode → the Setup segment disables (back to
+               setup, scores kept). It answers the tap from the DRAFT, but until Save
+               lands the server disagrees — `staged` says so rather than claiming a live
+               game that isn't. */
+            management={{
+              scoringEnabled: configDraft.scoringEnabled,
+              ready: enableReady,
+              blockedReason: enableBlockedReason,
+              onEnable: attemptReady,
+              onDisable: handleDisable,
+              pending: saving,
+              staged: configDraft.scoringEnabled !== scoringEnabled,
+            }}
+            /* Available players (W-GAMEPAGE-01 §8) — STANDALONE games only. In a
+               competition the rosters live on the competition face (the leaderboard +
+               RostersOverlay own team membership), so this read-only echo is redundant
+               noise there and the page hides it. */
+            standaloneRows={
               <ChecklistRow
                 icon={Users}
                 title="Players"
@@ -2018,249 +1977,211 @@ export function MatchGameView() {
                   </div>
                 </div>
               </ChecklistRow>
-            )}
+            }
+            /* MATCH SETTINGS (§3.1): Entry Mode · Matches · Point Distribution ·
+               Handicaps — the per-match spine. */
+            settingsRows={
+              <>
+                {/* §3.4 notice — ONLY when scores exist. Setup is the common case and
+                    stays quiet. The WARNED rows here (Point Distribution, Handicaps,
+                    Modifiers) recalculate rather than lose anything; this is the
+                    reassurance that lets someone change a handicap mid-round. Locked
+                    rows carry their own message and are exempt (accepted §3.4). */}
+                {scoresExist && (
+                  <p
+                    className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] leading-snug"
+                    style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)", color: "var(--color-bt-warning)" }}
+                    data-testid="match-settings-recalc-notice"
+                  >
+                    <TriangleAlert size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span>Changing these will recalculate results for matches already in play.</span>
+                  </p>
+                )}
 
-            {/* ── MATCH SETTINGS (§3.1): Entry Mode · Matches · Point Distribution ·
-                Handicaps — the per-match spine. ── */}
-            <ZoneHeader>Match Settings</ZoneHeader>
+                {/* Entry Mode (Refactor B3) — score entry (today, default) vs
+                    hole-outcome entry (tap who won each hole directly). A "how you'll
+                    score this match" decision that sits ABOVE the pairings (§3.1: it
+                    decides what the Matches rows even mean — score vs tap-the-winner —
+                    and whether Handicaps apply). Independent of Course/Handicaps/Points
+                    (which stay visible either way — unused-but-harmless in outcome
+                    mode, a deliberate B3 scope boundary). */}
+                {gameQ.data && (
+                  <EntryModeRow
+                    entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
+                    // LOCKED tier (084): switching score↔outcome orphans whichever rows
+                    // are entered, so it freezes once ANY score exists.
+                    canEdit={canEdit && !scoresExist}
+                    locked={scoresExist}
+                    // Switching TO score entry with glorious staged asks first. The
+                    // modifier is only valid with outcome entry, so the switch has to
+                    // turn it off — but it was configured deliberately, so it is not
+                    // taken away silently. Cancelling leaves BOTH as they were.
+                    onChange={(mode) => {
+                      if (mode === "score" && isModifierEnabled(configDraft.modifiers ?? {}, "glorious_holes")) {
+                        setPendingScoreEntry(true);
+                        return;
+                      }
+                      setEntryModeDraft(mode);
+                    }}
+                  />
+                )}
+                {pendingScoreEntry && (
+                  <DangerConfirmModal
+                    tone="warning"
+                    icon={<TriangleAlert size={18} />}
+                    title="Turn off glorious finishing holes?"
+                    body="Glorious finishing holes doubles a hole's value, which only works when you record who won each hole. Switching to score entry will turn it off."
+                    confirmLabel="Switch and turn it off"
+                    pendingLabel="Switching…"
+                    isPending={false}
+                    testId="glorious-entry-mode-confirm"
+                    onCancel={() => setPendingScoreEntry(false)}
+                    onConfirm={() => {
+                      // Both slices of the composite draft move together, so ONE Save
+                      // commits a state the server will accept (#18).
+                      setEntryModeDraft("score");
+                      setModifiersDraft(withoutModifier(configDraft.modifiers ?? {}, "glorious_holes"));
+                      setPendingScoreEntry(false);
+                    }}
+                  />
+                )}
 
-            {/* §3.4 notice — ONLY when scores exist. Setup is the common case and stays
-                quiet. The WARNED rows here (Point Distribution, Handicaps, Modifiers)
-                recalculate rather than lose anything; this is the reassurance that lets
-                someone change a handicap mid-round. Locked rows carry their own message
-                and are exempt (the notice sits above them, accepted §3.4). */}
-            {scoresExist && (
-              <p
-                className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] leading-snug"
-                style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)", color: "var(--color-bt-warning)" }}
-                data-testid="match-settings-recalc-notice"
-              >
-                <TriangleAlert size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-                <span>Changing these will recalculate results for matches already in play.</span>
-              </p>
-            )}
+                {/* Matches — the pairing builder (the score-entry unit), in place. */}
+                <ChecklistRow
+                  icon={Swords}
+                  title={matchesTitle}
+                  subtitle={matchesSubtitle}
+                  state={matchesState}
+                  // LOCKED tier (084): the clean-replace mints fresh UUIDs → orphans
+                  // scores, so Matches freezes once ANY score exists — not on scoring
+                  // mode. MatchSetup has no read-only mode, so it goes non-expandable
+                  // when locked.
+                  locked={scoresExist}
+                  expanded={openRows.has("matches") && canEdit && !scoresExist}
+                  onToggle={canEdit && !scoresExist ? () => toggleRow("matches") : undefined}
+                  testId="row-matches"
+                >
+                  <MatchSetup
+                    tripId={tripId}
+                    draft={draft}
+                    setDraft={editDraft}
+                    nameOf={nameOf}
+                    colorOf={colorOf}
+                    teamColorOf={teamColorOf}
+                    avatarIconOf={avatarIconOf}
+                    teamForSlot={teamForSlot}
+                    maxMatches={maxMatchesForAdd}
+                    openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
+                  />
+                </ChecklistRow>
 
-            {/* Entry Mode (Refactor B3) — score entry (today, default) vs
-                hole-outcome entry (tap who won each hole directly). A "how you'll
-                score this match" decision that sits ABOVE the pairings (§3.1: it
-                decides what the Matches rows even mean — score vs tap-the-winner —
-                and whether Handicaps apply). Independent of Course/Handicaps/Points
-                (which stay visible either way — unused-but-harmless in outcome
-                mode, a deliberate B3 scope boundary). Frozen once scoring starts,
-                same as every other setup-spine row — switching mid-round would
-                orphan whichever rows (score_entries / match_hole_outcomes) are
-                already entered. */}
-            {gameQ.data && (
-              <EntryModeRow
-                entryMode={configDraft.entryMode === "outcome" ? "outcome" : "score"}
-                // LOCKED tier (084): switching score↔outcome orphans whichever rows
-                // are entered, so it freezes once ANY score exists.
-                canEdit={canEdit && !scoresExist}
-                locked={scoresExist}
-                // Switching TO score entry with glorious staged asks first. The
-                // modifier is only valid with outcome entry, so the switch has to
-                // turn it off — but it was configured deliberately, so it is not
-                // taken away silently. Cancelling leaves BOTH the mode and the
-                // modifier as they were.
-                onChange={(mode) => {
-                  if (mode === "score" && isModifierEnabled(configDraft.modifiers ?? {}, "glorious_holes")) {
-                    setPendingScoreEntry(true);
-                    return;
-                  }
-                  setEntryModeDraft(mode);
-                }}
+                {/* Point Distribution — the per-match override panel (§3.2 split,
+                    WARNED tier). REQUIRES matches (you distribute ACROSS matches), so
+                    it lives here in Match Settings and only renders once a match
+                    exists — the Total Points number up in Game Management has no such
+                    dependency. */}
+                {gameQ.data && gameCompId && matchesExist && (
+                  <MatchPointsRow
+                    part="distribution"
+                    matches={pointsMatches}
+                    pointsTotal={configDraft.pointsTotal}
+                    defaultTotal={0}
+                    canEdit={settingsEditable}
+                    locked={false}
+                    expanded={openRows.has("config")}
+                    onToggle={() => toggleRow("config")}
+                    onTotalChange={onPointsTotalChange}
+                    onOverrideChange={onPointsOverrideChange}
+                  />
+                )}
+
+                {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
+                    resolve (a complete 18) before per-hole strokes can be allocated.
+                    HIDDEN in outcome mode (§3.3): a handicap adjusts gross→net, which
+                    decides a hole in SCORE mode only — in outcome mode you tap the
+                    winner, so there's no stroke to allocate (Phase 0 confirmed the
+                    derivation never reads a handicap in the outcome path). A row that
+                    can't do anything is noise. Keyed on the DRAFT entry mode so staging
+                    outcome hides it live. */}
+                {configDraft.entryMode !== "outcome" && (
+                  <ChecklistRow
+                    icon={SlidersHorizontal}
+                    title="Handicaps"
+                    subtitle={handicapsSubtitle}
+                    state={handicapsState}
+                    // WARNED tier (084): a handicap is a net-scoring INPUT — the engine
+                    // re-derives in-progress holes (084 writes it in place, no orphan).
+                    // Never locked on scores. (The prerequisite gate below still holds.)
+                    locked={false}
+                    // Task 2c: when the prerequisites aren't met (no course / no
+                    // matches) the row is VISIBLY disabled (dimmed), not silently
+                    // unclickable — pass the real toggle but mark it disabled so it
+                    // reads "not available yet".
+                    disabled={!handicapsReady}
+                    expanded={openRows.has("handicaps") && settingsEditable}
+                    onToggle={settingsEditable ? () => toggleRow("handicaps") : undefined}
+                    testId="row-handicaps"
+                  >
+                    <HandicapsSection
+                      draft={draft}
+                      setDraft={editDraft}
+                      nameOf={nameOf}
+                      colorOf={colorOf}
+                      // Roster team color (the shared canonical resolver) — assigned
+                      // players read their team color; an unassigned player gets
+                      // undefined → the neutral palette (honest). Same source the
+                      // Matches panel + overview use.
+                      teamColorOf={teamColorOf}
+                      strokeIndex={courseStrokeIndex}
+                      holeCount={courseHoleCount}
+                    />
+                  </ChecklistRow>
+                )}
+              </>
+            }
+            rulesValue={configDraft.rulesForToday}
+            onRulesChange={setRulesDraft}
+            /* Modifiers (W-GAMEPAGE-01 §6.5) — config-only "special rules" driven by
+               the format's compatibleModifiers (gameTypes.ts). Hidden entirely when the
+               format offers none. WARNED tier (084): modifiers are compute-time inputs
+               (glorious weight, etc.) — derived, never snapshotted, so changing them
+               recalculates. */
+            modifiersRow={
+              availableModifiers.length > 0 ? (
+                <ChecklistRow
+                  icon={Sparkles}
+                  title="Game Modifiers"
+                  subtitle={modifiersSubtitle}
+                  state={modifiersState}
+                  locked={false}
+                  expanded={openRows.has("modifiers")}
+                  // Task 3b: modifiers are an EARLY format decision (carry-over, moving
+                  // tees); matches (who plays whom) is often decided the day before.
+                  // Don't gate early-decidable config on late-decided data — no
+                  // matchesExist dependency here (settingsEditable only).
+                  onToggle={settingsEditable ? () => toggleRow("modifiers") : undefined}
+                  testId="row-modifiers"
+                >
+                  <ModifierCards
+                    available={availableModifiers}
+                    modifiers={configDraft.modifiers}
+                    onChange={setModifiersDraft}
+                    readOnly={!settingsEditable}
+                  />
+                </ChecklistRow>
+              ) : undefined
+            }
+            saveBar={
+              <SettingsSaveBar
+                dirty={dirty}
+                saving={saving}
+                error={saveError}
+                onSave={handleSave}
+                onDiscard={confirmDiscard}
+                onLeave={leave}
               />
-            )}
-            {pendingScoreEntry && (
-              <DangerConfirmModal
-                tone="warning"
-                icon={<TriangleAlert size={18} />}
-                title="Turn off glorious finishing holes?"
-                body="Glorious finishing holes doubles a hole's value, which only works when you record who won each hole. Switching to score entry will turn it off."
-                confirmLabel="Switch and turn it off"
-                pendingLabel="Switching…"
-                isPending={false}
-                testId="glorious-entry-mode-confirm"
-                onCancel={() => setPendingScoreEntry(false)}
-                onConfirm={() => {
-                  // Both slices of the composite draft move together, so ONE Save
-                  // commits a state the server will accept (#18).
-                  setEntryModeDraft("score");
-                  setModifiersDraft(withoutModifier(configDraft.modifiers ?? {}, "glorious_holes"));
-                  setPendingScoreEntry(false);
-                }}
-              />
-            )}
-
-            {/* Matches — the pairing builder (the score-entry unit), in place. */}
-            <ChecklistRow
-              icon={Swords}
-              title={matchesTitle}
-              subtitle={matchesSubtitle}
-              state={matchesState}
-              // LOCKED tier (084): the clean-replace mints fresh UUIDs → orphans
-              // scores, so Matches freezes once ANY score exists — not on scoring mode.
-              // MatchSetup has no read-only mode, so it goes non-expandable when locked.
-              locked={scoresExist}
-              expanded={openRows.has("matches") && canEdit && !scoresExist}
-              onToggle={canEdit && !scoresExist ? () => toggleRow("matches") : undefined}
-              testId="row-matches"
-            >
-              <MatchSetup
-                tripId={tripId}
-                draft={draft}
-                setDraft={editDraft}
-                nameOf={nameOf}
-                colorOf={colorOf}
-                teamColorOf={teamColorOf}
-                avatarIconOf={avatarIconOf}
-                teamForSlot={teamForSlot}
-                maxMatches={maxMatchesForAdd}
-                openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
-              />
-            </ChecklistRow>
-
-            {/* Course — Handicaps' per-hole stroke allocation needs the course's
-                stroke-index table, so Course resolves before Handicaps (W-9HOLE-01).
-                CONTROLLED: the course is a DRAFT slice. It cannot be deferred to a
-                later pass — a course applied straight to the server while the rest of
-                the page drafts would be reverted by Save writing the draft's older
-                course back, and it would move the config hash out from under our
-                frozen baseHash (the user's own Save would then conflict).
-                `draftGameRow` feeds the row the DRAFT's course state, so it renders
-                the pending front/back/needs-a-back-nine exactly as it will persist. */}
-            {/* Point Distribution — the per-match override panel (§3.2 split, WARNED
-                tier). REQUIRES matches (you distribute ACROSS matches), so it lives here
-                in Match Settings and only renders once a match exists — the Total Points
-                number up in Game Management has no such dependency. */}
-            {gameQ.data && gameCompId && matchesExist && (
-              <MatchPointsRow
-                part="distribution"
-                matches={pointsMatches}
-                pointsTotal={configDraft.pointsTotal}
-                defaultTotal={0}
-                canEdit={settingsEditable}
-                locked={false}
-                expanded={openRows.has("config")}
-                onToggle={() => toggleRow("config")}
-                onTotalChange={onPointsTotalChange}
-                onOverrideChange={onPointsOverrideChange}
-              />
-            )}
-
-            {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
-                resolve (a complete 18) before per-hole strokes can be allocated.
-                HIDDEN in outcome mode (§3.3): a handicap adjusts gross→net, which
-                decides a hole in SCORE mode only — in outcome mode you tap the winner,
-                so there's no stroke to allocate (Phase 0 confirmed the derivation never
-                reads a handicap in the outcome path). A row that can't do anything is
-                noise. Keyed on the DRAFT entry mode so staging outcome hides it live. */}
-            {configDraft.entryMode !== "outcome" && (
-            <ChecklistRow
-              icon={SlidersHorizontal}
-              title="Handicaps"
-              subtitle={handicapsSubtitle}
-              state={handicapsState}
-              // WARNED tier (084): a handicap is a net-scoring INPUT — the engine
-              // re-derives in-progress holes (084 writes it in place, no orphan). Never
-              // locked on scores. (The prerequisite `disabled` gate below still holds.)
-              locked={false}
-              // Task 2c: when the prerequisites aren't met (no course / no matches)
-              // the row is VISIBLY disabled (dimmed), not silently unclickable — pass
-              // the real toggle but mark it disabled so it reads "not available yet".
-              disabled={!handicapsReady}
-              expanded={openRows.has("handicaps") && settingsEditable}
-              onToggle={settingsEditable ? () => toggleRow("handicaps") : undefined}
-              testId="row-handicaps"
-            >
-              <HandicapsSection
-                draft={draft}
-                setDraft={editDraft}
-                nameOf={nameOf}
-                colorOf={colorOf}
-                // Roster team color (the shared canonical resolver) — assigned
-                // players read their team color; an unassigned player gets undefined →
-                // the neutral palette (honest). Same source the Matches panel + overview use.
-                teamColorOf={teamColorOf}
-                strokeIndex={courseStrokeIndex}
-                holeCount={courseHoleCount}
-              />
-            </ChecklistRow>
-            )}
-
-            {/* RULES OF THE DAY — relocated to after the per-match spine (§3.1), and
-                BEFORE Modifiers: Rules is the QUIET tier (free-text notes, can't
-                rescore a hole), so it reads before the WARNED Modifiers accordion. A
-                draft slice; the page's Save persists it. */}
-            {gameCompId && gameQ.data && (
-              <GameRulesNote
-                canEdit={canEdit}
-                value={configDraft.rulesForToday ?? ""}
-                onChange={setRulesDraft}
-                starterText={
-                  formatExplanation((gameQ.data as unknown as GameRow).game_type_id) ?? undefined
-                }
-              />
-            )}
-
-            {/* Modifiers (W-GAMEPAGE-01 §6.5) — config-only "special rules" driven
-                by the format's compatibleModifiers (gameTypes.ts). Hidden entirely
-                when the format offers none; otherwise an accordion of toggle cards
-                (+ a hole-count stepper for glorious_holes), persist-on-collapse. */}
-            {availableModifiers.length > 0 && (
-              <ChecklistRow
-                icon={Sparkles}
-                title="Game Modifiers"
-                subtitle={modifiersSubtitle}
-                state={modifiersState}
-                // WARNED tier (084): modifiers are compute-time inputs (glorious weight,
-                // etc.) — derived, never snapshotted, so changing them recalculates.
-                locked={false}
-                expanded={openRows.has("modifiers")}
-                // Task 3b: modifiers are an EARLY format decision (carry-over, moving
-                // tees); matches (who plays whom) is often decided the day before.
-                // Don't gate early-decidable config on late-decided data — no
-                // matchesExist dependency here (settingsEditable only).
-                onToggle={settingsEditable ? () => toggleRow("modifiers") : undefined}
-                testId="row-modifiers"
-              >
-                <ModifierCards
-                  available={availableModifiers}
-                  modifiers={configDraft.modifiers}
-                  onChange={setModifiersDraft}
-                  readOnly={!settingsEditable}
-                />
-              </ChecklistRow>
-            )}
-
-            {/* Danger zone — owner-only (A2-ux correction: the settings page is now the
-                ONE home, so the per-game danger ladder lives here too: reset scores /
-                reset settings / delete).
-
-                The ONE control here that deliberately keeps reading the SERVER's flag
-                while everything above it follows the draft. These aren't drafted edits
-                — they're immediate, irreversible server surgery. A game that is LIVE
-                and being scored on right now must not have its scores wiped because
-                someone staged a Setup toggle they haven't saved; the gate has to
-                reflect what's actually live, not what's merely intended. Consequence
-                worth knowing: the HAS_SCORES refusal points here, so on a live scored
-                game the user Saves the disable first, THEN resets. */}
-            {/* #789 — `canManageGame` (Owner OR Organizer), not `isOwner`. The
-                danger zone's three procedures moved to requireTripRole
-                ("Organizer") in #788; the delegation grant above it did NOT, which
-                is why these are now two flags rather than one. */}
-            {canManageGame && gameQ.data && (
-              <GameDangerZone
-                tripId={tripId}
-                gameId={gameQ.data.id as string}
-                competitionId={gameCompId}
-                onChanged={onSetupChanged}
-                onScoresReset={clearScores}
-                onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
-              />
-            )}
-          </SettingsColumn>
-          </SettingsSlideOver>
+            }
+          />
         );
       })()}
 
@@ -2385,18 +2306,12 @@ function serverDraftFrom(
  * top-right slot (the overview's Edit link).
  */
 
-/** A labeled zone divider on the setup face (W-GAMEPAGE-01 §5) — the groups are
- *  labels, not panes (one scrolling column). Token-styled, quiet caption. */
-function ZoneHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 pt-2">
-      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        {children}
-      </span>
-      <span className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
-    </div>
-  );
-}
+/* A private copy of `ZoneHeader` lived here — character-identical to
+ * `@/components/games/ZoneHeader`, which match never imported. It rendered
+ * match's settings zones while the shared one rendered the other three formats':
+ * the shape #24 calls a shared OUTPUT re-rendered privately, and a check that
+ * only compared the rendered labels would have found nothing wrong. Gone with the
+ * inline tree; `GameSettingsPage` renders the shared one for all four. */
 
 function NewGame({
   tripId,
@@ -3087,8 +3002,6 @@ function Overview({
         status={status}
         correctionsOpen={correctionsOpen}
         allComplete={allOver}
-        finalizeLabel="Save results"
-        finalizePendingLabel="Saving results…"
         finalizePending={finishing}
         correctPending={correctingPending}
         onFinalize={onFinish}
