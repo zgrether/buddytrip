@@ -1,0 +1,38 @@
+# Line endings — LF everywhere (#888).
+#
+# WHY THIS EXISTS
+# Without it, whether a diff is readable depends on which machine last touched
+# the file. The repo had drifted into storing some blobs CRLF and some LF —
+# `MatchGameView.tsx`, `RackGameView.tsx` and `StrokeGameView.tsx` were CRLF
+# while `NonGolfGameView.tsx` and most of `src/lib` were LF — so an editor that
+# writes LF rewrote every line of the CRLF ones. A 102-line change to
+# `StrokeGameView.tsx` arrived as a 2,640-line diff, twice in one session, which
+# makes review impossible and `git blame` useless afterward.
+#
+# `text=auto` lets git detect text vs binary; `eol=lf` normalises those files to
+# LF both in the repository AND in the working tree, so there is one answer
+# rather than a per-machine one. Nothing here requires CRLF: the repo has no
+# `.sh`, `.bat`, `.ps1` or `.cmd`, and its one shebang file
+# (`scripts/repair-ghost-orphans.mjs`) needs LF — a CRLF shebang is a broken
+# interpreter line.
+#
+# The renormalisation of the existing tree is a SEPARATE commit, so the noisy one
+# is identifiable in history and can be skipped with `git blame --ignore-rev`.
+* text=auto eol=lf
+
+# Binary — never normalised, never diffed as text. Listed explicitly rather than
+# left to detection, because a mis-detected binary is corrupted by normalisation
+# rather than merely displayed oddly.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.pdf   binary
+*.zip   binary
