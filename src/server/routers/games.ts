@@ -936,12 +936,41 @@ export const gamesRouter = router({
       // (no longer "first score owns Live"). Server readiness guard refuses an
       // under-configured flip (all formats), and publishes pairings.
       await assertGameReady(ctx.supabase, input.gameId);
-      const { error } = await ctx.supabase
+      // #889 — a COMPLETE game is not resurrected by going live.
+      //
+      // This wrote `status: 'active'` unconditionally, which is the hole migration
+      // 111 closed inside `save_game_config`: `finish` leaves `scoring_enabled`
+      // TRUE (a finished game is re-scoreable), so anything that re-affirms
+      // go-live un-completes it — status complete -> active, with a fresh
+      // `pairings_published_at` stamped on top, its result still posted to the
+      // board (#882's original).
+      //
+      // Guarded as a WHERE rather than 111's CASE, because this path is a single
+      // PostgREST statement rather than plpgsql. That is deliberate and is the
+      // stronger shape here: a CASE would need the current status read first, and
+      // a read-then-write is a race a `finish` can land inside. The predicate makes
+      // the dangerous write UNREPRESENTABLE — a complete game matches zero rows, so
+      // all three signals stay untouched together rather than one of them moving.
+      const { error, count } = await ctx.supabase
         .from("games")
-        .update({ scoring_enabled: true, status: "active", pairings_published_at: new Date().toISOString() })
+        .update(
+          { scoring_enabled: true, status: "active", pairings_published_at: new Date().toISOString() },
+          { count: "exact" },
+        )
         .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId);
+        .eq("trip_id", ctx.tripId)
+        .neq("status", "complete");
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to enable scoring: ${error.message}` });
+      // `assertGameReady` above already proved the row exists and is in this trip,
+      // so zero rows here means exactly one thing: it is complete. Refusing with a
+      // reason beats a silent no-op — the caller asked for a state change that did
+      // not happen.
+      if (count === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This game is finished. Reopen it for corrections instead of switching it back to scoring.",
+        });
+      }
       return { success: true };
     }),
 
