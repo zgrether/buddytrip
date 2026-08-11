@@ -83,7 +83,7 @@ export function ChecklistRow({
   children,
   control,
   headerControl,
-  disabled,
+  requires,
   locked,
   testId,
 }: {
@@ -113,21 +113,42 @@ export function ChecklistRow({
    *  OUTSIDE the toggle button (so its own buttons don't nest in / trigger the
    *  toggle), before the chevron. Only honored on accordion rows. */
   headerControl?: React.ReactNode;
-  /** Dependency not yet met — the row would be an accordion, but its prerequisite
-   *  isn't satisfied (e.g. Handicaps before a course is chosen). Renders VISIBLY
-   *  disabled (dimmed, non-interactive — the Danger-Zone dimming pattern) instead
-   *  of silently inert, so it reads as "not available yet", not "broken". Distinct
-   *  from `locked` (the live-scoring freeze, which also shows a lock icon). */
-  disabled?: boolean;
-  /** #512 Option B: the row is frozen by the live-scoring lock — dim it and swap the
-   *  expand chevron for a LOCK icon (kills the false "expandable" affordance and names
-   *  the state). Non-interactive (no accordion / overlay). The toggle back to Setup
-   *  is the way out; Rules of the Day is never passed `locked` (the editable carve-out). */
+  /**
+   * Prerequisites this row needs before it can be used, named as the user would
+   * find them elsewhere in the panel (`["Golf Course", "Matches"]`). Non-empty →
+   * the row renders at FULL SIZE behind a scrim reading `Requires: Golf Course,
+   * Matches`.
+   *
+   * This replaced hiding. A hidden row teaches nobody that the setting exists —
+   * someone in score entry never learned glorious finishing holes was a thing —
+   * and the setting isn't missing, its prerequisite is. Only one of those is worth
+   * saying. It also replaced a `disabled` prop that dimmed the row to 0.55 with no
+   * reason attached; two treatments for "here and unusable" is the divergence this
+   * codebase keeps deleting.
+   *
+   * ONLY pass a prerequisite the user can satisfy from this panel. A row the
+   * format simply doesn't have stays absent — a permanently-dead row is worse
+   * than a hidden one.
+   */
+  requires?: string[];
+  /** The row is frozen because scoring has started. Same scrim as `requires`,
+   *  different words: a lock icon and the action that unblocks it. Wins over
+   *  `requires` when both apply — scores are the first gate you hit, and
+   *  satisfying a prerequisite wouldn't help. */
   locked?: boolean;
   testId?: string;
 }) {
-  const accordion = !!onToggle && !disabled && !locked;
-  const overlay = !!onClick && !disabled && !locked && !accordion;
+  // Blocked = covered by the scrim, and therefore NOT interactive in any mode.
+  // Expressed by dropping to the static variant rather than by disabling the
+  // button, so there is no tap target AND no keyboard path to a control the user
+  // has just been told they can't use.
+  const blockedBy: null | { kind: "locked" } | { kind: "requires"; list: string[] } = locked
+    ? { kind: "locked" }
+    : requires && requires.length > 0
+      ? { kind: "requires", list: requires }
+      : null;
+  const accordion = !!onToggle && !blockedBy;
+  const overlay = !!onClick && !blockedBy && !accordion;
   // A control row carries an inline control and never toggles (no accordion/overlay).
   const controlRow = !!control && !accordion && !overlay;
   const isOpen = accordion && !!expanded;
@@ -187,12 +208,11 @@ export function ChecklistRow({
     </div>
   );
 
-  const trailing = locked ? (
-    // #512 Option B: a lock icon REPLACES the chevron — names the frozen state and
-    // kills the false expand affordance. (Lower opacity comes from the dimmed container.)
-    <span className="flex shrink-0 items-center">
-      <Lock size={15} style={{ color: "var(--color-bt-text-dim)" }} />
-    </span>
+  const trailing = blockedBy ? (
+    // Nothing: the scrim covers this area and carries the state (a lock icon for
+    // the locked case). A chevron here would be a false affordance, and the old
+    // lock-icon-in-the-row said "frozen" without saying what to do about it.
+    null
   ) : controlRow ? (
     // The inline control sits where the chevron would — it owns its own taps.
     <span className="flex shrink-0 items-center">{control}</span>
@@ -214,11 +234,52 @@ export function ChecklistRow({
     </>
   );
   const headerClass = "flex w-full items-center gap-3 px-3.5 py-3 text-left disabled:opacity-60";
-  // #512 Option B: a live-locked row reads dimmed (reduced emphasis) so it clearly
-  // looks frozen, not merely chevron-less. A `disabled` (dependency-unmet) row dims
-  // the SAME way — the Danger-Zone dimming pattern — so it reads "not available
-  // yet", never silently inert. (locked also gets a lock icon; disabled does not.)
-  const containerStyle = { background: surface, border, opacity: locked || disabled ? 0.55 : undefined } as React.CSSProperties;
+  // No dimming any more. The row keeps its full contrast and the SCRIM carries the
+  // state — dimming to 0.55 and saying nothing was the illegible half of this, and
+  // STYLE_GUIDE §"Light mode contrast rule" warns against opacity-dimming text at all.
+  const containerStyle = { background: surface, border } as React.CSSProperties;
+
+  /**
+   * The scrim. Rendered as a SIBLING of the row body inside a relative wrapper,
+   * never as a child of a button — a cover nested inside its own button still
+   * bubbles the click to it, which is exactly the tappable-but-inert bug #879
+   * shipped (a modal painting under the thing it was covering while still taking
+   * taps). As a sibling it is topmost, so it receives the tap and stops there.
+   */
+  const scrim = blockedBy && (
+    <div
+      className="absolute inset-0 z-[2] grid place-items-center rounded-xl"
+      style={{ background: "var(--color-bt-overlay-row)", cursor: "not-allowed" }}
+      // Absorb the tap and go no further. There is nothing to do here: the copy
+      // has already named where to go.
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      data-testid={testId ? `${testId}-scrim` : "row-scrim"}
+    >
+      <span
+        className="flex items-center gap-1.5 px-3 text-center"
+        style={{ fontSize: 11.5, fontWeight: 650, letterSpacing: "0.01em", lineHeight: 1.3 }}
+      >
+        {blockedBy.kind === "locked" ? (
+          <>
+            <Lock size={12} style={{ color: "var(--color-bt-overlay-row-label)", flexShrink: 0 }} />
+            <span style={{ color: "var(--color-bt-overlay-row-text)", textShadow: "0 1px 3px rgba(0,0,0,.9)" }}>
+              Reset scoring to make changes
+            </span>
+          </>
+        ) : (
+          <>
+            {/* Label and value, not a sentence — "Requires:" is scaffolding; the
+                requirement is the thing to read. Comma-separated for multiples, so
+                the copy writes itself for a fifth format. */}
+            <span style={{ color: "var(--color-bt-overlay-row-label)", fontWeight: 600 }}>Requires:</span>
+            <span style={{ color: "var(--color-bt-overlay-row-text)", textShadow: "0 1px 3px rgba(0,0,0,.9)" }}>
+              {blockedBy.list.join(", ")}
+            </span>
+          </>
+        )}
+      </span>
+    </div>
+  );
 
   // Accordion: a header button toggling an in-place panel below (same bordered
   // frame — the row IS the frame; the panel sheds all modal chrome).
@@ -259,16 +320,22 @@ export function ChecklistRow({
   // Overlay-tappable — opens a separate editor.
   if (overlay) {
     return (
-      <button type="button" onClick={onClick} disabled={disabled} className={`${headerClass} rounded-xl`} style={containerStyle} data-testid={testId}>
+      <button type="button" onClick={onClick} className={`${headerClass} rounded-xl`} style={containerStyle} data-testid={testId}>
         {headerInner}
       </button>
     );
   }
 
-  // Read-only summary row.
+  // Read-only summary row — and the variant a BLOCKED row falls through to, so the
+  // scrim rides here. The wrapper is `relative` for it; the row keeps its exact
+  // height either way, which is what stops the panel reflowing as prerequisites are
+  // met (rows must not jump while someone is configuring).
   return (
-    <div className={`${headerClass} rounded-xl`} style={containerStyle} data-testid={testId}>
-      {headerInner}
+    <div className="relative rounded-xl" data-testid={testId}>
+      <div className={`${headerClass} rounded-xl`} style={containerStyle}>
+        {headerInner}
+      </div>
+      {scrim}
     </div>
   );
 }

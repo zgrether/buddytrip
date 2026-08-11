@@ -71,6 +71,35 @@ describe("format surface registry", () => {
     expect(surfaceForGameType(undefined)).toBeNull();
   });
 
+  it("`modifiers` is pinned to compatibleModifiers, not hand-declared", () => {
+    /**
+     * The boolean was hand-written and WRONG: rack and stroke both said `true`
+     * while their `compatibleModifiers` is `[]`, so each passed a `modifiersRow`
+     * whose value was permanently `undefined`. `oneSettingsPage.test.ts` did not
+     * catch it because it checked the PROP WAS PASSED IN THE SOURCE rather than
+     * that a row ever rendered — a corrected boolean under that guard would just
+     * reset the clock.
+     *
+     * So the boolean is no longer an independent claim. It must equal "does any
+     * game type on this surface actually have a modifier", which is a fact about
+     * `gameTypes.ts`. A fifth format cannot declare it wrong, and adding stroke's
+     * first modifier fails HERE until someone adds the row back deliberately.
+     */
+    for (const id of SURFACES) {
+      const entry = FORMAT_SURFACE[id];
+      const types =
+        entry.gameTypes === "manual"
+          ? GAME_TYPES.filter((t) => isManualGameType(t.id))
+          : GAME_TYPES.filter((t) => entry.gameTypes.includes(t.id));
+      const hasAny = types.some((t) => (t.compatibleModifiers ?? []).length > 0);
+      expect(
+        entry.modifiers,
+        `${id}: FORMAT_SURFACE says modifiers=${entry.modifiers}, but its game types ` +
+          `${hasAny ? "DO" : "do NOT"} declare any compatibleModifiers`,
+      ).toBe(hasAny);
+    }
+  });
+
   it("non-golf is the only surface without a course", () => {
     // Stated as an invariant rather than four assertions so that a fifth GOLF
     // surface declaring `course: false` fails here instead of at a tee box.

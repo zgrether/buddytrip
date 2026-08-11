@@ -55,7 +55,21 @@ export type FormatSurface = {
   settingsZoneLabel: string;
   /** Renders a Golf Course row in GAME MANAGEMENT. False for non-golf. */
   course: boolean;
-  /** Renders a Game Modifiers row after Rules of the Day. False for non-golf. */
+  /**
+   * Renders a Game Modifiers row after Rules of the Day.
+   *
+   * TRUE only where the format actually HAS a modifier — pinned to
+   * `compatibleModifiers` by test, because this was hand-declared and wrong:
+   * rack and stroke both said `true` while their `compatibleModifiers` is `[]`,
+   * so they passed a `modifiersRow` whose value was permanently `undefined`. The
+   * guard missed it by checking that the PROP was passed in the source rather
+   * than that a row ever rendered. Match is the only format with a modifier
+   * (`glorious_holes`); `moving_tees` was removed for being offered-and-inert.
+   *
+   * Note this is the STRUCTURAL question (does the format have one), not the
+   * usability one (is it usable right now) — a modifier that exists but needs
+   * outcome entry shows a row behind a `Requires:` scrim rather than no row.
+   */
   modifiers: boolean;
   /**
    * Carries a scorecard — the chrome action and the standalone scorecard route.
@@ -76,7 +90,7 @@ export const FORMAT_SURFACE = {
     gameTypes: ["gtt_rack_n_stack"],
     settingsZoneLabel: "Settings",
     course: true,
-    modifiers: true,
+    modifiers: false,
     scorecard: true,
   },
   stroke: {
@@ -85,7 +99,7 @@ export const FORMAT_SURFACE = {
     // Point Distribution + Groupings + Handicaps.
     settingsZoneLabel: "Group Settings",
     course: true,
-    modifiers: true,
+    modifiers: false,
     scorecard: true,
   },
   nongolf: {

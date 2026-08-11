@@ -60,6 +60,7 @@ export function MatchPointsRow({
   defaultTotal,
   canEdit,
   locked,
+  requires,
   expanded,
   onToggle,
   onTotalChange,
@@ -79,6 +80,10 @@ export function MatchPointsRow({
   canEdit: boolean;
   /** Live-scoring freeze (#512) — read-only + lock icon. Warned tier → always false now. */
   locked: boolean;
+  /** Prerequisite names for the distribution row — see `ChecklistRow.requires`.
+   *  Threaded rather than derived here: the caller owns what "matches exist" means
+   *  (it reads the DRAFT), and deriving it a second time is how two answers drift. */
+  requires?: string[];
   /** "distribution" only: the accordion open state (the total row is a control row). */
   expanded?: boolean;
   onToggle?: () => void;
@@ -130,7 +135,6 @@ export function MatchPointsRow({
           </>
         }
         state={effectiveTotal > 0 ? "resolved" : "empty"}
-        disabled={!canEdit}
         locked={locked}
         testId="row-total-points"
         control={
@@ -163,8 +167,8 @@ export function MatchPointsRow({
       // it's draft-derived, not serverMatches. (Bug: keying on anyOverride rendered a
       // 1-match game with points assigned as "not set".)
       state={matchCount > 0 ? "resolved" : "empty"}
-      disabled={!canEdit}
       locked={locked}
+      requires={requires}
       expanded={expanded}
       onToggle={onToggle}
       testId="row-point-distribution"

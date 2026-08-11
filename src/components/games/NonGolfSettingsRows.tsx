@@ -72,14 +72,20 @@ export function NonGolfSettingsRows({
         onToggle={() => setOpenAccordion((o) => (o === "format" ? null : "format"))}
       />
       {/* Point Distribution — points model only (the placement split). match_play's
-          single value carries no distribution. Reads its total from the DRAFT. */}
+          single value carries no distribution. Reads its total from the DRAFT.
+          DELIBERATELY HIDDEN rather than scrimmed with a `Requires:` (#703 family).
+          The prerequisite would be "a points-based cup", and `competitions.scoring_model`
+          is fixed at competition creation and editable from nowhere — so the copy
+          would name something the reader cannot go and set. The rule is that only a
+          SATISFIABLE prerequisite earns a scrim; a permanently-dead row is worse than
+          an absent one. This is the one confirmed exception to "every prerequisite is
+          reachable in this panel". */}
       {scoringModel === "points" && (
         <ChecklistRow
           icon={Scale}
           title="Point Distribution"
           subtitle={draft.pointsDistribution?.type === "placement" ? "Custom placement split — tap to edit" : "Even — tap to set a placement split"}
           state={draft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
-          disabled={!canEdit}
           expanded={openAccordion === "distribution"}
           onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
           testId="row-point-distribution"
@@ -124,7 +130,6 @@ function CompetitionFormatDropdown({
       title="Competition Format"
       subtitle={formatLabel(effective) ?? "Head-to-Head / Match"}
       state="resolved"
-      disabled={!canEdit}
       expanded={open}
       onToggle={onToggle}
       testId="row-competition-format"
@@ -184,7 +189,6 @@ function MatchValueRow({
       title="Total Points"
       subtitle={<>Win {fmtValue(value)} · Draw {fmtValue(value / 2)} each</>}
       state={value > 0 ? "resolved" : "empty"}
-      disabled={!canEdit}
       testId="row-total-points"
       control={
         <Stepper
@@ -192,7 +196,6 @@ function MatchValueRow({
           value={value}
           min={0}
           onChange={canEdit ? (v) => onChange(v) : () => {}}
-          disabled={!canEdit}
           editable // tap the value → decimal entry (item 1); −/+ stay integer
           testId="total-points-stepper"
         />
@@ -223,7 +226,6 @@ function TotalPoolRow({
         </>
       }
       state={value > 0 ? "resolved" : "empty"}
-      disabled={!canEdit}
       testId="row-total-points"
       control={
         <Stepper
@@ -231,7 +233,6 @@ function TotalPoolRow({
           value={value}
           min={0}
           onChange={canEdit ? (v) => onChange(v) : () => {}}
-          disabled={!canEdit}
           editable // tap the value → decimal entry (item 1); −/+ stay integer
           testId="total-points-stepper"
         />

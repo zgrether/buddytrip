@@ -1309,6 +1309,51 @@ export function MatchGameView() {
   // `scoring_enabled` and Save commits it together with the config. `enableReady`
   // still gates the Enable direction client-side; the RPC re-asserts readiness
   // server-side inside the tx, so the gate can't be bypassed.
+  /**
+   * Add a match to a game that already has scores — the "someone turned up late"
+   * path, and the ONE live write on this otherwise draft-then-save page.
+   *
+   * It routes through `matches.addMatch`, which is a pure additive INSERT: a fresh
+   * id, no DELETE, and `status: 'active'` on a live game so the new match is
+   * immediately scoreable. Nothing already underway is touched. That is what makes
+   * appending servable while rearranging is not — the draft's own save path
+   * clean-replaces every match and mints new UUIDs, which is why editing stays
+   * frozen (`frozen` on MatchSetup).
+   *
+   * ── The baseline re-freeze, which is the risky part ─────────────────────────
+   * A live write moves the config hash out from under the draft's frozen
+   * `baseHash`, and a stale base makes the user's next Save fail the optimistic-
+   * concurrency check with a CONFLICT.
+   *
+   * It re-freezes on its own here, and the CLEAN-DRAFT RULE is what makes that
+   * true rather than lucky: `useConfigDraft` only holds the baseline frozen while
+   * `anyTouched` — otherwise the effect re-seeds it from `serverConfigDraft` +
+   * `serverHash` whenever those change. Since live-add is refused on a dirty
+   * draft, `anyTouched` is false, so invalidating the matches query and the hash
+   * below is sufficient: both inputs change, the effect runs, the baseline lands
+   * on the new server state, and the next Save carries the new hash.
+   *
+   * Take the clean-draft requirement away and this stops holding — the baseline
+   * would stay frozen at the pre-add hash while the server moved underneath.
+   */
+  const addMatchM = trpc.matches.addMatch.useMutation({
+    onSuccess: () => {
+      // Both inputs the baseline re-seeds from. The hash is its own un-batched
+      // query (#16), so it is invalidated by name rather than riding the matches
+      // refetch.
+      void utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! });
+      void utils.games.configHash.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+  });
+  const addMatchLive = (playersPerSide: 1 | 2) => {
+    if (!tripId || !gameId || addMatchM.isPending) return;
+    // `playersPerSide` is the caller's shape choice; the server seeds an EMPTY
+    // match (both sides null) and the pairing is filled from the board afterwards,
+    // which is the same order the pre-scoring path uses.
+    void addMatchM.mutateAsync({ tripId, gameId }).catch(() => {});
+    void playersPerSide;
+  };
+
   function attemptReady() {
     if (draft.length === 0 || filledDraft.length !== draft.length) return;
     setScoringDraft(true);
@@ -1852,9 +1897,15 @@ export function MatchGameView() {
         // handicap adjusts gross→net, and there is no gross to adjust). Staging a
         // mode change therefore updates what's offered live, before Save.
         const scoreEntry = configDraft.entryMode !== "outcome";
-        const availableModifiers = (
-          GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? []
-        ).filter((k) => !(scoreEntry && k === "glorious_holes"));
+        // Two different questions, deliberately kept apart (they used to be one, and
+        // collapsing them is what made the row disappear):
+        //   formatModifiers    — does this FORMAT have any modifier at all? Structural.
+        //                        Empty → no row, ever (rule: never overlay something
+        //                        that can't be satisfied).
+        //   availableModifiers — is one usable RIGHT NOW? A prerequisite. Empty while
+        //                        formatModifiers is not → the row shows, behind a scrim.
+        const formatModifiers = GAME_TYPES.find((t) => t.id === gameQ.data?.game_type_id)?.compatibleModifiers ?? [];
+        const availableModifiers = formatModifiers.filter((k) => !(scoreEntry && k === "glorious_holes"));
         const modifiersOn = enabledCount(configDraft.modifiers, availableModifiers);
         const modifiersState: ChecklistRowState = modifiersOn > 0 ? "resolved" : "empty";
         const modifiersSubtitle = modifiersOn > 0 ? "Modifiers have been added" : "No modifiers added to your round yet";
@@ -2053,13 +2104,16 @@ export function MatchGameView() {
                   title={matchesTitle}
                   subtitle={matchesSubtitle}
                   state={matchesState}
-                  // LOCKED tier (084): the clean-replace mints fresh UUIDs → orphans
-                  // scores, so Matches freezes once ANY score exists — not on scoring
-                  // mode. MatchSetup has no read-only mode, so it goes non-expandable
-                  // when locked.
-                  locked={scoresExist}
-                  expanded={openRows.has("matches") && canEdit && !scoresExist}
-                  onToggle={canEdit && !scoresExist ? () => toggleRow("matches") : undefined}
+                  // The ONE row that is not scrimmed when scores exist, deliberately.
+                  // Its affordances are mixed: the existing pairings are frozen (the
+                  // clean-replace mints fresh UUIDs and would orphan entered scores),
+                  // but ADDING is legitimate mid-round — someone turns up late — and
+                  // `matches.addMatch` appends without touching anything already
+                  // underway. A whole-row scrim would take the add away with the edit,
+                  // so the freeze lives INSIDE `MatchSetup` (per match) instead.
+                  locked={false}
+                  expanded={openRows.has("matches") && canEdit}
+                  onToggle={canEdit ? () => toggleRow("matches") : undefined}
                   testId="row-matches"
                 >
                   <MatchSetup
@@ -2073,6 +2127,15 @@ export function MatchGameView() {
                     teamForSlot={teamForSlot}
                     maxMatches={maxMatchesForAdd}
                     openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
+                    frozen={scoresExist}
+                    onAddLive={scoresExist ? addMatchLive : undefined}
+                    // Live-add REQUIRES a clean draft. The add commits immediately
+                    // while staged edits don't, so allowing both would apply half of
+                    // what the user did — and the baseline re-freeze (below) would
+                    // then have to reconcile against pending changes. Save first.
+                    addBlockedReason={
+                      scoresExist && dirty ? "Save your changes before adding a match" : null
+                    }
                   />
                 </ChecklistRow>
 
@@ -2081,8 +2144,12 @@ export function MatchGameView() {
                     it lives here in Match Settings and only renders once a match
                     exists — the Total Points number up in Game Management has no such
                     dependency. */}
-                {gameQ.data && gameCompId && matchesExist && (
+                {/* Shown WITHOUT matches now, behind `Requires: Matches`. Hiding it
+                    meant the only way to learn a game could split its points across
+                    matches was to happen to add one first. */}
+                {gameQ.data && gameCompId && (
                   <MatchPointsRow
+                    requires={matchesExist ? undefined : ["Matches"]}
                     part="distribution"
                     matches={pointsMatches}
                     pointsTotal={configDraft.pointsTotal}
@@ -2096,15 +2163,17 @@ export function MatchGameView() {
                   />
                 )}
 
-                {/* Handicaps — hard-gated on Matches AND Course (W-9HOLE-01): both must
-                    resolve (a complete 18) before per-hole strokes can be allocated.
-                    HIDDEN in outcome mode (§3.3): a handicap adjusts gross→net, which
-                    decides a hole in SCORE mode only — in outcome mode you tap the
-                    winner, so there's no stroke to allocate (Phase 0 confirmed the
-                    derivation never reads a handicap in the outcome path). A row that
-                    can't do anything is noise. Keyed on the DRAFT entry mode so staging
-                    outcome hides it live. */}
-                {configDraft.entryMode !== "outcome" && (
+                {/* Handicaps — needs Matches AND Course (W-9HOLE-01): both must resolve
+                    before per-hole strokes can be allocated. It also needs SCORE entry:
+                    a handicap adjusts gross→net, which decides a hole in score mode
+                    only — in outcome mode you tap the winner, so there's no stroke to
+                    allocate (the derivation never reads a handicap on that path).
+                    All three are now stated on the row instead of hiding it. Entry mode
+                    is three rows up in this same panel, so `Requires: Score Entry`
+                    points somewhere reachable — and it is the exact mirror of Game
+                    Modifiers below, which needs the opposite mode. Whichever mode you
+                    are in, one of the two used to silently not exist. */}
+                {(
                   <ChecklistRow
                     icon={SlidersHorizontal}
                     title="Handicaps"
@@ -2114,11 +2183,16 @@ export function MatchGameView() {
                     // re-derives in-progress holes (084 writes it in place, no orphan).
                     // Never locked on scores. (The prerequisite gate below still holds.)
                     locked={false}
-                    // Task 2c: when the prerequisites aren't met (no course / no
-                    // matches) the row is VISIBLY disabled (dimmed), not silently
-                    // unclickable — pass the real toggle but mark it disabled so it
-                    // reads "not available yet".
-                    disabled={!handicapsReady}
+                    // W-9HOLE-01: per-hole strokes need BOTH a stroke-index table and
+                    // someone to allocate them to. Named as the rows that supply them
+                    // are named in this same panel, so the copy points somewhere.
+                    requires={
+                      configDraft.entryMode === "outcome"
+                        ? ["Score Entry"]
+                        : handicapsReady
+                          ? undefined
+                          : [...(courseResolved ? [] : ["Golf Course"]), ...(matchesExist ? [] : ["Matches"])]
+                    }
                     expanded={openRows.has("handicaps") && settingsEditable}
                     onToggle={settingsEditable ? () => toggleRow("handicaps") : undefined}
                     testId="row-handicaps"
@@ -2143,18 +2217,29 @@ export function MatchGameView() {
             rulesValue={configDraft.rulesForToday}
             onRulesChange={setRulesDraft}
             /* Modifiers (W-GAMEPAGE-01 §6.5) — config-only "special rules" driven by
-               the format's compatibleModifiers (gameTypes.ts). Hidden entirely when the
-               format offers none. WARNED tier (084): modifiers are compute-time inputs
-               (glorious weight, etc.) — derived, never snapshotted, so changing them
-               recalculates. */
+               the format's compatibleModifiers (gameTypes.ts). WARNED tier (084):
+               modifiers are compute-time inputs (glorious weight, etc.) — derived,
+               never snapshotted, so changing them recalculates.
+
+               This row used to VANISH in score-entry mode, because match play's only
+               modifier is `glorious_holes` and that one requires outcome entry — so the
+               filter emptied the list and the whole row went with it. Someone scoring by
+               strokes therefore never learned glorious finishing holes existed. It is
+               now always present for match play, behind `Requires: Hole Outcome
+               Scoring` when the mode is wrong. `compatibleModifiers` (the format HAS
+               one) and the entry-mode filter (it is USABLE right now) are different
+               questions, and only the second is a prerequisite. */
             modifiersRow={
-              availableModifiers.length > 0 ? (
+              formatModifiers.length > 0 ? (
                 <ChecklistRow
                   icon={Sparkles}
                   title="Game Modifiers"
                   subtitle={modifiersSubtitle}
                   state={modifiersState}
                   locked={false}
+                  // The mirror of Handicaps above: glorious weights a hole's value,
+                  // which only means anything when you record who won each hole.
+                  requires={availableModifiers.length > 0 ? undefined : ["Hole Outcome Scoring"]}
                   expanded={openRows.has("modifiers")}
                   // Task 3b: modifiers are an EARLY format decision (carry-over, moving
                   // tees); matches (who plays whom) is often decided the day before.
@@ -2481,6 +2566,9 @@ function MatchSetup({
   teamForSlot,
   maxMatches,
   openSelector,
+  frozen = false,
+  onAddLive,
+  addBlockedReason,
 }: {
   tripId: string;
   draft: DraftMatch[];
@@ -2502,6 +2590,24 @@ function MatchSetup({
    *  ceiling (no team cap — see the call site's reasoning). */
   maxMatches: number;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
+  /**
+   * Scores exist, so the EXISTING matches are frozen — their pairings can't change
+   * without orphaning entered scores (`save_game_config` clean-replaces matches and
+   * mints fresh UUIDs, which `score_entries.participant_id` and
+   * `match_hole_outcomes.match_id` point at). Adding is unaffected and stays live:
+   * see `onAddLive`.
+   */
+  frozen?: boolean;
+  /**
+   * Add a match RIGHT NOW, server-side, instead of staging it in the draft. Passed
+   * only when `frozen` — `matches.addMatch` is a pure additive INSERT (fresh id,
+   * no DELETE, `status: 'active'` on a live game so it is immediately scoreable),
+   * so it appends without touching the matches already underway. That is the whole
+   * reason "someone turned up late" is servable while rearranging is not.
+   */
+  onAddLive?: (playersPerSide: 1 | 2) => void;
+  /** Live-add is refused while the draft is dirty — see the call site. */
+  addBlockedReason?: string | null;
 }) {
   // F: reorder via up/down ARROWS (touch-reliable), not drag-and-drop — the ends are
   // disabled (up on the first row, down on the last). Matches only; agenda/roster DnD is
@@ -2510,7 +2616,12 @@ function MatchSetup({
   // match's shape is picked when it's added — a game can mix both.
   const [addOpen, setAddOpen] = useState(false);
   const addMatch = (pps: 1 | 2) => {
-    setDraft((prev) => [...prev, { matchNumber: prev.length + 1, playersPerSide: pps, a: [], b: [], handicap: 0, pointValue: null }]);
+    // Two paths, one control. Before scoring, adding is a draft edit like everything
+    // else on the page and commits with Save. Once scores exist the draft path is
+    // closed (its save clean-replaces every match), so the add goes straight to the
+    // server via the additive insert — which is the only reason it can still work.
+    if (onAddLive) onAddLive(pps);
+    else setDraft((prev) => [...prev, { matchNumber: prev.length + 1, playersPerSide: pps, a: [], b: [], handicap: 0, pointValue: null }]);
     setAddOpen(false);
   };
 
@@ -2566,7 +2677,10 @@ function MatchSetup({
     return (
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: pps }).map((_, k) => (
-          <Slot key={k} player={memberPart(members[k])} onTap={() => openSelector(matchIdx, slot, k)} />
+          // Frozen: the pairing is fixed by entered scores. The slot renders but
+          // does not open the picker — changing who is in a scored match is what
+          // the clean-replace would orphan.
+          <Slot key={k} player={memberPart(members[k])} onTap={frozen ? undefined : () => openSelector(matchIdx, slot, k)} />
         ))}
       </div>
     );
@@ -2598,7 +2712,11 @@ function MatchSetup({
           "Add match"), so the last match is deletable, not floor-clamped. */}
       <button
         type="button"
-        onClick={() => setDraft((prev) => removeMatchRow(prev, i))}
+        // Removing a match deletes its entered scores server-side; frozen means the
+        // game has scores, so this is not offered. `matches.removeMatch` exists and
+        // is per-match, but it is deliberately NOT wired here — see the PR note.
+        onClick={frozen ? undefined : () => setDraft((prev) => removeMatchRow(prev, i))}
+        disabled={frozen}
         title="Remove match"
         aria-label={`Remove match ${i + 1}`}
         className="flex items-center justify-center"
@@ -2706,13 +2824,23 @@ function MatchSetup({
             type="button"
             onClick={() => setAddOpen((o) => !o)}
             aria-expanded={addOpen}
-            className="flex w-full items-center justify-center gap-1.5"
+            disabled={!!addBlockedReason}
+            className="flex w-full items-center justify-center gap-1.5 disabled:opacity-40"
             style={{ height: 46, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 600 }}
+            data-testid="add-match"
           >
             <Plus size={16} />
             Add match
           </button>
-          {addOpen && (
+          {/* Live-add needs a clean draft, and says so rather than failing later.
+              Mixing the two would be the staged-state lie in a new costume: the
+              match lands immediately while the rest of your edits don't. */}
+          {addBlockedReason && (
+            <p className="mt-1.5 text-center" style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)" }} data-testid="add-match-blocked">
+              {addBlockedReason}
+            </p>
+          )}
+          {addOpen && !addBlockedReason && (
             <div className="mt-2.5 flex gap-2.5" data-testid="add-match-choice">
               <AddShapeButton kind="1V1" label="Add singles" onClick={() => addMatch(1)} />
               <AddShapeButton kind="2V2" label="Add doubles" onClick={() => addMatch(2)} />
@@ -2781,7 +2909,6 @@ function EntryModeRow({
       title="Entry Mode"
       subtitle={entryMode === "outcome" ? "Hole outcome — tap who won each hole" : "Score entry — enter gross strokes"}
       state="resolved"
-      disabled={!canEdit}
       locked={locked}
       testId="row-entry-mode"
       control={
@@ -3119,7 +3246,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Slot({ player, onTap }: { player: Participant | null; onTap: () => void }) {
+function Slot({ player, onTap }: { player: Participant | null; onTap?: () => void }) {
   if (!player) {
     // The plus + label live together inside one dashed pill (card-raised so it
     // reads as a fillable block). Always "+ Add player".
