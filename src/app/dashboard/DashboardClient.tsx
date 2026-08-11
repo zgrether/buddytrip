@@ -4,10 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
-import Link from "next/link";
 import { HelperCards } from "@/components/HelperCards";
-import { FeaturesSection } from "@/components/marketing/FeaturesSection";
-import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 import { trpc } from "@/lib/trpc-client";
 import { AppShell } from "@/components/shell/AppShell";
 import { TopNav } from "@/components/TopNav";
@@ -341,38 +338,22 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
           </div>
         )}
 
-        {/* Helper panel — always rendered in a min-viewport-height wrapper
-            so the FeaturesSection below always starts off-screen. The link
-            smooth-scrolls down to it, matching the empty-state behaviour. */}
-        {hasAnyTrips && (
-          <div
-            className="mt-10"
-            style={{ minHeight: "calc(100vh - 56px)" }}
-          >
-            {showHelperCards && <HelperCards />}
-            <div className={`text-center ${showHelperCards ? "mt-6" : "mt-2"}`}>
-              <Link
-                href="#how-it-works"
-                className="text-[13px]"
-                style={{ color: "var(--color-bt-accent)" }}
-              >
-                See how BuddyTrip works →
-              </Link>
-            </div>
-          </div>
-        )}
+        {/* Helper cards — progressive disclosure, deliberately: no trips means you
+            need to know what the app does; a few trips you don't own means you were
+            invited to things and have never run one, so you still don't; by the
+            third you're on your own. The gate is aimed at the right person.
 
-        {/* How-it-works section — always in the DOM so the anchor resolves.
-            Starts off-screen due to the min-height wrapper above. */}
-        {hasAnyTrips && (
-          <>
-            <style>{MARKETING_CSS}</style>
-            <div className="bt-mkt-root" style={{ minHeight: 0 }}>
-              <div className="bt-mkt-main">
-                <FeaturesSection />
-              </div>
-            </div>
-          </>
+            What is GONE from here is the marketing: a "See how BuddyTrip works →"
+            link inside a `min-height: 100vh` spacer, with the full `FeaturesSection`
+            below it. Both were gated `hasAnyTrips` — so the pitch appeared ONLY once
+            you had trips, and a returning user scrolled past their list into a
+            viewport of whitespace and then a marketing page. That is the inverse of
+            what the helper cards do one line above, and there is no state in which
+            an existing user wants it. */}
+        {hasAnyTrips && showHelperCards && (
+          <div className="mt-10">
+            <HelperCards />
+          </div>
         )}
       </main>
       }
