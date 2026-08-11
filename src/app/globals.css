@@ -58,6 +58,18 @@
   --color-bt-overlay: rgba(0, 0, 0, 0.5);
   --color-bt-overlay-drawer: rgba(0, 0, 0, 0.30); /* desktop side drawer — less disruptive than a full modal */
   --color-bt-overlay-sheet: rgba(0, 0, 0, 0.45);  /* mobile bottom sheet — between drawer and modal */
+
+  /* Unavailable-row scrim (#703 family) — the wash over a settings row that can't
+     be used yet, carrying the reason. MODE-INDEPENDENT, like --color-bt-on-accent
+     above and for the same reason: this is dark glass laid over a card, so what
+     reads on it depends on the glass, not on the theme. Themed values would put
+     light-mode's near-black --color-bt-text on an 80%-opaque dark wash.
+     The wash is --color-bt-base (dark) at 80%; the two text values are the DARK
+     theme's --color-bt-text / --color-bt-text-dim, which is what they sit on. */
+  --color-bt-overlay-row: rgba(10, 14, 26, 0.80);
+  --color-bt-overlay-row-text: #f1f5f9;   /* the requirement — the thing to read */
+  --color-bt-overlay-row-label: #94a3b8;  /* "Requires:" — scaffolding */
+
   --color-bt-on-accent: #0d1f1a;  /* mode-independent — dark text on teal accent fills (badges, primary buttons) */
   --color-bt-subtle-border: #e2e8f0;
   --color-bt-dim-faint: rgba(100, 116, 139, 0.12);

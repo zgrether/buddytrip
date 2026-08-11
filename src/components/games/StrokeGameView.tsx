@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Scale, Settings, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { Scale, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
@@ -23,7 +23,6 @@ import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
-import { ModifierCards } from "@/components/games/ModifierCards";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -32,8 +31,8 @@ import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotIn
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { fmtValue, type GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
-import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
+import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { type ModifiersMap } from "@/lib/modifiers";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
@@ -436,8 +435,6 @@ export function StrokeGameView() {
     setStrokesDraft((prev) => ({ ...(prev ?? serverConfigDraft.strokes), [userId]: strokes }));
     return Promise.resolve();
   };
-  // Game Modifiers → the modifiers draft slice (no server write until Save).
-  const persistModifiers = (next: ModifiersMap) => setModifiersDraft(next);
 
   // ── Course ACTIONS stage into the course draft slice (mirrors match/rack). ──
   const [courseBusy, setCourseBusy] = useState(false);
@@ -571,13 +568,18 @@ export function StrokeGameView() {
   // it; stroke didn't). Same component + same games.modifiers wiring as the match
   // page. Seed the draft once from the saved game, then own it locally.
   //
-  // Currently resolves to `[]` for stroke: its only modifier was `moving_tees`,
-  // removed as unbacked UI, and glorious_holes is match-play only. So the row
-  // renders nothing today — the wiring stays because it's keyed on the game type
-  // and lights up the moment a stroke-applicable modifier exists.
-  const availableModifiers = GAME_TYPES.find(
-    (t) => t.id === (gameQ.data as { game_type_id?: string } | undefined)?.game_type_id
-  )?.compatibleModifiers ?? [];
+  // Stroke has NO modifiers, and the wiring that used to hedge against that is gone.
+  // It resolved to `[]` (its only modifier was `moving_tees`, removed as unbacked UI;
+  // glorious_holes is match-play only) and was kept on the argument that it "lights up
+  // the moment a stroke-applicable modifier exists". It didn't light anything up — it
+  // built a row whose value was permanently `undefined` and let
+  // `FORMAT_SURFACE.stroke.modifiers` claim `true` about it for a whole phase.
+  //
+  // The hedge is replaced by a guard rather than by more wiring: `formatSurface.test.ts`
+  // pins the registry boolean to `compatibleModifiers`, so adding a stroke modifier
+  // fails the suite until someone adds the row back deliberately. That is the same
+  // outcome the speculative code was reaching for, except it can't be wrong in the
+  // meantime.
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
@@ -973,7 +975,6 @@ export function StrokeGameView() {
             : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
         }
         state="resolved"
-        disabled={!canEdit}
         expanded={openAccordion === "distribution"}
         onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
         testId="row-point-distribution"
@@ -998,7 +999,6 @@ export function StrokeGameView() {
         title="Groupings"
         subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"} · tap to edit tee groups` : "Required — everyone playing must be in a group"}
         state={draftGroupCount > 0 ? "resolved" : "empty"}
-        disabled={!canEdit}
         expanded={openAccordion === "groupings"}
         onToggle={() => setOpenAccordion((o) => (o === "groupings" ? null : "groupings"))}
         testId="row-groupings"
@@ -1021,7 +1021,6 @@ export function StrokeGameView() {
         title="Handicaps"
         subtitle={anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player"}
         state={anyHandicap ? "resolved" : "empty"}
-        disabled={!canEdit}
         expanded={openAccordion === "handicaps"}
         onToggle={() => setOpenAccordion((o) => (o === "handicaps" ? null : "handicaps"))}
         testId="row-handicaps"
@@ -1037,28 +1036,25 @@ export function StrokeGameView() {
     // elsewhere" on the next Save). It now edits the modifiers DRAFT slice (persistModifiers
     // → setModifiersDraft) and commits on Save — no out-of-band write. Rendered AFTER Rules
     // via the modifiersRow slot (Match Play's canonical order).
-    const modifierCount = enabledCount(configDraft.modifiers, availableModifiers);
-    const modifiersInlineRow = availableModifiers.length > 0 ? (
-      <ChecklistRow
-        icon={Sparkles}
-        title="Game Modifiers"
-        subtitle={modifierCount > 0 ? `${modifierCount} modifier${modifierCount === 1 ? "" : "s"} added` : "Optional — add special rules"}
-        state={modifierCount > 0 ? "resolved" : "empty"}
-        disabled={!canEdit}
-        expanded={openAccordion === "modifiers"}
-        onToggle={() => setOpenAccordion((o) => (o === "modifiers" ? null : "modifiers"))}
-        testId="row-modifiers"
-      >
-        <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={persistModifiers} readOnly={!canEdit} />
-      </ChecklistRow>
-    ) : undefined;
+    // NO Game Modifiers row. Stroke's `compatibleModifiers` is `[]` — match play is
+    // the only format with one — so this built a row whose value was permanently
+    // `undefined`, while `FORMAT_SURFACE.stroke.modifiers` claimed `true` about it.
+    // Deleted rather than left dead: a structural absence stays absent.
     // Shared by the two GAME MANAGEMENT slots — see the note in RackGameView: the
     // canonical Total Points → Golf Course sequence needs two slots, not one "both".
+    // #703 family: the COURSE row must read locked once scores exist, because the
+    // server refuses the change (COURSE_LOCKED — par and stroke index would move
+    // under entered scores). Match has always locked it; rack and stroke passed
+    // `locked: false` and let the user change it, hit Save, and get an error instead
+    // of seeing it was unavailable. A server refusal with no client lock is the
+    // worse direction of the same gap.
+    const scoresExist = (scoresQ.data?.length ?? 0) > 0;
     const setupRowsProps = {
       tripId,
       competitionId: gameCompetitionId,
       game: draftGameRow,
       canEdit,
+      // Per-SLOT below: this object feeds Total Points too, which never locks.
       locked: false,
       onChanged: () => void refreshGame(),
       onApplyFront: applyFrontToDraft,
@@ -1091,7 +1087,7 @@ export function StrokeGameView() {
           totalPointsRow={
             <GameSetupRows {...setupRowsProps} slot="config" placementPoints={placementControlled} />
           }
-          courseRow={<GameSetupRows {...setupRowsProps} slot="course" />}
+          courseRow={<GameSetupRows {...setupRowsProps} slot="course" locked={scoresExist} />}
           // Points term of the go-live gate (competition games only) — mirrors Match's
           // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
           // no client readiness gate at all before this (server still enforces mandatory
@@ -1114,9 +1110,6 @@ export function StrokeGameView() {
           settingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
           rulesValue={configDraft.rulesForToday}
           onRulesChange={setRulesDraft}
-          // Game Modifiers renders AFTER Rules Of The Day (Match Play's canonical order) —
-          // an inline accordion now (P3 3.3), not a drill-down trigger.
-          modifiersRow={modifiersInlineRow}
           saveBar={
             <SettingsSaveBar
               dirty={dirty}

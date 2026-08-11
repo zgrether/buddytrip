@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
-import { Users, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Users, Settings, SlidersHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
@@ -33,8 +33,7 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { configToRackDraft, rackDraftToPayload, rackDraftsEqual, type RackConfigDraft } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
-import { ModifierCards } from "@/components/games/ModifierCards";
-import { enabledCount, type ModifiersMap } from "@/lib/modifiers";
+import { type ModifiersMap } from "@/lib/modifiers";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
@@ -964,32 +963,23 @@ export function RackGameView() {
     // ModifierCards panel editing the modifiers draft slice (built below).
     // Rack currently resolves to `[]` (its only modifier, `moving_tees`, was removed
     // as unbacked UI), so the row is hidden until a rack-applicable modifier exists.
-    const availableModifiers = getGameTypeDefinition(gameTypeId)?.compatibleModifiers ?? [];
-    const modifierCount = enabledCount(configDraft.modifiers, availableModifiers);
-    const modifiersInlineRow = availableModifiers.length > 0 ? (
-      <ChecklistRow
-        icon={Sparkles}
-        title="Game Modifiers"
-        subtitle={modifierCount > 0 ? `${modifierCount} modifier${modifierCount === 1 ? "" : "s"} added` : "Optional — add special rules"}
-        state={modifierCount > 0 ? "resolved" : "empty"}
-        disabled={!canEdit}
-        expanded={openAccordion === "modifiers"}
-        onToggle={() => setOpenAccordion((o) => (o === "modifiers" ? null : "modifiers"))}
-        testId="row-modifiers"
-      >
-        <ModifierCards available={availableModifiers} modifiers={configDraft.modifiers} onChange={setModifiersDraft} readOnly={!canEdit} />
-      </ChecklistRow>
-    ) : undefined;
+    // NO Game Modifiers row. Rack's `compatibleModifiers` is `[]` — match play is the
+    // only format with one (`glorious_holes`) — so this built a row whose value was
+    // permanently `undefined`, and `FORMAT_SURFACE.rack.modifiers` claimed `true`
+    // about it. Deleted rather than left dead: a structural absence stays absent
+    // (there is no prerequisite anyone could satisfy), and the registry now says so.
     // OPTIONS section (extraRows): Handicaps.
     const optionRows = (
       <ChecklistRow
         icon={SlidersHorizontal}
         title="Handicaps"
-        subtitle={draftGroupsAssigned ? (anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player") : "Set the groupings first"}
+        subtitle={anyHandicap ? "Strokes set — tap to adjust" : "Optional — set strokes per player"}
         state={anyHandicap ? "resolved" : "empty"}
         // Gated until a cart exists; opens INLINE (the same per-player strokes UI stroke
         // play uses). No scoring lock — strokes are the warned (in-place) tier.
-        disabled={!draftGroupsAssigned}
+        // The old "Set the groupings first" subtitle is gone: the scrim says it now,
+        // and saying it twice in two places is how the two drift.
+        requires={draftGroupsAssigned ? undefined : ["Groupings"]}
         expanded={openAccordion === "handicaps" && draftGroupsAssigned}
         onToggle={draftGroupsAssigned ? toggleHandicaps : undefined}
         testId="row-handicaps"
@@ -1004,11 +994,19 @@ export function RackGameView() {
     // Course-then-Points, so the two are rendered as separate slots to get the
     // canonical Total Points → Golf Course sequence. Course ACTIONS stage into the
     // draft; points report up through the rack stepper.
+    // #703 family: the COURSE row must read locked once scores exist, because the
+    // server refuses the change (COURSE_LOCKED — par and stroke index would move
+    // under entered scores). Match has always locked it; rack and stroke passed
+    // `locked: false` and let the user change it, hit Save, and get an error instead
+    // of seeing it was unavailable. A server refusal with no client lock is the
+    // worse direction of the same gap.
+    const scoresExist = (scoresQ.data?.length ?? 0) > 0;
     const setupRowsProps = {
       tripId: tripId!,
       competitionId: competitionId ?? null,
       game: draftGameRow,
       canEdit,
+      // Per-SLOT below: this object feeds Total Points too, which never locks.
       locked: false,
       onChanged: () => void refreshGame(),
       onApplyFront: applyFrontToDraft,
@@ -1047,7 +1045,7 @@ export function RackGameView() {
               rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
             />
           }
-          courseRow={<GameSetupRows {...setupRowsProps} slot="course" />}
+          courseRow={<GameSetupRows {...setupRowsProps} slot="course" locked={scoresExist} />}
           // Gate the Setup→Scoring toggle on a drafted cart AND (competition games only,
           // mirroring Match's C3 gate) a real point value — a 0-point competition game can
           // play a full round and finalize contributing nothing to the cup, invisibly, until
@@ -1070,9 +1068,6 @@ export function RackGameView() {
           settingsRows={<>{groupingsRow}{optionRows}</>}
           rulesValue={configDraft.rulesForToday}
           onRulesChange={setRulesDraft}
-          // Game Modifiers — an inline ModifierCards panel (rack's row went live in the
-          // matrix reconcile; edits the modifiers draft slice, committed on Save).
-          modifiersRow={modifiersInlineRow}
           saveBar={
             <SettingsSaveBar
               dirty={dirty}

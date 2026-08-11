@@ -524,6 +524,19 @@ export const matchesRouter = router({
         .select("status")
         .eq("id", input.gameId)
         .maybeSingle();
+      // A COMPLETE game does not grow a new match. Its result is recorded and
+      // posted to the board; appending an unplayable match would leave the game
+      // finished with a match nobody can score. The third procedure this month
+      // found missing a complete-check, after `save_game_config` (mig 111) and
+      // `games.enableScoring` (#889) — and unlike those two this one is about to
+      // gain a production caller, so it is guarded before it gets one rather than
+      // after someone finds it.
+      if ((game?.status as string | undefined) === "complete") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This game is finished. Reopen it for corrections before adding a match.",
+        });
+      }
       const status = (game?.status as string | undefined) === "active" ? "active" : "pending";
 
       const { error } = await ctx.supabase.from("game_matches").insert({

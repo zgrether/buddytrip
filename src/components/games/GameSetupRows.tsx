@@ -191,7 +191,6 @@ export function GameSetupRows({
               : courseResolved ? "Handicaps enabled" : "Handicaps disabled"
           }
           state={courseResolved ? "resolved" : "empty"}
-          disabled={!canEdit}
           locked={locked}
           expanded={courseOpen}
           onToggle={courseOpen ? closeEditor : openCourse}
@@ -256,7 +255,6 @@ export function GameSetupRows({
             // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's
             // points term satisfied (they can't disagree). Never resolved before a slot.
             state={slotCount > 0 && pointsReady(derivedPerSlot) ? "resolved" : "empty"}
-            disabled={!canEdit}
             locked={locked}
             testId="row-format-points"
             // ── No slot-count gate on the CONTROL (was `slotCount > 0 &&`). ──
@@ -302,7 +300,6 @@ export function GameSetupRows({
               </>
             }
             state={(placementPoints?.value.total ?? 0) > 0 ? "resolved" : "empty"}
-            disabled={!canEdit}
             locked={locked}
             testId="row-total-points"
             control={
