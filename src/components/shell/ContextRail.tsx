@@ -9,7 +9,7 @@ import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { ROLE_COLOR, type BadgedRole } from "@/lib/roleColor";
-import { useIsShellDesktop } from "./breakpoints";
+import { useIsShellDesktop, useHasRailRoom } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
 import { CreateTripModal } from "@/components/trips/CreateTripModal";
@@ -303,6 +303,44 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * because there are no rows to measure. The next drag measures properly.
    */
   const collapseRail = () => collapse(railWidth);
+
+  /**
+   * ── The rail yields BEFORE chat as the viewport narrows ─────────────────────
+   *
+   * Below `RAIL_YIELD_PX` there is not room for a full rail AND chat's column —
+   * at 1024 a full rail leaves the content column 254px, narrower than a phone —
+   * and of the two, chat is the one worth keeping: you are watching scores and
+   * talking about them, while the rail is navigation you have already used.
+   *
+   * Collapsing goes through the SAME `collapse(railWidth)` the button calls, so
+   * the width you dragged is stored as the restore value and comes back
+   * untouched. Nothing new is introduced: no second flag, no "collapsed because
+   * narrow" state distinct from "collapsed because you said so", and no width
+   * that only the viewport knows about.
+   *
+   * ONE-WAY, deliberately. It collapses on the way down and does NOT re-open on
+   * the way back up, because "collapsed" cannot distinguish a rail this closed
+   * from one the user closed — and re-opening would then fight a deliberate
+   * collapse every time the window grew. The cost is that after a narrow spell
+   * you click once to get the list back; the alternative is the app re-opening
+   * something you didn't ask for, which is worse and unfixable without the
+   * second flag this avoids.
+   *
+   * Every affordance stays truthful at every width: the button still toggles,
+   * the strip entries still open the list. The yield is a DEFAULT, not a lock —
+   * open it at 1200 if you want it there.
+   */
+  const hasRailRoom = useHasRailRoom();
+  const hadRailRoom = useRef(hasRailRoom);
+  useEffect(() => {
+    const lost = hadRailRoom.current && !hasRailRoom;
+    hadRailRoom.current = hasRailRoom;
+    if (lost && !collapsed) collapse(railWidth);
+    // `railWidth`/`collapsed` are read at the moment of the crossing, not
+    // depended on — re-running this when the user drags would re-collapse them
+    // mid-drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasRailRoom]);
   const openRail = () => setWidth(restoreWidth, RAIL_MIN_PX);
   const toggleCollapsed = () => (collapsed ? openRail() : collapseRail());
 
