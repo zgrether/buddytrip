@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
+import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { useIsShellDesktop } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
@@ -607,6 +608,14 @@ function TripsColumn({
     if (status === "past") past.push(t);
     else active.push(t);
   }
+  // The SAME comparators the dashboard sorts with (`@/lib/tripSort`). This
+  // column previously did not sort at all — it rendered `trips.list`'s own
+  // order — so the two surfaces showed one list two ways. The dashboard splits
+  // Active into `now` and `upcoming`; that is a sectioning difference, and
+  // `compareActive` is correct applied to the merged set here or to either half
+  // there.
+  active.sort(compareActive);
+  past.sort(comparePast);
 
   return (
     <div className="p-2">
@@ -711,7 +720,7 @@ function IdeasColumn({
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
-  const ideas = rows.filter((t) => getEffectiveStatus(t) === "idea");
+  const ideas = rows.filter((t) => getEffectiveStatus(t) === "idea").sort(compareIdea);
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">

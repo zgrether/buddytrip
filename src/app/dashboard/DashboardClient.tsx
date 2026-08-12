@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
+import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { HelperCards } from "@/components/HelperCards";
 import { trpc } from "@/lib/trpc-client";
 import { AppShell } from "@/components/shell/AppShell";
@@ -40,20 +41,20 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   for (const trip of trips) {
     sections[getTripStatus(trip)].push(trip);
   }
-  // now: soonest-ending first; upcoming: soonest-starting first
-  sections.now.sort((a, b) =>
-    (a.end_date ?? "").localeCompare(b.end_date ?? "")
-  );
-  sections.upcoming.sort((a, b) =>
-    (a.start_date ?? "").localeCompare(b.start_date ?? "")
-  );
-  // idea: most recently updated first
-  sections.idea.sort((a, b) =>
-    (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
-  );
-  sections.past.sort((a, b) =>
-    (b.end_date ?? "").localeCompare(a.end_date ?? "")
-  );
+  // Ordering comes from `@/lib/tripSort`, shared with the desktop rail — the
+  // two surfaces render the same trips and must not disagree about their order.
+  // `now` and `upcoming` are separate SECTIONS here and one merged "Active"
+  // section in the rail; that difference is in the partitioning, not in the
+  // comparator, so both take `compareActive`.
+  //
+  // This changes `now` from soonest-ENDING to soonest-STARTING. "By date,
+  // soonest first" is one rule across the whole Active set, and a two-key
+  // ordering that flipped at the now/upcoming boundary could not be applied to
+  // the rail's merged section at all.
+  sections.now.sort(compareActive);
+  sections.upcoming.sort(compareActive);
+  sections.idea.sort(compareIdea);
+  sections.past.sort(comparePast);
   return sections;
 }
 
