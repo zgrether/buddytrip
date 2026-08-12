@@ -47,6 +47,38 @@ export const SHELL_DESKTOP_PX = 1024;
 export const CHAT_COLUMN_PX = SHELL_DESKTOP_PX;
 
 /**
+ * ── The rail YIELDS BEFORE CHAT ─────────────────────────────────────────────
+ *
+ * Below this width the rail's list column is suppressed and only the 62px strip
+ * remains, whatever width the user last dragged. Chat's column holds all the way
+ * down to `SHELL_DESKTOP_PX`, so as the viewport narrows the order is:
+ *
+ *   ≥1330   rail (as dragged) + chat column
+ *   1024..  rail STRIP only    + chat column
+ *   <1024   no rail            + chat as a sheet
+ *
+ * The priority is a judgement — leaderboard-plus-chat beats
+ * leaderboard-plus-rail, because you are watching scores and talking about them
+ * while the rail is navigation you have already used — but the number is
+ * derived. Chat's column is 340 and the content inset is 24 a side with a 24
+ * gutter between the two columns, so with a full 358px rail the content column
+ * gets `W − 358 − 48 − 340 − 24`. Asking for at least 560px of content (the
+ * width the board was designed against) gives:
+ *
+ *     560 + 358 + 48 + 340 + 24 = 1330
+ *
+ * Below that, keeping the rail open costs more than it gives. For scale: at
+ * 1024 with a full rail the content column would be **254px** — narrower than a
+ * phone — while collapsing the rail leaves **550px**. So this is not only an
+ * ordering preference; it is what makes chat-at-1024 viable at all, and #906
+ * moving chat down to the rail's breakpoint is what created the need for it.
+ *
+ * 1330 is DEVICE-PENDING: the 560px content floor is the board's design width,
+ * not a measured comfort threshold.
+ */
+export const RAIL_YIELD_PX = 1330;
+
+/**
  * `RAIL_WIDTH_PX` USED TO LIVE HERE, and its removal is the point.
  *
  * It was introduced as "the ONE numeric source" for the rail's width, because
@@ -107,6 +139,18 @@ function useMediaMin(px: number): boolean {
 
 /** Rail + tab strip are showing. */
 export const useIsShellDesktop = () => useMediaMin(SHELL_DESKTOP_PX);
+
+/**
+ * There is room for the rail's LIST column, not just its strip.
+ *
+ * Read for the two things CSS cannot express on its own — the toggle button's
+ * label/icon, and whether a strip entry paints as selected — so that a rail
+ * suppressed by width reads the same as one collapsed by the button. The
+ * suppression ITSELF is CSS (`ContextRail`), deliberately: it must not write to
+ * the stored width, or narrowing the window once would silently overwrite the
+ * width the user dragged and widening would never bring it back.
+ */
+export const useHasRailRoom = () => useMediaMin(RAIL_YIELD_PX);
 
 /**
  * Chat renders as a persistent side column rather than a bottom sheet.

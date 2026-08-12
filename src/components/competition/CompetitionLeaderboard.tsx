@@ -244,7 +244,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     return null;
   }
 
-  const { teams, teamTotals, pointsAvailable, winNumber, pointsToClinch, defendingTeamId } = data;
+  // `defendingTeamId` went with the clinch ribbon — it was that banner's only
+  // reader, used to say "retains" rather than "wins". The hero's clinch line
+  // does not make that distinction, so nothing consumes it here now.
+  const { teams, teamTotals, pointsAvailable, winNumber, pointsToClinch } = data;
 
   if (teams.length === 0) {
     return <NoTeamsState />;
@@ -284,36 +287,35 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
-      {/* Win banner — the RESTRAINED state, and only that.
+      {/* ── The clinch ribbon is GONE from above the header ─────────────────
+          A `ClinchedBanner` rendered here whenever a match-play cup had
+          clinched but not finished, as "the RESTRAINED state, and only that".
 
-          Two gates, both new:
+          It was a DUPLICATE, not the only home of that state. The hero renders
+          both clinch states itself and always has: `Final · {name} wins` when
+          the cup is complete, `{name} has clinched · games remain` when it is
+          not. So the restrained state survives this removal intact — it simply
+          reads once, in the hero, instead of twice with a ribbon stacked above
+          the header.
 
-          1. `!cupComplete` — once the cup is finished the hero below carries the
-             result as a lit trophy, and a second trophy strip stacked above it is
-             worse than either alone. The banner gives way.
-          2. `isMatchPlay` — this rendered unconditionally before, so a POINTS cup
-             showed a clinch strip with a hero behind it that has no trophy, no
-             glow and no two-score treatment (all gated on `showScores`). That
-             was a pre-existing inconsistency: a clinch announcement floating
-             above a surface that never acknowledges clinch. Points cups accrue
-             open-endedly and the board deliberately strips every match-play
-             clinch construct (no "first to X", no ceiling); the banner was the
-             one that got missed. */}
-      {clincher && isMatchPlay && !cupComplete && (
-        <ClinchedBanner
-          clincher={clincher}
-          isDefender={clincher.id === defendingTeamId}
-          teams={teams}
-          teamTotals={teamTotals}
-        />
-      )}
+          Worth recording because two plausible explanations were both WRONG.
+          It was not a path that never got cleaned up: this render site has
+          exactly one commit in `git log -S`, the file's own introduction, and it
+          has since GAINED two gates and a rationale comment, so it was live
+          deliberate code. And it was not restored by the #906 hero rework
+          either — that commit's diff touches `CompetitionFace.tsx` and
+          `CompetitionHero.tsx` and does not include this file at all. It was
+          simply never noticed that the hero had grown its own answer. */}
 
       {/* The merged hero (Task 1) — identity + gear + (match_play) team names,
           scores, clinch bar, win target. Now with the sticky-collapse swap (Spec
           Piece 1): the expanded hero scrolls away and the compact score bar pins
-          just below the TopNav (56px). Same data, a restyle. */}
+          at the top of whatever is scrolling — below the app bar on mobile,
+          where the PAGE scrolls; flush at `lg+`, where the board pane is its own
+          scroller and already starts below the bar. It used to be handed a flat
+          `stickyTop={56}`, which was the ~50px the mini sat down from the header
+          at desktop widths. Same data, a restyle. */}
       <StickyCollapseHero
-        stickyTop={56}
         cupName={cupName}
         tagline={tagline}
         teams={teams}
@@ -848,51 +850,6 @@ function SessionBreakdown({
           </div>
         );
       })}
-    </div>
-  );
-}
-
-// ── ClinchedBanner ────────────────────────────────────────────────────────────
-
-function ClinchedBanner({
-  clincher,
-  isDefender,
-  teams,
-  teamTotals,
-}: {
-  clincher: LBTeam;
-  isDefender: boolean;
-  teams: LBTeam[];
-  teamTotals: Record<string, number>;
-}) {
-  const sorted = [...teams].sort(
-    (a, b) => (teamTotals[b.id] ?? 0) - (teamTotals[a.id] ?? 0)
-  );
-  const scoreLabel = sorted
-    .map((t) => fmtPts(teamTotals[t.id] ?? 0))
-    .join("–");
-
-  // Present perfect, not the simple present. This banner now renders in exactly
-  // ONE state — decided, still being played — and "wins the cup" sat directly
-  // above the hero's own "games remain", contradicting it on a single screen.
-  // "has clinched" is the thing that is actually true: the result is settled,
-  // the golf isn't over. The defender keeps its own verb, for the same reason it
-  // always had one — retaining and winning are different achievements.
-  const verb = isDefender ? "has retained the cup" : "has clinched the cup";
-
-  return (
-    <div
-      className="flex items-center gap-3 rounded-xl px-4 py-3"
-      style={{
-        background: "var(--color-bt-accent-faint)",
-        border: "1px solid var(--color-bt-accent-border)",
-      }}
-      data-testid="clinch-banner"
-    >
-      <Trophy size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-      <p className="text-sm font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-        {clincher.name} {verb} · {scoreLabel}
-      </p>
     </div>
   );
 }
