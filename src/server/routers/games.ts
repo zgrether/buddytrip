@@ -842,8 +842,13 @@ export const gamesRouter = router({
         teeTime: z.string().max(5).nullable().optional(),
         scheduleItemId: z.string().uuid().nullable().optional(),
         // The "How's it played?" label (Configuration tab). Owner or delegate.
+        // The SHARED constant, not a second hardcoded list. This was a literal
+        // copy carrying the pre-collapse values, in the same file as the zod
+        // that reads `COMPETITION_FORMATS` — and `COMPETITION_FORMATS`'s own
+        // doc claims to be "ONE definition shared by the draft, the payload,
+        // and the saveConfig zod so they can't drift". It had already drifted.
         competitionFormat: z
-          .enum(["head_to_head", "bracket_se", "bracket_de", "best_of_n", "live_results"])
+          .enum([...COMPETITION_FORMATS, ...LEGACY_COMPETITION_FORMATS])
           .nullable()
           .optional(),
         // Free-text "rules of the day" (Configuration tab). Owner or delegate.
