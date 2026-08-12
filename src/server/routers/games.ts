@@ -29,7 +29,7 @@ import { computeConfigHash } from "@/lib/configHash";
  * alongside these — see `configHash` below.
  */
 const GAME_CONFIG_COLS =
-  "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode";
+  "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode, bracket_config";
 
 /**
  * The columns each hashed table contributes to `readGameConfigHash`, exported so the
