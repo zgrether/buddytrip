@@ -114,22 +114,29 @@ function subscribe(cb: () => void): () => void {
   };
 }
 
+/**
+ * Turn a stored string into a width. Exported ONLY so it can be tested: this is
+ * the half of the persistence round-trip that #902 got wrong, and a write
+ * succeeding is not the same as a read landing.
+ *
+ * The specific trap is `0`. It is a REAL stored value (collapsed), not
+ * something to clamp up to the floor — a read that clamped it would make the
+ * collapse un-persistable, so the write would succeed and the reload would come
+ * back at 200. Same shape as the #902 hydration bug in a different costume.
+ */
+export function decodeStoredWidth(raw: string | null): number {
+  const n = raw == null || raw.trim() === "" ? NaN : Number(raw);
+  if (!Number.isFinite(n)) return RAIL_DEFAULT_PX;
+  if (n <= RAIL_COLLAPSED_PX) return RAIL_COLLAPSED_PX;
+  return clampRailWidth(n, RAIL_MIN_PX);
+}
+
 /** Client snapshot. Cached so repeat reads are not repeat `localStorage` hits,
  *  and so the value is referentially stable between notifications. */
 function getSnapshot(): number {
   if (cached != null) return cached;
   try {
-    const raw = window.localStorage.getItem(KEY);
-    const n = raw == null ? NaN : Number(raw);
-    // 0 is a REAL stored value (collapsed), not something to clamp up to the
-    // floor. A read that clamped it would make the collapse un-persistable — the
-    // write would succeed and the read would land somewhere else, which is the
-    // exact shape of the #902 hydration bug in a different costume.
-    cached = !Number.isFinite(n)
-      ? RAIL_DEFAULT_PX
-      : n <= RAIL_COLLAPSED_PX
-        ? RAIL_COLLAPSED_PX
-        : clampRailWidth(n, RAIL_MIN_PX);
+    cached = decodeStoredWidth(window.localStorage.getItem(KEY));
   } catch {
     cached = RAIL_DEFAULT_PX;
   }
