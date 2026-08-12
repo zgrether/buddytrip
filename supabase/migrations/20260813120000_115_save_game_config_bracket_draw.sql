@@ -564,8 +564,12 @@ BEGIN
                     WHERE bem.entrant_id = be.id ORDER BY 1) AS members
         FROM public.bracket_entrants be WHERE be.game_id = p_game_id
     )
-    SELECT EXISTS (TABLE want EXCEPT ALL TABLE have)
-        OR EXISTS (TABLE have EXCEPT ALL TABLE want)
+    SELECT EXISTS (SELECT seed, team_id, members FROM want
+                   EXCEPT ALL
+                   SELECT seed, team_id, members FROM have)
+        OR EXISTS (SELECT seed, team_id, members FROM have
+                   EXCEPT ALL
+                   SELECT seed, team_id, members FROM want)
       INTO v_bracket_dirty;
 
     IF NOT v_bracket_dirty THEN
@@ -584,8 +588,12 @@ BEGIN
           LEFT JOIN public.bracket_entrants eb ON eb.id = bm.entrant_b_id
          WHERE bm.game_id = p_game_id
       )
-      SELECT EXISTS (TABLE want EXCEPT ALL TABLE have)
-          OR EXISTS (TABLE have EXCEPT ALL TABLE want)
+      SELECT EXISTS (SELECT bracket, round, slot, a_seed, b_seed FROM want
+                     EXCEPT ALL
+                     SELECT bracket, round, slot, a_seed, b_seed FROM have)
+          OR EXISTS (SELECT bracket, round, slot, a_seed, b_seed FROM have
+                     EXCEPT ALL
+                     SELECT bracket, round, slot, a_seed, b_seed FROM want)
         INTO v_bracket_dirty;
     END IF;
 
