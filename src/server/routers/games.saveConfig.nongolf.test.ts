@@ -82,6 +82,17 @@ describe("saveConfig — non-golf: the whole lean page saves atomically, no lock
     expect((await getById(gameId)).competition_format).toBe("best_of_n");
   });
 
+  it("a NON-bracket game saves cleanly, though its bracket_config column is {} (112's default)", async () => {
+    // The regression this exists for: `bracket_config` is NOT NULL DEFAULT '{}',
+    // so every game in the database has one and every non-bracket game's is `{}`.
+    // Reading it with a cast made the draft carry a truthy empty object, the
+    // payload included it, and the RPC's zod refused a save on EVERY non-bracket
+    // game — a field the user never touched breaking a field they did.
+    const gameId = await newNonGolfGame("NG plain");
+    await saveNG(gameId, { name: "Still saveable" });
+    expect((await getById(gameId)).name).toBe("Still saveable");
+  });
+
   it("bracket_config writes through saveConfig, and an omitted key PRESERVES it (113)", async () => {
     // The bracket's scalar settings ride the same atomic Save as a draft slice
     // (#18) rather than a live games.update.

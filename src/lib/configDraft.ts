@@ -130,6 +130,32 @@ export interface BracketConfig {
   consolation: boolean;
 }
 
+/**
+ * Decode `games.bracket_config` — a jsonb column — into a config or null.
+ *
+ * NOT a cast, and the difference is a CI failure. The column is
+ * `NOT NULL DEFAULT '{}'::jsonb` (migration 112), so EVERY game in the database
+ * has a `bracket_config`, and every one that isn't a bracket has `{}`. A
+ * `game.bracket_config as BracketConfig` type-checks perfectly and is false at
+ * runtime for all of them — the draft then carried a truthy `{}`, the payload
+ * included it, and the RPC's zod refused a save on every non-bracket game.
+ *
+ * That is CLAUDE.md #23 in miniature: a declared type is not a runtime guarantee
+ * across a boundary the type system cannot see into. jsonb is exactly such a
+ * boundary, so it gets a decoder rather than an assertion — `{}` and anything
+ * else malformed read as "no bracket configured", which is what they mean.
+ */
+export function toBracketConfig(raw: unknown): BracketConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const ok =
+    (r.elimination === "single" || r.elimination === "double") &&
+    (r.entrants === "singles" || r.entrants === "partners") &&
+    (r.seeding === "manual" || r.seeding === "random_avoid_teammates" || r.seeding === "random") &&
+    typeof r.consolation === "boolean";
+  return ok ? (r as unknown as BracketConfig) : null;
+}
+
 export interface BaseConfigDraft {
   /** The game's format id — READ-ONLY context, never edited (so it's excluded from
    *  the dirty check). Drives the points model: a match-play draft derives a
@@ -272,7 +298,7 @@ export function configToDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
-    bracketConfig: (game.bracket_config as BracketConfig | null) ?? null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     entryMode: game.entry_mode ?? "score",
     modifiers: game.modifiers ?? {},
@@ -521,7 +547,7 @@ export function configToNonGolfDraft(game: ConfigGameSnapshot, delegates: string
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
-    bracketConfig: (game.bracket_config as BracketConfig | null) ?? null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
     pointsDistribution: game.points_distribution ?? null,
@@ -565,7 +591,7 @@ export function configToRackDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
-    bracketConfig: (game.bracket_config as BracketConfig | null) ?? null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
     pointsDistribution: game.points_distribution ?? null,
@@ -696,7 +722,7 @@ export function configToStrokeDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
-    bracketConfig: (game.bracket_config as BracketConfig | null) ?? null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
     // Winner-takes-all (item 6): a persisted single-place split IS winner-takes-all —
