@@ -45,8 +45,21 @@ export function isWinnerTakesAll(dist: PointsDistribution | null): boolean {
 
 /** `games.competition_format` values (non-golf structure). ONE definition shared by the
  *  draft, the payload, and the `saveConfig` zod so they can't drift. */
-export const COMPETITION_FORMATS = ["head_to_head", "bracket_se", "bracket_de", "best_of_n", "live_results"] as const;
-export type CompetitionFormat = (typeof COMPETITION_FORMATS)[number];
+export const COMPETITION_FORMATS = ["head_to_head", "bracket", "best_of_n", "live_results"] as const;
+/**
+ * Values the picker no longer OFFERS but the saveConfig zod must still ACCEPT.
+ *
+ * `bracket_se` / `bracket_de` collapsed into one `bracket` (single vs double is a
+ * setting inside it, not a separate format). A game saved before that still holds
+ * the old value, and every non-golf save re-sends its whole config — so refusing
+ * them here would make an untouched legacy bracket game unsaveable, failing on a
+ * field the user never went near. Read-accepted, never offered; `formatLabel`
+ * carries the matching display fallback.
+ */
+export const LEGACY_COMPETITION_FORMATS = ["bracket_se", "bracket_de"] as const;
+export type CompetitionFormat =
+  | (typeof COMPETITION_FORMATS)[number]
+  | (typeof LEGACY_COMPETITION_FORMATS)[number];
 
 /** A match inside the composite draft. Extends the pairing shape (`DraftMatch`)
  *  with the per-match point-value override (A2b) so Points derives from the draft,
@@ -101,6 +114,48 @@ export function scoringToggleChanged(
  * course + entry mode + modifiers (`ConfigDraft`); non-golf adds nothing
  * (`NonGolfConfigDraft`); rack/stroke will add groups / participant strokes.
  */
+/**
+ * The bracket's scalar settings, as stored in `games.bracket_config`.
+ *
+ * The POOL and the DRAW are not here — they are rows (`bracket_entrants` /
+ * `bracket_matches`), not config, and they clean-replace through their own
+ * payload keys. This is only what a bracket IS, not who is in it.
+ */
+export interface BracketConfig {
+  elimination: "single" | "double";
+  entrants: "singles" | "partners";
+  seeding: "manual" | "random_avoid_teammates" | "random";
+  /** The 3rd-place play-off. Drives whether the distribution has 3rd/4th rows at
+   *  all — they are structurally absent when this is false, not hidden. */
+  consolation: boolean;
+}
+
+/**
+ * Decode `games.bracket_config` — a jsonb column — into a config or null.
+ *
+ * NOT a cast, and the difference is a CI failure. The column is
+ * `NOT NULL DEFAULT '{}'::jsonb` (migration 112), so EVERY game in the database
+ * has a `bracket_config`, and every one that isn't a bracket has `{}`. A
+ * `game.bracket_config as BracketConfig` type-checks perfectly and is false at
+ * runtime for all of them — the draft then carried a truthy `{}`, the payload
+ * included it, and the RPC's zod refused a save on every non-bracket game.
+ *
+ * That is CLAUDE.md #23 in miniature: a declared type is not a runtime guarantee
+ * across a boundary the type system cannot see into. jsonb is exactly such a
+ * boundary, so it gets a decoder rather than an assertion — `{}` and anything
+ * else malformed read as "no bracket configured", which is what they mean.
+ */
+export function toBracketConfig(raw: unknown): BracketConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const ok =
+    (r.elimination === "single" || r.elimination === "double") &&
+    (r.entrants === "singles" || r.entrants === "partners") &&
+    (r.seeding === "manual" || r.seeding === "random_avoid_teammates" || r.seeding === "random") &&
+    typeof r.consolation === "boolean";
+  return ok ? (r as unknown as BracketConfig) : null;
+}
+
 export interface BaseConfigDraft {
   /** The game's format id — READ-ONLY context, never edited (so it's excluded from
    *  the dirty check). Drives the points model: a match-play draft derives a
@@ -112,6 +167,16 @@ export interface BaseConfigDraft {
    *  best-of-N / live-results). Null for golf formats. Quiet tier: it recalculates
    *  nothing (no scoring path reads it), so it's just a drafted scalar like name/rules. */
   competitionFormat: CompetitionFormat | null;
+  /**
+   * `games.bracket_config` — the bracket's scalar settings (elimination,
+   * entrants, seeding mode, consolation). Null for every format that isn't a
+   * bracket, and for a bracket that hasn't been set up yet.
+   *
+   * A drafted scalar like the rest of this block: the whole settings page still
+   * commits through ONE `save_game_config` (#18), so bracket setup does not get
+   * its own live write.
+   */
+  bracketConfig: BracketConfig | null;
   /** A draft FIELD (spec §2.7-2): Save commits the config AND goes live / disables
    *  in one action. Not a separate transaction. */
   scoringEnabled: boolean;
@@ -201,6 +266,8 @@ export interface DraftMatchInput {
 
 /** The `games`-row fields the draft baseline reads (a subset of `getById`). */
 export interface ConfigGameSnapshot {
+  /** `games.bracket_config` — see `BracketConfig`. */
+  bracket_config?: unknown;
   game_type_id?: string | null;
   name?: string | null;
   rules_for_today?: string | null;
@@ -231,6 +298,7 @@ export function configToDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     entryMode: game.entry_mode ?? "score",
     modifiers: game.modifiers ?? {},
@@ -312,6 +380,10 @@ export interface SaveConfigPayload {
   rulesForToday: string | null;
   /** `games.competition_format` (086) — non-golf's structure label; null for golf. */
   competitionFormat: CompetitionFormat | null;
+  /** Omitted rather than null when the format doesn't own it — the RPC
+   *  COALESCE-PRESERVES, so sending null would be indistinguishable from
+   *  "clear it" for a column only a bracket speaks for. */
+  bracketConfig?: BracketConfig | null;
   scoringEnabled: boolean;
   /** Match play owns these; a format that doesn't (non-golf) omits them — the RPC
    *  preserves entry_mode (COALESCE) and defaults modifiers to {}. */
@@ -451,6 +523,10 @@ function baseDraftToPayload(
     name: draft.name.trim(),
     rulesForToday: draft.rulesForToday?.trim() || null,
     competitionFormat: draft.competitionFormat,
+    // Only SENT when the draft actually has one. The RPC COALESCE-preserves an
+    // absent key, so omitting is how a non-bracket format says "not mine to
+    // speak for" rather than wiping a bracket's setup.
+    ...(draft.bracketConfig ? { bracketConfig: draft.bracketConfig } : {}),
     scoringEnabled: draft.scoringEnabled,
     pointsTotal: draft.pointsTotal,
     pointsDistribution: distribution,
@@ -471,6 +547,7 @@ export function configToNonGolfDraft(game: ConfigGameSnapshot, delegates: string
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
     pointsDistribution: game.points_distribution ?? null,
@@ -514,6 +591,7 @@ export function configToRackDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
     pointsDistribution: game.points_distribution ?? null,
@@ -644,6 +722,7 @@ export function configToStrokeDraft(
     name: game.name ?? "",
     rulesForToday: game.rules_for_today ?? null,
     competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
     // Winner-takes-all (item 6): a persisted single-place split IS winner-takes-all —
@@ -783,6 +862,8 @@ function baseDraftsEqual(a: BaseConfigDraft, b: BaseConfigDraft): boolean {
     a.name.trim() === b.name.trim() &&
     (a.rulesForToday?.trim() || "") === (b.rulesForToday?.trim() || "") &&
     a.competitionFormat === b.competitionFormat &&
+    // Value equality, not reference: the draft holds a fresh object every render.
+    JSON.stringify(a.bracketConfig ?? null) === JSON.stringify(b.bracketConfig ?? null) &&
     a.scoringEnabled === b.scoringEnabled &&
     a.pointsTotal === b.pointsTotal &&
     canonical(a.pointsDistribution) === canonical(b.pointsDistribution) &&

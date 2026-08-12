@@ -15,7 +15,7 @@ import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotIn
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
-import { COMPETITION_FORMATS } from "@/lib/configDraft";
+import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
@@ -842,8 +842,13 @@ export const gamesRouter = router({
         teeTime: z.string().max(5).nullable().optional(),
         scheduleItemId: z.string().uuid().nullable().optional(),
         // The "How's it played?" label (Configuration tab). Owner or delegate.
+        // The SHARED constant, not a second hardcoded list. This was a literal
+        // copy carrying the pre-collapse values, in the same file as the zod
+        // that reads `COMPETITION_FORMATS` — and `COMPETITION_FORMATS`'s own
+        // doc claims to be "ONE definition shared by the draft, the payload,
+        // and the saveConfig zod so they can't drift". It had already drifted.
         competitionFormat: z
-          .enum(["head_to_head", "bracket_se", "bracket_de", "best_of_n", "live_results"])
+          .enum([...COMPETITION_FORMATS, ...LEGACY_COMPETITION_FORMATS])
           .nullable()
           .optional(),
         // Free-text "rules of the day" (Configuration tab). Owner or delegate.
@@ -1046,7 +1051,23 @@ export const gamesRouter = router({
           pointsDistribution: z.unknown().nullable(),
           // competition_format (086) — non-golf's structure label. Optional: only
           // non-golf sends it; golf formats omit it and the RPC COALESCE-preserves.
-          competitionFormat: z.enum(COMPETITION_FORMATS).nullable().optional(),
+          // Legacy values are ACCEPTED, never offered. Every non-golf save
+          // re-sends the whole config, so refusing `bracket_se`/`bracket_de`
+          // would make an untouched pre-collapse bracket game unsaveable —
+          // failing on a field the user never went near.
+          competitionFormat: z
+            .enum([...COMPETITION_FORMATS, ...LEGACY_COMPETITION_FORMATS])
+            .nullable()
+            .optional(),
+          bracketConfig: z
+            .object({
+              elimination: z.enum(["single", "double"]),
+              entrants: z.enum(["singles", "partners"]),
+              seeding: z.enum(["manual", "random_avoid_teammates", "random"]),
+              consolation: z.boolean(),
+            })
+            .nullable()
+            .optional(),
           courseId: z.string().nullable(),
           backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),
