@@ -336,25 +336,21 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     if (collapsed) openRail();
   };
 
-  /**
-   * Publish the rail's TOTAL width so the top bar's tab group can align to its
-   * right edge.
+  /*
+   * `--bt-rail-width` USED TO BE PUBLISHED HERE, so `TopNav`'s Trip/Cup group
+   * could align to the rail's right edge. That group is now a floating pill at
+   * the bottom of the content area (`ViewTabsPill`), which needs no alignment
+   * to anything, so the variable lost its only consumer and went with it.
    *
-   * `breakpoints.ts` used to be that single source (`RAIL_WIDTH_PX`, read by both
-   * the rail and `TopNav`), and its own comment warned that two hand-typed 246s
-   * drifting apart is "exactly the class of bug" to avoid. Phase 2 caused that
-   * drift: the rail became a 62px strip plus a 246–296px column, and `TopNav` was
-   * left offsetting by 246 — so the tabs sat 62–112px inside the rail.
-   *
-   * A constant can't be the source any more, because the width is now stateful
-   * (the expand/contract toggle). A CSS variable can, and it is the pattern this
-   * shell already uses for exactly this reason — `AppTabBar` publishes
-   * `--bt-bottomnav-height` so its consumers track it without importing anything.
+   * Worth recording because the variable was itself the fix for a previous
+   * version of this problem: `breakpoints.ts` held a `RAIL_WIDTH_PX` constant
+   * that the bar and the rail both hand-typed, which drifted the moment the
+   * rail's width became stateful. Publishing it solved the drift and left the
+   * coupling — a bar element whose x depended on a sidebar's width, which is
+   * what put the tabs on the wordmark once the rail could collapse to 62px.
+   * Moving the tabs removed the coupling instead of tracking it more carefully.
    */
   const totalWidth = RAIL_STRIP_PX + railWidth;
-  useEffect(() => {
-    document.documentElement.style.setProperty("--bt-rail-width", `${totalWidth}px`);
-  }, [totalWidth]);
 
   // Adjusted during RENDER, not in an effect. React's documented shape for
   // "change state when a value changes" — it re-renders before committing, so

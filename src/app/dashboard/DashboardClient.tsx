@@ -184,13 +184,10 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
     <AppShell
       tripId={null}
       remoteTripId={remoteTripId}
-      topBar={({ activeView, hasContext, onSelectView }) => (
+      topBar={() => (
         <TopNav
           title="BuddyTrip"
           avatarTeamColor={myTeamColor}
-          activeView={activeView}
-          hasContext={hasContext}
-          onSelectView={onSelectView}
         />
       )}
       home={

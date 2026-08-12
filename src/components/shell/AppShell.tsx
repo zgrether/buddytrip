@@ -8,6 +8,7 @@ import { AppTabBar } from "./AppTabBar";
 import { ContextIntro, LockedTabExplainer, type LockedExplainerView } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { ChatSheet } from "./ChatSheet";
+import { ViewTabsPill } from "./ViewTabsPill";
 import { useIsChatColumn } from "./breakpoints";
 import { CONTENT_INSET } from "./contentArea";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
@@ -90,9 +91,6 @@ export function AppShell({
         chatOpen: boolean;
         onToggleChat: () => void;
         onDismissPanels: () => void;
-        activeView: AppView;
-        hasContext: boolean;
-        onSelectView: (v: AppView) => void;
       }) => ReactNode);
   defaultView?: AppView;
   /**
@@ -483,16 +481,6 @@ export function AppShell({
                 chatOpen,
                 onToggleChat: toggleChat,
                 onDismissPanels: closeChat,
-                activeView: activeForTabs,
-                // Scoped, NOT remote-aware — the same condition the explainer
-                // below branches on, so the desktop tabs and the "Pick a trip"
-                // copy can never both claim the screen.
-                // The desktop tab group is present only when it would be a real
-                // choice — see `showDesktopTabs`. Absent during the idea phase
-                // and on a trip with no cup, where it would be one live tab
-                // pointing at the screen you are already on.
-                hasContext: showDesktopTabs,
-                onSelectView: select,
               })
             : topBar}
         </TopBarSlot>
@@ -557,13 +545,29 @@ export function AppShell({
                * Cup render into, rather than being declared separately (and
                * differently) by each of them. See `contentArea.ts`.
                */}
-              <div
-                className={`min-w-0 lg:h-full lg:min-h-0 lg:max-w-[1280px] ${
-                  twoPane ? "lg:overflow-hidden" : "lg:overflow-y-auto"
-                }`}
-                data-testid="shell-body"
-              >
-                {body}
+              {/*
+               * A POSITIONED wrapper around the scroller, so the view-tabs pill
+               * can float over the content area without scrolling with it and
+               * without centring across the chat column. It carries the height
+               * chain (`lg:h-full lg:min-h-0`) rather than interrupting it —
+               * this box sits between the grid and the scroller, and the panes
+               * below depend on that chain resolving.
+               */}
+              <div className="relative min-w-0 lg:h-full lg:min-h-0">
+                <div
+                  className={`h-full min-w-0 lg:min-h-0 lg:max-w-[1280px] ${
+                    twoPane ? "lg:overflow-hidden" : "lg:overflow-y-auto"
+                  } ${showDesktopTabs ? "lg:pb-20" : ""}`}
+                  data-testid="shell-body"
+                >
+                  {body}
+                </div>
+                {/* Bottom-centred on the CONTENT AREA. Absent (not dimmed) when
+                    the group would be degenerate — same `showDesktopTabs`
+                    condition the bar used, unchanged. */}
+                {showDesktopTabs && (
+                  <ViewTabsPill activeView={activeForTabs} onSelectView={select} />
+                )}
               </div>
               {/* Chat's aside placement (Phase 6) — a persistent layout
                   region, not a floating dialog (no scrim), so it keeps the
