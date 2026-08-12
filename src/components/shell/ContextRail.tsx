@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trophy } from "lucide-react";
+import { Flag, PanelLeft, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
-import { Spinner } from "@/components/Spinner";
-import { useIsShellDesktop, RAIL_WIDTH_PX } from "./breakpoints";
+import { getEffectiveStatus } from "@/lib/tripStatus";
+import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
+import { useIsShellDesktop } from "./breakpoints";
+import { useRailWidth, RAIL_STRIP_PX } from "./rail/useRailWidth";
+import { RailTripRow, RailPastTripRow } from "./rail/RailTripRow";
 
 /**
  * ContextRail — Home promoted from a tab to a persistent left rail (Phase 5).
@@ -97,12 +100,21 @@ function useIdle(enabled: boolean): boolean {
   return idle;
 }
 
+/** `trips.list` selects `*`, so these were always on the wire — the rail simply
+ *  didn't read them. Dates drive the section split and the countdown band;
+ *  `hasCompetition` drives the trophy mark. */
 interface TripRow {
   id: string;
   title: string;
   locked_destination_location?: string | null;
   location?: string | null;
   myRole?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  locked_destination_at?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+  hasCompetition?: boolean | null;
 }
 
 export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
@@ -125,6 +137,11 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   });
 
   const rows = trips as TripRow[];
+  // Which LIST is showing. Not persisted: it is a position ("what am I looking at
+  // right now"), not a preference, and the trips list is the right thing to land
+  // on every time — the precedent split is in `useRailWidth`'s note.
+  const [entity, setEntity] = useState<"trips" | "games">("trips");
+  const { expanded, toggle, width: railWidth } = useRailWidth();
 
   // Which row is mid-switch. `useTransition` is the same mechanism `TripCard`
   // uses — it tracks router.push from click to the new route rendering, so the
@@ -158,147 +175,351 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
      * whatever the CONTENT column happened to be.
      */
     <aside
-      className="hidden shrink-0 flex-col lg:flex lg:min-h-0"
-      style={{
-        width: RAIL_WIDTH_PX,
-        background: "var(--color-bt-card)",
-        borderRight: "1px solid var(--color-bt-border)",
-      }}
+      className="hidden shrink-0 lg:flex lg:min-h-0"
       data-testid="context-rail"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      <Eyebrow action={<EyebrowAction label="Start a trip" onClick={() => router.push("/trips/new")} />}>
-        Your trips
-      </Eyebrow>
-      {isError ? (
-        <RailLoadError onRetry={() => void refetch()} />
-      ) : (
-        rows.map((t) => {
-          const current = t.id === activeTripId;
-          return (
-            <RailTripRow
-              key={t.id}
-              trip={t}
-              current={current}
-              pending={pendingTripId === t.id}
-              onOpen={() => openTrip(t.id)}
-            />
-          );
-        })
-      )}
+      {/* ── Level one: the entity strip ──────────────────────────────────────
+          WHICH LIST you are looking at. Deliberately not the same axis as the top
+          bar's Trip · Cup · Chat, which is navigation WITHIN a trip — two levels
+          of navigation competing for the same glance would be worse than the one
+          level we had. Each entry is a kind of thing you own a list of; Circles
+          and Competitions are the obvious later members. */}
+      <nav
+        className="flex shrink-0 flex-col items-center gap-[3px] py-2.5"
+        style={{
+          width: RAIL_STRIP_PX,
+          background: "var(--color-bt-chrome)",
+          borderRight: "1px solid var(--color-bt-border)",
+        }}
+        aria-label="Lists"
+      >
+        <StripItem
+          icon={<Flag size={19} />}
+          label="Trips"
+          active={entity === "trips"}
+          onClick={() => setEntity("trips")}
+        />
+        <StripItem
+          icon={<Trophy size={19} />}
+          label="Games"
+          active={entity === "games"}
+          onClick={() => setEntity("games")}
+        />
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={expanded ? "Contract the list" : "Expand the list"}
+          title={expanded ? "Contract the list" : "Expand the list"}
+          aria-expanded={expanded}
+          data-testid="rail-width-toggle"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors hover:border-[var(--color-bt-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <PanelLeft size={16} />
+        </button>
+      </nav>
 
-      {/* The dashed "Start a trip" that sat here is gone — it is now the "+" on the
-          section header above, which stays in view however long the list gets and
-          matches mobile's header button. See `EyebrowAction`. */}
-
-      <Eyebrow className="mt-5">Games</Eyebrow>
-      <RailAction
-        icon={<Trophy size={14} />}
-        label="Play a game"
-        onClick={() => router.push("/quick-game")}
-      />
+      {/* ── Level two: the list ──────────────────────────────────────────────
+          Background matches the strip, not the main viewport, so the two read as
+          one chrome region rather than the column reading as content. */}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        style={{
+          width: railWidth,
+          background: "var(--color-bt-chrome)",
+          borderRight: "1px solid var(--color-bt-border)",
+          transition: "width 180ms ease",
+        }}
+        data-testid="rail-column"
+        data-expanded={expanded || undefined}
+      >
+        {entity === "trips" ? (
+          <TripsColumn
+            rows={rows}
+            isError={isError}
+            onRetry={() => void refetch()}
+            activeTripId={activeTripId}
+            pendingTripId={pendingTripId}
+            expanded={expanded}
+            onOpen={openTrip}
+            onNew={() => router.push("/trips/new")}
+          />
+        ) : (
+          <GamesColumn onPlay={() => router.push("/quick-game")} />
+        )}
       </div>
     </aside>
   );
 }
 
-/**
- * One trip row, with the in-row pending state the dashboard's cards already had.
- *
- * The rail lost the affordance the dashboard shipped with (`TripCard`'s
- * `useTransition` + spinner): tapping a row called `router.push` bare, so nothing
- * acknowledged the tap and the row sat inert until the main pane transformed a
- * second later. It matters MORE here than it did on the dashboard, because the
- * rail stays on screen for the whole switch — the unresponsive row is visible the
- * entire time, next to the thing that is visibly working.
- *
- * Same mechanism as `TripCard`, not a second one: `useTransition` tracks Next's
- * `router.push` from click through to the new route rendering, which is what makes
- * the pending flag paint within a frame instead of waiting on the route bundle.
- * Only the TAPPED row shows it — the pending id is compared per row, so the rest
- * of the rail stays live and you can still change your mind.
- */
-function RailTripRow({
-  trip,
-  current,
-  pending,
-  onOpen,
+/** One entity in the narrow strip — icon over label. */
+function StripItem({
+  icon,
+  label,
+  active,
+  onClick,
 }: {
-  trip: TripRow;
-  current: boolean;
-  pending: boolean;
-  onOpen: () => void;
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      aria-current={current || undefined}
-      aria-busy={pending || undefined}
-      onClick={onOpen}
-      disabled={pending}
-      data-testid="rail-trip"
-      data-pending={pending || undefined}
-      // The desktop context rail — no hover/press/focus existed on any of its
-      // rows before this. `RailTripRow` needed one change first: the inline
-      // `background` below used to fall through to a literal `"transparent"`
-      // string for a non-current row, which — same trap as TopNav's desktop
-      // tab strip — would have made a `hover:bg-[...]` class silently inert
-      // (an inline style always wins over a class rule, whatever its value).
-      // Changed to `undefined` so the CSS class can take over exactly when
-      // there's nothing else claiming the background (the CURRENT row keeps
-      // its accent-faint fill, inline, untouched).
-      //
-      // `active:scale-[0.99]` — the wide-row value (see UserMenu's dropdown
-      // items for the same reuse), not the compact `0.98`.
-      //
-      // `disabled={pending}` above means a mid-switch row can't be
-      // re-triggered or refocused — expected, not a gap: it's already
-      // showing its own spinner state.
-      className="relative mb-1 flex w-full items-center gap-2.5 rounded-[9px] p-2.5 text-left transition-[background-color,border-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
+      onClick={onClick}
+      aria-current={active || undefined}
+      data-testid={`rail-entity-${label.toLowerCase()}`}
+      className="flex w-12 flex-col items-center gap-[3px] rounded-[9px] py-[7px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
       style={{
-        background: current ? "var(--color-bt-accent-faint)" : undefined,
-        border: `1px solid ${current ? "var(--color-bt-accent-border)" : "transparent"}`,
-        cursor: pending ? "wait" : "pointer",
+        background: active ? "var(--color-bt-accent-faint)" : undefined,
+        color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
       }}
     >
-      <span
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-bold"
-        style={{
-          background: current ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-          color: current ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-          // The avatar is where the spinner lands, so fade it rather than the
-          // whole row — the title stays readable while the switch is in flight.
-          opacity: pending ? 0 : 1,
-        }}
-      >
-        {initials(trip.title)}
-      </span>
-      {pending && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute left-2.5 grid h-7 w-7 place-items-center"
-        >
-          <Spinner />
-        </span>
-      )}
-      <span className="min-w-0 flex-1" style={{ opacity: pending ? 0.6 : 1 }}>
-        <span className="block truncate text-[13px] font-semibold">{trip.title}</span>
-        <span
-          className="block truncate text-[10.5px]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {trip.locked_destination_location ?? trip.location ?? "No destination yet"}
-        </span>
-      </span>
+      {icon}
+      <span className="text-[9.5px] font-semibold">{label}</span>
     </button>
   );
 }
 
 /**
- * The rail's load-failure state — deliberately a distinct surface from "no
- * trips", which is what a bare `data = []` collapsed it into. Quiet by design:
- * the rail is chrome beside the thing the user came for, so a failure here says
- * what happened and offers a retry without competing with page content.
+ * The trips list.
+ *
+ * Two sections, and the third is deliberately absent: IDEAS never reaches the
+ * rail. An idea is destination imagery, price bands and course counts — that is
+ * main-viewport content (the archived-ideas screen), not a sidebar row, and
+ * rendering a stripped-down version here would be a worse version of a screen
+ * that already exists.
+ */
+function TripsColumn({
+  rows,
+  isError,
+  onRetry,
+  activeTripId,
+  pendingTripId,
+  expanded,
+  onOpen,
+  onNew,
+}: {
+  rows: TripRow[];
+  isError: boolean;
+  onRetry: () => void;
+  activeTripId: string | null;
+  pendingTripId: string | null;
+  expanded: boolean;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+}) {
+  // `getEffectiveStatus` is the SAME derivation the dashboard sections on, so the
+  // two lists can't disagree about what's active. now + upcoming both read as
+  // "Active" here: the rail's job is which trips are live concerns, and the
+  // dashboard's finer split is a main-viewport distinction.
+  const active: TripRow[] = [];
+  const past: TripRow[] = [];
+  for (const t of rows) {
+    const status = getEffectiveStatus(t);
+    if (status === "idea") continue;
+    if (status === "past") past.push(t);
+    else active.push(t);
+  }
+
+  return (
+    <div className="p-2">
+      <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
+        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Trips
+        </span>
+        <EyebrowAction label="Start a trip" onClick={onNew} />
+      </div>
+
+      {/* The key — both marks explained ONCE, here, instead of every row carrying
+          its own label. A row is read every time; a key is read once. */}
+      <div
+        className="flex items-center gap-[7px] px-1.5 pb-2 text-[10px]"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <span
+          aria-hidden="true"
+          className="inline-block"
+          style={{ width: 3, height: 11, borderRadius: 2, background: "var(--color-bt-warning)" }}
+        />
+        <span>Yours to run</span>
+        <span style={{ opacity: 0.35 }}>·</span>
+        <span
+          aria-hidden="true"
+          className="inline-flex h-3 w-3 items-center justify-center rounded-full"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          <Trophy size={7} strokeWidth={2.5} />
+        </span>
+        <span>Has a cup</span>
+      </div>
+
+      {isError ? (
+        <RailLoadError onRetry={onRetry} />
+      ) : (
+        <>
+          <Section label="Active" count={active.length}>
+            {active.map((t) => (
+              <RailTripRow
+                key={t.id}
+                trip={t}
+                current={t.id === activeTripId}
+                pending={pendingTripId === t.id}
+                expanded={expanded}
+                onOpen={() => onOpen(t.id)}
+              />
+            ))}
+          </Section>
+          <Section label="Past" count={past.length}>
+            {past.map((t) => (
+              <RailPastTripRow
+                key={t.id}
+                trip={t}
+                current={t.id === activeTripId}
+                pending={pendingTripId === t.id}
+                onOpen={() => onOpen(t.id)}
+              />
+            ))}
+          </Section>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The Games list. History is a stub until finished games are tracked. */
+function GamesColumn({ onPlay }: { onPlay: () => void }) {
+  const quick = useQuickGameSummary();
+  return (
+    <div className="p-2">
+      <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
+        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Games
+        </span>
+        <EyebrowAction label="Play a game" onClick={onPlay} />
+      </div>
+
+      {/* No `count`: this section renders even when empty, so the column says
+          "nothing in progress" rather than opening on History alone and reading
+          as though the list failed to load. `Section` hides at count 0, which is
+          right for the trips list (no Past section on a first trip) and wrong
+          here — the difference is that Games has only two sections, and hiding
+          one leaves almost nothing. */}
+      <Section label="In progress">
+        {quick ? (
+          <button
+            type="button"
+            onClick={onPlay}
+            data-testid="rail-game-inprogress"
+            className="mb-[3px] block w-full rounded-[9px] p-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <div className="truncate text-[12.5px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {quick.title}
+            </div>
+            {quick.subtitle && (
+              <div className="mt-[3px] truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {quick.subtitle}
+              </div>
+            )}
+          </button>
+        ) : (
+          <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            Nothing in progress.
+          </p>
+        )}
+      </Section>
+
+      <Section label="History">
+        <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          Finished games will collect here.
+        </p>
+      </Section>
+    </div>
+  );
+}
+
+/**
+ * The in-progress Quick Game, read from the SAME localStorage state and through
+ * the SAME `quickGameSubtitle` the dashboard card uses — so the rail and the card
+ * cannot crown a different leader or disagree about the hole (#825's lesson: the
+ * subtitle runs the same two calls `ScoreEntryView`'s "Leading" badge runs).
+ *
+ * Read on mount only. Local storage has no change event within a tab, and the
+ * rail is not where scores are entered — the game surface is, and it owns the
+ * live version.
+ */
+function useQuickGameSummary(): { title: string; subtitle: string } | null {
+  // Lazy initializer, not an effect — same reason as `useRailWidth`: it reads on
+  // first render (SSR returns null from `readQuickGameState`'s own window guard),
+  // and setState-inside-an-effect is what the React Compiler lint refuses.
+  const [summary] = useState<{ title: string; subtitle: string } | null>(() => {
+    const state = readQuickGameState();
+    return state ? { title: "Quick Stroke Play", subtitle: quickGameSubtitle(state) } : null;
+  });
+  return summary;
+}
+
+/** A grouping header with an optional count. Renders nothing when empty. */
+function Section({
+  label,
+  count,
+  children,
+}: {
+  label: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  if (count === 0) return null;
+  return (
+    <>
+      <div
+        className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-2.5 text-[9.5px] font-bold uppercase"
+        style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.1em" }}
+      >
+        <span>{label}</span>
+        {count != null && <span>{count}</span>}
+      </div>
+      {children}
+    </>
+  );
+}
+
+/**
+ * The column header's "+".
+ *
+ * There used to be one way to start a trip in this rail: a full-width dashed
+ * button at the END of the list. That is a first-run affordance — useful while
+ * the list is short, progressively worse as it grows, because it sits below every
+ * trip you have. A header action is always in view regardless of list length, and
+ * it matches mobile, where the dashboard's "New trip" is a header button too.
+ */
+function EyebrowAction({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-6 w-6 items-center justify-center rounded-[7px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
+      style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+      data-testid="rail-add-trip"
+    >
+      <Plus size={13} />
+    </button>
+  );
+}
+
+/**
+ * A FAILED trips fetch, told apart from an empty one (#764). Without this the
+ * rail renders both states identically — no rows — and "you're in no trips" is
+ * indistinguishable from "the request didn't land".
  */
 function RailLoadError({ onRetry }: { onRetry: () => void }) {
   return (
@@ -324,96 +545,4 @@ function RailLoadError({ onRetry }: { onRetry: () => void }) {
     </div>
   );
 }
-
-function Eyebrow({
-  children,
-  className = "",
-  action,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  /** A section-header action (the trips "+"). Sits on the eyebrow's baseline so the
-   *  section owns its own verb — see `EyebrowAction` for why there is only one. */
-  action?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`mb-2 ml-1 flex items-center text-[10px] font-bold uppercase ${className}`}
-      style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.1em" }}
-    >
-      <span className="flex-1">{children}</span>
-      {action}
-    </div>
-  );
-}
-
-/**
- * The section-header "+".
- *
- * There used to be TWO ways to start a trip in this rail's trips section: this one
- * (which didn't exist) and a full-width dashed button at the END of the list. The
- * dashed one is a first-run affordance — genuinely useful when the list is short,
- * and progressively worse as the list grows, because it sits below every trip you
- * have. With seven trips it is a scroll away from a thing you'd want at hand.
- *
- * A header action is always in view regardless of list length, and it matches
- * mobile, where the dashboard's "New trip" is a header button too. So the dashed
- * one is gone and this replaces it.
- *
- * The GAMES section keeps its dashed action deliberately: "Play a game" is the
- * section's only content today (there is no list to sit at the end of), so it is
- * the primary affordance rather than a duplicate of one.
- */
-function EyebrowAction({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="-my-1 flex h-6 w-6 items-center justify-center rounded-[7px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
-      style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-      data-testid="rail-add-trip"
-    >
-      <Plus size={13} />
-    </button>
-  );
-}
-
-function RailAction({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      // Had NO transition, hover, press, or focus at all before this — the
-      // inline `background: "transparent"` (removed below) blocked a hover
-      // class the same way it did on the two rows above, so it's dropped
-      // here too rather than worked around.
-      className="mt-1 flex w-full items-center justify-center gap-2 rounded-[9px] p-2.5 text-[12.5px] font-semibold transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
-      style={{
-        border: "1px dashed var(--color-bt-border)",
-        color: "var(--color-bt-text-dim)",
-      }}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function initials(title: string): string {
-  return title
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
-}
+
