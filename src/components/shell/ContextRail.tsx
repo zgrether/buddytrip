@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Dice5, Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
+import { Dice5, Flag, Lightbulb, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
@@ -177,9 +177,20 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * strip back on every render would fight the user. `activeList` only changes
    * when the trip itself moves.
    */
-  const { width: railWidth, wide, snap, setWidth } = useRailWidth();
+  const { width: railWidth, wide, collapsed, collapse, setWidth } = useRailWidth();
   const columnRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  /**
+   * The floor to reopen to, captured at the moment of COLLAPSE.
+   *
+   * "Reopen to the minimum" means the measured minimum, and the measurement
+   * needs the rows on screen — which is exactly what collapsing takes away. So
+   * it is read on the way down, while the column is still rendered, rather than
+   * guessed on the way back up. A rail that has only ever been collapsed by a
+   * cold-loaded `0` falls back to `RAIL_MIN_PX`, and the first drag re-measures
+   * anyway.
+   */
+  const reopenFloor = useRef(RAIL_MIN_PX);
 
   /**
    * The drag floor — the widest rendered trip NAME, so nothing truncates that
@@ -278,6 +289,26 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     // keeps receiving them wherever the pointer goes.
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+  };
+
+  /**
+   * The button: collapse ⇄ reopen to the minimum. NOT a second width control —
+   * it does the one thing the drag deliberately cannot (`clampRailWidth` never
+   * returns the collapsed value), and it reopens to the floor rather than to
+   * wherever you last left it, so it never competes with the divider to express
+   * a width.
+   *
+   * Dragging OUT of a collapsed rail also works and is not a third mechanism:
+   * it is the same `setWidth`, and its floor comes back as `RAIL_MIN_PX`
+   * because there are no rows to measure. The next drag measures properly.
+   */
+  const toggleCollapsed = () => {
+    if (collapsed) {
+      setWidth(reopenFloor.current, reopenFloor.current);
+      return;
+    }
+    reopenFloor.current = measureFloor();
+    collapse();
   };
 
   /**
@@ -397,24 +428,38 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           onClick={() => setEntity("games")}
         />
         <div className="flex-1" />
-        {/* SNAP, not expand/contract — the drag covers everything in between, so
-            this is two known widths on one tap. */}
+        {/* COLLAPSE ⇄ reopen-to-minimum, not snap-wide/snap-narrow. The two
+            snaps were 50px apart, which is not a range worth a divider — the
+            button and the drag were expressing the same 50px. They are split by
+            KIND now: this takes the list away entirely, the divider owns every
+            width in between. (This reverses the previous spec; the reasoning
+            lives in `useRailWidth`.) */}
         <button
           type="button"
-          onClick={snap}
-          aria-label={wide ? "Snap the list narrow" : "Snap the list wide"}
-          title={wide ? "Snap narrow" : "Snap wide"}
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Show the list" : "Hide the list"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Show the list" : "Hide the list"}
           data-testid="rail-width-toggle"
+          data-collapsed={collapsed || undefined}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors hover:border-[var(--color-bt-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          <PanelLeft size={16} />
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         </button>
       </nav>
 
       {/* ── Level two: the list ──────────────────────────────────────────────
           Background matches the strip, not the main viewport, so the two read as
-          one chrome region rather than the column reading as content. */}
+          one chrome region rather than the column reading as content.
+
+          UNMOUNTED when collapsed, not merely `width: 0`. A zero-width box with
+          `overflow-y-auto` keeps every row in the accessibility tree and in the
+          tab order — a collapsed rail you can still tab through row by row is
+          worse than one that animates. The cost is that collapsing snaps rather
+          than eases; reopening eases, because the box mounts at 0 and the
+          transition carries it out. */}
+      {!collapsed && (
       <div
         ref={columnRef}
         className="min-h-0 flex-1 overflow-y-auto"
@@ -460,12 +505,15 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           <GamesColumn onPlay={() => router.push("/quick-game")} />
         )}
       </div>
+      )}
 
       {/* The divider. A 5px grab strip over the column's right border — wider
           than the 1px line so it is catchable, and `col-resize` says so before
-          you press. Not focusable and not keyboard-operable ON PURPOSE: the snap
-          button beside it is the keyboard path to both known widths, so the drag
-          is an enhancement rather than the only way to size the rail. */}
+          you press. Not focusable and not keyboard-operable ON PURPOSE: the
+          button beside it reaches both ends of the range from the keyboard
+          (collapsed, and the minimum), so the drag is an enhancement rather than
+          the only way to size the rail. It stays mounted while collapsed —
+          that's what makes dragging back out possible. */}
       <div
         onPointerDown={startDrag}
         role="separator"
