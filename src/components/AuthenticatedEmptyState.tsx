@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { Plane } from "lucide-react";
 import { HelperCards } from "@/components/HelperCards";
-import { FeaturesSection } from "@/components/marketing/FeaturesSection";
-import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 
 /**
  * The "no trips yet" content block, rendered inside `/dashboard` when
@@ -72,32 +70,17 @@ export function AuthenticatedEmptyState() {
           </Link>
         </div>
 
-        {/* Helper cards — always shown on the empty state (0 trips
-            counts as ≤3 with no ownership). */}
+        {/* Helper cards — always shown on the empty state (0 trips counts as ≤3
+            with no ownership).
+
+            NOTHING BELOW THEM. The "See how BuddyTrip works →" link and the
+            marketing `FeaturesSection` it scrolled to are gone: the cards ARE the
+            explanation, and a second, longer one underneath was the same teaching
+            material twice. The same block on a POPULATED dashboard was the actual
+            bug — it was gated `hasAnyTrips`, so the pitch appeared only once you
+            had trips. */}
         <div className="mt-10 w-full max-w-[642px]">
           <HelperCards />
-          <div className="mt-6 text-center">
-            <Link
-              href="#how-it-works"
-              className="text-[13px]"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              See how BuddyTrip works →
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* How-it-works content — re-uses the marketing FeaturesSection
-          so the explanation stays in one place. The marketing CSS
-          selectors aren't scoped to .bt-mkt-root, but wrapping keeps
-          the font + container styles consistent. The min-height:0
-          override prevents .bt-mkt-root's default 100vh from pushing
-          the rest of the page off-screen when embedded. */}
-      <style>{MARKETING_CSS}</style>
-      <div className="bt-mkt-root" style={{ minHeight: 0 }}>
-        <div className="bt-mkt-main">
-          <FeaturesSection />
         </div>
       </div>
     </>

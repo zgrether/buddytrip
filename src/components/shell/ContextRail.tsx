@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, Trophy } from "lucide-react";
+import { Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { Spinner } from "@/components/Spinner";
@@ -167,7 +167,9 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
       data-testid="context-rail"
     >
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      <Eyebrow>Your trips</Eyebrow>
+      <Eyebrow action={<EyebrowAction label="Start a trip" onClick={() => router.push("/trips/new")} />}>
+        Your trips
+      </Eyebrow>
       {isError ? (
         <RailLoadError onRetry={() => void refetch()} />
       ) : (
@@ -185,7 +187,9 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
         })
       )}
 
-      <RailAction icon={<Flag size={14} />} label="Start a trip" onClick={() => router.push("/trips/new")} />
+      {/* The dashed "Start a trip" that sat here is gone — it is now the "+" on the
+          section header above, which stays in view however long the list gets and
+          matches mobile's header button. See `EyebrowAction`. */}
 
       <Eyebrow className="mt-5">Games</Eyebrow>
       <RailAction
@@ -321,14 +325,58 @@ function RailLoadError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function Eyebrow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Eyebrow({
+  children,
+  className = "",
+  action,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** A section-header action (the trips "+"). Sits on the eyebrow's baseline so the
+   *  section owns its own verb — see `EyebrowAction` for why there is only one. */
+  action?: React.ReactNode;
+}) {
   return (
     <div
-      className={`mb-2 ml-1 text-[10px] font-bold uppercase ${className}`}
+      className={`mb-2 ml-1 flex items-center text-[10px] font-bold uppercase ${className}`}
       style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.1em" }}
     >
-      {children}
+      <span className="flex-1">{children}</span>
+      {action}
     </div>
+  );
+}
+
+/**
+ * The section-header "+".
+ *
+ * There used to be TWO ways to start a trip in this rail's trips section: this one
+ * (which didn't exist) and a full-width dashed button at the END of the list. The
+ * dashed one is a first-run affordance — genuinely useful when the list is short,
+ * and progressively worse as the list grows, because it sits below every trip you
+ * have. With seven trips it is a scroll away from a thing you'd want at hand.
+ *
+ * A header action is always in view regardless of list length, and it matches
+ * mobile, where the dashboard's "New trip" is a header button too. So the dashed
+ * one is gone and this replaces it.
+ *
+ * The GAMES section keeps its dashed action deliberately: "Play a game" is the
+ * section's only content today (there is no list to sit at the end of), so it is
+ * the primary affordance rather than a duplicate of one.
+ */
+function EyebrowAction({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="-my-1 flex h-6 w-6 items-center justify-center rounded-[7px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
+      style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+      data-testid="rail-add-trip"
+    >
+      <Plus size={13} />
+    </button>
   );
 }
 
