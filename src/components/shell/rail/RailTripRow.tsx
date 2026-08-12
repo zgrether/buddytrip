@@ -132,6 +132,7 @@ export function RailTripRow({
         <div className="min-w-0 flex-1">
           <div
             className="truncate text-[15px] font-semibold"
+            data-rail-name
             // Role edge, channel two — see the note at the top of this file.
             style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
           >
