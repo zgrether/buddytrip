@@ -8,6 +8,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
+import { ROLE_COLOR, type BadgedRole } from "@/lib/roleColor";
 import { useIsShellDesktop } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
@@ -555,6 +556,18 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   );
 }
 
+/** The key's swatch — the same 3px edge the rows draw, from the same source,
+ *  so the legend cannot describe a colour the rows don't paint. */
+function KeyEdge({ role }: { role: BadgedRole }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block"
+      style={{ width: 3, height: 11, borderRadius: 2, background: ROLE_COLOR[role].text }}
+    />
+  );
+}
+
 /** One entity in the narrow strip — icon over label. */
 function StripItem({
   icon,
@@ -643,34 +656,45 @@ function TripsColumn({
         <EyebrowAction label="Start a trip" onClick={onNew} />
       </div>
 
-      {/* The key — both marks explained ONCE, here, instead of every row carrying
-          its own label. A row is read every time; a key is read once. */}
+      {/* The key — every mark explained ONCE, here, instead of every row carrying
+          its own label. A row is read every time; a key is read once.
+
+          TWO role rows now, not one line reading "Admin". The single amber edge
+          meant "Owner or Organizer", and the key needed a word for that
+          grouping — "Admin" was chosen as short and universally understood,
+          which it is, and as a name for a rights tier this app does not have,
+          which it also is. The previous spec's item 2 explicitly moved this from
+          "Yours to run" to "Admin"; this supersedes that, and the reversal is
+          recorded so it doesn't read as drift. Two edges matching the badges
+          need no collective noun at all — they can just say what they are.
+
+          It costs a line, and the honesty is worth it: Owner and Organizer are
+          different states everywhere else in the app. */}
       <div
-        className="flex items-center gap-[7px] px-1.5 pb-2 text-[11px]"
+        className="flex flex-col gap-[3px] px-1.5 pb-2 text-[11px]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        <span
-          aria-hidden="true"
-          className="inline-block"
-          style={{ width: 3, height: 11, borderRadius: 2, background: "var(--color-bt-warning)" }}
-        />
-        {/* "Admin", not "Yours to run": shorter, universally understood, and it
-            does not imply OWNERSHIP — the edge marks Owner AND Organizer, and an
-            Organizer runs the trip without owning it. */}
-        <span>Admin</span>
-        <span style={{ opacity: 0.35 }}>·</span>
-        <span
-          aria-hidden="true"
-          className="inline-flex h-3 w-3 items-center justify-center rounded-full"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-            border: "1px solid var(--color-bt-accent-border)",
-          }}
-        >
-          <Trophy size={7} strokeWidth={2.5} />
-        </span>
-        <span>Has a cup</span>
+        <div className="flex items-center gap-[7px]">
+          <KeyEdge role="Owner" />
+          <span>Owner</span>
+          <span style={{ opacity: 0.35 }}>·</span>
+          <KeyEdge role="Organizer" />
+          <span>Organizer</span>
+        </div>
+        <div className="flex items-center gap-[7px]">
+          <span
+            aria-hidden="true"
+            className="inline-flex h-3 w-3 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+          >
+            <Trophy size={7} strokeWidth={2.5} />
+          </span>
+          <span>Has a cup</span>
+        </div>
       </div>
 
       {isError ? (

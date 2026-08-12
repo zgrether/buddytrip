@@ -137,7 +137,8 @@ uses this token for its `border-color`.
 | Glorious text | `--color-bt-glorious` | `#92720f` | `#c9852f` | Glorious Finishing Holes modifier ONLY (scorecard diamond/bracket/label, score-entry banner) — a deliberately different hue from Owner/Warning so the two are never mistaken on the same card (the scorecard's amber stroke pip already uses `--color-bt-warning`). Dark value verified live side-by-side with the pip + a GolfChip eagle ring (an initial `#e2a437` read too close). NOT a warning/amber substitute; NOT a score-value color (keep out of the eagle/birdie/par/bogey/dbl+ palette) |
 | Danger text | `--color-bt-danger` | `#dc2626` | `#f87171` | Errors, Can't/declined, destructive actions |
 | Planning text | `--color-bt-planning` | `#2563eb` | `#60a5fa` | Blue status indicators |
-| Ready text | `--color-bt-ready` | `#7c3aed` | `#a78bfa` | Planner role badge, violet states |
+| Organizer text | `--color-bt-planning` | `#2563eb` | `#93c5fd` | Organizer role badge (fill/border/text) AND the rail's Organizer edge — one value, `src/lib/roleColor.ts`. Blue, NOT the accent: at the rail's 3px the accent competes with the selected-row treatment and the trophy mark, which are already teal on the same row |
+| Ready text | `--color-bt-ready` | `#f97316` | `#fb923c` | Events/lodging tone (ItineraryView stripes, LodgingPanel rental). **Corrected 2026-08-12** — this row read `#7c3aed`/`#a78bfa` "Planner role badge, violet states", which was wrong on both counts: the token has always been orange in `globals.css`, and no role badge has ever used it |
 
 ---
 
@@ -380,13 +381,24 @@ Never increase alternating row opacity above 0.03.
 
 ### Role badge (RoleBadge component)
 
+Three role states, two of them marked. Colours come from ONE source —
+`src/lib/roleColor.ts` — read by `RoleBadge`, the crew roster's `RolePill`, and
+the desktop rail's 3px role edge, so a badge and an edge cannot disagree.
+
 ```
-Style:    inline-block rounded border px-1.5 py-0.5
-Font:     text-[10px] font-medium
-Owner:    borderColor + color = var(--color-bt-owner)
-Planner:  borderColor + color = var(--color-bt-accent)
-Member:   not rendered (returns null)
+Style:      inline-flex rounded-full px-2 py-0.5
+Font:       text-[10px] font-bold uppercase tracking-wider
+Owner:      var(--color-bt-owner)    on -warning-faint  / -warning-border   (amber)
+Organizer:  var(--color-bt-planning) on -planning-faint / -planning-border  (blue)
+Member:     not rendered (returns null)
 ```
+
+Organizer was teal (`--color-bt-accent`) until 2026-08-12. It was never blue
+before that despite a widely-held belief otherwise — it was created as a
+hardcoded `#00d4aa` and the hex-to-token pass turned that into the accent. It is
+blue now because the rail paints the role as a 3px edge, where the accent
+collides with the selected-row treatment and the trophy mark. Do not give
+Organizer the accent.
 
 ### Overlay / Modal backdrop
 
