@@ -11,6 +11,8 @@ import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { useIsShellDesktop } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
+import { CreateTripModal } from "@/components/trips/CreateTripModal";
+import type { DestinationMode } from "@/components/DestinationPicker";
 
 /**
  * ContextRail — Home promoted from a tab to a persistent left rail (Phase 5).
@@ -352,6 +354,14 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   const [isSwitching, startSwitch] = useTransition();
   const pendingTripId = isSwitching ? switchingTo : null;
 
+  /**
+   * The create flow, open as a modal over the rail. `null` = closed; the value
+   * is the path the entry point pre-selects (item 4), so ONE piece of state
+   * carries both "is it open" and "which + was pressed" — a separate boolean
+   * would be a second thing to keep in step for no gain.
+   */
+  const [creating, setCreating] = useState<DestinationMode | "closed">("closed");
+
   const openTrip = (id: string) => {
     // Re-tapping the trip you're already in is a no-op today (Next renders the
     // same route and nothing moves), so don't flash a spinner that would never
@@ -486,7 +496,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             activeTripId={activeTripId}
             pendingTripId={pendingTripId}
             onOpen={openTrip}
-            onNew={() => router.push("/trips/new?mode=exploring")}
+            onNew={() => setCreating("exploring")}
           />
         ) : entity === "trips" ? (
           <TripsColumn
@@ -500,7 +510,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             // silhouette first; name, location, dates and countdown all survive.
             expanded={wide}
             onOpen={openTrip}
-            onNew={() => router.push("/trips/new?mode=known")}
+            onNew={() => setCreating("known")}
           />
         ) : (
           <GamesColumn onPlay={() => router.push("/quick-game")} />
@@ -534,6 +544,13 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           background: dragging ? "var(--color-bt-accent)" : undefined,
         }}
       />
+
+      {/* The create flow, over the rail rather than instead of it. Mounted
+          conditionally, which is what `useModalBackButton`'s usage pattern 1
+          and `ScrollLock` both ask for. */}
+      {creating !== "closed" && (
+        <CreateTripModal initialMode={creating} onClose={() => setCreating("closed")} />
+      )}
     </aside>
   );
 }

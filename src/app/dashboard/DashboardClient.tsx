@@ -12,6 +12,7 @@ import { TopNav } from "@/components/TopNav";
 import { useMyTeamColor } from "@/hooks/useMyTeamColor";
 import { TripCard } from "@/components/TripCard";
 import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
+import { CreateTripModal } from "@/components/trips/CreateTripModal";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
 import type { TripRole } from "@/server/middleware";
 
@@ -61,6 +62,13 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
 export default function DashboardClient({ lastTripId }: { lastTripId: string | null }) {
   const router = useRouter();
   const [pastExpanded, setPastExpanded] = useState(false);
+  /**
+   * The create flow, as a modal over Home. No pre-selected path (item 4): the
+   * dashboard's "New trip" and the empty state are generic entry points — unlike
+   * the rail's per-list "+", they carry no signal about which path the user
+   * wants, so they still show the unselected pair.
+   */
+  const [creating, setCreating] = useState(false);
 
   /**
    * Quick Stroke Play card subtitle (#879 item 1c) — read from local storage,
@@ -236,7 +244,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
               </h1>
             </div>
             <button
-              onClick={() => router.push("/trips/new")}
+              onClick={() => setCreating(true)}
               className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
@@ -278,7 +286,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
              with no trips, and a direct `/dashboard` visit shows the
              same body. */
           <div data-testid="empty-state">
-            <AuthenticatedEmptyState />
+            <AuthenticatedEmptyState onNewTrip={() => setCreating(true)} />
           </div>
         ) : (
           /* ── Trip sections ───────────────────────────────────────────────── */
@@ -356,6 +364,9 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
             <HelperCards />
           </div>
         )}
+
+        {/* The create flow, over Home rather than instead of it. */}
+        {creating && <CreateTripModal onClose={() => setCreating(false)} />}
       </main>
       }
     />
