@@ -19,7 +19,7 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
-import { SURFACE_BOX } from "@/components/shell/contentArea";
+import { SURFACE_BOX, SURFACE_BOX_FLUSH } from "@/components/shell/contentArea";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useRealtimeTripData } from "@/hooks/useRealtimeTripData";
@@ -565,7 +565,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
               onDatesTap={() => setActiveTab("schedule")}
             />
           </div>
-          <main className={`${SURFACE_BOX} px-0 pb-6`}>
+          <main className={`${SURFACE_BOX_FLUSH} pb-6`}>
             {activeTab === "home" && (
               <HomeTab
                 trip={trip}

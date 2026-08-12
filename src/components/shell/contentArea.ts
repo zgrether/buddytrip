@@ -40,8 +40,21 @@
  * `w-full` matters: with `lg:max-w-none` and no width, a flex/grid child can
  * shrink to its content instead of filling the content area.
  */
-export const SURFACE_BOX =
-  "mx-auto w-full max-w-[1280px] px-4 pt-4 lg:max-w-none lg:px-0 lg:pt-0";
+const SURFACE_BASE = "mx-auto w-full max-w-[1280px] pt-4 lg:max-w-none lg:pt-0";
+export const SURFACE_BOX = `${SURFACE_BASE} px-4 lg:px-0`;
+
+/**
+ * The same box for a surface that supplies its OWN horizontal padding further
+ * down (the idea-phase `<main>`, whose HomeTab pads itself).
+ *
+ * A separate export rather than `${SURFACE_BOX} px-0`: two utilities from the
+ * SAME variant level don't resolve by their order in the class attribute, they
+ * resolve by their order in the generated stylesheet — where Tailwind emits
+ * `px-0` before `px-4`, so the `px-4` would have won and the override would have
+ * been silently inert. (The `lg:` overrides above are safe for the opposite
+ * reason: a variant always sorts after its base.)
+ */
+export const SURFACE_BOX_FLUSH = SURFACE_BASE;
 
 /**
  * The content area's inset at `lg+` — the shell's padding, and therefore the
