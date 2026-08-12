@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
+import { Dice5, Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
@@ -276,8 +276,21 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           active={entity === "ideas"}
           onClick={() => setEntity("ideas")}
         />
+        {/* NOT the trophy. The trophy means COMPETITION — it marks trip rows that
+            have a cup and it is the Cup tab — so using it here said games are
+            competitions, which is the opposite of what this entity holds:
+            standalone play with no cup attached.
+
+            `Dice5` is play, generically. Not golf-specific (Games will hold
+            cornhole, euchre, pool), not video-game-specific the way a gamepad or
+            joystick would read, and unused anywhere else. One adjacency worth
+            knowing: `Dices` (three dice) is `CATEGORY_ICONS.other`, so the family
+            is shared — deliberately, since both mean "play" — but the glyphs are
+            distinct and they never appear in the same context. `Dices` itself was
+            the obvious pick and is taken, which is the same collision this item
+            exists to remove. */}
         <StripItem
-          icon={<Trophy size={19} />}
+          icon={<Dice5 size={19} />}
           label="Games"
           active={entity === "games"}
           onClick={() => setEntity("games")}
@@ -365,7 +378,7 @@ function StripItem({
       }}
     >
       {icon}
-      <span className="text-[9.5px] font-semibold">{label}</span>
+      <span className="text-[11px] font-semibold">{label}</span>
     </button>
   );
 }
@@ -414,7 +427,7 @@ function TripsColumn({
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
-        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+        <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Trips
         </span>
         <EyebrowAction label="Start a trip" onClick={onNew} />
@@ -423,7 +436,7 @@ function TripsColumn({
       {/* The key — both marks explained ONCE, here, instead of every row carrying
           its own label. A row is read every time; a key is read once. */}
       <div
-        className="flex items-center gap-[7px] px-1.5 pb-2 text-[10px]"
+        className="flex items-center gap-[7px] px-1.5 pb-2 text-[11px]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         <span
@@ -431,7 +444,10 @@ function TripsColumn({
           className="inline-block"
           style={{ width: 3, height: 11, borderRadius: 2, background: "var(--color-bt-warning)" }}
         />
-        <span>Yours to run</span>
+        {/* "Admin", not "Yours to run": shorter, universally understood, and it
+            does not imply OWNERSHIP — the edge marks Owner AND Organizer, and an
+            Organizer runs the trip without owning it. */}
+        <span>Admin</span>
         <span style={{ opacity: 0.35 }}>·</span>
         <span
           aria-hidden="true"
@@ -515,7 +531,7 @@ function IdeasColumn({
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
-        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+        <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Ideas
         </span>
         <EyebrowAction label="Start a trip" onClick={onNew} />
@@ -524,7 +540,7 @@ function IdeasColumn({
       {isError ? (
         <RailLoadError onRetry={onRetry} />
       ) : ideas.length === 0 ? (
-        <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Trips without a destination yet will collect here.
         </p>
       ) : (
@@ -548,7 +564,7 @@ function GamesColumn({ onPlay }: { onPlay: () => void }) {
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
-        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+        <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Games
         </span>
         <EyebrowAction label="Play a game" onClick={onPlay} />
@@ -569,24 +585,24 @@ function GamesColumn({ onPlay }: { onPlay: () => void }) {
             className="mb-[3px] block w-full rounded-[9px] p-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
             style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <div className="truncate text-[12.5px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            <div className="truncate text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {quick.title}
             </div>
             {quick.subtitle && (
-              <div className="mt-[3px] truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              <div className="mt-[3px] truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
                 {quick.subtitle}
               </div>
             )}
           </button>
         ) : (
-          <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
             Nothing in progress.
           </p>
         )}
       </Section>
 
       <Section label="History">
-        <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Finished games will collect here.
         </p>
       </Section>
@@ -629,7 +645,7 @@ function Section({
   return (
     <>
       <div
-        className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-2.5 text-[9.5px] font-bold uppercase"
+        className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-2.5 text-[11px] font-bold uppercase"
         style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.1em" }}
       >
         <span>{label}</span>
@@ -656,11 +672,13 @@ function EyebrowAction({ label, onClick }: { label: string; onClick: () => void 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex h-6 w-6 items-center justify-center rounded-[7px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
+      // Sized against the 16px column header beside it. It was 24px with a 13px
+      // glyph — set against type that has since grown, and small even before.
+      className="flex h-7 w-7 items-center justify-center rounded-lg transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
       style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
       data-testid="rail-add-trip"
     >
-      <Plus size={13} />
+      <Plus size={16} />
     </button>
   );
 }

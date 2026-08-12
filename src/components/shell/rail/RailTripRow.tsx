@@ -131,7 +131,7 @@ export function RailTripRow({
       <div className="flex items-start gap-2.5 py-2.5 pl-3 pr-2.5">
         <div className="min-w-0 flex-1">
           <div
-            className="truncate text-[13px] font-semibold"
+            className="truncate text-[15px] font-semibold"
             // Role edge, channel two — see the note at the top of this file.
             style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
           >
@@ -139,7 +139,7 @@ export function RailTripRow({
           </div>
           {dest && (
             <div
-              className="mt-[3px] flex items-center gap-1 truncate text-[11px]"
+              className="mt-[3px] flex items-center gap-1 truncate text-[12.5px]"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
               <MapPin size={10} className="shrink-0" />
@@ -147,7 +147,7 @@ export function RailTripRow({
             </div>
           )}
           <div
-            className="mt-[2px] flex items-center gap-1 truncate text-[11px]"
+            className="mt-[2px] flex items-center gap-1 truncate text-[12.5px]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             <Calendar size={10} className="shrink-0" />
@@ -203,7 +203,7 @@ export function RailTripRow({
           dates line. Survives contraction. */}
       {countdown && (
         <div
-          className="text-center text-[10.5px] font-semibold"
+          className="text-center text-[12px] font-semibold"
           style={{
             padding: expanded ? "5px 8px" : "4px 6px",
             color: "var(--color-bt-accent)",
@@ -279,13 +279,13 @@ export function RailIdeaTripRow({
         />
       )}
       <div
-        className="truncate text-[12.5px] font-semibold"
+        className="truncate text-[14px] font-semibold"
         // Second channel for the role bit — same reasoning as the placed row.
         style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
       >
         {trip.title}
       </div>
-      <div className="truncate text-[10.5px]" style={{ color: "var(--color-bt-text-dim)", opacity: 0.8 }}>
+      <div className="truncate text-[12px]" style={{ color: "var(--color-bt-text-dim)", opacity: 0.8 }}>
         {count === 1 ? "1 idea" : `${count} ideas`}
       </div>
     </button>
@@ -322,11 +322,11 @@ export function RailPastTripRow({
       className="mb-0.5 block w-full rounded-[10px] px-3 py-1.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)] disabled:opacity-60"
       style={{ background: current ? "var(--color-bt-accent-faint)" : undefined }}
     >
-      <div className="truncate text-[12.5px] font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
+      <div className="truncate text-[14px] font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
         {trip.title}
       </div>
       {meta && (
-        <div className="truncate text-[10.5px]" style={{ color: "var(--color-bt-text-dim)", opacity: 0.8 }}>
+        <div className="truncate text-[12px]" style={{ color: "var(--color-bt-text-dim)", opacity: 0.8 }}>
           {meta}
         </div>
       )}
