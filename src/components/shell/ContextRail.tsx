@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Dice5, Flag, Lightbulb, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
+import { Dice5, Lightbulb, Luggage, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
@@ -432,8 +432,28 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
         }}
         aria-label="Lists"
       >
+        {/* NOT the flag. A golf flag means nothing on its own here — it reads as
+            a course marker, and it is the glyph `StandardGrid` and
+            `GameSetupRows` use for exactly that.
+
+            NOT a plane either, and that is the collision check earning its keep
+            (the same check that found `Dices` was taken for Games). `Plane` is
+            already `{ key: "flying", label: "Flying" }` in `ItineraryView`, the
+            Arrivals group header, and `TravelControls`; `PlaneTakeoff` is
+            Departures and `PlaneLanding` is the arrival leg — all three plane
+            glyphs are spoken for. And unlike the `Dices`/`Dice5` case, these
+            WOULD share a glance: the rail is persistent on desktop while the
+            Schedule tab shows itinerary rows. The brief asked for a plane on the
+            grounds that it "doesn't imply flying" — in this codebase it is
+            literally the icon labelled "Flying", so the premise doesn't hold
+            here even though it's fair in general.
+
+            `Luggage` keeps everything the plane was wanted for — it reads as
+            travel instantly and implies going somewhere rather than a mode of
+            transport, so it fits an idea-phase trip as well as a booked one —
+            and it is used nowhere else in the app. */}
         <StripItem
-          icon={<Flag size={19} />}
+          icon={<Luggage size={19} />}
           label="Trips"
           active={!collapsed && entity === "trips"}
           onClick={() => selectEntity("trips")}
@@ -687,42 +707,40 @@ function TripsColumn({
       {/* The key — every mark explained ONCE, here, instead of every row carrying
           its own label. A row is read every time; a key is read once.
 
-          TWO role rows now, not one line reading "Admin". The single amber edge
-          meant "Owner or Organizer", and the key needed a word for that
-          grouping — "Admin" was chosen as short and universally understood,
-          which it is, and as a name for a rights tier this app does not have,
-          which it also is. The previous spec's item 2 explicitly moved this from
-          "Yours to run" to "Admin"; this supersedes that, and the reversal is
-          recorded so it doesn't read as drift. Two edges matching the badges
-          need no collective noun at all — they can just say what they are.
+          ONE line for all three marks. It was two rows, because two role edges
+          plus the cup mark did not fit on one at the narrow end — "Has a cup"
+          shortened to "Cup" is what buys the third slot back. Nothing is lost:
+          the mark is a trophy sitting beside a list of trips, so "Cup" is not
+          ambiguous in place, and the longer phrase was carrying a verb the
+          reader supplies for free.
 
-          It costs a line, and the honesty is worth it: Owner and Organizer are
-          different states everywhere else in the app. */}
+          Historical note kept because it was a reversal: this line once read
+          "Admin", a single amber edge meaning "Owner or Organizer" — a name for
+          a rights tier this app does not have. The previous spec moved it from
+          "Yours to run" to "Admin"; #904 replaced the grouping with two edges
+          matching the badges, which need no collective noun at all. */}
       <div
-        className="flex flex-col gap-[3px] px-1.5 pb-2 text-[11px]"
+        className="flex flex-wrap items-center gap-x-[7px] gap-y-[3px] px-1.5 pb-2 text-[11px]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        <div className="flex items-center gap-[7px]">
-          <KeyEdge role="Owner" />
-          <span>Owner</span>
-          <span style={{ opacity: 0.35 }}>·</span>
-          <KeyEdge role="Organizer" />
-          <span>Organizer</span>
-        </div>
-        <div className="flex items-center gap-[7px]">
-          <span
-            aria-hidden="true"
-            className="inline-flex h-3 w-3 items-center justify-center rounded-full"
-            style={{
-              background: "var(--color-bt-accent-faint)",
-              color: "var(--color-bt-accent)",
-              border: "1px solid var(--color-bt-accent-border)",
-            }}
-          >
-            <Trophy size={7} strokeWidth={2.5} />
-          </span>
-          <span>Has a cup</span>
-        </div>
+        <KeyEdge role="Owner" />
+        <span>Owner</span>
+        <span style={{ opacity: 0.35 }}>·</span>
+        <KeyEdge role="Organizer" />
+        <span>Organizer</span>
+        <span style={{ opacity: 0.35 }}>·</span>
+        <span
+          aria-hidden="true"
+          className="inline-flex h-3 w-3 items-center justify-center rounded-full"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          <Trophy size={7} strokeWidth={2.5} />
+        </span>
+        <span>Cup</span>
       </div>
 
       {isError ? (
