@@ -192,25 +192,58 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * nothing. That is the middle answer between "measure constantly" (expensive)
    * and "hardcode a floor" (wrong the moment someone has a long trip name).
    *
-   * `scrollWidth` is the untruncated width of the text, which is exactly the
-   * question — `getBoundingClientRect` would return the CLAMPED width and every
-   * already-truncated name would report as fitting.
+   * ── WHAT is measured changed when titles started wrapping ──────────────────
+   * This used to read `scrollWidth` — the untruncated width of a single clamped
+   * line. Under `line-clamp-2` that number is WRONG in a way that would freeze
+   * the drag outright: a wrapping block has no horizontal overflow, so its
+   * `scrollWidth` equals its current rendered width, and the floor would come
+   * back as "however wide the rail happens to be right now" — a rail that can
+   * never be narrowed from wherever it was last left.
+   *
+   * The honest question for a wrapping name is its MIN-CONTENT width: the
+   * longest single word, because that is the only part that genuinely cannot
+   * get narrower. This is what item 1 buys — "International Federation of
+   * Having Fun 2026" stops asking for the width of 38 characters and asks for
+   * the width of "International". The floor is no longer hostage to the longest
+   * name; it is hostage only to the longest WORD, which is a far lower bar.
+   *
+   * Measured in two passes (write all, then read all) rather than
+   * write-read-write per row: interleaving would force a synchronous layout per
+   * name, and this runs on pointerdown with every visible row in the column.
+   * `display: block` is set alongside it because `line-clamp-2` renders as a
+   * `-webkit-box`, where intrinsic width sizing is not something to rely on.
    */
   const measureFloor = () => {
     const el = columnRef.current;
     if (!el) return RAIL_MIN_PX;
-    let widest = 0;
-    el.querySelectorAll<HTMLElement>("[data-rail-name]").forEach((n) => {
-      widest = Math.max(widest, n.scrollWidth);
-    });
+    const names = Array.from(el.querySelectorAll<HTMLElement>("[data-rail-name]"));
+    if (names.length === 0) return RAIL_MIN_PX;
+
     // The name sits in a row with padding, the art slot and the gaps around it.
     // Derived from the row's own box rather than a second hand-typed number: the
     // difference between the row's inner width and the name's own width IS the
-    // chrome, whatever the row's padding happens to be.
-    const name = el.querySelector<HTMLElement>("[data-rail-name]");
-    const row = name?.closest<HTMLElement>("[data-testid^='rail-trip']");
-    const chrome =
-      name && row ? Math.max(0, row.getBoundingClientRect().width - name.getBoundingClientRect().width) : 24;
+    // chrome, whatever the row's padding happens to be. Read BEFORE the
+    // min-content pass below, which changes the name's box on purpose.
+    const name = names[0]!;
+    const row = name.closest<HTMLElement>("[data-testid^='rail-trip']");
+    const chrome = row
+      ? Math.max(0, row.getBoundingClientRect().width - name.getBoundingClientRect().width)
+      : 24;
+
+    const restore = names.map((n) => ({ n, display: n.style.display, width: n.style.width }));
+    for (const { n } of restore) {
+      n.style.display = "block";
+      n.style.width = "min-content";
+    }
+    let widest = 0;
+    for (const { n } of restore) {
+      widest = Math.max(widest, n.getBoundingClientRect().width);
+    }
+    for (const { n, display, width } of restore) {
+      n.style.display = display;
+      n.style.width = width;
+    }
+
     // CAPPED at the narrow snap, and that cap is the important half.
     //
     // "The widest trip name" taken literally locks the rail: one long title
@@ -221,7 +254,9 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     // The floor is therefore "as narrow as the names allow, but never tighter
     // than the width that already shipped". Short names → drag down to
     // `RAIL_MIN_PX`; long names → stop at the narrow snap, where nothing
-    // truncates that didn't truncate before.
+    // truncates that didn't truncate before. Wrapping means far fewer names
+    // reach that cap at all, but the cap stays: it is what makes a pathological
+    // name a wart rather than a lock.
     const measured = Math.ceil(widest + chrome);
     return Math.min(RAIL_CONTRACTED_PX, Math.max(RAIL_MIN_PX, measured));
   };

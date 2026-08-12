@@ -33,6 +33,29 @@ import { Spinner } from "@/components/Spinner";
  * ── Contraction drops the ART first ─────────────────────────────────────────
  * The name is what you scan for; the silhouette is recognition support. Name,
  * location, dates and countdown all survive at the contracted width.
+ *
+ * ── Titles WRAP to two lines, then truncate ─────────────────────────────────
+ * `line-clamp-2`, not `truncate`. A single clamped line makes a long name a
+ * width REQUIREMENT — "International Federation of Having Fun 2026" measures
+ * wider than any sensible rail, and #902 found a 38-character name froze the
+ * drag entirely, because the floor was derived from the widest untruncated
+ * name and so landed above the ceiling. Two lines is roughly twice the
+ * characters at half the width, and it changes what the floor is allowed to
+ * be: a wrapping name's real minimum is its longest WORD, not the whole
+ * string, which is what `ContextRail.measureFloor` now measures. The floor
+ * stops being hostage to the longest name.
+ *
+ * `break-words` is the fallback for the one case wrapping can't help — a
+ * single unbreakable token wider than the column. Without it the clamp's
+ * `overflow: hidden` clips it mid-glyph with no ellipsis.
+ *
+ * NOTHING OVERLAPS when the row grows, and each element is a separate reason:
+ * the art is `self-stretch` inside an `items-start` flex row, so it grows with
+ * the text column and its `preserveAspectRatio` silhouette scales rather than
+ * distorts; the countdown is its own block BELOW that row, so it is pushed
+ * down; the role edge is `top: 8 / bottom: 8` absolute, so it spans whatever
+ * height the row ends up with. All three were already written against the
+ * row's height rather than a fixed one.
  */
 
 export interface RailTrip {
@@ -131,7 +154,7 @@ export function RailTripRow({
       <div className="flex items-start gap-2.5 py-2.5 pl-3 pr-2.5">
         <div className="min-w-0 flex-1">
           <div
-            className="truncate text-[15px] font-semibold"
+            className="line-clamp-2 break-words text-[15px] font-semibold"
             data-rail-name
             // Role edge, channel two — see the note at the top of this file.
             style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
@@ -280,7 +303,8 @@ export function RailIdeaTripRow({
         />
       )}
       <div
-        className="truncate text-[14px] font-semibold"
+        className="line-clamp-2 break-words text-[14px] font-semibold"
+        data-rail-name
         // Second channel for the role bit — same reasoning as the placed row.
         style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
       >
@@ -323,7 +347,11 @@ export function RailPastTripRow({
       className="mb-0.5 block w-full rounded-[10px] px-3 py-1.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)] disabled:opacity-60"
       style={{ background: current ? "var(--color-bt-accent-faint)" : undefined }}
     >
-      <div className="truncate text-[14px] font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
+      <div
+        className="line-clamp-2 break-words text-[14px] font-semibold"
+        data-rail-name
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
         {trip.title}
       </div>
       {meta && (
