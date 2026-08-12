@@ -19,7 +19,7 @@ export const tripsRouter = router({
     }
 
     const tripIds = memberships.map((m) => m.trip_id);
-    const [tripsRes, competitionsRes] = await Promise.all([
+    const [tripsRes, competitionsRes, ideasRes] = await Promise.all([
       ctx.supabase
         .from("trips")
         .select("*")
@@ -30,6 +30,20 @@ export const tripsRouter = router({
       // whether any competition exists for each trip.
       ctx.supabase
         .from("competitions")
+        .select("trip_id")
+        .in("trip_id", tripIds),
+      // ideaCount drives the desktop rail's Ideas row ("4 ideas"), which is the
+      // ONLY thing that meaningfully varies about a trip with no destination.
+      //
+      // Selecting `trip_id` ALONE is the point. Every existing consumer of idea
+      // data calls `ideas.list` — which is `select("*")`, full rows including
+      // titles, locations, image urls and notes — and then reads `.length`.
+      // That's the pattern #764's four-call-site audit is about, and the rail
+      // would have been the fifth. One id column per idea is the smallest thing
+      // that answers "how many", and it is grouped here rather than fanned out
+      // per trip.
+      ctx.supabase
+        .from("ideas")
         .select("trip_id")
         .in("trip_id", tripIds),
     ]);
@@ -47,12 +61,24 @@ export const tripsRouter = router({
     const tripsWithCompetition = new Set(
       (competitionsRes.data ?? []).map((c) => c.trip_id as string)
     );
+    // Counted here rather than shipped as rows. `ideasRes` failing is NOT fatal:
+    // a missing count degrades the rail's Ideas row to "0 ideas", where a thrown
+    // error would take the whole trip list down with it. The competition fold
+    // above already takes the same posture (`competitionsRes.error` is not
+    // checked), and the same reasoning applies — these are decorations on a list
+    // whose own failure is handled separately.
+    const ideaCountByTripId = new Map<string, number>();
+    for (const row of ideasRes.data ?? []) {
+      const id = row.trip_id as string;
+      ideaCountByTripId.set(id, (ideaCountByTripId.get(id) ?? 0) + 1);
+    }
 
     return (tripsRes.data ?? []).map((trip) => ({
       ...trip,
       myRole: membershipByTripId.get(trip.id)?.role ?? null,
       myStatus: membershipByTripId.get(trip.id)?.status ?? null,
       hasCompetition: tripsWithCompetition.has(trip.id),
+      ideaCount: ideaCountByTripId.get(trip.id) ?? 0,
     }));
   }),
 

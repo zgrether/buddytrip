@@ -2,14 +2,14 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, PanelLeft, Plus, Trophy } from "lucide-react";
+import { Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
 import { useIsShellDesktop } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX } from "./rail/useRailWidth";
-import { RailTripRow, RailPastTripRow } from "./rail/RailTripRow";
+import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
 
 /**
  * ContextRail — Home promoted from a tab to a persistent left rail (Phase 5).
@@ -100,6 +100,8 @@ function useIdle(enabled: boolean): boolean {
   return idle;
 }
 
+type Entity = "trips" | "ideas" | "games";
+
 /** `trips.list` selects `*`, so these were always on the wire — the rail simply
  *  didn't read them. Dates drive the section split and the countdown band;
  *  `hasCompetition` drives the trophy mark. */
@@ -115,6 +117,9 @@ interface TripRow {
   updated_at?: string | null;
   created_at?: string | null;
   hasCompetition?: boolean | null;
+  /** Candidates under consideration — folded in by `trips.list`, counted
+   *  server-side rather than shipped as rows. */
+  ideaCount?: number | null;
 }
 
 export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
@@ -140,8 +145,70 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   // Which LIST is showing. Not persisted: it is a position ("what am I looking at
   // right now"), not a preference, and the trips list is the right thing to land
   // on every time — the precedent split is in `useRailWidth`'s note.
-  const [entity, setEntity] = useState<"trips" | "games">("trips");
+  const [entity, setEntity] = useState<Entity>("trips");
+
+  /**
+   * Which list the ACTIVE trip lives in — `null` when no trip is open.
+   *
+   * An idea-phase trip is a trip: same crew, same chat, same context. It is a
+   * different LIST of the same thing, not a different kind of thing, which is
+   * what keeps the strip coherent (Trips, Ideas, Games are all containers you
+   * can be inside of).
+   */
+  const activeList: Entity | null = (() => {
+    if (!activeTripId) return null;
+    const t = rows.find((r) => r.id === activeTripId);
+    if (!t) return null;
+    return getEffectiveStatus(t) === "idea" ? "ideas" : "trips";
+  })();
+
+  /**
+   * Follow the trip you are IN when it changes list.
+   *
+   * Locking a destination moves a trip from Ideas to Trips while you are looking
+   * at it — `lockDestination` invalidates `trips.list` and you stay on the trip
+   * page. Without this the row would simply vanish from the list beside you, and
+   * a trip disappearing from the switcher while you are inside it reads as losing
+   * it, not as progress.
+   *
+   * Deliberately targeted at the ACTIVE trip's own transition rather than a
+   * general "always show the active trip's list": browsing Games or Ideas while
+   * sitting in a placed trip is a legitimate thing to be doing, and yanking the
+   * strip back on every render would fight the user. `activeList` only changes
+   * when the trip itself moves.
+   */
   const { expanded, toggle, width: railWidth } = useRailWidth();
+
+  /**
+   * Publish the rail's TOTAL width so the top bar's tab group can align to its
+   * right edge.
+   *
+   * `breakpoints.ts` used to be that single source (`RAIL_WIDTH_PX`, read by both
+   * the rail and `TopNav`), and its own comment warned that two hand-typed 246s
+   * drifting apart is "exactly the class of bug" to avoid. Phase 2 caused that
+   * drift: the rail became a 62px strip plus a 246–296px column, and `TopNav` was
+   * left offsetting by 246 — so the tabs sat 62–112px inside the rail.
+   *
+   * A constant can't be the source any more, because the width is now stateful
+   * (the expand/contract toggle). A CSS variable can, and it is the pattern this
+   * shell already uses for exactly this reason — `AppTabBar` publishes
+   * `--bt-bottomnav-height` so its consumers track it without importing anything.
+   */
+  const totalWidth = RAIL_STRIP_PX + railWidth;
+  useEffect(() => {
+    document.documentElement.style.setProperty("--bt-rail-width", `${totalWidth}px`);
+  }, [totalWidth]);
+
+  // Adjusted during RENDER, not in an effect. React's documented shape for
+  // "change state when a value changes" — it re-renders before committing, so
+  // there is no flash of the wrong list, and it is what the compiler lint asks
+  // for instead of `setState` inside `useEffect`. Seeded from `activeList` so a
+  // fresh mount never counts as a transition.
+  const [lastList, setLastList] = useState<Entity | null>(activeList);
+  if (activeList && activeList !== lastList) {
+    setLastList(activeList);
+    setEntity(activeList);
+  }
 
   // Which row is mid-switch. `useTransition` is the same mechanism `TripCard`
   // uses — it tracks router.push from click to the new route rendering, so the
@@ -199,6 +266,16 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           active={entity === "trips"}
           onClick={() => setEntity("trips")}
         />
+        {/* Ideas is a different LIST of the same thing, not a different kind of
+            thing — an idea-phase trip has crew, chat and a real trip context. It
+            earns a strip entry because Phase 2 made it unreachable on desktop
+            (ideas left the rail), and mobile already has a home for it. */}
+        <StripItem
+          icon={<Lightbulb size={19} />}
+          label="Ideas"
+          active={entity === "ideas"}
+          onClick={() => setEntity("ideas")}
+        />
         <StripItem
           icon={<Trophy size={19} />}
           label="Games"
@@ -234,7 +311,17 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
         data-testid="rail-column"
         data-expanded={expanded || undefined}
       >
-        {entity === "trips" ? (
+        {entity === "ideas" ? (
+          <IdeasColumn
+            rows={rows}
+            isError={isError}
+            onRetry={() => void refetch()}
+            activeTripId={activeTripId}
+            pendingTripId={pendingTripId}
+            onOpen={openTrip}
+            onNew={() => router.push("/trips/new")}
+          />
+        ) : entity === "trips" ? (
           <TripsColumn
             rows={rows}
             isError={isError}
@@ -388,6 +475,68 @@ function TripsColumn({
             ))}
           </Section>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The Ideas list — trips with no destination locked yet.
+ *
+ * These vanished from desktop entirely when Phase 2 dropped ideas from the rail:
+ * a trip you had started, added organizers to and begun comparing destinations in
+ * appeared nowhere. The rule was right (the app is destination-first, and a trip
+ * without one genuinely isn't placed), but the state needed a home. Mobile always
+ * had one — the dashboard's IDEAS section — so this restores parity rather than
+ * inventing a concept.
+ *
+ * NOT the destination library. The curated twenty and a user's archived ideas are
+ * reference data the comparison flow reads, not containers you can be inside of,
+ * and they have no mobile home either. Separate work.
+ */
+function IdeasColumn({
+  rows,
+  isError,
+  onRetry,
+  activeTripId,
+  pendingTripId,
+  onOpen,
+  onNew,
+}: {
+  rows: TripRow[];
+  isError: boolean;
+  onRetry: () => void;
+  activeTripId: string | null;
+  pendingTripId: string | null;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+}) {
+  const ideas = rows.filter((t) => getEffectiveStatus(t) === "idea");
+  return (
+    <div className="p-2">
+      <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
+        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Ideas
+        </span>
+        <EyebrowAction label="Start a trip" onClick={onNew} />
+      </div>
+
+      {isError ? (
+        <RailLoadError onRetry={onRetry} />
+      ) : ideas.length === 0 ? (
+        <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          Trips without a destination yet will collect here.
+        </p>
+      ) : (
+        ideas.map((t) => (
+          <RailIdeaTripRow
+            key={t.id}
+            trip={t}
+            current={t.id === activeTripId}
+            pending={pendingTripId === t.id}
+            onOpen={() => onOpen(t.id)}
+          />
+        ))
       )}
     </div>
   );

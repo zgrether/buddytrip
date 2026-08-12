@@ -137,7 +137,10 @@ export const TopNav: FC<TopNavProps> = ({
       {onSelectView && hasContext && (
         <div
           className="absolute inset-y-0 hidden items-center lg:flex"
-          style={{ left: RAIL_WIDTH_PX }}
+          // Tracks the rail's ACTUAL width, which is stateful since the rail
+          // became a strip + a resizable column. `RAIL_WIDTH_PX` is the fallback
+          // for the first paint before `ContextRail` publishes the variable.
+          style={{ left: "var(--bt-rail-width, 246px)" }}
           role="tablist"
         >
           {TOP_NAV_VIEW_TABS.map(({ id, label, Icon }) => {

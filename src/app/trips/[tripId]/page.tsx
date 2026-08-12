@@ -510,6 +510,14 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     <AppShell
       tripId={tripId}
       defaultView="trip"
+      // Cup gating — derived from `isIdea`, i.e. `getEffectiveStatus`, which is
+      // the SAME predicate the desktop rail sections on. Deliberately NOT
+      // `isLocked`: that reads `locked_destination_title` while
+      // `getEffectiveStatus` reads `locked_destination_at`, and a trip carrying
+      // one without the other would be an idea in the rail and a placed trip to
+      // the Cup lock. Two columns for one question is how those drift.
+      tripPlaced={!isIdea}
+      tripHasCompetition={showComp}
       topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
         <TopNav
           tripId={tripId}

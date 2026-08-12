@@ -42,7 +42,20 @@ export const LockedTabExplainer: FC<{
    *  that: the rail beside it already is the picker, so a "Pick a trip" button
    *  pointing at nothing in particular would be noise. */
   onPickTrip?: () => void;
-}> = ({ view, onPickTrip }) => {
+  /**
+   * The missing prerequisite, named as the user would go and set it
+   * ("A destination"). Rendered as `Requires: X` — the label-and-value pattern
+   * the settings scrims use, where "Requires:" is scaffolding and the
+   * requirement is the thing to read.
+   *
+   * ADDED TO the prose rather than replacing it, deliberately: the two answer
+   * different questions. The body says WHAT a Cup is, which is the discovery
+   * this explainer exists for — someone who has never seen a competition learns
+   * it here. The requires line says what is MISSING. Replacing one with the
+   * other would trade teaching for status.
+   */
+  requires?: string | null;
+}> = ({ view, onPickTrip, requires = null }) => {
   const { Icon, head, body } = COPY[view];
   return (
     <div className="px-6 py-14 text-center" data-testid={`locked-explainer-${view}`}>
@@ -67,6 +80,16 @@ export const LockedTabExplainer: FC<{
       >
         {body}
       </p>
+      {requires && (
+        <p
+          className="mx-auto mt-3 flex items-center justify-center gap-1.5 text-[11.5px]"
+          style={{ fontWeight: 650, letterSpacing: "0.01em" }}
+          data-testid={`locked-explainer-${view}-requires`}
+        >
+          <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 600 }}>Requires:</span>
+          <span style={{ color: "var(--color-bt-text)" }}>{requires}</span>
+        </p>
+      )}
       {onPickTrip && (
         <button
           type="button"
@@ -79,7 +102,12 @@ export const LockedTabExplainer: FC<{
           }}
           data-testid="locked-pick-trip"
         >
-          Pick a trip
+          {/* "Pick a trip" is only true when the lock is "no trip open". When a
+              prerequisite is named we ARE in a trip — it just isn't placed yet —
+              and offering to pick one would describe the wrong problem. The
+              action is the same (dismiss and go back to what you were doing);
+              only the label has to tell the truth about which state you're in. */}
+          {requires ? "Got it" : "Pick a trip"}
         </button>
       )}
     </div>
