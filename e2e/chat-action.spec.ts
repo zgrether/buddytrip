@@ -49,8 +49,29 @@ test.beforeAll(async () => {
   ownerId = await ensureUser(OWNER_EMAIL, "Test Owner");
 
   tripId = `e2e-trip-chat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const { error: tErr } = await admin.from("trips").insert({ id: tripId, title: "E2E Chat Action" });
+  // PLACED, and with a competition. Both matter now, and both are part of this
+  // spec's own premise rather than incidental setup: these tests are about
+  // "opening chat from Cup keeps Cup selected", so the trip has to be one that
+  // HAS a Cup to open chat from.
+  //
+  // A bare trip is idea-phase (`getEffectiveStatus` reads `locked_destination_at`),
+  // and the desktop tab group is deliberately absent both then and on a trip with
+  // no competition — a lone Trip tab pointing at the screen you are already on is
+  // furniture, and a Cup tab whose only content is a create-a-competition prompt
+  // advertises a competition that doesn't exist.
+  const { error: tErr } = await admin.from("trips").insert({
+    id: tripId,
+    title: "E2E Chat Action",
+    location: "Gulf Shores, AL",
+    locked_destination_title: "Gulf Shores",
+    locked_destination_location: "Gulf Shores, AL",
+    locked_destination_at: new Date().toISOString(),
+  });
   if (tErr) throw new Error(`seed trip failed: ${tErr.message}`);
+  const { error: cErr } = await admin
+    .from("competitions")
+    .insert({ id: `${tripId}-comp`, trip_id: tripId, name: "E2E Cup", scoring_model: "points" });
+  if (cErr) throw new Error(`seed competition failed: ${cErr.message}`);
   const { error: mErr } = await admin.from("trip_members").insert([
     { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "E2E Owner" },
   ]);
@@ -59,6 +80,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!admin || !tripId) return;
+  await admin.from("competitions").delete().eq("trip_id", tripId);
   await admin.from("trip_members").delete().eq("trip_id", tripId);
   await admin.from("trips").delete().eq("id", tripId);
 });

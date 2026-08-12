@@ -21,6 +21,13 @@
 # next.js
 /.next/
 /out/
+# Alternate build dirs via NEXT_DIST_DIR — `.next-e2e` (isolated E2E build, so a
+# Playwright run can't be served a dev server's tree), `.next-measure`, and
+# whatever the next one is called. A GLOB rather than another one-off entry:
+# `.next-measure` had to be added after the fact, `.next-e2e` was sitting
+# untracked, and one `git add -A` before the cleanup step would have committed a
+# whole production build.
+/.next-*/
 
 # production
 /build
