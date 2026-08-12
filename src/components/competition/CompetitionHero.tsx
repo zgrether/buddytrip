@@ -15,6 +15,25 @@ import type { ScoringModel } from "@/lib/gameTypes";
 
 // The neutral fallback card (no two teams to tint from — a points cup's identity
 // hero, or a half-built 2-team cup).
+/**
+ * Is this cup a RACE — two sides running at a win number?
+ *
+ * Every match-play construct on this surface is gated on it: the trophy, the
+ * glow, the two-score treatment, the "first to X" target, the clinch
+ * celebration, and now the collapsed mini-bar. A points cup accrues open-endedly
+ * and has placements rather than a race, so those constructs have nothing to
+ * say there.
+ *
+ * ONE function rather than the expression repeated per construct, because the
+ * ones written separately are the ones that drift: the clinch banner rendered
+ * unconditionally for a while and announced a clinch above a hero that had no
+ * clinch treatment at all, and the mini-bar was doing the same thing until this
+ * commit.
+ */
+export function isRace(scoringModel: ScoringModel, teamCount: number): boolean {
+  return scoringModel === "match_play" && teamCount >= 2;
+}
+
 const NEUTRAL_CARD = "linear-gradient(158deg,#222e44 0%,#1a2231 100%)";
 
 /**
@@ -136,7 +155,7 @@ export function CompetitionHero({
 }) {
   // The two-score + trophy treatment is the match_play hero; points keeps its own
   // standings body below (untouched), so the hero there is identity + gear only.
-  const showScores = scoringModel === "match_play" && teams.length >= 2;
+  const showScores = isRace(scoringModel, teams.length);
   const [a, b] = teams;
 
   // Manual re-fire (winners only). A counter, not a boolean — see
@@ -405,12 +424,25 @@ export function CompetitionHero({
  * bar's containing block is that tall column, so it pins at `top` and stays while
  * the games scroll under it. Keep this a fragment; do not re-wrap it.
  *
- * `stickyTop` offsets the pin below any fixed nav (the leaderboard's TopNav is 56px).
+ * ── WHERE IT PINS is a breakpoint question, not a number a caller passes ────
+ * This took a `stickyTop` prop and the leaderboard passed 56, to clear the app
+ * bar. That was right when the board scrolled the PAGE under a `sticky top-0`
+ * 56px `TopNav` — still the model on mobile, so `top-14` stays there.
+ *
+ * At `lg+` it has been wrong since the shell became a bounded column: the
+ * scroller is the board pane itself, which already BEGINS below the bar, so 56
+ * is pure gap. And it is not only the pinned state — `position: sticky` pushes
+ * an element DOWN even at rest when its natural offset inside the scrollport is
+ * less than `top`, which for a box at the top of the column is always. That is
+ * the ~50px the mini sat below the header.
+ *
+ * Expressed as `top-14 lg:top-0` rather than a prop: the answer depends on which
+ * element scrolls, which is a layout fact the component can read from the
+ * breakpoint and a caller can only guess at. It is also NOT a measurement — the
+ * measured pull this file used to carry is gone for good, and this must not
+ * become its replacement.
  */
-export function StickyCollapseHero({
-  stickyTop = 0,
-  ...hero
-}: React.ComponentProps<typeof CompetitionHero> & { stickyTop?: number }) {
+export function StickyCollapseHero(hero: React.ComponentProps<typeof CompetitionHero>) {
   /**
    * ── NO MEASUREMENT. That is the whole change. ───────────────────────────────
    *
@@ -453,9 +485,28 @@ export function StickyCollapseHero({
    * constant rather than a measurement, because it fails VISIBLY (a 12px gap)
    * rather than silently, which is the property the old mechanism lacked.
    */
+  /**
+   * NO MINI-BAR on a points cup. It is a race construct — two teams and a
+   * target — and a points cup has neither, so there is nothing for it to show
+   * that the board's own standings don't already say.
+   *
+   * What it rendered before this: for N>2 an evenly-spaced row of name/score
+   * blocks (coherent, but a second copy of the standings directly above them),
+   * and — worse — for a TWO-team points cup it fell into the two-team branch and
+   * drew the two-score race bar complete with a progress fill. A race UI for
+   * something that is not a race.
+   *
+   * The expanded hero stays either way; only the pinned mini goes. Gated on the
+   * SAME `isRace` the hero's own constructs read, so the two cannot disagree
+   * about what a points cup is.
+   */
+  if (!isRace(hero.scoringModel, hero.teams.length)) {
+    return <CompetitionHero {...hero} variant="expanded" />;
+  }
+
   return (
     <>
-      <div style={{ position: "sticky", top: stickyTop, zIndex: 10, height: 0 }}>
+      <div className="sticky top-14 z-10 h-0 lg:top-0">
         <div style={{ position: "absolute", insetInline: 0, top: 0 }}>
           <CompetitionHero
             {...hero}
