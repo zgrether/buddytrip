@@ -8,6 +8,7 @@ import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { SURFACE_BOX } from "@/components/shell/contentArea";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { CompetitionFace } from "@/components/competition/CompetitionFace";
@@ -220,7 +221,13 @@ function LiveFaceInner({
   // resolves to 100%-of-auto → auto, the panes stretch to CONTENT height, neither
   // ever overflows, and the shell body absorbs all the scrolling — which is what
   // made the panes non-independent and put a freshly-opened game below the fold.
-  return <main className="mx-auto max-w-[1024px] px-3 pt-4 lg:h-full lg:min-h-0">{body}</main>;
+  // `SURFACE_BOX` rather than this file's own `mx-auto max-w-[1024px] px-3` —
+  // Cup no longer decides where the content area starts or how wide it is. At
+  // `lg+` it goes flush inside the shell's content area, exactly as Trip does,
+  // which is the whole of "one viewport geometry" at this level (contentArea.ts).
+  // Mobile keeps a page's own padding, now 16px to match Trip's rather than the
+  // 12px this alone carried.
+  return <main className={`${SURFACE_BOX} lg:h-full lg:min-h-0`}>{body}</main>;
 }
 
 // ── Empty states ────────────────────────────────────────────────────────────
