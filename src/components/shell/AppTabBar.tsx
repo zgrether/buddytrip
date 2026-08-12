@@ -80,6 +80,16 @@ export const AppTabBar: FC<{
   /** A locked tab (or the locked Chat action) was tapped: show its explainer
    *  rather than switching/opening. */
   onLockedTap: (view: LockedExplainerView) => void;
+  /**
+   * Cup specifically is unavailable, and WHY — the missing prerequisite named as
+   * the user would go and set it ("A destination").
+   *
+   * Distinct from `hasContext`, which locks every tab because no trip is open at
+   * all. This locks Cup ALONE on a trip that is open: during the idea phase
+   * there is nothing to compete over yet, but crew, chat and the destination
+   * comparison all work. Null when Cup is available.
+   */
+  cupLockedReason?: string | null;
   /** Whether the chat overlay is currently open — the action cell fills its
    *  glyph and switches to the accent color while open, but never claims
    *  `aria-selected`; it is not one of the three destinations. */
@@ -113,10 +123,20 @@ const TabBar: FC<{
   hasContext: boolean;
   onSelect: (view: AppView) => void;
   onLockedTap: (view: LockedExplainerView) => void;
+  cupLockedReason?: string | null;
   chatOpen: boolean;
   onToggleChat: () => void;
   tripId?: string | null;
-}> = ({ active, hasContext, onSelect, onLockedTap, chatOpen, onToggleChat, tripId }) => {
+}> = ({
+  active,
+  hasContext,
+  onSelect,
+  onLockedTap,
+  cupLockedReason = null,
+  chatOpen,
+  onToggleChat,
+  tripId,
+}) => {
   const navRef = usePublishNavHeight();
   const chatUnread = useChatTabUnread(tripId ?? undefined);
   const chatLocked = !hasContext;
@@ -147,7 +167,9 @@ const TabBar: FC<{
         role="tablist"
       >
         {TABS.map(({ id, label, Icon }) => {
-          const locked = !hasContext && id !== "home";
+          // Two independent reasons a tab can be locked: no trip at all, or
+          // (Cup only) a trip that has no destination yet.
+          const locked = (!hasContext && id !== "home") || (id === "cup" && !!cupLockedReason);
           const selected = active === id;
           return (
             <button

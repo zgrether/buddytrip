@@ -53,6 +53,8 @@ export function AppShell({
   /** Landing tab when `?view=` is absent. `/…/leaderboard` passes "cup". */
   defaultView = "trip",
   remoteTripId = null,
+  tripPlaced = true,
+  tripHasCompetition = true,
 }: {
   tripId: string | null;
   home?: ReactNode;
@@ -104,11 +106,44 @@ export function AppShell({
    * glance at your trip list.
    */
   remoteTripId?: string | null;
+  /** The trip has a locked destination. False during the IDEA phase. */
+  tripPlaced?: boolean;
+  /** A competition row exists for this trip. */
+  tripHasCompetition?: boolean;
 }) {
   const router = useRouter();
   const { view, setView } = useAppView(defaultView);
   const [peeking, setPeeking] = useState<LockedExplainerView | null>(null);
   const scoped = !!tripId;
+
+  /**
+   * ── Cup during the idea phase, and why the two surfaces differ ─────────────
+   *
+   * There is nothing to compete over until the trip has a destination, so Cup
+   * has to say so. The two surfaces resolve that differently, on purpose.
+   *
+   * MOBILE — Cup is LOCKED, not hidden. It sits in a group of four alongside
+   * Home and Chat, so a dimmed item has context, and someone who simply sees no
+   * Cup never learns competitions exist or what they need. Locked-but-tappable
+   * is the bar's existing idiom (see `AppTabBar`'s note) and it teaches both.
+   *
+   * DESKTOP — the whole tab group is ABSENT. Removing Cup there would leave a
+   * lone Trip tab pointing at the screen you are already on, which is furniture
+   * rather than a capability.
+   *
+   * This is NOT a new exception to disable-don't-hide. `TopNav` already hides the
+   * entire group when there is no trip context at all — the rule is "hide the
+   * group when it would be degenerate", and one tab is degenerate. Extending it
+   * to the idea phase is that same rule, not a deviation from it.
+   *
+   * Desktop hides for a WIDER condition than mobile locks: also when the trip has
+   * no competition. A Cup tab whose only content is a create-a-competition prompt
+   * advertises a competition that does not exist. Mobile keeps Cup live in that
+   * case — with a placed trip, creating one is a real thing to do and Cup is
+   * where you do it, so it stays reachable where it has room.
+   */
+  const cupLockedReason = tripPlaced ? null : "A destination";
+  const showDesktopTabs = scoped && tripPlaced && tripHasCompetition;
 
   /**
    * TWO different questions, each derived ONCE — because the two things that
@@ -318,7 +353,16 @@ export function AppShell({
 
   let body: ReactNode;
   if (peeking) {
-    body = <LockedTabExplainer view={peeking} onPickTrip={() => setPeeking(null)} />;
+    body = (
+      <LockedTabExplainer
+        view={peeking}
+        onPickTrip={() => setPeeking(null)}
+        // Only Cup carries a named prerequisite. Trip and Chat are locked by the
+        // absence of a trip entirely, which the copy already covers and which no
+        // "Requires:" line would improve.
+        requires={peeking === "cup" ? cupLockedReason : null}
+      />
+    );
   } else if (!hasScopedContext) {
     /**
      * `/dashboard`. On MOBILE Home is a tab and the trip list is the body — that
@@ -442,7 +486,11 @@ export function AppShell({
                 // Scoped, NOT remote-aware — the same condition the explainer
                 // below branches on, so the desktop tabs and the "Pick a trip"
                 // copy can never both claim the screen.
-                hasContext: hasScopedContext,
+                // The desktop tab group is present only when it would be a real
+                // choice — see `showDesktopTabs`. Absent during the idea phase
+                // and on a trip with no cup, where it would be one live tab
+                // pointing at the screen you are already on.
+                hasContext: showDesktopTabs,
                 onSelectView: select,
               })
             : topBar}
@@ -531,6 +579,10 @@ export function AppShell({
           // navigable rather than greying them out. Mobile behaviour is
           // unchanged by the desktop fix above.
           hasContext={hasRemoteContext}
+          // Locks Cup ALONE — a second lock reason beside "no trip at all".
+          // Trip and Chat stay live during the idea phase: crew, destination
+          // comparison and chat all work, and only competing doesn't.
+          cupLockedReason={cupLockedReason}
           onSelect={select}
           onLockedTap={(v) => setPeeking(v)}
           chatOpen={chatOpen}

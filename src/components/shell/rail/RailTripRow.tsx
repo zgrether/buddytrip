@@ -45,6 +45,8 @@ export interface RailTrip {
   locked_destination_at?: string | null;
   myRole?: string | null;
   hasCompetition?: boolean | null;
+  /** Candidates under consideration — the Ideas row's only variable content. */
+  ideaCount?: number | null;
 }
 
 /** Same short form the card uses: "Sep 9 – 13", collapsing a shared month. */
@@ -212,6 +214,80 @@ export function RailTripRow({
           {countdown.label}
         </div>
       )}
+    </button>
+  );
+}
+
+/**
+ * An IDEA-phase trip — a trip with no destination locked yet.
+ *
+ * Name and a count of ideas under consideration. That is the whole row, and the
+ * reduction is honest rather than a compromise: there is very little true about a
+ * trip that hasn't been placed, and the count is the only thing that meaningfully
+ * varies. "4 ideas" says a real comparison is happening; "1 idea" says someone has
+ * nearly decided.
+ *
+ * Deliberately absent, each for its own reason:
+ *   - No image. Images only exist if the trip started from one of the curated
+ *     twenty, so the row would be inconsistent between trips for no gain.
+ *   - No vote count. Voting is optional, often nobody has been invited yet, and a
+ *     single owner's vote conveys nothing.
+ *   - No destination names. A comparison can hold ten candidates before anyone
+ *     starts narrowing, and there is no honest way to pick which to show.
+ *
+ * The role edge applies exactly as it does on a placed trip — an idea-phase trip
+ * still has an owner and organizers, and "can I act here" is the same question.
+ */
+export function RailIdeaTripRow({
+  trip,
+  current,
+  pending,
+  onOpen,
+}: {
+  trip: RailTrip;
+  current: boolean;
+  pending: boolean;
+  onOpen: () => void;
+}) {
+  const mine = trip.myRole === "Owner" || trip.myRole === "Organizer";
+  const count = trip.ideaCount ?? 0;
+  return (
+    <button
+      type="button"
+      aria-current={current || undefined}
+      aria-busy={pending || undefined}
+      onClick={onOpen}
+      disabled={pending}
+      data-testid="rail-trip-idea"
+      data-mine={mine || undefined}
+      className="relative mb-1 block w-full rounded-[10px] px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)] disabled:opacity-60"
+      style={{
+        background: current ? "var(--color-bt-accent-faint)" : undefined,
+      }}
+    >
+      {mine && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0"
+          style={{
+            top: 6,
+            bottom: 6,
+            width: 3,
+            borderRadius: "0 3px 3px 0",
+            background: "var(--color-bt-warning)",
+          }}
+        />
+      )}
+      <div
+        className="truncate text-[12.5px] font-semibold"
+        // Second channel for the role bit — same reasoning as the placed row.
+        style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
+      >
+        {trip.title}
+      </div>
+      <div className="truncate text-[10.5px]" style={{ color: "var(--color-bt-text-dim)", opacity: 0.8 }}>
+        {count === 1 ? "1 idea" : `${count} ideas`}
+      </div>
     </button>
   );
 }
