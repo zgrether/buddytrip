@@ -486,7 +486,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             activeTripId={activeTripId}
             pendingTripId={pendingTripId}
             onOpen={openTrip}
-            onNew={() => router.push("/trips/new")}
+            onNew={() => router.push("/trips/new?mode=exploring")}
           />
         ) : entity === "trips" ? (
           <TripsColumn
@@ -500,7 +500,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             // silhouette first; name, location, dates and countdown all survive.
             expanded={wide}
             onOpen={openTrip}
-            onNew={() => router.push("/trips/new")}
+            onNew={() => router.push("/trips/new?mode=known")}
           />
         ) : (
           <GamesColumn onPlay={() => router.push("/quick-game")} />
@@ -905,4 +905,4 @@ function RailLoadError({ onRetry }: { onRetry: () => void }) {
     </div>
   );
 }
-
+

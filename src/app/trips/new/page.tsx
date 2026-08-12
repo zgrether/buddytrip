@@ -1,97 +1,38 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
 import { TopNav } from "@/components/TopNav";
-import { DestinationPicker, type DestinationMode } from "@/components/DestinationPicker";
-import { EmptyStateOnboarding, type LocalIdea } from "@/app/trips/[tripId]/components/IdeaZonePanel";
+import { CreateTripFlow } from "@/components/trips/CreateTripFlow";
+import type { DestinationMode } from "@/components/DestinationPicker";
 
-export default function TripNewPage() {
-  const router = useRouter();
-  const utils = trpc.useUtils();
+/**
+ * `/trips/new` — the create flow as a ROUTE.
+ *
+ * In-app, creating a trip is a modal now (`CreateTripModal`), so nothing in the
+ * UI navigates here. **The route still has to exist**, and not as a courtesy:
+ * `auth/callback` redirects every organic signup with no trip memberships
+ * straight to `/trips/new` with a server-side 302 (`auth/callback/route.ts`).
+ * Deleting it would break signup silently for exactly the users who have never
+ * seen the app before — the failure mode #878 warned about, arriving from the
+ * one referrer that isn't a component you can grep for a `router.push`.
+ *
+ * So the route stays and renders the SAME `CreateTripFlow` the modal does.
+ * There is one flow with two presentations, not a flow and a fallback that
+ * drift.
+ *
+ * A server component, deliberately: `?mode=` is read from the `searchParams`
+ * prop rather than `useSearchParams`, which would need a Suspense boundary and
+ * would opt the route into client-side dynamic rendering for a value that is
+ * known at request time.
+ */
+function parseMode(raw: string | string[] | undefined): DestinationMode {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return v === "known" || v === "exploring" ? v : null;
+}
 
-  const [tripName, setTripName] = useState("");
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  // Start with neither path pre-selected so the user actually reads the
-  // two options ("I Know Where" vs "Explore Options") before picking.
-  const [destinationMode, setDestinationMode] = useState<DestinationMode>(null);
-  const [destinationText, setDestinationText] = useState("");
-
-  const hasName = tripName.trim().length > 0;
-
-  const createTrip = trpc.trips.create.useMutation({
-    onSuccess: () => utils.trips.list.invalidate(),
-  });
-  const createIdea = trpc.ideas.create.useMutation();
-
-  // "I Know Where" path — wired to the inline Create Trip button (only
-  // rendered in known mode) and Enter-key on the name input. The exploring
-  // path goes through handleExploringSubmit below, not here.
-  const handleCreate = async () => {
-    if (destinationMode !== "known") return;
-    const destination = destinationText.trim();
-    if (!hasName || !destination) return;
-    setError("");
-    setIsSubmitting(true);
-    const tripId = crypto.randomUUID();
-
-    try {
-      await createTrip.mutateAsync({
-        id: tripId,
-        title: tripName.trim(),
-        lockedDestination: { title: destination, location: destination },
-      });
-
-      router.replace(`/trips/${tripId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create trip");
-      setIsSubmitting(false);
-    }
-  };
-
-  // "Not sure yet" path — EmptyStateOnboarding hands us the staged list; we
-  // create the trip with comparisonMode, seed the ideas into it, and land the
-  // user on the trip page already populated. Rethrow on failure so the
-  // component's `isSubmitting` resets and the user can retry.
-  const handleExploringSubmit = async (ideas: LocalIdea[]) => {
-    if (!hasName) {
-      throw new Error("Trip needs a name");
-    }
-    setError("");
-    const tripId = crypto.randomUUID();
-    try {
-      await createTrip.mutateAsync({
-        id: tripId,
-        title: tripName.trim(),
-        comparisonMode: true,
-      });
-      await Promise.all(
-        ideas.map((idea) =>
-          createIdea.mutateAsync({
-            tripId,
-            id: crypto.randomUUID(),
-            title: idea.title,
-            location: idea.location,
-            description: idea.description,
-            costTier: idea.costTier,
-            imageUrl: idea.imageUrl,
-            golfCourses: idea.golfCourses,
-            activities: idea.activities,
-            accommodation: idea.accommodation,
-            notes: idea.tips,
-            source: idea.source,
-          })
-        )
-      );
-      router.replace(`/trips/${tripId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create trip");
-      throw err;
-    }
-  };
+export default async function TripNewPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { mode } = await searchParams;
 
   return (
     <div
@@ -99,94 +40,11 @@ export default function TripNewPage() {
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* App-wide top nav — matches dashboard, profile, and trip pages so
-          the new-trip flow doesn't feel like a separate surface. The
-          in-body "Back" link below replaces the old header back button. */}
+          the new-trip flow doesn't feel like a separate surface. */}
       <TopNav />
 
-      {error && (
-        <div
-          className="mx-auto mt-4 max-w-[896px] rounded-lg border px-4 py-3 text-sm"
-          style={{
-            background: "var(--color-bt-danger-bg)",
-            borderColor: "var(--color-bt-danger-border)",
-            color: "var(--color-bt-danger)",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      <main className="mx-auto max-w-4xl space-y-10 px-6 py-8">
-        {/* Trip name — narrow form column, left-aligned with main */}
-        <div className="max-w-2xl">
-          <label
-            htmlFor="trip-name"
-            className="mb-1.5 block text-xl font-bold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Trip Name{" "}
-            <span
-              aria-hidden="true"
-              style={{ color: "var(--color-bt-danger)", fontWeight: 400 }}
-            >
-              *
-            </span>
-            <span className="sr-only"> (required)</span>
-          </label>
-          <input
-            id="trip-name"
-            data-testid="trip-name-input"
-            type="text"
-            required
-            autoFocus
-            value={tripName}
-            onChange={(e) => setTripName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            placeholder="BBMI 2027, Tyler's Bachelor Party..."
-            maxLength={200}
-            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
-            style={{
-              background: "var(--color-bt-card)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
-        </div>
-
-        <DestinationPicker
-          mode={destinationMode}
-          onModeChange={setDestinationMode}
-          destinationText={destinationText}
-          onDestinationTextChange={setDestinationText}
-          knownTrailing={
-            <button
-              data-testid="create-trip-btn"
-              onClick={handleCreate}
-              disabled={isSubmitting || !hasName || !destinationText.trim()}
-              className="flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
-              style={{
-                background: "var(--color-bt-accent)",
-                color: "var(--color-bt-base)",
-              }}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create Trip"
-              )}
-            </button>
-          }
-          exploringContent={
-            <EmptyStateOnboarding
-              onSubmit={handleExploringSubmit}
-              submitDisabled={!hasName}
-              className="mt-3"
-            />
-          }
-        />
+      <main className="mx-auto max-w-4xl px-6 py-8">
+        <CreateTripFlow initialMode={parseMode(mode)} />
       </main>
     </div>
   );
