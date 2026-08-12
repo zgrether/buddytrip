@@ -53,32 +53,32 @@ export const CHAT_COLUMN_PX = 1280;
  */
 
 /**
- * ── Cup two-column geometry — the ONE numeric source ─────────────────────────
+ * ── The Cup two-column geometry USED TO LIVE HERE, and its removal is the fix ─
  *
- * Score entry is a DESIGNED interface at a fixed 412px (the Pixel 7 Pro viewport
- * and the supported mobile floor — see STYLE_GUIDE.md §Widths). It does not
- * stretch at any viewport. The scoreboard column absorbs the difference by
- * flexing between 380 and 560, so there is no cliff where a few pixels cost the
- * whole second column, and nothing grows to fill: leftover space is margin.
+ * Five constants — `ENTRY_COL_PX` (412), `CUP_MAIN_MIN_PX` (380),
+ * `CUP_MAIN_MAX_PX` (560), `CUP_COL_GAP_PX` (16) and their sum
+ * `CUP_TWO_COL_PX` (808) — described a layout where a fixed score-entry column
+ * sat BESIDE the scoreboard, and this block called them "the ONE numeric
+ * source" for it.
  *
- * Two columns therefore need `380 + 16 + 412 = 808` of CONTENT width.
+ * There was no second column. A later change made the board `lg:hidden` the
+ * moment a game opens ("drill-in REPLACES"), so Cup has been a single column
+ * for some time; `CompetitionFace`'s own header comment still claimed
+ * "DESKTOP MASTER–DETAIL … lg+ splits into [board | pane]" and was simply
+ * false. All five constants had ZERO consumers, and the `@[808px]` container
+ * query they justified appeared exactly once, where it set a `min-width` on the
+ * single panel.
  *
- * ── Why content width and not a viewport breakpoint ──────────────────────────
- * A viewport number would have to bake in the rail (246) and the stage padding
- * (32), and it would then be wrong the moment either changes — the mockup's own
- * ~1046 figure assumes a 206px rail and is 40px optimistic against this codebase.
- * Measuring the space the columns actually get is rail-independent and can't
- * drift. It is expressed as a CONTAINER query on the stage, so CSS and JS read
- * the same number from here rather than each carrying their own copy — two
- * sources for one threshold is the exact class of bug that produced the double
- * scrollbar (#752) and the two-pane disagreement before it.
+ * The cost was not the dead code. It was that the 560 cap on both the board and
+ * the game panel existed to leave room for a column that never arrives — so Cup
+ * refused to use the width it had, while Trip beside it filled the content area.
+ * That is the "Cup is stuck at 560" symptom, and it had a reason that had
+ * stopped being true.
+ *
+ * If a two-column Cup is wanted again, rebuild it deliberately against whatever
+ * the layout is then — do not restore these numbers on the strength of this
+ * comment.
  */
-export const ENTRY_COL_PX = 412;
-export const CUP_MAIN_MIN_PX = 380;
-export const CUP_MAIN_MAX_PX = 560;
-export const CUP_COL_GAP_PX = 16;
-/** Content width at which the entry column can sit BESIDE the scoreboard. */
-export const CUP_TWO_COL_PX = CUP_MAIN_MIN_PX + CUP_COL_GAP_PX + ENTRY_COL_PX; // 808
 
 function useMediaMin(px: number): boolean {
   // False on the server and on the first client render, so hydration matches;

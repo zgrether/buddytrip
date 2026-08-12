@@ -46,20 +46,18 @@ export interface CupPanelState {
   openGame: CupPanelGame | undefined;
   /** The open game's type, or null when nothing panel-capable is open. */
   openType: string | null;
-  /**
-   * A match is open in SCORE ENTRY, via `?match=<id>`.
+  /*
+   * `entryOpen` / `openMatchId` USED TO BE HERE. They reported whether a match
+   * was open in score entry via `?match=<id>`, and they existed for exactly one
+   * reason, stated in their own doc: the COLUMN COUNT needed it synchronously,
+   * because publishing it up through `GameChrome` would arrive one `useEffect`
+   * late and paint a frame with the wrong number of columns.
    *
-   * Entry used to be private component state inside `MatchGameView` (`screen ===
-   * "score"` + `selectedMatchId`), which meant the layout — two levels up — had no
-   * way to know it was open. Putting it in the URL makes it derivable
-   * SYNCHRONOUSLY here, which is what the column count needs: publishing it up
-   * through `GameChrome` would arrive one `useEffect` late and paint a frame with
-   * the wrong number of columns. It is also deep-linkable and rides the existing
-   * depth-tagged history markers unchanged.
+   * There is no column count any more (see breakpoints.ts), so their only
+   * consumer went and they were left computing an answer nobody asked for.
+   * `?match=` itself is untouched — it is still the deep-linkable entry state
+   * the game views drive; this hook simply no longer reports on it.
    */
-  entryOpen: boolean;
-  /** The `?match=` value, or null. */
-  openMatchId: string | null;
 }
 
 export function useCupPanel(
@@ -89,7 +87,6 @@ export function useCupPanel(
     : undefined;
   const openType = openGame?.game_type_id ?? null;
   const panelOpen = !!openGame && opensAsPanel(openType);
-  const openMatchId = search.get("match");
   return {
     panelOpen,
     openGameId,
@@ -98,8 +95,6 @@ export function useCupPanel(
     // Entry only counts while a game is actually open — a stray `?match=` with no
     // `?game=` is not a state the app can be in, and treating it as one would give
     // the shell a column count for a surface that isn't rendered.
-    entryOpen: panelOpen && !!openMatchId,
-    openMatchId,
   };
 }
 
