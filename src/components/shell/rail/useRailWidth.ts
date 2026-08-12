@@ -36,9 +36,20 @@ import { useCallback, useSyncExternalStore } from "react";
  * triple the old travel from the 296 that shipped, to be reassessed on a real
  * device. It is not derived from anything measured.
  *
- * The button reopens to the MINIMUM, not to where you were. Reopening wide
- * would make the button a second way to express a width the drag already owns
- * — the same collision that got this reversed in the first place.
+ * ── The button RESTORES the width you left, and that reverses a decision ────
+ * It used to reopen to the MINIMUM, on the reasoning that reopening to your
+ * previous width would make the button a second way to express a width the drag
+ * already owns.
+ *
+ * That was wrong about what the button is. Collapsing is a way to get the list
+ * OUT OF THE WAY for a moment, not a way to resize it — so throwing the width
+ * away on the round trip means the drag isn't a preference at all, it's
+ * something you redo after every peek. The persistence this rail already has
+ * (see the store below) was doing nothing for the one interaction most likely
+ * to lose it.
+ *
+ * It is still not a second way to express a width: the button cannot produce any
+ * width the drag didn't already set. It stores one number and puts it back.
  */
 
 /** The drag ceiling. PROVISIONAL — see the note above. */
@@ -49,8 +60,18 @@ export const RAIL_DEFAULT_PX = 296;
  * Absolute floor for the DRAG, whatever the names measure. A rail narrower than
  * this stops being a switcher regardless of how short the trip titles happen to
  * be — the section headers, the key and the countdown band all still have to fit.
+ *
+ * Raised 200 -> 232 because the KEY is the widest fixed thing in the column and
+ * 200 could not hold it: `Owner · Organizer · Cup` plus three marks and its gaps
+ * measures ~204 inside the column's 28px of padding, so the last pair wrapped.
+ * The floor is now set by the one element whose width does NOT depend on the
+ * user's data — trip names wrap, the key can't.
+ *
+ * Approximate by construction (it sums glyph widths at 11px semibold), so it is
+ * deliberately a little generous rather than exactly fitted, and it is worth a
+ * look on screen at the floor.
  */
-export const RAIL_MIN_PX = 200;
+export const RAIL_MIN_PX = 232;
 /**
  * The CAP on the measured floor — the width that already shipped as the narrow
  * snap. A pathological name can push the measured floor up to here and no
@@ -60,6 +81,9 @@ export const RAIL_MIN_PX = 200;
 export const RAIL_CONTRACTED_PX = 246;
 /** Collapsed — the icon strip alone, no list column. */
 export const RAIL_COLLAPSED_PX = 0;
+/** Where a collapsed rail reopens to. Persisted beside the width so the round
+ *  trip survives a reload, not just a click. */
+const RESTORE_KEY = "bt.railRestoreWidth.v1";
 /** The entity strip — icon over label, fixed. */
 export const RAIL_STRIP_PX = 62;
 /**
@@ -143,6 +167,22 @@ function getSnapshot(): number {
   return cached;
 }
 
+/**
+ * The width a collapsed rail reopens to. Read on demand rather than subscribed
+ * to: nothing renders from it, it is only consulted at the moment the user
+ * reopens, so it needs no store and no snapshot.
+ */
+function readRestoreWidth(): number {
+  try {
+    const n = Number(window.localStorage.getItem(RESTORE_KEY));
+    return Number.isFinite(n) && n > RAIL_COLLAPSED_PX
+      ? clampRailWidth(n, RAIL_MIN_PX)
+      : RAIL_DEFAULT_PX;
+  } catch {
+    return RAIL_DEFAULT_PX;
+  }
+}
+
 /** Server snapshot — there is no storage, so the default is the honest one. */
 function getServerSnapshot(): number {
   return RAIL_DEFAULT_PX;
@@ -168,8 +208,10 @@ export function useRailWidth(): {
   wide: boolean;
   /** Continuous set, from the drag. Clamped against the caller's measured floor. */
   setWidth: (px: number, floor?: number) => void;
-  /** Take the list away entirely. The one thing the drag cannot do. */
-  collapse: () => void;
+  /** Take the list away entirely, remembering `restoreTo` for the way back. */
+  collapse: (restoreTo: number) => void;
+  /** The width a collapse should reopen to. */
+  restoreWidth: number;
 } {
   const width = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
@@ -177,7 +219,16 @@ export function useRailWidth(): {
     write(clampRailWidth(px, floor));
   }, []);
 
-  const collapse = useCallback(() => {
+  const collapse = useCallback((restoreTo: number) => {
+    // Written BEFORE the collapse, while the width is still real. Persisted
+    // rather than held in a ref: a ref dies with the mount, so a reload while
+    // collapsed would reopen at the floor — the same "the write succeeded but
+    // the read didn't land" shape #902 was.
+    try {
+      window.localStorage.setItem(RESTORE_KEY, String(clampRailWidth(restoreTo, RAIL_MIN_PX)));
+    } catch {
+      // Blocked storage: the restore falls back to the default below.
+    }
     write(RAIL_COLLAPSED_PX);
   }, []);
 
@@ -187,5 +238,6 @@ export function useRailWidth(): {
     wide: width >= RAIL_ART_MIN_PX,
     setWidth,
     collapse,
+    restoreWidth: readRestoreWidth(),
   };
 }
