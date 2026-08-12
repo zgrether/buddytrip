@@ -250,7 +250,7 @@ export function AppShell({
        * underneath and leave chat open over it — incoherent, since the scrim
        * already closes chat on an outside tap and the nav sits above the
        * scrim (the gap this closes). Scoped to `chatSheetOpen`, not `chatOpen`
-       * outright: the persistent side column (`chatAside`, xl+) is a
+       * outright: the persistent side column (`chatAside`, lg+) is a
        * deliberate "board stays live while you talk" layout, not a modal, and
        * switching tabs there must not close it.
        */
@@ -515,9 +515,22 @@ export function AppShell({
              * surfaces (player selector, discard prompt, sheets) is `createPortal`'d
              * to `document.body`, so it escapes this box entirely.
              */}
+            {/*
+             * The `lg:` here and `useIsChatColumn` MUST name the same width, and
+             * now they do: `CHAT_COLUMN_PX === SHELL_DESKTOP_PX === 1024`, which
+             * is Tailwind's `lg`. They were `xl:` and 1280 while the rail was
+             * 1024, which left a 256px band where the whole desktop chrome was
+             * showing but chat opened as a mobile bottom sheet.
+             *
+             * This is two sources for one threshold and it cannot be collapsed
+             * into one — Tailwind needs a literal variant, the media query needs
+             * a number. The mitigation is that the number is defined ONCE in
+             * breakpoints.ts and this comment names the pair; if `lg` ever stops
+             * meaning 1024, both move together.
+             */}
             <div
               className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${CONTENT_INSET} ${
-                chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4" : ""
+                chatAside ? "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6" : ""
               }`}
               style={{ paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)" }}
             >
@@ -552,7 +565,7 @@ export function AppShell({
               >
                 {body}
               </div>
-              {/* Chat's aside placement, ≥1280 (Phase 6) — a persistent layout
+              {/* Chat's aside placement (Phase 6) — a persistent layout
                   region, not a floating dialog (no scrim), so it keeps the
                   Level-1 `--color-bt-card` token per STYLE_GUIDE §1. Below this
                   breakpoint chat renders as `ChatSheet` instead (below,

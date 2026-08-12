@@ -15,15 +15,26 @@ import { useEffect, useState } from "react";
  * anyway and the rail is costing more than it gives. At 1024 content gets
  * ~760px, which is a genuine two-column surface.
  *
- * ── CHAT COLUMN (1280px / Tailwind `xl`) — chat beside the content ───────────
- * The chat column is a fixed 340px. At 1024 that would leave the main column
- * ~400px — narrower than the phone layout it replaced, and too tight for the
- * leaderboard's team rows and game rows. 1280 leaves ~1010px, so the board gets
- * ~630px alongside chat's 340px and both are usable.
+ * ── CHAT COLUMN — now the SAME breakpoint, and that is the fix ───────────────
+ * Chat's side column used to start at 1280 (`xl`) while the rail started at
+ * 1024, on the reasoning that a fixed 340px column at 1024 would leave the main
+ * column ~400px — too tight, and worse than a good full-width surface.
  *
- * BELOW 1280, Chat stays a full-width TAB even though the rail is showing. That
- * is deliberate: a cramped side-by-side is worse than a good full-width surface,
- * and it keeps one behaviour ("chat replaces the content") rather than three.
+ * That reasoning assumed a main column that could not give anything back. It
+ * can now: the rail COLLAPSES to a 62px strip, so the space chat needs is
+ * available at 1024 the moment the user wants it, and the desktop content area
+ * is fluid rather than capped at a designed width.
+ *
+ * What the split actually produced was a 256px band where the rail, the tabs and
+ * the whole desktop chrome were showing but chat still opened as a MOBILE bottom
+ * sheet — one surface behaving as though it were on a phone while everything
+ * around it had not been for 256px. Two breakpoints meant three behaviours; one
+ * means two, which is what "desktop" and "mobile" were supposed to mean.
+ *
+ * So `CHAT_COLUMN_PX === SHELL_DESKTOP_PX`. They are kept as separate NAMES
+ * because they answer different questions and a future split should be able to
+ * re-diverge them without hunting call sites — but they are one number, defined
+ * once, so they cannot drift apart by accident.
  *
  * ── These drive DATA, not TREES ──────────────────────────────────────────────
  * Layout itself is CSS (`lg:` / `xl:` classes) on ONE tree, so resizing across a
@@ -33,7 +44,7 @@ import { useEffect, useState } from "react";
  * the side. Using it to pick between two trees would reintroduce the remount.
  */
 export const SHELL_DESKTOP_PX = 1024;
-export const CHAT_COLUMN_PX = 1280;
+export const CHAT_COLUMN_PX = SHELL_DESKTOP_PX;
 
 /**
  * `RAIL_WIDTH_PX` USED TO LIVE HERE, and its removal is the point.
