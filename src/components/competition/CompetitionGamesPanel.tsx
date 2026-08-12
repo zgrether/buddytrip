@@ -103,14 +103,30 @@ const CATEGORY_META: Record<string, { label: string; Icon: LucideIcon }> = {
 
 export const COMP_FORMATS = [
   { key: "head_to_head", label: "Head-to-Head / Match", desc: "One-off matchup, winner takes the points.", Icon: Swords },
-  { key: "bracket_se", label: "Bracket — Single Elimination", desc: "Lose once, you're out.", Icon: ListTree },
-  { key: "bracket_de", label: "Bracket — Double Elimination", desc: "Two lives — a losers' bracket.", Icon: ListTree },
+  // ONE entry. Single vs double is a SETTING inside the bracket, exactly as entry
+  // mode is inside match play — two picker entries made a configuration choice
+  // look like two different formats.
+  { key: "bracket", label: "Bracket", desc: "We support single and double elimination.", Icon: ListTree },
   { key: "best_of_n", label: "Best of N", desc: "First to win the majority of games.", Icon: Target },
   { key: "live_results", label: "Live Results", desc: "A running tally that updates as it plays (e.g. Pick'em).", Icon: Radio },
 ] as const;
 
+/**
+ * The two keys that PRECEDED the collapse to one "Bracket" entry.
+ *
+ * They are gone from the picker but not from the data: a game saved before this
+ * still carries `bracket_se` / `bracket_de` in `games.competition_format`, and
+ * `formatLabel` returning null for them would fall through to the caller's
+ * "Head-to-Head / Match" default — silently relabelling a bracket as a different
+ * format. Read-only compatibility; nothing offers them.
+ */
+const LEGACY_FORMAT_LABELS: Record<string, string> = {
+  bracket_se: "Bracket",
+  bracket_de: "Bracket",
+};
+
 export function formatLabel(key: string | null): string | null {
-  return COMP_FORMATS.find((f) => f.key === key)?.label ?? null;
+  return COMP_FORMATS.find((f) => f.key === key)?.label ?? (key ? LEGACY_FORMAT_LABELS[key] ?? null : null);
 }
 
 // ── Game sheet (A1 P-D: single tab — the light add/edit skeleton) ──────────────

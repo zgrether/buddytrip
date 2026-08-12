@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { configToNonGolfDraft, nonGolfDraftToPayload, type NonGolfConfigDraft } from "../../lib/configDraft";
+import { configToNonGolfDraft, nonGolfDraftToPayload, type NonGolfConfigDraft, type BracketConfig } from "../../lib/configDraft";
 
 /**
  * save_game_config — the NON-GOLF flip (P2 phase 2). Non-golf routes its WHOLE lean
@@ -14,6 +14,14 @@ import { configToNonGolfDraft, nonGolfDraftToPayload, type NonGolfConfigDraft } 
  */
 
 const CARD = "gtt_generic_card";
+
+/** A complete bracket config — the type is total, so a partial would not compile. */
+const BASE_BRACKET: BracketConfig = {
+  elimination: "single",
+  entrants: "partners",
+  seeding: "random_avoid_teammates",
+  consolation: false,
+};
 
 let ctx: TestContext;
 let tripId: string;
@@ -72,6 +80,44 @@ describe("saveConfig — non-golf: the whole lean page saves atomically, no lock
     // COALESCE-preserve: a later save that omits format keeps it (only non-golf sends it).
     await saveNG(gameId, { name: "Renamed" });
     expect((await getById(gameId)).competition_format).toBe("best_of_n");
+  });
+
+  it("bracket_config writes through saveConfig, and an omitted key PRESERVES it (113)", async () => {
+    // The bracket's scalar settings ride the same atomic Save as a draft slice
+    // (#18) rather than a live games.update.
+    const cfg = {
+      elimination: "single",
+      entrants: "partners",
+      seeding: "random_avoid_teammates",
+      consolation: true,
+    } satisfies BracketConfig;
+    const gameId = await newNonGolfGame("NG bracket");
+    await saveNG(gameId, { competitionFormat: "bracket", bracketConfig: cfg });
+    expect((await getById(gameId)).bracket_config).toEqual(cfg);
+
+    // COALESCE-PRESERVE is the half that matters. Every format sends the full
+    // config it owns and an absent key resets that column — right for `modifiers`,
+    // wrong here, because only a bracket game speaks for `bracketConfig`. Without
+    // it, ANY other save on this game wipes the bracket's setup.
+    await saveNG(gameId, { name: "Renamed again" });
+    expect((await getById(gameId)).bracket_config).toEqual(cfg);
+  });
+
+  it("bracket_config moves the config hash, so a mid-setup change reaches other devices", async () => {
+    // The #16 invariant, checked at the moment the write appears rather than
+    // after someone notices it never propagated. `bracket_config` was added to
+    // GAME_CONFIG_COLS in 112 — one migration BEFORE anything could write it.
+    const gameId = await newNonGolfGame("NG bracket hash");
+    await saveNG(gameId, { competitionFormat: "bracket", bracketConfig: { ...BASE_BRACKET, consolation: false } });
+    const before = await hashOf(gameId);
+
+    await saveNG(gameId, { bracketConfig: { ...BASE_BRACKET, consolation: true } });
+    const after = await hashOf(gameId);
+    expect(after).not.toBe(before);
+
+    // …and no churn on an idempotent re-write.
+    await saveNG(gameId, { bracketConfig: { ...BASE_BRACKET, consolation: true } });
+    expect(await hashOf(gameId)).toBe(after);
   });
 
   it("THE THESIS — a LIVE non-golf game saves EVERY setting, no refusal", async () => {

@@ -15,7 +15,7 @@ import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotIn
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
-import { COMPETITION_FORMATS } from "@/lib/configDraft";
+import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
@@ -1046,7 +1046,23 @@ export const gamesRouter = router({
           pointsDistribution: z.unknown().nullable(),
           // competition_format (086) — non-golf's structure label. Optional: only
           // non-golf sends it; golf formats omit it and the RPC COALESCE-preserves.
-          competitionFormat: z.enum(COMPETITION_FORMATS).nullable().optional(),
+          // Legacy values are ACCEPTED, never offered. Every non-golf save
+          // re-sends the whole config, so refusing `bracket_se`/`bracket_de`
+          // would make an untouched pre-collapse bracket game unsaveable —
+          // failing on a field the user never went near.
+          competitionFormat: z
+            .enum([...COMPETITION_FORMATS, ...LEGACY_COMPETITION_FORMATS])
+            .nullable()
+            .optional(),
+          bracketConfig: z
+            .object({
+              elimination: z.enum(["single", "double"]),
+              entrants: z.enum(["singles", "partners"]),
+              seeding: z.enum(["manual", "random_avoid_teammates", "random"]),
+              consolation: z.boolean(),
+            })
+            .nullable()
+            .optional(),
           courseId: z.string().nullable(),
           backCourseId: z.string().nullable(),
           scorecardSchema: z.unknown().nullable(),
