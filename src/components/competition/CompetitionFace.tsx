@@ -263,11 +263,19 @@ export function CompetitionFace({
      */
     <div
       /**
-       * THE STAGE. A clip box that lays its columns out and centres them; it never
-       * scrolls (each column owns exactly one scroller — #752's rule). Leftover
-       * space is MARGIN, not growth: `justify-center` plus per-column max-widths,
-       * so 1760 is 1440 with more margin and there is no width at which anything
-       * gets wider.
+       * THE STAGE. A clip box that lays its columns out; it never scrolls (each
+       * column owns exactly one scroller — #752's rule). Leftover space is
+       * MARGIN, not growth: per-column max-widths, so 1760 is 1440 with more
+       * margin and there is no width at which anything gets wider.
+       *
+       * LEFT-ALIGNED, not centred. `lg:justify-center` is gone, and so is the
+       * `lg:mx-auto` on each column: the shell owns where the content area
+       * starts (contentArea.ts), and a column that re-centres inside it moves
+       * its own origin every time the available width changes — which is what
+       * made Cup disagree with Trip and made opening chat slide the board
+       * sideways. Columns now begin at the content area's left margin and stay
+       * there; a second column appears to the RIGHT of the first, inside the
+       * same viewport, without moving it.
        *
        * `@container` because the two-column threshold is 808 of CONTENT width, not
        * a viewport number — see breakpoints.ts for why measuring the space the
@@ -275,7 +283,7 @@ export function CompetitionFace({
        */
       className={
         panelOpen
-          ? "@container space-y-4 lg:flex lg:h-full lg:min-h-0 lg:items-stretch lg:justify-center lg:gap-4 lg:space-y-0"
+          ? "@container space-y-4 lg:flex lg:h-full lg:min-h-0 lg:items-stretch lg:gap-4 lg:space-y-0"
           : "@container space-y-4 lg:h-full lg:min-h-0"
       }
       data-testid="cup-stage"
@@ -295,14 +303,20 @@ export function CompetitionFace({
         * back. The wrapper is always present for the same reason: adding it
         * conditionally would remount the leaderboard.
         *
-        * Capped at 560 and centred by the stage when it is the only column.
+        * Capped at 560. The cap is now CONTINUOUS rather than `lg:`-gated, which
+        * is what removes the "grows very wide, then snaps back" step: the cap
+        * used to engage only at `lg`, so the board widened with the viewport all
+        * the way to 1023 and then abruptly NARROWED to 560 at 1024. Below `lg`
+        * it stays centred (there is no rail to align to, and a 560 column hugging
+        * the left of a tablet reads as broken); at `lg+` `lg:mx-0` hands
+        * alignment to the content area.
         */}
       <div
         // `lg:hidden`, NOT the `hidden` ATTRIBUTE — the attribute is width-blind and
         // reached mobile, where the board must stay in flow beneath the `fixed`
         // panel exactly as before (measured: it was being display:none'd at 390px).
         // Drill-in is a DESKTOP model; mobile keeps its overlay.
-        className={`min-w-0 lg:mx-auto lg:h-full lg:min-h-0 lg:w-full lg:max-w-[560px] lg:overflow-y-auto ${
+        className={`mx-auto w-full min-w-0 max-w-[560px] lg:mx-0 lg:h-full lg:min-h-0 lg:overflow-y-auto ${
           panelOpen ? "lg:hidden" : ""
         }`}
         data-testid="board-pane"
@@ -457,7 +471,7 @@ export function CompetitionFace({
            * (see above) — at `lg+` the bar never hides, so this expression only
            * ever differs below the breakpoint.
            */
-          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : "lg:mx-auto"} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : ""} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the

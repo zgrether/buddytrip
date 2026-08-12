@@ -9,6 +9,7 @@ import { ContextIntro, LockedTabExplainer, type LockedExplainerView } from "./Lo
 import { ContextRail } from "./ContextRail";
 import { ChatSheet } from "./ChatSheet";
 import { useIsChatColumn } from "./breakpoints";
+import { CONTENT_INSET } from "./contentArea";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
@@ -515,8 +516,8 @@ export function AppShell({
              * to `document.body`, so it escapes this box entirely.
              */}
             <div
-              className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${
-                chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4 xl:p-4" : ""
+              className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${CONTENT_INSET} ${
+                chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4" : ""
               }`}
               style={{ paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)" }}
             >
@@ -536,8 +537,15 @@ export function AppShell({
                * an INVARIANT rather than something that merely happens to hold
                * while the height chain below cooperates.
                */}
+              {/*
+               * `lg:max-w-[1280px]` with NO `mx-auto` — the content area is
+               * LEFT-ALIGNED against the rail, capped so it doesn't stretch on
+               * an ultrawide. The cap lives here, on the one box both Trip and
+               * Cup render into, rather than being declared separately (and
+               * differently) by each of them. See `contentArea.ts`.
+               */}
               <div
-                className={`min-w-0 lg:h-full lg:min-h-0 ${
+                className={`min-w-0 lg:h-full lg:min-h-0 lg:max-w-[1280px] ${
                   twoPane ? "lg:overflow-hidden" : "lg:overflow-y-auto"
                 }`}
                 data-testid="shell-body"

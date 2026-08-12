@@ -19,6 +19,7 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
+import { SURFACE_BOX, SURFACE_BOX_FLUSH } from "@/components/shell/contentArea";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useRealtimeTripData } from "@/hooks/useRealtimeTripData";
@@ -538,7 +539,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       {isIdea ? (
         /* Idea phase: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
         <>
-          <div className="mx-auto max-w-[1280px] px-4 pt-4">
+          <div className={SURFACE_BOX}>
             <TripHeader
               tripId={trip.id}
               tripName={trip.title}
@@ -564,7 +565,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
               onDatesTap={() => setActiveTab("schedule")}
             />
           </div>
-          <main className="mx-auto max-w-[1280px] pt-4 pb-6">
+          <main className={`${SURFACE_BOX_FLUSH} pb-6`}>
             {activeTab === "home" && (
               <HomeTab
                 trip={trip}
@@ -584,7 +585,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         /* Planning / going / now / past / saved: single-column page.
            Crew chat lives in the FloatingChatPanel on the right (desktop)
            or as a bottom sheet (mobile), so no sidebar column is needed. */
-        <div className="mx-auto max-w-[1280px] px-4 pt-4">
+        <div className={SURFACE_BOX}>
           {/* News/Chat now overlay the page with a scrim (they don't push the
               content narrower), so no margin-right shift here. */}
           <div>
