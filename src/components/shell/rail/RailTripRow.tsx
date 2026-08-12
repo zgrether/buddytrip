@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { getLocationInfo } from "@/lib/locationUtils";
 import { getTripCountdown } from "@/lib/tripCountdown";
 import { Spinner } from "@/components/Spinner";
+import { ROLE_COLOR, badgedRole } from "@/lib/roleColor";
 
 /**
  * A trip in the desktop rail's list column.
@@ -17,22 +18,54 @@ import { Spinner } from "@/components/Spinner";
  * but the gap between the two used to be far wider than the space forced — the
  * rail carried a two-letter tile, a name and a location, and nothing else.
  *
- * ── Role is one bit, carried on TWO channels ────────────────────────────────
- * "Is this mine to run" — `myRole !== "Member"`, which is Owner OR Organizer.
- * Both mean you can act, and the difference isn't worth a row's width, so the
- * three-state badge collapses to one bit.
+ * ── Role is TWO edges, matching the badges ──────────────────────────────────
+ * This used to be ONE amber edge meaning "Owner or Organizer", on the argument
+ * that both mean you can act and the difference isn't worth a row's width. That
+ * flattened a distinction the rest of the app preserves — the trip header, the
+ * dashboard card and the crew roster all show three states — and it left the key
+ * needing a word for the grouping, which is where "Admin" came from: a name for
+ * a rights tier this app does not have.
  *
- * That bit is carried by an amber 3px edge AND by the title's colour (full
- * `--color-bt-text` for yours, `--color-bt-text-dim` for trips you're only in).
- * The second channel is deliberate: 3px of amber with no label puts "can I act
- * here" on hue alone, which is the one cue that fails for the colour-blind, and a
- * key is read once while the edge is read every time. Lightness carries it
- * independently of hue, costs no horizontal space, and reinforces the edge
- * instead of competing with the trophy mark or the countdown band for a slot.
+ * So: amber Owner, blue Organizer, from `@/lib/roleColor` — the SAME values
+ * `RoleBadge` and `RolePill` paint, so the two surfaces agree by construction
+ * rather than by inspection. Organizer is blue rather than the accent because at
+ * 3px a teal band competes with the selected-row treatment and the trophy mark,
+ * both already teal on this very row; the colour history is in `roleColor.ts`.
+ *
+ * The TITLE COLOUR stays one bit (`--color-bt-text` if either, `-text-dim` if
+ * neither) and that asymmetry is deliberate. It is the redundant channel for
+ * "can I act here", which is the question that has a yes/no answer; putting the
+ * three-state distinction on lightness too would need a third text colour, and
+ * the reason a second channel exists at all is that 3px of hue with no label is
+ * the one cue that fails for the colour-blind. Which role, in colour, is a
+ * refinement; whether it's yours to run is the part that must not depend on hue.
  *
  * ── Contraction drops the ART first ─────────────────────────────────────────
  * The name is what you scan for; the silhouette is recognition support. Name,
  * location, dates and countdown all survive at the contracted width.
+ *
+ * ── Titles WRAP to two lines, then truncate ─────────────────────────────────
+ * `line-clamp-2`, not `truncate`. A single clamped line makes a long name a
+ * width REQUIREMENT — "International Federation of Having Fun 2026" measures
+ * wider than any sensible rail, and #902 found a 38-character name froze the
+ * drag entirely, because the floor was derived from the widest untruncated
+ * name and so landed above the ceiling. Two lines is roughly twice the
+ * characters at half the width, and it changes what the floor is allowed to
+ * be: a wrapping name's real minimum is its longest WORD, not the whole
+ * string, which is what `ContextRail.measureFloor` now measures. The floor
+ * stops being hostage to the longest name.
+ *
+ * `break-words` is the fallback for the one case wrapping can't help — a
+ * single unbreakable token wider than the column. Without it the clamp's
+ * `overflow: hidden` clips it mid-glyph with no ellipsis.
+ *
+ * NOTHING OVERLAPS when the row grows, and each element is a separate reason:
+ * the art is `self-stretch` inside an `items-start` flex row, so it grows with
+ * the text column and its `preserveAspectRatio` silhouette scales rather than
+ * distorts; the countdown is its own block BELOW that row, so it is pushed
+ * down; the role edge is `top: 8 / bottom: 8` absolute, so it spans whatever
+ * height the row ends up with. All three were already written against the
+ * row's height rather than a fixed one.
  */
 
 export interface RailTrip {
@@ -88,7 +121,8 @@ export function RailTripRow({
   const isDark = resolvedTheme !== "light";
   const dest = trip.locked_destination_location ?? trip.location ?? "";
   const { outline, cityPin, showPin, rotation } = getLocationInfo(dest);
-  const mine = trip.myRole === "Owner" || trip.myRole === "Organizer";
+  const role = badgedRole(trip.myRole);
+  const mine = role !== null;
 
   // `idea` / `no_dates` return no countdown, which is what keeps a dateless trip
   // from growing an empty band. Ideas don't reach this list at all, but a locked
@@ -114,16 +148,17 @@ export function RailTripRow({
     >
       {/* Role edge — channel one. Inset vertically so it reads as a marker on the
           row rather than a border of it. */}
-      {mine && (
+      {role && (
         <span
           aria-hidden="true"
+          data-role-edge={role}
           className="absolute left-0"
           style={{
             top: 8,
             bottom: 8,
             width: 3,
             borderRadius: "0 3px 3px 0",
-            background: "var(--color-bt-warning)",
+            background: ROLE_COLOR[role].text,
           }}
         />
       )}
@@ -131,7 +166,7 @@ export function RailTripRow({
       <div className="flex items-start gap-2.5 py-2.5 pl-3 pr-2.5">
         <div className="min-w-0 flex-1">
           <div
-            className="truncate text-[15px] font-semibold"
+            className="line-clamp-2 break-words text-[15px] font-semibold"
             data-rail-name
             // Role edge, channel two — see the note at the top of this file.
             style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
@@ -238,6 +273,7 @@ export function RailTripRow({
  *
  * The role edge applies exactly as it does on a placed trip — an idea-phase trip
  * still has an owner and organizers, and "can I act here" is the same question.
+ * Both edges, same two colours, same shared source.
  */
 export function RailIdeaTripRow({
   trip,
@@ -250,7 +286,8 @@ export function RailIdeaTripRow({
   pending: boolean;
   onOpen: () => void;
 }) {
-  const mine = trip.myRole === "Owner" || trip.myRole === "Organizer";
+  const role = badgedRole(trip.myRole);
+  const mine = role !== null;
   const count = trip.ideaCount ?? 0;
   return (
     <button
@@ -266,21 +303,23 @@ export function RailIdeaTripRow({
         background: current ? "var(--color-bt-accent-faint)" : undefined,
       }}
     >
-      {mine && (
+      {role && (
         <span
           aria-hidden="true"
+          data-role-edge={role}
           className="absolute left-0"
           style={{
             top: 6,
             bottom: 6,
             width: 3,
             borderRadius: "0 3px 3px 0",
-            background: "var(--color-bt-warning)",
+            background: ROLE_COLOR[role].text,
           }}
         />
       )}
       <div
-        className="truncate text-[14px] font-semibold"
+        className="line-clamp-2 break-words text-[14px] font-semibold"
+        data-rail-name
         // Second channel for the role bit — same reasoning as the placed row.
         style={{ color: mine ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
       >
@@ -323,7 +362,11 @@ export function RailPastTripRow({
       className="mb-0.5 block w-full rounded-[10px] px-3 py-1.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)] disabled:opacity-60"
       style={{ background: current ? "var(--color-bt-accent-faint)" : undefined }}
     >
-      <div className="truncate text-[14px] font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
+      <div
+        className="line-clamp-2 break-words text-[14px] font-semibold"
+        data-rail-name
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
         {trip.title}
       </div>
       {meta && (

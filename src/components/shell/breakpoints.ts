@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
  * not from taste:
  *
  * ── SHELL (1024px / Tailwind `lg`) — rail + top-bar tabs ─────────────────────
- * The rail is `RAIL_WIDTH_PX` (246px). Below ~1024 the remaining content column
+ * The rail was a flat 246px when this was derived. Below ~1024 the remaining content column
  * drops under ~700px, at which point the trip grids fall back to one column
  * anyway and the rail is costing more than it gives. At 1024 content gets
  * ~760px, which is a genuine two-column surface.
@@ -36,14 +36,21 @@ export const SHELL_DESKTOP_PX = 1024;
 export const CHAT_COLUMN_PX = 1280;
 
 /**
- * The rail's own width (`ContextRail`) — the ONE numeric source, same reasoning
- * as `CUP_TWO_COL_PX` below: TopNav's Trip/Cup tabs (Task 4, Phase 6) align to
- * the rail's right edge, so both need this SAME number. Two independently
- * hand-typed `246`s is exactly the class of bug the comment on `CUP_TWO_COL_PX`
- * already warns about — one drifting without the other is how a pixel-perfect
- * alignment quietly stops being pixel-perfect.
+ * `RAIL_WIDTH_PX` USED TO LIVE HERE, and its removal is the point.
+ *
+ * It was introduced as "the ONE numeric source" for the rail's width, because
+ * `TopNav`'s Trip/Cup tabs align to the rail's right edge and two hand-typed
+ * `246`s would drift. The reasoning was right and the mechanism outlived it: the
+ * rail's width became STATEFUL (a 62px strip plus a collapsible, draggable
+ * column), and a constant cannot be the source of a number that changes at
+ * runtime. `ContextRail` publishes `--bt-rail-width` and `TopNav` reads it; the
+ * first-paint fallback is composed from `RAIL_STRIP_PX + RAIL_DEFAULT_PX` in
+ * `rail/useRailWidth.ts`, which is where the rail's own numbers now live.
+ *
+ * Leaving the constant here would have recreated exactly the bug it was written
+ * to prevent — a second 246, in a file whose comment claimed it was the
+ * alignment source, that nothing aligned to any more.
  */
-export const RAIL_WIDTH_PX = 246;
 
 /**
  * ── Cup two-column geometry — the ONE numeric source ─────────────────────────

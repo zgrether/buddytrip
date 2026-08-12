@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Calendar, Plus, PlaneLanding, PlaneTakeoff } from "lucide-react";
 import { Avatar, InvitedAvatar, PlaceholderAvatar } from "@/components/Avatar";
 import { parseLocalDate } from "@/lib/dates";
+import { ROLE_COLOR, badgedRole } from "@/lib/roleColor";
 import {
   TravelEditor,
   TravelModePill,
@@ -79,39 +80,25 @@ export function deriveStatus(m: Member): DerivedStatus {
   return m.user?.email ? "invited" : "placeholder";
 }
 
-// ── Role pill (Owner amber · Organizer teal · Member: no pill) ────────────
+// ── Role pill (Owner amber · Organizer blue · Member: no pill) ────────────
+//
+// This was two hand-written branches with their own hardcoded token trios,
+// duplicating `RoleBadge` — the two agreed only because nobody had changed
+// either. Both now read `@/lib/roleColor`, as does the rail's role edge.
+// DB stores 'Organizer'; displays as 'Organizer' per CLAUDE.md rule 7.
 
 export function RolePill({ role }: { role: string }) {
-  if (role === "Owner") {
-    return (
-      <span
-        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-        style={{
-          background: "var(--color-bt-warning-faint)",
-          color: "var(--color-bt-owner)",
-          border: "1px solid var(--color-bt-warning-border)",
-        }}
-      >
-        Owner
-      </span>
-    );
-  }
-  // DB stores 'Organizer'; displays as 'Organizer' per CLAUDE.md rule 7.
-  if (role === "Organizer") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-        style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
-          border: "1px solid var(--color-bt-accent-border)",
-        }}
-      >
-        Organizer
-      </span>
-    );
-  }
-  return null;
+  const badged = badgedRole(role);
+  if (!badged) return null;
+  const { text, faint, border } = ROLE_COLOR[badged];
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+      style={{ background: faint, color: text, border: `1px solid ${border}` }}
+    >
+      {badged}
+    </span>
+  );
 }
 
 // InvitedAvatar + PlaceholderAvatar now live with the Avatar primitive

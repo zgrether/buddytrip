@@ -2,14 +2,18 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Dice5, Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
+import { Dice5, Flag, Lightbulb, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
+import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
+import { ROLE_COLOR, type BadgedRole } from "@/lib/roleColor";
 import { useIsShellDesktop } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
+import { CreateTripModal } from "@/components/trips/CreateTripModal";
+import type { DestinationMode } from "@/components/DestinationPicker";
 
 /**
  * ContextRail — Home promoted from a tab to a persistent left rail (Phase 5).
@@ -177,9 +181,20 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * strip back on every render would fight the user. `activeList` only changes
    * when the trip itself moves.
    */
-  const { width: railWidth, wide, snap, setWidth } = useRailWidth();
+  const { width: railWidth, wide, collapsed, collapse, setWidth } = useRailWidth();
   const columnRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  /**
+   * The floor to reopen to, captured at the moment of COLLAPSE.
+   *
+   * "Reopen to the minimum" means the measured minimum, and the measurement
+   * needs the rows on screen — which is exactly what collapsing takes away. So
+   * it is read on the way down, while the column is still rendered, rather than
+   * guessed on the way back up. A rail that has only ever been collapsed by a
+   * cold-loaded `0` falls back to `RAIL_MIN_PX`, and the first drag re-measures
+   * anyway.
+   */
+  const reopenFloor = useRef(RAIL_MIN_PX);
 
   /**
    * The drag floor — the widest rendered trip NAME, so nothing truncates that
@@ -192,25 +207,58 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * nothing. That is the middle answer between "measure constantly" (expensive)
    * and "hardcode a floor" (wrong the moment someone has a long trip name).
    *
-   * `scrollWidth` is the untruncated width of the text, which is exactly the
-   * question — `getBoundingClientRect` would return the CLAMPED width and every
-   * already-truncated name would report as fitting.
+   * ── WHAT is measured changed when titles started wrapping ──────────────────
+   * This used to read `scrollWidth` — the untruncated width of a single clamped
+   * line. Under `line-clamp-2` that number is WRONG in a way that would freeze
+   * the drag outright: a wrapping block has no horizontal overflow, so its
+   * `scrollWidth` equals its current rendered width, and the floor would come
+   * back as "however wide the rail happens to be right now" — a rail that can
+   * never be narrowed from wherever it was last left.
+   *
+   * The honest question for a wrapping name is its MIN-CONTENT width: the
+   * longest single word, because that is the only part that genuinely cannot
+   * get narrower. This is what item 1 buys — "International Federation of
+   * Having Fun 2026" stops asking for the width of 38 characters and asks for
+   * the width of "International". The floor is no longer hostage to the longest
+   * name; it is hostage only to the longest WORD, which is a far lower bar.
+   *
+   * Measured in two passes (write all, then read all) rather than
+   * write-read-write per row: interleaving would force a synchronous layout per
+   * name, and this runs on pointerdown with every visible row in the column.
+   * `display: block` is set alongside it because `line-clamp-2` renders as a
+   * `-webkit-box`, where intrinsic width sizing is not something to rely on.
    */
   const measureFloor = () => {
     const el = columnRef.current;
     if (!el) return RAIL_MIN_PX;
-    let widest = 0;
-    el.querySelectorAll<HTMLElement>("[data-rail-name]").forEach((n) => {
-      widest = Math.max(widest, n.scrollWidth);
-    });
+    const names = Array.from(el.querySelectorAll<HTMLElement>("[data-rail-name]"));
+    if (names.length === 0) return RAIL_MIN_PX;
+
     // The name sits in a row with padding, the art slot and the gaps around it.
     // Derived from the row's own box rather than a second hand-typed number: the
     // difference between the row's inner width and the name's own width IS the
-    // chrome, whatever the row's padding happens to be.
-    const name = el.querySelector<HTMLElement>("[data-rail-name]");
-    const row = name?.closest<HTMLElement>("[data-testid^='rail-trip']");
-    const chrome =
-      name && row ? Math.max(0, row.getBoundingClientRect().width - name.getBoundingClientRect().width) : 24;
+    // chrome, whatever the row's padding happens to be. Read BEFORE the
+    // min-content pass below, which changes the name's box on purpose.
+    const name = names[0]!;
+    const row = name.closest<HTMLElement>("[data-testid^='rail-trip']");
+    const chrome = row
+      ? Math.max(0, row.getBoundingClientRect().width - name.getBoundingClientRect().width)
+      : 24;
+
+    const restore = names.map((n) => ({ n, display: n.style.display, width: n.style.width }));
+    for (const { n } of restore) {
+      n.style.display = "block";
+      n.style.width = "min-content";
+    }
+    let widest = 0;
+    for (const { n } of restore) {
+      widest = Math.max(widest, n.getBoundingClientRect().width);
+    }
+    for (const { n, display, width } of restore) {
+      n.style.display = display;
+      n.style.width = width;
+    }
+
     // CAPPED at the narrow snap, and that cap is the important half.
     //
     // "The widest trip name" taken literally locks the rail: one long title
@@ -221,7 +269,9 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     // The floor is therefore "as narrow as the names allow, but never tighter
     // than the width that already shipped". Short names → drag down to
     // `RAIL_MIN_PX`; long names → stop at the narrow snap, where nothing
-    // truncates that didn't truncate before.
+    // truncates that didn't truncate before. Wrapping means far fewer names
+    // reach that cap at all, but the cap stays: it is what makes a pathological
+    // name a wart rather than a lock.
     const measured = Math.ceil(widest + chrome);
     return Math.min(RAIL_CONTRACTED_PX, Math.max(RAIL_MIN_PX, measured));
   };
@@ -243,6 +293,26 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     // keeps receiving them wherever the pointer goes.
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+  };
+
+  /**
+   * The button: collapse ⇄ reopen to the minimum. NOT a second width control —
+   * it does the one thing the drag deliberately cannot (`clampRailWidth` never
+   * returns the collapsed value), and it reopens to the floor rather than to
+   * wherever you last left it, so it never competes with the divider to express
+   * a width.
+   *
+   * Dragging OUT of a collapsed rail also works and is not a third mechanism:
+   * it is the same `setWidth`, and its floor comes back as `RAIL_MIN_PX`
+   * because there are no rows to measure. The next drag measures properly.
+   */
+  const toggleCollapsed = () => {
+    if (collapsed) {
+      setWidth(reopenFloor.current, reopenFloor.current);
+      return;
+    }
+    reopenFloor.current = measureFloor();
+    collapse();
   };
 
   /**
@@ -284,6 +354,14 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const [isSwitching, startSwitch] = useTransition();
   const pendingTripId = isSwitching ? switchingTo : null;
+
+  /**
+   * The create flow, open as a modal over the rail. `null` = closed; the value
+   * is the path the entry point pre-selects (item 4), so ONE piece of state
+   * carries both "is it open" and "which + was pressed" — a separate boolean
+   * would be a second thing to keep in step for no gain.
+   */
+  const [creating, setCreating] = useState<DestinationMode | "closed">("closed");
 
   const openTrip = (id: string) => {
     // Re-tapping the trip you're already in is a no-op today (Next renders the
@@ -362,24 +440,38 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           onClick={() => setEntity("games")}
         />
         <div className="flex-1" />
-        {/* SNAP, not expand/contract — the drag covers everything in between, so
-            this is two known widths on one tap. */}
+        {/* COLLAPSE ⇄ reopen-to-minimum, not snap-wide/snap-narrow. The two
+            snaps were 50px apart, which is not a range worth a divider — the
+            button and the drag were expressing the same 50px. They are split by
+            KIND now: this takes the list away entirely, the divider owns every
+            width in between. (This reverses the previous spec; the reasoning
+            lives in `useRailWidth`.) */}
         <button
           type="button"
-          onClick={snap}
-          aria-label={wide ? "Snap the list narrow" : "Snap the list wide"}
-          title={wide ? "Snap narrow" : "Snap wide"}
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Show the list" : "Hide the list"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Show the list" : "Hide the list"}
           data-testid="rail-width-toggle"
+          data-collapsed={collapsed || undefined}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors hover:border-[var(--color-bt-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          <PanelLeft size={16} />
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         </button>
       </nav>
 
       {/* ── Level two: the list ──────────────────────────────────────────────
           Background matches the strip, not the main viewport, so the two read as
-          one chrome region rather than the column reading as content. */}
+          one chrome region rather than the column reading as content.
+
+          UNMOUNTED when collapsed, not merely `width: 0`. A zero-width box with
+          `overflow-y-auto` keeps every row in the accessibility tree and in the
+          tab order — a collapsed rail you can still tab through row by row is
+          worse than one that animates. The cost is that collapsing snaps rather
+          than eases; reopening eases, because the box mounts at 0 and the
+          transition carries it out. */}
+      {!collapsed && (
       <div
         ref={columnRef}
         className="min-h-0 flex-1 overflow-y-auto"
@@ -405,7 +497,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             activeTripId={activeTripId}
             pendingTripId={pendingTripId}
             onOpen={openTrip}
-            onNew={() => router.push("/trips/new")}
+            onNew={() => setCreating("exploring")}
           />
         ) : entity === "trips" ? (
           <TripsColumn
@@ -419,18 +511,21 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             // silhouette first; name, location, dates and countdown all survive.
             expanded={wide}
             onOpen={openTrip}
-            onNew={() => router.push("/trips/new")}
+            onNew={() => setCreating("known")}
           />
         ) : (
           <GamesColumn onPlay={() => router.push("/quick-game")} />
         )}
       </div>
+      )}
 
       {/* The divider. A 5px grab strip over the column's right border — wider
           than the 1px line so it is catchable, and `col-resize` says so before
-          you press. Not focusable and not keyboard-operable ON PURPOSE: the snap
-          button beside it is the keyboard path to both known widths, so the drag
-          is an enhancement rather than the only way to size the rail. */}
+          you press. Not focusable and not keyboard-operable ON PURPOSE: the
+          button beside it reaches both ends of the range from the keyboard
+          (collapsed, and the minimum), so the drag is an enhancement rather than
+          the only way to size the rail. It stays mounted while collapsed —
+          that's what makes dragging back out possible. */}
       <div
         onPointerDown={startDrag}
         role="separator"
@@ -450,7 +545,26 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           background: dragging ? "var(--color-bt-accent)" : undefined,
         }}
       />
+
+      {/* The create flow, over the rail rather than instead of it. Mounted
+          conditionally, which is what `useModalBackButton`'s usage pattern 1
+          and `ScrollLock` both ask for. */}
+      {creating !== "closed" && (
+        <CreateTripModal initialMode={creating} onClose={() => setCreating("closed")} />
+      )}
     </aside>
+  );
+}
+
+/** The key's swatch — the same 3px edge the rows draw, from the same source,
+ *  so the legend cannot describe a colour the rows don't paint. */
+function KeyEdge({ role }: { role: BadgedRole }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block"
+      style={{ width: 3, height: 11, borderRadius: 2, background: ROLE_COLOR[role].text }}
+    />
   );
 }
 
@@ -524,6 +638,14 @@ function TripsColumn({
     if (status === "past") past.push(t);
     else active.push(t);
   }
+  // The SAME comparators the dashboard sorts with (`@/lib/tripSort`). This
+  // column previously did not sort at all — it rendered `trips.list`'s own
+  // order — so the two surfaces showed one list two ways. The dashboard splits
+  // Active into `now` and `upcoming`; that is a sectioning difference, and
+  // `compareActive` is correct applied to the merged set here or to either half
+  // there.
+  active.sort(compareActive);
+  past.sort(comparePast);
 
   return (
     <div className="p-2">
@@ -534,34 +656,45 @@ function TripsColumn({
         <EyebrowAction label="Start a trip" onClick={onNew} />
       </div>
 
-      {/* The key — both marks explained ONCE, here, instead of every row carrying
-          its own label. A row is read every time; a key is read once. */}
+      {/* The key — every mark explained ONCE, here, instead of every row carrying
+          its own label. A row is read every time; a key is read once.
+
+          TWO role rows now, not one line reading "Admin". The single amber edge
+          meant "Owner or Organizer", and the key needed a word for that
+          grouping — "Admin" was chosen as short and universally understood,
+          which it is, and as a name for a rights tier this app does not have,
+          which it also is. The previous spec's item 2 explicitly moved this from
+          "Yours to run" to "Admin"; this supersedes that, and the reversal is
+          recorded so it doesn't read as drift. Two edges matching the badges
+          need no collective noun at all — they can just say what they are.
+
+          It costs a line, and the honesty is worth it: Owner and Organizer are
+          different states everywhere else in the app. */}
       <div
-        className="flex items-center gap-[7px] px-1.5 pb-2 text-[11px]"
+        className="flex flex-col gap-[3px] px-1.5 pb-2 text-[11px]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        <span
-          aria-hidden="true"
-          className="inline-block"
-          style={{ width: 3, height: 11, borderRadius: 2, background: "var(--color-bt-warning)" }}
-        />
-        {/* "Admin", not "Yours to run": shorter, universally understood, and it
-            does not imply OWNERSHIP — the edge marks Owner AND Organizer, and an
-            Organizer runs the trip without owning it. */}
-        <span>Admin</span>
-        <span style={{ opacity: 0.35 }}>·</span>
-        <span
-          aria-hidden="true"
-          className="inline-flex h-3 w-3 items-center justify-center rounded-full"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-            border: "1px solid var(--color-bt-accent-border)",
-          }}
-        >
-          <Trophy size={7} strokeWidth={2.5} />
-        </span>
-        <span>Has a cup</span>
+        <div className="flex items-center gap-[7px]">
+          <KeyEdge role="Owner" />
+          <span>Owner</span>
+          <span style={{ opacity: 0.35 }}>·</span>
+          <KeyEdge role="Organizer" />
+          <span>Organizer</span>
+        </div>
+        <div className="flex items-center gap-[7px]">
+          <span
+            aria-hidden="true"
+            className="inline-flex h-3 w-3 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+          >
+            <Trophy size={7} strokeWidth={2.5} />
+          </span>
+          <span>Has a cup</span>
+        </div>
       </div>
 
       {isError ? (
@@ -628,7 +761,7 @@ function IdeasColumn({
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
-  const ideas = rows.filter((t) => getEffectiveStatus(t) === "idea");
+  const ideas = rows.filter((t) => getEffectiveStatus(t) === "idea").sort(compareIdea);
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
@@ -813,4 +946,4 @@ function RailLoadError({ onRetry }: { onRetry: () => void }) {
     </div>
   );
 }
-
+

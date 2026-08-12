@@ -19,6 +19,16 @@ interface DestinationPickerProps {
   /** Optional element rendered below the "exploring" tab when selected
    *  (e.g. an inline Add Destination Ideas component in the new-trip flow). */
   exploringContent?: ReactNode;
+  /**
+   * Whether the destination input grabs focus when "known" mode shows.
+   *
+   * True is right when the user just CHOSE the path — the field appears and the
+   * cursor should be in it. False is right when the path was PRE-SELECTED from
+   * the entry point, because then the field is present on first mount and would
+   * steal focus from the trip name, which is the required field. Defaults to
+   * the choosing behaviour, which is what this always did.
+   */
+  autoFocusDestination?: boolean;
 }
 
 export function DestinationPicker({
@@ -29,6 +39,7 @@ export function DestinationPicker({
   onDestinationTextChange,
   knownTrailing,
   exploringContent,
+  autoFocusDestination = true,
 }: DestinationPickerProps) {
   return (
     <div
@@ -78,7 +89,7 @@ export function DestinationPicker({
               </h2>
               <div className="flex items-stretch gap-2">
                 <input
-                  autoFocus
+                  autoFocus={autoFocusDestination}
                   type="text"
                   value={destinationText}
                   onChange={(e) => onDestinationTextChange(e.target.value)}

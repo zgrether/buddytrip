@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Plane } from "lucide-react";
 import { HelperCards } from "@/components/HelperCards";
 
@@ -21,7 +20,7 @@ import { HelperCards } from "@/components/HelperCards";
  * shows it on every page now, so repeating it inside the body felt
  * redundant.
  */
-export function AuthenticatedEmptyState() {
+export function AuthenticatedEmptyState({ onNewTrip }: { onNewTrip: () => void }) {
   return (
     <>
       {/* Centered hero block — fills the visible area below the TopNav
@@ -58,8 +57,9 @@ export function AuthenticatedEmptyState() {
           </p>
 
           {/* Primary */}
-          <Link
-            href="/trips/new"
+          <button
+            type="button"
+            onClick={onNewTrip}
             className="inline-flex items-center justify-center rounded-xl px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90"
             style={{
               background: "var(--color-bt-accent)",
@@ -67,7 +67,7 @@ export function AuthenticatedEmptyState() {
             }}
           >
             New trip
-          </Link>
+          </button>
         </div>
 
         {/* Helper cards — always shown on the empty state (0 trips counts as ≤3

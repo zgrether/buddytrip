@@ -8,14 +8,14 @@ import { UserMenu } from "./UserMenu";
 import { FeedbackModal } from "./FeedbackModal";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { InstallBanner } from "./pwa/InstallBanner";
-import { RAIL_WIDTH_PX } from "./shell/breakpoints";
+import { RAIL_STRIP_PX, RAIL_DEFAULT_PX } from "./shell/rail/useRailWidth";
 import type { AppView } from "./shell/useAppView";
 
 /**
  * App title bar — three zones at `lg+` (two below it):
  *   LEFT   = identity / scope     → flag-home anchor
  *   MIDDLE = Trip · Cup           → `lg+` ONLY, x-aligned to the rail's right
- *            edge (`RAIL_WIDTH_PX`) so the column alignment between the rail
+ *            edge (`--bt-rail-width`) so the column alignment between the rail
  *            and the content below holds. Absolutely positioned rather than a
  *            third flex zone, so its width never competes with the left/right
  *            zones for space — it just sits at a fixed x, like the rail it
@@ -121,7 +121,7 @@ export const TopNav: FC<TopNavProps> = ({
       }}
     >
       {/* ── MIDDLE: Trip · Cup — `lg+` only, x-aligned to the rail's right edge ──
-          Absolutely positioned at `left: RAIL_WIDTH_PX` (not a third flex zone)
+          Absolutely positioned at `left: var(--bt-rail-width)` (not a third flex zone)
           so it sits at a fixed x regardless of how wide the left/right zones
           are — the same column alignment the rail itself provides below this
           bar.
@@ -139,10 +139,17 @@ export const TopNav: FC<TopNavProps> = ({
           className="absolute inset-y-0 hidden items-center lg:flex"
           // Tracks the rail's ACTUAL width, which is stateful since the rail
           // became a strip + a resizable column — so a constant can't be the
-          // source any more. `RAIL_WIDTH_PX` stays as the FALLBACK for the first
-          // paint, before `ContextRail` publishes the variable: still one place
-          // that owns that number rather than a hardcoded `246px` here.
-          style={{ left: `var(--bt-rail-width, ${RAIL_WIDTH_PX}px)` }}
+          // source any more. The fallback covers only the first paint, before
+          // `ContextRail` publishes the variable, and it is DERIVED from the
+          // same two constants the rail composes its own width from rather than
+          // hand-typed here.
+          //
+          // It used to be `RAIL_WIDTH_PX` (246), which has been wrong since the
+          // strip landed: the rail's real first paint is 62 + 296 = 358, so the
+          // tabs started 112px inside the rail and jumped outward when the
+          // effect ran. Exactly the drift `breakpoints.ts` warned about, just
+          // one layer further along.
+          style={{ left: `var(--bt-rail-width, ${RAIL_STRIP_PX + RAIL_DEFAULT_PX}px)` }}
           role="tablist"
         >
           {TOP_NAV_VIEW_TABS.map(({ id, label, Icon }) => {
