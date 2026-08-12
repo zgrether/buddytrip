@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from "react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MessageCircle, Calendar, Trophy, type LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
@@ -9,6 +9,7 @@ import { FeedbackModal } from "./FeedbackModal";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { InstallBanner } from "./pwa/InstallBanner";
 import { RAIL_STRIP_PX, RAIL_DEFAULT_PX } from "./shell/rail/useRailWidth";
+import { CONTENT_INSET_PX } from "./shell/contentArea";
 import type { AppView } from "./shell/useAppView";
 
 /**
@@ -35,6 +36,35 @@ import type { AppView } from "./shell/useAppView";
  * trip-scoped owner/organizer broadcast surface (the NewsPanel), not a
  * notification stream.
  */
+
+/**
+ * The identity zone's rendered width, so the tab group can floor against it.
+ *
+ * Measured rather than hand-typed because the wordmark's width is a function of
+ * font, zoom and copy — and a second number describing the first is precisely
+ * the drift this bar's own history is made of (`RAIL_WIDTH_PX` said 246 long
+ * after the rail stopped being 246 wide). `ResizeObserver` keeps it true through
+ * a font swap or a browser zoom rather than only at mount.
+ *
+ * Starts at 0 so the tabs land on the content margin on the very first paint —
+ * i.e. the floor only ever pushes them RIGHT once it knows better, never left.
+ * On the collapsed-rail path that means one frame at 86px before settling; the
+ * alternative (seeding a guess) is the hand-typed number again.
+ */
+function useMeasuredWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return { ref, width };
+}
 
 const TOP_NAV_VIEW_TABS: { id: Exclude<AppView, "home">; label: string; Icon: LucideIcon }[] = [
   { id: "trip", label: "Trip", Icon: Calendar },
@@ -95,6 +125,7 @@ export const TopNav: FC<TopNavProps> = ({
   // AboutModal "Send feedback" row (via UserMenu → AboutModal →
   // onOpenFeedback).
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { ref: leftZoneRef, width: leftZoneW } = useMeasuredWidth();
 
   // Game context (#550): when a game panel is open, a game view publishes its
   // chrome here and the bar SWAPS its left zone to a back affordance + single-
@@ -137,19 +168,34 @@ export const TopNav: FC<TopNavProps> = ({
       {onSelectView && hasContext && (
         <div
           className="absolute inset-y-0 hidden items-center lg:flex"
-          // Tracks the rail's ACTUAL width, which is stateful since the rail
-          // became a strip + a resizable column — so a constant can't be the
-          // source any more. The fallback covers only the first paint, before
-          // `ContextRail` publishes the variable, and it is DERIVED from the
-          // same two constants the rail composes its own width from rather than
-          // hand-typed here.
-          //
-          // It used to be `RAIL_WIDTH_PX` (246), which has been wrong since the
-          // strip landed: the rail's real first paint is 62 + 296 = 358, so the
-          // tabs started 112px inside the rail and jumped outward when the
-          // effect ran. Exactly the drift `breakpoints.ts` warned about, just
-          // one layer further along.
-          style={{ left: `var(--bt-rail-width, ${RAIL_STRIP_PX + RAIL_DEFAULT_PX}px)` }}
+          /**
+           * The tabs sit at the CONTENT AREA's left margin — the rail's right
+           * edge plus the shell's inset — so they line up with Trip and Cup
+           * below rather than with the divider. They previously sat at
+           * `var(--bt-rail-width)` exactly, i.e. flush against the divider,
+           * which was `16px` adrift of the content at every width.
+           *
+           * `max()` with the MEASURED left zone is the collapsed-rail case, and
+           * it is a real limit rather than a fudge. Collapsed, the content area
+           * begins at 62 + 24 = 86px — which is inside the wordmark. Something
+           * has to give, and it cannot be the wordmark's legibility, so the
+           * tabs stop at the identity zone's right edge instead of sliding
+           * under it. Alignment holds at every width where alignment is
+           * physically available; below that the floor wins.
+           *
+           * MEASURED, not a hand-typed 140: the wordmark's width is a function
+           * of font, zoom and copy, and this file's own history is full of two
+           * numbers drifting apart. `--bt-rail-width` keeps its one consumer for
+           * the same reason it got one — the width is stateful, so a constant
+           * cannot express it. The fallback covers first paint only, before
+           * `ContextRail` publishes, and is composed from the rail's own
+           * constants rather than typed again here.
+           */
+          style={{
+            left: `max(${leftZoneW}px, calc(var(--bt-rail-width, ${
+              RAIL_STRIP_PX + RAIL_DEFAULT_PX
+            }px) + ${CONTENT_INSET_PX}px))`,
+          }}
           role="tablist"
         >
           {TOP_NAV_VIEW_TABS.map(({ id, label, Icon }) => {
@@ -202,7 +248,7 @@ export const TopNav: FC<TopNavProps> = ({
       {/* ── LEFT: identity / scope — OR game back + title (#550) ─────────── */}
       {/* Game back/title moved OUT of the bar and into GameActionRow (Phase 6),
           so the top bar means exactly one thing at every depth: brand + avatar. */}
-      <div className="flex min-w-0 items-center">
+      <div ref={leftZoneRef} className="flex min-w-0 items-center">
         {/* Home anchor — flag + wordmark navigate to the dashboard. */}
         <button
           type="button"

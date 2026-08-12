@@ -306,13 +306,41 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * it is the same `setWidth`, and its floor comes back as `RAIL_MIN_PX`
    * because there are no rows to measure. The next drag measures properly.
    */
-  const toggleCollapsed = () => {
-    if (collapsed) {
-      setWidth(reopenFloor.current, reopenFloor.current);
-      return;
-    }
+  const collapseRail = () => {
     reopenFloor.current = measureFloor();
     collapse();
+  };
+  const openRail = () => setWidth(reopenFloor.current, reopenFloor.current);
+  const toggleCollapsed = () => (collapsed ? openRail() : collapseRail());
+
+  /**
+   * A strip entry TOGGLES the list it names.
+   *
+   * Trips/Ideas/Games paint a selected state, which is a promise: a highlighted
+   * control that cannot be un-highlighted by the control itself is the
+   * affordance lying. Re-clicking the open list now closes the panel, and
+   * clicking any entry while collapsed opens it — the standard behaviour for an
+   * icon rail beside a panel (VS Code's Activity Bar is the canonical
+   * implementation, and it is enough of a convention that editors copying it get
+   * bug reports when they diverge).
+   *
+   * NOT a new width mechanism. It calls the same `collapseRail`/`openRail` the
+   * button does, so there remain exactly two ways to size the rail — collapsed,
+   * or a dragged width — and the strip is a third CALLER of one of them, not a
+   * third state.
+   *
+   * The paired half is `active={!collapsed && ...}` below: while collapsed no
+   * entry reads as selected, because no list is showing. Without that the strip
+   * would still be claiming an open panel that isn't there — the same lie in the
+   * other direction.
+   */
+  const selectEntity = (next: Entity) => {
+    if (!collapsed && entity === next) {
+      collapseRail();
+      return;
+    }
+    setEntity(next);
+    if (collapsed) openRail();
   };
 
   /**
@@ -407,8 +435,8 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
         <StripItem
           icon={<Flag size={19} />}
           label="Trips"
-          active={entity === "trips"}
-          onClick={() => setEntity("trips")}
+          active={!collapsed && entity === "trips"}
+          onClick={() => selectEntity("trips")}
         />
         {/* Ideas is a different LIST of the same thing, not a different kind of
             thing — an idea-phase trip has crew, chat and a real trip context. It
@@ -417,8 +445,8 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
         <StripItem
           icon={<Lightbulb size={19} />}
           label="Ideas"
-          active={entity === "ideas"}
-          onClick={() => setEntity("ideas")}
+          active={!collapsed && entity === "ideas"}
+          onClick={() => selectEntity("ideas")}
         />
         {/* NOT the trophy. The trophy means COMPETITION — it marks trip rows that
             have a cup and it is the Cup tab — so using it here said games are
@@ -436,8 +464,8 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
         <StripItem
           icon={<Dice5 size={19} />}
           label="Games"
-          active={entity === "games"}
-          onClick={() => setEntity("games")}
+          active={!collapsed && entity === "games"}
+          onClick={() => selectEntity("games")}
         />
         <div className="flex-1" />
         {/* COLLAPSE ⇄ reopen-to-minimum, not snap-wide/snap-narrow. The two

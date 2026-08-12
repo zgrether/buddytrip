@@ -59,4 +59,5 @@ export const SURFACE_BOX =
  * visible work. **Device-pending** — whether this reads as comfortable rather
  * than cramped is a look-at-it judgement, not a derivation.
  */
+export const CONTENT_INSET_PX = 24;
 export const CONTENT_INSET = "lg:p-6";
