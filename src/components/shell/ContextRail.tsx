@@ -181,20 +181,16 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * strip back on every render would fight the user. `activeList` only changes
    * when the trip itself moves.
    */
-  const { width: railWidth, wide, collapsed, collapse, setWidth } = useRailWidth();
+  const { width: railWidth, wide, collapsed, collapse, setWidth, restoreWidth } = useRailWidth();
   const columnRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
-  /**
-   * The floor to reopen to, captured at the moment of COLLAPSE.
-   *
-   * "Reopen to the minimum" means the measured minimum, and the measurement
-   * needs the rows on screen — which is exactly what collapsing takes away. So
-   * it is read on the way down, while the column is still rendered, rather than
-   * guessed on the way back up. A rail that has only ever been collapsed by a
-   * cold-loaded `0` falls back to `RAIL_MIN_PX`, and the first drag re-measures
-   * anyway.
+  /*
+   * A `reopenFloor` ref USED TO BE HERE, holding the measured floor captured at
+   * the moment of collapse, because the button reopened to the MINIMUM and the
+   * measurement needs rows on screen. The button restores the width you left
+   * now, so there is nothing to measure on the way down — the width is already a
+   * number, and `useRailWidth` persists it.
    */
-  const reopenFloor = useRef(RAIL_MIN_PX);
 
   /**
    * The drag floor — the widest rendered trip NAME, so nothing truncates that
@@ -306,11 +302,8 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * it is the same `setWidth`, and its floor comes back as `RAIL_MIN_PX`
    * because there are no rows to measure. The next drag measures properly.
    */
-  const collapseRail = () => {
-    reopenFloor.current = measureFloor();
-    collapse();
-  };
-  const openRail = () => setWidth(reopenFloor.current, reopenFloor.current);
+  const collapseRail = () => collapse(railWidth);
+  const openRail = () => setWidth(restoreWidth, RAIL_MIN_PX);
   const toggleCollapsed = () => (collapsed ? openRail() : collapseRail());
 
   /**
@@ -343,25 +336,21 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
     if (collapsed) openRail();
   };
 
-  /**
-   * Publish the rail's TOTAL width so the top bar's tab group can align to its
-   * right edge.
+  /*
+   * `--bt-rail-width` USED TO BE PUBLISHED HERE, so `TopNav`'s Trip/Cup group
+   * could align to the rail's right edge. That group is now a floating pill at
+   * the bottom of the content area (`ViewTabsPill`), which needs no alignment
+   * to anything, so the variable lost its only consumer and went with it.
    *
-   * `breakpoints.ts` used to be that single source (`RAIL_WIDTH_PX`, read by both
-   * the rail and `TopNav`), and its own comment warned that two hand-typed 246s
-   * drifting apart is "exactly the class of bug" to avoid. Phase 2 caused that
-   * drift: the rail became a 62px strip plus a 246–296px column, and `TopNav` was
-   * left offsetting by 246 — so the tabs sat 62–112px inside the rail.
-   *
-   * A constant can't be the source any more, because the width is now stateful
-   * (the expand/contract toggle). A CSS variable can, and it is the pattern this
-   * shell already uses for exactly this reason — `AppTabBar` publishes
-   * `--bt-bottomnav-height` so its consumers track it without importing anything.
+   * Worth recording because the variable was itself the fix for a previous
+   * version of this problem: `breakpoints.ts` held a `RAIL_WIDTH_PX` constant
+   * that the bar and the rail both hand-typed, which drifted the moment the
+   * rail's width became stateful. Publishing it solved the drift and left the
+   * coupling — a bar element whose x depended on a sidebar's width, which is
+   * what put the tabs on the wordmark once the rail could collapse to 62px.
+   * Moving the tabs removed the coupling instead of tracking it more carefully.
    */
   const totalWidth = RAIL_STRIP_PX + railWidth;
-  useEffect(() => {
-    document.documentElement.style.setProperty("--bt-rail-width", `${totalWidth}px`);
-  }, [totalWidth]);
 
   // Adjusted during RENDER, not in an effect. React's documented shape for
   // "change state when a value changes" — it re-renders before committing, so
@@ -719,28 +708,42 @@ function TripsColumn({
           a rights tier this app does not have. The previous spec moved it from
           "Yours to run" to "Admin"; #904 replaced the grouping with two edges
           matching the badges, which need no collective noun at all. */}
+      {/* Each mark and its word are ONE flex item, not two.
+          They were separate items in a `flex-wrap` row, so at a narrow rail the
+          line broke BETWEEN the trophy and "Cup" — the icon stranded on the
+          first line with its label alone on the second, which reads as a
+          different mark rather than a wrapped one. Wrapping is still allowed;
+          it just can't happen mid-pair. `RAIL_MIN_PX` was raised so the whole
+          key fits on one line at the floor, making the wrap a safety net rather
+          than the normal case. */}
       <div
         className="flex flex-wrap items-center gap-x-[7px] gap-y-[3px] px-1.5 pb-2 text-[11px]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        <KeyEdge role="Owner" />
-        <span>Owner</span>
-        <span style={{ opacity: 0.35 }}>·</span>
-        <KeyEdge role="Organizer" />
-        <span>Organizer</span>
-        <span style={{ opacity: 0.35 }}>·</span>
-        <span
-          aria-hidden="true"
-          className="inline-flex h-3 w-3 items-center justify-center rounded-full"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-            border: "1px solid var(--color-bt-accent-border)",
-          }}
-        >
-          <Trophy size={7} strokeWidth={2.5} />
+        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
+          <KeyEdge role="Owner" />
+          Owner
         </span>
-        <span>Cup</span>
+        <span style={{ opacity: 0.35 }}>·</span>
+        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
+          <KeyEdge role="Organizer" />
+          Organizer
+        </span>
+        <span style={{ opacity: 0.35 }}>·</span>
+        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
+          <span
+            aria-hidden="true"
+            className="inline-flex h-3 w-3 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+          >
+            <Trophy size={7} strokeWidth={2.5} />
+          </span>
+          Cup
+        </span>
       </div>
 
       {isError ? (

@@ -8,6 +8,7 @@ import { AppTabBar } from "./AppTabBar";
 import { ContextIntro, LockedTabExplainer, type LockedExplainerView } from "./LockedTabExplainer";
 import { ContextRail } from "./ContextRail";
 import { ChatSheet } from "./ChatSheet";
+import { ViewTabsPill } from "./ViewTabsPill";
 import { useIsChatColumn } from "./breakpoints";
 import { CONTENT_INSET } from "./contentArea";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
@@ -90,9 +91,6 @@ export function AppShell({
         chatOpen: boolean;
         onToggleChat: () => void;
         onDismissPanels: () => void;
-        activeView: AppView;
-        hasContext: boolean;
-        onSelectView: (v: AppView) => void;
       }) => ReactNode);
   defaultView?: AppView;
   /**
@@ -250,7 +248,7 @@ export function AppShell({
        * underneath and leave chat open over it — incoherent, since the scrim
        * already closes chat on an outside tap and the nav sits above the
        * scrim (the gap this closes). Scoped to `chatSheetOpen`, not `chatOpen`
-       * outright: the persistent side column (`chatAside`, xl+) is a
+       * outright: the persistent side column (`chatAside`, lg+) is a
        * deliberate "board stays live while you talk" layout, not a modal, and
        * switching tabs there must not close it.
        */
@@ -483,16 +481,6 @@ export function AppShell({
                 chatOpen,
                 onToggleChat: toggleChat,
                 onDismissPanels: closeChat,
-                activeView: activeForTabs,
-                // Scoped, NOT remote-aware — the same condition the explainer
-                // below branches on, so the desktop tabs and the "Pick a trip"
-                // copy can never both claim the screen.
-                // The desktop tab group is present only when it would be a real
-                // choice — see `showDesktopTabs`. Absent during the idea phase
-                // and on a trip with no cup, where it would be one live tab
-                // pointing at the screen you are already on.
-                hasContext: showDesktopTabs,
-                onSelectView: select,
               })
             : topBar}
         </TopBarSlot>
@@ -515,9 +503,22 @@ export function AppShell({
              * surfaces (player selector, discard prompt, sheets) is `createPortal`'d
              * to `document.body`, so it escapes this box entirely.
              */}
+            {/*
+             * The `lg:` here and `useIsChatColumn` MUST name the same width, and
+             * now they do: `CHAT_COLUMN_PX === SHELL_DESKTOP_PX === 1024`, which
+             * is Tailwind's `lg`. They were `xl:` and 1280 while the rail was
+             * 1024, which left a 256px band where the whole desktop chrome was
+             * showing but chat opened as a mobile bottom sheet.
+             *
+             * This is two sources for one threshold and it cannot be collapsed
+             * into one — Tailwind needs a literal variant, the media query needs
+             * a number. The mitigation is that the number is defined ONCE in
+             * breakpoints.ts and this comment names the pair; if `lg` ever stops
+             * meaning 1024, both move together.
+             */}
             <div
               className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${CONTENT_INSET} ${
-                chatAside ? "xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-4" : ""
+                chatAside ? "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6" : ""
               }`}
               style={{ paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)" }}
             >
@@ -544,15 +545,31 @@ export function AppShell({
                * Cup render into, rather than being declared separately (and
                * differently) by each of them. See `contentArea.ts`.
                */}
-              <div
-                className={`min-w-0 lg:h-full lg:min-h-0 lg:max-w-[1280px] ${
-                  twoPane ? "lg:overflow-hidden" : "lg:overflow-y-auto"
-                }`}
-                data-testid="shell-body"
-              >
-                {body}
+              {/*
+               * A POSITIONED wrapper around the scroller, so the view-tabs pill
+               * can float over the content area without scrolling with it and
+               * without centring across the chat column. It carries the height
+               * chain (`lg:h-full lg:min-h-0`) rather than interrupting it —
+               * this box sits between the grid and the scroller, and the panes
+               * below depend on that chain resolving.
+               */}
+              <div className="relative min-w-0 lg:h-full lg:min-h-0">
+                <div
+                  className={`h-full min-w-0 lg:min-h-0 lg:max-w-[1280px] ${
+                    twoPane ? "lg:overflow-hidden" : "lg:overflow-y-auto"
+                  } ${showDesktopTabs ? "lg:pb-20" : ""}`}
+                  data-testid="shell-body"
+                >
+                  {body}
+                </div>
+                {/* Bottom-centred on the CONTENT AREA. Absent (not dimmed) when
+                    the group would be degenerate — same `showDesktopTabs`
+                    condition the bar used, unchanged. */}
+                {showDesktopTabs && (
+                  <ViewTabsPill activeView={activeForTabs} onSelectView={select} />
+                )}
               </div>
-              {/* Chat's aside placement, ≥1280 (Phase 6) — a persistent layout
+              {/* Chat's aside placement (Phase 6) — a persistent layout
                   region, not a floating dialog (no scrim), so it keeps the
                   Level-1 `--color-bt-card` token per STYLE_GUIDE §1. Below this
                   breakpoint chat renders as `ChatSheet` instead (below,

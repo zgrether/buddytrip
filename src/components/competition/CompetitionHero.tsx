@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Settings, Trophy } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
@@ -9,9 +9,9 @@ import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
 
-// Measure before paint on the client; a plain effect on the server (useLayoutEffect
-// warns during SSR). Standard SSR-safe isomorphic layout effect.
-const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+// `useIsoLayoutEffect` lived here to drive StickyCollapseHero's measured pull.
+// That mechanism is gone (see StickyCollapseHero), and with it the only layout
+// measurement in this file — so the helper went too rather than sitting unused.
 
 // The neutral fallback card (no two teams to tint from — a points cup's identity
 // hero, or a half-built 2-team cup).
@@ -411,101 +411,66 @@ export function StickyCollapseHero({
   stickyTop = 0,
   ...hero
 }: React.ComponentProps<typeof CompetitionHero> & { stickyTop?: number }) {
-  const collapsedRef = useRef<HTMLDivElement>(null);
-  const expandedRef = useRef<HTMLDivElement>(null);
-  const [pull, setPull] = useState(64); // sensible seed → no first-paint jump
-  // Pull the expanded hero UP over the pinned collapsed bar. The earlier version
-  // pulled by exactly the collapsed bar's own height (`-(collapsedH + 1)`) on the
-  // assumption the two fragment nodes are flush — but they render into the
-  // leaderboard's spacing column, which inserts ~12px of vertical rhythm between
-  // them, so the pull fell short and the collapsed bar PEEKED ~11px above the hero
-  // at rest. Instead of guessing that offset, MEASURE the rendered gap between the
-  // hero's top and the collapsed bar's top and close it — robust to whatever
-  // ambient spacing sits between them, and to the taller N-team bar. Re-corrects if
-  // the collapsed bar's height changes (ResizeObserver). Layout effect on the
-  // client so the correction lands before paint; SSR-safe (useEffect fallback).
-  //
-  // ⚠ ONLY measure while the collapsed bar is at REST (not pinned). The bar is
-  // `position: sticky`, and once it pins Chrome reports its STUCK position for BOTH
-  // `getBoundingClientRect().top` AND `offsetTop` (offsetTop of a stuck sticky
-  // element is `stickyTop + scrollTop`, i.e. its on-screen position — NOT its flow
-  // position). The hero is a normal element whose position is fixed, so the moment
-  // the bar pins the measured hero→bar gap diverges by ~scrollTop and a re-measure
-  // there (any ResizeObserver tick the pin triggers) sets `pull` to a large NEGATIVE
-  // value → a big POSITIVE margin that shoves the hero and every row under it down
-  // the page. That's the "scroll down → open a game → back → leaderboard sits
-  // halfway down" bug; a resize (or hard refresh at scrollTop 0) re-measured at rest
-  // and healed it, which is exactly why it "snapped back on resize". Neither
-  // `rect.top` nor `offsetTop` is pin-invariant — the fix is to gate the measure on
-  // rest, where the bar is at its natural top (> stickyTop) and the gap is real.
-  //
-  // ⚠ The gap must be measured relative to `e`'s NATURAL position (marginTop 0),
-  // never `e`'s CURRENT rendered position — `e`'s own top is exactly what the last
-  // `pull` write moved. The original version read `e.getBoundingClientRect().top`
-  // directly and did `setPull(p => p + gap + 1)`: an INCREMENT, not an assignment,
-  // fed by `window.addEventListener("scroll", measure)` with no throttling. A fast
-  // scroll fires several `measure()` calls before React commits the first
-  // correction, so a second call reads the SAME stale (pre-correction) `e.top`,
-  // computes the SAME `gap`, and enqueues ANOTHER `+gap` on top of the already-
-  // converging value — each scroll burst across the pin/unpin boundary stacked
-  // another overshoot on the last, which is the reported "padding above the hero
-  // keeps growing" bug. This is exactly the measure-write-remeasure loop it looks
-  // like: `e`'s own rendered position (which its own `marginTop: -pull` sets) fed
-  // the next `pull` correction.
-  //
-  // The fix recovers `e`'s natural top by reading `getComputedStyle(e).marginTop`
-  // — the margin CURRENTLY PAINTED — and subtracting it back out, then computes
-  // `pull` as an ABSOLUTE target (`naturalGap + 1`), not a delta added to the
-  // previous value. `getComputedStyle` and `getBoundingClientRect`, read in the
-  // same synchronous call, are always consistent with EACH OTHER — both reflect
-  // whichever layout snapshot is currently live — so this stays self-consistent
-  // even when `measure()` fires more than once before the browser repaints:
-  // every call reconstructs the SAME pull-independent baseline and computes the
-  // SAME target, an idempotent assignment redundant calls can no longer stack.
-  useIsoLayoutEffect(() => {
-    const c = collapsedRef.current;
-    const e = expandedRef.current;
-    if (!c || !e) return;
-    const measure = () => {
-      // Skip while pinned — a stuck sticky bar's top reports its on-screen (scrolled)
-      // position, which would corrupt the gap. At rest its top sits below stickyTop.
-      if (c.getBoundingClientRect().top <= stickyTop + 1) return;
-      const appliedMarginTop = parseFloat(getComputedStyle(e).marginTop) || 0;
-      const naturalGap =
-        e.getBoundingClientRect().top - appliedMarginTop - c.getBoundingClientRect().top;
-      // gap > 0 → the collapsed bar's top peeks above the hero; target a 1px
-      // over-cover (gap = -1) so sub-pixel rounding never leaves a sliver.
-      const nextPull = Math.round(naturalGap + 1);
-      setPull((prev) => (prev === nextPull ? prev : nextPull));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(c);
-    ro.observe(e);
-    // The RO fires on resize, not scroll, so also re-measure as the page returns to
-    // rest (measure() no-ops while pinned, and setPull only fires on a real change —
-    // so this converges once at the top and stays quiet). This is what re-settles
-    // `pull` after a resize landed while pinned, or a remount restored a scrolled
-    // position.
-    window.addEventListener("scroll", measure, { passive: true });
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("scroll", measure);
-    };
-  }, [stickyTop]);
+  /**
+   * ── NO MEASUREMENT. That is the whole change. ───────────────────────────────
+   *
+   * This used to render the collapsed bar and the expanded hero as two IN-FLOW
+   * siblings and pull the hero up over the bar with a measured negative margin:
+   * a `pull` state seeded at 64, corrected by a layout effect, a
+   * `ResizeObserver` on both nodes, and a scroll listener, with a guard that
+   * skipped the measure while the bar was pinned.
+   *
+   * It produced the same class of bug three times — "leaderboard sits halfway
+   * down", "padding above the hero keeps growing", and most recently Cup
+   * rendering ~50px low after a resize or a tab switch. The last one is the
+   * clearest statement of why the mechanism was never going to hold: the
+   * pinned-state guard tests `rect.top <= stickyTop + 1`, and a HIDDEN element's
+   * rect is all zeros — so `0 <= 1` and the measure silently skipped for as long
+   * as Cup sat on the inactive tab, leaving `pull` stale across exactly the
+   * relayouts (maximise, switch back to Cup) that needed it most. Every fix
+   * added another condition to a loop that reads the layout it is writing.
+   *
+   * The structure replaces it. The collapsed bar sits in a `height: 0` sticky
+   * box with its content absolutely positioned, so:
+   *
+   *   - it contributes NOTHING to flow, so the expanded hero already sits where
+   *     the pull was trying to drag it — no correction to compute, no seed, no
+   *     frame of the wrong offset;
+   *   - it still pins, and still travels the whole board, because a `height: 0`
+   *     sticky box is constrained by its CONTAINING BLOCK (the leaderboard's
+   *     column), not by its own height;
+   *   - the hero's `zIndex: 20` covers it at rest and reveals it on scroll,
+   *     which is the same visual contract as before.
+   *
+   * KEEP THIS A FRAGMENT. Wrapping the two in a div would make that wrapper the
+   * sticky box's containing block, and the bar would unstick the moment the hero
+   * scrolled past instead of riding the whole list.
+   *
+   * `-mt-3` cancels the 12px of `space-y-3` rhythm the leaderboard's column puts
+   * between its children — which the zero-height bar would otherwise open as a
+   * gap above the hero. It is a coupled constant and it is named as one: if that
+   * column's spacing changes, this changes with it. It is deliberately a
+   * constant rather than a measurement, because it fails VISIBLY (a 12px gap)
+   * rather than silently, which is the property the old mechanism lacked.
+   */
   return (
     <>
-      {/* TWO CompetitionHero instances render here, and the celebration must fire
-          in exactly ONE. The collapsed branch returns `CollapsedHero` before it
-          reaches `ClinchCelebration`, so today the burst couldn't play here
-          anyway — but `onCelebrated` marking the showing seen is driven by props,
-          and a future collapsed bar that grows a trophy would silently burn the
-          one showing from a 40px-tall pinned strip. Cut it off at the prop
-          instead of relying on an early return two hundred lines away. */}
-      <div ref={collapsedRef} style={{ position: "sticky", top: stickyTop, zIndex: 10 }}>
-        <CompetitionHero {...hero} variant="collapsed" celebrateFirstView={false} onCelebrated={undefined} />
+      <div style={{ position: "sticky", top: stickyTop, zIndex: 10, height: 0 }}>
+        <div style={{ position: "absolute", insetInline: 0, top: 0 }}>
+          <CompetitionHero
+            {...hero}
+            variant="collapsed"
+            /* TWO CompetitionHero instances render here, and the celebration must
+               fire in exactly ONE. Cut off at the prop rather than relying on
+               `CollapsedHero`'s early return two hundred lines away — a future
+               collapsed bar that grew a trophy would otherwise silently burn the
+               one showing from a pinned strip. */
+            celebrateFirstView={false}
+            onCelebrated={undefined}
+          />
+        </div>
       </div>
-      <div ref={expandedRef} style={{ position: "relative", zIndex: 20, marginTop: -pull }}>
+      <div className="-mt-3" style={{ position: "relative", zIndex: 20 }}>
         <CompetitionHero {...hero} variant="expanded" />
       </div>
     </>

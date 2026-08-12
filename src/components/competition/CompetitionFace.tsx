@@ -123,7 +123,7 @@ export function CompetitionFace({
   // answer to decide who owns the scroll (in two-pane the body must not scroll,
   // each pane does), and deriving it in both places is how they silently disagree.
   // Same rule, same React Query cache; the second caller is a cache read.
-  const { panelOpen, openGame, openType, entryOpen } = useCupPanel(tripId);
+  const { panelOpen, openGame, openType } = useCupPanel(tripId);
   // Suppress the game-panel slide-in wipe when the panel opens STRAIGHT into settings
   // (the deep-link `?settings=1` — the board→setup-game entry). In that case the settings
   // slide-over covers the panel immediately, so the wipe is just distracting dark motion
@@ -252,39 +252,39 @@ export function CompetitionFace({
   const scoringModel = competition.scoring_model ?? "match_play";
   return (
     /**
-     * DESKTOP MASTER–DETAIL. With a game open, lg+ splits into
-     * [board | pane] — the board keeps its own scroll and stays interactive
-     * beside the game rather than being covered by it. Below lg it is a single
-     * column and the pane overlays, exactly as before.
+     * ONE COLUMN, at every width. This comment used to say "DESKTOP
+     * MASTER-DETAIL … lg+ splits into [board | pane]", and it had been false
+     * since drill-in started REPLACING the board (`lg:hidden` below the moment a
+     * game opens). Nothing rendered a second column, and the 560 caps that
+     * reserved space for one are gone with it — Cup now fills the content area
+     * exactly as Trip does.
      *
-     * The grid is applied to the SAME element in both cases (just extra `lg:`
-     * classes), so opening a game on desktop reflows rather than remounting the
-     * board — the whole point of the panel idiom.
+     * The classes are applied to the SAME element open or closed (just extra
+     * `lg:` ones), so opening a game reflows rather than remounting the board —
+     * still the whole point of the panel idiom.
      */
     <div
       /**
-       * THE STAGE. A clip box that lays its columns out; it never scrolls (each
-       * column owns exactly one scroller — #752's rule). Leftover space is
-       * MARGIN, not growth: per-column max-widths, so 1760 is 1440 with more
-       * margin and there is no width at which anything gets wider.
+       * THE STAGE. A clip box holding the one column; it never scrolls (the
+       * column owns exactly one scroller — #752's rule).
        *
-       * LEFT-ALIGNED, not centred. `lg:justify-center` is gone, and so is the
-       * `lg:mx-auto` on each column: the shell owns where the content area
-       * starts (contentArea.ts), and a column that re-centres inside it moves
-       * its own origin every time the available width changes — which is what
-       * made Cup disagree with Trip and made opening chat slide the board
-       * sideways. Columns now begin at the content area's left margin and stay
-       * there; a second column appears to the RIGHT of the first, inside the
-       * same viewport, without moving it.
+       * FLUID, and left-aligned. Three things are gone and they were all the
+       * same mistake in different clothes: `lg:justify-center` and the
+       * per-column `lg:mx-auto` (a column that re-centres inside the content
+       * area moves its own origin every time the available width changes), the
+       * 560 `max-w` caps (space reserved for a second column that no longer
+       * exists — see breakpoints.ts), and the `@container` context (nothing
+       * queried it once the lone `@[808px]` rule went with the caps).
        *
-       * `@container` because the two-column threshold is 808 of CONTENT width, not
-       * a viewport number — see breakpoints.ts for why measuring the space the
-       * columns actually get beats baking in the rail and padding.
+       * What is left is the rule the whole desktop layout now follows: the
+       * shell owns where the content area starts and how wide it is
+       * (contentArea.ts), and everything inside fills it. Cup and Trip are the
+       * same shape because neither decides its own geometry any more.
        */
       className={
         panelOpen
-          ? "@container space-y-4 lg:flex lg:h-full lg:min-h-0 lg:items-stretch lg:gap-4 lg:space-y-0"
-          : "@container space-y-4 lg:h-full lg:min-h-0"
+          ? "space-y-4 lg:flex lg:h-full lg:min-h-0 lg:items-stretch lg:gap-4 lg:space-y-0"
+          : "space-y-4 lg:h-full lg:min-h-0"
       }
       data-testid="cup-stage"
     >
@@ -316,7 +316,7 @@ export function CompetitionFace({
         // reached mobile, where the board must stay in flow beneath the `fixed`
         // panel exactly as before (measured: it was being display:none'd at 390px).
         // Drill-in is a DESKTOP model; mobile keeps its overlay.
-        className={`mx-auto w-full min-w-0 max-w-[560px] lg:mx-0 lg:h-full lg:min-h-0 lg:overflow-y-auto ${
+        className={`w-full min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto ${
           panelOpen ? "lg:hidden" : ""
         }`}
         data-testid="board-pane"
@@ -471,7 +471,7 @@ export function CompetitionFace({
            * (see above) — at `lg+` the bar never hides, so this expression only
            * ever differs below the breakpoint.
            */
-          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:max-w-[560px] lg:flex-1 ${entryOpen ? "@[808px]:lg:min-w-[380px]" : ""} ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:flex-1 ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the

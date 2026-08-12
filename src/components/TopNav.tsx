@@ -1,32 +1,25 @@
 "use client";
 
 import type { FC } from "react";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, Calendar, Trophy, type LucideIcon } from "lucide-react";
+import { MessageCircle, type LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { FeedbackModal } from "./FeedbackModal";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 import { InstallBanner } from "./pwa/InstallBanner";
-import { RAIL_STRIP_PX, RAIL_DEFAULT_PX } from "./shell/rail/useRailWidth";
-import { CONTENT_INSET_PX } from "./shell/contentArea";
-import type { AppView } from "./shell/useAppView";
 
 /**
- * App title bar — three zones at `lg+` (two below it):
- *   LEFT   = identity / scope     → flag-home anchor
- *   MIDDLE = Trip · Cup           → `lg+` ONLY, x-aligned to the rail's right
- *            edge (`--bt-rail-width`) so the column alignment between the rail
- *            and the content below holds. Absolutely positioned rather than a
- *            third flex zone, so its width never competes with the left/right
- *            zones for space — it just sits at a fixed x, like the rail it
- *            lines up under.
- *   RIGHT  = global tools + me    → Chat, News, and the account avatar
+ * App title bar — TWO zones at every width:
+ *   LEFT   = identity / scope   → flag-home anchor
+ *   RIGHT  = global tools + me  → Chat, News, and the account avatar
  *
- * Trip/Cup moved here from the separate `DesktopTabStrip` row (Task 4, shell
- * polish batch) — that row pushed all content down by its own height while
- * everything else chrome-shaped (mark, chat, profile) lived in this bar. Home
- * isn't here: at `lg+` it's the persistent rail, not a tab.
+ * There was a MIDDLE zone (Trip · Cup) absolutely positioned at the content
+ * area's left margin. It is now `ViewTabsPill`, floating at the bottom of the
+ * content area — see the note at its old render site below for why. The bar
+ * therefore means the same thing at every width and every depth, which is what
+ * it was reduced to twice before (the DesktopTabStrip row, then the game
+ * back/title) and kept growing back out of.
  *
  * The host is a container-query context (`@container`), so the responsive
  * collapse below 600px keys off the bar's OWN width — not the viewport —
@@ -36,40 +29,6 @@ import type { AppView } from "./shell/useAppView";
  * trip-scoped owner/organizer broadcast surface (the NewsPanel), not a
  * notification stream.
  */
-
-/**
- * The identity zone's rendered width, so the tab group can floor against it.
- *
- * Measured rather than hand-typed because the wordmark's width is a function of
- * font, zoom and copy — and a second number describing the first is precisely
- * the drift this bar's own history is made of (`RAIL_WIDTH_PX` said 246 long
- * after the rail stopped being 246 wide). `ResizeObserver` keeps it true through
- * a font swap or a browser zoom rather than only at mount.
- *
- * Starts at 0 so the tabs land on the content margin on the very first paint —
- * i.e. the floor only ever pushes them RIGHT once it knows better, never left.
- * On the collapsed-rail path that means one frame at 86px before settling; the
- * alternative (seeding a guess) is the hand-typed number again.
- */
-function useMeasuredWidth() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      if (entry) setWidth(entry.contentRect.width);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return { ref, width };
-}
-
-const TOP_NAV_VIEW_TABS: { id: Exclude<AppView, "home">; label: string; Icon: LucideIcon }[] = [
-  { id: "trip", label: "Trip", Icon: Calendar },
-  { id: "cup", label: "Cup", Icon: Trophy },
-];
 
 interface TopNavProps {
   /** Wordmark next to the flag. Always "BuddyTrip" per the design; kept as a
@@ -98,15 +57,6 @@ interface TopNavProps {
    *  described the retired design, when the competition face owned its own route
    *  and its own bar. Resolve via `useMyTeamColor`.) */
   avatarTeamColor?: string | null;
-  /** Trip · Cup (Task 4) — `lg+` only, x-aligned to the rail's right edge.
-   *  Present only when the host has AppShell's tab state to hand it (the
-   *  trip page's `topBar` render prop); absent elsewhere (dashboard,
-   *  profile), where TopNav renders exactly as it did before this. */
-  activeView?: AppView;
-  /** False when no trip is selected — Trip/Cup are ABSENT then (Task 5), not
-   *  dimmed; see the render-site comment. */
-  hasContext?: boolean;
-  onSelectView?: (view: AppView) => void;
 }
 
 export const TopNav: FC<TopNavProps> = ({
@@ -116,16 +66,12 @@ export const TopNav: FC<TopNavProps> = ({
   chatOpen = false,
   onDismissPanels,
   avatarTeamColor,
-  activeView,
-  hasContext = false,
-  onSelectView,
 }) => {
   const router = useRouter();
   // FeedbackModal lives at the TopNav level so it's reachable from the
   // AboutModal "Send feedback" row (via UserMenu → AboutModal →
   // onOpenFeedback).
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const { ref: leftZoneRef, width: leftZoneW } = useMeasuredWidth();
 
   // Game context (#550): when a game panel is open, a game view publishes its
   // chrome here and the bar SWAPS its left zone to a back affordance + single-
@@ -151,104 +97,23 @@ export const TopNav: FC<TopNavProps> = ({
         padding: "0 16px",
       }}
     >
-      {/* ── MIDDLE: Trip · Cup — `lg+` only, x-aligned to the rail's right edge ──
-          Absolutely positioned at `left: var(--bt-rail-width)` (not a third flex zone)
-          so it sits at a fixed x regardless of how wide the left/right zones
-          are — the same column alignment the rail itself provides below this
-          bar.
-          ABSENT (not dimmed/disabled) with no trip context (Task 5) — the rail
-          IS the picker at `lg+`, and `ContextIntro` already carries the "pick a
-          trip" copy in the body; a third, redundant, dimmed voice would just
-          draw attention away from the one thing on screen that should have
-          weight. This deliberately differs from `AppTabBar`'s mobile locked-tab
-          treatment (dimmed + tappable-to-explain) — that's correct there
-          because the bar is the ONLY navigation on mobile, so tapping a locked
-          tab is the sole discovery path for what it does; neither reason
-          applies here. */}
-      {onSelectView && hasContext && (
-        <div
-          className="absolute inset-y-0 hidden items-center lg:flex"
-          /**
-           * The tabs sit at the CONTENT AREA's left margin — the rail's right
-           * edge plus the shell's inset — so they line up with Trip and Cup
-           * below rather than with the divider. They previously sat at
-           * `var(--bt-rail-width)` exactly, i.e. flush against the divider,
-           * which was `16px` adrift of the content at every width.
-           *
-           * `max()` with the MEASURED left zone is the collapsed-rail case, and
-           * it is a real limit rather than a fudge. Collapsed, the content area
-           * begins at 62 + 24 = 86px — which is inside the wordmark. Something
-           * has to give, and it cannot be the wordmark's legibility, so the
-           * tabs stop at the identity zone's right edge instead of sliding
-           * under it. Alignment holds at every width where alignment is
-           * physically available; below that the floor wins.
-           *
-           * MEASURED, not a hand-typed 140: the wordmark's width is a function
-           * of font, zoom and copy, and this file's own history is full of two
-           * numbers drifting apart. `--bt-rail-width` keeps its one consumer for
-           * the same reason it got one — the width is stateful, so a constant
-           * cannot express it. The fallback covers first paint only, before
-           * `ContextRail` publishes, and is composed from the rail's own
-           * constants rather than typed again here.
-           */
-          style={{
-            left: `max(${leftZoneW}px, calc(var(--bt-rail-width, ${
-              RAIL_STRIP_PX + RAIL_DEFAULT_PX
-            }px) + ${CONTENT_INSET_PX}px))`,
-          }}
-          role="tablist"
-        >
-          {TOP_NAV_VIEW_TABS.map(({ id, label, Icon }) => {
-            const selected = activeView === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                data-testid={`desktop-tab-${id}`}
-                onClick={() => onSelectView(id)}
-                // THE DESKTOP TAB STRIP the survey names explicitly — it had
-                // no hover, no press, and no focus ring before this edit.
-                //
-                // The inline `background: "transparent"` above WAS the reason
-                // a hover class would have been silently inert: an inline
-                // style always wins over a class-based rule regardless of the
-                // inline VALUE, which is the exact trap `ToolButton`'s own
-                // comment in this file documents further down ("an inline
-                // background... would otherwise win over the class"). Removed
-                // rather than worked around — Tailwind's preflight already
-                // resets `<button>` to `background-color: transparent`, so
-                // dropping the redundant inline value changes nothing at rest
-                // and lets `hover:bg-[...]` actually take effect.
-                //
-                // `active:scale-[0.98]` — same STYLE_GUIDE.md §5 value as
-                // every other element in this task. `focus-visible` ring —
-                // same uniform treatment. `transition-colors` becomes
-                // `transition-[color,border-color,background-color,transform]`
-                // to cover the color/border-color the SELECTED prop already
-                // animates, plus the two new hover/press properties, as one
-                // unambiguous list (see AppTabBar's comment on why two
-                // `transition-*` classes can't safely combine).
-                className="flex h-full items-center gap-1.5 px-4 text-[13.5px] font-semibold transition-[color,border-color,background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
-                style={{
-                  border: 0,
-                  borderBottom: `2px solid ${selected ? "var(--color-bt-accent)" : "transparent"}`,
-                  color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                }}
-              >
-                <Icon size={16} />
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* ── The Trip · Cup group MOVED OUT of this bar ────────────────────
+          It lived here, absolutely positioned at the content area's left
+          margin, and collided with the wordmark whenever the rail collapsed —
+          the content area starts at 62 + 24 = 86px there, which is inside
+          "BuddyTrip". It is now a floating pill centred at the bottom of the
+          content area (`ViewTabsPill`, rendered by `AppShell`), where it has
+          no neighbour to collide with at any rail width and reads as the
+          desktop counterpart of the mobile tab bar rather than as bar chrome.
 
+          Consequences worth knowing: this bar means ONE thing at every width
+          again (identity left, tools right), `--bt-rail-width` lost its only
+          consumer and is gone, and so did the ResizeObserver that measured this
+          zone purely to floor the tabs against it. */}
       {/* ── LEFT: identity / scope — OR game back + title (#550) ─────────── */}
       {/* Game back/title moved OUT of the bar and into GameActionRow (Phase 6),
           so the top bar means exactly one thing at every depth: brand + avatar. */}
-      <div ref={leftZoneRef} className="flex min-w-0 items-center">
+      <div className="flex min-w-0 items-center">
         {/* Home anchor — flag + wordmark navigate to the dashboard. */}
         <button
           type="button"

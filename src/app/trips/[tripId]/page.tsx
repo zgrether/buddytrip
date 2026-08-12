@@ -319,16 +319,13 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       <AppShell
         tripId={tripId}
         defaultView="trip"
-        topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
+        topBar={({ chatOpen, onToggleChat, onDismissPanels }) => (
           <TopNav
             tripId={tripId}
             chatOpen={chatOpen}
             onOpenChat={onToggleChat}
             onDismissPanels={onDismissPanels}
             avatarTeamColor={myTeamColor}
-            activeView={activeView}
-            hasContext={hasContext}
-            onSelectView={onSelectView}
           />
         )}
         cup={<LiveFaceClient initialBoot={null} />}
@@ -519,16 +516,13 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       // the Cup lock. Two columns for one question is how those drift.
       tripPlaced={!isIdea}
       tripHasCompetition={showComp}
-      topBar={({ chatOpen, onToggleChat, onDismissPanels, activeView, hasContext, onSelectView }) => (
+      topBar={({ chatOpen, onToggleChat, onDismissPanels }) => (
         <TopNav
           tripId={tripId}
           chatOpen={chatOpen}
           onOpenChat={onToggleChat}
           onDismissPanels={onDismissPanels}
           avatarTeamColor={myTeamColor}
-          activeView={activeView}
-          hasContext={hasContext}
-          onSelectView={onSelectView}
         />
       )}
       cup={<LiveFaceClient initialBoot={null} />}

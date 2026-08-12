@@ -15,15 +15,26 @@ import { useEffect, useState } from "react";
  * anyway and the rail is costing more than it gives. At 1024 content gets
  * ~760px, which is a genuine two-column surface.
  *
- * ── CHAT COLUMN (1280px / Tailwind `xl`) — chat beside the content ───────────
- * The chat column is a fixed 340px. At 1024 that would leave the main column
- * ~400px — narrower than the phone layout it replaced, and too tight for the
- * leaderboard's team rows and game rows. 1280 leaves ~1010px, so the board gets
- * ~630px alongside chat's 340px and both are usable.
+ * ── CHAT COLUMN — now the SAME breakpoint, and that is the fix ───────────────
+ * Chat's side column used to start at 1280 (`xl`) while the rail started at
+ * 1024, on the reasoning that a fixed 340px column at 1024 would leave the main
+ * column ~400px — too tight, and worse than a good full-width surface.
  *
- * BELOW 1280, Chat stays a full-width TAB even though the rail is showing. That
- * is deliberate: a cramped side-by-side is worse than a good full-width surface,
- * and it keeps one behaviour ("chat replaces the content") rather than three.
+ * That reasoning assumed a main column that could not give anything back. It
+ * can now: the rail COLLAPSES to a 62px strip, so the space chat needs is
+ * available at 1024 the moment the user wants it, and the desktop content area
+ * is fluid rather than capped at a designed width.
+ *
+ * What the split actually produced was a 256px band where the rail, the tabs and
+ * the whole desktop chrome were showing but chat still opened as a MOBILE bottom
+ * sheet — one surface behaving as though it were on a phone while everything
+ * around it had not been for 256px. Two breakpoints meant three behaviours; one
+ * means two, which is what "desktop" and "mobile" were supposed to mean.
+ *
+ * So `CHAT_COLUMN_PX === SHELL_DESKTOP_PX`. They are kept as separate NAMES
+ * because they answer different questions and a future split should be able to
+ * re-diverge them without hunting call sites — but they are one number, defined
+ * once, so they cannot drift apart by accident.
  *
  * ── These drive DATA, not TREES ──────────────────────────────────────────────
  * Layout itself is CSS (`lg:` / `xl:` classes) on ONE tree, so resizing across a
@@ -33,7 +44,7 @@ import { useEffect, useState } from "react";
  * the side. Using it to pick between two trees would reintroduce the remount.
  */
 export const SHELL_DESKTOP_PX = 1024;
-export const CHAT_COLUMN_PX = 1280;
+export const CHAT_COLUMN_PX = SHELL_DESKTOP_PX;
 
 /**
  * `RAIL_WIDTH_PX` USED TO LIVE HERE, and its removal is the point.
@@ -53,32 +64,32 @@ export const CHAT_COLUMN_PX = 1280;
  */
 
 /**
- * ── Cup two-column geometry — the ONE numeric source ─────────────────────────
+ * ── The Cup two-column geometry USED TO LIVE HERE, and its removal is the fix ─
  *
- * Score entry is a DESIGNED interface at a fixed 412px (the Pixel 7 Pro viewport
- * and the supported mobile floor — see STYLE_GUIDE.md §Widths). It does not
- * stretch at any viewport. The scoreboard column absorbs the difference by
- * flexing between 380 and 560, so there is no cliff where a few pixels cost the
- * whole second column, and nothing grows to fill: leftover space is margin.
+ * Five constants — `ENTRY_COL_PX` (412), `CUP_MAIN_MIN_PX` (380),
+ * `CUP_MAIN_MAX_PX` (560), `CUP_COL_GAP_PX` (16) and their sum
+ * `CUP_TWO_COL_PX` (808) — described a layout where a fixed score-entry column
+ * sat BESIDE the scoreboard, and this block called them "the ONE numeric
+ * source" for it.
  *
- * Two columns therefore need `380 + 16 + 412 = 808` of CONTENT width.
+ * There was no second column. A later change made the board `lg:hidden` the
+ * moment a game opens ("drill-in REPLACES"), so Cup has been a single column
+ * for some time; `CompetitionFace`'s own header comment still claimed
+ * "DESKTOP MASTER–DETAIL … lg+ splits into [board | pane]" and was simply
+ * false. All five constants had ZERO consumers, and the `@[808px]` container
+ * query they justified appeared exactly once, where it set a `min-width` on the
+ * single panel.
  *
- * ── Why content width and not a viewport breakpoint ──────────────────────────
- * A viewport number would have to bake in the rail (246) and the stage padding
- * (32), and it would then be wrong the moment either changes — the mockup's own
- * ~1046 figure assumes a 206px rail and is 40px optimistic against this codebase.
- * Measuring the space the columns actually get is rail-independent and can't
- * drift. It is expressed as a CONTAINER query on the stage, so CSS and JS read
- * the same number from here rather than each carrying their own copy — two
- * sources for one threshold is the exact class of bug that produced the double
- * scrollbar (#752) and the two-pane disagreement before it.
+ * The cost was not the dead code. It was that the 560 cap on both the board and
+ * the game panel existed to leave room for a column that never arrives — so Cup
+ * refused to use the width it had, while Trip beside it filled the content area.
+ * That is the "Cup is stuck at 560" symptom, and it had a reason that had
+ * stopped being true.
+ *
+ * If a two-column Cup is wanted again, rebuild it deliberately against whatever
+ * the layout is then — do not restore these numbers on the strength of this
+ * comment.
  */
-export const ENTRY_COL_PX = 412;
-export const CUP_MAIN_MIN_PX = 380;
-export const CUP_MAIN_MAX_PX = 560;
-export const CUP_COL_GAP_PX = 16;
-/** Content width at which the entry column can sit BESIDE the scoreboard. */
-export const CUP_TWO_COL_PX = CUP_MAIN_MIN_PX + CUP_COL_GAP_PX + ENTRY_COL_PX; // 808
 
 function useMediaMin(px: number): boolean {
   // False on the server and on the first client render, so hydration matches;

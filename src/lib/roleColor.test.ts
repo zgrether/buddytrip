@@ -76,10 +76,32 @@ describe("source guard — no second copy of a role colour", () => {
   it("the rail key says Owner and Organizer, and never 'Admin'", () => {
     // "Admin" named a grouping — Owner-or-Organizer as one amber band — that no
     // longer exists. The only mentions left are the comments explaining why it
-    // went, which is why this checks the RENDERED strings.
-    const rail = src("components/shell/ContextRail.tsx");
-    expect(rail).toContain("<span>Owner</span>");
-    expect(rail).toContain("<span>Organizer</span>");
-    expect(rail).not.toContain("<span>Admin</span>");
+    // went, so comment lines are stripped and the check is on what can RENDER.
+    //
+    // This used to assert exact markup (`<span>Owner</span>`) and broke the
+    // moment the key's spans were regrouped to stop the trophy wrapping away
+    // from its label — a true invariant reported as broken by a cosmetic
+    // change. The invariant is the three WORDS being present as label text, so
+    // it now matches a bare JSX text node on its own line: markup-tolerant, but
+    // still falsified if a label is deleted (a `role="Owner"` prop would not
+    // satisfy it).
+    // Strip comment BLOCKS, not comment lines: the surviving "Admin" mentions
+    // live inside a `{/* … */}` JSX comment whose continuation lines start with
+    // ordinary prose, so a per-line filter walks straight past them.
+    const code = src("components/shell/ContextRail.tsx")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "")
+      .split("\n");
+
+    for (const word of ["Owner", "Organizer", "Cup"]) {
+      expect(
+        code.some((l) => l.trim() === word),
+        `the rail key should render "${word}" as a label`,
+      ).toBe(true);
+    }
+    expect(
+      code.join("\n"),
+      "'Admin' names a grouping that no longer exists",
+    ).not.toMatch(/\bAdmin\b/);
   });
 });
