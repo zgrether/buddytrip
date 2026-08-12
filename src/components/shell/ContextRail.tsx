@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
+import { Dice5, Flag, Lightbulb, PanelLeft, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
 import { useIsShellDesktop } from "./breakpoints";
-import { useRailWidth, RAIL_STRIP_PX } from "./rail/useRailWidth";
+import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
 
 /**
@@ -177,7 +177,73 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * strip back on every render would fight the user. `activeList` only changes
    * when the trip itself moves.
    */
-  const { expanded, toggle, width: railWidth } = useRailWidth();
+  const { width: railWidth, wide, snap, setWidth } = useRailWidth();
+  const columnRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  /**
+   * The drag floor — the widest rendered trip NAME, so nothing truncates that
+   * didn't have to.
+   *
+   * MEASURED ONCE PER DRAG, at pointerdown, rather than per render. Measuring on
+   * every render would be a layout read in the render path of a component that
+   * re-renders on every trip switch; measuring once when a drag STARTS is O(rows)
+   * a handful of times per session, always current, and costs the render path
+   * nothing. That is the middle answer between "measure constantly" (expensive)
+   * and "hardcode a floor" (wrong the moment someone has a long trip name).
+   *
+   * `scrollWidth` is the untruncated width of the text, which is exactly the
+   * question — `getBoundingClientRect` would return the CLAMPED width and every
+   * already-truncated name would report as fitting.
+   */
+  const measureFloor = () => {
+    const el = columnRef.current;
+    if (!el) return RAIL_MIN_PX;
+    let widest = 0;
+    el.querySelectorAll<HTMLElement>("[data-rail-name]").forEach((n) => {
+      widest = Math.max(widest, n.scrollWidth);
+    });
+    // The name sits in a row with padding, the art slot and the gaps around it.
+    // Derived from the row's own box rather than a second hand-typed number: the
+    // difference between the row's inner width and the name's own width IS the
+    // chrome, whatever the row's padding happens to be.
+    const name = el.querySelector<HTMLElement>("[data-rail-name]");
+    const row = name?.closest<HTMLElement>("[data-testid^='rail-trip']");
+    const chrome =
+      name && row ? Math.max(0, row.getBoundingClientRect().width - name.getBoundingClientRect().width) : 24;
+    // CAPPED at the narrow snap, and that cap is the important half.
+    //
+    // "The widest trip name" taken literally locks the rail: one long title
+    // measures wider than the MAXIMUM, the floor lands above the ceiling, and the
+    // divider refuses to move at all. Which protects nothing — that name is
+    // already truncating at the wide snap, so refusing to narrow doesn't save it.
+    //
+    // The floor is therefore "as narrow as the names allow, but never tighter
+    // than the width that already shipped". Short names → drag down to
+    // `RAIL_MIN_PX`; long names → stop at the narrow snap, where nothing
+    // truncates that didn't truncate before.
+    const measured = Math.ceil(widest + chrome);
+    return Math.min(RAIL_CONTRACTED_PX, Math.max(RAIL_MIN_PX, measured));
+  };
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const floor = measureFloor();
+    const startX = e.clientX;
+    const startW = railWidth;
+    setDragging(true);
+    const onMove = (ev: PointerEvent) => setWidth(startW + (ev.clientX - startX), floor);
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    // On WINDOW, not the handle: a fast drag outruns a 5px-wide element, and
+    // pointer events stop firing on it the moment the cursor leaves. The window
+    // keeps receiving them wherever the pointer goes.
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   /**
    * Publish the rail's TOTAL width so the top bar's tab group can align to its
@@ -242,7 +308,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
      * whatever the CONTENT column happened to be.
      */
     <aside
-      className="hidden shrink-0 lg:flex lg:min-h-0"
+      className="relative hidden shrink-0 lg:flex lg:min-h-0"
       data-testid="context-rail"
     >
       {/* ── Level one: the entity strip ──────────────────────────────────────
@@ -276,19 +342,33 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           active={entity === "ideas"}
           onClick={() => setEntity("ideas")}
         />
+        {/* NOT the trophy. The trophy means COMPETITION — it marks trip rows that
+            have a cup and it is the Cup tab — so using it here said games are
+            competitions, which is the opposite of what this entity holds:
+            standalone play with no cup attached.
+
+            `Dice5` is play, generically. Not golf-specific (Games will hold
+            cornhole, euchre, pool), not video-game-specific the way a gamepad or
+            joystick would read, and unused anywhere else. One adjacency worth
+            knowing: `Dices` (three dice) is `CATEGORY_ICONS.other`, so the family
+            is shared — deliberately, since both mean "play" — but the glyphs are
+            distinct and they never appear in the same context. `Dices` itself was
+            the obvious pick and is taken, which is the same collision this item
+            exists to remove. */}
         <StripItem
-          icon={<Trophy size={19} />}
+          icon={<Dice5 size={19} />}
           label="Games"
           active={entity === "games"}
           onClick={() => setEntity("games")}
         />
         <div className="flex-1" />
+        {/* SNAP, not expand/contract — the drag covers everything in between, so
+            this is two known widths on one tap. */}
         <button
           type="button"
-          onClick={toggle}
-          aria-label={expanded ? "Contract the list" : "Expand the list"}
-          title={expanded ? "Contract the list" : "Expand the list"}
-          aria-expanded={expanded}
+          onClick={snap}
+          aria-label={wide ? "Snap the list narrow" : "Snap the list wide"}
+          title={wide ? "Snap narrow" : "Snap wide"}
           data-testid="rail-width-toggle"
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors hover:border-[var(--color-bt-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
           style={{ color: "var(--color-bt-text-dim)" }}
@@ -301,15 +381,21 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           Background matches the strip, not the main viewport, so the two read as
           one chrome region rather than the column reading as content. */}
       <div
+        ref={columnRef}
         className="min-h-0 flex-1 overflow-y-auto"
         style={{
           width: railWidth,
           background: "var(--color-bt-chrome)",
           borderRight: "1px solid var(--color-bt-border)",
-          transition: "width 180ms ease",
+          // No transition WHILE dragging — an eased width would lag the pointer
+          // and the divider would swim away from the cursor. The snap button
+          // still animates, which is what makes the two states read as a jump
+          // rather than a glitch.
+          transition: dragging ? undefined : "width 180ms ease",
         }}
         data-testid="rail-column"
-        data-expanded={expanded || undefined}
+        data-wide={wide || undefined}
+        data-dragging={dragging || undefined}
       >
         {entity === "ideas" ? (
           <IdeasColumn
@@ -328,7 +414,10 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             onRetry={() => void refetch()}
             activeTripId={activeTripId}
             pendingTripId={pendingTripId}
-            expanded={expanded}
+            // The art drops in the narrow half — same midpoint the snap button
+            // reads, so "wide" means one thing. Contraction still drops the
+            // silhouette first; name, location, dates and countdown all survive.
+            expanded={wide}
             onOpen={openTrip}
             onNew={() => router.push("/trips/new")}
           />
@@ -336,6 +425,31 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           <GamesColumn onPlay={() => router.push("/quick-game")} />
         )}
       </div>
+
+      {/* The divider. A 5px grab strip over the column's right border — wider
+          than the 1px line so it is catchable, and `col-resize` says so before
+          you press. Not focusable and not keyboard-operable ON PURPOSE: the snap
+          button beside it is the keyboard path to both known widths, so the drag
+          is an enhancement rather than the only way to size the rail. */}
+      <div
+        onPointerDown={startDrag}
+        role="separator"
+        aria-orientation="vertical"
+        aria-hidden="true"
+        data-testid="rail-divider"
+        // ABSOLUTE, so the grab strip costs no layout width. In flow it net-added
+        // 2px (5px wide, -3px margin), which put the rail's real right edge 2px
+        // past the width being published — the tabs would align to a number the
+        // rail no longer had. The published value and the rendered edge have to
+        // be the same thing.
+        className="absolute inset-y-0 z-10 w-[5px] cursor-col-resize"
+        style={{
+          left: totalWidth - 3,
+          // Only paints while dragging — a permanently visible grab strip would
+          // double the border the column already draws.
+          background: dragging ? "var(--color-bt-accent)" : undefined,
+        }}
+      />
     </aside>
   );
 }
@@ -365,7 +479,7 @@ function StripItem({
       }}
     >
       {icon}
-      <span className="text-[9.5px] font-semibold">{label}</span>
+      <span className="text-[11px] font-semibold">{label}</span>
     </button>
   );
 }
@@ -414,7 +528,7 @@ function TripsColumn({
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
-        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+        <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Trips
         </span>
         <EyebrowAction label="Start a trip" onClick={onNew} />
@@ -423,7 +537,7 @@ function TripsColumn({
       {/* The key — both marks explained ONCE, here, instead of every row carrying
           its own label. A row is read every time; a key is read once. */}
       <div
-        className="flex items-center gap-[7px] px-1.5 pb-2 text-[10px]"
+        className="flex items-center gap-[7px] px-1.5 pb-2 text-[11px]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         <span
@@ -431,7 +545,10 @@ function TripsColumn({
           className="inline-block"
           style={{ width: 3, height: 11, borderRadius: 2, background: "var(--color-bt-warning)" }}
         />
-        <span>Yours to run</span>
+        {/* "Admin", not "Yours to run": shorter, universally understood, and it
+            does not imply OWNERSHIP — the edge marks Owner AND Organizer, and an
+            Organizer runs the trip without owning it. */}
+        <span>Admin</span>
         <span style={{ opacity: 0.35 }}>·</span>
         <span
           aria-hidden="true"
@@ -515,7 +632,7 @@ function IdeasColumn({
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
-        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+        <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Ideas
         </span>
         <EyebrowAction label="Start a trip" onClick={onNew} />
@@ -524,7 +641,7 @@ function IdeasColumn({
       {isError ? (
         <RailLoadError onRetry={onRetry} />
       ) : ideas.length === 0 ? (
-        <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Trips without a destination yet will collect here.
         </p>
       ) : (
@@ -548,7 +665,7 @@ function GamesColumn({ onPlay }: { onPlay: () => void }) {
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
-        <span className="flex-1 text-[14px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+        <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Games
         </span>
         <EyebrowAction label="Play a game" onClick={onPlay} />
@@ -569,24 +686,24 @@ function GamesColumn({ onPlay }: { onPlay: () => void }) {
             className="mb-[3px] block w-full rounded-[9px] p-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
             style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <div className="truncate text-[12.5px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            <div className="truncate text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {quick.title}
             </div>
             {quick.subtitle && (
-              <div className="mt-[3px] truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              <div className="mt-[3px] truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
                 {quick.subtitle}
               </div>
             )}
           </button>
         ) : (
-          <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
             Nothing in progress.
           </p>
         )}
       </Section>
 
       <Section label="History">
-        <p className="px-1.5 pb-2 text-[11.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Finished games will collect here.
         </p>
       </Section>
@@ -629,7 +746,7 @@ function Section({
   return (
     <>
       <div
-        className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-2.5 text-[9.5px] font-bold uppercase"
+        className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-2.5 text-[11px] font-bold uppercase"
         style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.1em" }}
       >
         <span>{label}</span>
@@ -656,11 +773,13 @@ function EyebrowAction({ label, onClick }: { label: string; onClick: () => void 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex h-6 w-6 items-center justify-center rounded-[7px] transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
+      // Sized against the 16px column header beside it. It was 24px with a 13px
+      // glyph — set against type that has since grown, and small even before.
+      className="flex h-7 w-7 items-center justify-center rounded-lg transition-[background-color,transform] hover:bg-[var(--color-bt-hover)] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
       style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
       data-testid="rail-add-trip"
     >
-      <Plus size={13} />
+      <Plus size={16} />
     </button>
   );
 }
