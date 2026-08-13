@@ -256,12 +256,30 @@ async function teamCountForGame(
  *
  * Costs one extra query ONLY for a game that has entrants — the bracket read runs
  * first and short-circuits the team count when it finds any.
+ *
+ * `incomingEntrantCount` is the field the CALLER is about to write, and it wins
+ * over the one on disk. A settings save commits the pool and the placement split
+ * in one atomic RPC (#18), so validating the split against the stored pool asks
+ * the wrong question: building an 8-entrant field and an 8-place split together
+ * would be refused against the 0 entrants (or 2 teams) that were there before
+ * the save it is part of — and the only way through would be to save twice, in
+ * an order nothing tells you. Absent (every other caller, and every save that
+ * isn't about the pool) → read what is stored.
  */
 async function placeCapacityForGame(
   supabase: SupabaseClient,
   tripId: string,
-  gameId: string
+  gameId: string,
+  incomingEntrantCount?: number | null
 ): Promise<PlaceCapacity> {
+  if (incomingEntrantCount != null) {
+    // An incoming EMPTY pool is a bracket being cleared, not a bracket with no
+    // ceiling — the game ranks teams again the moment this save lands, so that
+    // is the ceiling to hold it to.
+    return incomingEntrantCount > 0
+      ? bracketPlaceCapacity(incomingEntrantCount)
+      : teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
+  }
   const { count: entrants, error } = await supabase
     .from("bracket_entrants")
     .select("id", { count: "exact", head: true })
@@ -1400,6 +1418,7 @@ export const gamesRouter = router({
         const p = input.payload as {
           pointsDistribution?: unknown;
           pointsTotal?: number | null;
+          bracketEntrants?: unknown[];
         };
         // NOT gated on `pointsTotal != null`. Places-vs-entities compares the
         // place count to the team count and never reads the total — gating it on
@@ -1408,7 +1427,14 @@ export const gamesRouter = router({
         // that can't be applied. The sum check still needs a total, so it stays
         // conditional below.
         if (isPlacement(p.pointsDistribution)) {
-          const capacity = await placeCapacityForGame(ctx.supabase, ctx.tripId, input.gameId);
+          // The pool THIS save establishes is the ceiling, not the one on disk —
+          // the two are written in the same transaction. Absent → stored.
+          const capacity = await placeCapacityForGame(
+            ctx.supabase,
+            ctx.tripId,
+            input.gameId,
+            p.bracketEntrants ? p.bracketEntrants.length : null
+          );
           const check = validatePlacement(p.pointsTotal ?? 0, p.pointsDistribution.values, capacity);
           if (check.state === "too_many_places") {
             throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });

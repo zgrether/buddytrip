@@ -71,7 +71,9 @@ describe("the pool rides the atomic Save", () => {
 
 describe("the keys are OMITTED unless the pool is real", () => {
   // Presence is what triggers the RPC's rebuild, so a save that isn't about the
-  // pool must not carry it — otherwise a rename rebuilds the draw.
+  // pool must not carry it — otherwise a rename rebuilds the draw. Every case
+  // here has NO baseline, which is what "there is nothing to compare, so don't
+  // touch it" looks like; the clear cases below are the same shapes WITH one.
   it("a non-bracket game sends neither key", () => {
     const p = payload(draft({ competitionFormat: "head_to_head", bracketEntrants: [["u1"], ["u2"]] }));
     expect(p).not.toHaveProperty("bracketEntrants");
@@ -92,6 +94,53 @@ describe("the keys are OMITTED unless the pool is real", () => {
       { seed: 1, teamId: "tA", userIds: ["u1"] },
       { seed: 2, teamId: "tA", userIds: ["u2"] },
     ]);
+  });
+});
+
+/**
+ * Emptying the pool is a CHANGE, and the RPC only acts on what it is told about.
+ * `ClearPairingsPrompt` promises "the entrants you've built will be removed", so
+ * the save has to actually say so — an omitted key preserves, which would leave
+ * the prompt lying and the pool on disk.
+ */
+describe("clearing the pool is SENT, not omitted", () => {
+  const withPool = (over: Partial<NonGolfConfigDraft> = {}) =>
+    draft({ bracketEntrants: [["u1", "u2"], ["u3", "u4"]], ...over });
+  const clear = (d: NonGolfConfigDraft, base: NonGolfConfigDraft) =>
+    nonGolfDraftToPayload(d, base, { teamByUser: TEAMS });
+
+  it("switching the format AWAY from bracket clears the persisted field", () => {
+    const p = clear(withPool({ competitionFormat: "head_to_head", bracketEntrants: [] }), withPool());
+    expect(p.bracketEntrants).toEqual([]);
+    expect(p.bracketDraw).toEqual([]);
+  });
+
+  it("emptying the pool while STILL a bracket clears it too (partners → singles)", () => {
+    const p = clear(withPool({ bracketEntrants: [] }), withPool());
+    expect(p.bracketEntrants).toEqual([]);
+    expect(p.bracketDraw).toEqual([]);
+  });
+
+  it("a format switch with the pool still in the draft does NOT clear — it just stops sending", () => {
+    // The view empties the entrants slice as part of the switch; if something
+    // ever stops doing that, this must not silently delete the field anyway.
+    const p = clear(withPool({ competitionFormat: "best_of_n" }), withPool());
+    expect(p.bracketEntrants).toEqual([]);
+    expect(p.bracketDraw).toEqual([]);
+  });
+
+  it("a baseline that never had a pool sends nothing — there is nothing to clear", () => {
+    const empty = draft({ bracketEntrants: [] });
+    const p = clear(draft({ competitionFormat: "head_to_head", bracketEntrants: [] }), empty);
+    expect(p).not.toHaveProperty("bracketEntrants");
+    expect(p).not.toHaveProperty("bracketDraw");
+  });
+
+  it("a rename on a bracket re-sends the SAME pool — never an accidental clear", () => {
+    // The RPC's own dirty-compare then finds no difference and writes nothing.
+    const p = clear(withPool({ name: "Renamed" }), withPool());
+    expect(p.bracketEntrants).toHaveLength(2);
+    expect(p.bracketDraw!.length).toBeGreaterThan(0);
   });
 });
 

@@ -609,6 +609,22 @@ export function configToNonGolfDraft(
  * one team — that is what makes a 2v2 pairing structurally unable to span two —
  * so the team is read from the entrant's FIRST member; the builder is what
  * enforces that its members agree.
+ *
+ * ── Emptying the pool IS a change, and has to be SENT ───────────────────────
+ * "Omit when it isn't about the pool" and "omit when there is no pool" read as
+ * the same rule and are not. The RPC preserves what an absent key doesn't
+ * mention, so a draft that has been emptied — the format switched away from
+ * Bracket, or partners → singles taken through `ClearPairingsPrompt` — would
+ * silently leave the persisted entrants in place: the prompt promises "the
+ * entrants you've built will be removed", the save reports success, and the
+ * pool is still there on the next read. So a clear is sent EXPLICITLY as
+ * `[]` + `[]`, which is what makes the RPC's dirty-compare see a difference
+ * and delete.
+ *
+ * It is sent only against a BASELINE that actually held entrants. Without a
+ * baseline nothing is comparable, and an empty pool then means "this game has
+ * never had one" — omitting is right there, and wiping on a hunch is not.
+ * (A bracket with picks recorded is still refused server-side, HAS_PICKS.)
  */
 export function nonGolfDraftToPayload(
   draft: NonGolfConfigDraft,
@@ -616,8 +632,11 @@ export function nonGolfDraftToPayload(
   bracket?: { teamByUser: Record<string, string | null> }
 ): SaveConfigPayload {
   const base = baseDraftToPayload(draft, draft.pointsDistribution, baseline);
-  const pool = draft.bracketEntrants.filter((e) => e.length > 0);
-  if (draft.competitionFormat !== "bracket" || pool.length === 0) return base;
+  const pool = draft.competitionFormat === "bracket" ? draft.bracketEntrants.filter((e) => e.length > 0) : [];
+  if (pool.length === 0) {
+    const had = baseline?.bracketEntrants.some((e) => e.length > 0);
+    return had ? { ...base, bracketEntrants: [], bracketDraw: [] } : base;
+  }
   return {
     ...base,
     bracketEntrants: pool.map((userIds, i) => ({
