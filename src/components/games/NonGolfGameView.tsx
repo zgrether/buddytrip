@@ -501,6 +501,7 @@ export function NonGolfGameView() {
         totalPointsRow={
           <NonGolfTotalPointsRow
             scoringModel={scoringModel}
+            distribution={configDraft.pointsDistribution}
             value={configDraft.pointsTotal}
             canEdit={canEdit}
             onChange={setPointsTotalDraft}

@@ -13,7 +13,7 @@ import {
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { NonGolfConfigDraft, CompetitionFormat } from "@/lib/configDraft";
-import type { PointsDistribution } from "@/lib/pointsDistribution";
+import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
  * Non-golf's own settings rows — the slot contents `GameSettingsPage` arranges.
@@ -29,19 +29,44 @@ import type { PointsDistribution } from "@/lib/pointsDistribution";
  * `canEdit` is the only gate, and it is a ROLE answer, never `scoring_enabled`.
  */
 
-/** GAME MANAGEMENT slot — Total Points, by scoring model. */
+/**
+ * Does this game's points read as a POOL split across places, rather than a
+ * single value the winner takes?
+ *
+ * The ONE predicate both rows below key on, and the same one the leaderboard
+ * dispatches on (`isPlacement` on `points_distribution`) — so what the settings
+ * page says a game does and what the board actually awards cannot disagree.
+ * Two rows in this file previously read `scoringModel` independently, which is
+ * how the pair drifts (CLAUDE.md #24: a shared input, privately re-derived).
+ *
+ * A points-model cup is always a pool. A match-play cup is winner-take-all
+ * UNTIL the game is given a split of its own — the per-game axis that
+ * `scoring_model` used to override.
+ */
+export function usesPointsPool(
+  scoringModel: ScoringModel,
+  distribution: PointsDistribution | null
+): boolean {
+  return scoringModel === "points" || isPlacement(distribution);
+}
+
+/** GAME MANAGEMENT slot — Total Points: a per-match value, or a pool to split. */
 export function NonGolfTotalPointsRow({
-  scoringModel, value, canEdit, onChange,
+  scoringModel, distribution, value, canEdit, onChange,
 }: {
   scoringModel: ScoringModel;
+  /** The game's own split, if it has one. A match-play game that carries one
+   *  needs the POOL control, not the per-match value — the total is what the
+   *  places divide up. */
+  distribution: PointsDistribution | null;
   value: number | null;
   canEdit: boolean;
   onChange: (total: number | null) => void;
 }) {
-  return scoringModel === "match_play" ? (
-    <MatchValueRow value={value} canEdit={canEdit} onChange={onChange} />
-  ) : (
+  return usesPointsPool(scoringModel, distribution) ? (
     <TotalPoolRow value={value} canEdit={canEdit} onChange={onChange} />
+  ) : (
+    <MatchValueRow value={value} canEdit={canEdit} onChange={onChange} />
   );
 }
 
@@ -71,37 +96,49 @@ export function NonGolfSettingsRows({
         open={openAccordion === "format"}
         onToggle={() => setOpenAccordion((o) => (o === "format" ? null : "format"))}
       />
-      {/* Point Distribution — points model only (the placement split). match_play's
-          single value carries no distribution. Reads its total from the DRAFT.
-          DELIBERATELY HIDDEN rather than scrimmed with a `Requires:` (#703 family).
-          The prerequisite would be "a points-based cup", and `competitions.scoring_model`
-          is fixed at competition creation and editable from nowhere — so the copy
-          would name something the reader cannot go and set. The rule is that only a
-          SATISFIABLE prerequisite earns a scrim; a permanently-dead row is worse than
-          an absent one. This is the one confirmed exception to "every prerequisite is
-          reachable in this panel". */}
-      {scoringModel === "points" && (
-        <ChecklistRow
-          icon={Scale}
-          title="Point Distribution"
-          subtitle={draft.pointsDistribution?.type === "placement" ? "Custom placement split — tap to edit" : "Even — tap to set a placement split"}
-          state={draft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
-          expanded={openAccordion === "distribution"}
-          onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
-          testId="row-point-distribution"
-        >
-          <FormatPointsPanel
-            entityCount={entityCount}
-            game={game}
-            canEdit={canEdit}
-            part="distribution"
-            controlled={{
-              value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
-              onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
-            }}
-          />
-        </ChecklistRow>
-      )}
+      {/* Point Distribution — the placement split.
+
+          SHOWN IN EVERY CUP NOW, which retires this file's standing exception.
+          The row used to be hidden outside the points model, and hidden rather
+          than scrimmed for a good reason: the prerequisite would have been "a
+          points-based cup", `competitions.scoring_model` is fixed at creation and
+          editable from nowhere, so the copy would have named something the reader
+          could not go and set — and only a SATISFIABLE prerequisite earns a scrim.
+
+          That reasoning was sound and is now spent: a match-play cup CAN hold a
+          split, so there is no unsatisfiable prerequisite left to hide behind. The
+          row is simply available, and a cup that wants winner-take-all gets it by
+          leaving the split unset — which is the default and what the subtitle says.
+
+          The subtitle names the model's actual default rather than one of them:
+          "Even" is true of a points cup and false of a match-play one, where an
+          unset split means the winner takes the lot. */}
+      <ChecklistRow
+        icon={Scale}
+        title="Point Distribution"
+        subtitle={
+          draft.pointsDistribution?.type === "placement"
+            ? "Custom placement split — tap to edit"
+            : scoringModel === "match_play"
+              ? "Winner takes all — tap to set a placement split"
+              : "Even — tap to set a placement split"
+        }
+        state={draft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
+        expanded={openAccordion === "distribution"}
+        onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+        testId="row-point-distribution"
+      >
+        <FormatPointsPanel
+          entityCount={entityCount}
+          game={game}
+          canEdit={canEdit}
+          part="distribution"
+          controlled={{
+            value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
+            onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
+          }}
+        />
+      </ChecklistRow>
     </>
   );
 }

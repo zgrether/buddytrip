@@ -193,10 +193,37 @@ export async function computeCompetitionLeaderboard(
     // Match-play, non-golf MANUAL game → winner-take-all. The owner-set total all
     // goes to the winner (position 1); a tie (both at position 1) splits it —
     // placementPoints averages [P,0] → P/2 each, the same averaged convention a
-    // golf match-play halve uses. Derived from points_total, NOT a configured
-    // split, so the result is win/lose/tie regardless of any distribution values
-    // on the record. Manual games only (result_strategy NULL) — golf untouched.
-    if (scoringModel === "match_play" && isManualType(g.game_type_id as string | null)) {
+    // golf match-play halve uses. Manual games only (result_strategy NULL) —
+    // golf untouched.
+    //
+    // ── …UNLESS the game carries its own placement split ──────────────────────
+    // `!isPlacement(rawDist)` is the whole of this change, and it REMOVES an
+    // override rather than adding a capability.
+    //
+    // `competitions.scoring_model` is one column holding two axes. It was
+    // introduced (migration 062) to branch "the NON-GOLF result model ONLY" — a
+    // PER-GAME question — but stored on the competition, which was right at the
+    // time because every non-golf game in a cup wanted the same answer. It has
+    // since also acquired genuinely competition-level duties: the 2-team lock,
+    // the teams structure lock, the board layout, the hero, the projection pills.
+    //
+    // The per-game axis already exists and is already dispatched on three lines
+    // below: `points_distribution`'s SHAPE. `per_match` is a match-play award;
+    // `placement` is a split. This branch sat ABOVE both and returned first, so a
+    // competition-level flag silently overrode a per-game field. Now it defers
+    // when the game has actually been given a split, and remains the default for
+    // every manual game that has not — which is what it has always meant, since
+    // until now no such game could have one (the settings row was hidden).
+    //
+    // Deliberately narrow: `isPlacement` only. A manual game holding a `per_match`
+    // distribution keeps the flatten, because per_match is match play's own shape
+    // and the branch below derives its match count from pairings a manual game
+    // does not have.
+    if (
+      scoringModel === "match_play" &&
+      isManualType(g.game_type_id as string | null) &&
+      !isPlacement(rawDist)
+    ) {
       const total = (g.points_total as number | null) ?? 0;
       return {
         id: g.id as string,
