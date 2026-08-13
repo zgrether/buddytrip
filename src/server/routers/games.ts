@@ -21,6 +21,8 @@ import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } 
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
+import type { BracketDrawMatch, BracketSide } from "@/lib/bracket";
+import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 
 /**
@@ -292,6 +294,70 @@ async function placeCapacityForGame(
   return teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
 }
 
+/** One `bracket_matches` row, as both the draw read and the pick write need it. */
+interface BracketMatchRow {
+  id: string;
+  bracket: BracketSide;
+  round: number;
+  slot: number;
+  entrant_a_id: string | null;
+  entrant_b_id: string | null;
+  winner_entrant_id: string | null;
+}
+
+/**
+ * The stored draw plus the seed↔entrant-id mapping, in one place.
+ *
+ * Two reads rather than three aliased PostgREST embeds of the same table.
+ * `bracket_matches` has three FKs into `bracket_entrants` (A, B, winner), and a
+ * mis-named embed is precisely the shape of #16's landmine — a relation that
+ * didn't exist returned nothing and the error was swallowed for six weeks. Two
+ * plain selects and a JS map cannot fail that way, and BOTH errors are checked:
+ * an unread entrant list would silently turn every seed into null, which reads
+ * as "the draw is empty" rather than as a failure.
+ *
+ * `idOfSeed` composes the deterministic id (`<game_id>:e<seed>`, migration 115)
+ * only as a FALLBACK. The mapping from the entrants actually read is preferred,
+ * so this keeps working if that id scheme is ever revised — the composed form is
+ * a convenience, never the source of truth.
+ */
+async function readBracketDraw(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{
+  matches: BracketMatchRow[];
+  seedOf: (id: string | null) => number | null;
+  idOfSeed: (seed: number) => string | null;
+  error: string | null;
+}> {
+  const [matchRes, entrantRes] = await Promise.all([
+    supabase
+      .from("bracket_matches")
+      .select("id, bracket, round, slot, entrant_a_id, entrant_b_id, winner_entrant_id")
+      .eq("game_id", gameId)
+      .order("bracket")
+      .order("round")
+      .order("slot"),
+    supabase.from("bracket_entrants").select("id, seed").eq("game_id", gameId).order("seed"),
+  ]);
+  const empty = { matches: [] as BracketMatchRow[], seedOf: () => null, idOfSeed: () => null };
+  if (matchRes.error) return { ...empty, error: matchRes.error.message };
+  if (entrantRes.error) return { ...empty, error: entrantRes.error.message };
+
+  const seedById = new Map<string, number>();
+  const idBySeed = new Map<number, string>();
+  for (const e of (entrantRes.data ?? []) as { id: string; seed: number }[]) {
+    seedById.set(e.id, e.seed);
+    idBySeed.set(e.seed, e.id);
+  }
+  return {
+    matches: (matchRes.data ?? []) as BracketMatchRow[],
+    seedOf: (id) => (id === null ? null : seedById.get(id) ?? null),
+    idOfSeed: (seed) => idBySeed.get(seed) ?? `${gameId}:e${seed}`,
+    error: null,
+  };
+}
+
 export const gamesRouter = router({
   // create — Owner/Organizer. The Phase-1 shell (D1 §3): competition_id +
   // game_type + name + points_distribution + status is a FULLY VALID game; every
@@ -499,6 +565,166 @@ export const gamesRouter = router({
         teamId: (e.team_id as string | null) ?? null,
         userIds: ((e.bracket_entrant_members ?? []) as { user_id: string }[]).map((m) => m.user_id),
       }));
+    }),
+
+  /**
+   * The persisted DRAW, in seeds — the read the bracket surface renders from.
+   *
+   * Returns the tree as stored plus each match's recorded winner, and leaves the
+   * ADVANCEMENT to `resolveDraw` on whichever side is asking. That split is the
+   * point: the server does not compute occupants into this payload, because then
+   * there would be two implementations of advancement (this one and the client's)
+   * and the screen could disagree with what a pick is validated against.
+   *
+   * Seeds rather than entrant ids, matching `bracket.ts`'s vocabulary — the ids
+   * are an implementation detail of the write path. The mapping is done in JS
+   * over a second read rather than three PostgREST embeds of the same table:
+   * `bracket_matches` has three FKs into `bracket_entrants` and aliased embeds
+   * are exactly the shape #16's landmine took, where a wrong relation name
+   * returned empty and the error was swallowed.
+   *
+   * Any trip member, matching `bracketPool`'s visibility.
+   */
+  bracketDraw: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { matches, seedOf, error } = await readBracketDraw(ctx.supabase, input.gameId);
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the bracket draw: ${error}` });
+      }
+      return matches.map((m) => ({
+        id: m.id,
+        bracket: m.bracket,
+        round: m.round,
+        slot: m.slot,
+        aSeed: seedOf(m.entrant_a_id),
+        bSeed: seedOf(m.entrant_b_id),
+        winnerSeed: seedOf(m.winner_entrant_id),
+      }));
+    }),
+
+  /**
+   * Record (or clear) the winner of one bracket match.
+   *
+   * A RUN action, not an edit — `requireGameRunAction` is the same predicate as
+   * `requireGameEdit` with the message that fits (CLAUDE.md #24 notes the pair),
+   * and picking who won is operational in exactly the way posting a result is.
+   *
+   * ── Validated against the RESOLVED tree, not the stored row ────────────────
+   * The occupants of any match past round 1 are derived, so "is this seed even
+   * in this match?" can only be answered by running the advancement. It runs the
+   * SAME `resolveDraw` the surface renders from (CLAUDE.md #8), so a seat you can
+   * see is a seat the server will accept — a second implementation here is how
+   * the screen and the gate come to disagree.
+   *
+   * ── Clearing does NOT cascade, and that is the design ──────────────────────
+   * Later rounds are derived, so clearing a winner already un-decides everything
+   * above it: `resolveDraw` drops a recorded winner who is no longer an occupant.
+   * Nothing else needs writing, which is the one-column undo migration 112 chose
+   * this model for.
+   *
+   * The consequence worth stating rather than discovering: clear a semi-final and
+   * re-pick THE SAME entrant, and the final's old pick becomes valid again — it
+   * "comes back". That reads as surprising and is correct. Nothing about the final
+   * changed; the result was never in dispute, and a cascade that deleted it would
+   * throw away a real result to enforce a tidiness nobody asked for. Re-pick the
+   * semi DIFFERENTLY and the final's pick names someone who is no longer there,
+   * so it stays dropped and the match shows open.
+   */
+  pickWinner: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        bracket: z.enum(["main", "consolation"]),
+        round: z.number().int().positive(),
+        slot: z.number().int().positive(),
+        /** The winning SEED, or null to clear the pick. */
+        winnerSeed: z.number().int().positive().nullable(),
+      })
+    )
+    .use(requireGameRunAction())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, status, corrections_open, scoring_enabled, competition_format")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      if (game.competition_format !== "bracket") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This game isn't a bracket." });
+      }
+      // Same wall, same voice as score entry: a posted game is frozen until
+      // someone reopens it, and the message names the control rather than the
+      // state. Reachable from a stale tab while another device finalizes.
+      if (game.status === "complete" && !game.corrections_open) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This bracket is posted — reopen it for corrections before changing a result.",
+        });
+      }
+      if (!game.scoring_enabled) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "This bracket isn't live yet — switch it to scoring before recording results.",
+        });
+      }
+
+      const { matches, seedOf, idOfSeed, error } = await readBracketDraw(ctx.supabase, input.gameId);
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the bracket draw: ${error}` });
+      }
+
+      const draw: BracketDrawMatch[] = matches.map((m) => ({
+        bracket: m.bracket,
+        round: m.round,
+        slot: m.slot,
+        aSeed: seedOf(m.entrant_a_id),
+        bSeed: seedOf(m.entrant_b_id),
+      }));
+      const winners: WinnerBySeed = {};
+      for (const m of matches) {
+        winners[matchKey(m)] = seedOf(m.winner_entrant_id);
+      }
+
+      const target = resolveDraw(draw, winners).find(
+        (m) => m.bracket === input.bracket && m.round === input.round && m.slot === input.slot
+      );
+      if (!target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "That match isn't in this bracket's draw." });
+      }
+      // A bye has no result to record — nobody played (migration 112). Refused
+      // rather than ignored, so a client that offers the pick learns it is wrong.
+      if (target.bye) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "That entrant has a bye — there's no match to decide." });
+      }
+      if (input.winnerSeed !== null) {
+        if (target.aSeed === null || target.bSeed === null) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "That match is still waiting on the round below it.",
+          });
+        }
+        if (input.winnerSeed !== target.aSeed && input.winnerSeed !== target.bSeed) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "That entrant isn't in this match." });
+        }
+      }
+
+      const row = matches.find(
+        (m) => m.bracket === input.bracket && m.round === input.round && m.slot === input.slot
+      )!;
+      const writeRes = await ctx.supabase
+        .from("bracket_matches")
+        .update({ winner_entrant_id: input.winnerSeed === null ? null : idOfSeed(input.winnerSeed) })
+        .eq("id", row.id)
+        .eq("game_id", input.gameId);
+      assertNoError(writeRes, "record the result");
+
+      return { ok: true as const };
     }),
 
   configHash: authedProcedure
