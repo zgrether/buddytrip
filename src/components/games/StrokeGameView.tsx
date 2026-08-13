@@ -35,6 +35,7 @@ import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { type ModifiersMap } from "@/lib/modifiers";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
+import { teamPlaceCapacity } from "@/lib/placeCapacity";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -349,13 +350,13 @@ export function StrokeGameView() {
     // places-vs-entities one, which never reads the total — #819 nested both
     // under this guard, so a no-total game could save an unappliable split.
     if (configDraft.pointsTotal == null) {
-      const noTotal = validatePlacement(0, d.values, teamsQ.data?.length ?? null);
+      const noTotal = validatePlacement(0, d.values, teamPlaceCapacity(teamsQ.data?.length));
       return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
     }
     // Entity count = teams in the competition (what the leaderboard ranks).
     // undefined while the query is in flight, and a standalone game has none —
     // both pass `null`, which never refuses.
-    const v = validatePlacement(configDraft.pointsTotal, d.values, teamsQ.data?.length ?? null);
+    const v = validatePlacement(configDraft.pointsTotal, d.values, teamPlaceCapacity(teamsQ.data?.length));
     return v.saveable ? null : placementRefusalMessage(v);
   }, [configDraft.pointsDistribution, configDraft.pointsTotal, teamsQ.data]);
 
@@ -985,7 +986,7 @@ export function StrokeGameView() {
           controlled={placementControlled}
           part="distribution"
           winnerTakesAll
-          entityCount={teamsQ.data?.length ?? null}
+          capacity={teamPlaceCapacity(teamsQ.data?.length)}
         />
       </ChecklistRow>
     );

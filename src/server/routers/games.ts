@@ -20,6 +20,8 @@ import { assertGameReady } from "../lib/gameReadiness";
 import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
+import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
+import type { PlaceCapacity } from "@/lib/gameConfig";
 
 /**
  * The game-row columns that constitute CONFIG (fingerprinted by `configHash`).
@@ -244,6 +246,38 @@ async function teamCountForGame(
   // split. Null skips the check, matching the standalone case.
   if (error) return null;
   return count ?? null;
+}
+
+/**
+ * The place ceiling for a game — the server half of `placeCapacity.ts`.
+ *
+ * A game with a persisted DRAW is a bracket, and its places come from the tree
+ * (2, or 4 with a consolation match), not from the roster. Everything else ranks
+ * teams. The draw's own rows answer the question, so this reads `bracket_matches`
+ * rather than trusting `bracket_config.consolation` — the flag is a request, the
+ * rows are what it produced (a two-entrant bracket has no consolation match no
+ * matter what the flag says).
+ *
+ * Costs one extra query ONLY for a game that has a draw: the bracket read runs
+ * first and short-circuits the team count when it finds rows.
+ */
+async function placeCapacityForGame(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string
+): Promise<PlaceCapacity> {
+  const { data: draw, error } = await supabase
+    .from("bracket_matches")
+    .select("bracket")
+    .eq("game_id", gameId);
+  // A failed read must not silently become "no draw" and fall through to the team
+  // count — that would apply the WRONG ceiling to a bracket rather than none. An
+  // unknown capacity never refuses, which is the safe direction here.
+  if (error) return { count: null, source: "teams" };
+  if ((draw?.length ?? 0) > 0) {
+    return bracketPlaceCapacity(draw as { bracket: "main" | "consolation" }[]);
+  }
+  return teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
 }
 
 export const gamesRouter = router({
@@ -1348,8 +1382,8 @@ export const gamesRouter = router({
         // that can't be applied. The sum check still needs a total, so it stays
         // conditional below.
         if (isPlacement(p.pointsDistribution)) {
-          const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
-          const check = validatePlacement(p.pointsTotal ?? 0, p.pointsDistribution.values, entities);
+          const capacity = await placeCapacityForGame(ctx.supabase, ctx.tripId, input.gameId);
+          const check = validatePlacement(p.pointsTotal ?? 0, p.pointsDistribution.values, capacity);
           if (check.state === "too_many_places") {
             throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
           }
@@ -1584,8 +1618,8 @@ export const gamesRouter = router({
         // Entity count folded into the SAME call — this path already reads the
         // game, so the places-vs-entities half costs one more query here rather
         // than a second validator.
-        const entities = await teamCountForGame(ctx.supabase, ctx.tripId, input.gameId);
-        const check = validatePlacement(total ?? 0, input.distribution.values, entities);
+        const capacity = await placeCapacityForGame(ctx.supabase, ctx.tripId, input.gameId);
+        const check = validatePlacement(total ?? 0, input.distribution.values, capacity);
         // Places-vs-entities does NOT need a total (#819 defect: it was nested
         // under the total check, so a no-total game could save an unappliable
         // split — which is exactly the shape the two affected prod games have).

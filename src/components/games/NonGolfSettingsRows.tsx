@@ -12,6 +12,7 @@ import {
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
+import type { PlaceCapacity } from "@/lib/gameConfig";
 import type { NonGolfConfigDraft, CompetitionFormat } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 
@@ -73,15 +74,16 @@ export function NonGolfTotalPointsRow({
 /** SETTINGS slot — Competition Format, plus the placement split for the points
  *  model. Owns the single-open accordion state shared by its two rows. */
 export function NonGolfSettingsRows({
-  game, scoringModel, draft, canEdit, entityCount, onFormatChange, onPointsTotalChange, onPointsDistChange,
+  game, scoringModel, draft, canEdit, capacity, onFormatChange, onPointsTotalChange, onPointsDistChange,
 }: {
   game: GameRow;
   scoringModel: ScoringModel;
   draft: NonGolfConfigDraft;
   canEdit: boolean;
-  /** Teams in the competition — drives the inline places-vs-teams warning in
-   *  `FormatPointsPanel`. Null while unknown; warns about nothing then. */
-  entityCount: number | null;
+  /** How many places this game has — see `placeCapacity.ts`. Drives the inline
+   *  too-many-places warning in `FormatPointsPanel`. A null count warns about
+   *  nothing. */
+  capacity: PlaceCapacity;
   onFormatChange: (format: CompetitionFormat | null) => void;
   onPointsTotalChange: (total: number | null) => void;
   onPointsDistChange: (dist: PointsDistribution | null) => void;
@@ -129,7 +131,7 @@ export function NonGolfSettingsRows({
         testId="row-point-distribution"
       >
         <FormatPointsPanel
-          entityCount={entityCount}
+          capacity={capacity}
           game={game}
           canEdit={canEdit}
           part="distribution"

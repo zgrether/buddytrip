@@ -32,6 +32,7 @@ import {
   type CompetitionFormat,
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { teamPlaceCapacity } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
 import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
@@ -336,13 +337,13 @@ export function NonGolfGameView() {
     // places-vs-entities one, which never reads the total — #819 nested both
     // under this guard, so a no-total game could save an unappliable split.
     if (configDraft.pointsTotal == null) {
-      const noTotal = validatePlacement(0, d.values, teams.length || null);
+      const noTotal = validatePlacement(0, d.values, teamPlaceCapacity(teams.length || null));
       return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
     }
     // Entity count = teams in the competition (what the leaderboard ranks).
     // Empty while the leaderboard read is in flight — `|| null` so an
     // unresolved 0 never refuses a valid split.
-    const v = validatePlacement(configDraft.pointsTotal, d.values, teams.length || null);
+    const v = validatePlacement(configDraft.pointsTotal, d.values, teamPlaceCapacity(teams.length || null));
     return v.saveable ? null : placementRefusalMessage(v);
   }, [configDraft.pointsDistribution, configDraft.pointsTotal, teams.length]);
 
@@ -513,7 +514,7 @@ export function NonGolfGameView() {
             scoringModel={scoringModel}
             draft={configDraft}
             canEdit={canEdit}
-            entityCount={teams.length || null}
+            capacity={teamPlaceCapacity(teams.length || null)}
             onFormatChange={setFormatDraft}
             onPointsTotalChange={setPointsTotalDraft}
             onPointsDistChange={setPointsDistDraft}
