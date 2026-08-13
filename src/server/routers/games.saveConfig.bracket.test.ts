@@ -476,6 +476,72 @@ describe("saveConfig — hash invariant: every bracket field moves, none churns"
     });
   });
 
+  /**
+   * Go-live needs a FIELD (migration 117, #917).
+   *
+   * Phase 2c made Bracket selectable without requiring the setup to have
+   * happened, so `scoring_enabled` could be flipped on an empty draw and the
+   * crew would arrive at a game with nothing to play. Refused server-side rather
+   * than only in the client, because a refusal the client makes and the server
+   * doesn't is two answers to one question.
+   */
+  describe("a bracket needs a field before it goes live", () => {
+    it("refuses go-live with NO entrants", async () => {
+      const gameId = await newBracketGame("Live with empty field");
+      await expect(save(gameId, { scoringEnabled: true })).rejects.toThrow(/two entrants/);
+    });
+
+    it("refuses go-live with ONE — a one-entrant draw has no match to play", async () => {
+      const gameId = await newBracketGame("Live with one entrant");
+      await expect(
+        save(gameId, {
+          entrants: [{ seed: 1, teamId, userIds: [owner] }],
+          draw: buildDraw(1) as DrawMatch[],
+          scoringEnabled: true,
+        })
+      ).rejects.toThrow(/two entrants/);
+    });
+
+    it("ALLOWS building the field and going live in ONE save — the post-write read", async () => {
+      // The case that would break if the check read pre-write state: the pool is
+      // written by step 2d of this same call, and readiness runs last precisely
+      // so it sees it. Refusing here would refuse the ordinary first setup, with
+      // no save order that would work.
+      const gameId = await newBracketGame("Field and go-live together");
+      await save(gameId, {
+        entrants: threeEntrants(),
+        draw: buildDraw(3) as DrawMatch[],
+        scoringEnabled: true,
+      });
+      const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
+      expect(g.scoring_enabled).toBe(true);
+    });
+
+    it("re-checks on a re-affirm, so a live bracket's field can't be emptied", async () => {
+      // STRUCTURAL, so unlike 093's zero-points check it is not fresh-enable-only.
+      // Emptying the field of a live game would otherwise leave it live with no draw.
+      const gameId = await newBracketGame("Empty a live field");
+      await save(gameId, { entrants: threeEntrants(), draw: buildDraw(3) as DrawMatch[], scoringEnabled: true });
+      await expect(
+        save(gameId, { entrants: [], draw: [], scoringEnabled: true })
+      ).rejects.toThrow(/two entrants/);
+    });
+
+    it("leaves a NON-bracket non-golf game alone", async () => {
+      // The gate is scoped to `competition_format = 'bracket'`; a head-to-head
+      // card game has no field and must still go live on points alone.
+      const gameId = await newBracketGame("Head to head still fine");
+      await ctx.caller().games.saveConfig({
+        tripId,
+        gameId,
+        baseHash: await hashOf(gameId),
+        payload: { ...(await payloadFor(gameId, {})), competitionFormat: "head_to_head", scoringEnabled: true },
+      });
+      const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
+      expect(g.scoring_enabled).toBe(true);
+    });
+  });
+
   it("a WINNER does NOT move the hash — a pick is a score, not config", async () => {
     // The deliberate exclusion, pinned so it isn't "fixed" later. Hashing a pick
     // would refetch every open device's whole config on each advance AND fail a
