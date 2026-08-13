@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shufflePool, entrantCap } from "./bracketDraft";
+import { shufflePool, entrantCap, bracketFieldReady, MIN_BRACKET_FIELD } from "./bracketDraft";
 import type { BracketConfig } from "./configDraft";
 
 const CFG: BracketConfig = { elimination: "single", entrants: "partners", seeding: "manual", consolation: false };
@@ -102,5 +102,55 @@ describe("shufflePool — spreading teammates", () => {
   it("an entrant on no team is still placed, not dropped", () => {
     const out = shufflePool([["x1"], ["a1"], ["b1"]], TEAMS, { avoidTeammates: true, random: seeded(6) });
     expect(out.flat().sort()).toEqual(["a1", "b1", "x1"]);
+  });
+});
+
+/**
+ * The go-live field gate (#917) — the CLIENT half.
+ *
+ * Phase 2c made Bracket selectable without requiring the setup to have
+ * happened, so scoring could be enabled on an empty draw and the crew would
+ * arrive at a game with nothing to play. Migration 117 refuses it server-side;
+ * this is the second opinion that stops the Save bar offering the action at all.
+ *
+ * The predicate answers for every non-golf format, not just brackets, so the
+ * call site is one `&&` rather than a conditional — a conditional is what gets
+ * accidentally skipped.
+ */
+describe("bracketFieldReady", () => {
+  it("a NON-bracket game has no field to be short of", () => {
+    expect(bracketFieldReady(false, [])).toBe(true);
+    expect(bracketFieldReady(false, [["a1"]])).toBe(true);
+  });
+
+  it("refuses an empty field and a one-entrant one", () => {
+    // One entrant has nobody to play — `buildDraw(1)` produces no match, so a
+    // live one-entrant bracket would show an empty draw.
+    expect(bracketFieldReady(true, [])).toBe(false);
+    expect(bracketFieldReady(true, [["a1"]])).toBe(false);
+  });
+
+  it("two entrants is enough — the smallest field with a game in it", () => {
+    expect(bracketFieldReady(true, [["a1"], ["b1"]])).toBe(true);
+  });
+
+  it("counts FILLED entrants — an empty slot the builder left behind isn't one", () => {
+    // The builder leaves an empty group when a partner is removed. Counting it
+    // would let a bracket go live one entrant short of what the draw will hold,
+    // and the payload drops those slots anyway.
+    expect(bracketFieldReady(true, [["a1"], []])).toBe(false);
+    expect(bracketFieldReady(true, [["a1"], [], ["b1"]])).toBe(true);
+  });
+
+  it("partners count as ONE entrant each, not two players", () => {
+    // The field is entrants, not people: one pair is one competitor.
+    expect(bracketFieldReady(true, [["a1", "a2"]])).toBe(false);
+    expect(bracketFieldReady(true, [["a1", "a2"], ["b1", "b2"]])).toBe(true);
+  });
+
+  it("agrees with the constant the SQL copy is written against", () => {
+    // The number lives here, in migration 117, and in `bracketPlaceCapacity`.
+    // The SQL can't import it, so this pins the TypeScript side to one value.
+    expect(MIN_BRACKET_FIELD).toBe(2);
   });
 });

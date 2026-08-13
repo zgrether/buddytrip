@@ -24,6 +24,43 @@ export const DEFAULT_BRACKET_CONFIG: BracketConfig = {
   consolation: false,
 };
 
+/**
+ * The smallest field with a game in it.
+ *
+ * One entrant has nobody to play: `buildDraw(1)` produces no match, so a
+ * one-entrant bracket switched to Scoring would show the crew an empty draw.
+ *
+ * ── This number lives in three places, and that is not an accident ─────────
+ * Here (the go-live gate), in `save_game_config`'s readiness check (migration
+ * 117), and inside `bracketPlaceCapacity`, which returns a null ceiling below
+ * two entrants because there is no draw to rank yet. The SQL copy cannot import
+ * this constant, so the duplication is real and permanent — what a named export
+ * buys is that the two TypeScript readers agree and that the SQL has something
+ * greppable to point at, rather than a bare `2` in three unrelated files.
+ *
+ * The client gate is deliberately the SECOND opinion, never the only one: the
+ * RPC re-asserts readiness inside the transaction, so a client that is wrong,
+ * stale, or bypassed cannot enable scoring on an empty draw.
+ */
+export const MIN_BRACKET_FIELD = 2;
+
+/**
+ * Is this game's field big enough to go live?
+ *
+ * Answers for EVERY non-golf format, not just brackets — a game that isn't a
+ * bracket has no field to be short of, so it is always ready on this axis. That
+ * shape keeps the call site a single `&&` rather than a conditional, which is
+ * what stops the check being accidentally skipped for the formats it doesn't
+ * constrain.
+ *
+ * `entrants` is the DRAFT pool, so the answer moves as the field is built,
+ * matching the server's read of the pool this same Save is about to write.
+ */
+export function bracketFieldReady(isBracket: boolean, entrants: string[][]): boolean {
+  if (!isBracket) return true;
+  return entrants.filter((e) => e.length > 0).length >= MIN_BRACKET_FIELD;
+}
+
 /** Members per entrant: 1 for individuals, 2 for pairs. Drives the picker's cap. */
 export function entrantCap(config: BracketConfig): number {
   return config.entrants === "partners" ? 2 : 1;
