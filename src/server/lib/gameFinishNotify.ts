@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { gameHref } from "@/lib/gameRoutes";
+import type { ResolvedResultStrategy } from "@/lib/resultStrategy";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { sendPushToUsers } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
@@ -70,6 +71,19 @@ export interface SummaryEntry {
   points?: number | null;
   /** Finishing rank, 1 = best (manual placements, rack, stroke). */
   position?: number | null;
+  /**
+   * This competitor is more than one person — a 2v2 bracket pairing.
+   *
+   * Carried for VERB AGREEMENT alone ("Zach wins it" vs "Zach & Matt win it"),
+   * which is why it is a field rather than something the formatter works out:
+   * the only other way to know is to look for " & " inside the joined name, and
+   * deriving grammar from someone's actual name is how that breaks.
+   *
+   * Absent everywhere else — a team and a user are each singular for these
+   * purposes ("Manhattans wins it" is never printed; teams use the placement
+   * shape, which has no verb).
+   */
+  multi?: boolean;
 }
 
 /** "A & B" for two, "A, B & C" for more. Serial comma omitted deliberately —
@@ -241,6 +255,74 @@ export function formatStrokeSummary(entries: SummaryEntry[]): string {
 }
 
 /**
+ * A bracket: the winner, and the runner-up it beat.
+ *
+ *   Zach Grether & BJ Dennison win it, over Marcus Thornton & Jeremy Maddox
+ *   Zach Grether wins it, over BJ Dennison
+ *
+ * ── Why the WINNER and not a scoreline (#930) ───────────────────────────────
+ * Every other format's summary is a COMPARISON because every other format
+ * produces one — match play has a tally, stroke has totals, a manual placement
+ * game has an entered order over the teams that played it. A bracket produces a
+ * CHAMPION, and the ranking underneath is a by-product of the tree (elimination
+ * round IS the ranking, #916) rather than something anyone watched happen.
+ * Listing four entrants in placement order reports the shape of the draw, not
+ * the result.
+ *
+ * Two more reasons, either of which would have pointed the same way alone:
+ *
+ *  - The team roll-up genuinely ISN'T THERE to report. For a bracket it is not
+ *    in `game_results` at all — it is derived at read time by
+ *    `computeCompetitionLeaderboard`. Printing "Manhattans 5 – Centurions 3"
+ *    here would mean calling the leaderboard from the notification path or
+ *    duplicating the roll-up, and the second is precisely what the finalize
+ *    slice spent its effort avoiding. A rule that makes the wrong answer
+ *    expensive to write is worth noticing.
+ *  - Cup movement ALREADY HAS a push. The clinch notification exists to say what
+ *    a result did to the standings; a game push that also editorialised about
+ *    the cup would be two voices on one question.
+ *
+ * ── The runner-up earns its place; nothing below 2nd does ───────────────────
+ * The final is the one comparison a bracket really does produce, and it is what
+ * anyone who missed it asks next. Everything below 2nd is a TIE GROUP — the semi
+ * losers share 3rd unless a consolation match separated them — so listing it
+ * would print ties the game never played out.
+ *
+ * ── Voice ──────────────────────────────────────────────────────────────────
+ * This is the one summary that is a sentence rather than the label-value form
+ * its siblings use, and that is deliberate rather than drift: those formats
+ * report a comparison, so they read as one. A bracket has a single story, so it
+ * gets a single clause. The verb agrees with the entrant (`multi`), because
+ * "Zach & Matt wins it" is the kind of error that makes an app look broken.
+ *
+ * Returns "" when there is no winner — callers fall back to a body that does not
+ * pretend to have a result.
+ */
+export function formatBracketSummary(entries: SummaryEntry[]): string {
+  const named = entries.filter((e) => e.name);
+  if (named.length === 0) return "";
+
+  const groups = rankGroups(named);
+  const lead = groups[0];
+  if (!lead) return "";
+
+  // A bracket's final has exactly one winner, so a tied lead is not a state the
+  // tree can produce. Handled rather than asserted: a shared first place falls
+  // back to the shape the rest of the file uses for one, and drops the
+  // runner-up, because "over" makes no sense when the top is unresolved.
+  if (lead.entries.length > 1) {
+    return tieGroupLabel(lead.entries.map((e) => e.name), lead.position, groups.length === 1);
+  }
+
+  const winner = lead.entries[0];
+  const verb = winner.multi ? "win" : "wins";
+  const runnerUp = groups[1]?.entries.length === 1 ? groups[1].entries[0] : null;
+  return runnerUp
+    ? `${winner.name} ${verb} it, over ${runnerUp.name}`
+    : `${winner.name} ${verb} it`;
+}
+
+/**
  * The clinch margin: bare totals, top two, no names.
  *
  * Names are deliberately omitted here even though the game summary includes
@@ -302,17 +384,73 @@ function cupUrl(tripId: string): string {
 }
 
 /**
- * Who hears about a finished game.
+ * ── The per-format notification registry (#930) ─────────────────────────────
  *
- * ENGINE formats → the game's PARTICIPANTS. They played it; the result is their
- * news. ~4-8 people, so a person gets ~1-2 of these on a tournament day rather
- * than one per game on the board. Cup-wide news is what the clinch push is for,
- * and the board itself is already live via the score-event broadcast.
+ * Every question this file asks about a format, asked ONCE, of one value.
  *
- * MANUAL arm → the COMPETITION's assigned members. Non-golf side events are
- * team-scoped and have NO individual roster — `game_participants` is not
- * populated for them, so "the game's participants" isn't a resolvable audience.
- * They're also rare (~1-5 per trip), so the wider audience stays cheap.
+ * It replaces two booleans (`isManual` / `isStroke`) and the `isStroke ? "user"
+ * : "team"` fork they drove. That fork was a two-format answer to a
+ * four-competitor question, and the bracket is what it could not answer: a
+ * bracket's rows are `entity_type = 'entrant'` (migration 119), so the query
+ * matched nothing, the summary came back empty, and the push went out saying
+ * "Results are in." for a game that had just produced a champion. Nothing
+ * errored — the format simply inherited `"team"` because nothing ever ASKED it,
+ * which is the shape `FORMAT_SURFACE` exists for.
+ *
+ * `satisfies Record<NotifyFormatKey, NotifySurface>` is what makes that
+ * impossible to repeat: a fifth strategy does not compile until it answers all
+ * three fields, and none of them is optional — an optional field is a question a
+ * new format can decline to answer.
+ *
+ * Two booleans derived from one value is also how they drift (#24): they were
+ * computed at the call site as `strategy === null || strategy === "bracket"` and
+ * `strategy === "stroke_total"`, which is this table, spelled twice, one of them
+ * in another file.
+ */
+type NotifyFormatKey = "stroke_total" | "match_play" | "rack_n_stack" | "bracket" | "manual";
+
+interface NotifySurface {
+  /**
+   * Whose news is it?
+   *
+   * `participants` — ENGINE formats. They played it; the result is their news.
+   * ~4-8 people, so a person gets ~1-2 of these on a tournament day rather than
+   * one per game on the board. Cup-wide news is what the clinch push is for, and
+   * the board itself is already live via the score-event broadcast.
+   *
+   * `competition` — the cup's assigned members. Non-golf side events and
+   * brackets are team-scoped and have NO `game_participants` roster (a bracket's
+   * competitors live in `bracket_entrants`), so "the game's participants" is not
+   * a resolvable audience — it would resolve to nobody and the push would reach
+   * no one. They are also rare (~1-5 per trip), so the wider audience is cheap.
+   */
+  audience: "participants" | "competition";
+  /** Which `game_results` rows ARE the competitors, by `entity_type`. */
+  competitor: "user" | "team" | "entrant";
+  /** Which summary shape reads the resulting entries. */
+  summary: "stroke" | "placement" | "bracket";
+}
+
+const NOTIFY_SURFACE = {
+  stroke_total: { audience: "participants", competitor: "user", summary: "stroke" },
+  // Match play writes BOTH per-side rows and team totals; `competitor: "team"`
+  // is what keeps a 4-match game from reporting eight competitors.
+  match_play: { audience: "participants", competitor: "team", summary: "placement" },
+  rack_n_stack: { audience: "participants", competitor: "team", summary: "placement" },
+  manual: { audience: "competition", competitor: "team", summary: "placement" },
+  bracket: { audience: "competition", competitor: "entrant", summary: "bracket" },
+} as const satisfies Record<NotifyFormatKey, NotifySurface>;
+
+/** The registry key for a resolved strategy. `null` is a real answer (manual,
+ *  entered by hand) rather than an absence, so it gets a name rather than a
+ *  fallback — see `resolveResultStrategy`. */
+export function notifySurfaceFor(strategy: ResolvedResultStrategy): NotifySurface {
+  return NOTIFY_SURFACE[strategy ?? "manual"];
+}
+
+/**
+ * Who hears about a finished game — see `NotifySurface.audience` for the split
+ * and its reasoning.
  *
  * Guests (`users.is_guest`) need no special handling: a placeholder has no
  * account and therefore no push subscription, so it falls out at the device read.
@@ -321,16 +459,16 @@ async function resolveAudience(
   admin: SupabaseClient,
   gameId: string,
   competitionId: string | null,
-  isManual: boolean
+  audience: NotifySurface["audience"]
 ): Promise<string[]> {
-  if (isManual && competitionId) {
+  if (audience === "competition" && competitionId) {
     const { data } = await admin
       .from("team_assignments")
       .select("user_id")
       .eq("competition_id", competitionId);
     const ids = (data ?? []).map((r: { user_id: string }) => r.user_id);
     if (ids.length > 0) return ids;
-    // Fall through: a manual game whose competition has no assignments yet.
+    // Fall through: a cup-scoped game whose competition has no assignments yet.
   }
   const { data } = await admin
     .from("game_participants")
@@ -340,51 +478,114 @@ async function resolveAudience(
 }
 
 /**
+ * What each ENTRANT id is called, for a bracket.
+ *
+ * An entrant is one person or a pair, so the display name is assembled from its
+ * MEMBERS rather than read off a row — `bracket_entrants` carries a seed and a
+ * team, not a name (migration 112). Two plain reads and a JS join, matching
+ * `readBracketDraw`'s reasoning: `bracket_entrant_members` is reachable by an
+ * ordinary select, and an embed that silently returns nothing is the shape of
+ * #16's landmine.
+ *
+ * Ordered by `user_id` within an entrant — the SAME order `games.bracketPool`
+ * uses, so the pair reads the same way in the notification as it does on the
+ * board. Arbitrary, but arbitrary once.
+ *
+ * `multi` rides back because it decides a VERB ("wins it" vs "win it") and
+ * cannot be recovered from the joined string without parsing it — deriving
+ * grammar by looking for " & " in a name is the kind of thing that breaks on
+ * someone's actual name.
+ */
+async function loadEntrantNames(
+  admin: SupabaseClient,
+  entrantIds: string[]
+): Promise<Map<string, { name: string; multi: boolean }>> {
+  const out = new Map<string, { name: string; multi: boolean }>();
+  if (entrantIds.length === 0) return out;
+
+  const { data: members } = await admin
+    .from("bracket_entrant_members")
+    .select("entrant_id, user_id")
+    .in("entrant_id", entrantIds)
+    .order("user_id", { ascending: true });
+  if (!members || members.length === 0) return out;
+
+  const userIds = [...new Set((members as { user_id: string }[]).map((m) => m.user_id))];
+  const { data: people } = await admin.from("users").select("id, name").in("id", userIds);
+  const nameByUser = new Map<string, string>(
+    (people ?? []).map((p: { id: string; name: string | null }) => [p.id, p.name ?? ""])
+  );
+
+  const byEntrant = new Map<string, string[]>();
+  for (const m of members as { entrant_id: string; user_id: string }[]) {
+    const name = nameByUser.get(m.user_id);
+    if (!name) continue;
+    byEntrant.set(m.entrant_id, [...(byEntrant.get(m.entrant_id) ?? []), name]);
+  }
+  for (const [entrantId, names] of byEntrant) {
+    out.set(entrantId, { name: joinNames(names), multi: names.length > 1 });
+  }
+  return out;
+}
+
+/**
  * Load the finished game's result rows and resolve display names.
  *
- * ONE read path for every format rather than three, because `game_results` is
- * already the shared spine — the roll-up "never distinguishes computed from
- * entered", and neither does this. What differs per format is only which rows
- * are the competitors:
- *
- *  - match play / rack / non-golf → `entity_type = 'team'` (team ids → team names)
- *  - stroke                       → `entity_type = 'user'` (user ids → user names)
- *
- * Match play writes BOTH per-side rows AND team totals, so filtering on
- * entity_type is what keeps a 4-match game from reporting eight competitors.
+ * ONE read path for every format, because `game_results` is already the shared
+ * spine — the roll-up "never distinguishes computed from entered", and neither
+ * does this. What differs per format is only which rows are the competitors, and
+ * that question is answered by `NOTIFY_SURFACE` rather than here.
  *
  * Returns [] on any failure — a notification without a result line is a minor
  * loss; a throw here would surface on a game that genuinely finished.
+ *
+ * EXPORTED FOR TESTS, and for the same reason the formatters are: this is the
+ * half that talks to the database, and its failure mode is a query that matches
+ * nothing and says so by returning an empty summary. That is exactly what #930
+ * was, and it is invisible from the outside — the push still sends, the game
+ * still finalizes, the body just quietly says "Results are in." A pure test
+ * cannot see it, so the read gets a runtime one (CLAUDE.md #23's rule, applied
+ * to our own contract rather than a library's).
  */
-async function loadSummaryEntries(
+export async function loadSummaryEntries(
   admin: SupabaseClient,
   gameId: string,
-  isStroke: boolean
+  surface: NotifySurface
 ): Promise<SummaryEntry[]> {
   try {
-    const entityType = isStroke ? "user" : "team";
     const { data: rows } = await admin
       .from("game_results")
       .select("entity_id, raw_score, position")
       .eq("game_id", gameId)
-      .eq("entity_type", entityType);
+      .eq("entity_type", surface.competitor);
     if (!rows || rows.length === 0) return [];
 
     const ids = rows.map((r: { entity_id: string }) => r.entity_id);
-    const { data: named } = await admin
-      .from(isStroke ? "users" : "teams")
-      .select("id, name")
-      .in("id", ids);
-    const nameById = new Map<string, string>(
-      (named ?? []).map((n: { id: string; name: string | null }) => [n.id, n.name ?? ""])
-    );
+    // An entrant's name is assembled from its members; a user's and a team's is
+    // a column. Same shape out either way.
+    const metaById =
+      surface.competitor === "entrant"
+        ? await loadEntrantNames(admin, ids)
+        : new Map(
+            ((
+              await admin
+                .from(surface.competitor === "user" ? "users" : "teams")
+                .select("id, name")
+                .in("id", ids)
+            ).data ?? []).map((n: { id: string; name: string | null }) => [
+              n.id,
+              { name: n.name ?? "", multi: false },
+            ])
+          );
 
     return rows
       .map((r: { entity_id: string; raw_score: number | null; position: number | null }) => ({
-        name: nameById.get(r.entity_id) ?? "",
+        name: metaById.get(r.entity_id)?.name ?? "",
+        multi: metaById.get(r.entity_id)?.multi ?? false,
         // A manual placement mirrors position into raw_score, which would read
         // as "points" and print "1st Centurions 1" — nonsense. Points are real
-        // only where the format actually awards them (match play, rack).
+        // only where the format actually awards them (match play, rack). A
+        // bracket's rows mirror the same way, so this covers them too.
         points: r.position != null && r.raw_score === r.position ? null : r.raw_score,
         position: r.position,
       }))
@@ -400,11 +601,17 @@ export interface NotifyGameFinishedInput {
   gameName: string | null;
   gameTypeId: string | null;
   competitionId: string | null;
-  /** True for the `result_strategy: null` (manual / non-golf) arm. Selects the
-   *  AUDIENCE only — the copy is identical for golf and non-golf. */
-  isManual: boolean;
-  /** True for `stroke_total`, whose competitors are individuals, not teams. */
-  isStroke: boolean;
+  /**
+   * The engine that finalized this game, as `games.finish` resolved it.
+   *
+   * ONE value, not the two booleans this replaces (`isManual` / `isStroke`).
+   * Those were computed at the call site as `strategy === null || strategy ===
+   * "bracket"` and `strategy === "stroke_total"` — i.e. `NOTIFY_SURFACE`,
+   * spelled twice, in another file. Two booleans that must always agree is how
+   * they drift (#24), and it is also what made the bracket's empty summary
+   * possible: the format had no way to answer a question nobody asked it.
+   */
+  strategy: ResolvedResultStrategy;
   /** The user who finalized. Never notified about their own action. */
   actorUserId: string;
   /** Injectable for tests; defaults to the service-role admin client. */
@@ -427,19 +634,26 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
   try {
     const admin = input.admin ?? createAdminClient();
 
+    // Every per-format question, asked once, of one value.
+    const surface = notifySurfaceFor(input.strategy);
+
     const audience = await resolveAudience(
       admin,
       input.gameId,
       input.competitionId,
-      input.isManual
+      surface.audience
     );
 
-    const entries = await loadSummaryEntries(admin, input.gameId, input.isStroke);
-    // Stroke's field is the whole trip, so it gets the capped form; every other
-    // format is team-scoped and small enough to list in full.
-    const summary = input.isStroke
-      ? formatStrokeSummary(entries)
-      : formatResultSummary(entries);
+    const entries = await loadSummaryEntries(admin, input.gameId, surface);
+    // Stroke's field is the whole trip, so it gets the capped form; a bracket
+    // has one champion, so it gets the sentence; everything else is team-scoped
+    // and small enough to list in full.
+    const summary =
+      surface.summary === "stroke"
+        ? formatStrokeSummary(entries)
+        : surface.summary === "bracket"
+          ? formatBracketSummary(entries)
+          : formatResultSummary(entries);
 
     await sendPushToUsers(audience, "game_results", {
       ...COPY.gameFinal(input.gameName, summary),

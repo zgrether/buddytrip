@@ -1151,15 +1151,13 @@ export const gamesRouter = router({
           gameName: (game.name as string | null) ?? null,
           gameTypeId: (game.game_type_id as string | null) ?? null,
           competitionId: (game.competition_id as string | null) ?? null,
-          // A bracket counts as manual HERE because this flag selects the
-          // AUDIENCE, and the reason the manual arm has a different one applies
-          // to a bracket exactly: a non-golf side event has no `game_participants`
-          // roster (a bracket's competitors are `bracket_entrants`), so "the
-          // game's participants" would resolve to nobody and the push would reach
-          // no one at all. The competition's assigned members are the audience,
-          // same as every other non-golf game.
-          isManual: strategy === null || strategy === "bracket",
-          isStroke: strategy === "stroke_total",
+          // The resolved strategy, passed WHOLE. It used to be two booleans
+          // derived here (`isManual` / `isStroke`), which was the notification
+          // layer's per-format table spelled out in this file — so a bracket's
+          // audience was right and its result line was silently empty, because
+          // the second boolean had no way to say "entrant". One value; the
+          // registry over there answers every question from it (#930).
+          strategy,
           actorUserId: ctx.user!.id,
         });
       }
