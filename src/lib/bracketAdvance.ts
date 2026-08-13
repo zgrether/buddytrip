@@ -1,0 +1,195 @@
+/**
+ * Bracket ADVANCEMENT — who occupies each match, derived from the winners below.
+ *
+ * Pure and client-safe, no server/DB deps (CLAUDE.md #8), and the companion to
+ * `bracket.ts`: that module answers "what is the tree?", this one answers "who is
+ * standing in it right now?". Both speak SEEDS, never people — which person or
+ * pair holds a seed is `bracket_entrants`' business, and keeping the two apart is
+ * what lets a re-seed change who plays whom without touching this logic.
+ *
+ * ── Derived, never materialised (migration 112's model) ─────────────────────
+ * Later rounds are computed, not stored. `bracket_matches` persists round-1 seeds
+ * and at most a `winner_entrant_id` per match; every other occupant in the tree
+ * is a function of those. That is CLAUDE.md #11's rule — derive, don't snapshot —
+ * and it is what makes an undo ONE COLUMN wide: clear a winner and everything
+ * above it re-derives, with no cascade to unwind and no second write path that
+ * could disagree. Picking the wrong winner is a certainty, so the cost of the fix
+ * is a design constraint, not an afterthought.
+ *
+ * The same consequence in the other direction: nothing here writes, and nothing
+ * here needs to be kept in sync. The ONE resolver feeds the bracket view, the
+ * pick mutation's validation, and (later) the finalize's placement computation,
+ * so a seat shown on screen and a seat the server will accept a pick for cannot
+ * differ.
+ */
+
+import { isBye, roundCount, type BracketDrawMatch, type BracketSide } from "./bracket";
+
+/** A match's identity within one game's draw — the same triple the schema makes
+ *  UNIQUE, and the same one the config hash folds the table in by. */
+export interface BracketMatchRef {
+  bracket: BracketSide;
+  round: number;
+  slot: number;
+}
+
+/** Stable string form of a match's identity, for map keys. Mirrors the UNIQUE
+ *  (bracket, round, slot) constraint, so two matches share a key only if the
+ *  schema would have refused them both. */
+export function matchKey(m: BracketMatchRef): string {
+  return `${m.bracket}:${m.round}:${m.slot}`;
+}
+
+/** Recorded winners, keyed by `matchKey`, valued by the WINNING SEED. A match
+ *  with no pick yet is absent (or null) — never zero. */
+export type WinnerBySeed = Record<string, number | null | undefined>;
+
+/** A draw match with its occupants resolved. */
+export interface ResolvedMatch extends BracketDrawMatch {
+  /** The seed occupying the A seat once advancement is applied, or null while
+   *  the match below it is undecided. */
+  aSeed: number | null;
+  bSeed: number | null;
+  /** The recorded winner, or null. Only ever one of this match's own occupants
+   *  — see `winnerOf` for why a stale pick is dropped rather than trusted. */
+  winnerSeed: number | null;
+  /** Nobody to play: a round-1 seat with no opponent. Advances without a pick,
+   *  and must never be offered as something to decide. */
+  bye: boolean;
+  /** Both seats known and no winner recorded — the matches actually waiting on
+   *  someone. Drives what the bracket view offers a pick for. */
+  playable: boolean;
+}
+
+/**
+ * Which seed leaves this match going upward.
+ *
+ * A BYE advances its occupant with no pick, because nobody played — the row
+ * stores no winner by design (migration 112), so reading one would mean
+ * inventing a result for a game that did not happen.
+ *
+ * Otherwise it is the recorded winner, but ONLY IF that seed is actually one of
+ * this match's resolved occupants. A recorded winner that is neither occupant is
+ * dropped, and that is deliberate rather than defensive noise: the pool can be
+ * re-seeded, and `save_game_config` only refuses a rebuild once a winner EXISTS
+ * (`HAS_PICKS`) — it does not, and cannot, guarantee that a winner left over
+ * from some other arrangement still names someone in this match. Trusting it
+ * would advance a seed that isn't playing, which is worse in every direction
+ * than showing the match as undecided.
+ */
+function winnerOf(m: { aSeed: number | null; bSeed: number | null; bye: boolean }, recorded: number | null): number | null {
+  if (m.bye) return m.aSeed;
+  if (recorded == null) return null;
+  return recorded === m.aSeed || recorded === m.bSeed ? recorded : null;
+}
+
+/** Where a match's winner goes: up one round, into the slot that pairs it with
+ *  its neighbour. Slot 1 and 2 of round R both feed slot 1 of round R+1 — the
+ *  odd one into seat A, the even one into seat B. Inverse of `buildDraw`'s
+ *  halving, and the one place that relationship is written down. */
+function parentOf(slot: number): { slot: number; seat: "a" | "b" } {
+  return { slot: Math.ceil(slot / 2), seat: slot % 2 === 1 ? "a" : "b" };
+}
+
+/**
+ * Resolve every match's occupants from the stored draw plus the recorded winners.
+ *
+ * Processes rounds in order, so each round is resolved before the round it feeds.
+ * A match whose feeders are undecided keeps null seats — an unknown occupant is
+ * shown as unknown, never guessed at.
+ *
+ * The CONSOLATION match is the exception to "winners flow upward": it is
+ * contested by the two LOSING semi-finalists, so it derives from the same
+ * matches the final does, taking the other side of each. It resolves only once a
+ * semi has both an occupant pair and a decision — a semi-final still in progress
+ * has no loser yet, and half a consolation pairing is not a fixture.
+ *
+ * `draw` is taken as data rather than rebuilt from an entrant count, because the
+ * persisted draw is the authority once a game exists: a field edited after the
+ * draw was built would otherwise resolve against a tree nobody is playing.
+ */
+export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}): ResolvedMatch[] {
+  if (draw.length === 0) return [];
+
+  const main = draw.filter((m) => m.bracket === "main");
+  const consolation = draw.filter((m) => m.bracket === "consolation");
+  const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
+
+  const resolved = new Map<string, ResolvedMatch>();
+  // Occupants fed upward from the round below, filled in as each round resolves.
+  const incoming = new Map<string, { a?: number | null; b?: number | null }>();
+
+  for (let round = 1; round <= lastRound; round++) {
+    for (const m of main.filter((x) => x.round === round)) {
+      const fed = incoming.get(matchKey(m)) ?? {};
+      // Round 1 carries its seeds; every later round takes them from below.
+      const aSeed = round === 1 ? m.aSeed : (fed.a ?? null);
+      const bSeed = round === 1 ? m.bSeed : (fed.b ?? null);
+      const bye = round === 1 && isBye(m);
+      const winnerSeed = winnerOf({ aSeed, bSeed, bye }, winners[matchKey(m)] ?? null);
+
+      resolved.set(matchKey(m), {
+        ...m,
+        aSeed,
+        bSeed,
+        winnerSeed,
+        bye,
+        playable: aSeed !== null && bSeed !== null && winnerSeed === null,
+      });
+
+      if (winnerSeed !== null && round < lastRound) {
+        const parent = parentOf(m.slot);
+        const key = matchKey({ bracket: "main", round: round + 1, slot: parent.slot });
+        incoming.set(key, { ...(incoming.get(key) ?? {}), [parent.seat]: winnerSeed });
+      }
+    }
+  }
+
+  // The 3rd-place play-off. `buildDraw` only emits one when there are semis to
+  // lose (rounds >= 2), so the lookup below always has real matches to read.
+  for (const m of consolation) {
+    const semis = [1, 2].map((slot) => resolved.get(matchKey({ bracket: "main", round: lastRound - 1, slot })));
+    const losers = semis.map((s) => loserOf(s));
+    const [aSeed, bSeed] = [losers[0] ?? null, losers[1] ?? null];
+    const winnerSeed = winnerOf({ aSeed, bSeed, bye: false }, winners[matchKey(m)] ?? null);
+    resolved.set(matchKey(m), {
+      ...m,
+      aSeed,
+      bSeed,
+      winnerSeed,
+      bye: false,
+      playable: aSeed !== null && bSeed !== null && winnerSeed === null,
+    });
+  }
+
+  // Emitted in the caller's order so the view can render the draw as stored.
+  return draw.map((m) => resolved.get(matchKey(m))!);
+}
+
+/** The side of a decided match that did NOT advance. Null while the match is
+ *  undecided — a match in progress has no loser, only two people still in it. */
+function loserOf(m: ResolvedMatch | undefined): number | null {
+  if (!m || m.winnerSeed === null) return null;
+  return m.winnerSeed === m.aSeed ? m.bSeed : m.aSeed;
+}
+
+/** The seed that won the whole thing, or null while the final is undecided.
+ *  Reads the resolved final rather than "the last recorded winner", which would
+ *  be whichever pick happened most recently. */
+export function championSeed(resolved: ResolvedMatch[]): number | null {
+  const main = resolved.filter((m) => m.bracket === "main");
+  if (main.length === 0) return null;
+  const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
+  return main.find((m) => m.round === lastRound && m.slot === 1)?.winnerSeed ?? null;
+}
+
+/** Is every match that CAN be decided decided? True when nothing is playable —
+ *  which is what "the bracket is finished" means, and is not the same as "the
+ *  final has a winner" for a draw carrying a consolation match. */
+export function drawComplete(resolved: ResolvedMatch[]): boolean {
+  return resolved.length > 0 && resolved.every((m) => !m.playable);
+}
+
+/** How many rounds this resolved draw spans — re-exported through here so a
+ *  caller rendering the tree needs only this module. */
+export { roundCount };
