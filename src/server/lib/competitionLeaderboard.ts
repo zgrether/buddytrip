@@ -181,6 +181,31 @@ export async function computeCompetitionLeaderboard(
   const teamByEntrant = new Map<string, string | null>(
     ((entrantRowsRes.data ?? []) as { id: string; team_id: string | null }[]).map((e) => [e.id, e.team_id ?? null])
   );
+  /**
+   * Did that read FAIL, as opposed to returning nothing?
+   *
+   * The distinction is the whole of CLAUDE.md #16's landmine pointed at this
+   * function. "No entrants" and "we could not read the entrants" produce the same
+   * empty map, and an unchecked failure would make every entrant look teamless —
+   * so a finished bracket would quietly award nobody anything while the board
+   * rendered as though that were the result. Points vanishing with no error is
+   * the expensive failure, not points missing with one.
+   *
+   * The bracket branch below treats this as UNPOSTED rather than as zero: the
+   * game contributes its pool and shows no awards yet, which is the honest
+   * reading of "we don't know", and the next poll recovers. It is deliberately
+   * not a throw — one sub-read failing should not blank a whole competition's
+   * board — but it IS logged, because a silent degrade nobody can see is how the
+   * six-week version of this bug happened.
+   */
+  const entrantReadError = (entrantRowsRes as { error?: { message: string } | null }).error ?? null;
+  if (entrantReadError) {
+    console.error("[competitionLeaderboard] bracket entrant read failed — brackets will show as unposted", {
+      competitionId,
+      bracketGameIds,
+      error: entrantReadError.message,
+    });
+  }
   // Games with at least one score entry OR ≥1 decided hole outcome — drives
   // `started` on each game below. The two sources are mutually exclusive per
   // game (a game is one entry_mode), so merging them is always safe.
@@ -279,7 +304,9 @@ export async function computeCompetitionLeaderboard(
      * bracket-specific guess about what the organizer meant.
      */
     if (isBracketGame(g.game_type_id as string | null, g.competition_format as string | null)) {
-      const entrantStandings = entrantStandingsByGame.get(g.id as string) ?? [];
+      // A failed entrant read is "unknown", not "nobody scored" — see the note on
+      // `entrantReadError`. Empty standings here give the pre-decision shape.
+      const entrantStandings = entrantReadError ? [] : entrantStandingsByGame.get(g.id as string) ?? [];
       const pointsByEntrant = placementPoints(
         isPlacement(rawDist) ? rawDist.values : [],
         entrantStandings,
