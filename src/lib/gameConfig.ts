@@ -45,6 +45,25 @@ export type PlacementState =
   | "complete"
   | "too_many_places";
 
+/**
+ * What decides how many finishing places a game HAS. The count alone is not
+ * enough: the refusal has to name the thing the reader can go and change, and
+ * those are different things per source ("add teams" is useless advice for a
+ * bracket, whose place count comes from its own shape).
+ */
+export type PlaceCapacitySource = "teams" | "bracket";
+
+/**
+ * How many places this game can distribute across, and what decides it.
+ *
+ * `count: null` means "not knowable yet" — a query in flight, or a game with no
+ * competition — and never refuses anything.
+ */
+export interface PlaceCapacity {
+  count: number | null;
+  source: PlaceCapacitySource;
+}
+
 export interface PlacementValidation {
   state: PlacementState;
   /** Sum of entered place values. */
@@ -54,14 +73,14 @@ export interface PlacementValidation {
   /** total − allocated (how many points are left to place). */
   remaining: number;
   /** Saveable when undistributed (not started) OR complete (sum === total),
-   *  AND the split doesn't configure more places than there are entities. */
+   *  AND the split doesn't configure more places than the game HAS. */
   saveable: boolean;
   /** Places configured (`values.length`) — echoed so callers can build the
    *  message without re-deriving it. */
   places: number;
-  /** Scoring entities the split will be applied to, when the caller knew it
-   *  (see `entityCount`). `null` = not supplied / not yet knowable. */
-  entities: number | null;
+  /** The ceiling this was checked against, and what set it. `count: null` =
+   *  not supplied / not yet knowable. */
+  capacity: PlaceCapacity;
 }
 
 /**
@@ -77,35 +96,51 @@ export interface PlacementValidation {
  * (e.g. total 8 → [5,3,0] is complete). The caller maps "1st place empty" to an
  * empty array; any entered value (incl. 0) yields a non-empty array.
  *
- * ── `entityCount` — more places than there can be recipients ────────────────
- * A placement split is applied to SCORING ENTITIES, and for every placement
- * game that means TEAMS IN THE COMPETITION: `computeCompetitionLeaderboard`
- * reads only `entity_type='team'` results and ranks `teamIds`, whatever the
- * format underneath (stroke aggregates players into their team first, non-golf
- * records team placings directly). Match and rack don't reach here at all —
- * they use `per_match`, which has no place list.
+ * ── `capacity` — more places than the game HAS ──────────────────────────────
+ * This parameter used to be `entityCount`, and it used to mean one thing:
+ * TEAMS IN THE COMPETITION. That was right for every format that reached here,
+ * because a placement split is applied to scoring entities and
+ * `computeCompetitionLeaderboard` reads only `entity_type='team'` results
+ * (stroke aggregates players into their team first, non-golf records team
+ * placings directly). Match and rack don't reach here at all — they use
+ * `per_match`, which has no place list.
  *
- * Configuring MORE places than entities is unsatisfiable, and it fails quietly
- * rather than loudly: `placementPoints` walks the STANDINGS, not the
+ * It stopped being the only answer with the BRACKET format. A bracket's places
+ * come from its TREE, not its roster: single elimination distinguishes only the
+ * finalists, so it has 2 places, or 4 when a consolation match adds 3rd/4th.
+ * That is independent of team count — a two-team cup can run a four-place
+ * bracket, because the places are finishing positions among ENTRANTS and several
+ * entrants can belong to one team. Counting teams there would refuse a legal
+ * setup, and the refusal would tell the reader to add teams, which would not
+ * help and is not what they want.
+ *
+ * So the parameter now carries WHAT THE CEILING IS and WHERE IT CAME FROM.
+ * Formats that rank teams pass the team count as before; a bracket passes its
+ * tree arity. Callers should build this with `placeCapacity.ts` rather than
+ * assembling the object inline, so a new format answers the question once.
+ *
+ * Configuring MORE places than the game has is unsatisfiable, and it fails
+ * quietly rather than loudly: `placementPoints` walks the STANDINGS, not the
  * distribution, so trailing values are simply never read. Two teams with
  * 5/4/3/2/1 award 5 and 4 — the other 6 points go nowhere. Worse, points
  * -AVAILABLE still counts the owner-set total (15), so the cup's clinch number
  * is computed against points that cannot be awarded.
  *
- * FEWER places than entities is LEGITIMATE and must keep saving — `dist()`
- * returns 0 out of range, so 4 teams on a 2-value split means 3rd and 4th earn
- * nothing, which is #807's established behaviour. Only the excess is refused.
+ * FEWER places is LEGITIMATE and must keep saving — `dist()` returns 0 out of
+ * range, so 4 teams on a 2-value split means 3rd and 4th earn nothing, which is
+ * #807's established behaviour. Only the excess is refused.
  *
- * `entityCount` is OPTIONAL and a null/0 count NEVER refuses. A game can be
- * configured before its competition has teams, and refusing there would block
- * a setup that is merely incomplete rather than wrong.
+ * `capacity` is OPTIONAL and a null/0 count NEVER refuses. A game can be
+ * configured before its competition has teams (or before its draw exists), and
+ * refusing there would block a setup that is merely incomplete rather than wrong.
  */
 export function validatePlacement(
   total: number,
   values: number[],
-  entityCount?: number | null
+  capacity?: PlaceCapacity | null
 ): PlacementValidation {
-  const entities = entityCount ?? null;
+  const cap: PlaceCapacity = capacity ?? { count: null, source: "teams" };
+  const ceiling = cap.count ?? null;
   const places = values.length;
 
   if (places === 0) {
@@ -116,7 +151,7 @@ export function validatePlacement(
       remaining: total,
       saveable: true,
       places,
-      entities,
+      capacity: cap,
     };
   }
 
@@ -125,7 +160,7 @@ export function validatePlacement(
   // Checked BEFORE the sum: a split with too many places is wrong even when it
   // adds up, and "5 places, 2 teams" is the more useful thing to say than
   // "3 left to place".
-  if (entities != null && entities > 0 && places > entities) {
+  if (ceiling != null && ceiling > 0 && places > ceiling) {
     return {
       state: "too_many_places",
       allocated,
@@ -133,7 +168,7 @@ export function validatePlacement(
       remaining: total - allocated,
       saveable: false,
       places,
-      entities,
+      capacity: cap,
     };
   }
 
@@ -145,7 +180,7 @@ export function validatePlacement(
     remaining: total - allocated,
     saveable: complete,
     places,
-    entities,
+    capacity: cap,
   };
 }
 
@@ -156,13 +191,27 @@ export function validatePlacement(
  * Names the control to use, not just the state (#809) — a message that only
  * reports "5 places, 2 teams" leaves the reader to work out that places are
  * what should change.
+ *
+ * The too-many-places copy branches on the capacity SOURCE, because the second
+ * half of that advice is only true for one of them. "or add teams" is a real
+ * option when teams set the ceiling; for a bracket it is not — the ceiling is
+ * the shape of the draw, and the way to get a 3rd and 4th place is the
+ * consolation match. Naming the wrong lever is worse than naming none.
  */
 export function placementRefusalMessage(v: PlacementValidation): string | null {
   if (v.saveable) return null;
   if (v.state === "too_many_places") {
+    const n = v.capacity.count;
+    if (v.capacity.source === "bracket") {
+      return (
+        `${v.places} places configured, but this bracket finishes ${n} — ` +
+        `remove places until there are at most ${n}, or turn on the 3rd-place match to finish 4. ` +
+        `Places past the last finisher are never awarded.`
+      );
+    }
     return (
-      `${v.places} places configured, ${v.entities} ${v.entities === 1 ? "team" : "teams"} in this competition — ` +
-      `remove places until there are at most ${v.entities}, or add teams. ` +
+      `${v.places} places configured, ${n} ${n === 1 ? "team" : "teams"} in this competition — ` +
+      `remove places until there are at most ${n}, or add teams. ` +
       `Places past the last team are never awarded.`
     );
   }

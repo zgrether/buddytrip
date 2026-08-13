@@ -7,6 +7,10 @@ import {
   placementFit,
   matchFit,
 } from "./gameConfig";
+import { teamPlaceCapacity } from "./placeCapacity";
+
+/** The capacity these cases always meant: N teams in the competition. */
+const teams = teamPlaceCapacity;
 
 /**
  * Slice D add-game flow — pure validation/derivation (Stage 2). Each spec rule
@@ -161,15 +165,15 @@ describe("validatePlacement — more places than scoring entities", () => {
   // trailing 3/2/1 are never read — the winner takes 5, the loser 4, and 6
   // points quietly go nowhere while points-AVAILABLE still counts all 15.
   it("refuses 5 places against 2 teams", () => {
-    const v = validatePlacement(15, [5, 4, 3, 2, 1], 2);
+    const v = validatePlacement(15, [5, 4, 3, 2, 1], teams(2));
     expect(v.state).toBe("too_many_places");
     expect(v.saveable).toBe(false);
     expect(v.places).toBe(5);
-    expect(v.entities).toBe(2);
+    expect(v.capacity).toEqual({ count: 2, source: "teams" });
   });
 
   it("names BOTH numbers, and what to change", () => {
-    const msg = placementRefusalMessage(validatePlacement(15, [5, 4, 3, 2, 1], 2))!;
+    const msg = placementRefusalMessage(validatePlacement(15, [5, 4, 3, 2, 1], teams(2)))!;
     expect(msg).toContain("5 places");
     expect(msg).toContain("2 teams");
     // #809 — name the control, not just the state.
@@ -179,25 +183,25 @@ describe("validatePlacement — more places than scoring entities", () => {
   it("refuses even when the split adds up exactly", () => {
     // Sum is correct (15) — the split is still unsatisfiable, and saying
     // "3 left to place" here would send the reader the wrong way.
-    const v = validatePlacement(15, [5, 4, 3, 2, 1], 2);
+    const v = validatePlacement(15, [5, 4, 3, 2, 1], teams(2));
     expect(v.allocated).toBe(15);
     expect(v.state).toBe("too_many_places");
   });
 
   it("places EQUAL to entities is fine", () => {
-    expect(validatePlacement(9, [5, 4], 2).saveable).toBe(true);
+    expect(validatePlacement(9, [5, 4], teams(2)).saveable).toBe(true);
   });
 
   it("FEWER places than entities stays saveable (#807 — unpaid places show nothing)", () => {
     // 4 teams, 2 paid places: 3rd and 4th earn 0. dist() returns 0 out of range,
     // so this is legitimate and must never be refused.
-    const v = validatePlacement(9, [5, 4], 4);
+    const v = validatePlacement(9, [5, 4], teams(4));
     expect(v.state).toBe("complete");
     expect(v.saveable).toBe(true);
   });
 
   it("winner-take-all against 2 teams saves", () => {
-    expect(validatePlacement(15, [15], 2).saveable).toBe(true);
+    expect(validatePlacement(15, [15], teams(2)).saveable).toBe(true);
   });
 
   it("an UNKNOWN entity count never refuses", () => {
@@ -206,18 +210,18 @@ describe("validatePlacement — more places than scoring entities", () => {
     // incomplete rather than wrong.
     expect(validatePlacement(15, [5, 4, 3, 2, 1]).saveable).toBe(true);
     expect(validatePlacement(15, [5, 4, 3, 2, 1], null).saveable).toBe(true);
-    expect(validatePlacement(15, [5, 4, 3, 2, 1], 0).saveable).toBe(true);
+    expect(validatePlacement(15, [5, 4, 3, 2, 1], teams(0)).saveable).toBe(true);
   });
 
   it("still refuses a split that does not sum to the total", () => {
     // The pre-existing check survives the extension, with and without a count.
-    expect(validatePlacement(8, [5, 4], 2).saveable).toBe(false);
+    expect(validatePlacement(8, [5, 4], teams(2)).saveable).toBe(false);
     expect(validatePlacement(8, [5, 4]).saveable).toBe(false);
-    expect(placementRefusalMessage(validatePlacement(8, [5, 4], 2))).toContain("total 8 exactly");
+    expect(placementRefusalMessage(validatePlacement(8, [5, 4], teams(2)))).toContain("total 8 exactly");
   });
 
   it("returns no message when the split is saveable", () => {
-    expect(placementRefusalMessage(validatePlacement(9, [5, 4], 2))).toBeNull();
+    expect(placementRefusalMessage(validatePlacement(9, [5, 4], teams(2)))).toBeNull();
   });
 });
 
@@ -227,15 +231,15 @@ describe("validatePlacement — places check is independent of the total", () =>
   // applied — the exact shape of the two affected games found in production.
   // The validator itself was always independent; only the callers weren't.
   it("flags too many places even with a 0 / unset total", () => {
-    const v = validatePlacement(0, [9, 6, 4, 2], 2);
+    const v = validatePlacement(0, [9, 6, 4, 2], teams(2));
     expect(v.state).toBe("too_many_places");
     expect(v.places).toBe(4);
-    expect(v.entities).toBe(2);
+    expect(v.capacity).toEqual({ count: 2, source: "teams" });
   });
 
   it("a 0 total with a FITTING split is not flagged as too many places", () => {
     // It's `partial` (0 ≠ 15) — which the callers only enforce once a total
     // exists — but it must never be reported as an entity-count problem.
-    expect(validatePlacement(0, [9, 6], 2).state).toBe("partial");
+    expect(validatePlacement(0, [9, 6], teams(2)).state).toBe("partial");
   });
 });

@@ -523,10 +523,11 @@ export function PlacementEditor({
             `validatePlacement` already computed: no second derivation of the rule
             (a duplicate is how F4 happened).
 
-            Rendered ONLY when the entity count is known (`entities != null`) —
-            a game configured before its competition has teams shows nothing,
-            matching the validator's own never-refuse-on-unknown behaviour. */}
-        {started && placement.entities != null && (
+            Rendered ONLY when the capacity is known (`capacity.count != null`) —
+            a game configured before its competition has teams (or before its
+            draw exists) shows nothing, matching the validator's own
+            never-refuse-on-unknown behaviour. */}
+        {started && placement.capacity.count != null && (
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
               Places
@@ -541,7 +542,11 @@ export function PlacementEditor({
               }}
             >
               {placement.places} {placement.places === 1 ? "place" : "places"} ·{" "}
-              {placement.entities} {placement.entities === 1 ? "team" : "teams"}
+              {/* The NOUN follows the capacity's source: a bracket's ceiling is
+                  its finish, not a roster, so "2 teams" would be wrong there. */}
+              {placement.capacity.source === "bracket"
+                ? `finishes ${placement.capacity.count}`
+                : `${placement.capacity.count} ${placement.capacity.count === 1 ? "team" : "teams"}`}
             </span>
           </div>
         )}

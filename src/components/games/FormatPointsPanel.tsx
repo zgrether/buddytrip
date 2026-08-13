@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { GAME_TYPES } from "@/lib/gameTypes";
-import { validatePlacement } from "@/lib/gameConfig";
+import { validatePlacement, type PlaceCapacity } from "@/lib/gameConfig";
 import {
   PointStepper, PlacementEditor, fmtValue,
   type GameRow,
@@ -27,7 +27,7 @@ import { Plus, Trophy } from "lucide-react";
  */
 export function FormatPointsPanel({
   game, canEdit, matchCount, controlled, pointsLabel = "Point value", part = "both", winnerTakesAll = false,
-  entityCount = null,
+  capacity = null,
 }: {
   game: GameRow;
   canEdit: boolean;
@@ -59,13 +59,13 @@ export function FormatPointsPanel({
    *  to opt into a real split). A ≤1-place state reports `null` (the WTA sentinel);
    *  ≥2 places report an explicit split. Default false (non-golf keeps the plain editor). */
   winnerTakesAll?: boolean;
-  /** Scoring entities the split will be applied to — TEAMS in the competition
-   *  (what `computeCompetitionLeaderboard` ranks). Drives the inline
-   *  places-vs-teams warning, reusing the SAME `validatePlacement` the save gate
-   *  and both server gates use. Optional and null-safe on purpose: a game
-   *  configured before its competition has teams, or a query still in flight,
-   *  passes null and warns about nothing. */
-  entityCount?: number | null;
+  /** How many finishing places this game HAS, and what decides it — built by
+   *  `placeCapacity.ts`, never assembled inline. Drives the inline too-many-places
+   *  warning, reusing the SAME `validatePlacement` the save gate and both server
+   *  gates use. Optional and null-safe on purpose: a game configured before its
+   *  competition has teams (or before its draw exists) passes a null count and
+   *  warns about nothing. */
+  capacity?: PlaceCapacity | null;
 }) {
   const type = GAME_TYPES.find((t) => t.id === game.game_type_id);
   const isMatchPlay = type?.resultStrategy === "match_play" || type?.resultStrategy === "rack_n_stack";
@@ -90,7 +90,7 @@ export function FormatPointsPanel({
 
   const started = !isMatchPlay && (placeInputs[0]?.trim() ?? "") !== "";
   const enteredValues = started ? placeInputs.map((s) => Number(s.trim() || "0")) : [];
-  const placement = validatePlacement(total, enteredValues, entityCount);
+  const placement = validatePlacement(total, enteredValues, capacity);
 
   // Report the total + distribution PAIR together (never one without the other) to the
   // parent draft; `save_game_config` commits it.
