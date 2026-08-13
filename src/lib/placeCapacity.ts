@@ -1,5 +1,4 @@
 import type { PlaceCapacity } from "@/lib/gameConfig";
-import type { BracketSide } from "@/lib/bracket";
 
 /**
  * How many finishing places a game HAS — the ceiling a placement split is
@@ -31,43 +30,51 @@ export function teamPlaceCapacity(teamCount: number | null | undefined): PlaceCa
 }
 
 /**
- * A bracket's places come from its TREE, not its roster.
+ * A bracket's ceiling is its FIELD — how many entrants there are.
  *
- * Single elimination distinguishes only the finalists — 1st and 2nd — because
- * everyone knocked out earlier lost to someone who also lost, and the draw never
- * separates them. A consolation match adds exactly 3rd and 4th. So the answer is
- * 2, or 4 with a 3rd-place match, and it does NOT scale with the field: a
- * 32-entrant bracket still finishes 2 (or 4).
+ * ── This REVISES #915, which returned 2 (or 4 with a consolation match) ─────
+ * That was reasoned from what a single-elimination tree DISTINGUISHES: only the
+ * finalists are separated, and a consolation match separates 3rd from 4th. True
+ * as far as it goes, and the wrong question. It confused how many places a
+ * bracket can PAY with how many it can TELL APART, and baked the smaller number
+ * into the settings as a hard ceiling.
  *
- * Read from the DRAW rather than from `bracket_config.consolation`, deliberately.
- * The flag is a request; the draw is what the request produced. `buildDraw`
- * refuses a consolation match below three entrants — a two-entrant bracket is one
- * match, so its "losing semi-finalists" are a single person — and reading the flag
- * would promise 4 places to a bracket that will only ever finish 2.
+ * A bracket can pay further down than it separates. Elimination round is itself a
+ * ranking: in an 8-entrant draw the quarter-final losers finish 5th–8th, tied,
+ * and `placementPoints` already handles exactly that — a tie group shares the sum
+ * of the places it spans, averaged. So an 8-place split over 8 entrants pays
+ * 1st, 2nd, the two semi-final losers averaged across 3rd/4th, and the four
+ * quarter-final losers averaged across 5th–8th. Nothing new is needed to award
+ * it; the old ceiling simply refused to let anyone configure it.
  *
- * An EMPTY draw (fewer than two entrants, so nothing to play) yields null rather
- * than 0: the pool is still being built, which is incomplete, not wrong.
+ * So the consolation match decides what the bracket DISTINGUISHES (3rd vs 4th
+ * rather than two tied thirds) — a result-shape question, settled at compute
+ * time — and has nothing to do with how many places may be configured. The two
+ * were entangled here and are now separate.
  *
- * Takes only `{ bracket }` rather than a whole `BracketDrawMatch` because that is
- * all it reads — which lets the server hand it `bracket_matches` rows straight
- * from a `select("bracket")` without rebuilding the tree.
+ * The ENTRANT count is the honest ceiling, and it is the same rule every other
+ * format follows: a place no competitor can occupy is never awarded, so
+ * configuring it silently strands points while still counting them toward
+ * points-available. Fewer places than entrants stays legitimate, as always.
+ *
+ * Null below two entrants: there is no draw to play, so the pool is still being
+ * built — incomplete, not wrong, and an unknown ceiling never refuses.
  */
-export function bracketPlaceCapacity(draw: readonly { bracket: BracketSide }[]): PlaceCapacity {
-  if (draw.length === 0) return { count: null, source: "bracket" };
-  const hasConsolation = draw.some((m) => m.bracket === "consolation");
-  return { count: hasConsolation ? 4 : 2, source: "bracket" };
+export function bracketPlaceCapacity(entrantCount: number | null | undefined): PlaceCapacity {
+  const n = entrantCount ?? null;
+  return { count: n != null && n >= 2 ? n : null, source: "bracket" };
 }
 
 /**
  * The capacity for a game, given what is known about it.
  *
- * `draw` is present only for a bracket; every other format falls through to the
- * team count. Kept as one entry point so a call site does not have to know which
- * formats are special — it passes what it has and gets the right ceiling.
+ * `entrantCount` is present only for a bracket; every other format falls through
+ * to the team count. Kept as one entry point so a call site does not have to know
+ * which formats are special — it passes what it has and gets the right ceiling.
  */
 export function placeCapacityFor(
-  { draw, teamCount }: { draw?: readonly { bracket: BracketSide }[] | null; teamCount?: number | null }
+  { entrantCount, teamCount }: { entrantCount?: number | null; teamCount?: number | null }
 ): PlaceCapacity {
-  if (draw && draw.length > 0) return bracketPlaceCapacity(draw);
+  if (entrantCount != null) return bracketPlaceCapacity(entrantCount);
   return teamPlaceCapacity(teamCount);
 }

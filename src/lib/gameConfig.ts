@@ -106,13 +106,10 @@ export interface PlacementValidation {
  * `per_match`, which has no place list.
  *
  * It stopped being the only answer with the BRACKET format. A bracket's places
- * come from its TREE, not its roster: single elimination distinguishes only the
- * finalists, so it has 2 places, or 4 when a consolation match adds 3rd/4th.
- * That is independent of team count — a two-team cup can run a four-place
- * bracket, because the places are finishing positions among ENTRANTS and several
- * entrants can belong to one team. Counting teams there would refuse a legal
- * setup, and the refusal would tell the reader to add teams, which would not
- * help and is not what they want.
+ * are finishing positions among ENTRANTS, and several entrants can belong to one
+ * team — so a two-team cup can run an eight-place bracket. Counting teams there
+ * would refuse a legal setup, and the refusal would tell the reader to add teams,
+ * which would not help and is not what they want.
  *
  * So the parameter now carries WHAT THE CEILING IS and WHERE IT CAME FROM.
  * Formats that rank teams pass the team count as before; a bracket passes its
@@ -204,9 +201,9 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
     const n = v.capacity.count;
     if (v.capacity.source === "bracket") {
       return (
-        `${v.places} places configured, but this bracket finishes ${n} — ` +
-        `remove places until there are at most ${n}, or turn on the 3rd-place match to finish 4. ` +
-        `Places past the last finisher are never awarded.`
+        `${v.places} places configured, ${n} ${n === 1 ? "entrant" : "entrants"} in this bracket — ` +
+        `remove places until there are at most ${n}, or add entrants. ` +
+        `Places past the last entrant are never awarded.`
       );
     }
     return (

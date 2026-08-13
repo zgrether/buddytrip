@@ -251,32 +251,26 @@ async function teamCountForGame(
 /**
  * The place ceiling for a game — the server half of `placeCapacity.ts`.
  *
- * A game with a persisted DRAW is a bracket, and its places come from the tree
- * (2, or 4 with a consolation match), not from the roster. Everything else ranks
- * teams. The draw's own rows answer the question, so this reads `bracket_matches`
- * rather than trusting `bracket_config.consolation` — the flag is a request, the
- * rows are what it produced (a two-entrant bracket has no consolation match no
- * matter what the flag says).
+ * A game with ENTRANTS is a bracket, and its ceiling is the size of that field:
+ * a place no entrant can occupy is never awarded. Everything else ranks teams.
  *
- * Costs one extra query ONLY for a game that has a draw: the bracket read runs
- * first and short-circuits the team count when it finds rows.
+ * Costs one extra query ONLY for a game that has entrants — the bracket read runs
+ * first and short-circuits the team count when it finds any.
  */
 async function placeCapacityForGame(
   supabase: SupabaseClient,
   tripId: string,
   gameId: string
 ): Promise<PlaceCapacity> {
-  const { data: draw, error } = await supabase
-    .from("bracket_matches")
-    .select("bracket")
+  const { count: entrants, error } = await supabase
+    .from("bracket_entrants")
+    .select("id", { count: "exact", head: true })
     .eq("game_id", gameId);
-  // A failed read must not silently become "no draw" and fall through to the team
-  // count — that would apply the WRONG ceiling to a bracket rather than none. An
-  // unknown capacity never refuses, which is the safe direction here.
+  // A failed read must not silently become "no entrants" and fall through to the
+  // team count — that would apply the WRONG ceiling to a bracket rather than none.
+  // An unknown capacity never refuses, which is the safe direction here.
   if (error) return { count: null, source: "teams" };
-  if ((draw?.length ?? 0) > 0) {
-    return bracketPlaceCapacity(draw as { bracket: "main" | "consolation" }[]);
-  }
+  if ((entrants ?? 0) > 0) return bracketPlaceCapacity(entrants);
   return teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
 }
 
