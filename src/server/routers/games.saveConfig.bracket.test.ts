@@ -28,7 +28,9 @@ const gameIds: string[] = [];
 
 interface BracketEntrant {
   seed: number;
-  teamId: string;
+  /** Nullable since 116 — a standalone bracket has no teams. Refused by the
+   *  front door for now, not by the column. */
+  teamId: string | null;
   userIds: string[];
 }
 interface DrawMatch {
@@ -301,6 +303,25 @@ describe("saveConfig — the payload pre-flight refuses an inconsistent bracket"
     await expect(
       save(gameId, { entrants: [{ seed: 1, teamId, userIds: [owner] }, { seed: 1, teamId, userIds: [planner] }], draw: [] })
     ).rejects.toThrow(/both seeded 1/i);
+  });
+
+  it("an entrant with no team — a standalone bracket, refused in the APP not the schema", async () => {
+    // Migration 116 made `bracket_entrants.team_id` nullable on purpose: a
+    // standalone bracket (no competition, so no teams) is a shape we intend to
+    // support, just not yet. The refusal is therefore a product-scope rule in
+    // the tRPC front door, not a NOT NULL column — one guard to delete later
+    // instead of a migration against a table holding live brackets.
+    //
+    // This test is the pin on WHERE the refusal lives. If someone re-adds the
+    // constraint to the schema it still passes, which is why the message is
+    // asserted too: a DB-level failure would not carry this copy.
+    const gameId = await seeded("Teamless");
+    await expect(
+      save(gameId, {
+        entrants: [{ seed: 1, teamId: null, userIds: [owner] }, ...threeEntrants().slice(1)],
+        draw: buildDraw(3) as DrawMatch[],
+      })
+    ).rejects.toThrow(/every entrant must belong to a team/i);
   });
 
   it("a draw sent without the field it draws from", async () => {

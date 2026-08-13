@@ -1142,7 +1142,11 @@ export const gamesRouter = router({
             .array(
               z.object({
                 seed: z.number().int().positive(),
-                teamId: z.string().min(1),
+                // NULLABLE on the wire and in the column (116) — a standalone
+                // bracket has no competition and therefore no teams. Refused for
+                // now by the refinement below, which is the ONE thing to remove
+                // when standalone brackets are built.
+                teamId: z.string().min(1).nullable(),
                 // 1 for singles, 2 for partners. The cap is the format's, not a
                 // guess: `bracketConfig.entrants` admits no third option.
                 userIds: z.array(z.string().min(1)).min(1).max(2),
@@ -1237,6 +1241,25 @@ export const gamesRouter = router({
             // constraint violation naming a composed id string, which tells an
             // organizer nothing about which slot is wrong.
             if (p.bracketEntrants) {
+              // STANDALONE brackets are not built yet — refused HERE rather than
+              // by a NOT NULL column (migration 116). An entrant with no team has
+              // nowhere for its result to land, because the whole roll-up is
+              // team-shaped: `game_results.entity_type` is `'team'` and the
+              // competition leaderboard ranks team ids.
+              //
+              // This is a product-scope refusal, not a data invariant, which is
+              // why it lives in the layer that changes when the scope does. When
+              // standalone brackets ship, delete this block; the column, the wire
+              // shape and the hash already permit it.
+              if (p.bracketEntrants.some((e) => e.teamId === null)) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: ["bracketEntrants"],
+                  message:
+                    "A bracket needs a cup to score into — every entrant must belong to a team. Standalone brackets aren't supported yet.",
+                });
+              }
+
               const seeds = p.bracketEntrants.map((e) => e.seed);
               const dupSeed = seeds.find((s, i) => seeds.indexOf(s) !== i);
               if (dupSeed !== undefined) {
