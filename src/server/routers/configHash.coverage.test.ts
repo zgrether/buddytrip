@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { HASH_COLS } from "./games";
+import { buildDraw } from "../../lib/bracket";
 
 /**
  * The OBSERVATIONAL hash-coverage guard — the mechanical backstop for "everything the
@@ -40,15 +41,42 @@ const NOT_HASHED: Record<keyof typeof HASH_COLS, string[]> = {
   play_groups: ["game_id", "created_at"],
   game_matches: ["game_id", "result", "margin", "status", "created_at"],
   game_delegates: ["game_id", "granted_by", "created_at"],
+  // `id` is deterministic here (`<game_id>:e<seed>`, migration 115) rather than
+  // minted, so excluding it is about REDUNDANCY, not churn — `seed` already carries
+  // everything the id encodes.
+  bracket_entrants: ["id", "game_id", "created_at"],
+  // `entrant_id` is the parent link this row is read THROUGH (an embedded select
+  // under bracket_entrants), not content of its own.
+  bracket_entrant_members: ["entrant_id"],
+  // `winner_entrant_id` is the bracket's SCORE — the same category as
+  // game_matches.result/margin/status above, and excluded for the same reason:
+  // hashing a result would churn the config fingerprint every time someone
+  // advanced a match, and would fail a concurrent settings save on a game whose
+  // config nobody touched. Picks propagate by broadcast (#20), not by this hash.
+  bracket_matches: ["id", "game_id", "winner_entrant_id", "created_at"],
 };
 
 const TABLES = Object.keys(HASH_COLS) as (keyof typeof HASH_COLS)[];
 const cols = (t: keyof typeof HASH_COLS) => HASH_COLS[t].split(",").map((s) => s.trim());
 
+/**
+ * How to reach a table's rows for THIS game. Everything hangs off `game_id`
+ * except `bracket_entrant_members`, which has none — it is scoped by its entrant,
+ * which is exactly why the hash reads it as an embed rather than a table.
+ */
+const FILTER: Partial<Record<keyof typeof HASH_COLS, { col: string; via: "game" | "entrant" }>> = {
+  games: { col: "id", via: "game" },
+  bracket_entrant_members: { col: "entrant_id", via: "entrant" },
+};
+
 let ctx: TestContext;
 let tripId: string;
 let competitionId: string;
 let gameId: string;
+/** The bracket game — a SECOND populated game, because the bracket tables hang off
+ *  a non-golf format and the match-play game above can never have rows in them. */
+let bracketGameId: string;
+let entrantIds: string[] = [];
 
 beforeAll(async () => {
   ctx = await TestContext.create();
@@ -91,6 +119,44 @@ beforeAll(async () => {
     },
   });
   await ctx.caller().games.addOrganizer({ tripId, gameId, userId: member });
+
+  // A populated BRACKET game (115). Separate from the match-play game above
+  // because the two are mutually exclusive: a bracket is a non-golf format, so
+  // the game seeded for game_matches/play_groups can never carry entrants, and a
+  // table with no row makes this whole guard vacuous for it (the `toBeTruthy`
+  // below is what turns that into a failure rather than a silent pass).
+  const teamId = await ctx.createTeam(competitionId, "Bracket Team");
+  const bg = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_generic_card", name: "Bracket", competitionId })) as { id: string };
+  bracketGameId = bg.id;
+  const bDraft = (await ctx.caller().games.getById({ tripId, gameId: bracketGameId })) as Record<string, unknown>;
+  await ctx.caller().games.saveConfig({
+    tripId,
+    gameId: bracketGameId,
+    baseHash: (await ctx.caller().games.configHash({ tripId, gameId: bracketGameId })).hash,
+    payload: {
+      name: (bDraft.name as string) ?? "Bracket",
+      rulesForToday: null,
+      scoringEnabled: false,
+      pointsTotal: 4,
+      pointsDistribution: null,
+      courseId: null,
+      backCourseId: null,
+      scorecardSchema: null,
+      delegates: [],
+      competitionFormat: "bracket",
+      bracketConfig: { elimination: "single", entrants: "singles", seeding: "manual", consolation: false },
+      // Three entrants → a 4-seat draw, so this also seeds the BYE shape
+      // (`entrant_b_id IS NULL`) rather than only the tidy full-field one.
+      bracketEntrants: [
+        { seed: 1, teamId, userIds: [owner] },
+        { seed: 2, teamId, userIds: [planner] },
+        { seed: 3, teamId, userIds: [member] },
+      ],
+      bracketDraw: buildDraw(3).map((m) => ({ ...m })),
+    },
+  });
+  const { data: ents } = await ctx.admin.from("bracket_entrants").select("id").eq("game_id", bracketGameId);
+  entrantIds = (ents ?? []).map((e) => e.id as string);
 });
 
 afterAll(async () => {
@@ -98,14 +164,22 @@ afterAll(async () => {
   await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
   await ctx.admin.from("play_groups").delete().eq("game_id", gameId);
   await ctx.admin.from("game_delegates").delete().eq("game_id", gameId);
-  await ctx.admin.from("games").delete().eq("id", gameId);
+  // Matches before entrants (FK), members cascade off the entrants delete.
+  await ctx.admin.from("bracket_matches").delete().eq("game_id", bracketGameId);
+  await ctx.admin.from("bracket_entrants").delete().eq("game_id", bracketGameId);
+  await ctx.admin.from("games").delete().in("id", [gameId, bracketGameId]);
   await ctx.cleanup();
 });
 
 describe("configHash coverage — every column of a hashed table is classified", () => {
   it.each(TABLES)("%s: no live column is unclassified (hash it or exclude it)", async (table) => {
-    const filterCol = table === "games" ? "id" : "game_id";
-    const { data, error } = await ctx.admin.from(table).select("*").eq(filterCol, gameId).limit(1);
+    const f = FILTER[table] ?? { col: "game_id", via: "game" as const };
+    const isBracketTable = table.startsWith("bracket_");
+    const q = ctx.admin.from(table).select("*");
+    const { data, error } =
+      f.via === "entrant"
+        ? await q.in(f.col, entrantIds).limit(1)
+        : await q.eq(f.col, isBracketTable ? bracketGameId : gameId).limit(1);
     expect(error).toBeNull();
     const row = (data ?? [])[0] as Record<string, unknown> | undefined;
     expect(row, `no ${table} row — the seed must populate it`).toBeTruthy();
