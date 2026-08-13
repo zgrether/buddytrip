@@ -3,6 +3,7 @@ import { buildDraw } from "./bracket";
 import { resolveDraw, matchKey, type WinnerBySeed } from "./bracketAdvance";
 import { bracketPlacements, teamPointsFromEntrants } from "./bracketPlacements";
 import { pointsForPlacements } from "./placementGroups";
+import { placementPoints } from "./competitionPlacement";
 
 /**
  * Placements — where a finished bracket says everyone came.
@@ -166,5 +167,82 @@ describe("teamPointsFromEntrants", () => {
 
   it("is empty when nobody has a team — a standalone bracket scores no cup", () => {
     expect(teamPointsFromEntrants(new Map([[1, 4]]), new Map([[1, null]]))).toEqual(new Map());
+  });
+
+  /**
+   * The leaderboard rolls up by `bracket_entrants.id`, not by seed — that is what
+   * `game_results.entity_id` stores. The client preview rolls up by seed, which is
+   * what the resolved draw speaks. Both are right, and pinning the helper to
+   * either would force the other into a seed↔id round trip that exists only to
+   * satisfy a signature — a second place for the mapping to be wrong.
+   */
+  it("rolls up by ENTRANT ID as readily as by seed (the leaderboard's key)", () => {
+    const points = new Map([["g1:e1", 4], ["g1:e2", 2], ["g1:e3", 1]]);
+    const teams = new Map([["g1:e1", "A"], ["g1:e2", "B"], ["g1:e3", "A"]]);
+    expect(teamPointsFromEntrants(points, teams)).toEqual(new Map([["A", 5], ["B", 2]]));
+  });
+});
+
+/**
+ * The leaderboard awards a bracket in two steps — points per ENTRANT, then summed
+ * onto teams — and then has to hand `rollUp` something it can rank. It does that
+ * with the synthetic distribution `per_match` already uses: the sorted team point
+ * values ARE the distribution, ranked `high_wins`.
+ *
+ * These tests pin the property that trick depends on, because it is not obvious
+ * and it is the difference between the board showing a bracket's points and
+ * showing zeros. If `placementPoints` ever stopped being a pass-through under
+ * that construction, the roll-up would silently mis-award rather than fail.
+ */
+describe("the synthetic per-team distribution the leaderboard builds", () => {
+  const synth = (teamPoints: Map<string, number>) => {
+    const sorted = [...teamPoints.entries()]
+      .map(([entityId, value]) => ({ entityId, value }))
+      .sort((a, b) => b.value - a.value);
+    return placementPoints(sorted.map((s) => s.value), sorted, "high_wins");
+  };
+
+  it("returns each team exactly the points the roll-up computed", () => {
+    const out = synth(new Map([["A", 5], ["B", 3], ["C", 1]]));
+    expect(out.get("A")).toBeCloseTo(5);
+    expect(out.get("B")).toBeCloseTo(3);
+    expect(out.get("C")).toBeCloseTo(1);
+  });
+
+  it("survives a TIE — two teams on equal points each keep their own value", () => {
+    // Real here, not hypothetical: two teams whose entrants were knocked out in
+    // the same round finish level. A tie group of size n shares the sum of n
+    // equal values, which is that value back.
+    const out = synth(new Map([["A", 4], ["B", 4], ["C", 0]]));
+    expect(out.get("A")).toBeCloseTo(4);
+    expect(out.get("B")).toBeCloseTo(4);
+    expect(out.get("C")).toBeCloseTo(0);
+  });
+
+  it("end to end: a finished 4-draw pays the right teams", () => {
+    // Seeds 1+3 are team A, 2+4 are team B. Chalk: 1st (A), 2nd (B), 3rd/4th tied.
+    let w: WinnerBySeed = {};
+    w = win(w, 1, 1, 1);
+    w = win(w, 1, 2, 2);
+    w = win(w, 2, 1, 1);
+    const placements = placementsOf(4, w);
+    const dist = [4, 2, 1, 1];
+    const perEntrant = pointsForPlacements(
+      placements.map((p) => ({ entityId: String(p.seed), position: p.position })),
+      dist
+    );
+    const teamPts = teamPointsFromEntrants(
+      perEntrant,
+      new Map([["1", "A"], ["2", "B"], ["3", "A"], ["4", "B"]])
+    );
+    // A = 1st (4) + a tied 3rd/4th (1); B = 2nd (2) + the other tied 3rd/4th (1).
+    expect(teamPts.get("A")).toBeCloseTo(5);
+    expect(teamPts.get("B")).toBeCloseTo(3);
+    // …and the synthetic distribution hands both straight through to the board.
+    const out = synth(teamPts);
+    expect(out.get("A")).toBeCloseTo(5);
+    expect(out.get("B")).toBeCloseTo(3);
+    // The whole pot is awarded — nothing is stranded by the two-step roll-up.
+    expect((out.get("A") ?? 0) + (out.get("B") ?? 0)).toBeCloseTo(dist.reduce((s, v) => s + v, 0));
   });
 });

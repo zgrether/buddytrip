@@ -92,23 +92,34 @@ export function bracketPlacements(resolved: ResolvedMatch[]): EntrantPlacement[]
 /**
  * Roll entrant placements up to per-team points.
  *
- * `pointsBySeed` is what the shared placement scorer returned for each entrant —
- * this only sums it onto teams, and sums rather than picks a best because a team
- * genuinely earns from every entrant it fielded. A team finishing 1st and 5th
- * has done better than one finishing 1st alone, and the distribution is what
- * decides by how much.
+ * `pointsByEntrant` is what the shared placement scorer returned for each
+ * entrant — this only sums it onto teams, and sums rather than picks a best
+ * because a team genuinely earns from every entrant it fielded. A team finishing
+ * 1st and 5th has done better than one finishing 1st alone, and the distribution
+ * is what decides by how much.
  *
  * An entrant with no team contributes nothing and is skipped rather than
  * dropped from scoring elsewhere: standalone brackets have no teams at all, and
  * this is the roll-up, not the record.
+ *
+ * ── Generic in the entrant KEY, on purpose ──────────────────────────────────
+ * Its two callers hold entrants under different names and both are right. The
+ * client preview works in SEEDS, because that is what the resolved draw speaks
+ * and what the pure placement rule above returns. The leaderboard works in
+ * `bracket_entrants.id`, because that is what `game_results.entity_id` stores.
+ * Pinning this to one of them would force the other to translate — and a
+ * seed↔id round trip inserted purely to satisfy a signature is a second place
+ * for the mapping to be wrong. The roll-up doesn't care what an entrant is
+ * called; it only needs the two maps to agree with each other, which the type
+ * parameter states exactly.
  */
-export function teamPointsFromEntrants(
-  pointsBySeed: ReadonlyMap<number, number>,
-  teamBySeed: ReadonlyMap<number, string | null>
+export function teamPointsFromEntrants<K>(
+  pointsByEntrant: ReadonlyMap<K, number>,
+  teamByEntrant: ReadonlyMap<K, string | null>
 ): Map<string, number> {
   const out = new Map<string, number>();
-  for (const [seed, points] of pointsBySeed) {
-    const teamId = teamBySeed.get(seed) ?? null;
+  for (const [entrant, points] of pointsByEntrant) {
+    const teamId = teamByEntrant.get(entrant) ?? null;
     if (teamId === null) continue;
     out.set(teamId, (out.get(teamId) ?? 0) + points);
   }

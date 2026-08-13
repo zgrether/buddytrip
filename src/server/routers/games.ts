@@ -21,8 +21,11 @@ import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } 
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
-import type { BracketDrawMatch, BracketSide } from "@/lib/bracket";
+import type { BracketDrawMatch } from "@/lib/bracket";
 import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { readBracketDraw } from "../lib/bracketDraw";
+import { deriveBracketPlacements } from "../lib/bracketResults";
+import { resolveResultStrategy } from "@/lib/resultStrategy";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 
 /**
@@ -191,16 +194,38 @@ async function readGameConfigHash(
  * that trip (defends against a gameId from another trip).
  */
 /**
- * Shared manual-result write (Slice D §5a / Run-Post §2): replace a game's
- * per-team finishing order in `game_results`. The ONE write path for entered
- * placements — both `setManualResults` and the run `post` action use it, so
- * there's no parallel commit. Placement POINTS stay derived (placementPoints);
- * we store only the standing (position; raw_score mirrors it for low_wins).
+ * Shared placement write (Slice D §5a / Run-Post §2): replace a game's finishing
+ * order in `game_results`. The ONE write path for placements — the entered-order
+ * arm (`setManualResults` and `finish`'s `null` arm) and the DERIVED bracket arm
+ * all commit through it, so there is no parallel commit. Placement POINTS stay
+ * derived (placementPoints); we store only the standing (position; raw_score
+ * mirrors it for low_wins).
+ *
+ * ── `entityType` is a PARAMETER, not a second function ──────────────────────
+ * A bracket's competitors are ENTRANTS, not teams (migration 119): several
+ * entrants share a cup team, so collapsing them to one row per team at write
+ * time would either lose #916's later places or snapshot the payout. The row it
+ * writes therefore names a `bracket_entrants.id` and says so in `entity_type`;
+ * everything else about the write — replace-all, the position, the mirrored
+ * raw_score, the error handling — is identical.
+ *
+ * That identity is the point, and it is why this is one parameter rather than a
+ * `writeBracketResults` beside it. The spec's constraint is "do not write
+ * placements by a different path than the manual arm"; a second writer that
+ * happens to match today is exactly the shape CLAUDE.md #24 catalogues eight
+ * incidents of. There is no default: a caller has to say which kind of
+ * competitor it is recording, because getting that wrong is silent — the rows
+ * insert cleanly and the leaderboard simply never finds them.
+ *
+ * REPLACE-ALL spans every entity_type on purpose. A game whose format changed
+ * (manual → bracket, or back) must not keep the previous shape's rows alongside
+ * the new ones, which would double-count it on the board.
  */
 async function writeManualResults(
   supabase: SupabaseClient,
   gameId: string,
-  placements: { entityId: string; position: number }[]
+  placements: { entityId: string; position: number }[],
+  entityType: "team" | "entrant"
 ): Promise<number> {
   const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
   if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
@@ -209,7 +234,7 @@ async function writeManualResults(
     id: crypto.randomUUID(),
     game_id: gameId,
     entity_id: p.entityId,
-    entity_type: "team",
+    entity_type: entityType,
     position: p.position,
     raw_score: p.position,
   }));
@@ -292,70 +317,6 @@ async function placeCapacityForGame(
   if (error) return { count: null, source: "teams" };
   if ((entrants ?? 0) > 0) return bracketPlaceCapacity(entrants);
   return teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
-}
-
-/** One `bracket_matches` row, as both the draw read and the pick write need it. */
-interface BracketMatchRow {
-  id: string;
-  bracket: BracketSide;
-  round: number;
-  slot: number;
-  entrant_a_id: string | null;
-  entrant_b_id: string | null;
-  winner_entrant_id: string | null;
-}
-
-/**
- * The stored draw plus the seed↔entrant-id mapping, in one place.
- *
- * Two reads rather than three aliased PostgREST embeds of the same table.
- * `bracket_matches` has three FKs into `bracket_entrants` (A, B, winner), and a
- * mis-named embed is precisely the shape of #16's landmine — a relation that
- * didn't exist returned nothing and the error was swallowed for six weeks. Two
- * plain selects and a JS map cannot fail that way, and BOTH errors are checked:
- * an unread entrant list would silently turn every seed into null, which reads
- * as "the draw is empty" rather than as a failure.
- *
- * `idOfSeed` composes the deterministic id (`<game_id>:e<seed>`, migration 115)
- * only as a FALLBACK. The mapping from the entrants actually read is preferred,
- * so this keeps working if that id scheme is ever revised — the composed form is
- * a convenience, never the source of truth.
- */
-async function readBracketDraw(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<{
-  matches: BracketMatchRow[];
-  seedOf: (id: string | null) => number | null;
-  idOfSeed: (seed: number) => string | null;
-  error: string | null;
-}> {
-  const [matchRes, entrantRes] = await Promise.all([
-    supabase
-      .from("bracket_matches")
-      .select("id, bracket, round, slot, entrant_a_id, entrant_b_id, winner_entrant_id")
-      .eq("game_id", gameId)
-      .order("bracket")
-      .order("round")
-      .order("slot"),
-    supabase.from("bracket_entrants").select("id, seed").eq("game_id", gameId).order("seed"),
-  ]);
-  const empty = { matches: [] as BracketMatchRow[], seedOf: () => null, idOfSeed: () => null };
-  if (matchRes.error) return { ...empty, error: matchRes.error.message };
-  if (entrantRes.error) return { ...empty, error: entrantRes.error.message };
-
-  const seedById = new Map<string, number>();
-  const idBySeed = new Map<number, string>();
-  for (const e of (entrantRes.data ?? []) as { id: string; seed: number }[]) {
-    seedById.set(e.id, e.seed);
-    idBySeed.set(e.seed, e.id);
-  }
-  return {
-    matches: (matchRes.data ?? []) as BracketMatchRow[],
-    seedOf: (id) => (id === null ? null : seedById.get(id) ?? null),
-    idOfSeed: (seed) => idBySeed.get(seed) ?? `${gameId}:e${seed}`,
-    error: null,
-  };
 }
 
 export const gamesRouter = router({
@@ -1048,7 +1009,10 @@ export const gamesRouter = router({
       // below — status is the TRANSITION guard, the other two are payload/route.
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id, game_type_id, status, name, competition_id")
+        // `competition_format` joins the select because the strategy is resolved
+        // from the game type AND it (see `resolveResultStrategy`) — a bracket is
+        // not a game type, so the type alone no longer answers "what engine?".
+        .select("id, game_type_id, status, name, competition_id, competition_format")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
@@ -1059,20 +1023,28 @@ export const gamesRouter = router({
       // the only point at which "was it already complete?" is still answerable.
       const wasAlreadyComplete = game.status === "complete";
 
-      // Result strategy comes from the format definition in CODE (W-PERF-01).
-      // An unregistered game_type_id (not in the code catalog) is the generalized
-      // form of the B2 guard — refuse to compute rather than silently scoring as
-      // stroke play. (Before W-PERF-01 the guard caught an unknown result_strategy
-      // STRING read from the DB; the code catalog is closed, so "unknown type" is
-      // the only way to be unrecognized now.)
-      const def = getGameTypeDefinition(game.game_type_id as string);
-      if (!def) {
+      // Result strategy comes from the format definition in CODE (W-PERF-01),
+      // resolved together with the game's `competition_format` — a bracket is not
+      // a game type, so the type alone stopped being the whole answer (see
+      // `resolveResultStrategy` for why it is a resolution and not a new field,
+      // and why an engine type outranks the descriptor).
+      //
+      // `undefined` means the game_type_id is absent from the code catalog: the
+      // generalized form of the B2 guard — refuse to compute rather than silently
+      // scoring as stroke play. It is distinct from `null`, which is the manual
+      // arm and a served branch below. (Before W-PERF-01 the guard caught an
+      // unknown result_strategy STRING read from the DB; the code catalog is
+      // closed, so "unknown type" is the only way to be unrecognized now.)
+      const strategy = resolveResultStrategy(
+        game.game_type_id as string | null,
+        game.competition_format as string | null
+      );
+      if (strategy === undefined) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Unknown game type '${game.game_type_id}' — refusing to compute to avoid silent stroke-play scoring`,
         });
       }
-      const strategy = def.resultStrategy;
 
       // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new
       // strategies slot in here without touching the rest of finish.
@@ -1086,7 +1058,25 @@ export const gamesRouter = router({
         if (!input.placements) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "A manual game posts a finishing order." });
         }
-        await writeManualResults(ctx.supabase, input.gameId, input.placements);
+        await writeManualResults(ctx.supabase, input.gameId, input.placements, "team");
+      // A BRACKET derives the same shape the arm above types. `placements` is
+      // ignored here exactly as the engine arms ignore it — the draw is the
+      // input, and accepting a passed order would be a second way to decide who
+      // won a tree the server can already read.
+      //
+      // The rows name ENTRANTS, not teams (migration 119): several entrants share
+      // a cup team, and collapsing them here would either lose the later places
+      // #916 established or snapshot the payout. The roll-up to team points is a
+      // read-time derivation in `computeCompetitionLeaderboard`, like every other
+      // points question.
+      //
+      // Same writer as the manual arm, one parameter apart, which is what the
+      // spec's "do not write placements by a different path" asks for. It throws
+      // on failure inline (it always has), which is why it is excluded from the
+      // `onFailure: "throw"` guard the engine computes below are held to.
+      } else if (strategy === "bracket") {
+        const derived = await deriveBracketPlacements(ctx.supabase, input.gameId);
+        await writeManualResults(ctx.supabase, input.gameId, derived, "entrant");
       // #776: the FINALIZE path passes onFailure:"throw" — a game marked
       // complete with an empty results table is worse than a game that didn't
       // finish, and the failure is recoverable (status stays non-complete, the
@@ -1161,7 +1151,14 @@ export const gamesRouter = router({
           gameName: (game.name as string | null) ?? null,
           gameTypeId: (game.game_type_id as string | null) ?? null,
           competitionId: (game.competition_id as string | null) ?? null,
-          isManual: strategy === null,
+          // A bracket counts as manual HERE because this flag selects the
+          // AUDIENCE, and the reason the manual arm has a different one applies
+          // to a bracket exactly: a non-golf side event has no `game_participants`
+          // roster (a bracket's competitors are `bracket_entrants`), so "the
+          // game's participants" would resolve to nobody and the push would reach
+          // no one at all. The competition's assigned members are the audience,
+          // same as every other non-golf game.
+          isManual: strategy === null || strategy === "bracket",
           isStroke: strategy === "stroke_total",
           actorUserId: ctx.user!.id,
         });
@@ -1753,6 +1750,13 @@ export const gamesRouter = router({
         .select("game_type_id, status")
         .eq("id", input.gameId)
         .maybeSingle();
+      //     Reads the FORMAT's engine, not `resolveResultStrategy` — deliberately.
+      //     This step re-derives results from SCORES, and the bracket is not in
+      //     that set: its placements come from the draw at finalize, and the two
+      //     config edits that could touch them are already handled elsewhere (a
+      //     draw rebuild is refused once a winner exists, and re-pointing changes
+      //     only the payout, which is derived at read time). So there is nothing
+      //     for a bracket arm to do here, and the narrower read says so.
       const strategy = getGameTypeDefinition(g?.game_type_id as string)?.resultStrategy;
       if (strategy === "match_play") {
         await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
@@ -1956,7 +1960,10 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const count = await writeManualResults(ctx.supabase, input.gameId, input.placements);
+      // Teams: this is the ENTERED per-team finishing order. A bracket never
+      // reaches here — it derives its placements inside `finish` (entrants), and
+      // this procedure has no way to express one.
+      const count = await writeManualResults(ctx.supabase, input.gameId, input.placements, "team");
       return { success: true, count };
     }),
 

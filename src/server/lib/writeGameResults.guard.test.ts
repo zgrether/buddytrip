@@ -73,6 +73,47 @@ describe("games.finish — results writes must fail loudly (#776)", () => {
     ).toBe(allCalls.length);
   });
 
+  /**
+   * The placement arms are the OTHER half of the same property.
+   *
+   * `writeManualResults` is excluded from the engine assertions above because it
+   * throws inline and always has — but "throws inline" is a fact about that
+   * function, not about the arms. Two of `finish`'s four branches commit through
+   * it (the entered order, and the bracket's derived one), and a future arm that
+   * swapped it for a bare insert, or for `writeGameResults` without the flag,
+   * would reintroduce exactly the swallowed-failure bug on the placement path
+   * while the engine assertions above stayed green.
+   *
+   * Named rather than counted, unlike the engine case: there is no shared prefix
+   * to match on, so a count would only ever assert against itself.
+   */
+  it("both placement arms commit through writeManualResults (the throwing writer)", () => {
+    const calls = body.match(/writeManualResults\s*\(/g) ?? [];
+    expect(
+      calls.length,
+      `games.finish makes ${calls.length} writeManualResults call(s); expected 2 — the ` +
+        `entered-order (manual) arm and the derived (bracket) arm. A placement arm that ` +
+        `writes any other way must throw on failure, or a game locks complete with no results.`
+    ).toBe(2);
+  });
+
+  /**
+   * The bracket arm DERIVES before it writes, and the derivation is a read — so
+   * it must not be mistaken for an engine compute and handed the `onFailure`
+   * flag, and it must not be inlined into the router either. Pinning the call
+   * keeps the CLAUDE.md #8 split visible at the dispatch: pure rule in
+   * `lib/bracketPlacements`, DB wrapper in `server/lib/bracketResults`, one
+   * shared writer.
+   */
+  it("the bracket arm derives through the shared server wrapper", () => {
+    expect(
+      /deriveBracketPlacements\s*\(/.test(body),
+      "games.finish's bracket arm no longer calls deriveBracketPlacements. The placement " +
+        "rule is shared with the play surface's preview (CLAUDE.md #8) — a second derivation " +
+        "in the router is a second answer to who won."
+    ).toBe(true);
+  });
+
   it("the setup paths are NOT converted — they must keep the quiet default", () => {
     // The inverse guard. If someone "helpfully" makes the setup callers throw,
     // pairing a match starts failing on a results-write error and saveConfig

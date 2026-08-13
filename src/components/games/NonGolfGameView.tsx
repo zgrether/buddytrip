@@ -33,7 +33,8 @@ import {
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
-import { BracketBoard, type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
+import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
+import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
 import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { DEFAULT_BRACKET_CONFIG, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -41,6 +42,7 @@ import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
 import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
+import { bracketPlacements, teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { gameLockState } from "@/lib/gameLifecycle";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
@@ -48,6 +50,27 @@ import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGa
 /** Shared empty tie-set, so the untouched case keeps a stable identity across
  *  renders and doesn't retrigger the memos that depend on it. */
 const EMPTY_TIES: ReadonlySet<string> = new Set<string>();
+
+/**
+ * The bracket's two reads, refreshed together — ONE invalidator, not two lists
+ * that happen to match (CLAUDE.md #22).
+ *
+ * The pool and the draw are both hashed config (migration 115) and both are
+ * written by the same `save_game_config` call, but they are separate queries from
+ * the game row and from each other. Both convergence paths — the config-hash /
+ * realtime push, and this page's own post-save refresh — listed only the POOL, so
+ * a field rebuilt on another device converged the entrants while the board kept
+ * rendering the tree they used to be in. Nothing errored; the draw was simply
+ * one save behind, which is the failure mode #22 exists for.
+ */
+function invalidateBracketReads(
+  utils: ReturnType<typeof trpc.useUtils>,
+  tripId: string,
+  gameId: string,
+) {
+  void utils.games.bracketPool.invalidate({ tripId, gameId });
+  void utils.games.bracketDraw.invalidate({ tripId, gameId });
+}
 
 function Spinner() {
   return (
@@ -127,7 +150,7 @@ export function NonGolfGameView() {
       // tables and their own read, so the hash moving has to refresh this too —
       // invalidating only `getById` would converge every bracket setting EXCEPT
       // the field itself.
-      void utils.games.bracketPool.invalidate({ tripId, gameId: urlGameId });
+      invalidateBracketReads(utils, tripId, urlGameId);
     }
     if (tripId && competitionId) void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
   }, [utils, tripId, urlGameId, competitionId]);
@@ -454,25 +477,57 @@ export function NonGolfGameView() {
     });
   }, [poolQ.data, pickerTeams]);
 
-  const [pickError, setPickError] = useState<string | null>(null);
-  const pickMutation = trpc.games.pickWinner.useMutation({
-    // Server truth on both paths — a pick changes what the WHOLE tree derives,
-    // so there is nothing useful to patch optimistically and a wrong local
-    // guess would be visible three rounds up. The refetch is one small query.
-    onSuccess: () => {
-      setPickError(null);
-      void utils.games.bracketDraw.invalidate({ tripId: tripId!, gameId: urlGameId! });
-    },
-    onError: (e) => setPickError(e.message),
-  });
-  const handlePick = useCallback(
-    (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
-      if (!tripId || !urlGameId) return;
-      setPickError(null);
-      pickMutation.mutate({ tripId, gameId: urlGameId, ...ref, winnerSeed: seed });
-    },
-    [pickMutation, tripId, urlGameId],
+  /**
+   * Seed → cup team, taken from the pool the server already returns.
+   *
+   * `bracket_entrants.team_id` is the roll-up key — the same column
+   * `computeCompetitionLeaderboard` sums by — so the preview below and the
+   * posted record answer "whose points are these?" from one field rather than
+   * two rules that agree by luck.
+   */
+  const teamBySeed = useMemo(
+    () =>
+      new Map<string, string | null>(
+        ((poolQ.data ?? []) as { seed: number; teamId: string | null }[]).map((e) => [String(e.seed), e.teamId]),
+      ),
+    [poolQ.data],
   );
+
+  /**
+   * What the draw as it stands would pay each team — the bracket's answer to the
+   * header's projection row.
+   *
+   * ── Why this exists rather than reusing `draftProjection` ──────────────────
+   * `draftProjection` reads `order`, which for a non-bracket is the finishing
+   * order someone dragged and for a bracket is the ROSTER order nobody touched.
+   * Once a bracket posted, `hasDeclaredOutcome` went true off the posted cells
+   * and the header started previewing a per-team split derived from roster
+   * order — a number with no relationship to the tree on screen. It was only
+   * visible while active or correcting, which is exactly when someone is
+   * looking at it.
+   *
+   * This runs the SAME three functions the server runs (`bracketPlacements` →
+   * `placementPoints` → `teamPointsFromEntrants`), so the preview and the record
+   * cannot diverge — CLAUDE.md #8, and the reason the roll-up is a shared pure
+   * helper rather than server-only code.
+   *
+   * Null until the draw is finished, which is also when `games.finish` would
+   * refuse it: a half-played bracket has no placements to value, and showing a
+   * partial one would claim a result nobody has.
+   */
+  const bracketProjection = useMemo<Record<string, number> | null>(() => {
+    if (!isBracket) return null;
+    const placements = bracketPlacements(resolvedDraw);
+    if (placements.length === 0) return null;
+    const d = game?.points_distribution as PointsDistribution | null | undefined;
+    const perEntrant = pointsForPlacements(
+      placements.map((p) => ({ entityId: String(p.seed), position: p.position })),
+      isPlacement(d) ? d.values : [],
+    );
+    const out: Record<string, number> = {};
+    for (const [teamId, v] of teamPointsFromEntrants(perEntrant, teamBySeed)) out[teamId] = v;
+    return out;
+  }, [isBracket, resolvedDraw, game?.points_distribution, teamBySeed]);
 
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
@@ -576,10 +631,11 @@ export function NonGolfGameView() {
 
   async function refreshGame() {
     await gameQ.refetch();
-    // The pool is a separate read from the game row, so a save that rebuilt the
-    // field would otherwise leave the baseline seeded from the old one — the page
-    // would report itself dirty against a pool it just persisted.
-    utils.games.bracketPool.invalidate({ tripId, gameId: urlGameId! });
+    // The pool and draw are separate reads from the game row, so a save that
+    // rebuilt the field would otherwise leave the baseline seeded from the old
+    // one — the page would report itself dirty against a pool it just persisted,
+    // and the board would render the tree those entrants used to be in.
+    invalidateBracketReads(utils, tripId!, urlGameId!);
     if (competitionId) {
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       utils.competitions.faceBootstrap.invalidate({ tripId });
@@ -895,8 +951,14 @@ export function NonGolfGameView() {
           // `final` drives the label only ("FINAL / this game" vs "PROJECTED / if
           // today holds"). It now requires corrections to be CLOSED: a reopened
           // game previously announced FINAL while its result was being edited.
-          !resultLocked && draftProjection
-            ? { perTeam: draftProjection, gameName, final: false }
+          //
+          // A BRACKET substitutes its own preview for the draft one. Both are
+          // "what does the state I am looking at pay?"; they differ only in what
+          // that state IS — a typed order there, the resolved draw here. Reading
+          // `draftProjection` for a bracket meant reading a per-team split
+          // derived from ROSTER order, which is what this replaces.
+          !resultLocked && (isBracket ? bracketProjection : draftProjection)
+            ? { perTeam: (isBracket ? bracketProjection : draftProjection)!, gameName, final: false }
             : isManualGameType(game.game_type_id) && !resultFinal
               ? undefined
               : {
@@ -910,29 +972,28 @@ export function NonGolfGameView() {
           A bracket is a manual game whose placements are DERIVED rather than
           typed, so the lifecycle around it (chrome, locks, exit, realtime,
           settings, go-live) is non-golf's unchanged and only the surface swaps.
-          Everything above and below this line is shared. */}
+          Everything above and below this line is shared.
+
+          It is a COMPONENT rather than inline JSX because the branch had to grow
+          the finalize/correct/re-lock CTAs (#917 part 2 — the board alone left a
+          played-out bracket with no way to finish). Given the same shape as
+          `NonGolfScoreboard` beside it, a missing lifecycle behaviour is visible
+          rather than merely absent. */}
       {competitionId && isBracket ? (
-        <div style={{ padding: "12px 12px 24px" }}>
-          <div
-            style={{
-              fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
-              color: "var(--color-bt-text-dim)", fontWeight: 700, margin: "6px 0 9px",
-            }}
-          >
-            {canEdit ? "Tap a competitor to advance them" : "Bracket"}
-          </div>
-          <BracketBoard
-            matches={resolvedDraw}
-            entrants={bracketEntrantMeta}
-            canPick={canEdit && !resultLocked}
-            onPick={handlePick}
-          />
-          {pickError && (
-            <p style={{ marginTop: 10, fontSize: 12, color: "var(--color-bt-danger)" }} data-testid="bracket-pick-error">
-              {pickError}
-            </p>
-          )}
-        </div>
+        <BracketScoringSurface
+          tripId={tripId}
+          gameId={game.id}
+          competitionId={competitionId}
+          game={{
+            status: game.status as string,
+            corrections_open: game.corrections_open === true,
+            points_total: (game.points_total as number | null) ?? null,
+          }}
+          matches={resolvedDraw}
+          entrants={bracketEntrantMeta}
+          canEdit={canEdit}
+          onPosted={exitToBoard}
+        />
       ) : competitionId && (
         <NonGolfScoreboard
           tripId={tripId}

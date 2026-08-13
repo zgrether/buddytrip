@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rollUp, placementDetail, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
+import { isBracketGame } from "@/lib/resultStrategy";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
@@ -63,7 +65,11 @@ export async function computeCompetitionLeaderboard(
       // board's GameRow"). That is true of `games.listByTrip`, which selects `*`
       // and feeds different consumers; it was never true of THIS payload, which
       // names its columns. The invalidation advice in #10 is unaffected.
-      .select("id, name, points_distribution, points_total, status, game_type_id, course_id, scoring_enabled, entry_mode, corrections_open, display_order")
+      // `competition_format` rides here because a game's scoring engine is
+      // resolved from the game type AND it (`resolveResultStrategy`) — a bracket
+      // is not a game type, so `game_type_id` alone stopped answering "how is
+      // this game awarded?". Free: this select already names its columns.
+      .select("id, name, points_distribution, points_total, status, game_type_id, competition_format, course_id, scoring_enabled, entry_mode, corrections_open, display_order")
       .eq("competition_id", competitionId)
       // ONE global order for the whole board (migration 108). Every lifecycle
       // section sorts by this, which is what makes a game keep its place as it
@@ -101,18 +107,36 @@ export async function computeCompetitionLeaderboard(
   const teamSizes = teamIds.map((id) => sizeByTeam.get(id) ?? 0);
 
   const gameIds = allGames.map((g) => g.id as string);
+  /**
+   * The competition's BRACKET games — resolved the same way `games.finish`
+   * resolves what to compute, so the write path and this read path cannot
+   * disagree about which games are brackets.
+   *
+   * Used to gate the `bracket_entrants` read below. A competition with no
+   * bracket (every competition until now) issues exactly the queries it always
+   * did — the roll-up costs a round trip only where there is something to roll
+   * up, which matters because this payload is on the board's poll.
+   */
+  const bracketGameIds = allGames
+    .filter((g) => isBracketGame(g.game_type_id as string | null, g.competition_format as string | null))
+    .map((g) => g.id as string);
   // game_results (awarded) + the per-game match COUNT (available) + the per-game
   // participant COUNT (the stroke/rack readiness gate) + the per-game SCORE-entry
-  // presence (the On-Tap↔Ready-for-Play split). All depend on the live game ids;
-  // run them together.
-  const [resultsRes, matchRowsRes, participantRowsRes, scoreEntryRowsRes, outcomeRowsRes] = await Promise.all([
+  // presence (the On-Tap↔Ready-for-Play split) + a bracket's entrant→team map.
+  // All depend on the live game ids; run them together.
+  const [resultsRes, matchRowsRes, participantRowsRes, scoreEntryRowsRes, outcomeRowsRes, entrantRowsRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
-          .select("game_id, entity_id, position, raw_score")
+          // `entity_type` is now SELECTED and the filter is a set, because a
+          // bracket's results name entrants rather than teams (migration 119).
+          // Splitting the rows by type below is what keeps a bracket's entrant
+          // placements out of another game's team standings and vice versa —
+          // reading them as one list would rank entrant ids against team ids.
+          .select("game_id, entity_id, entity_type, position, raw_score")
           .in("game_id", gameIds)
-          .eq("entity_type", "team")
-      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; position: number | null; raw_score: number | null }[] }),
+          .in("entity_type", ["team", "entrant"])
+      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null }[] }),
     gameIds.length
       ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[] }),
@@ -133,8 +157,55 @@ export async function computeCompetitionLeaderboard(
     gameIds.length
       ? supabase.from("match_hole_outcomes").select("game_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[] }),
+    // The bracket roll-up's ONE extra input: which cup team each entrant plays
+    // for. `bracket_entrants.team_id` is what makes a 2v2 pairing unable to span
+    // two teams (migration 112), which is precisely what makes "so its points
+    // land on one team" true rather than aspirational — so it is also the right
+    // and only thing to roll up by. Skipped entirely when the competition has no
+    // bracket.
+    bracketGameIds.length
+      ? supabase.from("bracket_entrants").select("id, team_id").in("game_id", bracketGameIds)
+      : Promise.resolve({ data: [] as { id: string; team_id: string | null }[] }),
   ]);
   const results = resultsRes.data;
+  /**
+   * entrant id → cup team. Built across every bracket in the competition at
+   * once; entrant ids are unique per game (they carry the game id), so one flat
+   * map cannot collide across games.
+   *
+   * A missing entry means the entrant has no team — a standalone-style entrant
+   * in a cup game. `teamPointsFromEntrants` skips those rather than dropping
+   * them from the record, which is what lets a bracket with an unassigned
+   * competitor still score everyone else correctly.
+   */
+  const teamByEntrant = new Map<string, string | null>(
+    ((entrantRowsRes.data ?? []) as { id: string; team_id: string | null }[]).map((e) => [e.id, e.team_id ?? null])
+  );
+  /**
+   * Did that read FAIL, as opposed to returning nothing?
+   *
+   * The distinction is the whole of CLAUDE.md #16's landmine pointed at this
+   * function. "No entrants" and "we could not read the entrants" produce the same
+   * empty map, and an unchecked failure would make every entrant look teamless —
+   * so a finished bracket would quietly award nobody anything while the board
+   * rendered as though that were the result. Points vanishing with no error is
+   * the expensive failure, not points missing with one.
+   *
+   * The bracket branch below treats this as UNPOSTED rather than as zero: the
+   * game contributes its pool and shows no awards yet, which is the honest
+   * reading of "we don't know", and the next poll recovers. It is deliberately
+   * not a throw — one sub-read failing should not blank a whole competition's
+   * board — but it IS logged, because a silent degrade nobody can see is how the
+   * six-week version of this bug happened.
+   */
+  const entrantReadError = (entrantRowsRes as { error?: { message: string } | null }).error ?? null;
+  if (entrantReadError) {
+    console.error("[competitionLeaderboard] bracket entrant read failed — brackets will show as unposted", {
+      competitionId,
+      bracketGameIds,
+      error: entrantReadError.message,
+    });
+  }
   // Games with at least one score entry OR ≥1 decided hole outcome — drives
   // `started` on each game below. The two sources are mutually exclusive per
   // game (a game is one entry_mode), so merging them is always safe.
@@ -179,16 +250,84 @@ export async function computeCompetitionLeaderboard(
 
   // For placement games: value = position (lower wins).
   // For per_match games: value = raw_score (match points, higher wins).
+  //
+  // Split by entity_type, because the two kinds of row are ranked against
+  // different fields and mixing them would be silent: a bracket's entrant
+  // positions landing in `standingsByGame` would be ranked as if entrant ids were
+  // team ids, awarding points to entities no team column will ever match.
   const standingsByGame = new Map<string, { entityId: string; value: number }[]>();
+  const entrantStandingsByGame = new Map<string, { entityId: string; value: number }[]>();
   for (const r of results ?? []) {
-    const arr = standingsByGame.get(r.game_id as string) ?? [];
+    const target = (r.entity_type as string) === "entrant" ? entrantStandingsByGame : standingsByGame;
+    const gid = r.game_id as string;
+    const arr = target.get(gid) ?? [];
     arr.push({ entityId: r.entity_id as string, value: (r.position ?? r.raw_score ?? 0) as number });
-    standingsByGame.set(r.game_id as string, arr);
+    target.set(gid, arr);
   }
 
   const liveGames: LiveGame[] = allGames.map((g) => {
     const rawDist = g.points_distribution as PointsDistribution | null;
     const standings = standingsByGame.get(g.id as string) ?? [];
+
+    /**
+     * ── A BRACKET: entrant placements, rolled up to cup teams ────────────────
+     *
+     * FIRST, ahead of every other branch, and that ordering is load-bearing. A
+     * bracket is a MANUAL game type wearing a descriptor, so it would otherwise
+     * fall into the winner-take-all branch below and be awarded from `standings`
+     * — which for a bracket is EMPTY, because its rows are entrant rows. The
+     * failure would be silent and expensive: the board would show a finished
+     * bracket contributing its points-in-play and awarding nobody anything.
+     *
+     * ── Why two steps and not one ────────────────────────────────────────────
+     * Points are computed PER ENTRANT and only then summed onto teams. Ranking
+     * teams directly cannot express what a bracket does: with 6 entrants over 2
+     * teams, team A can finish 1st, 3rd and 5th, and one position per team has no
+     * way to say so (migration 119's header). So the distribution is applied to
+     * the entrant field — where #916's later places actually live, and where the
+     * tie groups an elimination round produces get averaged by the same
+     * `placementPoints` every other format uses — and the team total is the sum.
+     *
+     * ── The synthetic distribution is the existing mechanism, not a new one ──
+     * `rollUp` awards by ranking standings against a distribution, and a bracket
+     * arrives at this point with per-team POINTS already decided. That is exactly
+     * the shape `per_match` has, and it is solved the same way: hand back the
+     * sorted point values AS the distribution with `high_wins`, and
+     * `placementPoints` passes them through unchanged — including ties, where a
+     * group of size n shares the sum of n equal values and gets its own value
+     * back. Two teams on the same points is a real outcome here (both entrants
+     * knocked out in the same round), so the tie behaviour is used, not tolerated.
+     *
+     * A bracket with no configured split pays nothing and still contributes its
+     * `points_total` to points-available — the same treatment the undistributed
+     * placement shell at the bottom of this function gets, rather than a
+     * bracket-specific guess about what the organizer meant.
+     */
+    if (isBracketGame(g.game_type_id as string | null, g.competition_format as string | null)) {
+      // A failed entrant read is "unknown", not "nobody scored" — see the note on
+      // `entrantReadError`. Empty standings here give the pre-decision shape.
+      const entrantStandings = entrantReadError ? [] : entrantStandingsByGame.get(g.id as string) ?? [];
+      const pointsByEntrant = placementPoints(
+        isPlacement(rawDist) ? rawDist.values : [],
+        entrantStandings,
+        "low_wins"
+      );
+      const teamPoints = teamPointsFromEntrants(pointsByEntrant, teamByEntrant);
+      const sorted = [...teamPoints.entries()]
+        .map(([entityId, value]) => ({ entityId, value }))
+        .sort((a, b) => b.value - a.value);
+      return {
+        id: g.id as string,
+        // Null before the bracket is posted (no entrant rows yet) — contributes
+        // its pool and awards nothing, the same pre-decision state every other
+        // format has.
+        distribution: sorted.length > 0 ? sorted.map((s) => s.value) : null,
+        numTeams: teamIds.length,
+        standings: sorted,
+        direction: "high_wins" as const,
+        pointsTotal: (g.points_total as number | null) ?? undefined,
+      };
+    }
 
     // Match-play, non-golf MANUAL game → winner-take-all. The owner-set total all
     // goes to the winner (position 1); a tie (both at position 1) splits it —
