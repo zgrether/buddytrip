@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { buildDraw } from "../../lib/bracket";
+import {
+  loadSummaryEntries,
+  notifySurfaceFor,
+  formatBracketSummary,
+} from "../lib/gameFinishNotify";
 
 /**
  * The bracket's finalize, end to end — spec item 6.
@@ -439,5 +444,97 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     expect(lb.teamTotals[cup.teamA]).toBeCloseTo(4);
     // B keeps 2nd (2) + its tied 3rd (1).
     expect(lb.teamTotals[cup.teamB]).toBeCloseTo(3);
+  });
+});
+
+/**
+ * ── The push's result line (#930) ───────────────────────────────────────────
+ *
+ * The summary read is the half a pure test cannot see. Its failure mode is a
+ * query that matches nothing and reports that as "no result" — which is what
+ * #930 was: `entity_type` resolved to `"team"`, a bracket's rows are `"entrant"`,
+ * and the push went out saying "Results are in." for a game that had just
+ * produced a champion. Nothing errored.
+ *
+ * So this exercises the REAL read against real rows, then hands the entries to
+ * the real formatter. Names come out of `bracket_entrant_members` → `users`,
+ * which is the join that did not exist before.
+ */
+describe("the finished bracket's notification summary", () => {
+  it("resolves entrant names from their members, not from a name column", async () => {
+    const cup = await newCup("notify Cup");
+    const gameId = await newBracket(cup, "Notify", fourSplit(cup), { distribution: [4, 2, 1, 1] });
+    await playChalk4(gameId);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const entries = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor("bracket"));
+    // Four entrants, every one named — an empty list here IS the bug.
+    expect(entries).toHaveLength(4);
+    expect(entries.every((e) => e.name.length > 0)).toBe(true);
+
+    // The name came from `users.name` via the members join — not from a column
+    // on `bracket_entrants`, which has none. Read the expected value from the
+    // database rather than restating it, so this pins the JOIN rather than a
+    // fixture string.
+    const { data: ownerRow } = await ctx.admin.from("users").select("name").eq("id", owner).maybeSingle();
+    const winner = entries.find((e) => e.position === 1)!;
+    expect(winner.name).toBe((ownerRow as { name: string }).name);
+    // Singles: one member per entrant, so no plural verb.
+    expect(entries.every((e) => e.multi === false)).toBe(true);
+  });
+
+  it("the line names the winner and the runner-up, and nobody else", async () => {
+    const cup = await newCup("notify line Cup");
+    const gameId = await newBracket(cup, "Notify line", fourSplit(cup), { distribution: [4, 2, 1, 1] });
+    await playChalk4(gameId);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const entries = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor("bracket"));
+    const line = formatBracketSummary(entries);
+
+    expect(line).not.toBe("");
+    expect(line).toContain(" wins it, over ");
+    // Seeds 3 and 4 tied at 3rd — a tie the game never played out, so it stays
+    // out of the line entirely.
+    const thirds = entries.filter((e) => e.position === 3).map((e) => e.name);
+    expect(thirds).toHaveLength(2);
+    for (const name of thirds) expect(line).not.toContain(name);
+  });
+
+  it("a 2v2 entrant joins its members and takes the plural verb", async () => {
+    const cup = await newCup("notify pairs Cup");
+    const pairs: Entrant[] = [
+      { seed: 1, teamId: cup.teamA, userIds: [owner, member] },
+      { seed: 2, teamId: cup.teamB, userIds: [planner, outsider] },
+    ];
+    const gameId = await newBracket(cup, "Notify pairs", pairs, { distribution: [6, 2], pointsTotal: 8 });
+    // A 2-entrant draw is one match: round 1, slot 1 IS the final.
+    await pick(gameId, 1, 1, 1);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const entries = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor("bracket"));
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.multi === true)).toBe(true);
+    // Both members present in the joined name — the whole point of the members read.
+    const winner = entries.find((e) => e.position === 1)!;
+    expect(winner.name).toContain(" & ");
+    expect(formatBracketSummary(entries)).toContain(" win it, over ");
+  });
+
+  /**
+   * The regression proper: the OLD code asked for `entity_type = 'team'`, which a
+   * bracket has none of. Asserting the empty case explicitly means a future
+   * change that re-points the bracket at team rows fails here rather than in
+   * someone's notification tray.
+   */
+  it("a bracket has NO team rows for the summary to have found", async () => {
+    const cup = await newCup("notify empty Cup");
+    const gameId = await newBracket(cup, "Notify empty", fourSplit(cup), { distribution: [4, 2, 1, 1] });
+    await playChalk4(gameId);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const asTeams = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor(null));
+    expect(asTeams).toHaveLength(0);
+    expect(formatBracketSummary(asTeams)).toBe("");
   });
 });

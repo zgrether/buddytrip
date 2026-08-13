@@ -3,7 +3,9 @@ import {
   formatPoints,
   formatResultSummary,
   formatStrokeSummary,
+  formatBracketSummary,
   formatClinchMargin,
+  notifySurfaceFor,
 } from "./gameFinishNotify";
 
 /**
@@ -63,6 +65,135 @@ describe("formatPoints — halves, because tie-averaging produces them", () => {
     // Points SHOULD only ever be half-steps. If one isn't, that is information —
     // quietly rounding it would hide a real scoring bug behind tidy copy.
     expect(formatPoints(2.25)).toBe("2.25");
+  });
+});
+
+/**
+ * A BRACKET names the winner (#930) — the one summary that is a sentence.
+ *
+ * Its siblings report a comparison because their formats produce one. A bracket
+ * produces a champion, and everything below 2nd is a tie group the game never
+ * played out, so listing it would print ties nobody contested.
+ *
+ * Names are FULL names throughout, because `users.name` holds a full name — the
+ * same rule the rest of this file follows. "Zach & Matt" is how the line gets
+ * discussed; "Zach Grether & BJ Dennison" is what actually goes on the phone,
+ * and only the second one is worth measuring.
+ */
+describe("formatBracketSummary — the winner, and who they beat", () => {
+  const singles = (name: string, position: number) => ({ name, position });
+  const pair = (name: string, position: number) => ({ name, position, multi: true });
+
+  it("singles: the winner, the runner-up, and a singular verb", () => {
+    expect(
+      formatBracketSummary([
+        singles(CREW.zach, 1),
+        singles(CREW.bj, 2),
+        singles(CREW.marcus, 3),
+        singles(CREW.jeremy, 3),
+      ])
+    ).toBe("Zach Grether wins it, over BJ Dennison");
+  });
+
+  it("partners: a joined name and a PLURAL verb", () => {
+    // "Zach & Matt wins it" is the kind of error that makes an app look broken,
+    // and it is not recoverable from the joined string — hence `multi`.
+    expect(
+      formatBracketSummary([
+        pair(`${CREW.zach} & ${CREW.bj}`, 1),
+        pair(`${CREW.marcus} & ${CREW.jeremy}`, 2),
+      ])
+    ).toBe("Zach Grether & BJ Dennison win it, over Marcus Thornton & Jeremy Maddox");
+  });
+
+  it("says nothing about 3rd, whether or not a consolation match separated them", () => {
+    // Tied semi losers — the ordinary case. Neither appears.
+    const tied = formatBracketSummary([
+      singles(CREW.zach, 1),
+      singles(CREW.bj, 2),
+      singles(CREW.marcus, 3),
+      singles(CREW.jeremy, 3),
+    ]);
+    // And with a play-off, which DOES separate them. Still neither appears —
+    // the line is about the final, not about how far down the tree resolved.
+    const split = formatBracketSummary([
+      singles(CREW.zach, 1),
+      singles(CREW.bj, 2),
+      singles(CREW.marcus, 3),
+      singles(CREW.jeremy, 4),
+    ]);
+    expect(tied).toBe(split);
+    for (const b of [tied, split]) {
+      expect(b).not.toContain(CREW.marcus);
+      expect(b).not.toContain(CREW.jeremy);
+      expect(b).not.toContain("3rd");
+    }
+  });
+
+  it("a two-entrant bracket has a winner and a runner-up like any other", () => {
+    expect(formatBracketSummary([singles(CREW.zach, 1), singles(CREW.bj, 2)])).toBe(
+      "Zach Grether wins it, over BJ Dennison"
+    );
+  });
+
+  it("drops the 'over' clause when there is nobody to name", () => {
+    expect(formatBracketSummary([singles(CREW.zach, 1)])).toBe("Zach Grether wins it");
+  });
+
+  it("returns nothing rather than inventing a result", () => {
+    expect(formatBracketSummary([])).toBe("");
+    expect(formatBracketSummary([{ name: "", position: 1 }])).toBe("");
+  });
+
+  it("a shared first place falls back to the tie form and drops the runner-up", () => {
+    // Not reachable from a real tree — a final has one winner. Handled rather
+    // than asserted, because "over" is meaningless when the top is unresolved.
+    const b = formatBracketSummary([
+      singles(CREW.zach, 1),
+      singles(CREW.bj, 1),
+      singles(CREW.marcus, 3),
+    ]);
+    expect(b).toBe("1st Zach Grether & BJ Dennison");
+    expect(b).not.toContain("over");
+  });
+});
+
+/**
+ * The registry is the fix (#930), not the copy: the bracket's line was empty
+ * because `isStroke ? "user" : "team"` had no way to say "entrant", and nothing
+ * ever asked the format. These pin the answers a format must give.
+ */
+describe("notifySurfaceFor — every format answers all three questions", () => {
+  it("routes each strategy to its competitor rows", () => {
+    expect(notifySurfaceFor("stroke_total").competitor).toBe("user");
+    expect(notifySurfaceFor("match_play").competitor).toBe("team");
+    expect(notifySurfaceFor("rack_n_stack").competitor).toBe("team");
+    expect(notifySurfaceFor(null).competitor).toBe("team");
+    // The bug: this used to resolve to "team" and match nothing.
+    expect(notifySurfaceFor("bracket").competitor).toBe("entrant");
+  });
+
+  it("gives cup-scoped formats the competition audience, engines their participants", () => {
+    // A bracket has no `game_participants` roster at all, so the engine audience
+    // would resolve to nobody and the push would reach no one.
+    expect(notifySurfaceFor("bracket").audience).toBe("competition");
+    expect(notifySurfaceFor(null).audience).toBe("competition");
+    expect(notifySurfaceFor("stroke_total").audience).toBe("participants");
+    expect(notifySurfaceFor("match_play").audience).toBe("participants");
+    expect(notifySurfaceFor("rack_n_stack").audience).toBe("participants");
+  });
+
+  it("picks the summary shape per format", () => {
+    expect(notifySurfaceFor("stroke_total").summary).toBe("stroke");
+    expect(notifySurfaceFor("bracket").summary).toBe("bracket");
+    expect(notifySurfaceFor(null).summary).toBe("placement");
+    expect(notifySurfaceFor("match_play").summary).toBe("placement");
+  });
+
+  it("null is a real answer, not a missing one", () => {
+    // `null` is the manual arm — a served branch of the dispatch — so it must
+    // resolve to a surface rather than falling off the registry.
+    expect(notifySurfaceFor(null)).toBeDefined();
   });
 });
 
@@ -400,6 +531,37 @@ describe("truncation with real names", () => {
     ]);
     expect(b).toBe("1st Zach Grether · 2nd Marcus Thornton · +28");
     expect(b.length).toBeLessThanOrEqual(60);
+  });
+
+  /**
+   * The bracket line is the longest SHAPE in the file — a sentence carrying two
+   * full names on each side of it. Measured with the crew names rather than the
+   * team names, because a bracket's competitors are people.
+   *
+   * Like the stroke line above, the exact BBMI string is unmeasured: the crew
+   * that will actually play cornhole isn't fixed, so these are representative
+   * rather than real. Noted rather than guessed.
+   */
+  it("body: a 2v2 bracket with full crew names is the shape's worst case", () => {
+    const b = formatBracketSummary([
+      { name: `${CREW.zach} & ${CREW.bj}`, position: 1, multi: true },
+      { name: `${CREW.marcus} & ${CREW.jeremy}`, position: 2, multi: true },
+    ]);
+    expect(b).toBe("Zach Grether & BJ Dennison win it, over Marcus Thornton & Jeremy Maddox");
+    expect(b.length).toBe(71);
+    // Under the ~80 comfortable limit, so it survives a collapsed body intact —
+    // which matters more here than elsewhere, since the tail carries the loser
+    // and a cut line would read as "X win it, over Marcus Thor…".
+    expect(b.length).toBeLessThanOrEqual(80);
+  });
+
+  it("body: a singles bracket is comfortably short", () => {
+    const b = formatBracketSummary([
+      { name: CREW.zach, position: 1 },
+      { name: CREW.bj, position: 2 },
+    ]);
+    expect(b).toBe("Zach Grether wins it, over BJ Dennison");
+    expect(b.length).toBe(38);
   });
 
   it("body: the clinch line is short because it carries no names", () => {
