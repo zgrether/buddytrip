@@ -255,14 +255,32 @@ per-hole `score_entries`: order the teams by finish; points come from the config
 placement distribution (you set the order, not the points). Uses the **placement** distribution
 model → subject to the §9 save gate.
 
-**Competition format** (`competitions.competition_format`, enum
-`head_to_head | bracket_se | bracket_de | best_of_n | live_results`): **Head-to-Head is the
-only enabled option** (and default). **Bracket (single/double), Best-of-N, Live Results** are
-visible-but-disabled **"Soon" placeholders** — no engine yet.
+**Competition format** (`games.competition_format`, enum
+`head_to_head | bracket | best_of_n | live_results`): **Head-to-Head and Bracket are
+enabled**; **Best-of-N and Live Results** remain visible-but-disabled **"Soon" placeholders** —
+no engine yet.
 
-> **DEFERRED FEATURE** — bracket / best-of-N / live-results engines are undesigned
-> placeholders. When built, each becomes a new format entry here (its own settlement rules),
-> dispatched via a `result_strategy`. Not a canon blocker for the live formats.
+`bracket_se` / `bracket_de` are **legacy read-only values**. Single vs double elimination
+collapsed into ONE `bracket` entry (it is a setting inside the format, exactly as entry mode is
+inside match play), and the old values are still accepted on read so a game saved before the
+collapse stays saveable — never offered.
+
+> **CORRECTED 2026-08-13.** This block previously read *"Head-to-Head is the only enabled
+> option"* and called the bracket engine an **undesigned placeholder**. Both were true when
+> written and were reversed by doing: the bracket shipped across five phases — schema
+> (migrations 112–118), the settings surface, derived advancement, the pick mutation, and the
+> pick broadcast. Left as it stood, this paragraph described a decision that no longer held,
+> in a document whose whole job is to say what is live.
+>
+> **Still deferred:** best-of-N and live-results engines, and the bracket's own **double
+> elimination** (the format entry offers it disabled — a losers' bracket, a grand final, and a
+> competitor who can lose once and still win are a second surface, not a flag).
+
+**The bracket is a SCHEDULER, not a scoring engine.** It produces placements; the existing
+placement distribution values them — the same path the manual arm writes, not a second one.
+Elimination round IS the ranking: in an 8-entrant draw the quarter-final losers finish 5th–8th
+as a tie group, and `placementPoints` already averages a tie group across the places it spans.
+So a bracket's place ceiling is its **field**, not its tree's arity (`bracketPlaceCapacity`).
 
 ---
 
