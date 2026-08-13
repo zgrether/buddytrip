@@ -20,13 +20,23 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  *
  * ── The precondition this rests on, and how it actually stood ──────────────
  * The claim that this change is inert for existing data was CHECKED against
- * production rather than assumed, and it was WRONG: seven manual games in
- * match-play cups already carry `{placement, [9,6]}`. All seven are in one
- * development trip ("D1 Trip", 2026-06-17), all have zero entered results, and
- * all have a null `points_total` — so today they award nothing and contribute
- * nothing, and after this change they contribute 15 points-available each while
- * still awarding nothing. No real cup holds one. The last test pins the
- * null-total case, because it is the shape those rows actually have.
+ * production rather than assumed, and it was WRONG at the time of checking:
+ * seven manual games in match-play cups already carried `{placement, [9,6]}`
+ * with a null `points_total` and zero entered results. They turned out to be
+ * integration-test residue — a `test-trip-…` id from `TestContext.createTrip`,
+ * one of sixty-six such trips left in production by the pre-#636 suite, which
+ * ran against the shared remote project. No real cup held one.
+ *
+ * Those seven rows were DELETED (2026-08-13; snapshot in the gitignored
+ * `/backups`), so the precondition now holds in fact rather than by assumption:
+ * zero production games take the new branch, and this change is inert until
+ * someone sets a split on purpose.
+ *
+ * The null-total test below is kept anyway, and it is the interesting one. It
+ * pins the shape those rows HAD — a split with no total — because that is the
+ * case where deferring changes points-available (the placement branch falls back
+ * to the distribution sum) without changing what anyone is awarded. If the shape
+ * recurs, it is a tested number rather than a surprise.
  */
 
 const MANUAL = "gtt_manual";
@@ -136,13 +146,14 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
     expect(lb.teamTotals[tb]).toBe(0);
   });
 
-  it("a split with a NULL total — the shape the seven production rows actually have", async () => {
-    // Those rows are `{placement, [9,6]}` with `points_total` null. Before this
-    // change they contributed NOTHING (the flatten read total 0 → distribution
-    // null → skipped). After it they fall to the placement branch, where a null
-    // total falls back to the distribution sum. Pinned so the one real
-    // consequence of the precondition being false is a tested number rather than
-    // a claim in a PR body.
+  it("a split with a NULL total — points-available moves, nobody's award does", async () => {
+    // The shape the seven deleted production rows had: `{placement,[9,6]}` with
+    // `points_total` null. Before this change such a game contributed NOTHING
+    // (the flatten read total 0 → distribution null → skipped). After it, it
+    // falls to the placement branch, where a null total falls back to the
+    // distribution sum — so it starts contributing to points-available, and
+    // therefore to the win number, while still awarding nobody anything until
+    // results exist. That asymmetry is the whole reason this case is pinned.
     const { comp, ta, tb } = await matchPlayCup("Null Total Cup");
     const gameId = await manualGame(comp, "Legacy Shape", {
       points_total: null,
