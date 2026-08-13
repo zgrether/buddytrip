@@ -256,12 +256,30 @@ async function teamCountForGame(
  *
  * Costs one extra query ONLY for a game that has entrants — the bracket read runs
  * first and short-circuits the team count when it finds any.
+ *
+ * `incomingEntrantCount` is the field the CALLER is about to write, and it wins
+ * over the one on disk. A settings save commits the pool and the placement split
+ * in one atomic RPC (#18), so validating the split against the stored pool asks
+ * the wrong question: building an 8-entrant field and an 8-place split together
+ * would be refused against the 0 entrants (or 2 teams) that were there before
+ * the save it is part of — and the only way through would be to save twice, in
+ * an order nothing tells you. Absent (every other caller, and every save that
+ * isn't about the pool) → read what is stored.
  */
 async function placeCapacityForGame(
   supabase: SupabaseClient,
   tripId: string,
-  gameId: string
+  gameId: string,
+  incomingEntrantCount?: number | null
 ): Promise<PlaceCapacity> {
+  if (incomingEntrantCount != null) {
+    // An incoming EMPTY pool is a bracket being cleared, not a bracket with no
+    // ceiling — the game ranks teams again the moment this save lands, so that
+    // is the ceiling to hold it to.
+    return incomingEntrantCount > 0
+      ? bracketPlaceCapacity(incomingEntrantCount)
+      : teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
+  }
   const { count: entrants, error } = await supabase
     .from("bracket_entrants")
     .select("id", { count: "exact", head: true })
@@ -451,6 +469,38 @@ export const gamesRouter = router({
   // config hash (that would defeat the "refetch only when config changed" goal).
   // All reads run under the caller's RLS context, so the fingerprint reflects
   // exactly the config that getById would return to THIS member.
+  /**
+   * The bracket POOL — entrants in seed order, each with its members.
+   *
+   * Any trip member: the pool is the field, and a member seeing who is in the
+   * draw is the same visibility `matches.listByGame` grants for pairings. The
+   * settings page seeds its draft from this (the `entrants` argument to
+   * `configToNonGolfDraft`), so an untouched page is not dirty.
+   *
+   * Ordered by SEED because the index IS the draw position — the same total
+   * order `configHash` folds this table in by.
+   */
+  bracketPool: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("bracket_entrants")
+        .select("id, seed, team_id, bracket_entrant_members(user_id)")
+        .eq("game_id", input.gameId)
+        .order("seed", { ascending: true })
+        .order("user_id", { referencedTable: "bracket_entrant_members", ascending: true });
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the bracket pool: ${error.message}` });
+      }
+      return (data ?? []).map((e) => ({
+        id: e.id as string,
+        seed: e.seed as number,
+        teamId: (e.team_id as string | null) ?? null,
+        userIds: ((e.bracket_entrant_members ?? []) as { user_id: string }[]).map((m) => m.user_id),
+      }));
+    }),
+
   configHash: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
@@ -1368,6 +1418,7 @@ export const gamesRouter = router({
         const p = input.payload as {
           pointsDistribution?: unknown;
           pointsTotal?: number | null;
+          bracketEntrants?: unknown[];
         };
         // NOT gated on `pointsTotal != null`. Places-vs-entities compares the
         // place count to the team count and never reads the total — gating it on
@@ -1376,7 +1427,14 @@ export const gamesRouter = router({
         // that can't be applied. The sum check still needs a total, so it stays
         // conditional below.
         if (isPlacement(p.pointsDistribution)) {
-          const capacity = await placeCapacityForGame(ctx.supabase, ctx.tripId, input.gameId);
+          // The pool THIS save establishes is the ceiling, not the one on disk —
+          // the two are written in the same transaction. Absent → stored.
+          const capacity = await placeCapacityForGame(
+            ctx.supabase,
+            ctx.tripId,
+            input.gameId,
+            p.bracketEntrants ? p.bracketEntrants.length : null
+          );
           const check = validatePlacement(p.pointsTotal ?? 0, p.pointsDistribution.values, capacity);
           if (check.state === "too_many_places") {
             throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });

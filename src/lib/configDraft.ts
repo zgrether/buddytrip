@@ -28,6 +28,7 @@
 import { evenShare, isPlacement, type PointsDistribution } from "./pointsDistribution";
 import { isMatchPlayFormat } from "./gameRoutes";
 import type { ModifiersMap } from "./modifiers";
+import { buildDraw, type BracketDrawMatch } from "./bracket";
 
 /**
  * WINNER TAKES ALL (item 6) — stroke/placement's default & degenerate case: one
@@ -190,10 +191,28 @@ export interface BaseConfigDraft {
   delegates: string[];
 }
 
-/** Non-golf's draft — the base with NO structural slice (no matches / course /
- *  groups). Its whole page is name · delegate · rules · format · points, all Quiet or
- *  Warned, so there's nothing here a scored game must lock. */
-export type NonGolfConfigDraft = BaseConfigDraft;
+/**
+ * Non-golf's draft — the base plus ONE structural slice, the bracket pool.
+ *
+ * Everything else on its page (name · delegate · rules · format · points) is Quiet
+ * or Warned, so there is nothing a scored game must lock. The pool is the
+ * exception, and it is the format's only structural authoring: a list of
+ * ENTRANTS in seed order, each a list of user ids (one for singles, two for
+ * partners). Empty for every non-bracket game, which is why this stays one draft
+ * rather than a fourth variant — a card game simply carries an empty pool.
+ *
+ * `string[][]` deliberately matches `RackConfigDraft.groups`, so the same
+ * presentation-only builder (`RackGroupBuilder`) drives both and there is no
+ * second person-picker to keep in step.
+ *
+ * The DRAW is not here. It is a pure function of the entrant count and the
+ * consolation flag (`buildDraw`), so storing it would be a snapshot of something
+ * derivable — it is computed at payload time instead.
+ */
+export interface NonGolfConfigDraft extends BaseConfigDraft {
+  /** Entrants in SEED order: index 0 is seed 1. Empty for a non-bracket game. */
+  bracketEntrants: string[][];
+}
 
 /** The shared course sub-object (id + composed back-nine + snapshotted schema) — the
  *  same shape match carries, since rack + match both route it through GameSetupRows /
@@ -384,6 +403,11 @@ export interface SaveConfigPayload {
    *  COALESCE-PRESERVES, so sending null would be indistinguishable from
    *  "clear it" for a column only a bracket speaks for. */
   bracketConfig?: BracketConfig | null;
+  /** The bracket POOL, seed-ordered. Emitted only for a bracket with entrants —
+   *  its presence is what gates the RPC's whole pool+draw block. */
+  bracketEntrants?: { seed: number; teamId: string | null; userIds: string[] }[];
+  /** The DRAW for that pool. Moves with `bracketEntrants`, never alone. */
+  bracketDraw?: BracketDrawMatch[];
   scoringEnabled: boolean;
   /** Match play owns these; a format that doesn't (non-golf) omits them — the RPC
    *  preserves entry_mode (COALESCE) and defaults modifiers to {}. */
@@ -541,7 +565,14 @@ function baseDraftToPayload(
 
 /** Server snapshot → non-golf draft baseline. The lean variant: no matches, no course
  *  (`configToDraft` needs those; this doesn't). */
-export function configToNonGolfDraft(game: ConfigGameSnapshot, delegates: string[]): NonGolfConfigDraft {
+export function configToNonGolfDraft(
+  game: ConfigGameSnapshot,
+  delegates: string[],
+  /** Persisted entrants in seed order, pre-resolved by the caller (mirrors how
+   *  `configToRackDraft` takes play_groups already resolved). Absent for every
+   *  non-bracket game. */
+  entrants: string[][] = []
+): NonGolfConfigDraft {
   return {
     gameTypeId: game.game_type_id ?? null,
     name: game.name ?? "",
@@ -552,20 +583,76 @@ export function configToNonGolfDraft(game: ConfigGameSnapshot, delegates: string
     pointsTotal: game.points_total ?? null,
     pointsDistribution: game.points_distribution ?? null,
     delegates: [...delegates].sort(),
+    bracketEntrants: entrants.map((e) => [...e]),
   };
 }
 
-/** Non-golf draft → the atomic Save payload. Base fields ONLY — no `matches` (so the
- *  RPC skips its matches block), no `entryMode`/`modifiers` (the RPC preserves entry_mode
- *  and defaults modifiers to {} — both no-ops for a format that owns neither), null
- *  course. A `placement` distribution is authored, so it passes through untouched. */
-export function nonGolfDraftToPayload(draft: NonGolfConfigDraft, baseline?: NonGolfConfigDraft): SaveConfigPayload {
-  return baseDraftToPayload(draft, draft.pointsDistribution, baseline);
+/**
+ * Non-golf draft → the atomic Save payload. Base fields ONLY — no `matches` (so the
+ * RPC skips its matches block), no `entryMode`/`modifiers` (the RPC preserves
+ * entry_mode and defaults modifiers to {} — both no-ops for a format that owns
+ * neither), null course. A `placement` distribution is authored, so it passes
+ * through untouched.
+ *
+ * ── The bracket slice ──────────────────────────────────────────────────────
+ * `bracketEntrants` + `bracketDraw` are emitted TOGETHER or not at all: the draw
+ * references entrants by seed, and the RPC gates the whole block on
+ * `bracketEntrants` being present. Omitting both is what leaves an existing pool
+ * untouched, which is the right default for every save that is not about the
+ * pool (a rename must not rebuild a draw).
+ *
+ * The DRAW is computed here rather than drafted — `buildDraw` is a pure function
+ * of the entrant count and the consolation flag, so drafting it would snapshot
+ * something derivable and let the two drift.
+ *
+ * `teamByUser` resolves each entrant's cup team. An entrant belongs to exactly
+ * one team — that is what makes a 2v2 pairing structurally unable to span two —
+ * so the team is read from the entrant's FIRST member; the builder is what
+ * enforces that its members agree.
+ *
+ * ── Emptying the pool IS a change, and has to be SENT ───────────────────────
+ * "Omit when it isn't about the pool" and "omit when there is no pool" read as
+ * the same rule and are not. The RPC preserves what an absent key doesn't
+ * mention, so a draft that has been emptied — the format switched away from
+ * Bracket, or partners → singles taken through `ClearPairingsPrompt` — would
+ * silently leave the persisted entrants in place: the prompt promises "the
+ * entrants you've built will be removed", the save reports success, and the
+ * pool is still there on the next read. So a clear is sent EXPLICITLY as
+ * `[]` + `[]`, which is what makes the RPC's dirty-compare see a difference
+ * and delete.
+ *
+ * It is sent only against a BASELINE that actually held entrants. Without a
+ * baseline nothing is comparable, and an empty pool then means "this game has
+ * never had one" — omitting is right there, and wiping on a hunch is not.
+ * (A bracket with picks recorded is still refused server-side, HAS_PICKS.)
+ */
+export function nonGolfDraftToPayload(
+  draft: NonGolfConfigDraft,
+  baseline?: NonGolfConfigDraft,
+  bracket?: { teamByUser: Record<string, string | null> }
+): SaveConfigPayload {
+  const base = baseDraftToPayload(draft, draft.pointsDistribution, baseline);
+  const pool = draft.competitionFormat === "bracket" ? draft.bracketEntrants.filter((e) => e.length > 0) : [];
+  if (pool.length === 0) {
+    const had = baseline?.bracketEntrants.some((e) => e.length > 0);
+    return had ? { ...base, bracketEntrants: [], bracketDraw: [] } : base;
+  }
+  return {
+    ...base,
+    bracketEntrants: pool.map((userIds, i) => ({
+      seed: i + 1,
+      teamId: bracket?.teamByUser[userIds[0]] ?? null,
+      userIds: [...userIds],
+    })),
+    bracketDraw: buildDraw(pool.length, { consolation: draft.bracketConfig?.consolation ?? false }),
+  };
 }
 
-/** Pure whole-page equality for the non-golf draft (the base fields only). */
+/** Pure whole-page equality for the non-golf draft — the base fields, plus the
+ *  pool. Seed ORDER is meaningful (it is the draw position), so this compares the
+ *  arrays in order rather than as sets. */
 export function nonGolfDraftsEqual(a: NonGolfConfigDraft, b: NonGolfConfigDraft): boolean {
-  return baseDraftsEqual(a, b);
+  return baseDraftsEqual(a, b) && canonical(a.bracketEntrants) === canonical(b.bracketEntrants);
 }
 
 // ── Rack variant ─────────────────────────────────────────────────────────────

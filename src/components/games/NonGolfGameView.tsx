@@ -32,7 +32,10 @@ import {
   type CompetitionFormat,
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
-import { teamPlaceCapacity } from "@/lib/placeCapacity";
+import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
+import { DEFAULT_BRACKET_CONFIG, type BracketConfig } from "@/lib/bracketDraft";
+import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
+import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
 import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
@@ -116,7 +119,14 @@ export function NonGolfGameView() {
   // config hash) — those already reflect via the board's shared leaderboard poll,
   // so here we invalidate the config (getById) + the leaderboard read.
   const onConfigChanged = useCallback(() => {
-    if (tripId && urlGameId) void utils.games.getById.invalidate({ tripId, gameId: urlGameId });
+    if (tripId && urlGameId) {
+      void utils.games.getById.invalidate({ tripId, gameId: urlGameId });
+      // The pool + draw are hashed config (migration 115) but live in their own
+      // tables and their own read, so the hash moving has to refresh this too —
+      // invalidating only `getById` would converge every bracket setting EXCEPT
+      // the field itself.
+      void utils.games.bracketPool.invalidate({ tripId, gameId: urlGameId });
+    }
     if (tripId && competitionId) void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
   }, [utils, tripId, urlGameId, competitionId]);
   useConfigSync(tripId, urlGameId, !!urlGameId, onConfigChanged);
@@ -294,6 +304,65 @@ export function NonGolfGameView() {
     [orgQ.data],
   );
 
+  // ── The bracket's three reads ───────────────────────────────────────────────
+  // The POOL (seed-ordered) is what the draft baseline seeds from, so an
+  // untouched settings page for a bracket that already has a field is not dirty.
+  // Enabled for EVERY non-golf game, not just a bracket: `serverConfigDraft` has
+  // to be built before anything has decided which format this is, and a
+  // non-bracket simply reads back an empty pool.
+  const poolQ = trpc.games.bracketPool.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId },
+  );
+  // The picker's sections: the crew, grouped by their cup team. Team-scoped, so
+  // both are gated on a resolved competition — a standalone game has neither.
+  const assignQ = trpc.teamAssignments.list.useQuery(
+    { tripId: tripId!, competitionId: competitionId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId },
+  );
+  const crewQ = trpc.tripMembers.list.useQuery(
+    { tripId: tripId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId },
+  );
+
+  const serverEntrants = useMemo(
+    () => ((poolQ.data as { userIds: string[] }[] | undefined) ?? []).map((e) => [...e.userIds]),
+    [poolQ.data],
+  );
+
+  /** user id → cup team. The payload reads an entrant's team from its FIRST
+   *  member (`nonGolfDraftToPayload`); this is the map it reads it out of. */
+  const teamByUser = useMemo(() => {
+    const out: Record<string, string | null> = {};
+    for (const a of ((assignQ.data ?? []) as { user_id: string; team_id: string }[])) out[a.user_id] = a.team_id;
+    return out;
+  }, [assignQ.data]);
+
+  /**
+   * The pool builder's team sections — the crew grouped by cup team.
+   *
+   * Teams come from the leaderboard read this view already holds (id / name /
+   * color), so there is no second teams query to keep in step with the one the
+   * scoreboard renders from.
+   *
+   * A player on NO team is deliberately absent, unlike the stroke picker's
+   * "Crew" bucket. A bracket entrant's team is where its points land, and the
+   * server refuses a null-team entrant outright ("a bracket needs a cup to score
+   * into") — so offering an unassigned player would be offering a pick that
+   * cannot be saved. Same posture as `sameTeamOnly`: shape the options rather
+   * than refuse the tap.
+   */
+  const pickerTeams = useMemo<GroupBuilderTeam[]>(() => {
+    const crewList = ((crewQ.data ?? []) as { user_id: string; displayName?: string | null; user?: { name?: string | null } | null }[])
+      .map((c) => ({ id: c.user_id, name: c.displayName ?? c.user?.name ?? "Player", avatarIcon: null as string | null }));
+    const sections: GroupBuilderTeam[] = [];
+    for (const t of teams) {
+      const players = crewList.filter((c) => teamByUser[c.id] === t.id);
+      if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
+    }
+    return sections;
+  }, [teams, teamByUser, crewQ.data]);
+
   // Draft slices — a scalar sentinel means "untouched, read the server mirror". name/
   // rules/scoring/delegates use null; format/points can BE null, so they use undefined.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -303,15 +372,20 @@ export function NonGolfGameView() {
   const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null | undefined>(undefined);
   const [pointsDistDraft, setPointsDistDraft] = useState<PointsDistribution | null | undefined>(undefined);
   const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
+  // The bracket's two slices. Entrants is a list, so null is a clean sentinel;
+  // the config can legitimately BE null (every non-bracket game), so it needs
+  // undefined — the same reason format/points above do.
+  const [entrantsDraft, setEntrantsDraft] = useState<string[][] | null>(null);
+  const [bracketConfigDraft, setBracketConfigDraft] = useState<BracketConfig | null | undefined>(undefined);
 
   const serverConfigDraft = useMemo<NonGolfConfigDraft>(
-    () => configToNonGolfDraft((game ?? {}) as Parameters<typeof configToNonGolfDraft>[0], serverDelegates),
-    [game, serverDelegates],
+    () => configToNonGolfDraft((game ?? {}) as Parameters<typeof configToNonGolfDraft>[0], serverDelegates, serverEntrants),
+    [game, serverDelegates, serverEntrants],
   );
   const anyTouched =
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null ||
     formatDraft !== undefined || pointsTotalDraft !== undefined || pointsDistDraft !== undefined ||
-    delegatesDraft !== null;
+    delegatesDraft !== null || entrantsDraft !== null || bracketConfigDraft !== undefined;
 
   const configDraft = useMemo<NonGolfConfigDraft>(
     () => ({
@@ -323,8 +397,38 @@ export function NonGolfGameView() {
       pointsTotal: pointsTotalDraft !== undefined ? pointsTotalDraft : serverConfigDraft.pointsTotal,
       pointsDistribution: pointsDistDraft !== undefined ? pointsDistDraft : serverConfigDraft.pointsDistribution,
       delegates: delegatesDraft ?? serverConfigDraft.delegates,
+      bracketConfig: bracketConfigDraft !== undefined ? bracketConfigDraft : serverConfigDraft.bracketConfig,
+      bracketEntrants: entrantsDraft ?? serverConfigDraft.bracketEntrants,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft],
+  );
+
+  // ── The bracket's derived shape, read by everything below ───────────────────
+  // `isBracket` and the entrant count both come off the DRAFT, so the rows, the
+  // place ceiling and the payload all answer from the same state — a staged
+  // format switch takes effect everywhere at once rather than in the one place
+  // that happened to be repointed (CLAUDE.md #18).
+  const isBracket = configDraft.competitionFormat === "bracket";
+  const filledEntrants = useMemo(
+    () => configDraft.bracketEntrants.filter((e) => e.length > 0),
+    [configDraft.bracketEntrants],
+  );
+  /**
+   * How many finishing places this game HAS — the ceiling the placement split is
+   * validated against.
+   *
+   * A bracket's is its FIELD (#916); every other non-golf format's is the team
+   * count. Derived ONCE here and read by both consumers — the Save block and the
+   * inline warning in the distribution editor — because two derivations of one
+   * number is how the save bar and the editor come to disagree about whether a
+   * split fits. The server applies the same rule to the same incoming pool.
+   */
+  const capacity = useMemo(
+    () => placeCapacityFor({
+      entrantCount: isBracket ? filledEntrants.length : null,
+      teamCount: teams.length || null,
+    }),
+    [isBracket, filledEntrants.length, teams.length],
   );
 
   // C1: block Save when a STARTED placement split no longer sums to the total (owner
@@ -337,26 +441,25 @@ export function NonGolfGameView() {
     // places-vs-entities one, which never reads the total — #819 nested both
     // under this guard, so a no-total game could save an unappliable split.
     if (configDraft.pointsTotal == null) {
-      const noTotal = validatePlacement(0, d.values, teamPlaceCapacity(teams.length || null));
+      const noTotal = validatePlacement(0, d.values, capacity);
       return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
     }
-    // Entity count = teams in the competition (what the leaderboard ranks).
-    // Empty while the leaderboard read is in flight — `|| null` so an
-    // unresolved 0 never refuses a valid split.
-    const v = validatePlacement(configDraft.pointsTotal, d.values, teamPlaceCapacity(teams.length || null));
+    // The ceiling is `capacity` — a bracket's field, otherwise the teams the
+    // leaderboard ranks. Unknown while a read is in flight, which never refuses.
+    const v = validatePlacement(configDraft.pointsTotal, d.values, capacity);
     return v.saveable ? null : placementRefusalMessage(v);
-  }, [configDraft.pointsDistribution, configDraft.pointsTotal, teams.length]);
+  }, [configDraft.pointsDistribution, configDraft.pointsTotal, capacity]);
 
   // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
   // the whole lifecycle off these).
   const draftBundle = useMemo(
-    () => ({ name: nameDraft, rules: rulesDraft, scoring: scoringDraft, format: formatDraft, pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, delegates: delegatesDraft }),
-    [nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft],
+    () => ({ name: nameDraft, rules: rulesDraft, scoring: scoringDraft, format: formatDraft, pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, delegates: delegatesDraft, entrants: entrantsDraft, bracketConfig: bracketConfigDraft }),
+    [nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft],
   );
   function resetSlices() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null);
     setFormatDraft(undefined); setPointsTotalDraft(undefined); setPointsDistDraft(undefined);
-    setDelegatesDraft(null);
+    setDelegatesDraft(null); setEntrantsDraft(null); setBracketConfigDraft(undefined);
   }
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name !== null) setNameDraft(b.name);
@@ -366,6 +469,8 @@ export function NonGolfGameView() {
     if (b.pointsTotal !== undefined) setPointsTotalDraft(b.pointsTotal);
     if (b.pointsDist !== undefined) setPointsDistDraft(b.pointsDist);
     if (b.delegates !== null) setDelegatesDraft(b.delegates);
+    if (b.entrants !== null) setEntrantsDraft(b.entrants);
+    if (b.bracketConfig !== undefined) setBracketConfigDraft(b.bracketConfig);
   }, []);
 
   // The settings overlay stays here (confirm-on-leave refs the shared hook writes below).
@@ -390,24 +495,71 @@ export function NonGolfGameView() {
   } = useConfigDraft<NonGolfConfigDraft, typeof draftBundle>({
     tripId, gameId: urlGameId, view: "nongolf", canEdit,
     showConfig, dirtyRef, discardRef,
-    // EVERY query feeding serverConfigDraft (see StrokeGameView's call): the game row plus
-    // orgQ, which backs the delegates slice.
-    ready: !!game && !!orgQ.data,
+    // EVERY query feeding serverConfigDraft (see StrokeGameView's call): the game row,
+    // orgQ (the delegates slice), poolQ (the entrants slice) — plus assignQ, which
+    // feeds no draft field but resolves every entrant's TEAM at payload time. A save
+    // that ran before it landed would send `teamId: null` for the whole field and be
+    // refused server-side ("a bracket needs a cup to score into") on a page the user
+    // filled in correctly, so it gates the baseline like the rest.
+    ready: !!game && !!orgQ.data && !!poolQ.data && (!competitionId || !!assignQ.data),
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: nonGolfDraftsEqual,
-    toPayload: (draft, base) => nonGolfDraftToPayload(draft, base),
+    toPayload: (draft, base) => nonGolfDraftToPayload(draft, base, { teamByUser }),
     bundle: draftBundle, applyRecovered: applyBundle, reset: resetSlices,
     onSaved: async () => { await refreshGame(); utils.games.listOrganizers.invalidate({ tripId: tripId!, gameId: urlGameId! }); },
   });
 
   async function refreshGame() {
     await gameQ.refetch();
+    // The pool is a separate read from the game row, so a save that rebuilt the
+    // field would otherwise leave the baseline seeded from the old one — the page
+    // would report itself dirty against a pool it just persisted.
+    utils.games.bracketPool.invalidate({ tripId, gameId: urlGameId! });
     if (competitionId) {
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       utils.competitions.faceBootstrap.invalidate({ tripId });
       utils.games.listByTrip.invalidate({ tripId });
     }
   }
+  // ── The format switch, and the pool it can destroy ──────────────────────────
+  // Wrapped in an object so a pending switch to the null (unset → Head-to-Head)
+  // format is distinguishable from "nothing pending".
+  const [pendingFormat, setPendingFormat] = useState<{ next: CompetitionFormat | null } | null>(null);
+
+  /**
+   * Stage a format change — with the two side effects that make the bracket's
+   * rows and its payload consistent with it.
+   *
+   * INTO a bracket: stage a config if the game has none. `bracket_config`
+   * defaults to `{}`, which decodes to null, so a game switched to Bracket has
+   * no settings for the rows to render or for the payload to emit — the format
+   * would save and the bracket would come back unconfigured. Only when it has
+   * none: switching away and back must not discard settings the user made.
+   *
+   * OUT of a bracket: empty the pool. The payload sends that emptied pool as an
+   * explicit clear, which is what makes the confirm below tell the truth.
+   */
+  function applyFormat(next: CompetitionFormat | null) {
+    setFormatDraft(next);
+    if (next === "bracket") {
+      if (!configDraft.bracketConfig) setBracketConfigDraft(DEFAULT_BRACKET_CONFIG);
+    } else {
+      setEntrantsDraft([]);
+    }
+  }
+  /** Leaving Bracket with a field built costs that field, so it asks first —
+   *  through the SAME prompt the partners → singles change uses, because it is
+   *  the same event from the user's side. Nothing else about a format change
+   *  destroys anything, so nothing else asks. */
+  function requestFormat(next: CompetitionFormat | null) {
+    if (next === configDraft.competitionFormat) return;
+    if (isBracket && filledEntrants.length > 0) {
+      setPendingFormat({ next });
+      return;
+    }
+    applyFormat(next);
+  }
+
   // The Setup/Scoring toggle is now a DRAFT edit — staging scoring_enabled; Save commits
   // it WITH the config in one atomic RPC (go-live readiness is re-asserted server-side
   // inside the tx, so the client gate can't be bypassed).
@@ -514,10 +666,26 @@ export function NonGolfGameView() {
             scoringModel={scoringModel}
             draft={configDraft}
             canEdit={canEdit}
-            capacity={teamPlaceCapacity(teams.length || null)}
-            onFormatChange={setFormatDraft}
+            capacity={capacity}
+            onFormatChange={requestFormat}
             onPointsTotalChange={setPointsTotalDraft}
             onPointsDistChange={setPointsDistDraft}
+            // The bracket's own rows, directly under the format that turns them
+            // on. Rendered only for a bracket WITH a config — `applyFormat`
+            // stages one on the switch, so the gap is a render apart, not a
+            // state a user can sit in.
+            bracketRows={
+              isBracket && configDraft.bracketConfig ? (
+                <BracketSettingsRows
+                  config={configDraft.bracketConfig}
+                  pool={configDraft.bracketEntrants}
+                  teams={pickerTeams}
+                  canEdit={canEdit}
+                  onConfigChange={setBracketConfigDraft}
+                  onPoolChange={setEntrantsDraft}
+                />
+              ) : null
+            }
           />
         }
         // The toggle reads the DRAFT; `staged` = draft ≠ the live server flag.
@@ -551,6 +719,15 @@ export function NonGolfGameView() {
           />
         }
       />
+      {pendingFormat && (
+        <ClearPairingsPrompt
+          onCancel={() => setPendingFormat(null)}
+          onConfirm={() => {
+            applyFormat(pendingFormat.next);
+            setPendingFormat(null);
+          }}
+        />
+      )}
       {confirmingClose && (
         <DiscardChangesPrompt
           onDiscard={confirmDiscard}

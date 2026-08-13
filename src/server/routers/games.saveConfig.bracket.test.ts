@@ -61,6 +61,8 @@ async function payloadFor(
     draw?: DrawMatch[];
     scoringEnabled?: boolean;
     omitEntrants?: boolean;
+    pointsTotal?: number;
+    distribution?: { type: "placement"; values: number[] };
   }
 ) {
   const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
@@ -68,8 +70,8 @@ async function payloadFor(
     name: slice.name ?? ((g.name as string) ?? "Bracket"),
     rulesForToday: (g.rules_for_today as string | null) ?? null,
     scoringEnabled: slice.scoringEnabled ?? ((g.scoring_enabled as boolean) ?? false),
-    pointsTotal: (g.points_total as number | null) ?? 4,
-    pointsDistribution: g.points_distribution ?? null,
+    pointsTotal: slice.pointsTotal ?? (g.points_total as number | null) ?? 4,
+    pointsDistribution: slice.distribution ?? g.points_distribution ?? null,
     courseId: null,
     backCourseId: null,
     scorecardSchema: null,
@@ -407,6 +409,71 @@ describe("saveConfig — hash invariant: every bracket field moves, none churns"
     await save(gameId, { entrants: pairs, draw: buildDraw(2) as DrawMatch[] });
     const reads = await Promise.all([hashOf(gameId), hashOf(gameId), hashOf(gameId)]);
     expect(new Set(reads).size).toBe(1);
+  });
+
+  /**
+   * The place ceiling is checked against the field THIS SAVE establishes, not
+   * the one already on disk.
+   *
+   * The settings page commits the pool and the placement split in one atomic
+   * call (#18), so reading the stored pool asks about a state that no longer
+   * exists by the time the write lands — and the ceiling for a game with no
+   * entrants yet falls through to the TEAM count, which for a bracket is both
+   * smaller and the wrong question. Building the field and its payout together
+   * is the ordinary first setup, so it must not be the one thing that can't be
+   * saved.
+   */
+  describe("the places ceiling reads the INCOMING field", () => {
+    /** Four singles entrants — one per shared test user, so the field is larger
+     *  than the competition's team count and the two ceilings differ. */
+    function fourEntrants(): BracketEntrant[] {
+      return [
+        { seed: 1, teamId, userIds: [owner] },
+        { seed: 2, teamId, userIds: [planner] },
+        { seed: 3, teamId, userIds: [member] },
+        { seed: 4, teamId, userIds: [outsider] },
+      ];
+    }
+
+    it("a field and a split sized to it save TOGETHER, from nothing", async () => {
+      const gameId = await newBracketGame("Field and split together");
+      await save(gameId, {
+        entrants: fourEntrants(),
+        draw: buildDraw(4) as DrawMatch[],
+        pointsTotal: 10,
+        distribution: { type: "placement", values: [4, 3, 2, 1] },
+      });
+      const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
+      expect(g.points_distribution).toEqual({ type: "placement", values: [4, 3, 2, 1] });
+      expect(await entrantsOf(gameId)).toHaveLength(4);
+    });
+
+    it("still refuses a split with more places than that field — and names ENTRANTS", async () => {
+      const gameId = await newBracketGame("Split past the field");
+      await expect(
+        save(gameId, {
+          entrants: fourEntrants(),
+          draw: buildDraw(4) as DrawMatch[],
+          pointsTotal: 10,
+          distribution: { type: "placement", values: [4, 3, 1, 1, 1] },
+        })
+      ).rejects.toThrow(/4 entrants/);
+    });
+
+    it("an emptied pool falls back to the TEAM ceiling in the same breath", async () => {
+      // Clearing the field means the game ranks teams again the moment this save
+      // lands, so that is the ceiling to hold it to — not "a bracket with no
+      // entrants", which has no ceiling at all and would wave anything through.
+      const gameId = await seeded("Cleared falls back to teams");
+      await expect(
+        save(gameId, {
+          entrants: [],
+          draw: [],
+          pointsTotal: 10,
+          distribution: { type: "placement", values: [4, 3, 2, 1] },
+        })
+      ).rejects.toThrow(/competition/);
+    });
   });
 
   it("a WINNER does NOT move the hash — a pick is a score, not config", async () => {
