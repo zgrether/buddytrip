@@ -95,6 +95,13 @@ export function NonGolfSettingsRows({
   onPointsDistChange: (dist: PointsDistribution | null) => void;
 }) {
   const [openAccordion, setOpenAccordion] = useState<null | "format" | "distribution">(null);
+  // The distribution row's THREE outputs — the subtitle, the resolved/empty state,
+  // and the panel's winner-takes-all mode — all derive from here. They used to be
+  // spelled three different ways in the JSX below (and the third wasn't wired at
+  // all), which is what let the collapsed row say "Winner takes all" while the
+  // panel it opened said "not distributed yet".
+  const hasSplit = isPlacement(draft.pointsDistribution);
+  const isPool = usesPointsPool(scoringModel, draft.pointsDistribution);
   return (
     <>
       <CompetitionFormatDropdown
@@ -126,13 +133,13 @@ export function NonGolfSettingsRows({
         icon={Scale}
         title="Point Distribution"
         subtitle={
-          draft.pointsDistribution?.type === "placement"
+          hasSplit
             ? "Custom placement split — tap to edit"
-            : scoringModel === "match_play"
-              ? "Winner takes all — tap to set a placement split"
-              : "Even — tap to set a placement split"
+            : isPool
+              ? "Even — tap to set a placement split"
+              : "Winner takes all — tap to set a placement split"
         }
-        state={draft.pointsDistribution?.type === "placement" ? "resolved" : "empty"}
+        state={hasSplit ? "resolved" : "empty"}
         expanded={openAccordion === "distribution"}
         onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
         testId="row-point-distribution"
@@ -142,6 +149,18 @@ export function NonGolfSettingsRows({
           game={game}
           canEdit={canEdit}
           part="distribution"
+          // The fix (#911's contradiction): the panel defaults `winnerTakesAll` to
+          // FALSE, so it always rendered the placement editor — "0 of 2 · not
+          // distributed yet" — under a row whose own subtitle said "Winner takes
+          // all". Two claims about one game, on screen together.
+          //
+          // NOT stroke's bare `winnerTakesAll`. Stroke can pass it unconditionally
+          // because for stroke an unset split ALWAYS means the winner takes the
+          // pool. Non-golf's answer depends on the cup: unset means winner-takes-all
+          // in a match-play cup and EVEN in a points cup. Same prop, different
+          // predicate behind it — and it is the predicate this row already keys its
+          // subtitle on, not a third derivation of the same question.
+          winnerTakesAll={!isPool}
           controlled={{
             value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
             onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
