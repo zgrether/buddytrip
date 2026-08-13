@@ -33,7 +33,7 @@ import {
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
-import { DEFAULT_BRACKET_CONFIG, type BracketConfig } from "@/lib/bracketDraft";
+import { DEFAULT_BRACKET_CONFIG, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
@@ -696,11 +696,34 @@ export function NonGolfGameView() {
         // this view's settings panel only ever renders when competitionId is set.
         management={{
           scoringEnabled: configDraft.scoringEnabled,
-          ready: !competitionId || pointsReady(configDraft.pointsTotal ?? 0),
+          // TWO readiness axes now. Points is the existing one; the FIELD is
+          // #917's — phase 2c made Bracket selectable without requiring the
+          // setup to have happened, so scoring could be enabled on an empty
+          // draw and the crew would arrive at a game with nothing to play.
+          //
+          // The server refuses this too (migration 117), and that ordering is
+          // the point: this gate is the second opinion, never the only one. A
+          // client-only refusal would be a rule the RPC doesn't share — the
+          // same two-answers-to-one-question shape, pointed the other way.
+          // Reads the DRAFT pool, so it moves as the field is built and agrees
+          // with the server's read of the pool this Save is about to write.
+          ready:
+            (!competitionId || pointsReady(configDraft.pointsTotal ?? 0)) &&
+            bracketFieldReady(isBracket, configDraft.bracketEntrants),
+          // Points first, so the existing reason is unchanged when both are
+          // unmet — the field is the newer and more specific complaint, and
+          // naming it while the game has no points would be answering second.
           blockedReason:
             competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
               ? "Set a point value before enabling scoring"
-              : null,
+              : !bracketFieldReady(isBracket, configDraft.bracketEntrants)
+                // The same SENTENCE the RPC raises, minus its closing "in this
+                // game's settings" — which is real guidance for any other caller
+                // and redundant here, where the Field row is a few inches up the
+                // page. The rule is what must not drift; the navigation clause is
+                // context, and this surface already has the context.
+                ? "A bracket needs at least two entrants before it can go live"
+                : null,
           onEnable: handleEnable,
           onDisable: handleDisable,
           pending: saving,
