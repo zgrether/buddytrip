@@ -451,6 +451,38 @@ export const gamesRouter = router({
   // config hash (that would defeat the "refetch only when config changed" goal).
   // All reads run under the caller's RLS context, so the fingerprint reflects
   // exactly the config that getById would return to THIS member.
+  /**
+   * The bracket POOL — entrants in seed order, each with its members.
+   *
+   * Any trip member: the pool is the field, and a member seeing who is in the
+   * draw is the same visibility `matches.listByGame` grants for pairings. The
+   * settings page seeds its draft from this (the `entrants` argument to
+   * `configToNonGolfDraft`), so an untouched page is not dirty.
+   *
+   * Ordered by SEED because the index IS the draw position — the same total
+   * order `configHash` folds this table in by.
+   */
+  bracketPool: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("bracket_entrants")
+        .select("id, seed, team_id, bracket_entrant_members(user_id)")
+        .eq("game_id", input.gameId)
+        .order("seed", { ascending: true })
+        .order("user_id", { referencedTable: "bracket_entrant_members", ascending: true });
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the bracket pool: ${error.message}` });
+      }
+      return (data ?? []).map((e) => ({
+        id: e.id as string,
+        seed: e.seed as number,
+        teamId: (e.team_id as string | null) ?? null,
+        userIds: ((e.bracket_entrant_members ?? []) as { user_id: string }[]).map((m) => m.user_id),
+      }));
+    }),
+
   configHash: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)

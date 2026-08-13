@@ -40,12 +40,30 @@ export function RackGroupBuilder({
   groups,
   onChange,
   teams,
+  sameTeamOnly = false,
+  maxPerGroup = MAX_PER_GROUP,
 }: {
   groups: string[][];
   onChange: (next: string[][]) => void;
   /** The teams whose rosters feed the picker, in display order (rack = the 2 competition
    *  teams; stroke = the game roster grouped by team, 2–4 sections). */
   teams: GroupBuilderTeam[];
+  /**
+   * Confine a group to ONE team once it has a member — the BRACKET constraint.
+   *
+   * A bracket entrant belongs to exactly one cup team, because that is where its
+   * points land; a pair spanning two teams has no single answer. Rack and stroke
+   * pass false and keep taking any mix, which is deliberate for them (a cart is
+   * not a scoring entity).
+   *
+   * Enforced by REMOVING the other teams' players from the picker rather than by
+   * refusing a tap, so the rule reads as "these are your options" instead of
+   * "that was wrong" — and an empty group still shows everyone.
+   */
+  sameTeamOnly?: boolean;
+  /** Cap per group. Defaults to rack's 4; a bracket passes 1 or 2 (singles vs
+   *  partners), which is what closes the picker at the right size. */
+  maxPerGroup?: number;
 }) {
   // Which group the combined picker is adding to (null = closed).
   const [pickerFor, setPickerFor] = useState<number | null>(null);
@@ -144,8 +162,14 @@ export function RackGroupBuilder({
         <CombinedPicker
           teams={teams}
           assigned={assigned}
-          groupFull={(groups[pickerFor]?.length ?? 0) >= MAX_PER_GROUP}
+          groupFull={(groups[pickerFor]?.length ?? 0) >= maxPerGroup}
           groupNumber={pickerFor + 1}
+          // The team this group is already committed to, if any — see `sameTeamOnly`.
+          lockedTeamId={
+            sameTeamOnly
+              ? teams.find((t) => t.players.some((p) => p.id === groups[pickerFor]?.[0]))?.id ?? null
+              : null
+          }
           onPick={(uid) => addPlayer(pickerFor, uid)}
           onClose={() => setPickerFor(null)}
         />
@@ -178,6 +202,7 @@ function CombinedPicker({
   groupNumber,
   onPick,
   onClose,
+  lockedTeamId = null,
 }: {
   teams: GroupBuilderTeam[];
   assigned: Set<string>;
@@ -185,7 +210,11 @@ function CombinedPicker({
   groupNumber: number;
   onPick: (uid: string) => void;
   onClose: () => void;
+  /** Non-null once a same-team-only group has its first member: only this team's
+   *  section is offered, so the invalid pick is absent rather than rejected. */
+  lockedTeamId?: string | null;
 }) {
+  const offered = lockedTeamId ? teams.filter((t) => t.id === lockedTeamId) : teams;
   const section = (team: GroupBuilderTeam) => {
     const available = team.players.filter((p) => !assigned.has(p.id));
     return (
@@ -241,7 +270,7 @@ function CombinedPicker({
         {/* Stacked labeled sections (P3 3.2) — one per team, top-to-bottom. Works at 2, 3,
             and 4 teams on a phone where side-by-side columns would not fit. */}
         <div className="flex flex-col gap-4">
-          {teams.map((team) => section(team))}
+          {offered.map((team) => section(team))}
         </div>
       </div>
     </div>,
