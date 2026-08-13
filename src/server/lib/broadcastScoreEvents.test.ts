@@ -390,3 +390,135 @@ describe("109 broadcast trigger — a game appears or disappears", () => {
     expect(received).toEqual([]);
   }, 60_000);
 });
+
+/**
+ * Migration 118 — a bracket PICK reaches the other devices.
+ *
+ * The pick is the one game-state change the `configHash` poll deliberately
+ * cannot carry: `winner_entrant_id` is excluded from the hash on purpose (a test
+ * in the 115 suite pins that), because hashing it would refetch every open
+ * device's whole config on each advance AND fail a concurrent settings save's
+ * concurrency check. So the pick propagates as a SCORE does — by broadcast.
+ *
+ * The WHEN guard is the half worth testing: `bracket_matches` rows are also
+ * written wholesale by `save_game_config`'s draw rebuild, which the config hash
+ * already covers, and firing there would emit one broadcast per match for a
+ * change every device is about to refetch anyway.
+ */
+describe("118 broadcast trigger — a bracket pick", () => {
+  /** Seed a two-entrant draw directly, so these cases stay about the trigger
+   *  rather than about the save path that normally builds one. */
+  async function seedDraw(gameId: string): Promise<string> {
+    const rows = [1, 2].map((seed) => ({ id: `${gameId}:e${seed}`, game_id: gameId, team_id: null, seed }));
+    const e = await ctx.admin.from("bracket_entrants").insert(rows);
+    if (e.error) throw new Error(`seed entrants: ${e.error.message}`);
+    const matchId = rid("bm");
+    const m = await ctx.admin.from("bracket_matches").insert({
+      id: matchId,
+      game_id: gameId,
+      bracket: "main",
+      round: 1,
+      slot: 1,
+      entrant_a_id: `${gameId}:e1`,
+      entrant_b_id: `${gameId}:e2`,
+    });
+    if (m.error) throw new Error(`seed match: ${m.error.message}`);
+    return matchId;
+  }
+
+  it("broadcasts when a winner is recorded, changed, and cleared", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const matchId = await seedDraw(compGameId);
+    await settle(1500);
+    received = [];
+
+    for (const winner of [`${compGameId}:e1`, `${compGameId}:e2`, null]) {
+      const u = await ctx.admin.from("bracket_matches").update({ winner_entrant_id: winner }).eq("id", matchId);
+      expect(u.error).toBeNull();
+    }
+
+    // Clearing is a real change — it un-decides everything above the match,
+    // which is exactly what the other devices need to hear about.
+    await waitFor(3);
+    expect(received.length).toBe(3);
+    expect(received.every((p) => p.gameId === compGameId && p.competitionId === competitionId)).toBe(true);
+
+    await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("carries a SIGNAL ONLY — the winner never reaches an anonymous subscriber", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // Same rule as every other payload on this topic (#20): the topic is public,
+    // so the payload is what an UNAUTHENTICATED listener gets. Who won is a
+    // result; the client's tRPC refetch is what re-applies auth to read it.
+    const matchId = await seedDraw(compGameId);
+    await settle(1500);
+    received = [];
+
+    await ctx.admin.from("bracket_matches").update({ winner_entrant_id: `${compGameId}:e1` }).eq("id", matchId);
+    await waitFor(1);
+    expect(received).toHaveLength(1);
+    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId"]);
+
+    await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("stays silent on the draw REBUILD — that is the config hash's job", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // INSERT and DELETE of bracket_matches only happen during a rebuild, which
+    // the hash already covers. Firing here would make an 8-entrant redraw emit
+    // seven broadcasts for one edit, and every device would refetch twice.
+    const matchId = await seedDraw(compGameId);
+    await settle();
+    expect(received).toEqual([]);
+
+    const del = await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
+    expect(del.error).toBeNull();
+    await settle();
+    expect(received).toEqual([]);
+
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("does not re-broadcast when the winner is written to its current value", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // `IS DISTINCT FROM`, not `<>` — and a no-op re-write is what a client
+    // re-sending its state looks like.
+    const matchId = await seedDraw(compGameId);
+    await ctx.admin.from("bracket_matches").update({ winner_entrant_id: `${compGameId}:e1` }).eq("id", matchId);
+    await waitFor(1);
+    await settle(1500);
+    received = [];
+
+    await ctx.admin.from("bracket_matches").update({ winner_entrant_id: `${compGameId}:e1` }).eq("id", matchId);
+    await settle();
+    expect(received).toEqual([]);
+
+    await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("stays silent for a STANDALONE bracket", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // The null-competition early return, on the newest trigger. ~40% of
+    // production games have no competition, so this path is the common case.
+    const matchId = await seedDraw(soloGameId);
+    await settle(1500);
+    received = [];
+
+    const u = await ctx.admin.from("bracket_matches").update({ winner_entrant_id: `${soloGameId}:e1` }).eq("id", matchId);
+    expect(u.error).toBeNull();
+    await settle();
+    expect(received).toEqual([]);
+
+    await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", soloGameId);
+  }, 60_000);
+});
