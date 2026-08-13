@@ -33,6 +33,8 @@ import {
 } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
+import { BracketBoard, type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
+import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { DEFAULT_BRACKET_CONFIG, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
@@ -409,6 +411,69 @@ export function NonGolfGameView() {
   // format switch takes effect everywhere at once rather than in the one place
   // that happened to be repointed (CLAUDE.md #18).
   const isBracket = configDraft.competitionFormat === "bracket";
+
+  // ── The bracket's play surface (phase 3) ────────────────────────────────────
+  // The DRAW as stored, resolved into occupants HERE. The server returns the
+  // stored rows and leaves advancement to the reader on purpose, so this runs
+  // the same `resolveDraw` the pick mutation validates against — one answer to
+  // "who is in this match", not two that agree by luck.
+  const drawQ = trpc.games.bracketDraw.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId && isBracket },
+  );
+  const resolvedDraw = useMemo(() => {
+    const rows = (drawQ.data ?? []) as { bracket: "main" | "consolation"; round: number; slot: number; aSeed: number | null; bSeed: number | null; winnerSeed: number | null }[];
+    const winners: WinnerBySeed = {};
+    for (const r of rows) winners[matchKey(r)] = r.winnerSeed;
+    return resolveDraw(
+      rows.map((r) => ({ bracket: r.bracket, round: r.round, slot: r.slot, aSeed: r.aSeed, bSeed: r.bSeed })),
+      winners,
+    );
+  }, [drawQ.data]);
+
+  /**
+   * Seed → who that is, for the board's rows.
+   *
+   * Names and team colour come from `pickerTeams`, which the settings picker
+   * already builds from the crew grouped by cup team — so a bracket row and the
+   * picker that filled it read the same roster. The entrant's team is taken from
+   * its FIRST member, the same rule the payload uses when it writes `team_id`.
+   */
+  const bracketEntrantMeta = useMemo<BracketEntrantMeta[]>(() => {
+    const meta = new Map<string, { name: string; color: string }>();
+    for (const t of pickerTeams) for (const p of t.players) meta.set(p.id, { name: p.name, color: t.color });
+    return ((poolQ.data ?? []) as { seed: number; userIds: string[] }[]).map((e) => {
+      const first = meta.get(e.userIds[0]);
+      const second = e.userIds[1] ? meta.get(e.userIds[1]) : undefined;
+      return {
+        seed: e.seed,
+        name: first?.name ?? "Player",
+        partner: e.userIds[1] ? second?.name ?? "Player" : null,
+        teamColor: first?.color ?? null,
+      };
+    });
+  }, [poolQ.data, pickerTeams]);
+
+  const [pickError, setPickError] = useState<string | null>(null);
+  const pickMutation = trpc.games.pickWinner.useMutation({
+    // Server truth on both paths — a pick changes what the WHOLE tree derives,
+    // so there is nothing useful to patch optimistically and a wrong local
+    // guess would be visible three rounds up. The refetch is one small query.
+    onSuccess: () => {
+      setPickError(null);
+      void utils.games.bracketDraw.invalidate({ tripId: tripId!, gameId: urlGameId! });
+    },
+    onError: (e) => setPickError(e.message),
+  });
+  const handlePick = useCallback(
+    (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
+      if (!tripId || !urlGameId) return;
+      setPickError(null);
+      pickMutation.mutate({ tripId, gameId: urlGameId, ...ref, winnerSeed: seed });
+    },
+    [pickMutation, tripId, urlGameId],
+  );
+
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
     [configDraft.bracketEntrants],
@@ -841,7 +906,34 @@ export function NonGolfGameView() {
                 }
         }
       />
-      {competitionId && (
+      {/* THE BRACKET'S SCORING SURFACE — a branch, not a fifth game view.
+          A bracket is a manual game whose placements are DERIVED rather than
+          typed, so the lifecycle around it (chrome, locks, exit, realtime,
+          settings, go-live) is non-golf's unchanged and only the surface swaps.
+          Everything above and below this line is shared. */}
+      {competitionId && isBracket ? (
+        <div style={{ padding: "12px 12px 24px" }}>
+          <div
+            style={{
+              fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
+              color: "var(--color-bt-text-dim)", fontWeight: 700, margin: "6px 0 9px",
+            }}
+          >
+            {canEdit ? "Tap a competitor to advance them" : "Bracket"}
+          </div>
+          <BracketBoard
+            matches={resolvedDraw}
+            entrants={bracketEntrantMeta}
+            canPick={canEdit && !resultLocked}
+            onPick={handlePick}
+          />
+          {pickError && (
+            <p style={{ marginTop: 10, fontSize: 12, color: "var(--color-bt-danger)" }} data-testid="bracket-pick-error">
+              {pickError}
+            </p>
+          )}
+        </div>
+      ) : competitionId && (
         <NonGolfScoreboard
           tripId={tripId}
           competitionId={competitionId}
