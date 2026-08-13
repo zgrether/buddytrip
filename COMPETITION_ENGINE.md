@@ -532,7 +532,14 @@ appends columns as turns are entered (v1 optional). `winner_only` sets
 | **StandardGrid** | First (Slice A) | Rows = participants, cols = units, editable cells, section subtotals, direction indicator, in-cell entry modifiers. Stroke play, Stableford, skins, sabotage, Yahtzee, winner-only, best-of. |
 | **GolfCard** (extends StandardGrid) | Slice C | Par row, handicap-index row, +/− row, eagle/birdie/bogey color coding, course + date header, Buddy-Rules highlighted holes, moving-tee cell cue. |
 | **Match-play layer** (over GolfCard) | Slice B | Per-hole W/H/L derived from strokes, running match-state strip ("2 UP" / "3&2"). **A card may carry multiple strips** (singles foursome = 2). For foursomes one ball per side. |
-| **BracketRenderer** | Post-BBMI | Visual bracket tree. StandardGrid covers v1; defer. |
+| **BracketBoard** | **Built (phase 3)** | The draw as a readable tree — rounds as columns, opponents stacked as rows within a match, partner on a second line in 2v2. Horizontal scroll, no pan-and-zoom. One component for both audiences: `canPick` is the only difference between the organizer's pickable board and the member's read-only one. `src/components/games/bracket/BracketBoard.tsx`. |
+
+> **`BracketRenderer` corrected 2026-08-13.** This row previously read
+> *"BracketRenderer | Post-BBMI | Visual bracket tree. StandardGrid covers v1; defer."* That was
+> true when written and was reversed by doing — the bracket shipped across five phases and its
+> board is not a StandardGrid. `StandardGrid` remains right for every grid-shaped format; a
+> bracket is not one, because its rows are opponents rather than participants and its columns
+> are rounds rather than units.
 
 ---
 
