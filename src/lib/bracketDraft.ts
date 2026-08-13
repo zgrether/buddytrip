@@ -2,6 +2,28 @@ import type { BracketConfig } from "@/lib/configDraft";
 
 export type { BracketConfig };
 
+/**
+ * What a bracket IS before anyone configures it.
+ *
+ * `bracket_config` is `NOT NULL DEFAULT '{}'` (migration 112) and `{}` decodes
+ * to null (`toBracketConfig`), so a game switched to Bracket has NO config at
+ * all until something supplies one. The settings rows need a whole config to
+ * render, and the payload only emits `bracketConfig` when the draft carries one
+ * — so this is what a format switch stages, not a set of fallbacks spread
+ * across the rows. One object, so the rows and the payload cannot disagree
+ * about what an unconfigured bracket means.
+ *
+ * Singles / single-elimination / manual seeding / no consolation is the
+ * smallest real bracket: every one of them is the option that assumes least
+ * about a field nobody has built yet.
+ */
+export const DEFAULT_BRACKET_CONFIG: BracketConfig = {
+  elimination: "single",
+  entrants: "singles",
+  seeding: "manual",
+  consolation: false,
+};
+
 /** Members per entrant: 1 for individuals, 2 for pairs. Drives the picker's cap. */
 export function entrantCap(config: BracketConfig): number {
   return config.entrants === "partners" ? 2 : 1;

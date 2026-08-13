@@ -74,7 +74,7 @@ export function NonGolfTotalPointsRow({
 /** SETTINGS slot — Competition Format, plus the placement split for the points
  *  model. Owns the single-open accordion state shared by its two rows. */
 export function NonGolfSettingsRows({
-  game, scoringModel, draft, canEdit, capacity, onFormatChange, onPointsTotalChange, onPointsDistChange,
+  game, scoringModel, draft, canEdit, capacity, bracketRows, onFormatChange, onPointsTotalChange, onPointsDistChange,
 }: {
   game: GameRow;
   scoringModel: ScoringModel;
@@ -84,6 +84,12 @@ export function NonGolfSettingsRows({
    *  too-many-places warning in `FormatPointsPanel`. A null count warns about
    *  nothing. */
   capacity: PlaceCapacity;
+  /** The chosen format's OWN rows, rendered directly beneath the format that
+   *  turns them on — today only the bracket has any. A slot rather than a branch
+   *  in here: the rows need the pool draft, the team rosters and a confirm the
+   *  parent owns, and threading all three through this component to re-emit them
+   *  would make it the bracket's plumbing rather than non-golf's row list. */
+  bracketRows?: React.ReactNode;
   onFormatChange: (format: CompetitionFormat | null) => void;
   onPointsTotalChange: (total: number | null) => void;
   onPointsDistChange: (dist: PointsDistribution | null) => void;
@@ -98,6 +104,7 @@ export function NonGolfSettingsRows({
         open={openAccordion === "format"}
         onToggle={() => setOpenAccordion((o) => (o === "format" ? null : "format"))}
       />
+      {bracketRows}
       {/* Point Distribution — the placement split.
 
           SHOWN IN EVERY CUP NOW, which retires this file's standing exception.
@@ -146,11 +153,13 @@ export function NonGolfSettingsRows({
 }
 
 /** Competition Format — an INLINE dropdown panel (P4; was the `FormatSheet` modal). Lists
- *  every format so the direction is legible, but only **Head-to-Head / Match** is
- *  selectable — the rest are disabled placeholders ("Soon") since their engines aren't
- *  built (DO-NOT: don't implement them). H2H is the DEFAULT: a null value displays as H2H
- *  selected (non-golf already runs as H2H when unset), so this reserves the shape without
- *  a creation-time write. CONTROLLED — reports the pick to the parent draft; Save persists. */
+ *  every format so the direction is legible; **Head-to-Head / Match** and **Bracket** are
+ *  selectable, and Best of N / Live Results stay disabled placeholders ("Soon") since their
+ *  engines aren't built (DO-NOT: don't implement them). H2H is the DEFAULT: a null value
+ *  displays as H2H selected (non-golf already runs as H2H when unset), so this reserves the
+ *  shape without a creation-time write. CONTROLLED — reports the pick to the parent draft;
+ *  Save persists. Picking one can COST something (leaving Bracket discards the field), which
+ *  is why the parent, not this list, owns the confirm. */
 function CompetitionFormatDropdown({
   value, canEdit, onChange, open, onToggle,
 }: {
@@ -175,7 +184,7 @@ function CompetitionFormatDropdown({
     >
       <div className="flex flex-col gap-1.5" data-testid="competition-format-options">
         {COMP_FORMATS.map((f) => {
-          const enabled = f.key === "head_to_head";
+          const enabled = f.key === "head_to_head" || f.key === "bracket";
           const selected = effective === f.key;
           return (
             <button
@@ -203,8 +212,13 @@ function CompetitionFormatDropdown({
             </button>
           );
         })}
+        {/* Names what each LIVE option actually does today. The old copy —
+            "however it runs, you enter the result by hand" — was true of the one
+            format on offer and stops being true the moment a second one is
+            selectable: a bracket's field and draw are built right here. */}
         <p className="px-1 pt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          However it runs, you enter the result by hand — the other formats are coming.
+          Head-to-Head results are entered by hand; a bracket&rsquo;s field and draw are built here. Best of N and Live
+          Results are coming.
         </p>
       </div>
     </ChecklistRow>
