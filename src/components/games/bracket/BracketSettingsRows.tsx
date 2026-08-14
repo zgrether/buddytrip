@@ -101,9 +101,11 @@ export function BracketSettingsRows({
   onConfigChange: (next: BracketConfig) => void;
   onPoolChange: (next: string[][]) => void;
 }) {
-  const [open, setOpen] = useState<null | "entrants" | "pool" | "pairing" | "seeding">(null);
+  // Bracket Type and Match Format are inline controls now, so only the two rows
+  // with real editors left take part in the single-open accordion.
+  const [open, setOpen] = useState<null | "pool" | "seeding">(null);
   const [confirmSingles, setConfirmSingles] = useState(false);
-  const toggle = (k: "entrants" | "pool" | "pairing" | "seeding") => setOpen((o) => (o === k ? null : k));
+  const toggle = (k: "pool" | "seeding") => setOpen((o) => (o === k ? null : k));
 
   const filled = pool.filter((e) => e.length > 0);
   const size = bracketSize(filled.length);
@@ -122,26 +124,62 @@ export function BracketSettingsRows({
 
   return (
     <>
+      {/* BRACKET TYPE — first, and directly beneath Competition Format.
+          It is the first question after choosing Bracket, and it used to be
+          called "Pairing", which was about to collide head-on with partner
+          pairing below. One concept, one word (CLAUDE.md glossary): "pairing"
+          now means putting two people together, and the elimination shape is
+          the bracket's TYPE.
+
+          Inline like Game State rather than an accordion: it is a two-value
+          choice whose whole content is the control, and an accordion that opens
+          to reveal one toggle is a tap that buys nothing.
+
+          Double elimination is deliberately shown-but-disabled — single ships
+          complete first, and a control that names the direction beats a silent
+          absence. */}
+      <ChecklistRow
+        icon={ListTree}
+        title="Bracket Type"
+        subtitle={config.elimination === "double" ? "Double elimination" : "Single elimination"}
+        state="resolved"
+        testId="row-bracket-type"
+        control={
+          <SegmentedToggle
+            value={config.elimination}
+            options={[
+              { value: "single", label: "Single" },
+              { value: "double", label: "Double", disabled: true },
+            ]}
+            onChange={(next) => onConfigChange({ ...config, elimination: next })}
+            disabled={!canEdit}
+            testId="bracket-elimination-toggle"
+          />
+        }
+      />
+
+      {/* MATCH FORMAT — was "Entrants", which collided with "The Field": both
+          sound like "who is in", and only one of them is. This row is about the
+          SHAPE of a competitor (one person, or two), so it is a format. */}
       <ChecklistRow
         icon={Users}
-        title="Entrants"
-        subtitle={config.entrants === "partners" ? "Pairs" : "Individuals"}
+        title="Match Format"
+        subtitle={config.entrants === "partners" ? "Partners" : "Singles"}
         state="resolved"
-        expanded={open === "entrants"}
-        onToggle={() => toggle("entrants")}
         testId="row-bracket-entrants"
-      >
-        <SegmentedToggle
-          value={config.entrants}
-          options={[
-            { value: "singles", label: "Individuals" },
-            { value: "partners", label: "Pairs" },
-          ]}
-          onChange={setEntrants}
-          disabled={!canEdit}
-          testId="bracket-entrants-toggle"
-        />
-      </ChecklistRow>
+        control={
+          <SegmentedToggle
+            value={config.entrants}
+            options={[
+              { value: "singles", label: "Singles" },
+              { value: "partners", label: "Partners" },
+            ]}
+            onChange={setEntrants}
+            disabled={!canEdit}
+            testId="bracket-entrants-toggle"
+          />
+        }
+      />
 
       <ChecklistRow
         icon={ListTree}
@@ -166,31 +204,6 @@ export function BracketSettingsRows({
           // because that is where its points land.
           sameTeamOnly
           maxPerGroup={entrantCap(config)}
-        />
-      </ChecklistRow>
-
-      <ChecklistRow
-        icon={ListTree}
-        title="Pairing"
-        subtitle="Single elimination"
-        state="resolved"
-        expanded={open === "pairing"}
-        onToggle={() => toggle("pairing")}
-        testId="row-bracket-pairing"
-      >
-        {/* Double elimination is deliberately not offered yet — single ships
-            complete first. Shown rather than hidden so the direction is legible,
-            matching how the competition-format dropdown lists its unbuilt
-            options. */}
-        <SegmentedToggle
-          value={config.elimination}
-          options={[
-            { value: "single", label: "Single" },
-            { value: "double", label: "Double · soon", disabled: true },
-          ]}
-          onChange={(next) => onConfigChange({ ...config, elimination: next })}
-          disabled={!canEdit}
-          testId="bracket-elimination-toggle"
         />
       </ChecklistRow>
 
