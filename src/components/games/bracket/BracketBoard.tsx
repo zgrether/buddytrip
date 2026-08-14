@@ -203,7 +203,33 @@ function Slot({
     );
   }
 
-  const tappable = canPick && match.playable === true ? true : canPick && won;
+  /**
+   * WINNERS ARE RADIO BUTTONS. Tapping the other competitor SWITCHES the winner;
+   * it does not require clearing the current one first.
+   *
+   * This used to read `playable === true ? true : won`, and `playable` is false
+   * the moment a winner exists — so once anyone was picked, the loser's row went
+   * dead and the only live target was the winner (to clear). Switching a wrong
+   * pick took two taps and a round trip in between, for a control that is
+   * visibly a radio group.
+   *
+   * The gate was purely on this side: `games.pickWinner` validates only that the
+   * seed is one of the match's resolved occupants and never required the current
+   * winner to be null. Measured directly during the phase 0 pass — a straight
+   * replacement is ACCEPTED, which is what settled this as a client fix rather
+   * than a batched save-the-board button.
+   *
+   * A seat is tappable whenever the match is DECIDABLE — both occupants known
+   * and somebody actually played. That predicate is computed once in
+   * `resolveDraw` beside `playable` rather than re-derived here, so a second
+   * bracket surface cannot answer "can I tap this?" differently (CLAUDE.md #24).
+   * Byes stay untappable, and so does a match still waiting on the round below.
+   *
+   * Tapping the CURRENT winner still clears — `won ? null : seed` below is
+   * unchanged, and clearing still does not cascade (#925). Clear a semi and
+   * re-pick the same entrant and the final's result comes back, deliberately.
+   */
+  const tappable = canPick && match.decidable;
   const content = (
     <>
       <i
@@ -212,11 +238,14 @@ function Slot({
           background: meta?.teamColor ?? "var(--color-bt-text-dim)",
         }}
       />
+      {/* ONE LINE — "Brad & Zach", never stacked.
+          The two-line form came from match play, where it solves a real
+          score-entry constraint: fitting a side's players into a phone-width
+          scoring column. A bracket has no such column — this board scrolls
+          horizontally — so the constraint doesn't transfer, and stacking cost a
+          line of height while reading as two separate competitors. */}
       <span className="min-w-0 flex-1" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {meta?.name ?? `Seed ${seed}`}
-        {meta?.partner && (
-          <span style={{ display: "block", fontSize: 10.5, color: "var(--color-bt-text-dim)" }}>{meta.partner}</span>
-        )}
+        {meta ? (meta.partner ? `${meta.name} & ${meta.partner}` : meta.name) : `Seed ${seed}`}
       </span>
       {canPick && (
         <span

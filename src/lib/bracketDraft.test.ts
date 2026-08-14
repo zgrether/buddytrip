@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { shufflePool, entrantCap, bracketFieldReady, MIN_BRACKET_FIELD } from "./bracketDraft";
+import {
+  shufflePool,
+  entrantCap,
+  bracketFieldReady,
+  MIN_BRACKET_FIELD,
+  fieldMembers,
+  applyField,
+  shufflePairs,
+  entrantLabel,
+  pairMembers,
+  unpairEntrant,
+} from "./bracketDraft";
 import type { BracketConfig } from "./configDraft";
 
 const CFG: BracketConfig = { elimination: "single", entrants: "partners", seeding: "manual", consolation: false };
@@ -152,5 +163,144 @@ describe("bracketFieldReady", () => {
     // The number lives here, in migration 117, and in `bracketPlaceCapacity`.
     // The SQL can't import it, so this pins the TypeScript side to one value.
     expect(MIN_BRACKET_FIELD).toBe(2);
+  });
+});
+
+/**
+ * The three questions, kept apart.
+ *
+ * These pin the model the setup rework is built on: the field is a SELECTION,
+ * pairing is a separate operation over it, and seeding is a third. The tests
+ * below exist mostly to stop the three quietly merging again — the previous
+ * surface answered all three with one group builder, which is what produced the
+ * "this group is full (max 4)" message on a field that was two people short.
+ */
+
+describe("fieldMembers", () => {
+  it("is the PEOPLE in the field, flattened out of however they're grouped", () => {
+    expect(fieldMembers([["a1", "a2"], ["b1"], ["b2", "b3"]])).toEqual(["a1", "a2", "b1", "b2", "b3"]);
+  });
+
+  it("an empty pool has an empty field", () => {
+    expect(fieldMembers([])).toEqual([]);
+  });
+});
+
+describe("applyField", () => {
+  it("appends new members as SOLO entrants — it does not pair or sort them", () => {
+    expect(applyField([], ["a1", "a2", "b1"])).toEqual([["a1"], ["a2"], ["b1"]]);
+  });
+
+  it("preserves existing pairs and their order when adding", () => {
+    const pool = [["a1", "a2"], ["b1", "b2"]];
+    expect(applyField(pool, ["a1", "a2", "b1", "b2", "a3"])).toEqual([["a1", "a2"], ["b1", "b2"], ["a3"]]);
+  });
+
+  it("removing one of a pair leaves the PARTNER in the field, alone", () => {
+    // The partner did nothing wrong; dropping them too would be a second,
+    // unasked-for removal.
+    expect(applyField([["a1", "a2"], ["b1"]], ["a2", "b1"])).toEqual([["a2"], ["b1"]]);
+  });
+
+  it("drops an entrant only when it empties — an empty seed is unplayable", () => {
+    expect(applyField([["a1"], ["b1"]], ["b1"])).toEqual([["b1"]]);
+  });
+
+  it("is idempotent — re-applying the same field changes nothing", () => {
+    const pool = [["a1", "a2"], ["b1", "b2"]];
+    expect(applyField(pool, fieldMembers(pool))).toEqual(pool);
+  });
+});
+
+describe("shufflePairs", () => {
+  const field = (ids: string[]) => ids.map((id) => [id]);
+
+  it("pairs each team among itself — 8 become 4, 6 become 3, 4 become 2", () => {
+    for (const [n, pairs] of [[8, 4], [6, 3], [4, 2]] as const) {
+      const ids = Array.from({ length: n }, (_, i) => `a${i + 1}`);
+      const teams = [{ id: "A", players: ids.map((id) => ({ id })) }];
+      const out = shufflePairs(field(ids), teams, { random: seeded(7) });
+      expect(out).toHaveLength(pairs);
+      expect(out.every((e) => e.length === 2)).toBe(true);
+      // Everyone in, nobody twice.
+      expect(out.flat().sort()).toEqual([...ids].sort());
+    }
+  });
+
+  it("never pairs across cup teams — a pair's points must have one home", () => {
+    const out = shufflePairs(field(["a1", "a2", "a3", "a4", "b1", "b2"]), TEAMS, { random: seeded(3) });
+    for (const pair of out) {
+      expect(new Set(pair.map((id) => id[0])).size).toBe(1);
+    }
+  });
+
+  it("leaves an odd member out as a SOLO entrant rather than dropping them", () => {
+    const teams = [{ id: "A", players: [{ id: "a1" }, { id: "a2" }, { id: "a3" }] }];
+    const out = shufflePairs(field(["a1", "a2", "a3"]), teams, { random: seeded(11) });
+    expect(out.flat().sort()).toEqual(["a1", "a2", "a3"]);
+    expect(out.filter((e) => e.length === 1)).toHaveLength(1);
+  });
+
+  it("RE-pairs an already-paired field — it's an action, not a top-up", () => {
+    const teams = [{ id: "A", players: [{ id: "a1" }, { id: "a2" }, { id: "a3" }, { id: "a4" }] }];
+    const out = shufflePairs([["a1", "a2"], ["a3", "a4"]], teams, { random: seeded(5) });
+    expect(out).toHaveLength(2);
+    expect(out.flat().sort()).toEqual(["a1", "a2", "a3", "a4"]);
+  });
+
+  it("keeps a member with NO team out of everyone else's pairs", () => {
+    // "" is its own bucket, so an unassigned player can't be silently married
+    // into a team whose points they'd then be scoring.
+    const out = shufflePairs(field(["a1", "a2", "x1"]), TEAMS, { random: seeded(2) });
+    const withX = out.find((e) => e.includes("x1"))!;
+    expect(withX).toEqual(["x1"]);
+  });
+});
+
+describe("entrantLabel", () => {
+  const names = new Map([["a1", "Brad"], ["a2", "Zach"]]);
+
+  it("puts a pair on ONE line", () => {
+    expect(entrantLabel(["a1", "a2"], names)).toBe("Brad & Zach");
+  });
+
+  it("a single is just the name", () => {
+    expect(entrantLabel(["a1"], names)).toBe("Brad");
+  });
+
+  it("an unknown id still renders something rather than blanking the row", () => {
+    expect(entrantLabel(["a1", "ghost"], names)).toBe("Brad & Player");
+  });
+});
+
+describe("pairMembers / unpairEntrant — the manual half of pairing", () => {
+  it("pairs two solos, keeping the FIRST one's position", () => {
+    expect(pairMembers([["a1"], ["a2"], ["a3"]], "a1", "a3")).toEqual([["a1", "a3"], ["a2"]]);
+  });
+
+  it("pairing someone already paired FREES their old partner rather than making a trio", () => {
+    expect(pairMembers([["a1", "a2"], ["a3"]], "a1", "a3")).toEqual([["a1", "a3"], ["a2"]]);
+  });
+
+  it("is a no-op for the same person, or for someone not in the field", () => {
+    const pool = [["a1"], ["a2"]];
+    expect(pairMembers(pool, "a1", "a1")).toEqual(pool);
+    expect(pairMembers(pool, "a1", "ghost")).toEqual(pool);
+  });
+
+  it("never loses or duplicates anyone", () => {
+    const before = [["a1", "a2"], ["a3"], ["a4"]];
+    const after = pairMembers(before, "a2", "a4");
+    expect(fieldMembers(after).sort()).toEqual(fieldMembers(before).sort());
+  });
+
+  it("unpair splits a pair in place", () => {
+    expect(unpairEntrant([["a1", "a2"], ["b1"]], 0)).toEqual([["a1"], ["a2"], ["b1"]]);
+  });
+
+  it("unpair leaves a solo (and an out-of-range index) untouched", () => {
+    const pool = [["a1"], ["b1", "b2"]];
+    expect(unpairEntrant(pool, 0)).toEqual(pool);
+    expect(unpairEntrant(pool, 9)).toEqual(pool);
   });
 });

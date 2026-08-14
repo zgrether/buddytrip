@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { bracketSize, roundCount, seedOrder, buildDraw, isBye, type BracketDrawMatch } from "./bracket";
+import {
+  bracketSize,
+  roundCount,
+  seedOrder,
+  buildDraw,
+  isBye,
+  firstOpponent,
+  type BracketDrawMatch,
+} from "./bracket";
 
 /**
  * The pure draw builder. Everything here is a property of the TREE — no game, no
@@ -176,5 +184,53 @@ describe("buildDraw — the consolation match", () => {
 describe("buildDraw — determinism", () => {
   it("is a function of the entrant count alone", () => {
     expect(buildDraw(11, { consolation: true })).toEqual(buildDraw(11, { consolation: true }));
+  });
+});
+
+/**
+ * The seed list's "you play N first" must agree with the tree that gets BUILT.
+ *
+ * `firstOpponent` is what the seeding UI shows while someone drags rows around,
+ * and `buildDraw` is what `save_game_config` persists. They are two readings of
+ * one fact, so this pins them together rather than trusting that both implement
+ * "1 plays last" the same way — the exact class of drift CLAUDE.md #8 exists to
+ * prevent.
+ */
+describe("firstOpponent agrees with buildDraw's round 1", () => {
+  /** Round-1 pairings as the built draw states them, 0-based, both directions. */
+  function pairingsFromDraw(count: number): Map<number, number | null> {
+    const out = new Map<number, number | null>();
+    for (const m of buildDraw(count).filter((x) => x.round === 1)) {
+      // A null opponent is a bye; seeds are 1-based in the draw, 0-based here.
+      if (m.aSeed !== null) out.set(m.aSeed - 1, m.bSeed === null ? null : m.bSeed - 1);
+      if (m.bSeed !== null) out.set(m.bSeed - 1, m.aSeed === null ? null : m.aSeed - 1);
+    }
+    return out;
+  }
+
+  for (const count of [2, 3, 4, 5, 6, 7, 8, 9, 12, 16, 17, 32]) {
+    it(`matches the built draw for ${count} entrants`, () => {
+      const fromDraw = pairingsFromDraw(count);
+      for (let i = 0; i < count; i++) {
+        expect(firstOpponent(i, count)).toBe(fromDraw.get(i) ?? null);
+      }
+    });
+  }
+
+  it("seed 1 plays the last seed and seed 2 the second-last, in a full field", () => {
+    expect(firstOpponent(0, 16)).toBe(15); // 1 v 16
+    expect(firstOpponent(1, 16)).toBe(14); // 2 v 15
+    expect(firstOpponent(2, 16)).toBe(13); // 3 v 14
+  });
+
+  it("the top seeds draw the byes when the field isn't a power of two", () => {
+    // 6 entrants in an 8-seat draw: seeds 7 and 8 don't exist, so 1 and 2 sit out.
+    expect(firstOpponent(0, 6)).toBeNull();
+    expect(firstOpponent(1, 6)).toBeNull();
+    expect(firstOpponent(2, 6)).toBe(5); // 3 v 6
+  });
+
+  it("a field too small to play has no opponents at all", () => {
+    expect(firstOpponent(0, 1)).toBeNull();
   });
 });

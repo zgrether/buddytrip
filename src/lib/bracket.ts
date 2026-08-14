@@ -78,6 +78,28 @@ export function seedOrder(size: number): number[] {
 }
 
 /**
+ * Which seed the entrant at `index` (0-based, so seed `index + 1`) meets in
+ * round 1 — returned 0-BASED, or null when they draw a bye.
+ *
+ * This is the standard pairing read off `seedOrder`'s recursion rather than
+ * re-derived: seed `s` sits opposite `size + 1 - s`, which is 1v16, 2v15, 3v14…
+ * A seat above the entrant count is nobody, so the answer is a bye — the same
+ * rule `buildDraw` applies when it emits a null opponent.
+ *
+ * Lives HERE, beside the draw it describes, rather than in the seed-list
+ * component that shows it (CLAUDE.md #8): the seeding UI and the built tree must
+ * answer "who do I play first?" identically, and a second implementation in a
+ * component is how the preview and the draw come to disagree. Pinned against
+ * `buildDraw` in `bracket.test.ts`.
+ */
+export function firstOpponent(index: number, entrantCount: number): number | null {
+  const size = bracketSize(entrantCount);
+  if (size === 0) return null;
+  const opponent = size - 1 - index;
+  return opponent < entrantCount && opponent !== index ? opponent : null;
+}
+
+/**
  * True when this round-1 match has no opponent — the entrant advances without
  * playing.
  *

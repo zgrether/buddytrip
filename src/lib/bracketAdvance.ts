@@ -57,8 +57,24 @@ export interface ResolvedMatch extends BracketDrawMatch {
    *  and must never be offered as something to decide. */
   bye: boolean;
   /** Both seats known and no winner recorded — the matches actually waiting on
-   *  someone. Drives what the bracket view offers a pick for. */
+   *  someone. Drives "this match still needs a result" readouts. */
   playable: boolean;
+  /**
+   * Both seats known and somebody actually played — a real contest, whether or
+   * not it has been decided yet.
+   *
+   * The difference from `playable` is ONLY whether a winner is already recorded,
+   * and that difference is the whole of item 8: a decided match is still
+   * DECIDABLE, because picking the other competitor is a legal, one-tap
+   * correction (`games.pickWinner` accepts a straight replacement and never
+   * required a clear first). Keying the board's tap targets on `playable` made
+   * the loser's row go dead the moment anyone won, so switching a wrong pick
+   * needed two taps and a round trip in between.
+   *
+   * A sibling field rather than a predicate re-derived in the view, so the next
+   * bracket surface cannot answer "can I tap this?" differently (CLAUDE.md #24).
+   */
+  decidable: boolean;
 }
 
 /**
@@ -135,6 +151,7 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
         winnerSeed,
         bye,
         playable: aSeed !== null && bSeed !== null && winnerSeed === null,
+        decidable: aSeed !== null && bSeed !== null && !bye,
       });
 
       if (winnerSeed !== null && round < lastRound) {
@@ -159,6 +176,9 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
       winnerSeed,
       bye: false,
       playable: aSeed !== null && bSeed !== null && winnerSeed === null,
+      // No byes in a consolation match — it exists only when there are semis to
+      // lose, so both seats are real people or neither is.
+      decidable: aSeed !== null && bSeed !== null,
     });
   }
 

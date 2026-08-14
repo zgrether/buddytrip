@@ -202,3 +202,88 @@ describe("drawComplete / championSeed", () => {
     expect(drawComplete([])).toBe(false);
   });
 });
+
+/**
+ * `decidable` — what the board lets you TAP (item 8).
+ *
+ * Winners are radio buttons: tapping the other competitor switches the winner
+ * without clearing first. The board used to key its tap targets on `playable`,
+ * which goes false the moment anyone wins — so the loser's row went dead and a
+ * wrong pick took two taps and a round trip in between. The server never
+ * required the clear; the gate was purely client-side.
+ */
+describe("decidable — a decided match is still switchable", () => {
+  const draw = buildDraw(4);
+
+  it("is true for an undecided round-1 match, exactly like playable", () => {
+    const m = resolveDraw(draw).find((x) => x.round === 1 && x.slot === 1)!;
+    expect(m.playable).toBe(true);
+    expect(m.decidable).toBe(true);
+  });
+
+  it("STAYS true once a winner is recorded — this is the whole fix", () => {
+    const winners = { [matchKey({ bracket: "main", round: 1, slot: 1 })]: 1 };
+    const m = resolveDraw(draw, winners).find((x) => x.round === 1 && x.slot === 1)!;
+    expect(m.playable).toBe(false); // decided
+    expect(m.decidable).toBe(true); // …but still switchable
+  });
+
+  it("is false while a match waits on the round below — nobody to tap yet", () => {
+    const final = resolveDraw(draw).find((x) => x.round === 2)!;
+    expect(final.decidable).toBe(false);
+  });
+
+  it("is false for a BYE — nobody played, so there is no result to record", () => {
+    // 3 entrants: the top seed draws a bye.
+    const bye = resolveDraw(buildDraw(3)).find((x) => x.bye)!;
+    expect(bye.decidable).toBe(false);
+  });
+
+  it("becomes true for the final once both semis are decided", () => {
+    const winners = {
+      [matchKey({ bracket: "main", round: 1, slot: 1 })]: 1,
+      [matchKey({ bracket: "main", round: 1, slot: 2 })]: 2,
+    };
+    const final = resolveDraw(draw, winners).find((x) => x.round === 2)!;
+    expect(final.decidable).toBe(true);
+  });
+});
+
+/**
+ * #925's non-cascading clear, re-pinned because item 8 touches the same control.
+ *
+ * Clearing is one column wide: later rounds are DERIVED, so clearing a winner
+ * already un-decides everything above it, and a recorded winner who is no longer
+ * an occupant is simply dropped. Nothing else is written — which is why re-picking
+ * the SAME entrant restores the final's result. That reads as surprising and is
+ * correct: nothing about the final changed, and cascading would throw away a real
+ * result to enforce a tidiness nobody asked for.
+ */
+describe("clearing does not cascade (#925), and switching does not either", () => {
+  const draw = buildDraw(4);
+  const semi1 = matchKey({ bracket: "main", round: 1, slot: 1 });
+  const semi2 = matchKey({ bracket: "main", round: 1, slot: 2 });
+  const final = matchKey({ bracket: "main", round: 2, slot: 1 });
+
+  it("clear a semi and re-pick the SAME entrant — the final's result comes back", () => {
+    const decided = { [semi1]: 1, [semi2]: 2, [final]: 1 };
+    expect(resolveDraw(draw, decided).find((m) => m.round === 2)!.winnerSeed).toBe(1);
+
+    // Cleared: the final's stored pick names someone no longer standing there.
+    const cleared = { ...decided, [semi1]: null };
+    expect(resolveDraw(draw, cleared).find((m) => m.round === 2)!.winnerSeed).toBeNull();
+
+    // Re-picked identically: the stored final pick is valid again, untouched.
+    expect(resolveDraw(draw, decided).find((m) => m.round === 2)!.winnerSeed).toBe(1);
+  });
+
+  it("SWITCHING a semi drops the final's pick, because it named the loser", () => {
+    // The one-tap replacement item 8 adds goes through the same derivation as a
+    // clear-then-pick, so it inherits the same safety: a stale winner upstairs is
+    // dropped rather than trusted.
+    const switched = { [semi1]: 4, [semi2]: 2, [final]: 1 };
+    const f = resolveDraw(draw, switched).find((m) => m.round === 2)!;
+    expect(f.winnerSeed).toBeNull();
+    expect(f.decidable).toBe(true); // and it's open for a fresh pick
+  });
+});

@@ -7,7 +7,6 @@ import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
 import {
   COMP_FORMATS,
-  formatLabel,
   fmtValue,
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
@@ -94,7 +93,9 @@ export function NonGolfSettingsRows({
   onPointsTotalChange: (total: number | null) => void;
   onPointsDistChange: (dist: PointsDistribution | null) => void;
 }) {
-  const [openAccordion, setOpenAccordion] = useState<null | "format" | "distribution">(null);
+  // Only the distribution row is an accordion now — the format is a tile row that
+  // is always open, so it no longer takes part in the single-open rule.
+  const [openAccordion, setOpenAccordion] = useState<null | "distribution">(null);
   // The distribution row's THREE outputs — the subtitle, the resolved/empty state,
   // and the panel's winner-takes-all mode — all derive from here. They used to be
   // spelled three different ways in the JSX below (and the third wasn't wired at
@@ -104,12 +105,10 @@ export function NonGolfSettingsRows({
   const isPool = usesPointsPool(scoringModel, draft.pointsDistribution);
   return (
     <>
-      <CompetitionFormatDropdown
+      <CompetitionFormatTiles
         value={draft.competitionFormat}
         canEdit={canEdit}
         onChange={onFormatChange}
-        open={openAccordion === "format"}
-        onToggle={() => setOpenAccordion((o) => (o === "format" ? null : "format"))}
       />
       {bracketRows}
       {/* Point Distribution — the placement split.
@@ -171,37 +170,52 @@ export function NonGolfSettingsRows({
   );
 }
 
-/** Competition Format — an INLINE dropdown panel (P4; was the `FormatSheet` modal). Lists
- *  every format so the direction is legible; **Head-to-Head / Match** and **Bracket** are
- *  selectable, and Best of N / Live Results stay disabled placeholders ("Soon") since their
- *  engines aren't built (DO-NOT: don't implement them). H2H is the DEFAULT: a null value
- *  displays as H2H selected (non-golf already runs as H2H when unset), so this reserves the
- *  shape without a creation-time write. CONTROLLED — reports the pick to the parent draft;
- *  Save persists. Picking one can COST something (leaving Bracket discards the field), which
- *  is why the parent, not this list, owns the confirm. */
-function CompetitionFormatDropdown({
-  value, canEdit, onChange, open, onToggle,
+/**
+ * Competition Format — a row of TILES, always visible.
+ *
+ * ── Why not the ChecklistRow dropdown it replaced ───────────────────────────
+ * The format was a collapsed accordion showing only the current pick, which is
+ * the right treatment for a setting people rarely change and the wrong one here:
+ * Bracket is a whole feature living behind that chevron, and a reader who never
+ * opened the row never learned it existed. Tiles cost one row of vertical space
+ * and make the choice — including the two that are coming — legible without a
+ * tap. This is the same trade `ChecklistRow`'s own `requires` scrim makes: show
+ * the thing and say why, rather than hide it.
+ *
+ * Selectable: **Simple** and **Bracket**. Best of N / Live Results render as
+ * disabled "Soon" tiles so the direction stays legible — their engines aren't
+ * built (DO-NOT: don't implement them).
+ *
+ * Simple is the DEFAULT: a null value displays as Simple selected (non-golf
+ * already runs that way when unset), so this reserves the shape without a
+ * creation-time write.
+ *
+ * CONTROLLED — reports the pick to the parent draft; Save persists. Picking one
+ * can COST something (leaving Bracket discards the field), which is why the
+ * parent, not this list, owns the confirm.
+ *
+ * Two columns at phone width, four across from `sm`. The tiles carry a
+ * description, and four of those side by side at 375px would each be ~85px wide
+ * — a "row of tiles" that nobody can read is not the ask.
+ */
+function CompetitionFormatTiles({
+  value, canEdit, onChange,
 }: {
   value: CompetitionFormat | null;
   canEdit: boolean;
   onChange: (format: CompetitionFormat | null) => void;
-  open: boolean;
-  onToggle: () => void;
 }) {
-  // H2H is the default — a null value reads as head_to_head (the only live option).
+  // Simple is the default — a null value reads as head_to_head.
   const effective: CompetitionFormat = value ?? "head_to_head";
-  const RowIcon = COMP_FORMATS.find((f) => f.key === effective)?.Icon ?? Hash;
   return (
-    <ChecklistRow
-      icon={RowIcon}
-      title="Competition Format"
-      subtitle={formatLabel(effective) ?? "Head-to-Head / Match"}
-      state="resolved"
-      expanded={open}
-      onToggle={onToggle}
-      testId="row-competition-format"
-    >
-      <div className="flex flex-col gap-1.5" data-testid="competition-format-options">
+    <div data-testid="row-competition-format">
+      <div
+        className="px-1 pb-2"
+        style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
+      >
+        Competition Format
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="competition-format-options">
         {COMP_FORMATS.map((f) => {
           const enabled = f.key === "head_to_head" || f.key === "bracket";
           const selected = effective === f.key;
@@ -211,36 +225,39 @@ function CompetitionFormatDropdown({
               type="button"
               disabled={!enabled || !canEdit}
               onClick={() => enabled && onChange(f.key as CompetitionFormat)}
-              className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left disabled:cursor-not-allowed"
+              aria-pressed={selected}
+              className="flex flex-col gap-1 rounded-xl px-2.5 py-2.5 text-left disabled:cursor-not-allowed"
               style={{
                 background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
                 border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
                 opacity: enabled ? 1 : 0.5,
               }}
+              data-testid={`competition-format-tile-${f.key}`}
             >
-              <f.Icon size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{f.label}</span>
-                  {enabled
-                    ? selected && <Check size={13} style={{ color: "var(--color-bt-accent)", marginLeft: "auto" }} />
-                    : <span className="ml-auto rounded px-1 py-0.5 text-[9px] font-bold uppercase" style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}>Soon</span>}
-                </div>
-                <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>{f.desc}</p>
+              <div className="flex items-center gap-1.5">
+                <f.Icon size={15} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+                {enabled
+                  ? selected && <Check size={13} style={{ color: "var(--color-bt-accent)", marginLeft: "auto" }} />
+                  : (
+                    <span
+                      className="ml-auto rounded px-1 py-0.5 text-[9px] font-bold uppercase"
+                      style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                    >
+                      Soon
+                    </span>
+                  )}
               </div>
+              <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)", lineHeight: 1.2 }}>
+                {f.label}
+              </span>
+              <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)", lineHeight: 1.3 }}>
+                {f.desc}
+              </span>
             </button>
           );
         })}
-        {/* Names what each LIVE option actually does today. The old copy —
-            "however it runs, you enter the result by hand" — was true of the one
-            format on offer and stops being true the moment a second one is
-            selectable: a bracket's field and draw are built right here. */}
-        <p className="px-1 pt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          Head-to-Head results are entered by hand; a bracket&rsquo;s field and draw are built here. Best of N and Live
-          Results are coming.
-        </p>
       </div>
-    </ChecklistRow>
+    </div>
   );
 }
 

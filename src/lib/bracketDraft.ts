@@ -72,6 +72,173 @@ interface TeamRoster {
   players: { id: string }[];
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * THE FIELD, PARTNERS AND SEEDING ARE THREE SEPARATE QUESTIONS
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * The pool is still ONE `string[][]` in seed order — nothing about what a
+ * bracket WRITES changes here. What changes is that the three questions each get
+ * their own operation over it, instead of one group-builder trying to answer all
+ * three at once:
+ *
+ *   1. `applyField`   — who is in. Selection only; no ordering, no pairing.
+ *   2. `shufflePairs` — turn the field into pairs, within each cup team.
+ *   3. `shufflePool`  — the ORDER (above). Seeding.
+ *
+ * Reusing the rack GROUP builder for question 1 was the original mistake. A
+ * group is a container you fill, so the UI asked people to build matches when
+ * they should have been picking who is in — which is why it announced "this
+ * group is full (max 4)" after a single pick, and why Seeding then offered to
+ * shuffle matches that should not have existed yet.
+ *
+ * `shufflePairs` and `shufflePool` are deliberately NOT the same function and
+ * must not be merged. Pairing decides WHO PARTNERS WHOM inside a team; seeding
+ * decides WHAT ORDER the resulting entrants play in. They take different inputs,
+ * have different constraints (a partner must share a cup team; a seed order has
+ * no such rule) and are run at different times.
+ */
+
+/** Everyone currently in the field, in pool order. Members, not entrants — the
+ *  field is a set of PEOPLE, and how they are grouped is a later question. */
+export function fieldMembers(pool: string[][]): string[] {
+  return pool.flat();
+}
+
+/**
+ * Set the field to exactly `selected`, preserving everything already decided.
+ *
+ * Removals are surgical: a dropped member leaves any pair they were in, and the
+ * partner STAYS in the field as a solo entrant rather than being dropped with
+ * them. An entrant emptied by the removal disappears, because an empty seed is
+ * an entrant nobody can play.
+ *
+ * Additions append as solo entrants in `selected` order. They are not paired and
+ * not sorted: pairing and ordering are questions 2 and 3, and answering them
+ * here is exactly the conflation this module exists to undo.
+ *
+ * Existing order is preserved throughout, so building the field does not disturb
+ * a seed order somebody has already arranged.
+ */
+export function applyField(pool: string[][], selected: readonly string[]): string[][] {
+  const keep = new Set(selected);
+  const trimmed = pool.map((e) => e.filter((id) => keep.has(id))).filter((e) => e.length > 0);
+  const present = new Set(trimmed.flat());
+  const added = selected.filter((id) => !present.has(id)).map((id) => [id]);
+  return [...trimmed, ...added];
+}
+
+/**
+ * Randomly pair each team's members among themselves — question 2.
+ *
+ * 8 on a team become 4 pairs, 6 become 3. An odd member out is left as a SOLO
+ * entrant rather than being dropped or paired across teams: a bracket entrant
+ * belongs to exactly one cup team (that is where its points land), so a
+ * cross-team pair has no answer to "whose points are these?".
+ *
+ * This RE-PAIRS the whole field, including people already paired — it is a
+ * one-shot action someone pressed, not a rule that preserves prior work. Press
+ * it again for a different arrangement.
+ *
+ * Team-by-team output order, which seeding then rearranges. Deliberately not
+ * interleaved here: making this produce a "good" order would be doing question
+ * 3's job, and doing it invisibly.
+ *
+ * Randomness is injected so this stays pure and testable.
+ */
+export function shufflePairs(
+  pool: string[][],
+  teams: readonly TeamRoster[],
+  { random = Math.random }: { random?: () => number } = {}
+): string[][] {
+  const members = fieldMembers(pool);
+  const teamOfMember = (id: string) => teams.find((t) => t.players.some((p) => p.id === id))?.id ?? "";
+
+  // Bucket by team, preserving field order within a bucket before the shuffle so
+  // the result depends only on `random`, never on Map iteration accidents.
+  const buckets = new Map<string, string[]>();
+  for (const id of members) {
+    const key = teamOfMember(id);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(id);
+    else buckets.set(key, [id]);
+  }
+
+  const out: string[][] = [];
+  for (const bucket of buckets.values()) {
+    const shuffled = shuffleIds(bucket, random);
+    for (let i = 0; i < shuffled.length; i += 2) {
+      // The trailing odd member pairs with nobody and stands alone.
+      out.push(shuffled.slice(i, i + 2));
+    }
+  }
+  return out;
+}
+
+/**
+ * Pair two members by hand — the manual half of question 2.
+ *
+ * `a` keeps its position in the pool and `b`'s old entrant goes, so pairing two
+ * people does not reshuffle the seed order around them. Whatever either was part
+ * of before is dissolved first, which means pairing someone who is already
+ * paired frees their old partner rather than silently making a trio.
+ *
+ * A no-op if the two are the same person or either is missing.
+ */
+export function pairMembers(pool: string[][], a: string, b: string): string[][] {
+  if (a === b) return pool;
+  const members = new Set(fieldMembers(pool));
+  if (!members.has(a) || !members.has(b)) return pool;
+
+  const out: string[][] = [];
+  for (const entrant of pool) {
+    const stripped = entrant.filter((id) => id !== a && id !== b);
+    // `a`'s slot becomes the new pair; anyone freed by the strip stays, alone.
+    if (entrant.includes(a)) {
+      out.push([a, b]);
+      for (const freed of stripped) out.push([freed]);
+    } else if (entrant.includes(b)) {
+      for (const freed of stripped) out.push([freed]);
+    } else {
+      out.push(entrant);
+    }
+  }
+  return out.filter((e) => e.length > 0);
+}
+
+/** Split a pair back into two solo entrants, in place. Anything that isn't a
+ *  pair is returned untouched — there is nothing to undo. */
+export function unpairEntrant(pool: string[][], index: number): string[][] {
+  const target = pool[index];
+  if (!target || target.length < 2) return pool;
+  return [...pool.slice(0, index), ...target.map((id) => [id]), ...pool.slice(index + 1)];
+}
+
+/** Fisher-Yates over ids. Separate from the entrant-level one below because they
+ *  shuffle different things — members here, whole entrants there. */
+function shuffleIds(items: readonly string[], random: () => number): string[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * One entrant on ONE line — "Brad & Zach", never stacked.
+ *
+ * The two-line form the board used came from match play, where it solves a real
+ * score-entry constraint: fitting a side's players into a phone-width scoring
+ * column. A bracket has no such column — the seed list is full width and the
+ * board scrolls horizontally — so the constraint does not transfer and the
+ * stacked form just costs a line of height and reads as two competitors.
+ */
+export function entrantLabel(entrant: readonly string[], nameById: ReadonlyMap<string, string>): string {
+  const names = entrant.map((id) => nameById.get(id) ?? "Player");
+  return names.length === 0 ? "Empty" : names.join(" & ");
+}
+
 /** Which team an entrant belongs to — read from its first member, the same rule
  *  the payload uses. Null when the member is on no team. */
 function teamOf(entrant: string[], teams: readonly TeamRoster[]): string | null {
