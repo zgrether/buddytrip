@@ -102,7 +102,12 @@ const CATEGORY_META: Record<string, { label: string; Icon: LucideIcon }> = {
 };
 
 export const COMP_FORMATS = [
-  { key: "head_to_head", label: "Head-to-Head / Match", desc: "One-off matchup, winner takes the points.", Icon: Swords },
+  // "Simple", not "Head-to-Head / Match". The old name described a SHAPE while the
+  // action is declaring a result — and the shape it named was wrong for half the
+  // games using it (a yard game with four players is not head-to-head). A
+  // DISPLAY-STRING change only: the key stays `head_to_head`, which is the DB value
+  // RLS and `resultStrategy` branch on.
+  { key: "head_to_head", label: "Simple", desc: "Choose winner/loser of game.", Icon: Swords },
   // ONE entry. Single vs double is a SETTING inside the bracket, exactly as entry
   // mode is inside match play — two picker entries made a configuration choice
   // look like two different formats.
@@ -117,8 +122,8 @@ export const COMP_FORMATS = [
  * They are gone from the picker but not from the data: a game saved before this
  * still carries `bracket_se` / `bracket_de` in `games.competition_format`, and
  * `formatLabel` returning null for them would fall through to the caller's
- * "Head-to-Head / Match" default — silently relabelling a bracket as a different
- * format. Read-only compatibility; nothing offers them.
+ * "Simple" default — silently relabelling a bracket as a different format.
+ * Read-only compatibility; nothing offers them.
  */
 const LEGACY_FORMAT_LABELS: Record<string, string> = {
   bracket_se: "Bracket",
