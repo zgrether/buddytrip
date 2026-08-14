@@ -51,6 +51,7 @@ export function BracketScoringSurface({
   game,
   matches,
   entrants,
+  pointsDistribution,
   canEdit,
   onPosted,
 }: {
@@ -63,6 +64,9 @@ export function BracketScoringSurface({
    *  `resolveDraw` the pick mutation validates against. */
   matches: ResolvedMatch[];
   entrants: BracketEntrantMeta[];
+  /** The game's placement split, for the per-match stakes. Empty = no per-place
+   *  values, and the headers quote nothing. */
+  pointsDistribution: readonly number[];
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
@@ -205,6 +209,7 @@ export function BracketScoringSurface({
       <BracketBoard
         matches={matches}
         entrants={entrants}
+        pointsDistribution={pointsDistribution}
         canPick={canEdit && !isLocked}
         onPick={handlePick}
       />

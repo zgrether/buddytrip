@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
 import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT } from "@/lib/bracketLayout";
+import { matchStakes, formatStake, type MatchStakes } from "@/lib/bracketStakes";
 
 /**
  * The bracket board — the draw as a readable tree.
@@ -44,11 +45,15 @@ export interface BracketEntrantMeta {
 export function BracketBoard({
   matches,
   entrants,
+  pointsDistribution = [],
   canPick = false,
   onPick,
 }: {
   matches: ResolvedMatch[];
   entrants: BracketEntrantMeta[];
+  /** The game's placement split. Empty → the headers quote no points, which is
+   *  right for a game that pays no per-place values. */
+  pointsDistribution?: readonly number[];
   /** Organizer view when true; the member's read-only board when false. */
   canPick?: boolean;
   /** `seed` is the winner, or null to clear. Only called when `canPick`. */
@@ -103,7 +108,7 @@ export function BracketBoard({
                   .filter((m) => m.round === round)
                   .sort((a, b) => a.slot - b.slot)
                   .map((m) => (
-                    <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} />
+                    <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
                   ))}
               </div>
             </div>
@@ -126,7 +131,7 @@ export function BracketBoard({
           </div>
           <div style={{ maxWidth: 172 }}>
             {consolation.map((m) => (
-              <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} />
+              <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
             ))}
           </div>
         </div>
@@ -136,12 +141,14 @@ export function BracketBoard({
 }
 
 function MatchCard({
-  match, display, bySeed, canPick, onPick,
+  match, display, bySeed, canPick, onPick, stakes,
 }: {
   match: ResolvedMatch;
   display: ReturnType<typeof bracketDisplay>;
   bySeed: Map<number, BracketEntrantMeta>;
   canPick: boolean;
+  /** What this match is worth, or null when the game pays no placement split. */
+  stakes: MatchStakes | null;
   onPick?: (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => void;
 }) {
   const d = display.get(matchKey(match));
@@ -170,6 +177,23 @@ function MatchCard({
         }}
       >
         <span>Match {d?.number}</span>
+        {/* WHAT'S AT STAKE — one formula at every depth: what the loser takes,
+            and what the winner is guaranteed. In the final the two tie groups
+            are singletons, so this reads as the literal 1st/2nd without a
+            special case; earlier rounds honestly say "at least", because a
+            first-round winner is not playing for 1st yet.
+
+            Absent entirely when the game pays no placement split — quoting "L 0"
+            would state a payout the game does not have. */}
+        {stakes && (
+          <span
+            style={{ fontWeight: 600, letterSpacing: 0, color: "var(--color-bt-text-dim)" }}
+            data-testid="bracket-match-stakes"
+          >
+            W {stakes.winnerIsExact ? "" : "≥"}
+            {formatStake(stakes.winner)} · L {formatStake(stakes.loser)}
+          </span>
+        )}
       </div>
       <Slot seat="a" match={match} pending={d?.aPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />
       <Slot seat="b" match={match} pending={d?.bPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />

@@ -991,6 +991,10 @@ export function NonGolfGameView() {
           }}
           matches={resolvedDraw}
           entrants={bracketEntrantMeta}
+          // What each match is worth. The game's own placement split, or empty when
+          // it pays no per-place values — the header then quotes nothing rather than
+          // inventing zeroes.
+          pointsDistribution={isPlacement(game.points_distribution as PointsDistribution | null) ? (game.points_distribution as { values: number[] }).values : []}
           canEdit={canEdit}
           onPosted={exitToBoard}
         />
