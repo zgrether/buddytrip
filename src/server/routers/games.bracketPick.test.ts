@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { buildDraw } from "../../lib/bracket";
+import { resolveDraw, matchKey } from "../../lib/bracketAdvance";
 
 /**
  * `games.pickWinner` / `games.bracketDraw` — recording who won (phase 3 slice 2).
@@ -132,6 +133,54 @@ describe("pickWinner — recording a result", () => {
     await pick(gameId, 1, 1, 1);
     await pick(gameId, 1, 1, null);
     expect(at(await drawOf(gameId), 1, 1).winnerSeed).toBeNull();
+  });
+
+  /**
+   * The behaviour item 8's client fix rests on.
+   *
+   * The board used to require a CLEAR before you could switch a winner, which
+   * made it look as though replacement was refused somewhere. It never was: the
+   * gate was purely client-side (`playable` goes false once a winner exists, and
+   * the board keyed its tap targets on it). Pinned here so the one-tap switch has
+   * an asserted server behaviour under it rather than a measurement someone took
+   * once — if a future guard ever DOES require a clear first, this fails and the
+   * board's radio-button affordance gets revisited with it.
+   */
+  it("REPLACES a winner in one call — no clear-to-null first", async () => {
+    const gameId = await newBracket("Straight swap", four());
+    await pick(gameId, 1, 1, 1);
+    await pick(gameId, 1, 1, 4);
+    expect(at(await drawOf(gameId), 1, 1).winnerSeed).toBe(4);
+  });
+
+  it("a replacement upstairs leaves the stored final ALONE, and the resolver drops it", async () => {
+    // The two layers, asserted separately — this is the non-cascading model, and
+    // it is why an undo is one column wide (#925). Switching seed 1 out of the
+    // semi writes NOTHING to the final: its stored winner is still seed 1. The
+    // final reads as open only because `resolveDraw` drops a recorded winner who
+    // is no longer one of that match's occupants.
+    //
+    // Asserting the stored row here rather than the derived one is the point:
+    // `games.bracketDraw` returns rows as stored, and a test that expected null
+    // from it would have been testing the client's job on the server's payload.
+    const gameId = await newBracket("Swap upstream", four());
+    await pick(gameId, 1, 1, 1);
+    await pick(gameId, 1, 2, 2);
+    await pick(gameId, 2, 1, 1);
+
+    await pick(gameId, 1, 1, 4); // seed 1 is out; the final's pick named them
+
+    const stored = await drawOf(gameId);
+    expect(at(stored, 1, 1).winnerSeed).toBe(4);
+    expect(at(stored, 2, 1).winnerSeed).toBe(1); // untouched — no cascade write
+
+    const resolved = resolveDraw(
+      stored.map((m) => ({ bracket: m.bracket, round: m.round, slot: m.slot, aSeed: m.aSeed, bSeed: m.bSeed })),
+      Object.fromEntries(stored.map((m) => [matchKey(m), m.winnerSeed])),
+    );
+    const final = resolved.find((m) => m.bracket === "main" && m.round === 2 && m.slot === 1)!;
+    expect(final.winnerSeed).toBeNull();
+    expect(final.decidable).toBe(true); // open for a fresh pick
   });
 
   it("accepts a pick in a DERIVED round once both feeders are decided", async () => {
