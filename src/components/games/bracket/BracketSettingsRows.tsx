@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { ListTree, Shuffle, Users } from "lucide-react";
+import { ListTree, Medal, Shuffle, Users } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { SegmentedToggle } from "@/components/games/SegmentedToggle";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -116,6 +116,9 @@ export function BracketSettingsRows({
    *  A solo entrant is legal (an odd field has one), so this reports rather than
    *  blocks: `bracketFieldReady` is the go-live gate, not this. */
   const unpairedCount = filled.filter((e) => e.length === 1).length;
+  /** A 3rd-place match needs semi-finals to lose. `buildDraw` emits one only at
+   *  two rounds or more, so below three entrants there is nothing to play off. */
+  const consolationPossible = roundCount(filled.length) >= 2;
 
   /**
    * Switching Match Format costs NOTHING now, in either direction.
@@ -171,6 +174,48 @@ export function BracketSettingsRows({
             onChange={(next) => onConfigChange({ ...config, elimination: next })}
             disabled={!canEdit}
             testId="bracket-elimination-toggle"
+          />
+        }
+      />
+
+      {/* 3RD-PLACE MATCH — the bracket's other shape question, so it sits with
+          Bracket Type rather than down by the payout it affects.
+
+          What it changes is what the bracket can TELL APART, not what it pays:
+          the two semi-final losers stop being a tie group and become a real 3rd
+          and 4th. With it OFF they tie at 3rd spanning places 3–4 and
+          `placementPoints` averages those two values between them — which is
+          correct, and is why the 3rd and 4th distribution rows stay present
+          either way. Removing them when this is off would zero the two values
+          that average, quietly changing what every existing bracket pays its
+          semi-finalists.
+
+          Needs semis to lose: `buildDraw` only emits the match at two rounds or
+          more. Below that it is shown-but-disabled with the reason, rather than
+          vanishing (ChecklistRow's own posture — a setting isn't missing, its
+          prerequisite is). */}
+      <ChecklistRow
+        icon={Medal}
+        title="3rd-place match"
+        subtitle={
+          !consolationPossible
+            ? "Needs at least 3 entrants"
+            : config.consolation
+              ? "The losing semi-finalists play off"
+              : "Semi-finalists tie for 3rd"
+        }
+        state={config.consolation ? "resolved" : "empty"}
+        testId="row-bracket-consolation"
+        control={
+          <SegmentedToggle
+            value={config.consolation ? "on" : "off"}
+            options={[
+              { value: "off", label: "Off" },
+              { value: "on", label: "On" },
+            ]}
+            onChange={(next) => onConfigChange({ ...config, consolation: next === "on" })}
+            disabled={!canEdit || !consolationPossible}
+            testId="bracket-consolation-toggle"
           />
         }
       />
