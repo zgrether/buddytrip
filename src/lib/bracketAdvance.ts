@@ -193,6 +193,34 @@ function loserOf(m: ResolvedMatch | undefined): number | null {
   return m.winnerSeed === m.aSeed ? m.bSeed : m.aSeed;
 }
 
+/**
+ * Record a winner on ONE match of a stored draw, returning a new array.
+ *
+ * The optimistic half of a pick (CLAUDE.md #1): the client writes exactly the
+ * column `games.pickWinner` writes — `winnerSeed` on the addressed match — and
+ * nothing else. Everything downstream stays DERIVED, so feeding the patched rows
+ * through `resolveDraw` gives the same answer as re-fetching would.
+ *
+ * That is the whole safety argument for guessing here, and it is why this lives
+ * beside the resolver rather than inside the surface: an optimistic pick and a
+ * fetched one must not travel two code paths. Generic over the row shape so the
+ * router payload can be patched without this module knowing about it.
+ *
+ * A ref matching no match returns the rows unchanged — a pick into a draw that
+ * has since been rebuilt patches nothing rather than inventing a match.
+ */
+export function applyPick<T extends BracketMatchRef & { winnerSeed: number | null }>(
+  rows: readonly T[],
+  ref: BracketMatchRef,
+  winnerSeed: number | null
+): T[] {
+  return rows.map((m) =>
+    m.bracket === ref.bracket && m.round === ref.round && m.slot === ref.slot
+      ? { ...m, winnerSeed }
+      : m
+  );
+}
+
 /** The seed that won the whole thing, or null while the final is undecided.
  *  Reads the resolved final rather than "the last recorded winner", which would
  *  be whichever pick happened most recently. */

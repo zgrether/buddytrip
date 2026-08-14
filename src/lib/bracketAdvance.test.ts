@@ -3,6 +3,7 @@ import { buildDraw } from "./bracket";
 import {
   resolveDraw,
   matchKey,
+  applyPick,
   championSeed,
   drawComplete,
   type WinnerBySeed,
@@ -287,3 +288,64 @@ describe("clearing does not cascade (#925), and switching does not either", () =
     expect(f.decidable).toBe(true); // and it's open for a fresh pick
   });
 });
+
+/**
+ * `applyPick` — the optimistic half of a pick.
+ *
+ * The safety argument for guessing at all is that the client writes the SAME one
+ * column the server writes and lets `resolveDraw` derive the rest. So the test
+ * that matters is not "does it set the field" but **"is a patched draw
+ * indistinguishable from a refetched one?"** — because if it ever isn't, the
+ * board is showing something the server would never have sent.
+ */
+describe("applyPick — an optimistic pick equals a fetched one", () => {
+  const rows = buildDraw(4).map((m) => ({ ...m, winnerSeed: null as number | null }));
+  const semi1 = { bracket: "main" as const, round: 1, slot: 1 };
+
+  it("patches exactly one match and leaves every other row untouched", () => {
+    const out = applyPick(rows, semi1, 1);
+    expect(out.filter((m) => m.winnerSeed !== null)).toHaveLength(1);
+    expect(out.find((m) => m.round === 1 && m.slot === 1)!.winnerSeed).toBe(1);
+    // Same values everywhere else — a new array, not a mutated one.
+    expect(out.filter((m) => !(m.round === 1 && m.slot === 1))).toEqual(
+      rows.filter((m) => !(m.round === 1 && m.slot === 1))
+    );
+    expect(rows.every((m) => m.winnerSeed === null)).toBe(true); // input untouched
+  });
+
+  it("resolves identically to the same winners arriving from the server", () => {
+    const patched = resolveDraw(applyPick(rows, semi1, 1), toWinners(applyPick(rows, semi1, 1)));
+    const fetched = resolveDraw(rows, { [matchKey(semi1)]: 1 });
+    expect(patched).toEqual(fetched);
+  });
+
+  it("clearing patches one column, and does NOT cascade (#925)", () => {
+    const decided = applyPick(applyPick(rows, semi1, 1), { bracket: "main", round: 2, slot: 1 }, 1);
+    const cleared = applyPick(decided, semi1, null);
+    // The final's stored pick is untouched by the clear — exactly as server-side.
+    expect(cleared.find((m) => m.round === 2)!.winnerSeed).toBe(1);
+    // …and re-picking the same entrant brings the final's result back.
+    const rePicked = applyPick(cleared, semi1, 1);
+    expect(resolveDraw(rePicked, toWinners(rePicked)).find((m) => m.round === 2)!.winnerSeed).toBe(1);
+  });
+
+  it("a stale optimistic winner is DROPPED by the resolver (#924)", () => {
+    // Pick the final for seed 1, then send seed 4 through the semi instead. The
+    // final's optimistic winner is no longer an occupant, so it reads undecided —
+    // the guess cannot show someone advancing who isn't there.
+    const decided = applyPick(applyPick(applyPick(rows, semi1, 1), { bracket: "main", round: 1, slot: 2 }, 2), { bracket: "main", round: 2, slot: 1 }, 1);
+    const switched = applyPick(decided, semi1, 4);
+    const final = resolveDraw(switched, toWinners(switched)).find((m) => m.round === 2)!;
+    expect(final.winnerSeed).toBeNull();
+    expect(final.decidable).toBe(true);
+  });
+
+  it("a ref matching nothing patches nothing rather than inventing a match", () => {
+    expect(applyPick(rows, { bracket: "main", round: 9, slot: 9 }, 1)).toEqual(rows);
+  });
+});
+
+/** The stored rows as the `winners` map `resolveDraw` takes. */
+function toWinners(rows: { bracket: "main" | "consolation"; round: number; slot: number; winnerSeed: number | null }[]) {
+  return Object.fromEntries(rows.map((m) => [matchKey(m), m.winnerSeed]));
+}
