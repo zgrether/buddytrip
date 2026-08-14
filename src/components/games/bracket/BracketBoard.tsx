@@ -212,11 +212,14 @@ function Slot({
           background: meta?.teamColor ?? "var(--color-bt-text-dim)",
         }}
       />
+      {/* ONE LINE — "Brad & Zach", never stacked.
+          The two-line form came from match play, where it solves a real
+          score-entry constraint: fitting a side's players into a phone-width
+          scoring column. A bracket has no such column — this board scrolls
+          horizontally — so the constraint doesn't transfer, and stacking cost a
+          line of height while reading as two separate competitors. */}
       <span className="min-w-0 flex-1" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {meta?.name ?? `Seed ${seed}`}
-        {meta?.partner && (
-          <span style={{ display: "block", fontSize: 10.5, color: "var(--color-bt-text-dim)" }}>{meta.partner}</span>
-        )}
+        {meta ? (meta.partner ? `${meta.name} & ${meta.partner}` : meta.name) : `Seed ${seed}`}
       </span>
       {canPick && (
         <span

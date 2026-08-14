@@ -5,8 +5,11 @@ import { createPortal } from "react-dom";
 import { ListTree, Shuffle, Users } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { SegmentedToggle } from "@/components/games/SegmentedToggle";
-import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
-import { shufflePool, entrantCap, type BracketConfig } from "@/lib/bracketDraft";
+import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
+import { BracketFieldPicker } from "./BracketFieldPicker";
+import { BracketPartnerBuilder } from "./BracketPartnerBuilder";
+import { BracketSeedList } from "./BracketSeedList";
+import { shufflePool, type BracketConfig } from "@/lib/bracketDraft";
 import { bracketSize, roundCount } from "@/lib/bracket";
 
 /**
@@ -101,23 +104,37 @@ export function BracketSettingsRows({
   onConfigChange: (next: BracketConfig) => void;
   onPoolChange: (next: string[][]) => void;
 }) {
-  // Bracket Type and Match Format are inline controls now, so only the two rows
-  // with real editors left take part in the single-open accordion.
-  const [open, setOpen] = useState<null | "pool" | "seeding">(null);
-  const [confirmSingles, setConfirmSingles] = useState(false);
-  const toggle = (k: "pool" | "seeding") => setOpen((o) => (o === k ? null : k));
+  // Bracket Type and Match Format are inline controls now, so only the three
+  // rows with real editors take part in the single-open accordion.
+  const [open, setOpen] = useState<null | "pool" | "partners" | "seeding">(null);
+  const toggle = (k: "pool" | "partners" | "seeding") => setOpen((o) => (o === k ? null : k));
 
   const filled = pool.filter((e) => e.length > 0);
   const size = bracketSize(filled.length);
   const byes = size === 0 ? 0 : size - filled.length;
+  /** Entrants still standing alone in Partners — the Partners row's own readiness.
+   *  A solo entrant is legal (an odd field has one), so this reports rather than
+   *  blocks: `bracketFieldReady` is the go-live gate, not this. */
+  const unpairedCount = filled.filter((e) => e.length === 1).length;
 
-  /** partners → singles drops every second member, so it goes through the same
-   *  confirm the format change does. singles → partners loses nothing. */
+  /**
+   * Switching Match Format costs NOTHING now, in either direction.
+   *
+   * partners → singles SPLITS every pair into two solo entrants; the field is
+   * untouched and only the pairing goes. It used to empty the whole pool behind a
+   * confirm, which was the old model showing through: when one builder answered
+   * "who's in" and "who partners whom" at once, there was no way to drop the
+   * second answer without dropping the first. Separating the questions is exactly
+   * what makes this cheap — the field is question 1 and survives a change to
+   * question 2.
+   *
+   * singles → partners leaves everyone solo for the Partner Builder to pair, and
+   * never lost anything to begin with.
+   */
   function setEntrants(next: BracketConfig["entrants"]) {
     if (next === config.entrants) return;
     if (next === "singles" && filled.some((e) => e.length > 1)) {
-      setConfirmSingles(true);
-      return;
+      onPoolChange(filled.flatMap((e) => e.map((id) => [id])));
     }
     onConfigChange({ ...config, entrants: next });
   }
@@ -181,6 +198,7 @@ export function BracketSettingsRows({
         }
       />
 
+      {/* 1 · THE FIELD — who's in. A selection, and nothing else. */}
       <ChecklistRow
         icon={ListTree}
         title="The Field"
@@ -196,91 +214,67 @@ export function BracketSettingsRows({
         onToggle={() => toggle("pool")}
         testId="row-bracket-pool"
       >
-        <RackGroupBuilder
-          groups={pool}
-          onChange={onPoolChange}
-          teams={teams}
-          // The bracket constraint: an entrant belongs to exactly one cup team,
-          // because that is where its points land.
-          sameTeamOnly
-          maxPerGroup={entrantCap(config)}
-        />
+        <BracketFieldPicker pool={pool} teams={teams} canEdit={canEdit} onChange={onPoolChange} />
       </ChecklistRow>
 
+      {/* 2 · PARTNERS — only when there are pairs to build. Absent in Singles
+          rather than scrimmed: `ChecklistRow`'s own guidance is that a row the
+          format simply doesn't have stays away, because a permanently-dead row
+          is worse than a hidden one. */}
+      {config.entrants === "partners" && (
+        <ChecklistRow
+          icon={Users}
+          title="Partners"
+          subtitle={
+            filled.length === 0
+              ? "Pick the field first"
+              : unpairedCount === 0
+                ? `${filled.length} pairs`
+                : `${unpairedCount} still unpaired`
+          }
+          state={filled.length > 0 && unpairedCount === 0 ? "resolved" : "empty"}
+          expanded={open === "partners"}
+          onToggle={() => toggle("partners")}
+          testId="row-bracket-partners"
+        >
+          <BracketPartnerBuilder pool={pool} teams={teams} canEdit={canEdit} onChange={onPoolChange} />
+        </ChecklistRow>
+      )}
+
+      {/* 3 · SEEDING — the order. Randomize records HOW the order was last
+          produced (`config.seeding`); it is not a rule the app re-applies, which
+          is why the teammate question is asked on the button rather than stored. */}
       <ChecklistRow
         icon={Shuffle}
         title="Seeding"
         subtitle={
           config.seeding === "manual"
-            ? "In the order you built them"
+            ? "In the order you set"
             : config.seeding === "random_avoid_teammates"
-              ? "Last shuffled, teammates spread apart"
-              : "Last shuffled at random"
+              ? "Last randomized, teammates spread"
+              : "Last randomized"
         }
         state="resolved"
         expanded={open === "seeding"}
         onToggle={() => toggle("seeding")}
         testId="row-bracket-seeding"
       >
-        {/* A one-shot ACTION, not a persisted mode. The draw is a pure function of
-            pool ORDER, so randomising IS reordering the pool — press it, see the
-            new order, press again if you don't like it. A stored mode would leave
-            people guessing when it re-runs, and would stop the draw being derivable
-            from the pool alone. `seeding` therefore records how the order was last
-            produced; it is not a rule the app re-applies. */}
-        <div className="flex flex-col" style={{ gap: 10 }}>
-          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
-            Seeds are the order of the field above. Shuffling reorders it now — it doesn&rsquo;t re-run later.
-          </p>
-          <div className="flex flex-wrap" style={{ gap: 8 }}>
-            <button
-              type="button"
-              disabled={!canEdit || filled.length < 2}
-              onClick={() => {
-                onPoolChange(shufflePool(pool, teams, { avoidTeammates: true }));
-                onConfigChange({ ...config, seeding: "random_avoid_teammates" });
-              }}
-              className="rounded-lg px-3 py-2"
-              style={{
-                fontSize: 13, fontWeight: 600,
-                background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)",
-                opacity: !canEdit || filled.length < 2 ? 0.5 : 1,
-              }}
-              data-testid="bracket-shuffle-avoid"
-            >
-              Shuffle · spread teammates
-            </button>
-            <button
-              type="button"
-              disabled={!canEdit || filled.length < 2}
-              onClick={() => {
-                onPoolChange(shufflePool(pool, teams, { avoidTeammates: false }));
-                onConfigChange({ ...config, seeding: "random" });
-              }}
-              className="rounded-lg px-3 py-2"
-              style={{
-                fontSize: 13, fontWeight: 600,
-                background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)",
-                opacity: !canEdit || filled.length < 2 ? 0.5 : 1,
-              }}
-              data-testid="bracket-shuffle-random"
-            >
-              Shuffle
-            </button>
-          </div>
-        </div>
-      </ChecklistRow>
-
-      {confirmSingles && (
-        <ClearPairingsPrompt
-          onCancel={() => setConfirmSingles(false)}
-          onConfirm={() => {
-            setConfirmSingles(false);
-            onPoolChange([]);
-            onConfigChange({ ...config, entrants: "singles" });
+        <BracketSeedList
+          pool={pool}
+          teams={teams}
+          canEdit={canEdit}
+          onChange={(next) => {
+            onPoolChange(next);
+            // A hand-dragged order is a manual one, whatever produced it before.
+            onConfigChange({ ...config, seeding: "manual" });
+          }}
+          onRandomize={(spread) => {
+            onPoolChange(shufflePool(pool, teams, { avoidTeammates: spread }));
+            onConfigChange({ ...config, seeding: spread ? "random_avoid_teammates" : "random" });
           }}
         />
-      )}
+      </ChecklistRow>
+
     </>
   );
 }
