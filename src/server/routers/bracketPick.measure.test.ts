@@ -25,6 +25,31 @@ import { buildDraw } from "../../lib/bracket";
  * records as a measured 0.5s → 21s regression — so the figure that decides
  * whether the check-mark paints quickly is not `bracketDraw`'s own cost but the
  * MAX across everything sharing its tick. Both are reported.
+ *
+ * ── TWO THINGS THIS FILE OVERSTATES, ON PURPOSE ─────────────────────────────
+ * Read the numbers with both in mind; they are why "TAP → all four settled" is
+ * an upper bound rather than what a real tap costs.
+ *
+ *   1. **The four do not share a tick.** `bracketDraw` is invalidated inline by
+ *      `pickWinner.onSuccess`; the other three arrive via migration 118's
+ *      broadcast through `invalidationCoalescer`'s 100 ms trailing window. The
+ *      window SEPARATES the ticks rather than merging them, so the coalescer
+ *      costs ≤100 ms and never delays the check-mark. The batched-together row
+ *      is the pessimistic case (a broadcast landing in the same tick), kept
+ *      because it bounds the damage if that timing ever changes.
+ *
+ *   2. **`scores.listByGame` is INERT on a bracket page.** It is queried only by
+ *      the three golf views (`MatchGameView` / `RackGameView` /
+ *      `StrokeGameView`); no non-golf surface mounts it. React Query refetches
+ *      only ACTIVE queries on invalidate, so on a bracket that key has no
+ *      observer and no request is issued. This file calls it directly through
+ *      the tRPC caller, which forces the round trip a browser would skip.
+ *
+ * The second one is worth stating loudly because it looks like obvious waste —
+ * a bracket writes no `score_entries` at all, so invalidating them reads as a
+ * bug. It costs nothing, and "fixing" it would mean teaching the deliberately
+ * format-agnostic score-event handler about formats (a two-sided trigger/client
+ * contract, per CLAUDE.md #20) to save zero requests.
  */
 
 const RTT_PROFILES = [0, 50, 120] as const;
