@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
+import { clearTripTeamAssignments } from "../lib/leaveTrip";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
@@ -445,6 +446,18 @@ export const ghostCrewRouter = router({
           message: "Failed to remove guest",
         });
       }
+
+      // Leaving the trip means leaving its cups — the SAME helper the real-member
+      // path calls, so the two removals cannot clear different things.
+      //
+      // Not redundant with the hard-delete below, which is what one might assume:
+      // `team_assignments.user_id` is ON DELETE CASCADE, so deleting the guest
+      // WOULD take the assignment with it — but `delete_orphan_guest_user` is a
+      // no-op for any guest still referenced under RESTRICT (it swallows the
+      // foreign_key_violation), and those are exactly the guests with history
+      // worth keeping. Every production orphan found was of that kind: a guest
+      // who survived the delete and kept an assignment to a trip they had left.
+      await clearTripTeamAssignments(ctx.supabase, ctx.tripId, input.guestUserId);
 
       // Free the email: if this guest is now on no trip, hard-delete the
       // users row. RLS blocks the user-scoped client from deleting users, so

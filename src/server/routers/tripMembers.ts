@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
+import { clearTripTeamAssignments } from "../lib/leaveTrip";
 
 /** Resolve a member's trip display name (nickname → account name) for
  *  system chat lines. Best-effort; falls back to "Someone". */
@@ -373,6 +374,12 @@ export const tripMembersRouter = router({
           message: "Failed to remove member",
         });
       }
+
+      // Leaving the trip means leaving its cups. Without this the member keeps a
+      // `team_assignments` row for a trip they are no longer on, and the surfaces
+      // that read assignments directly go on counting them while the ones that
+      // intersect with the crew do not — see `clearTripTeamAssignments`.
+      await clearTripTeamAssignments(ctx.supabase, ctx.tripId, input.userId);
 
       return { success: true };
     }),

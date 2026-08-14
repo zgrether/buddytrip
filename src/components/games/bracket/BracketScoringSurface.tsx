@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
@@ -8,7 +8,7 @@ import { PointsAtStake } from "@/components/games/PointsAtStake";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { drawComplete } from "@/lib/bracketAdvance";
+import { applyPick, drawComplete } from "@/lib/bracketAdvance";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
 
@@ -51,6 +51,7 @@ export function BracketScoringSurface({
   game,
   matches,
   entrants,
+  pointsDistribution,
   canEdit,
   onPosted,
 }: {
@@ -63,6 +64,9 @@ export function BracketScoringSurface({
    *  `resolveDraw` the pick mutation validates against. */
   matches: ResolvedMatch[];
   entrants: BracketEntrantMeta[];
+  /** The game's placement split, for the per-match stakes. Empty = no per-place
+   *  values, and the headers quote nothing. */
+  pointsDistribution: readonly number[];
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
@@ -101,22 +105,76 @@ export function BracketScoringSurface({
   const { isLocked } = gameLockState({ status: game.status, correctionsOpen: game.corrections_open });
 
   const [pickError, setPickError] = useState<string | null>(null);
+
+  /**
+   * How many picks are still in flight.
+   *
+   * Only the LAST one reconciles. Without this, tapping two matches quickly is a
+   * visible flicker: the first pick's refetch is already on the wire when the
+   * second is applied optimistically, and it lands carrying server state that
+   * predates the second — wiping a mark the user can see, until that pick's own
+   * refetch puts it back. The counter is not about saving requests; it is about
+   * never letting a stale response overwrite a newer local truth.
+   */
+  const pendingPicks = useRef(0);
+  const reconcile = useCallback(() => {
+    // `cancelRefetch: false` — a second invalidation during an in-flight refetch
+    // otherwise CANCELS it and the first response never reaches the cache
+    // (verified mechanism, `src/lib/invalidateCancelsRefetch.test.ts`).
+    void utils.games.bracketDraw.invalidate({ tripId, gameId }, undefined, { cancelRefetch: false });
+  }, [utils, tripId, gameId]);
+
   const pickMutation = trpc.games.pickWinner.useMutation({
-    // Server truth on both paths — a pick changes what the WHOLE tree derives, so
-    // there is nothing useful to patch optimistically and a wrong local guess
-    // would be visible three rounds up. The refetch is one small query.
-    onSuccess: () => {
-      setPickError(null);
-      void utils.games.bracketDraw.invalidate({ tripId, gameId });
+    onSuccess: () => setPickError(null),
+    // A REFUSED pick must roll back visibly, immediately — a check-mark that
+    // appears and silently stays after the server said no is worse than one that
+    // took 800ms to arrive. Re-pulling server truth IS the rollback (CLAUDE.md
+    // #1: invalidate as rollback, never an onMutate snapshot-restore).
+    onError: (e) => {
+      setPickError(e.message);
+      reconcile();
     },
-    onError: (e) => setPickError(e.message),
+    onSettled: () => {
+      pendingPicks.current = Math.max(0, pendingPicks.current - 1);
+      if (pendingPicks.current === 0) reconcile();
+    },
   });
+
+  /**
+   * Tap → mark, with no round trip in between.
+   *
+   * ── Why this is safe to guess, when the header used to say it wasn't ───────
+   * The previous note here argued there was "nothing useful to patch
+   * optimistically" because a pick changes what the whole tree derives. That is
+   * true and is exactly why the patch is safe: we write the ONE column the
+   * server writes — `winnerSeed` on one match — and everything downstream is
+   * DERIVED from it by `resolveDraw`, which the parent already runs over this
+   * cache. So the optimistic value goes through the same advancement, the same
+   * `winnerOf` drop-rule and the same placement maths as a fetched one. There is
+   * no second code path to disagree with, which is what makes the guess honest
+   * rather than a local imitation of the server.
+   *
+   * Both invariants therefore hold for free rather than by re-implementation:
+   *   - #924's stale-winner rule — a seed that is not a resolved occupant is
+   *     dropped by `winnerOf`, so an optimistic pick into a match whose feeders
+   *     moved still reads undecided.
+   *   - #925's non-cascading clear — clearing writes one column here exactly as
+   *     it does server-side, and everything above re-derives. Nothing cascades
+   *     locally that would not have cascaded remotely.
+   *
+   * What it buys: the measured cost of a pick in production is ~806ms, and the
+   * check-mark used to wait for all of it. It now waits for a state update.
+   */
   const handlePick = useCallback(
     (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
+      utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
+        prev && applyPick(prev, ref, seed)
+      );
+      pendingPicks.current += 1;
       pickMutation.mutate({ tripId, gameId, ...ref, winnerSeed: seed });
     },
-    [pickMutation, tripId, gameId]
+    [pickMutation, utils, tripId, gameId]
   );
 
   /**
@@ -151,6 +209,7 @@ export function BracketScoringSurface({
       <BracketBoard
         matches={matches}
         entrants={entrants}
+        pointsDistribution={pointsDistribution}
         canPick={canEdit && !isLocked}
         onPick={handlePick}
       />

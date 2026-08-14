@@ -3,6 +3,8 @@
 import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
+import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT } from "@/lib/bracketLayout";
+import { matchStakes, formatStake, type MatchStakes } from "@/lib/bracketStakes";
 
 /**
  * The bracket board — the draw as a readable tree.
@@ -43,11 +45,15 @@ export interface BracketEntrantMeta {
 export function BracketBoard({
   matches,
   entrants,
+  pointsDistribution = [],
   canPick = false,
   onPick,
 }: {
   matches: ResolvedMatch[];
   entrants: BracketEntrantMeta[];
+  /** The game's placement split. Empty → the headers quote no points, which is
+   *  right for a game that pays no per-place values. */
+  pointsDistribution?: readonly number[];
   /** Organizer view when true; the member's read-only board when false. */
   canPick?: boolean;
   /** `seed` is the winner, or null to clear. Only called when `canPick`. */
@@ -73,26 +79,41 @@ export function BracketBoard({
         overflowX: "auto",
       }}
     >
-      <div className="flex" style={{ gap: 26, minWidth: "min-content" }}>
-        {rounds.map((round) => (
-          <div key={round} className="flex flex-col justify-around" style={{ gap: 12, minWidth: 172 }}>
-            <div
-              className="text-center"
-              style={{
-                fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.09em",
-                color: "var(--color-bt-text-dim)", fontWeight: 700, marginBottom: 2,
-              }}
-            >
-              {roundName(round, lastRound)}
+      {/* `items-start`, not the default stretch: each round column is exactly as
+          tall as its own content, and the vertical placement comes from the
+          computed offsets below rather than from how the columns happen to
+          stretch against each other. */}
+      <div className="flex items-start" style={{ gap: 26, minWidth: "min-content" }}>
+        {rounds.map((round) => {
+          const { offset, gap } = roundLayout(round, BRACKET_METRICS);
+          return (
+            <div key={round} className="flex flex-col" style={{ minWidth: 172 }}>
+              {/* OUTSIDE the offset container. The heading used to be a sibling of
+                  the match cards inside a `justify-around` column, so it was being
+                  distributed along with them — round 1 spacing 5 items and round 2
+                  spacing 3 is what broke the alignment. */}
+              <div
+                className="text-center"
+                style={{
+                  fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.09em",
+                  color: "var(--color-bt-text-dim)", fontWeight: 700, marginBottom: 2,
+                }}
+              >
+                {roundName(round, lastRound)}
+              </div>
+              {/* Each match centres on the separator between its two feeders:
+                  half a span down, then one span apart (`bracketLayout`). */}
+              <div className="flex flex-col" style={{ gap, paddingTop: offset }}>
+                {main
+                  .filter((m) => m.round === round)
+                  .sort((a, b) => a.slot - b.slot)
+                  .map((m) => (
+                    <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
+                  ))}
+              </div>
             </div>
-            {main
-              .filter((m) => m.round === round)
-              .sort((a, b) => a.slot - b.slot)
-              .map((m) => (
-                <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} />
-              ))}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {consolation.length > 0 && (
@@ -110,7 +131,7 @@ export function BracketBoard({
           </div>
           <div style={{ maxWidth: 172 }}>
             {consolation.map((m) => (
-              <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} />
+              <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
             ))}
           </div>
         </div>
@@ -120,12 +141,14 @@ export function BracketBoard({
 }
 
 function MatchCard({
-  match, display, bySeed, canPick, onPick,
+  match, display, bySeed, canPick, onPick, stakes,
 }: {
   match: ResolvedMatch;
   display: ReturnType<typeof bracketDisplay>;
   bySeed: Map<number, BracketEntrantMeta>;
   canPick: boolean;
+  /** What this match is worth, or null when the game pays no placement split. */
+  stakes: MatchStakes | null;
   onPick?: (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => void;
 }) {
   const d = display.get(matchKey(match));
@@ -137,18 +160,40 @@ function MatchCard({
         borderRadius: 10,
         overflow: "hidden",
         background: "var(--color-bt-card)",
+        // FIXED, not content-sized. Equal card heights are a precondition of the
+        // round offsets — a bye row and a competitor row render different content,
+        // and letting them size themselves is what made every round below the
+        // first drift.
+        height: BRACKET_METRICS.cardHeight,
       }}
       data-testid={`bracket-match-${d?.number ?? "?"}`}
     >
       <div
-        className="flex justify-between"
+        className="flex items-center justify-between"
         style={{
           fontSize: 9, letterSpacing: "0.08em", color: "var(--color-bt-text-dim)", fontWeight: 700,
-          padding: "3px 8px", background: "var(--color-bt-card-raised)",
+          padding: "0 8px", height: MATCH_HEADER_HEIGHT, background: "var(--color-bt-card-raised)",
           borderBottom: "1px solid var(--color-bt-border)",
         }}
       >
         <span>Match {d?.number}</span>
+        {/* WHAT'S AT STAKE — one formula at every depth: what the loser takes,
+            and what the winner is guaranteed. In the final the two tie groups
+            are singletons, so this reads as the literal 1st/2nd without a
+            special case; earlier rounds honestly say "at least", because a
+            first-round winner is not playing for 1st yet.
+
+            Absent entirely when the game pays no placement split — quoting "L 0"
+            would state a payout the game does not have. */}
+        {stakes && (
+          <span
+            style={{ fontWeight: 600, letterSpacing: 0, color: "var(--color-bt-text-dim)" }}
+            data-testid="bracket-match-stakes"
+          >
+            W {stakes.winnerIsExact ? "" : "≥"}
+            {formatStake(stakes.winner)} · L {formatStake(stakes.loser)}
+          </span>
+        )}
       </div>
       <Slot seat="a" match={match} pending={d?.aPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />
       <Slot seat="b" match={match} pending={d?.bPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />
@@ -181,7 +226,10 @@ function Slot({
   const won = seed !== null && match.winnerSeed === seed;
   const base = {
     display: "flex", alignItems: "center", gap: 7,
-    padding: "7px 9px", fontSize: 12, minHeight: 34,
+    // FIXED height, not minimum — see the card's own note. A "Bye" row and a
+    // "waiting on the round below" row must occupy exactly what a competitor row
+    // does, or the geometry above is computing against the wrong unit.
+    padding: "0 9px", fontSize: 12, height: SLOT_HEIGHT,
     borderBottom: seat === "a" ? "1px solid var(--color-bt-border)" : undefined,
   } as const;
 

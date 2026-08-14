@@ -4,6 +4,12 @@ import { BracketFieldPicker } from "./BracketFieldPicker";
 import { BracketPartnerBuilder } from "./BracketPartnerBuilder";
 import { BracketSeedList } from "./BracketSeedList";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
+import { BracketSettingsRows } from "./BracketSettingsRows";
+import type { BracketConfig } from "@/lib/bracketDraft";
+import { buildDraw } from "@/lib/bracket";
+import { resolveDraw, matchKey } from "@/lib/bracketAdvance";
+import { bracketPlacements } from "@/lib/bracketPlacements";
+import { placementPoints } from "@/lib/competitionPlacement";
 
 /**
  * The three setup surfaces render — the guard the pure-model tests can't give.
@@ -161,3 +167,77 @@ describe("BracketSeedList — the order", () => {
     expect(html).toMatch(/field first/i);
   });
 });
+
+describe("the 3rd-place match toggle (item 4)", () => {
+  const rows = (config: Partial<BracketConfig>, pool: string[][]) =>
+    renderToStaticMarkup(
+      <BracketSettingsRows
+        config={{ elimination: "single", entrants: "singles", seeding: "manual", consolation: false, ...config }}
+        pool={pool}
+        teams={TEAMS}
+        canEdit
+        onConfigChange={noop}
+        onPoolChange={noop}
+      />
+    );
+
+  const four = [["a1"], ["a2"], ["b1"], ["b2"]];
+
+  it("is offered, and says which way it is set", () => {
+    expect(rows({}, four)).toContain("Semi-finalists tie for 3rd");
+    expect(rows({ consolation: true }, four)).toContain("The losing semi-finalists play off");
+  });
+
+  it("needs semis to lose — disabled with the reason below 3 entrants", () => {
+    // `buildDraw` only emits the match at two rounds or more. Shown rather than
+    // hidden: the setting isn't missing, its prerequisite is.
+    expect(rows({}, [["a1"], ["a2"]])).toContain("Needs at least 3 entrants");
+  });
+});
+
+describe("what the toggle actually changes", () => {
+  it("adds the consolation match to the built draw", () => {
+    expect(buildDraw(8).some((m) => m.bracket === "consolation")).toBe(false);
+    expect(buildDraw(8, { consolation: true }).some((m) => m.bracket === "consolation")).toBe(true);
+  });
+
+  it("splits the tied 3rd into a real 3rd and 4th once decided", () => {
+    // OFF: the two semi losers tie at 3rd, spanning places 3-4.
+    const plain = bracketPlacements(decided(buildDraw(4)));
+    expect(plain.filter((p) => p.position === 3)).toHaveLength(2);
+
+    // ON and played: they are separated.
+    const withPlayoff = bracketPlacements(decided(buildDraw(4, { consolation: true }), true));
+    expect(withPlayoff.filter((p) => p.position === 3)).toHaveLength(1);
+    expect(withPlayoff.filter((p) => p.position === 4)).toHaveLength(1);
+  });
+
+  it("3rd and 4th distribution values are consumed EITHER WAY — the rows must not be hidden", () => {
+    // The reason this item does not remove the 3rd/4th rows when the toggle is
+    // off: `placementPoints` averages a tie group across the places it spans, so
+    // two players tied at 3rd share (dist[2] + dist[3]) / 2. Zeroing the 4th row
+    // would quietly change what every existing bracket pays its semi-finalists.
+    const dist = [9, 6, 4, 2];
+    const tied = placementPoints(dist, [
+      { entityId: "w", value: 4 },
+      { entityId: "x", value: 3 },
+      { entityId: "y", value: 2 },
+      { entityId: "z", value: 2 },
+    ], "high_wins");
+    expect(tied.get("y")).toBe(3); // (4 + 2) / 2 — the 4th-place value is in there
+    expect(tied.get("z")).toBe(3);
+  });
+});
+
+/** Decide every match in a draw, so placements can be computed. */
+function decided(draw: ReturnType<typeof buildDraw>, playConsolation = false) {
+  const winners: Record<string, number> = {};
+  for (const m of draw) {
+    if (m.bracket === "consolation" && !playConsolation) continue;
+    const resolvedSoFar = resolveDraw(draw, winners).find(
+      (r) => r.bracket === m.bracket && r.round === m.round && r.slot === m.slot
+    )!;
+    if (resolvedSoFar.aSeed !== null) winners[matchKey(m)] = resolvedSoFar.aSeed;
+  }
+  return resolveDraw(draw, winners);
+}
