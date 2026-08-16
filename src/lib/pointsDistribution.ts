@@ -51,3 +51,46 @@ export function evenShare(total: number, overrides: number[], matchCount: number
   const remainder = total - overrides.reduce((s, v) => s + v, 0);
   return remainder / nonOverridden;
 }
+
+/**
+ * The distribution a game ACTUALLY pays by — with the winner-take-all default
+ * made explicit.
+ *
+ * ── The bug this exists for ────────────────────────────────────────────────
+ * A bracket with no distribution set awarded NOTHING: no value in the final's
+ * header, no projection on the board, and no points rolled up. Setting any
+ * second-place value fixed all three at once, which is the tell that they share
+ * one input.
+ *
+ * They did. Three separate call sites each wrote `isPlacement(d) ? d.values : []`
+ * — the server roll-up (`competitionLeaderboard`), the client projection
+ * (`NonGolfGameView`) and the match-header stakes (`bracketStakes`) — and an
+ * EMPTY distribution makes `placementPoints` award 0 to everyone. The bracket
+ * branch also returns before the winner-take-all flatten below it, so nothing
+ * downstream supplied the default either.
+ *
+ * ── Why `[total]` is not a guess ───────────────────────────────────────────
+ * The code that shipped this called the empty array deliberate, on the grounds
+ * that inventing a payout would be "a bracket-specific guess about what the
+ * organizer meant". It isn't a guess: it is what every OTHER format already
+ * does with a null distribution (the head-to-head arm three lines away flattens
+ * to `[total, 0]`), and #928 states the rule directly — "a one-place
+ * distribution is an ordinary bracket and the cheapest path through". A game
+ * that is worth N points and has one winner pays N to the winner. Awarding zero
+ * is the surprising answer, not the safe one.
+ *
+ * ── One helper, because three copies is how they drifted ───────────────────
+ * Every consumer of a game's payout calls this. A caller that writes the
+ * ternary itself is re-introducing the bug in one of the three places, and the
+ * next reader has no way to tell which of them is authoritative.
+ */
+export function effectiveDistribution(
+  distribution: PointsDistribution | null | undefined,
+  pointsTotal: number | null | undefined
+): number[] {
+  if (isPlacement(distribution)) return distribution.values;
+  // No authored split → winner takes the lot. A game worth nothing stays empty,
+  // so an unconfigured game still reads as "no payout" rather than "0 to first".
+  const total = Number(pointsTotal ?? 0);
+  return total > 0 ? [total] : [];
+}
