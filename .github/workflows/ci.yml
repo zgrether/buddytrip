@@ -11,11 +11,65 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  test:
+  # Decide ONCE whether this change needs the full suite. Both merge-gating jobs
+  # read this and skip their own STEPS when it says no, so a docs-only PR reports
+  # `test` + `e2e` as passing in seconds instead of booting Docker twice.
+  #
+  # THE FILTER IS DEFINED BY NEGATION, AND THAT IS THE WHOLE DESIGN. The obvious
+  # shape — list what counts as docs, skip when everything matches — FAILS OPEN:
+  # add a config file, a new top-level directory, a `.github/` change nobody
+  # anticipated, and it silently doesn't match the code list, so CI skips a real
+  # change and says green. `'!**/*.md'` inverts the default: the filter is true
+  # unless EVERY changed file is markdown, so anything unanticipated runs the
+  # suite. Fail loud, not silent — applied to the pipeline itself.
+  #
+  # `src/**` is the one exception to the markdown rule, for the ORDINARY reason
+  # that src/ holds the application: src/content/legal/{privacy,terms}.md is
+  # shipped content, not documentation, so a change to it is a change to the app.
+  #
+  # It is NOT here because CI would catch a broken one. It would not.
+  # src/app/{privacy,terms}/page.tsx read those files with readFileSync at REQUEST
+  # time (privacy/page.tsx:17), so a malformed file fails neither the build nor
+  # tsc nor any test — it fails the live page. Running the full suite protects
+  # those two files exactly as much as skipping it does: not at all. The real
+  # guard is a render smoke test for the two routes, tracked in #944; nothing in
+  # the repo renders /privacy or /terms today. Do not read this exception as
+  # coverage.
+  #
+  # On push-to-main the filter is bypassed entirely (see the output expression) —
+  # main always gets the full suite regardless of what changed.
+  #
+  # If this job itself fails, both gated jobs are skipped and their required
+  # checks never report, which BLOCKS the PR. That is the intended direction: a
+  # broken gate stops the line rather than waving changes through.
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - 'src/**'
+
+  test:
+    runs-on: ubuntu-latest
+    # GATE THE STEPS, NEVER THE JOB. A job-level `if:` produces a SKIPPED job, and
+    # whether a branch ruleset counts "skipped" as satisfying a required check is
+    # exactly the ambiguity that leaves a PR pending forever with nothing to click.
+    # Both jobs therefore always run and always report their names; the condition
+    # lives on each step inside. (`paths-ignore:` on the trigger has the same
+    # defect, worse: the check never reports at all.)
+    needs: [changes]
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 20
           cache: npm
@@ -24,6 +78,7 @@ jobs:
       # fails with ECONNRESET in CI. We install the CLI separately via
       # supabase/setup-cli below, so the npm-bundled binary isn't needed.
       - run: npm ci --ignore-scripts
+        if: needs.changes.outputs.code == 'true'
       # Lint is merge-blocking, and runs BEFORE the Supabase stack because it
       # needs no database — a lint failure should cost seconds, not a Docker boot.
       #
@@ -38,7 +93,9 @@ jobs:
       # NOT enforce the no-raw-hex rule — that needs a custom rule, which needs an
       # exemption list, which is blocked on the open marketing-CSS question.
       - run: npx eslint --max-warnings 0
+        if: needs.changes.outputs.code == 'true'
       - uses: supabase/setup-cli@v1
+        if: needs.changes.outputs.code == 'true'
         with:
           # Pinned (not `latest`): `latest` resolves the newest release from a
           # gateway that intermittently times out and blocks the merge-gating job.
@@ -50,8 +107,10 @@ jobs:
       # placeholder dev seed.sql never runs. This is what unshares CI from prod: no
       # more churn on the prod IO budget, no cross-branch `db push` deadlock.
       - name: Start local Supabase (applies migrations)
+        if: needs.changes.outputs.code == 'true'
         run: supabase start
       - name: Point the suite at local Supabase
+        if: needs.changes.outputs.code == 'true'
         run: |
           supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=' > supabase.env
           set -a; . ./supabase.env; set +a
@@ -63,28 +122,41 @@ jobs:
           } >> "$GITHUB_ENV"
           rm -f supabase.env
       - run: npx tsc --noEmit
+        if: needs.changes.outputs.code == 'true'
       - run: npx vitest run
+        if: needs.changes.outputs.code == 'true'
 
   # Critical-path E2E gate (Issue #29 resolved). Runs the merge-blocking smoke
   # tests (auth-setup → stroke game → scores → scorecard, + match-play) against a
   # fresh LOCAL Supabase — same model as the `test` job. Needs `test` first so unit
   # tests gate before we spend time on the browser run.
+  #
+  # `changes` is in `needs` for the OUTPUT, not for ordering. Gating this job too
+  # is the point: `npm ci` + `playwright install` + `npm run build` is most of the
+  # wall clock, so gating only `test` would leave a docs PR paying nearly the full
+  # bill anyway.
   e2e:
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [changes, test]
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 20
           cache: npm
       - run: npm ci --ignore-scripts
+        if: needs.changes.outputs.code == 'true'
       - uses: supabase/setup-cli@v1
+        if: needs.changes.outputs.code == 'true'
         with:
           version: 2.78.1
       - name: Start local Supabase (applies migrations)
+        if: needs.changes.outputs.code == 'true'
         run: supabase start
       - name: Point the app + suite at local Supabase
+        if: needs.changes.outputs.code == 'true'
         run: |
           supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=' > supabase.env
           set -a; . ./supabase.env; set +a
@@ -96,23 +168,27 @@ jobs:
           } >> "$GITHUB_ENV"
           rm -f supabase.env
       - name: Cache Playwright browser
+        if: needs.changes.outputs.code == 'true'
         id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright chromium (+ OS deps)
+        if: needs.changes.outputs.code == 'true'
         run: npx playwright install --with-deps chromium
       # Build AFTER the local Supabase env is exported. NEXT_PUBLIC_* are inlined at
       # BUILD time, so the app must be built against the LOCAL Supabase URL/anon key —
       # not prod. (The E2E build-ordering fix: previously the build baked in the remote
       # project via job-level secrets.)
       - name: Build app (served by Playwright's webServer)
+        if: needs.changes.outputs.code == 'true'
         run: npm run build
       - name: Run critical-path E2E
+        if: needs.changes.outputs.code == 'true'
         run: npx playwright test
       - name: Upload report on failure
-        if: ${{ failure() }}
+        if: ${{ failure() && needs.changes.outputs.code == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
