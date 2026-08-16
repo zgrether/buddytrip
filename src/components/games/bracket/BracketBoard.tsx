@@ -3,8 +3,9 @@
 import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
-import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT } from "@/lib/bracketLayout";
-import { matchStakes, formatStake, type MatchStakes } from "@/lib/bracketStakes";
+import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
+import { matchStakes, type MatchStakes } from "@/lib/bracketStakes";
+import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
 
 /**
  * The bracket board — the draw as a readable tree.
@@ -87,17 +88,14 @@ export function BracketBoard({
         {rounds.map((round) => {
           const { offset, gap } = roundLayout(round, BRACKET_METRICS);
           return (
-            <div key={round} className="flex flex-col" style={{ minWidth: 172 }}>
+            <div key={round} className="flex flex-col" style={{ minWidth: BRACKET_COLUMN_WIDTH }}>
               {/* OUTSIDE the offset container. The heading used to be a sibling of
                   the match cards inside a `justify-around` column, so it was being
                   distributed along with them — round 1 spacing 5 items and round 2
                   spacing 3 is what broke the alignment. */}
               <div
                 className="text-center"
-                style={{
-                  fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.09em",
-                  color: "var(--color-bt-text-dim)", fontWeight: 700, marginBottom: 2,
-                }}
+                style={{ ...EYEBROW, marginBottom: 2 }}
               >
                 {roundName(round, lastRound)}
               </div>
@@ -122,14 +120,13 @@ export function BracketBoard({
               not decide the title, and colouring it as such stops it reading as
               a second final. STATUS DISPLAY ONLY, which is what the token is for. */}
           <div
-            style={{
-              fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.09em",
-              color: "var(--color-bt-warning)", fontWeight: 700, marginBottom: 7,
-            }}
+            // A STATUS eyebrow — the one property the convention lets a surface
+            // override, because this match deliberately does not read as a final.
+            style={{ ...EYEBROW, color: "var(--color-bt-warning)", marginBottom: 7 }}
           >
             Consolation · 3rd place
           </div>
-          <div style={{ maxWidth: 172 }}>
+          <div style={{ maxWidth: BRACKET_COLUMN_WIDTH }}>
             {consolation.map((m) => (
               <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
             ))}
@@ -168,31 +165,26 @@ function MatchCard({
       }}
       data-testid={`bracket-match-${d?.number ?? "?"}`}
     >
+      {/* The shared eyebrow recipe (STYLE_GUIDE §2b) — 10px / 700 / 0.08em /
+          uppercase / text-dim, the same one match play's card header already
+          used. This was 9px at 0.08em: close enough to look deliberate, off the
+          scale, and arrived at independently. */}
       <div
         className="flex items-center justify-between"
         style={{
-          fontSize: 9, letterSpacing: "0.08em", color: "var(--color-bt-text-dim)", fontWeight: 700,
+          ...EYEBROW,
           padding: "0 8px", height: MATCH_HEADER_HEIGHT, background: "var(--color-bt-card-raised)",
           borderBottom: "1px solid var(--color-bt-border)",
         }}
       >
         <span>Match {d?.number}</span>
-        {/* WHAT'S AT STAKE — one formula at every depth: what the loser takes,
-            and what the winner is guaranteed. In the final the two tie groups
-            are singletons, so this reads as the literal 1st/2nd without a
-            special case; earlier rounds honestly say "at least", because a
-            first-round winner is not playing for 1st yet.
-
-            Absent entirely when the game pays no placement split — quoting "L 0"
-            would state a payout the game does not have. */}
+        {/* WHAT'S AT STAKE — only where places are actually PAID.
+            See `matchStakes`: a round-one match awards nothing directly, so it
+            carries no points here. */}
         {stakes && (
-          <span
-            style={{ fontWeight: 600, letterSpacing: 0, color: "var(--color-bt-text-dim)" }}
-            data-testid="bracket-match-stakes"
-          >
-            W {stakes.winnerIsExact ? "" : "≥"}
-            {formatStake(stakes.winner)} · L {formatStake(stakes.loser)}
-          </span>
+          // No leading separator: the header is `justify-between`, so the two
+          // segments already sit at opposite ends. A middot here dangles.
+          <span data-testid="bracket-match-stakes">{stakes.label}</span>
         )}
       </div>
       <Slot seat="a" match={match} pending={d?.aPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />
@@ -229,14 +221,21 @@ function Slot({
     // FIXED height, not minimum — see the card's own note. A "Bye" row and a
     // "waiting on the round below" row must occupy exactly what a competitor row
     // does, or the geometry above is computing against the wrong unit.
-    padding: "0 9px", fontSize: 12, height: SLOT_HEIGHT,
+    //
+    // The COMPETITOR NAME is the primary text on this surface and was the most
+    // undersized thing on it: 12px against match play's 17. Raised to the 15
+    // rung (STYLE_GUIDE §2a). Not 17: match play renders ONE card per row, and a
+    // bracket shows up to sixteen at once, so a step down is a real density
+    // difference rather than the old undersizing.
+    padding: "0 9px", fontSize: TYPE_SCALE.name, height: SLOT_HEIGHT,
     borderBottom: seat === "a" ? "1px solid var(--color-bt-border)" : undefined,
   } as const;
 
   // The empty half of a bye. Nobody played, so there is nothing to tap.
   if (seed === null && match.bye && seat === "b") {
     return (
-      <div style={{ ...base, color: "var(--color-bt-text-dim)" }} data-testid="bracket-slot-bye">
+      // Secondary, like the pending row — a bye is a state, not a competitor.
+      <div style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption }} data-testid="bracket-slot-bye">
         <span>Bye</span>
       </div>
     );
@@ -245,7 +244,7 @@ function Slot({
   // where to look instead of wondering whether something failed to load.
   if (seed === null) {
     return (
-      <div style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: 11 }} data-testid="bracket-slot-pending">
+      <div style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption }} data-testid="bracket-slot-pending">
         <span>{pending ?? "—"}</span>
       </div>
     );

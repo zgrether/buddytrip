@@ -9,6 +9,7 @@ import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { applyPick, drawComplete } from "@/lib/bracketAdvance";
+import { EYEBROW } from "@/lib/typeScale";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
 
@@ -44,6 +45,24 @@ import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
  * the surface that owns the mutations. `BracketBoard` underneath it is the
  * props-and-callbacks component (CLAUDE.md #7).
  */
+/**
+ * The READABLE COLUMN — everything on this surface that is prose or a control.
+ *
+ * `contentArea.ts` (#906) is explicit that a surface may still cap its own
+ * column for readability even though the shell no longer caps the viewport, and
+ * a points row, a banner and three CTAs all want that cap. The BOARD does not:
+ * it is a tree, and its natural width is the field's.
+ *
+ * Declared at module scope, not inside the component. A component created during
+ * render is a NEW component type every render, so React unmounts and remounts
+ * its whole subtree and any state inside it resets — which here would have meant
+ * the lifecycle CTAs losing their pending state on every keystroke elsewhere on
+ * the surface. (Caught by eslint, not by me.)
+ */
+function Column({ children }: { children: React.ReactNode }) {
+  return <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">{children}</div>;
+}
+
 export function BracketScoringSurface({
   tripId,
   gameId,
@@ -189,23 +208,27 @@ export function BracketScoringSurface({
   const allComplete = drawComplete(matches);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 py-5">
-      {/* What the game is worth — same row, same formatter as the other formats,
-          so the number here and the board's "N PTS" agree by construction. */}
-      <div className="flex justify-end">
-        <PointsAtStake value={Number(game.points_total ?? 0)} />
-      </div>
+    // Full width, and the cap moved INSIDE. The whole surface used to sit in one
+    // `max-w-2xl` box, so a 16-entrant draw scrolled inside a 672px column while
+    // the desktop page had room to spare — the mid-page scrollbar. Nothing above
+    // this was constraining it: the shell is `lg:max-w-none` and the game panel
+    // is `lg:w-full lg:flex-1`. The cap was ours, and it was being applied to the
+    // one piece of content that should never have been in the readable column.
+    <div className="flex w-full flex-col gap-3 px-4 py-5">
+      <Column>
+        {/* What the game is worth — same row, same formatter as the other formats,
+            so the number here and the board's per-match values agree by construction. */}
+        <div className="flex justify-end">
+          <PointsAtStake value={Number(game.points_total ?? 0)} />
+        </div>
 
-      <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
+        <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
 
-      <div
-        style={{
-          fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
-          color: "var(--color-bt-text-dim)", fontWeight: 700, margin: "2px 0 3px",
-        }}
-      >
-        {canEdit && !isLocked ? "Tap a competitor to advance them" : "Bracket"}
-      </div>
+        <div style={{ ...EYEBROW, margin: "2px 0 3px" }}>
+          {canEdit && !isLocked ? "Tap a competitor to advance them" : "Bracket"}
+        </div>
+      </Column>
+
       <BracketBoard
         matches={matches}
         entrants={entrants}
@@ -213,28 +236,31 @@ export function BracketScoringSurface({
         canPick={canEdit && !isLocked}
         onPick={handlePick}
       />
-      {pickError && (
-        <p style={{ fontSize: 12, color: "var(--color-bt-danger)" }} data-testid="bracket-pick-error">
-          {pickError}
-        </p>
-      )}
-      {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
 
-      {/* The SAME three lifecycle CTAs every other format renders — `gameLifecycle`
-          decides which is offered, this only renders it. `allComplete` is the
-          bracket's reading of "there is something to post", and it is the server's
-          reading too. */}
-      <GameLifecycleActions
-        canEdit={canEdit}
-        status={game.status}
-        correctionsOpen={game.corrections_open}
-        allComplete={allComplete}
-        finalizePending={finalizePending}
-        correctPending={correctPending}
-        // No placements: the server derives them from the draw. See the header.
-        onFinalize={() => void finalize()}
-        onCorrect={handleCorrect}
-      />
+      <Column>
+        {pickError && (
+          <p style={{ fontSize: 12, color: "var(--color-bt-danger)" }} data-testid="bracket-pick-error">
+            {pickError}
+          </p>
+        )}
+        {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
+
+        {/* The SAME three lifecycle CTAs every other format renders — `gameLifecycle`
+            decides which is offered, this only renders it. `allComplete` is the
+            bracket's reading of "there is something to post", and it is the server's
+            reading too. */}
+        <GameLifecycleActions
+          canEdit={canEdit}
+          status={game.status}
+          correctionsOpen={game.corrections_open}
+          allComplete={allComplete}
+          finalizePending={finalizePending}
+          correctPending={correctPending}
+          // No placements: the server derives them from the draw. See the header.
+          onFinalize={() => void finalize()}
+          onCorrect={handleCorrect}
+        />
+      </Column>
     </div>
   );
 }
