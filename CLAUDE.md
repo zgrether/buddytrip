@@ -292,10 +292,31 @@ These patterns have been established through prior work. Follow them exactly —
     MOBILE (measured: 56px gained; the panel drops from `top-14` to `top-0` in the
     same breath, or hiding the bar would just expose 56px of background). Both
     consumers read the ONE flag; two booleans that must always agree is how they
-    drift (#24). **Desktop keeps its bar at every depth** — at `lg+` it carries the
-    Trip/Cup tabs and the chat toggle, which `GameActionRow` does not duplicate.
+    drift (#24). **Desktop keeps its bar at every depth** — ~~at `lg+` it carries the
+    Trip/Cup tabs and the chat toggle, which `GameActionRow` does not duplicate.~~
+    **CORRECTED (#938): the Trip/Cup tabs are NOT in the bar any more.** They moved
+    out to `ViewTabsPill`, a floating pill at the bottom of the content area, and
+    `TopNav`'s own comment now says the bar "means ONE thing at every width again
+    (identity left, tools right)". The bar still stays at every depth, but the
+    reason given here was spent — and it was actively misleading: it was cited to
+    justify the desktop game header sitting where it did, on the grounds that the
+    bar was already full. It wasn't. Check `TopNav.tsx` before reasoning from this
+    line again; it is the third time in this file that a rule outlived its facts.
     Nothing is lost by hiding it on mobile: back · title · scorecard · settings live
-    in `GameActionRow` INSIDE the panel (49px), not in the bar. The scoreboard keeps
+    in `GameActionRow` INSIDE the panel (49px), not in the bar. **That row sits
+    FLUSH under the app bar at EVERY width** (#938) — below `lg` the panel is
+    `fixed top-14` and already was; at `lg+` it was 24px lower because the panel is
+    a normal-flow child of the shell's `CONTENT_INSET` (`lg:p-6`), which left an
+    empty band between the bar and the game title and made the header redraw on a
+    viewport change. The row cancels that top inset itself (`lg:-mt-6`) — on the
+    FIRST CHILD, not the panel box, whose bottom would otherwise clip against
+    `lg:overflow-hidden`. Do NOT "fix" this by lifting the row to shell level: that
+    was tried, and coupling a normal-flow row to a fixed panel moved the panel's top
+    edge as it mounted and timed the stroke spine out on "element is not stable".
+    The ACTIONS are already identical at both widths (verified by measurement, not
+    by reading: `game-back game-title game-rules game-settings-gear` at 1440 and at
+    390) — `GameChromeActions` has no breakpoint in it, by design (#883). The
+    scoreboard keeps
     BOTH bars deliberately — chat matters mid-round precisely because it reaches the
     other groups. A scorecard Sheet covers the app bar when open (a modal owns the
     screen). **Follow this for any game-surface chrome.**

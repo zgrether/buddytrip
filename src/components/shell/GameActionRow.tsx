@@ -40,7 +40,7 @@ export function GameActionRow() {
   return <ActionRow chrome={chrome} />;
 }
 
-function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameChrome>> }) {
+function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameChrome>> }) {
     return (
     <div
       /**
@@ -50,7 +50,34 @@ function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameCh
        * sits at the top of the game surface anyway, so stickiness bought little
        * and cost determinism.
        */
-      className="z-20 flex shrink-0 items-center gap-2.5 px-4 py-2"
+      /**
+       * `lg:-mt-6` — the row sits FLUSH under the top bar at every width.
+       *
+       * Below `lg` the panel is `fixed top-14`, so this row already begins
+       * immediately under the 56px bar. At `lg+` the panel is a normal-flow
+       * child of the shell's content area, which carries `CONTENT_INSET`
+       * (`lg:p-6`, `CONTENT_INSET_PX` = 24) — so the row started 24px lower
+       * than its mobile counterpart and left an empty band between the bar and
+       * the game title. Cancelling the top inset here puts the game header in
+       * the same place at both widths, so a viewport change doesn't redraw it.
+       *
+       * On the FIRST CHILD of the panel's scroll column, deliberately. A
+       * negative margin on the panel BOX would push its bottom edge past the
+       * `lg:overflow-hidden` content area and clip 24px of the game; pulling
+       * the first child up moves the content and leaves the box alone.
+       *
+       * Only the TOP inset goes. The horizontal inset stays, because the row
+       * should line up with the content beneath it and with the rail divider —
+       * mobile's full-bleed has no rail to sit against.
+       *
+       * NOT moved to shell level to achieve this. That was tried and reverted
+       * (see the note at the `GameActionRow` call site): a normal-flow row
+       * coupled to a fixed panel moved the panel's top edge as it mounted, and
+       * the merge-blocking stroke spine timed out on "element is not stable".
+       * Inside the panel it is still just the first block of one scroll
+       * context — nothing to oscillate.
+       */
+      className="z-20 flex shrink-0 items-center gap-2.5 px-4 py-2 lg:-mt-6"
       style={{
         background: "var(--color-bt-base)",
         borderBottom: "1px solid var(--color-bt-subtle-border)",
