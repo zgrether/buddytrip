@@ -908,7 +908,11 @@ describe("save_game_config — duplicate participant is refused, legibly (#708)"
         { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
         { matchNumber: 2, playersPerSide: 1, a: [owner], b: [planner], handicap: 0, pointValue: null },
       ]),
-    ).rejects.toThrow(/DUPLICATE_PARTICIPANT[\s\S]*Match 1 and Match 2[\s\S]*one match per game/);
+    // The message is the SENTENCE now, not `DUPLICATE_PARTICIPANT: …` — and it
+    // still names the person and BOTH matches, which is this test's whole point.
+    // That detail is exactly why the refusal codes are UNWRAPPED rather than
+    // replaced with generic per-code copy: a rewrite loses the name.
+    ).rejects.toThrow(/is in Match 1 and Match 2[\s\S]*one match per game/);
   });
 
   it("names the person and the ONE match when they are on both sides of it", async () => {
@@ -917,7 +921,7 @@ describe("save_game_config — duplicate participant is refused, legibly (#708)"
       saveMatches(gameId, [
         { matchNumber: 1, playersPerSide: 1, a: [owner], b: [owner], handicap: 0, pointValue: null },
       ]),
-    ).rejects.toThrow(/DUPLICATE_PARTICIPANT[\s\S]*both sides of Match 1/);
+    ).rejects.toThrow(/on both sides of Match 1/);
   });
 
   it("the message carries the player's NAME, not a raw uuid or a bare SQLSTATE", async () => {
@@ -948,7 +952,7 @@ describe("save_game_config — duplicate participant is refused, legibly (#708)"
         { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
         { matchNumber: 2, playersPerSide: 2, a: [planner, owner], b: [outsider, member], handicap: 0, pointValue: null },
       ]),
-    ).rejects.toThrow(/DUPLICATE_PARTICIPANT/);
+    ).rejects.toThrow(/one match per game/);
   });
 
   it("REFUSES rather than tolerates — nothing is written, the game keeps its old matches", async () => {
@@ -964,7 +968,7 @@ describe("save_game_config — duplicate participant is refused, legibly (#708)"
         { matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null },
         { matchNumber: 2, playersPerSide: 1, a: [owner], b: [planner], handicap: 0, pointValue: null },
       ]),
-    ).rejects.toThrow(/DUPLICATE_PARTICIPANT/);
+    ).rejects.toThrow(/one match per game/);
 
     // Atomic: the refused save left the previous match set intact, not half-applied.
     const after = (await ctx.caller().matches.listByGame({ tripId, gameId })) as { matches: unknown[] };

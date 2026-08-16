@@ -241,3 +241,42 @@ function decided(draw: ReturnType<typeof buildDraw>, playConsolation = false) {
   }
   return resolveDraw(draw, winners);
 }
+
+describe("turning the 3rd-place match OFF confirms only when there is a result", () => {
+  const rowsWith = (config: Partial<BracketConfig>, hasResult: boolean) =>
+    renderToStaticMarkup(
+      <BracketSettingsRows
+        config={{ elimination: "single", entrants: "singles", seeding: "manual", consolation: true, ...config }}
+        pool={[["a1"], ["a2"], ["b1"], ["b2"]]}
+        teams={TEAMS}
+        canEdit
+        consolationHasResult={hasResult}
+        onConfigChange={noop}
+        onPoolChange={noop}
+      />
+    );
+
+  it("renders no prompt until the toggle is actually used", () => {
+    // The confirm is state-driven, not rendered speculatively.
+    expect(rowsWith({}, true)).not.toContain("drop-consolation-prompt");
+    expect(rowsWith({}, false)).not.toContain("drop-consolation-prompt");
+  });
+
+  it("the row still reads as on either way — the result does not change the label", () => {
+    expect(rowsWith({}, true)).toContain("The losing semi-finalists play off");
+    expect(rowsWith({}, false)).toContain("The losing semi-finalists play off");
+  });
+});
+
+describe("the bracket surface carries no label row", () => {
+  it("neither BRACKET nor the tap instruction appears", async () => {
+    // Both were text explaining what is already visible: the screen is a
+    // bracket, and its rows are buttons that take a check when tapped.
+    const src = await (await import("node:fs/promises")).readFile(
+      new URL("./BracketScoringSurface.tsx", import.meta.url),
+      "utf8"
+    );
+    expect(src).not.toContain("Tap a competitor to advance them");
+    expect(src).not.toMatch(/>\s*Bracket\s*</);
+  });
+});
