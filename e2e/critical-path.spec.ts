@@ -200,22 +200,43 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
 
   // 6b. The game header must be VISIBLE, not merely positioned.
   //
-  // #938 moved this row flush under the app bar with a negative margin on the
-  // row itself. The panel is `overflow-y-auto`, so a first child pulled above a
-  // scroll container's origin is unreachable by scrolling — it shipped clipped,
-  // with the game title sliced in half. It passed its own verification because
-  // that read `getBoundingClientRect().top`, which reports a clipped box's
-  // geometry perfectly happily.
+  // Two shipped regressions, both from pulling the row up with a negative margin
+  // to sit it flush under the app bar, and both rendering the title sliced in
+  // half: #938 on the row (inside an `overflow-y-auto` panel) and #939 on the
+  // panel box (which then escaped `shell-body`'s `lg:overflow-hidden`).
   //
-  // So the assertion is the one that was missing: the row does not start above
-  // the panel that scrolls it. Cheap, and it pins the whole class.
-  const clipped = await page.evaluate(() => {
+  // Each was "verified" by a check that looked at ONE container — the panel —
+  // and by `getBoundingClientRect().top`, which reports a clipped box's geometry
+  // perfectly happily. On desktop this row has FOUR clipping ancestors, so a
+  // single-container check is not a check.
+  //
+  // So: walk every ancestor that clips, and sample the row's own TOP EDGE rather
+  // than its centre (the centre stayed painted through both regressions).
+  const clip = await page.evaluate(() => {
     const row = document.querySelector('[data-testid="game-action-row"]') as HTMLElement | null;
-    const panel = document.querySelector('[data-testid="game-panel"]') as HTMLElement | null;
-    if (!row || !panel) return -1;
-    return Math.round(panel.getBoundingClientRect().top - row.getBoundingClientRect().top);
+    if (!row) return { worstCut: -1, topEdgePainted: false };
+    const r = row.getBoundingClientRect();
+    let worstCut = 0;
+    for (let el = row.parentElement; el; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (![cs.overflowY, cs.overflowX].some((o) => o !== "visible")) continue;
+      worstCut = Math.max(worstCut, Math.round(el.getBoundingClientRect().top - r.top));
+    }
+    return { worstCut };
   });
-  expect(clipped, "game header clipped above the panel's scroll origin").toBeLessThanOrEqual(0);
+  expect(clip.worstCut, "game header clipped by an ancestor").toBe(0);
+
+  // NOT asserted here: "the top edge is actually painted"
+  // (`elementFromPoint` at `rect.top + 3`). It is the sharper check and it is
+  // what the throwaway probe used — but as a merge gate it is flaky by
+  // construction: the app renders a toast/live region at the top of the page,
+  // and a transient toast overlapping the header's first 3px fails it while
+  // nothing about the layout is wrong. Verified that is what happens here, so
+  // this is a considered exclusion rather than a silenced failure.
+  //
+  // The ancestor walk above is the assertion that matters: it catches both
+  // shipped regressions by construction, because in each the row's box was
+  // outside a clipping ancestor.
 
   await page.getByTestId("group-enter-row").first().click();
 
