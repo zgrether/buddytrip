@@ -4,6 +4,8 @@ import {
   resolveDraw,
   matchKey,
   applyPick,
+  applyPickCascading,
+  orphanedByPick,
   championSeed,
   drawComplete,
   type WinnerBySeed,
@@ -260,22 +262,21 @@ describe("decidable — a decided match is still switchable", () => {
  * correct: nothing about the final changed, and cascading would throw away a real
  * result to enforce a tidiness nobody asked for.
  */
-describe("clearing does not cascade (#925), and switching does not either", () => {
+describe("the READ side still drops an orphan (#924) — unchanged by the cascade", () => {
   const draw = buildDraw(4);
   const semi1 = matchKey({ bracket: "main", round: 1, slot: 1 });
   const semi2 = matchKey({ bracket: "main", round: 1, slot: 2 });
   const final = matchKey({ bracket: "main", round: 2, slot: 1 });
 
-  it("clear a semi and re-pick the SAME entrant — the final's result comes back", () => {
+  it("a stored winner who is not a resolved occupant reads UNDECIDED", () => {
+    // #924 is the belt to the cascade's braces. The cascade should mean a row
+    // like this rarely exists — but a rebuild, a stale client or a failed second
+    // write could still produce one, and it must never advance a phantom.
     const decided = { [semi1]: 1, [semi2]: 2, [final]: 1 };
     expect(resolveDraw(draw, decided).find((m) => m.round === 2)!.winnerSeed).toBe(1);
 
-    // Cleared: the final's stored pick names someone no longer standing there.
-    const cleared = { ...decided, [semi1]: null };
-    expect(resolveDraw(draw, cleared).find((m) => m.round === 2)!.winnerSeed).toBeNull();
-
-    // Re-picked identically: the stored final pick is valid again, untouched.
-    expect(resolveDraw(draw, decided).find((m) => m.round === 2)!.winnerSeed).toBe(1);
+    const orphaned = { ...decided, [semi1]: null };
+    expect(resolveDraw(draw, orphaned).find((m) => m.round === 2)!.winnerSeed).toBeNull();
   });
 
   it("SWITCHING a semi drops the final's pick, because it named the loser", () => {
@@ -349,3 +350,107 @@ describe("applyPick — an optimistic pick equals a fetched one", () => {
 function toWinners(rows: { bracket: "main" | "consolation"; round: number; slot: number; winnerSeed: number | null }[]) {
   return Object.fromEntries(rows.map((m) => [matchKey(m), m.winnerSeed]));
 }
+
+/**
+ * THE CASCADE — and the inversion of #925.
+ *
+ * #925 pinned "clear a semi, re-pick the same entrant, the final's result comes
+ * back" in BOTH directions, deliberately, so a reversal would be visible. This
+ * is that reversal, re-pinned both ways for the same reason: an orphaned pick is
+ * now DELETED, and re-picking the original brings nothing back.
+ *
+ * The old test is not deleted — it was repointed to #924 above, because the
+ * READ-side rule it also exercised is unchanged and still load-bearing.
+ */
+describe("clearing CASCADES and stays cleared (reverses #925)", () => {
+  const rows = () => buildDraw(4).map((m) => ({ ...m, winnerSeed: null as number | null }));
+  const semi1 = { bracket: "main" as const, round: 1, slot: 1 };
+  const semi2 = { bracket: "main" as const, round: 1, slot: 2 };
+  const final = { bracket: "main" as const, round: 2, slot: 1 };
+  const winnerAt = (rs: { bracket: string; round: number; slot: number; winnerSeed: number | null }[], r: number) =>
+    rs.find((m) => m.bracket === "main" && m.round === r)!.winnerSeed;
+
+  /** A fully decided 4-draw: 1 beats 4, 2 beats 3, 1 beats 2. */
+  const decided = () =>
+    applyPickCascading(
+      applyPickCascading(applyPickCascading(rows(), semi1, 1), semi2, 2),
+      final,
+      1
+    );
+
+  it("clearing a semi DELETES the final's pick, not just hides it", () => {
+    const after = applyPickCascading(decided(), semi1, null);
+    expect(winnerAt(after, 2)).toBeNull();
+  });
+
+  it("re-picking the ORIGINAL entrant does NOT bring the final back", () => {
+    // The whole point. Under #925 this restored the final; the result had been
+    // recorded against a bracket state the user had just repudiated.
+    const cleared = applyPickCascading(decided(), semi1, null);
+    const rePicked = applyPickCascading(cleared, semi1, 1);
+    expect(winnerAt(rePicked, 1)).toBe(1); // the semi is decided again
+    expect(winnerAt(rePicked, 2)).toBeNull(); // …and the final stays empty
+  });
+
+  it("SWITCHING a semi also deletes downstream, not only clearing", () => {
+    const after = applyPickCascading(decided(), semi1, 4);
+    expect(winnerAt(after, 1)).toBe(4);
+    expect(winnerAt(after, 2)).toBeNull();
+  });
+
+  it("cascades TRANSITIVELY, in one pass, all the way to the championship", () => {
+    // 8-draw: decide everything, clear a round-1 match, and every round above it
+    // that depended on that entrant must go — not just the next one up.
+    let rs = buildDraw(8).map((m) => ({ ...m, winnerSeed: null as number | null }));
+    for (const round of [1, 2, 3]) {
+      for (const m of rs.filter((x) => x.round === round && x.bracket === "main")) {
+        const resolved = resolveDraw(rs, Object.fromEntries(rs.map((r) => [matchKey(r), r.winnerSeed])))
+          .find((r) => matchKey(r) === matchKey(m))!;
+        if (resolved.aSeed !== null && resolved.bSeed !== null) {
+          rs = applyPickCascading(rs, m, resolved.aSeed);
+        }
+      }
+    }
+    expect(rs.filter((m) => m.winnerSeed !== null).length).toBeGreaterThan(3);
+
+    const cleared = applyPickCascading(rs, { bracket: "main", round: 1, slot: 1 }, null);
+    // Rounds 2 and 3 above that match are both empty now.
+    expect(cleared.find((m) => m.round === 2 && m.slot === 1)!.winnerSeed).toBeNull();
+    expect(cleared.find((m) => m.round === 3 && m.slot === 1)!.winnerSeed).toBeNull();
+  });
+
+  it("leaves the OTHER half of the draw alone", () => {
+    const after = applyPickCascading(decided(), semi1, null);
+    // Semi 2 had nothing to do with it.
+    expect(after.find((m) => m.round === 1 && m.slot === 2)!.winnerSeed).toBe(2);
+  });
+
+  it("a pick that orphans nothing changes nothing else", () => {
+    const after = applyPickCascading(rows(), semi1, 1);
+    expect(after.filter((m) => m.winnerSeed !== null)).toHaveLength(1);
+  });
+});
+
+describe("orphanedByPick — the server's write list", () => {
+  const rows = () => buildDraw(4).map((m) => ({ ...m, winnerSeed: null as number | null }));
+  const semi1 = { bracket: "main" as const, round: 1, slot: 1 };
+  const final = { bracket: "main" as const, round: 2, slot: 1 };
+
+  it("names exactly the matches the cascade would clear", () => {
+    const decided = applyPickCascading(
+      applyPickCascading(applyPickCascading(rows(), semi1, 1), { bracket: "main", round: 1, slot: 2 }, 2),
+      final,
+      1
+    );
+    expect(orphanedByPick(decided, semi1, null)).toEqual([final]);
+  });
+
+  it("is empty when the pick orphans nothing — no second write to issue", () => {
+    expect(orphanedByPick(rows(), semi1, 1)).toEqual([]);
+  });
+
+  it("never names the picked match itself", () => {
+    const decided = applyPickCascading(rows(), semi1, 1);
+    expect(orphanedByPick(decided, semi1, 4)).toEqual([]);
+  });
+});

@@ -221,6 +221,77 @@ export function applyPick<T extends BracketMatchRef & { winnerSeed: number | nul
   );
 }
 
+/**
+ * Record a winner AND clear everything it orphans — the cascading pick.
+ *
+ * ── This REVERSES #925, deliberately ───────────────────────────────────────
+ * #925 made clearing non-cascading: later rounds are derived, so clearing a semi
+ * already un-decided everything above it and nothing else needed writing. The
+ * stored picks stayed, and re-picking the same entrant made them valid again —
+ * flagged at the time as surprising-but-defensible, on the reasoning that
+ * nothing about the final had changed.
+ *
+ * That reasoning was wrong. Deliberately correcting a result and watching the
+ * downstream clear is a STATEMENT: those results are void. Silently reviving
+ * them decides that your clearing didn't count. And the concrete case is worse
+ * than untidy — correct a semi because the wrong person advanced, the final
+ * clears, then you realise the original was right after all: the final's result
+ * was recorded against a bracket state you had just repudiated, and it should
+ * not come back on a technicality.
+ *
+ * So an orphaned pick is DELETED, not left recoverable.
+ *
+ * ── #924 still stands, and is now the belt to this braces ──────────────────
+ * `winnerOf` still drops a stored winner who isn't a resolved occupant, so a row
+ * that escapes this cascade (a rebuild, a stale client, a failed second write)
+ * still READS as undecided. The cascade means it should rarely fire; it is not
+ * replaced by it.
+ *
+ * ── One pass is transitive ─────────────────────────────────────────────────
+ * `resolveDraw` walks rounds in order, so clearing a round-1 winner leaves the
+ * round-2 seats null, which drops round 2's stored winner, which leaves round 3
+ * null, and so on up. Every orphan in the tree is visible in a single resolve —
+ * no loop, and no second definition of "orphaned".
+ */
+export function applyPickCascading<T extends BracketDrawMatch & { winnerSeed: number | null }>(
+  rows: readonly T[],
+  ref: BracketMatchRef,
+  winnerSeed: number | null
+): T[] {
+  const picked = applyPick(rows, ref, winnerSeed);
+
+  const winners: WinnerBySeed = {};
+  for (const m of picked) winners[matchKey(m)] = m.winnerSeed;
+  const resolvedByKey = new Map(resolveDraw(picked, winners).map((r) => [matchKey(r), r]));
+
+  const target = matchKey(ref);
+  return picked.map((m) => {
+    // The pick itself is the intent, never an orphan of itself.
+    if (matchKey(m) === target) return m;
+    const resolved = resolvedByKey.get(matchKey(m));
+    // Stored a winner, but the resolver won't have them: orphaned. Delete it.
+    return m.winnerSeed !== null && resolved && resolved.winnerSeed === null
+      ? { ...m, winnerSeed: null }
+      : m;
+  });
+}
+
+/** Which matches `applyPickCascading` would clear — the write list, without the
+ *  rows themselves. Used server-side to null exactly those rows in one
+ *  statement alongside the pick. */
+export function orphanedByPick<T extends BracketDrawMatch & { winnerSeed: number | null }>(
+  rows: readonly T[],
+  ref: BracketMatchRef,
+  winnerSeed: number | null
+): BracketMatchRef[] {
+  const after = applyPickCascading(rows, ref, winnerSeed);
+  const before = new Map(rows.map((m) => [matchKey(m), m.winnerSeed]));
+  return after
+    .filter((m) => m.winnerSeed === null && (before.get(matchKey(m)) ?? null) !== null)
+    .filter((m) => matchKey(m) !== matchKey(ref))
+    .map((m) => ({ bracket: m.bracket, round: m.round, slot: m.slot }));
+}
+
 /** The seed that won the whole thing, or null while the final is undecided.
  *  Reads the resolved final rather than "the last recorded winner", which would
  *  be whichever pick happened most recently. */

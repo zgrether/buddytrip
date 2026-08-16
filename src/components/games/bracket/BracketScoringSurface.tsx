@@ -8,10 +8,28 @@ import { PointsAtStake } from "@/components/games/PointsAtStake";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { applyPick, drawComplete } from "@/lib/bracketAdvance";
+import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
 import { EYEBROW } from "@/lib/typeScale";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
+
+/**
+ * The READABLE COLUMN — everything on this surface that is prose or a control.
+ *
+ * `contentArea.ts` (#906) is explicit that a surface may still cap its own
+ * column for readability even though the shell no longer caps the viewport, and
+ * a points row, a banner and three CTAs all want that cap. The BOARD does not:
+ * it is a tree, and its natural width is the field's.
+ *
+ * Declared at module scope, not inside the component. A component created during
+ * render is a NEW component type every render, so React unmounts and remounts
+ * its whole subtree and any state inside it resets — which here would have meant
+ * the lifecycle CTAs losing their pending state on every keystroke elsewhere on
+ * the surface. (Caught by eslint, not by me.)
+ */
+function Column({ children }: { children: React.ReactNode }) {
+  return <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">{children}</div>;
+}
 
 /**
  * The bracket's scoring surface — the sibling of `NonGolfScoreboard`, not a fifth
@@ -45,24 +63,6 @@ import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
  * the surface that owns the mutations. `BracketBoard` underneath it is the
  * props-and-callbacks component (CLAUDE.md #7).
  */
-/**
- * The READABLE COLUMN — everything on this surface that is prose or a control.
- *
- * `contentArea.ts` (#906) is explicit that a surface may still cap its own
- * column for readability even though the shell no longer caps the viewport, and
- * a points row, a banner and three CTAs all want that cap. The BOARD does not:
- * it is a tree, and its natural width is the field's.
- *
- * Declared at module scope, not inside the component. A component created during
- * render is a NEW component type every render, so React unmounts and remounts
- * its whole subtree and any state inside it resets — which here would have meant
- * the lifecycle CTAs losing their pending state on every keystroke elsewhere on
- * the surface. (Caught by eslint, not by me.)
- */
-function Column({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">{children}</div>;
-}
-
 export function BracketScoringSurface({
   tripId,
   gameId,
@@ -173,13 +173,22 @@ export function BracketScoringSurface({
    * no second code path to disagree with, which is what makes the guess honest
    * rather than a local imitation of the server.
    *
+   * ── The optimistic patch CASCADES too, and it has to ──────────────────────
+   * `applyPickCascading` is the same function the server runs to decide which
+   * stored picks a pick orphans, so the client deletes exactly what the server
+   * is about to delete. Using the non-cascading `applyPick` here would have made
+   * the two disagree for a whole round trip — and the disagreement would have
+   * been visible as the flash this reversal exists to remove: the optimistic
+   * write showing the cleared state, then the server's response reinstating the
+   * orphan for the rest of the round trip.
+   *
    * Both invariants therefore hold for free rather than by re-implementation:
    *   - #924's stale-winner rule — a seed that is not a resolved occupant is
    *     dropped by `winnerOf`, so an optimistic pick into a match whose feeders
    *     moved still reads undecided.
-   *   - #925's non-cascading clear — clearing writes one column here exactly as
-   *     it does server-side, and everything above re-derives. Nothing cascades
-   *     locally that would not have cascaded remotely.
+   *   - the CASCADE (which REVERSES #925) — an orphaned pick is deleted here
+   *     exactly as it is server-side, so re-picking the original brings nothing
+   *     back on either side.
    *
    * What it buys: the measured cost of a pick in production is ~806ms, and the
    * check-mark used to wait for all of it. It now waits for a state update.
@@ -188,7 +197,7 @@ export function BracketScoringSurface({
     (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
       utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
-        prev && applyPick(prev, ref, seed)
+        prev && applyPickCascading(prev, ref, seed)
       );
       pendingPicks.current += 1;
       pickMutation.mutate({ tripId, gameId, ...ref, winnerSeed: seed });
