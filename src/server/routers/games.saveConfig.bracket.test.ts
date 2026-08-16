@@ -268,7 +268,7 @@ describe("saveConfig — HAS_PICKS, the bracket's destroys tier", () => {
     await recordWinner(gameId);
     await expect(
       save(gameId, { entrants: [...threeEntrants(), { seed: 4, teamId, userIds: [outsider] }], draw: buildDraw(4) as DrawMatch[] })
-    ).rejects.toThrow(/already has results/i);
+    ).rejects.toThrow(/field and seeding are set/i);
   });
 
   it("…but a NON-structural save still lands — the guard is dirty-gated, not key-gated", async () => {
@@ -552,5 +552,92 @@ describe("saveConfig — hash invariant: every bracket field moves, none churns"
     const first = (await drawOf(gameId)).find((m) => m.round === 1 && m.entrant_b_id !== null)!;
     await ctx.admin.from("bracket_matches").update({ winner_entrant_id: first.entrant_a_id }).eq("id", first.id as string);
     expect(await hashOf(gameId)).toBe(before);
+  });
+});
+
+/**
+ * ADDING a 3rd-place match mid-play is an APPEND, not a rebuild (migration 121).
+ *
+ * The reported bug: turning the toggle on after the bracket had started produced
+ * "Save failed: HAS_PICKS: this bracket already has results…". The guard was a
+ * symmetric set difference over the whole draw, so ONE added row read as a
+ * rebuild — the guard and the operation were never the same size (#896's shape).
+ *
+ * The load-bearing assertion is not that the save succeeds. It is that the
+ * EXISTING PICKS SURVIVE it, because the remedy behind the old guard was an
+ * unconditional clean-replace: narrowing the check without an additive write
+ * would have been worse than the refusal.
+ */
+describe("saveConfig — a consolation match can be added after play starts", () => {
+  async function recordWinner(gameId: string) {
+    const first = (await drawOf(gameId)).find((m) => m.round === 1 && m.entrant_b_id !== null)!;
+    await ctx.admin.from("bracket_matches").update({ winner_entrant_id: first.entrant_a_id }).eq("id", first.id as string);
+    return first;
+  }
+
+  it("appends the match, and every recorded pick survives", async () => {
+    const gameId = await seeded("Add consolation");
+    const picked = await recordWinner(gameId);
+    const mainBefore = (await drawOf(gameId)).filter((m) => m.bracket === "main");
+
+    await save(gameId, {
+      entrants: threeEntrants(),
+      draw: buildDraw(3, { consolation: true }) as DrawMatch[],
+    });
+
+    const after = await drawOf(gameId);
+    // The new row is there…
+    expect(after.filter((m) => m.bracket === "consolation")).toHaveLength(1);
+    // …and the main draw is byte-identical, ids included. A clean-replace would
+    // have minted new ids and dropped the winner.
+    expect(after.filter((m) => m.bracket === "main")).toEqual(mainBefore);
+    expect(after.find((m) => m.id === picked.id)?.winner_entrant_id).toBe(picked.entrant_a_id);
+  });
+
+  it("the appended row carries NULL seats — its occupants are derived", async () => {
+    const gameId = await seeded("Consolation seats");
+    await recordWinner(gameId);
+    await save(gameId, { entrants: threeEntrants(), draw: buildDraw(3, { consolation: true }) as DrawMatch[] });
+
+    const row = (await drawOf(gameId)).find((m) => m.bracket === "consolation")!;
+    expect(row.entrant_a_id).toBeNull();
+    expect(row.entrant_b_id).toBeNull();
+  });
+
+  it("turning it back OFF is permitted — the client confirms, the server allows", async () => {
+    const gameId = await seeded("Remove consolation");
+    await recordWinner(gameId);
+    await save(gameId, { entrants: threeEntrants(), draw: buildDraw(3, { consolation: true }) as DrawMatch[] });
+    expect((await drawOf(gameId)).filter((m) => m.bracket === "consolation")).toHaveLength(1);
+
+    await save(gameId, { entrants: threeEntrants(), draw: buildDraw(3) as DrawMatch[] });
+    expect((await drawOf(gameId)).filter((m) => m.bracket === "consolation")).toHaveLength(0);
+    // The main draw and its pick are still untouched by the removal.
+    expect((await drawOf(gameId)).some((m) => m.winner_entrant_id !== null)).toBe(true);
+  });
+
+  it("a FIELD change is still refused — the narrowing is consolation-only", async () => {
+    // The guard now matches the size of the operation instead of the table it
+    // touches. Reseeding still rewrites round-1 seats and still cannot happen.
+    const gameId = await seeded("Field still refused");
+    await recordWinner(gameId);
+    await expect(
+      save(gameId, {
+        entrants: [...threeEntrants(), { seed: 4, teamId, userIds: [outsider] }],
+        draw: buildDraw(4, { consolation: true }) as DrawMatch[],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("adding consolation AND reseeding together is refused, not silently split", async () => {
+    // The check asks whether the MAIN draw agrees, not whether the diff happens
+    // to contain a consolation row — so a change that does both takes the
+    // rebuild path, as it must.
+    const gameId = await seeded("Both at once");
+    await recordWinner(gameId);
+    const reseeded = (buildDraw(3, { consolation: true }) as DrawMatch[]).map((m) =>
+      m.bracket === "main" && m.round === 1 && m.slot === 1 ? { ...m, aSeed: 2 } : m
+    );
+    await expect(save(gameId, { entrants: threeEntrants(), draw: reseeded })).rejects.toThrow();
   });
 });

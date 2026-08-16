@@ -26,21 +26,30 @@ import { bracketSize, roundCount } from "@/lib/bracket";
  */
 
 /**
- * The ONE "this clears the pairings" confirm, shared by the two changes that
- * cause it — switching the format away from Bracket, and switching partners →
- * singles.
+ * The ONE destructive-change confirm on this surface.
  *
- * Shared deliberately rather than written twice. They are the same event from
- * the user's side ("the pool I built is about to go"), and two prompts phrased
- * differently for one consequence is how the pair drifts. Naming the loss is the
- * point: neither change is REFUSED, because someone who picked the wrong format
- * or the wrong entrant size would otherwise have to empty the pool by hand to
- * correct it.
+ * Generalised from `ClearPairingsPrompt`, which was the same portal with its
+ * copy baked in. A second one was about to be written for the 3rd-place match,
+ * and two prompts phrased differently for one KIND of event ("something you
+ * built is about to go") is how the pair drifts — the reason the original was
+ * shared between its two callers in the first place.
+ *
+ * None of these changes is REFUSED. Naming the loss and letting the user proceed
+ * is the point: someone who picked the wrong format, the wrong entrant size or
+ * the wrong toggle would otherwise have no way back.
  */
-export function ClearPairingsPrompt({
+function ConfirmPrompt({
+  title,
+  body,
+  confirmLabel,
+  testId,
   onCancel,
   onConfirm,
 }: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  testId: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -50,18 +59,15 @@ export function ClearPairingsPrompt({
       className="fixed inset-0 z-[60] flex items-center justify-center px-6"
       style={{ background: "rgba(0,0,0,0.5)" }}
       onClick={onCancel}
-      data-testid="clear-pairings-prompt"
+      data-testid={testId}
     >
       <div
         className="w-full max-w-sm rounded-2xl p-5"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <p style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>This will clear the pairings</p>
-        <p style={{ marginTop: 8, fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-          The entrants you&rsquo;ve built will be removed. Nothing is saved until you press Save, so you can still
-          cancel out of it.
-        </p>
+        <p style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{title}</p>
+        <p style={{ marginTop: 8, fontSize: 13, color: "var(--color-bt-text-dim)" }}>{body}</p>
         <div className="flex justify-end" style={{ gap: 8, marginTop: 16 }}>
           <button
             type="button"
@@ -76,9 +82,9 @@ export function ClearPairingsPrompt({
             onClick={onConfirm}
             className="rounded-lg px-3 py-2"
             style={{ fontSize: 13, fontWeight: 700, background: "var(--color-bt-danger)", color: "var(--color-bt-base)" }}
-            data-testid="clear-pairings-confirm"
+            data-testid={`${testId}-confirm`}
           >
-            Clear pairings
+            {confirmLabel}
           </button>
         </div>
       </div>
@@ -87,11 +93,27 @@ export function ClearPairingsPrompt({
   );
 }
 
+/** Leaving Bracket discards the field. Kept as its own export because the PARENT
+ *  owns that confirm (the format picker lives outside this component). */
+export function ClearPairingsPrompt({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <ConfirmPrompt
+      title="This will clear the pairings"
+      body="The entrants you have built will be removed. Nothing is saved until you press Save, so you can still cancel out of it."
+      confirmLabel="Clear pairings"
+      testId="clear-pairings-prompt"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
+  );
+}
+
 export function BracketSettingsRows({
   config,
   pool,
   teams,
   canEdit,
+  consolationHasResult = false,
   onConfigChange,
   onPoolChange,
 }: {
@@ -101,12 +123,17 @@ export function BracketSettingsRows({
   /** Team rosters feeding the picker, in display order. */
   teams: GroupBuilderTeam[];
   canEdit: boolean;
+  /** A 3rd-place result has been recorded. Turning the match OFF would discard
+   *  it, so that direction confirms — the server permits it (migration 121)
+   *  exactly so an accidental toggle is undoable. */
+  consolationHasResult?: boolean;
   onConfigChange: (next: BracketConfig) => void;
   onPoolChange: (next: string[][]) => void;
 }) {
   // Bracket Type and Match Format are inline controls now, so only the three
   // rows with real editors take part in the single-open accordion.
   const [open, setOpen] = useState<null | "pool" | "partners" | "seeding">(null);
+  const [confirmDropConsolation, setConfirmDropConsolation] = useState(false);
   const toggle = (k: "pool" | "partners" | "seeding") => setOpen((o) => (o === k ? null : k));
 
   const filled = pool.filter((e) => e.length > 0);
@@ -213,7 +240,12 @@ export function BracketSettingsRows({
               { value: "off", label: "Off" },
               { value: "on", label: "On" },
             ]}
-            onChange={(next) => onConfigChange({ ...config, consolation: next === "on" })}
+            onChange={(next) => {
+              // Only the OFF direction can destroy anything, and only once the
+              // play-off has been decided. ON is a pure append (migration 121).
+              if (next === "off" && consolationHasResult) return setConfirmDropConsolation(true);
+              onConfigChange({ ...config, consolation: next === "on" });
+            }}
             disabled={!canEdit || !consolationPossible}
             testId="bracket-consolation-toggle"
           />
@@ -320,6 +352,19 @@ export function BracketSettingsRows({
         />
       </ChecklistRow>
 
+      {confirmDropConsolation && (
+        <ConfirmPrompt
+          title="This will discard the 3rd-place result"
+          body="The play-off has been decided. Turn the match off and that result goes; the semi-finalists tie for 3rd again. Nothing is saved until you press Save."
+          confirmLabel="Discard it"
+          testId="drop-consolation-prompt"
+          onCancel={() => setConfirmDropConsolation(false)}
+          onConfirm={() => {
+            setConfirmDropConsolation(false);
+            onConfigChange({ ...config, consolation: false });
+          }}
+        />
+      )}
     </>
   );
 }

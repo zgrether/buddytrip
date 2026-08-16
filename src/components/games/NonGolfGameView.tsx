@@ -811,6 +811,13 @@ export function NonGolfGameView() {
                   canEdit={canEdit}
                   onConfigChange={setBracketConfigDraft}
                   onPoolChange={setEntrantsDraft}
+                  // Is there a 3rd-place RESULT to lose? Turning the match off is
+                  // permitted server-side (migration 121) precisely so an
+                  // accidental toggle is undoable — so the confirm is here, and
+                  // only when there is something to discard.
+                  consolationHasResult={resolvedDraw.some(
+                    (m) => m.bracket === "consolation" && m.winnerSeed !== null,
+                  )}
                 />
               ) : null
             }

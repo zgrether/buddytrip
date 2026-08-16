@@ -8,7 +8,6 @@ import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
-import { EYEBROW } from "@/lib/typeScale";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
 
@@ -233,12 +232,12 @@ export function BracketScoringSurface({
           pointsTotal={game.points_total}
         />
 
-        {/* The "BRACKET" label is gone: it named the surface on a screen that is
-            visibly a bracket. What remains is the one thing the label was NOT —
-            an instruction, and only while there is something to tap. */}
-        {canEdit && !isLocked && (
-          <div style={{ ...EYEBROW, margin: "2px 0 3px" }}>Tap a competitor to advance them</div>
-        )}
+        {/* No label row at all now.
+            "BRACKET" named the surface on a screen that is visibly a bracket,
+            and "TAP A COMPETITOR TO ADVANCE THEM" narrated an affordance the
+            board already carries — the rows are buttons, the winner takes a
+            check. Both were text explaining what was already visible, so the
+            line is gone rather than reworded. */}
       </Column>
 
       <BracketBoard

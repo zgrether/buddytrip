@@ -191,14 +191,28 @@ describe("a finalized game refuses standings-affecting edits", () => {
     const parts = (await getById(gameId)).participants ?? [];
     await expect(
       save(gameId, { participants: parts.map((p) => ({ userId: p.user_id, strokes: 7 })) }),
-    ).rejects.toThrow(/FINAL_LOCKED[\s\S]*handicaps/);
+    // The message is the SENTENCE, not the code — #942 stopped `save_game_config`
+    // refusals reaching the user as `FINAL_LOCKED: …`. It must still NAME what is
+    // frozen, which is exactly why the codes are UNWRAPPED rather than replaced
+    // with generic per-code copy: a rewrite loses "handicaps".
+    ).rejects.toThrow(/result was recorded against the current handicaps/);
+  }, 60_000);
+
+  it("and the refusal carries no internal code", async () => {
+    // The `Save failed: ${msg}` fallthrough was the real defect: four of nine
+    // codes leaked, and any code added later would have too.
+    const gameId = finalizedGameId;
+    const parts = (await getById(gameId)).participants ?? [];
+    await expect(
+      save(gameId, { participants: parts.map((p) => ({ userId: p.user_id, strokes: 7 })) }),
+    ).rejects.toThrow(/^(?![\s\S]*FINAL_LOCKED)[\s\S]*$/);
   }, 60_000);
 
   it("refuses a groupings change", async () => {
     const gameId = finalizedGameId;
     await expect(
       save(gameId, { groups: [{ name: "Solo", userIds: [owner] }], groupsStructureDirty: true }),
-    ).rejects.toThrow(/FINAL_LOCKED|HAS_SCORES/);
+    ).rejects.toThrow(/result was recorded against the current groupings|already has scores/);
   }, 60_000);
 
   it("the refusal leaves the stored handicap untouched", async () => {
@@ -206,7 +220,7 @@ describe("a finalized game refuses standings-affecting edits", () => {
     const before = (await getById(gameId)).participants ?? [];
     await expect(
       save(gameId, { participants: before.map((p) => ({ userId: p.user_id, strokes: 5 })) }),
-    ).rejects.toThrow(/FINAL_LOCKED/);
+    ).rejects.toThrow(/this game is finished/);
     const after = (await getById(gameId)).participants ?? [];
     for (const p of after) expect(p.handicap_strokes).toBeNull();
   }, 60_000);

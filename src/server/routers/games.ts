@@ -1770,7 +1770,69 @@ export const gamesRouter = router({
         if (msg.includes("GAME_NOT_FOUND")) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
         }
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Save failed: ${msg}` });
+
+        /**
+         * HAS_PICKS is the one code whose SQL text is now WRONG, so it is the
+         * one that gets rewritten rather than unwrapped.
+         *
+         * It says "Reopen it for corrections in the game's Danger zone before
+         * changing the field or the draw" — a destructive remedy that does not
+         * even work: the guard keys on a pick EXISTING, not on the lock state,
+         * so reopening changes nothing. And since migration 121 made adding a
+         * 3rd-place match additive, this is reachable only for a FIELD or
+         * SEEDING change, where the smallest remedy is simply to undo that edit.
+         */
+        if (msg.includes("HAS_PICKS")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Results are already recorded, so the field and seeding are set. Undo those changes to save the rest.",
+          });
+        }
+
+        /**
+         * EVERY OTHER REFUSAL: strip the code, keep the sentence.
+         *
+         * The raw message that prompted this — "Save failed: HAS_PICKS: this
+         * bracket already has results…" — made it look as though nine codes
+         * needed nine hand-written strings. They do not. Each `RAISE EXCEPTION`
+         * already carries a written-for-humans sentence AFTER the colon, and
+         * some carry detail no rewrite could recover: DUPLICATE_PARTICIPANT
+         * interpolates the player's NAME and the match numbers ("Merling is on
+         * both sides of Match 3"), and FINAL_LOCKED names which thing is frozen
+         * — the course, the matchups, the groupings, the handicaps.
+         *
+         * Writing generic copy per code THREW THAT AWAY. I did exactly that
+         * first, and the finalized-game tests caught it by asserting the message
+         * still named "handicaps".
+         *
+         * So the code is a routing key, not the message: it picks the HTTP
+         * status, and the sentence behind it is what the user reads. This is the
+         * same unwrap `NOT_READY` already did above, generalised.
+         *
+         * THE FALLTHROUGH WAS THE ACTUAL DEFECT. It used to be
+         * `Save failed: ${msg}`, so any code without a branch shipped raw — and
+         * any code added LATER would too, silently, with nothing failing. Now a
+         * new code is surfaced correctly by default, and only a message with no
+         * recognisable code shape degrades to something plain.
+         */
+        const coded = /^([A-Z][A-Z_]{2,}):\s*([\s\S]+)$/.exec(msg.trim());
+        if (coded) {
+          const [, code, detail] = coded;
+          // Client mistakes are 400s; "the game is in the wrong state for this"
+          // is a 412. Anything unrecognised is still surfaced, as a 400 — the
+          // sentence is written for the user either way.
+          const status =
+            code === "DUPLICATE_PARTICIPANT" || code === "GLORIOUS_REQUIRES_OUTCOME_ENTRY"
+              ? ("BAD_REQUEST" as const)
+              : ("PRECONDITION_FAILED" as const);
+          throw new TRPCError({ code: status, message: detail });
+        }
+
+        console.error("[games.saveConfig] unmapped refusal", { gameId: input.gameId, msg });
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "That change couldn't be saved. Reload and try again.",
+        });
       }
       // 3 · Re-derive results. A FIELD edit (handicap / point override / rack strokes)
       //     on a scored game changes a recompute INPUT, and the RPC only WRITES —
