@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { findOrphanBlockers, orphanRefusalMessage } from "../lib/ownerGuard";
 
 export const usersRouter = router({
   // -----------------------------------------------------------------------
@@ -118,6 +119,21 @@ export const usersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // deletionBlockers — trips that would be orphaned if the caller deleted
+  // their account, for the UI to state the blocker BEFORE the button is
+  // pressed (#957 §4.5). Read-only; the refusal itself is enforced in
+  // `deleteMe` below, which is the authoritative check — this is the courtesy
+  // on top of it, never a substitute for it.
+  // -----------------------------------------------------------------------
+  deletionBlockers: authedProcedure.query(async ({ ctx }) => {
+    const blockers = await findOrphanBlockers(ctx.supabase, ctx.user.id);
+    return {
+      blockers,
+      message: blockers.length > 0 ? orphanRefusalMessage(blockers, "delete-account") : null,
+    };
+  }),
+
+  // -----------------------------------------------------------------------
   // deleteMe — permanently delete the CALLER's own account.
   //
   // Deletes the auth.users row via the service-role admin client; the
@@ -126,8 +142,24 @@ export const usersRouter = router({
   // anonymize the rest (the user's expenses + transient rows go; trip content
   // they authored survives with created_by nulled). Always self — it never
   // accepts an id, so a caller can only ever delete their own account.
+  //
+  // #957 — REFUSED when it would orphan a trip. `trip_members.user_id` is
+  // ON DELETE CASCADE to `public.users`, so deleting the account removes the
+  // membership but NOT the trip: a sole Owner's trip survives populated with
+  // zero Owners, and `trips.delete` (Owner-only) can then never be satisfied
+  // by anyone. Verified empirically, not just by reading. The guard is shared
+  // with `ghostCrew.remove` — see `server/lib/ownerGuard.ts` for why it lives
+  // in application code rather than a DB trigger.
   // -----------------------------------------------------------------------
   deleteMe: authedProcedure.mutation(async ({ ctx }) => {
+    const blockers = await findOrphanBlockers(ctx.supabase, ctx.user.id);
+    if (blockers.length > 0) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: orphanRefusalMessage(blockers, "delete-account"),
+      });
+    }
+
     const admin = createAdminClient();
     const { error } = await admin.auth.admin.deleteUser(ctx.user.id);
     if (error) {
