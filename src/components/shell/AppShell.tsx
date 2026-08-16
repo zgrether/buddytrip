@@ -10,7 +10,7 @@ import { ContextRail } from "./ContextRail";
 import { ChatSheet } from "./ChatSheet";
 import { ViewTabsPill } from "./ViewTabsPill";
 import { useIsChatColumn } from "./breakpoints";
-import { CONTENT_INSET } from "./contentArea";
+import { CONTENT_INSET, CONTENT_INSET_AT_GAME_DEPTH } from "./contentArea";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
@@ -516,12 +516,7 @@ export function AppShell({
              * breakpoints.ts and this comment names the pair; if `lg` ever stops
              * meaning 1024, both move together.
              */}
-            <div
-              className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${CONTENT_INSET} ${
-                chatAside ? "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6" : ""
-              }`}
-              style={{ paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)" }}
-            >
+            <ContentAreaBox chatAside={chatAside}>
               {/*
                * ── EXACTLY ONE SCROLLER PER VERTICAL CHAIN ────────────────────
                * One-pane → the body scrolls. Two-pane → the body does NOT; each
@@ -594,7 +589,7 @@ export function AppShell({
                   {chat}
                 </aside>
               )}
-            </div>
+            </ContentAreaBox>
           </div>
         </div>
         <AppTabBar
@@ -678,6 +673,52 @@ function TopBarSlot({ children }: { children: React.ReactNode }) {
         background: "var(--color-bt-nav-bg)",
       }}
       data-testid="top-bar-slot"
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The content area — its own component for the SAME reason `TopBarSlot` is one:
+ * it has to READ the game chrome published from inside the provider `AppShell`
+ * itself renders, and a `useGameChrome()` call in AppShell's body would resolve
+ * against whatever provider is above AppShell (none).
+ *
+ * ── Why the inset is conditional ────────────────────────────────────────────
+ * At game depth the top inset comes OFF, so the game's header row runs flush
+ * under the app bar exactly as it does on mobile — where the panel is
+ * `fixed top-14` and always did. Without this the desktop header sat 24px lower
+ * than its mobile counterpart, leaving an empty band under the bar and redrawing
+ * the header on a viewport change.
+ *
+ * It is done HERE, at the source, rather than by pulling the panel up from
+ * below. Two shipped attempts did the latter and both rendered the game title
+ * sliced in half (#938 on `GameActionRow`, inside an `overflow-y-auto` box;
+ * #939 on the panel box, which then escaped `shell-body`'s `lg:overflow-hidden`).
+ * A negative margin does not remove padding — it moves ONE box out of its
+ * parent, and this subtree has two overflow-hidden ancestors, so there is no box
+ * that can be pulled up without leaving one of them. Dropping the padding moves
+ * the whole chain together and leaves nothing to clip.
+ *
+ * Only the TOP goes: horizontal and bottom insets are unchanged, so the row
+ * lines up with the content beneath it and with the rail divider.
+ */
+function ContentAreaBox({
+  chatAside,
+  children,
+}: {
+  chatAside: boolean;
+  children: React.ReactNode;
+}) {
+  const chrome = useGameChrome();
+  return (
+    <div
+      className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden ${
+        chrome ? CONTENT_INSET_AT_GAME_DEPTH : CONTENT_INSET
+      } ${chatAside ? "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6" : ""}`}
+      style={{ paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)" }}
+      data-testid="content-area"
     >
       {children}
     </div>

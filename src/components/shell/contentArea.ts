@@ -74,3 +74,29 @@ export const SURFACE_BOX_FLUSH = SURFACE_BASE;
  */
 export const CONTENT_INSET_PX = 24;
 export const CONTENT_INSET = "lg:p-6";
+
+/**
+ * The same inset with the TOP dropped — what the content area uses at GAME
+ * DEPTH, so the game's header row runs flush under the app bar exactly as it
+ * does on mobile (where the panel is `fixed top-14` and always did).
+ *
+ * ── Why the padding comes off HERE rather than being pulled off below ───────
+ * Two shipped attempts moved the panel (or its first child) upward with a
+ * negative margin, and both rendered the game title sliced in half:
+ *
+ *   #938  `-mt-6` on `GameActionRow`, which is the first child of a box that is
+ *         `overflow-y-auto`. Content above a scroll container's origin is not
+ *         scrolled to — it is clipped.
+ *   #939  `-mt-6` on the panel box itself, which escaped the NEXT clipper up:
+ *         `shell-body` is `lg:overflow-hidden` in two-pane mode.
+ *
+ * A negative margin does not remove padding; it moves ONE box out of its
+ * parent. This subtree has two `overflow-hidden` ancestors, so there is no box
+ * that can be pulled up without leaving one of them. Removing the padding
+ * instead moves the whole chain together and leaves nothing to clip.
+ *
+ * Horizontal and bottom insets are unchanged: the row should line up with the
+ * content beneath it and with the rail divider, and mobile's full-bleed has no
+ * rail to sit against.
+ */
+export const CONTENT_INSET_AT_GAME_DEPTH = "lg:px-6 lg:pb-6 lg:pt-0";
