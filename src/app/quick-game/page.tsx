@@ -85,8 +85,14 @@ export default function QuickGamePage() {
   }, [state, hydrated]);
 
   function start() {
+    // Floor of 1 (#954/#955): a solo round is a real round — there was never a
+    // reason for 2, it was the other half of a sentence describing a foursome
+    // (COMPETITION_ENGINE.md:88-89). Cap of 4 stays: the entry grid shows one
+    // card's players on one screen, and past four you scroll past people
+    // you're directly comparing. Different justifications — don't reason
+    // about them together.
     const valid = names.map((n) => n.trim()).filter(Boolean).slice(0, 4);
-    if (valid.length < 2) return;
+    if (valid.length < 1) return;
     const players: Participant[] = valid.map((name, i) => ({
       id: crypto.randomUUID(),
       name,
@@ -161,7 +167,7 @@ export default function QuickGamePage() {
             <X size={18} />
           </button>
         </div>
-        <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Stroke play · name 2–4 players.</p>
+        <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Stroke play · name 1–4 players.</p>
 
         <div className="mt-4 flex flex-col gap-2">
           {names.map((n, i) => (
@@ -187,7 +193,7 @@ export default function QuickGamePage() {
 
         <button
           onClick={start}
-          disabled={names.map((n) => n.trim()).filter(Boolean).length < 2}
+          disabled={names.map((n) => n.trim()).filter(Boolean).length < 1}
           className="mt-5 w-full disabled:opacity-40"
           style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
         >

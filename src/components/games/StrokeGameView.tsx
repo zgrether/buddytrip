@@ -60,7 +60,7 @@ import { showToast } from "@/lib/toast";
 const STROKE_PLAY = "gtt_stroke_play";
 
 /**
- * StrokeGameView — the stroke-play game surface. Pick 2–4 crew → create game +
+ * StrokeGameView — the stroke-play game surface. Pick 1–4 crew → create game +
  * participants → hole-by-hole entry → Finish/Final + review grid.
  *
  * Spec 2 Phase 3: a persistence-BOUND composed view, re-HOSTED by both its route
@@ -696,7 +696,13 @@ export function StrokeGameView() {
   }
 
   async function start() {
-    if (!tripId || selected.length < 2) return;
+    // Floor of 1 (#954/#955): a solo round is a real round — there was never a
+    // reason for 2, it was the other half of a sentence describing a foursome
+    // (COMPETITION_ENGINE.md:88-89). Cap of 4 stays: the entry grid shows one
+    // card's players on one screen, and past four you scroll past people
+    // you're directly comparing. Different justifications — don't reason
+    // about them together.
+    if (!tripId || selected.length < 1) return;
     // Resume target: add players to the game we opened (?game). Only create a
     // brand-new standalone game when we arrived WITHOUT one.
     const gameId =
@@ -1286,7 +1292,7 @@ export function StrokeGameView() {
   return (
     <div className="mx-auto max-w-md px-4 py-6" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
       <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>New stroke-play game</h1>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Pick 2–4 players.</p>
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Pick 1–4 players.</p>
 
       <div className="mt-4 flex flex-col gap-2">
         {members.map((c) => {
@@ -1315,7 +1321,7 @@ export function StrokeGameView() {
 
       <button
         onClick={start}
-        disabled={selected.length < 2 || createGame.isPending || seedFoursome.isPending}
+        disabled={selected.length < 1 || createGame.isPending || seedFoursome.isPending}
         className="mt-5 w-full disabled:opacity-40"
         style={{
           height: 50,
