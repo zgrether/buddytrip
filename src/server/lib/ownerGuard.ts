@@ -124,7 +124,6 @@ export async function findOrphanBlockers(
  * a support request (§4.4).
  */
 export function orphanRefusalMessage(blockers: OrphanBlocker[], action: "delete-account" | "leave-trip"): string {
-  const names = blockers.map((b) => `"${b.title}"`).join(", ");
   const plural = blockers.length > 1;
   const subject = action === "delete-account" ? "delete your account" : "leave";
 
@@ -134,7 +133,7 @@ export function orphanRefusalMessage(blockers: OrphanBlocker[], action: "delete-
   // Every blocker has somewhere to go — the normal path.
   if (stuck.length === 0) {
     return (
-      `You're the only Owner of ${plural ? "these trips" : "this trip"}: ${names}. ` +
+      `You're the only Owner of ${plural ? `these ${blockers.length} trips` : "this trip"}: ${nameList(blockers)}. ` +
       `Transfer ownership to another member first, then ${subject} — otherwise ` +
       `${plural ? "they'd be left" : "it would be left"} with no Owner and nobody could manage ` +
       `${plural ? "them" : "it"} again.`
@@ -143,7 +142,7 @@ export function orphanRefusalMessage(blockers: OrphanBlocker[], action: "delete-
 
   // At least one trip has nobody eligible. Say so plainly and give the real
   // exit rather than implying an option that doesn't exist.
-  const stuckNames = stuck.map((b) => `"${b.title}"`).join(", ");
+  const stuckNames = nameList(stuck);
   const onlyGuests = stuck.some((b) => b.hasOtherMembers);
   const stuckClause = onlyGuests
     ? `${stuck.length > 1 ? "have" : "has"} no other full member to hand ${stuck.length > 1 ? "them" : "it"} to ` +
@@ -156,8 +155,26 @@ export function orphanRefusalMessage(blockers: OrphanBlocker[], action: "delete-
   ];
   if (transferable.length > 0) {
     parts.push(
-      `You'll also need to transfer ownership of ${transferable.map((b) => `"${b.title}"`).join(", ")}.`
+      `You'll also need to transfer ownership of ${transferable.length > 1 ? `${transferable.length} other trips: ` : ""}${nameList(transferable)}.`
     );
   }
   return parts.join(" ");
+}
+
+/**
+ * Name the trips, but CAP the list.
+ *
+ * §4.4 wants the blocking trips named so the refusal is actionable without a
+ * support request — but naming ALL of them is only readable at small N. Found
+ * by looking at the real surface: an account owning 19 trips produced a wall of
+ * text that repeated every title in the prose AND again in the list beneath it,
+ * which is unreadable and tells the user nothing the list didn't. Three names
+ * plus a count keeps it actionable and short; the UI's per-trip list remains
+ * the full enumeration, and the server error stays a usable sentence.
+ */
+function nameList(blockers: OrphanBlocker[], max = 3): string {
+  const shown = blockers.slice(0, max).map((b) => `"${b.title}"`);
+  const rest = blockers.length - shown.length;
+  if (rest <= 0) return shown.join(", ");
+  return `${shown.join(", ")} and ${rest} more`;
 }

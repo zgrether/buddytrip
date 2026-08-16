@@ -93,6 +93,25 @@ describe("#957 orphan guard — findOrphanBlockers", () => {
     await ctx.admin.from("trip_members").delete().eq("trip_id", tripId).eq("user_id", guest.id);
   }, 60_000);
 
+  it("CAPS the named trips instead of listing all of them", async () => {
+    // Found by looking at the real surface, not by a test: an account owning
+    // 19 trips produced a wall of text that repeated every title in the prose
+    // AND again in the list beneath it. Naming all of them is only readable at
+    // small N, and the UI list is already the full enumeration.
+    const many: Parameters<typeof orphanRefusalMessage>[0] = Array.from({ length: 19 }, (_, i) => ({
+      tripId: `t${i}`,
+      title: `Trip ${i}`,
+      hasTransferTarget: true,
+      hasOtherMembers: true,
+    }));
+    const msg = orphanRefusalMessage(many, "delete-account");
+
+    expect(msg).toContain("Trip 0");
+    expect(msg).toContain("and 16 more"); // 19 − 3 shown
+    expect(msg).not.toContain("Trip 18"); // not enumerated
+    expect(msg.length).toBeLessThan(400); // stays a readable sentence
+  });
+
   it("the normal message names the blocking trips and points at transfer", async () => {
     const tripId = await ctx.createTrip("Named In Message Trip");
     await ctx.addTripMember(tripId, "member", "Member");
