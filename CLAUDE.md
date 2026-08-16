@@ -856,6 +856,37 @@ Applying a course to a game **snapshots** its `par[]` + `handicap_index[]` into
 `games.scorecard_schema.units.metadata` (the shape `strokeHoles` reads); the
 snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 
+## Stop and ask for a look when a surface first becomes REACHABLE
+
+**The trigger is reachability, not completion.** The first time a surface can be
+opened at all, stop and ask Zach to look at it. Three moments, concretely:
+
+- the first time a **settings page** renders
+- the first time a **play surface** renders
+- the first time **results reach the board**
+
+**Not at every PR** — that is noise, and noise trains the ask to be ignored.
+**And not at phase boundaries**, which is exactly what produced the pattern this
+rule exists to break: six PRs of build, then a look.
+
+**Why, in one line:** across the bracket build a person on a device found roughly
+**three times** as much as every automated mechanism combined — CI found nothing
+at all across 35 PRs — and the cost of looking late is that a wrong assumption
+from the first PR is still being paid for at the sixth.
+(`BRACKET_RETROSPECTIVE.md` carries the count and the worked examples.)
+
+The ask is short and specific: **what is reachable, what state to put it in
+(usually *nothing configured* — that is where the defects were), and what you are
+unsure about.** It is not a request for permission to continue, and it does not
+mean stopping work; it means the next PR is built on a checked assumption rather
+than an unchecked one.
+
+This is the operational half of a finding, not ceremony. The things it catches —
+an empty state, a wrong default, a surface that reads badly, a value with no home
+— are the things no test in this repo has ever caught, and the retrospective is
+explicit that they do not move into the automated columns however hard they are
+pushed.
+
 ## What "Done" Means for Any Task
 
 1. Feature implemented
