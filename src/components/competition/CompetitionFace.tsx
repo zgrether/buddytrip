@@ -471,7 +471,39 @@ export function CompetitionFace({
            * (see above) — at `lg+` the bar never hides, so this expression only
            * ever differs below the breakpoint.
            */
-          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:flex-1 ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          /**
+           * `lg:-mt-6` + `lg:h-[calc(100%+1.5rem)]` — the game header sits FLUSH
+           * under the app bar at EVERY width.
+           *
+           * Below `lg` this box is `fixed top-14`, so its first row already began
+           * immediately under the 56px bar. At `lg+` it is a normal-flow child of
+           * the shell's content area, which carries `CONTENT_INSET` (`lg:p-6`,
+           * `CONTENT_INSET_PX` = 24) — so the row started 24px lower than its
+           * mobile counterpart, leaving an empty band between the bar and the game
+           * title and REDRAWING the header on a viewport change.
+           *
+           * The pair is not optional. `-mt-6` alone moves the top to the bar and
+           * drags the bottom 24px past the stage, eating the bottom gutter the
+           * `ViewTabsPill` floats in; the height compensation puts the bottom back
+           * exactly where it was (`56 + (H + 24) == 80 + H`).
+           *
+           * ── On the BOX, never on the first child (the #938 regression) ───────
+           * #938 put `-mt-6` on `GameActionRow` instead. This box is
+           * `overflow-y-auto`, and a first child pulled above a scroll container's
+           * origin is unreachable by scrolling — it is clipped, which is exactly
+           * what shipped: the game title rendered sliced in half. The box itself
+           * is clipped by nothing (the content area's `lg:overflow-hidden` clips at
+           * its PADDING box, and -24px lands on that edge, not past it).
+           *
+           * The verification that missed it read `getBoundingClientRect().top` and
+           * saw 56 — a clipped box reports its geometric position perfectly
+           * happily. Position is not visibility; assert both.
+           *
+           * Only the TOP inset goes. The horizontal inset stays, so the row lines
+           * up with the content beneath it and with the rail divider — mobile's
+           * full-bleed has no rail to sit against.
+           */
+          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:-mt-6 lg:h-[calc(100%+1.5rem)] lg:min-h-0 lg:w-full lg:min-w-0 lg:flex-1 ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
           style={{
             background: "var(--color-bt-base)",
             // Clear the bottom nav (58px) + safe area when it's showing; none on the
