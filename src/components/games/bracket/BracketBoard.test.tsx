@@ -62,27 +62,27 @@ describe("BracketBoard geometry", () => {
   });
 });
 
-describe("what's at stake in the header (item 5)", () => {
+describe("stakes appear only where places are PAID", () => {
   const withStakes = (n: number, dist: number[]) =>
     renderToStaticMarkup(
       <BracketBoard matches={resolveDraw(buildDraw(n))} entrants={entrants(n)} pointsDistribution={dist} />
     );
 
-  it("the final reads as the literal 1st/2nd — no special case for it", () => {
-    const html = withStakes(4, [10, 6, 3, 1]);
-    expect(html).toContain("W 10");   // exact: no ≥
-    expect(html).toContain("L 6");
+  it("the final states both places it settles", () => {
+    expect(withStakes(4, [10, 6, 3, 1])).toContain("1st: 10 · 2nd: 6");
   });
 
-  it("an earlier round says 'at least', because it isn't playing for 1st yet", () => {
-    const html = withStakes(4, [10, 6, 3, 1]);
-    // Semi: loser averages 3rd/4th = 2, winner is guaranteed 2nd = 6.
-    expect(html).toContain("≥");
-    expect(html).toContain("L 2");
+  it("no earlier round carries a figure — and none says 'at least' any more", () => {
+    // The regression: a 16-draw showed "W ≥0 · L 0" on eight round-one matches,
+    // and quarters claimed a figure their winner had just escaped.
+    const html = withStakes(16, [20, 12, 8, 6, 4, 3, 2, 1]);
+    expect(html).not.toContain("≥");
+    expect(html).not.toContain("L 0");
+    // Exactly ONE match carries stakes: the final.
+    expect((html.match(/bracket-match-stakes/g) ?? []).length).toBe(1);
   });
 
   it("quotes nothing when the game pays no placement split", () => {
-    // "L 0" would state a payout the game does not have.
     expect(withStakes(4, [])).not.toContain("bracket-match-stakes");
   });
 });

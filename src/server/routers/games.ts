@@ -22,7 +22,7 @@ import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import type { BracketDrawMatch } from "@/lib/bracket";
-import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { resolveDraw, matchKey, orphanedByPick, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
@@ -678,12 +678,49 @@ export const gamesRouter = router({
       const row = matches.find(
         (m) => m.bracket === input.bracket && m.round === input.round && m.slot === input.slot
       )!;
-      const writeRes = await ctx.supabase
-        .from("bracket_matches")
-        .update({ winner_entrant_id: input.winnerSeed === null ? null : idOfSeed(input.winnerSeed) })
-        .eq("id", row.id)
-        .eq("game_id", input.gameId);
+
+      /**
+       * Which stored picks this one ORPHANS — deleted, not left recoverable.
+       *
+       * Computed from the SAME pure rule the client's optimistic cascade uses
+       * (`orphanedByPick` → `applyPickCascading` → `resolveDraw`), so the two
+       * cannot disagree about what a pick invalidates.
+       */
+      const orphanRefs = orphanedByPick(
+        draw.map((m) => ({ ...m, winnerSeed: winners[matchKey(m)] ?? null })),
+        { bracket: input.bracket, round: input.round, slot: input.slot },
+        input.winnerSeed
+      );
+      const orphanIds = orphanRefs
+        .map((r) => matches.find((m) => m.bracket === r.bracket && m.round === r.round && m.slot === r.slot)?.id)
+        .filter((id): id is string => !!id);
+
+      /**
+       * BOTH writes together, not one after the other.
+       *
+       * They touch DISJOINT rows — the picked match, and the orphaned ones — so
+       * there is no ordering requirement between them, and issuing them in
+       * parallel keeps this procedure at the four sequential levels #936
+       * measured (auth → games → entrants∥matches → write). A second awaited
+       * statement here would have made the cascade cost a fifth round trip on
+       * the path we had just finished making instant.
+       */
+      const [writeRes, clearRes] = await Promise.all([
+        ctx.supabase
+          .from("bracket_matches")
+          .update({ winner_entrant_id: input.winnerSeed === null ? null : idOfSeed(input.winnerSeed) })
+          .eq("id", row.id)
+          .eq("game_id", input.gameId),
+        orphanIds.length > 0
+          ? ctx.supabase
+              .from("bracket_matches")
+              .update({ winner_entrant_id: null })
+              .in("id", orphanIds)
+              .eq("game_id", input.gameId)
+          : Promise.resolve({ error: null }),
+      ]);
       assertNoError(writeRes, "record the result");
+      assertNoError(clearRes as { error: { message: string } | null }, "clear the downstream results");
 
       return { ok: true as const };
     }),

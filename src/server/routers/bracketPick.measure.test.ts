@@ -1,6 +1,7 @@
 import { describe, it, beforeAll, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 import { buildDraw } from "../../lib/bracket";
+import { resolveDraw, matchKey } from "../../lib/bracketAdvance";
 
 /**
  * PHASE 0 MEASUREMENT — what one bracket pick costs (spec item 7).
@@ -287,6 +288,33 @@ describe("PHASE 0 — what one bracket pick costs", () => {
     await measure(
       "games.pickWinner",
       () => caller.games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 1, winnerSeed: 1 }),
+      true
+    );
+
+    /**
+     * The CASCADING pick — the one the clear-cascade added.
+     *
+     * It issues a SECOND write (nulling the orphaned downstream picks) and must
+     * still cost four sequential levels: the two writes touch disjoint rows, so
+     * they go out together rather than one after the other. If this ever prints
+     * 5, the cascade has been made to cost a round trip on the path that was
+     * just made instant.
+     */
+    console.log("\n─── a CASCADING pick (clears a downstream result) ───");
+    await caller.games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 2, winnerSeed: 5 });
+    // RESOLVE first: `bracketDraw` returns stored rows, and a round-2 row's
+    // seats are always null there because occupants are derived.
+    const stored = await caller.games.bracketDraw({ tripId, gameId });
+    const semi = resolveDraw(
+      stored.map((m) => ({ bracket: m.bracket, round: m.round, slot: m.slot, aSeed: m.aSeed, bSeed: m.bSeed })),
+      Object.fromEntries(stored.map((m) => [matchKey(m), m.winnerSeed]))
+    ).find((m) => m.bracket === "main" && m.round === 2 && m.aSeed !== null && m.bSeed !== null);
+    if (!semi) throw new Error("measurement setup: expected a decidable round-2 match");
+    await caller.games.pickWinner({ tripId, gameId, bracket: "main", round: 2, slot: semi.slot, winnerSeed: semi.aSeed! });
+    await measure(
+      "games.pickWinner (CASCADING)",
+      // Clearing round 1 slot 1 orphans the round-2 pick made just above.
+      () => caller.games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 1, winnerSeed: null }),
       true
     );
 

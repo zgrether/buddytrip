@@ -124,6 +124,76 @@ uses this token for its `border-color`.
 
 ## Section 2: Typography Tokens
 
+### 2a. The type scale
+
+**This section used to be entirely colour.** Sizes lived inside component
+recipes, so there was nothing for a new surface to be consistent *with* — and
+every surface therefore picked its own. That is not a hypothetical: the context
+rail accumulated **five of the six app-wide uses of 9.5px** before #902 cleaned
+them, and the bracket then reinvented 9.5px **independently**, months later,
+with no contact between the two. Same off-scale value, different surface. A
+size nobody can look up is a size everyone re-derives.
+
+The rungs below are **derived, not invented** — they are the sizes already in
+the codebase, ranked by how often they appear. The counts are inline `fontSize:`
+occurrences across `src/` and are a **snapshot (2026-08-16)**: #902 measured the
+same seven rungs in a different order, with 11 dominant where 13 now is. **The
+set is the contract; the counts are the evidence for how it was arrived at.**
+
+| px | uses | Role | Use for |
+|----|------|------|---------|
+| **13** | 103 | body | Body copy — the default |
+| **12** | 74 | bodyDense | Secondary body, dense rows, most subtitles |
+| **14** | 37 | emphasis | Emphasis inside a row; small headings |
+| **10** | 36 | micro | Eyebrow labels (§2b), small numerals |
+| **15** | 34 | name | Primary names on a dense board |
+| **11** | 34 | caption | Captions, helper text, table headers |
+| **12.5** | 29 | captionPlus | The half-step between caption and bodyDense |
+
+Above 18px is display type (22 / 24 / 28) and is per-surface — a hero is allowed
+to be a hero.
+
+The rungs are exported as `TYPE_SCALE` from `src/lib/typeScale.ts`. Nothing
+mechanically enforces them yet; that file records what a lint rule or source
+guard would need (chiefly an allowlist for the ~12 off-scale values that exist
+today, since some are legitimate one-offs and triaging them is the real work).
+
+**A size outside the set is not banned — it is a surface choosing to be
+different, and it should say why in a comment.**
+
+### 2b. Eyebrow labels
+
+The small, uppercase, letter-spaced header that sits above or inside a card:
+`MATCH 1 · 1V1`, `ROUND 1`, `CONSOLATION · 3RD PLACE`.
+
+**Derived from the majority of 26 existing eyebrows across 17 files:**
+
+| Property | Value | Majority |
+|----------|-------|----------|
+| `fontSize` | `10` | 9 of 26 (then 11 ×5, 9.5 ×4, 10.5 ×3, 9 ×2) |
+| `letterSpacing` | `0.08em` | 13 of 26 (then 0.06em ×6, 0.1em ×2, 0.09em ×2) |
+| `color` | `--color-bt-text-dim` | 16 of 26 (then owner ×2, warning ×2, text ×1) |
+| `fontWeight` | `700` | 23 of 26 |
+| `textTransform` | `uppercase` | all 26 |
+| Separator | ` · ` (spaced middot) | match play, rack board, news |
+
+**Match play's card header already matched all four before this was written**,
+which is the strongest position to standardise from: this is the majority made
+explicit, not a new opinion imposed on existing surfaces.
+
+Use `EYEBROW` from `src/lib/typeScale.ts`. `color` is deliberately not baked in
+— a *status* eyebrow legitimately overrides it (the bracket's consolation label
+is `--color-bt-warning`; news uses `--color-bt-owner`). Spread and override the
+one property:
+
+```tsx
+<div style={{ ...EYEBROW, color: "var(--color-bt-warning)" }}>
+```
+
+**This is documentation plus the bracket, not a sweep.** Existing surfaces were
+left alone; bringing the remaining non-conformant ones on is worth doing and is
+recorded as follow-up, not done here.
+
 > **Light mode contrast rule:** Light mode text must use darker values than dark mode — not the same values. Muted text in dark mode is light (`#94a3b8`) because it sits on a dark surface. Muted text in light mode must be dark enough (`#64748b` or darker) to read on a light surface. Never use opacity to dim text — use explicit token values. Opacity-based dimming compounds the contrast problem, especially in light mode.
 
 | Role | Token | Light | Dark | Use |

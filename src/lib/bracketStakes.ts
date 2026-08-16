@@ -1,60 +1,53 @@
 /**
- * What a bracket match is WORTH — the numbers its header shows.
+ * What a bracket match is WORTH — and, more importantly, WHEN that is worth
+ * saying.
  *
- * Pure and client-safe (CLAUDE.md #8), and deliberately scored by the SAME
- * function the payout uses (`pointsForPlacements` → `placementPoints`). A header
- * that computed its own averages would be a second answer to "what is this
- * worth", and the first time they disagreed the board would be lying about the
- * game it is running.
+ * Pure and client-safe (CLAUDE.md #8), scored by the SAME `pointsForPlacements`
+ * the payout uses, so the header and the result cannot disagree.
  *
- * ── One formula, every round ────────────────────────────────────────────────
- * Every match says the same two things: **what the loser takes, and what the
- * winner is guaranteed.**
+ * ── This REVERSES the "one formula everywhere" call, and the output is why ──
+ * The previous version quoted every match: what the loser takes, and what the
+ * winner is guaranteed. It was defensible in the abstract and wrong in practice.
+ * On a real 16-entrant draw the eight round-one matches all read `W ≥0 · L 0` —
+ * two zeroes on half the bracket, which is noise, not information. Worse, the
+ * quarter-finals read `W ≥0.5 · L 0`, and 0.5 is the 5th–8th tie-group average
+ * the winner has just ESCAPED. That is a false claim in exactly the direction
+ * the formula was chosen to avoid.
  *
- * The obvious alternative — printing "1st: 7 pts, 2nd: 4 pts" on every match —
- * is false anywhere but the final: a first-round loser is not 2nd, they join a
- * tie group several rounds wide. And the obvious retreat — showing points only
- * on the final, where places are literally paid — leaves the header blank for
- * most of the bracket, which is exactly where people are standing when they ask.
+ * The intent was always to say WHEN a match awards points, not to put a number
+ * on every match. So: **stakes appear only where places are actually paid.**
+ * The final settles 1st and 2nd. The consolation match, when it is on, settles
+ * 3rd and 4th. Everywhere else the header carries no points, because the match
+ * awards none directly — its loser lands in a tie group several rounds wide,
+ * and that group's value is not this match's stake.
  *
- * The loser/winner-floor formula is true at every depth AND collapses to the
- * literal thing in the final on its own, because there the two tie groups are
- * singletons: the loser takes 2nd exactly and the winner takes 1st exactly. No
- * special case is written for it.
- *
- * ── Where the numbers come from ─────────────────────────────────────────────
- * `bracketPlacements` places a round-R loser at `2^(lastRound - R) + 1`, tied
- * with everyone else who lost in round R, and `placementPoints` averages a tie
- * group across the places it spans. So the loser's figure is that average, and
- * the winner's floor is the same question asked of the round above — the worst
- * they can now finish is losing their next match.
- *
- * `placementPoints` assigns places by POSITION IN THE SORTED FIELD, not by the
- * position value, so a synthetic full field has to be scored rather than a lone
- * tie group: the group's share depends on how many entrants finished ahead of
- * it. That field is built from the draw's own shape, so byes (which produce no
- * loser) shrink the groups exactly as they do in the real result.
+ * ── Not match play's string, deliberately ──────────────────────────────────
+ * Match play shows one figure (`4½ PTS`) because the match IS the game: one
+ * contest, winner takes it, a draw splits it. A bracket's final settles TWO
+ * places, so it reads `1st: 3 · 2nd: 1½`. Two outcomes, two numbers. The shared
+ * thing is only the principle — stakes appear where stakes exist — and
+ * flattening one into the other would misdescribe whichever lost.
  */
 
 import type { ResolvedMatch } from "./bracketAdvance";
 import { pointsForPlacements } from "./placementGroups";
+import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 
 export interface MatchStakes {
-  /** Points the loser of this match takes, averaged across their tie group. */
-  loser: number;
-  /** Points the winner is guaranteed AT WORST — they may still finish higher. */
-  winner: number;
-  /** True when the winner's figure is exact rather than a floor: the final, and
-   *  the consolation match. Lets the header drop a misleading "≥". */
-  winnerIsExact: boolean;
+  /** Ready-to-render, e.g. `1st: 3 · 2nd: 1½`. */
+  label: string;
+  /** The better place's value, and the worse one's. Exposed for tests and for
+   *  any surface that wants to lay them out differently. */
+  better: number;
+  worse: number;
 }
 
 /**
  * Every position a fully-played version of this draw would hand out.
  *
- * Built from the draw rather than from the entrant count so byes are honoured: a
- * bye produces no loser (nobody played), so it contributes no position and the
- * round's tie group is smaller — which is what the real placement rule does too.
+ * Built from the draw rather than the entrant count so byes are honoured: a bye
+ * produces no loser, contributes no position, and the round's tie group is
+ * correspondingly smaller — which is what the real placement rule does too.
  */
 function allPositions(resolved: readonly ResolvedMatch[], lastRound: number): number[] {
   const hasConsolation = resolved.some((m) => m.bracket === "consolation");
@@ -67,20 +60,21 @@ function allPositions(resolved: readonly ResolvedMatch[], lastRound: number): nu
   }
 
   if (hasConsolation) {
-    // The play-off splits what would otherwise be a tie for 3rd into 3 and 4 —
-    // the whole reason it exists.
-    const third = positions.indexOf(3);
-    if (third !== -1 && positions.lastIndexOf(3) !== third) positions[positions.lastIndexOf(3)] = 4;
+    // The play-off splits what would otherwise be a tie for 3rd into 3 and 4.
+    const firstThird = positions.indexOf(3);
+    const lastThird = positions.lastIndexOf(3);
+    if (firstThird !== -1 && lastThird !== firstThird) positions[lastThird] = 4;
   }
   return positions;
 }
 
 /**
- * What this match is worth, or null when the game pays no placement split.
+ * What this match is worth, or **null when it pays nothing directly** — which is
+ * every match except the final and a live consolation play-off.
  *
- * Null rather than zeroes: a winner-takes-all or per-match game has no per-place
- * values to quote, and printing "L 0" would state a payout the game does not
- * have. The header renders nothing in that case.
+ * Also null when the game carries no placement split at all: a winner-takes-all
+ * or per-match game has no per-place values to quote, and printing zeroes would
+ * state a payout the game does not have.
  */
 export function matchStakes(
   match: ResolvedMatch,
@@ -93,9 +87,12 @@ export function matchStakes(
   if (main.length === 0) return null;
   const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
 
+  const isFinal = match.bracket === "main" && match.round === lastRound;
+  const isConsolation = match.bracket === "consolation";
+  // The whole gate: everything else awards nothing directly.
+  if (!isFinal && !isConsolation) return null;
+
   const positions = allPositions(resolved, lastRound);
-  // Score the synthetic field once; every entrant at a given position shares the
-  // same figure, so one lookup per position answers both questions.
   const scored = pointsForPlacements(
     positions.map((p, i) => ({ entityId: String(i), position: p })),
     distribution
@@ -105,26 +102,14 @@ export function matchStakes(
     return index === -1 ? 0 : scored.get(String(index)) ?? 0;
   };
 
-  if (match.bracket === "consolation") {
-    // Both sides are exact here: this match exists precisely to separate 3 and 4.
-    return { loser: pointsAt(4), winner: pointsAt(3), winnerIsExact: true };
-  }
-
-  const loserPosition = 2 ** (lastRound - match.round) + 1;
-  const isFinal = match.round === lastRound;
-  // The winner's floor is the loser's question asked one round up: the worst they
-  // can now do is lose their next match. In the final there is no next match.
-  const winnerPosition = isFinal ? 1 : 2 ** (lastRound - match.round - 1) + 1;
+  const [betterPlace, worsePlace] = isFinal ? [1, 2] : [3, 4];
+  const better = pointsAt(betterPlace);
+  const worse = pointsAt(worsePlace);
+  const name = (p: number) => (p === 1 ? "1st" : p === 2 ? "2nd" : p === 3 ? "3rd" : "4th");
 
   return {
-    loser: pointsAt(loserPosition),
-    winner: pointsAt(winnerPosition),
-    winnerIsExact: isFinal,
+    better,
+    worse,
+    label: `${name(betterPlace)}: ${fmtValue(better)} · ${name(worsePlace)}: ${fmtValue(worse)}`,
   };
-}
-
-/** Trim a points figure for a 172px-wide card: no trailing `.0`, one decimal
- *  otherwise (a tie-group average is routinely a half). */
-export function formatStake(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }

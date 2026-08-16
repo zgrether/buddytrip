@@ -8,9 +8,28 @@ import { PointsAtStake } from "@/components/games/PointsAtStake";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { applyPick, drawComplete } from "@/lib/bracketAdvance";
+import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
+import { EYEBROW } from "@/lib/typeScale";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
+
+/**
+ * The READABLE COLUMN — everything on this surface that is prose or a control.
+ *
+ * `contentArea.ts` (#906) is explicit that a surface may still cap its own
+ * column for readability even though the shell no longer caps the viewport, and
+ * a points row, a banner and three CTAs all want that cap. The BOARD does not:
+ * it is a tree, and its natural width is the field's.
+ *
+ * Declared at module scope, not inside the component. A component created during
+ * render is a NEW component type every render, so React unmounts and remounts
+ * its whole subtree and any state inside it resets — which here would have meant
+ * the lifecycle CTAs losing their pending state on every keystroke elsewhere on
+ * the surface. (Caught by eslint, not by me.)
+ */
+function Column({ children }: { children: React.ReactNode }) {
+  return <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">{children}</div>;
+}
 
 /**
  * The bracket's scoring surface — the sibling of `NonGolfScoreboard`, not a fifth
@@ -154,13 +173,22 @@ export function BracketScoringSurface({
    * no second code path to disagree with, which is what makes the guess honest
    * rather than a local imitation of the server.
    *
+   * ── The optimistic patch CASCADES too, and it has to ──────────────────────
+   * `applyPickCascading` is the same function the server runs to decide which
+   * stored picks a pick orphans, so the client deletes exactly what the server
+   * is about to delete. Using the non-cascading `applyPick` here would have made
+   * the two disagree for a whole round trip — and the disagreement would have
+   * been visible as the flash this reversal exists to remove: the optimistic
+   * write showing the cleared state, then the server's response reinstating the
+   * orphan for the rest of the round trip.
+   *
    * Both invariants therefore hold for free rather than by re-implementation:
    *   - #924's stale-winner rule — a seed that is not a resolved occupant is
    *     dropped by `winnerOf`, so an optimistic pick into a match whose feeders
    *     moved still reads undecided.
-   *   - #925's non-cascading clear — clearing writes one column here exactly as
-   *     it does server-side, and everything above re-derives. Nothing cascades
-   *     locally that would not have cascaded remotely.
+   *   - the CASCADE (which REVERSES #925) — an orphaned pick is deleted here
+   *     exactly as it is server-side, so re-picking the original brings nothing
+   *     back on either side.
    *
    * What it buys: the measured cost of a pick in production is ~806ms, and the
    * check-mark used to wait for all of it. It now waits for a state update.
@@ -169,7 +197,7 @@ export function BracketScoringSurface({
     (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
       utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
-        prev && applyPick(prev, ref, seed)
+        prev && applyPickCascading(prev, ref, seed)
       );
       pendingPicks.current += 1;
       pickMutation.mutate({ tripId, gameId, ...ref, winnerSeed: seed });
@@ -189,23 +217,27 @@ export function BracketScoringSurface({
   const allComplete = drawComplete(matches);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 py-5">
-      {/* What the game is worth — same row, same formatter as the other formats,
-          so the number here and the board's "N PTS" agree by construction. */}
-      <div className="flex justify-end">
-        <PointsAtStake value={Number(game.points_total ?? 0)} />
-      </div>
+    // Full width, and the cap moved INSIDE. The whole surface used to sit in one
+    // `max-w-2xl` box, so a 16-entrant draw scrolled inside a 672px column while
+    // the desktop page had room to spare — the mid-page scrollbar. Nothing above
+    // this was constraining it: the shell is `lg:max-w-none` and the game panel
+    // is `lg:w-full lg:flex-1`. The cap was ours, and it was being applied to the
+    // one piece of content that should never have been in the readable column.
+    <div className="flex w-full flex-col gap-3 px-4 py-5">
+      <Column>
+        {/* What the game is worth — same row, same formatter as the other formats,
+            so the number here and the board's per-match values agree by construction. */}
+        <div className="flex justify-end">
+          <PointsAtStake value={Number(game.points_total ?? 0)} />
+        </div>
 
-      <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
+        <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
 
-      <div
-        style={{
-          fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
-          color: "var(--color-bt-text-dim)", fontWeight: 700, margin: "2px 0 3px",
-        }}
-      >
-        {canEdit && !isLocked ? "Tap a competitor to advance them" : "Bracket"}
-      </div>
+        <div style={{ ...EYEBROW, margin: "2px 0 3px" }}>
+          {canEdit && !isLocked ? "Tap a competitor to advance them" : "Bracket"}
+        </div>
+      </Column>
+
       <BracketBoard
         matches={matches}
         entrants={entrants}
@@ -213,28 +245,31 @@ export function BracketScoringSurface({
         canPick={canEdit && !isLocked}
         onPick={handlePick}
       />
-      {pickError && (
-        <p style={{ fontSize: 12, color: "var(--color-bt-danger)" }} data-testid="bracket-pick-error">
-          {pickError}
-        </p>
-      )}
-      {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
 
-      {/* The SAME three lifecycle CTAs every other format renders — `gameLifecycle`
-          decides which is offered, this only renders it. `allComplete` is the
-          bracket's reading of "there is something to post", and it is the server's
-          reading too. */}
-      <GameLifecycleActions
-        canEdit={canEdit}
-        status={game.status}
-        correctionsOpen={game.corrections_open}
-        allComplete={allComplete}
-        finalizePending={finalizePending}
-        correctPending={correctPending}
-        // No placements: the server derives them from the draw. See the header.
-        onFinalize={() => void finalize()}
-        onCorrect={handleCorrect}
-      />
+      <Column>
+        {pickError && (
+          <p style={{ fontSize: 12, color: "var(--color-bt-danger)" }} data-testid="bracket-pick-error">
+            {pickError}
+          </p>
+        )}
+        {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
+
+        {/* The SAME three lifecycle CTAs every other format renders — `gameLifecycle`
+            decides which is offered, this only renders it. `allComplete` is the
+            bracket's reading of "there is something to post", and it is the server's
+            reading too. */}
+        <GameLifecycleActions
+          canEdit={canEdit}
+          status={game.status}
+          correctionsOpen={game.corrections_open}
+          allComplete={allComplete}
+          finalizePending={finalizePending}
+          correctPending={correctPending}
+          // No placements: the server derives them from the draw. See the header.
+          onFinalize={() => void finalize()}
+          onCorrect={handleCorrect}
+        />
+      </Column>
     </div>
   );
 }

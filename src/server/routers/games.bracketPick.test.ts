@@ -153,16 +153,17 @@ describe("pickWinner — recording a result", () => {
     expect(at(await drawOf(gameId), 1, 1).winnerSeed).toBe(4);
   });
 
-  it("a replacement upstairs leaves the stored final ALONE, and the resolver drops it", async () => {
-    // The two layers, asserted separately — this is the non-cascading model, and
-    // it is why an undo is one column wide (#925). Switching seed 1 out of the
-    // semi writes NOTHING to the final: its stored winner is still seed 1. The
-    // final reads as open only because `resolveDraw` drops a recorded winner who
-    // is no longer one of that match's occupants.
+  it("a replacement upstairs DELETES the stored final — INVERTED from #925", async () => {
+    // Was: "leaves the stored final ALONE, and the resolver drops it". Both
+    // layers are still asserted, and the point of asserting the STORED row is
+    // unchanged — `games.bracketDraw` returns rows as written, so this is where
+    // the reversal is actually visible. What changed is the value: the cascade
+    // nulls the row instead of leaving it for the resolver to ignore.
     //
-    // Asserting the stored row here rather than the derived one is the point:
-    // `games.bracketDraw` returns rows as stored, and a test that expected null
-    // from it would have been testing the client's job on the server's payload.
+    // #924 still holds and is asserted below: the resolver reports the final
+    // undecided regardless, which is the safety net for a row that escapes the
+    // cascade.
+
     const gameId = await newBracket("Swap upstream", four());
     await pick(gameId, 1, 1, 1);
     await pick(gameId, 1, 2, 2);
@@ -172,7 +173,7 @@ describe("pickWinner — recording a result", () => {
 
     const stored = await drawOf(gameId);
     expect(at(stored, 1, 1).winnerSeed).toBe(4);
-    expect(at(stored, 2, 1).winnerSeed).toBe(1); // untouched — no cascade write
+    expect(at(stored, 2, 1).winnerSeed).toBeNull(); // CASCADED away
 
     const resolved = resolveDraw(
       stored.map((m) => ({ bracket: m.bracket, round: m.round, slot: m.slot, aSeed: m.aSeed, bSeed: m.bSeed })),
@@ -248,9 +249,12 @@ describe("pickWinner — what it refuses", () => {
 });
 
 describe("pickWinner — clearing does not cascade, and that is deliberate", () => {
-  it("clearing a semi un-decides the final WITHOUT a second write", async () => {
-    // The one-column undo. The final's own row still holds its winner; it simply
-    // stops resolving, because the seed it names is no longer an occupant.
+  it("clearing a semi DELETES the final's pick — INVERTED from #925", async () => {
+    // Was: "un-decides the final WITHOUT a second write" — the one-column undo,
+    // where the final's row still held its winner and simply stopped resolving.
+    // The cascade now deletes it, so the row itself is empty. The last assertion
+    // is unchanged and still the point: the server refuses to treat seed 1 as the
+    // final's occupant either way.
     const gameId = await newBracket("Undo", four());
     await pick(gameId, 1, 1, 1);
     await pick(gameId, 1, 2, 2);
@@ -259,22 +263,25 @@ describe("pickWinner — clearing does not cascade, and that is deliberate", () 
 
     const draw = await drawOf(gameId);
     expect(at(draw, 1, 1).winnerSeed).toBeNull();
-    // Still stored, deliberately — the read returns the row as written.
-    expect(at(draw, 2, 1).winnerSeed).toBe(1);
+    // DELETED, not merely un-resolving — the reversal.
+    expect(at(draw, 2, 1).winnerSeed).toBeNull();
     // …and the server now refuses to treat seed 1 as the final's occupant.
     await expect(pick(gameId, 2, 1, 1)).rejects.toThrow(/waiting on the round below/);
   });
 
-  it("re-picking the SAME semi winner brings the final's result back", async () => {
-    // Surprising and correct: nothing about the final changed, and a cascade
-    // that deleted it would throw away a real result for tidiness.
+  it("re-picking the SAME semi winner does NOT bring the final back — INVERTED", async () => {
+    // Was: "brings the final's result back", justified as "nothing about the
+    // final changed". That reasoning was wrong. Deliberately clearing a result is
+    // a statement that it is void; the final had been recorded against a bracket
+    // state the user had just repudiated, and it should not return on a
+    // technicality.
     const gameId = await newBracket("Resurrect", four());
     await pick(gameId, 1, 1, 1);
     await pick(gameId, 1, 2, 2);
     await pick(gameId, 2, 1, 1);
     await pick(gameId, 1, 1, null);
     await pick(gameId, 1, 1, 1);
-    expect(at(await drawOf(gameId), 2, 1).winnerSeed).toBe(1);
+    expect(at(await drawOf(gameId), 2, 1).winnerSeed).toBeNull();
   });
 
   it("re-picking a DIFFERENT semi winner leaves the final open", async () => {
@@ -287,5 +294,73 @@ describe("pickWinner — clearing does not cascade, and that is deliberate", () 
     await expect(pick(gameId, 2, 1, 1)).rejects.toThrow(/isn't in this match/);
     await pick(gameId, 2, 1, 4);
     expect(at(await drawOf(gameId), 2, 1).winnerSeed).toBe(4);
+  });
+});
+
+/**
+ * THE CASCADE — a cleared downstream pick is GONE, not recoverable.
+ *
+ * This inverts #925 deliberately. The old behaviour left the row's winner in
+ * place and relied on `resolveDraw` reporting the match undecided, so re-picking
+ * the original entrant revived a result that had been recorded against a bracket
+ * state the user had just repudiated.
+ *
+ * Asserted against the STORED rows, because that is exactly what changed:
+ * `games.bracketDraw` returns rows as stored, and under #925 the downstream
+ * winner was still sitting in them.
+ */
+describe("pickWinner — clearing cascades (reverses #925)", () => {
+  /** 1 beats 4, 2 beats 3, 1 beats 2. */
+  async function playOut(gameId: string) {
+    await pick(gameId, 1, 1, 1);
+    await pick(gameId, 1, 2, 2);
+    await pick(gameId, 2, 1, 1);
+  }
+
+  it("clearing a semi DELETES the final's stored winner", async () => {
+    const gameId = await newBracket("Cascade clear", four());
+    await playOut(gameId);
+    expect(at(await drawOf(gameId), 2, 1).winnerSeed).toBe(1);
+
+    await pick(gameId, 1, 1, null);
+
+    // Under #925 this was still 1, hidden only by the resolver.
+    expect(at(await drawOf(gameId), 2, 1).winnerSeed).toBeNull();
+  });
+
+  it("re-picking the ORIGINAL entrant does not bring the final back", async () => {
+    const gameId = await newBracket("No revival", four());
+    await playOut(gameId);
+    await pick(gameId, 1, 1, null);
+    await pick(gameId, 1, 1, 1); // the same entrant as before
+
+    const draw = await drawOf(gameId);
+    expect(at(draw, 1, 1).winnerSeed).toBe(1); // the semi is decided again
+    expect(at(draw, 2, 1).winnerSeed).toBeNull(); // …and the final stays empty
+  });
+
+  it("SWITCHING a semi deletes downstream too, not only clearing", async () => {
+    const gameId = await newBracket("Cascade switch", four());
+    await playOut(gameId);
+    await pick(gameId, 1, 1, 4);
+
+    const draw = await drawOf(gameId);
+    expect(at(draw, 1, 1).winnerSeed).toBe(4);
+    expect(at(draw, 2, 1).winnerSeed).toBeNull();
+  });
+
+  it("leaves the other half of the draw alone", async () => {
+    const gameId = await newBracket("Other half", four());
+    await playOut(gameId);
+    await pick(gameId, 1, 1, null);
+    expect(at(await drawOf(gameId), 1, 2).winnerSeed).toBe(2);
+  });
+
+  it("a pick that orphans nothing issues no clear", async () => {
+    const gameId = await newBracket("No orphans", four());
+    await pick(gameId, 1, 1, 1);
+    const draw = await drawOf(gameId);
+    expect(at(draw, 1, 1).winnerSeed).toBe(1);
+    expect(draw.filter((m) => m.winnerSeed !== null)).toHaveLength(1);
   });
 });

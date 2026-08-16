@@ -56,6 +56,16 @@ export const BRACKET_METRICS: BracketMetrics = { cardHeight: 88, baseGap: 12 };
 export const SLOT_HEIGHT = 34;
 export const MATCH_HEADER_HEIGHT = 18;
 
+/**
+ * One round column's width.
+ *
+ * Widened from 172 when competitor names went from 12px to the 15 rung
+ * (STYLE_GUIDE §2a) — a bigger name in the same box just truncates sooner, which
+ * would have traded one legibility problem for another. The board is no longer
+ * inside the surface's readable column, so it can afford the width.
+ */
+export const BRACKET_COLUMN_WIDTH = 200;
+
 export interface RoundLayout {
   /** Space above the round's FIRST card, so it centres on its feeding pair. */
   offset: number;
