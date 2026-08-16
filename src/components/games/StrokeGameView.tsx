@@ -1246,7 +1246,11 @@ export function StrokeGameView() {
             `GameLifecycleActions` below already takes. Above the leaderboard, so
             "these standings are being revisited" is read before the standings. */}
         <div className="px-4 pt-3">
-          <ScoringStateBanner status={gameQ.data?.status ?? null} correctionsOpen={strokeCorrectionsOpen} />
+          <ScoringStateBanner
+            status={gameQ.data?.status ?? null}
+            correctionsOpen={strokeCorrectionsOpen}
+            pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
+          />
         </div>
         <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} />
         <FoursomeEntry

@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 import { gameLockState, type GameLifecycleInput } from "@/lib/gameLifecycle";
 
 /**
@@ -39,9 +40,28 @@ import { gameLockState, type GameLifecycleInput } from "@/lib/gameLifecycle";
 export function ScoringStateBanner({
   status,
   correctionsOpen,
-}: Pick<GameLifecycleInput, "status" | "correctionsOpen">) {
+  pointsTotal,
+}: Pick<GameLifecycleInput, "status" | "correctionsOpen"> & {
+  /**
+   * What the game is worth — the IN-PROGRESS state's whole content.
+   *
+   * `games.points_total`, the same single number the leaderboard sums and
+   * `PointsAtStake` renders. Passed IN rather than derived here so there is one
+   * source: two derivations of one number is how a banner comes to disagree
+   * with the board about the same game.
+   *
+   * A bracket is no different, even though its final settles two places — the
+   * GAME's value is one number, and how it splits across places is the board's
+   * business, not this banner's.
+   *
+   * Omitted or 0 → the banner stays absent in progress, exactly as before. A
+   * game with nothing at stake has nothing to announce.
+   */
+  pointsTotal?: number | null;
+}) {
   const { isLocked, isCorrecting } = gameLockState({ status, correctionsOpen });
-  if (!isLocked && !isCorrecting) return null;
+  const worth = Number(pointsTotal ?? 0);
+  if (!isLocked && !isCorrecting && worth <= 0) return null;
 
   /**
    * Warning tone for CORRECTING, accent for LOCKED — STYLE_GUIDE §3's
@@ -61,15 +81,31 @@ export function ScoringStateBanner({
         text: "Scoring changes permitted",
         testid: "banner-correcting",
       }
-    : {
-        bg: "var(--color-bt-accent-faint)",
-        fg: "var(--color-bt-accent)",
-        border: "var(--color-bt-accent-border)",
-        // Rack's original wording, kept verbatim — it was the only format that
-        // had a locked banner, so this is a move rather than a rewrite.
-        text: "All in · result locked",
-        testid: "banner-locked",
-      };
+    : isLocked
+      ? {
+          bg: "var(--color-bt-accent-faint)",
+          fg: "var(--color-bt-accent)",
+          border: "var(--color-bt-accent-border)",
+          text: "Game results are final",
+          testid: "banner-locked",
+        }
+      : {
+          /**
+           * IN PROGRESS — neutral, and the home for the value that used to float
+           * loose in the bracket's top right with no container.
+           *
+           * Neutral rather than accent or warning: nothing has happened yet. The
+           * card surface + an ordinary border is the "no verdict" treatment, and
+           * that is what keeps accent meaning "settled" and warning meaning
+           * "changes permitted" — both stay worth something because this state
+           * borrows neither.
+           */
+          bg: "var(--color-bt-card)",
+          fg: "var(--color-bt-text-dim)",
+          border: "var(--color-bt-border)",
+          text: `This game is worth ${fmtValue(worth)} pts`,
+          testid: "banner-in-progress",
+        };
 
   return (
     <div

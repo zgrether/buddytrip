@@ -3071,7 +3071,13 @@ function Overview({
           change is undoing. Same component, same words, same tone as the other
           three formats; it reads the same two lifecycle columns
           `GameLifecycleActions` already receives here. */}
-      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen} />
+      <ScoringStateBanner
+        status={status}
+        correctionsOpen={correctionsOpen}
+        // Off the game row this component already has — no new prop, and the
+        // same `points_total` the leaderboard sums for this game.
+        pointsTotal={(game?.points_total as number | null) ?? null}
+      />
 
       {/* Section header — mirrors Rack's "GROUPS · TAP TO ENTER SCORES" above-list
           label (one shared header pattern across formats). The suffix nudges

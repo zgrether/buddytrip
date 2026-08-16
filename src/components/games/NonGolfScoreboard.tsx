@@ -179,7 +179,11 @@ export function NonGolfScoreboard({
           controls becoming live again (#833). Same shared component, same words
           and tone as the other three formats. Reads the same two columns the
           `gameLockState` call above already uses. */}
-      <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
+      <ScoringStateBanner
+        status={game.status}
+        correctionsOpen={game.corrections_open}
+        pointsTotal={game.points_total as number | null}
+      />
       {/* `canEdit` now reaches the outcome rows themselves. It used to be
           expressed by handing them a no-op `onPick`, which leaves three
           live-looking, focusable controls that silently do nothing for a member. */}
