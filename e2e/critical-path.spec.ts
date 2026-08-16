@@ -197,6 +197,26 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   //    This exists because of #701; remove it when that's fixed.
   await expect(row).toContainText("Ready to play", { timeout: 20_000 });
   await row.click();
+
+  // 6b. The game header must be VISIBLE, not merely positioned.
+  //
+  // #938 moved this row flush under the app bar with a negative margin on the
+  // row itself. The panel is `overflow-y-auto`, so a first child pulled above a
+  // scroll container's origin is unreachable by scrolling — it shipped clipped,
+  // with the game title sliced in half. It passed its own verification because
+  // that read `getBoundingClientRect().top`, which reports a clipped box's
+  // geometry perfectly happily.
+  //
+  // So the assertion is the one that was missing: the row does not start above
+  // the panel that scrolls it. Cheap, and it pins the whole class.
+  const clipped = await page.evaluate(() => {
+    const row = document.querySelector('[data-testid="game-action-row"]') as HTMLElement | null;
+    const panel = document.querySelector('[data-testid="game-panel"]') as HTMLElement | null;
+    if (!row || !panel) return -1;
+    return Math.round(panel.getBoundingClientRect().top - row.getBoundingClientRect().top);
+  });
+  expect(clipped, "game header clipped above the panel's scroll origin").toBeLessThanOrEqual(0);
+
   await page.getByTestId("group-enter-row").first().click();
 
   // 7. Enter hole 1 for both players — same downstream steps as the standalone
