@@ -1225,6 +1225,10 @@ export function RackGameView() {
         final={final}
         status={gameQ.data?.status}
         correctionsOpen={correctionsOpen}
+        // The GAME's total, not the per-slot value beside it — the banner names
+        // the number the leaderboard sums for this game, and rack's per-slot
+        // figure is a different fact about the same game.
+        pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
       />
       {/* Finalize / #7's deliberate, auditable correction path / re-lock — all
           three now decided by the SHARED `gameLifecycle` predicate and rendered

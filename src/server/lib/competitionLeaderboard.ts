@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
-import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { isPerMatch, isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame } from "@/lib/resultStrategy";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
@@ -307,8 +307,12 @@ export async function computeCompetitionLeaderboard(
       // A failed entrant read is "unknown", not "nobody scored" — see the note on
       // `entrantReadError`. Empty standings here give the pre-decision shape.
       const entrantStandings = entrantReadError ? [] : entrantStandingsByGame.get(g.id as string) ?? [];
+      // `effectiveDistribution`, NOT `isPlacement(...) ? values : []`. The empty
+      // array awarded 0 to every entrant, and this branch returns before the
+      // winner-take-all flatten below — so a bracket with no authored split paid
+      // nothing at all while every other format flattened to its total.
       const pointsByEntrant = placementPoints(
-        isPlacement(rawDist) ? rawDist.values : [],
+        effectiveDistribution(rawDist, g.points_total as number | null),
         entrantStandings,
         "low_wins"
       );

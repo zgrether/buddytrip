@@ -28,14 +28,17 @@ describe("ScoringStateBanner", () => {
     expect(html).toContain("Scoring changes permitted");
     expect(html).toContain("var(--color-bt-warning-faint)");
     expect(html).toContain("var(--color-bt-warning-border)");
-    expect(html).not.toContain("result locked");
+    expect(html).not.toContain("results are final");
   });
 
-  it("LOCKED → accent-toned 'All in · result locked' (rack's wording, kept)", () => {
+  it("FINAL → accent-toned 'Game results are final'", () => {
+    // Reworded from rack's original "All in · result locked" when the banner
+    // gained its third state, so the three read as one set — "worth N" /
+    // "results are final" / "changes permitted" — rather than one of them
+    // carrying an older surface's phrasing.
     const html = render("complete", false);
     expect(html).toContain('data-testid="banner-locked"');
-    expect(html).toContain("All in");
-    expect(html).toContain("result locked");
+    expect(html).toContain("Game results are final");
     expect(html).toContain("var(--color-bt-accent-faint)");
     expect(html).not.toContain("Scoring changes permitted");
   });
@@ -62,12 +65,75 @@ describe("ScoringStateBanner", () => {
   });
 
   it("takes no role input — the same banner for every viewer", () => {
-    // Encoded as a type-level fact rather than a runtime one: the component's
-    // props are exactly the two lifecycle columns. If someone adds `canEdit`,
-    // this call stops compiling, which is the point — a member can correct their
-    // own scores in this mode, so gating the banner would hide a state they
-    // participate in.
-    const props: Parameters<typeof ScoringStateBanner>[0] = { status: "complete", correctionsOpen: true };
-    expect(Object.keys(props).sort()).toEqual(["correctionsOpen", "status"]);
+    // The guard is about ROLE, not about prop count. The banner now also takes
+    // `pointsTotal` (the in-progress state's content), which is a fact about the
+    // GAME — the same for every viewer, so it does not weaken this.
+    //
+    // What must never appear is a viewer-dependent input: a member can correct
+    // their own scores in this mode, so gating the banner on `canEdit` would
+    // hide a state they participate in. Asserted as a type-level fact — a
+    // `canEdit` prop makes this call stop compiling.
+    const props: Parameters<typeof ScoringStateBanner>[0] = {
+      status: "complete",
+      correctionsOpen: true,
+      pointsTotal: 8,
+    };
+    expect(Object.keys(props).sort()).toEqual(["correctionsOpen", "pointsTotal", "status"]);
+    // No role input, spelled out so the intent survives the next prop addition.
+    expect(Object.keys(props)).not.toContain("canEdit");
+  });
+});
+
+/**
+ * THE THIRD STATE — in progress.
+ *
+ * New here, and it is where the value that used to float loose in the bracket's
+ * top right lands. The banner is now the ONE place a game says what it is worth,
+ * in every format: two homes for one number is how they come to disagree.
+ */
+describe("IN PROGRESS — what the game is worth", () => {
+  const render = (status: string | null, correctionsOpen: boolean, pointsTotal?: number | null) =>
+    renderToStaticMarkup(
+      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen} pointsTotal={pointsTotal} />
+    );
+
+  it("names the value, in a neutral tone", () => {
+    const html = render("active", false, 8);
+    expect(html).toContain('data-testid="banner-in-progress"');
+    expect(html).toContain("This game is worth 8 pts");
+    // Neutral, NOT accent or warning — nothing has happened yet, and borrowing
+    // either tone would spend the meaning the other two states rely on.
+    expect(html).toContain("var(--color-bt-card)");
+    expect(html).not.toContain("var(--color-bt-accent-faint)");
+    expect(html).not.toContain("var(--color-bt-warning-faint)");
+  });
+
+  it("uses the app's half formatter, so 4½ is not 4.5", () => {
+    expect(render("active", false, 4.5)).toContain("worth 4½ pts");
+  });
+
+  it("stays ABSENT when the game is worth nothing", () => {
+    // Unchanged from before this state existed: a game with nothing at stake has
+    // nothing to announce, so an unconfigured game gains no empty band.
+    expect(render("active", false, 0)).toBe("");
+    expect(render("active", false, null)).toBe("");
+    expect(render("active", false)).toBe("");
+  });
+
+  it("FINAL and CORRECTING outrank it — the value never overwrites a verdict", () => {
+    // A finished game is worth the same number, but "results are final" is the
+    // thing to say. Passing the value must not change which state renders.
+    expect(render("complete", false, 8)).toContain('data-testid="banner-locked"');
+    expect(render("complete", false, 8)).not.toContain("This game is worth");
+    expect(render("complete", true, 8)).toContain('data-testid="banner-correcting"');
+    expect(render("complete", true, 8)).not.toContain("This game is worth");
+  });
+
+  it("the CORRECTING copy and tone are byte-identical to #867's", () => {
+    // The one state with a warning tone, and the one this change must not touch.
+    const html = render("complete", true, 8);
+    expect(html).toContain("Scoring changes permitted");
+    expect(html).toContain("var(--color-bt-warning-faint)");
+    expect(html).toContain("var(--color-bt-warning-border)");
   });
 });

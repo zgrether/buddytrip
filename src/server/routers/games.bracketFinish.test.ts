@@ -538,3 +538,64 @@ describe("the finished bracket's notification summary", () => {
     expect(formatBracketSummary(asTeams)).toBe("");
   });
 });
+
+/**
+ * A bracket with NO authored distribution pays its total to first place.
+ *
+ * The regression: three call sites each resolved a null split to `[]`, and an
+ * empty distribution makes `placementPoints` award 0 to everyone. A live bracket
+ * therefore showed no value in its final's header, no projection on the board,
+ * and rolled up NOTHING — while setting any second-place value fixed all three,
+ * which is the tell that they share one input.
+ *
+ * Asserted through `competitions.leaderboard` (the server roll-up) rather than
+ * the UI, because "the game contributes nothing" is a roll-up fact.
+ */
+describe("a bracket with NO distribution still pays out", () => {
+  it("awards the whole total to the champion's team", async () => {
+    const cup = await newCup("no-split Cup");
+    // distribution omitted → `points_distribution` is NULL.
+    const gameId = await newBracket(cup, "No split", fourSplit(cup), { pointsTotal: 8 });
+    await playChalk4(gameId);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const lb = await board(cup);
+    // Seed 1 wins and is on team A; everyone else gets nothing. Before the fix
+    // BOTH teams were 0 and the game contributed nothing at all.
+    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(8);
+    expect(lb.teamTotals[cup.teamB] ?? 0).toBeCloseTo(0);
+    expect((lb.teamTotals[cup.teamA] ?? 0) + (lb.teamTotals[cup.teamB] ?? 0)).toBeCloseTo(8);
+  });
+
+  it("still records every entrant's PLACE — the record is unchanged", async () => {
+    // The placements were never the broken part: `bracketPlacements` does not
+    // read the distribution at all. Only the valuing was wrong, and this pins
+    // that the fix did not disturb the record.
+    const cup = await newCup("no-split places Cup");
+    const gameId = await newBracket(cup, "No split places", fourSplit(cup), { pointsTotal: 8 });
+    await playChalk4(gameId);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const rows = await resultsOf(gameId);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toMatchObject({ position: 1 });
+    expect(rows.filter((r) => r.position === 3)).toHaveLength(2);
+  });
+
+  // NOT tested here: "a game worth 0 awards nothing". That state cannot be
+  // constructed — `save_game_config` refuses to enable scoring without a point
+  // value ("set a point value before enabling scoring"), so a LIVE game worth 0
+  // does not exist. The branch is covered directly in
+  // `effectiveDistribution.test.ts`, where it is reachable.
+
+  it("an authored split is untouched by the flatten", async () => {
+    const cup = await newCup("split still works Cup");
+    const gameId = await newBracket(cup, "Split", fourSplit(cup), { distribution: [4, 2, 1, 1], pointsTotal: 8 });
+    await playChalk4(gameId);
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    const lb = await board(cup);
+    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(5);
+    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(3);
+  });
+});

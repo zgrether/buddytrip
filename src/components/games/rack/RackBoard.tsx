@@ -43,6 +43,10 @@ interface RackBoardProps {
    *  keeps no private opinion about what "final" means (CLAUDE.md #24). */
   status?: string | null;
   correctionsOpen?: boolean;
+  /** `games.points_total` — the banner's in-progress content. The GAME total,
+   *  NOT the per-slot value shown beside the board: the banner names the number
+   *  the leaderboard sums for this game. */
+  pointsTotal?: number | null;
 }
 
 // ── The board (label + toggle + rack + sit-out) ──────────────────────────────
@@ -58,6 +62,7 @@ export function RackBoard({
   variant = "stacked",
   status,
   correctionsOpen,
+  pointsTotal,
   final,
 }: RackBoardProps) {
   const colorOf = (t: "A" | "B") => (t === "A" ? teamA.color : teamB.color);
@@ -80,7 +85,7 @@ export function RackBoard({
           `gameLockState` now so the CORRECTING case exists at all. Before, this
           was gated on `final` alone and so disappeared exactly when there was
           something worth saying. */}
-      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen === true} />
+      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen === true} pointsTotal={pointsTotal} />
 
       {slots.length === 0 ? (
         <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", padding: "8px 2px" }}>

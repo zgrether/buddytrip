@@ -4,7 +4,6 @@ import { useCallback, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
-import { PointsAtStake } from "@/components/games/PointsAtStake";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
@@ -225,17 +224,21 @@ export function BracketScoringSurface({
     // one piece of content that should never have been in the readable column.
     <div className="flex w-full flex-col gap-3 px-4 py-5">
       <Column>
-        {/* What the game is worth — same row, same formatter as the other formats,
-            so the number here and the board's per-match values agree by construction. */}
-        <div className="flex justify-end">
-          <PointsAtStake value={Number(game.points_total ?? 0)} />
-        </div>
+        {/* The value used to sit in a bare `PointsAtStake` row above this, with no
+            container — it is IN the banner now, which is the one place a game
+            says what it is worth. Two homes for one number is how they drift. */}
+        <ScoringStateBanner
+          status={game.status}
+          correctionsOpen={game.corrections_open}
+          pointsTotal={game.points_total}
+        />
 
-        <ScoringStateBanner status={game.status} correctionsOpen={game.corrections_open} />
-
-        <div style={{ ...EYEBROW, margin: "2px 0 3px" }}>
-          {canEdit && !isLocked ? "Tap a competitor to advance them" : "Bracket"}
-        </div>
+        {/* The "BRACKET" label is gone: it named the surface on a screen that is
+            visibly a bracket. What remains is the one thing the label was NOT —
+            an instruction, and only while there is something to tap. */}
+        {canEdit && !isLocked && (
+          <div style={{ ...EYEBROW, margin: "2px 0 3px" }}>Tap a competitor to advance them</div>
+        )}
       </Column>
 
       <BracketBoard

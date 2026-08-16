@@ -31,7 +31,7 @@ import {
   type NonGolfConfigDraft,
   type CompetitionFormat,
 } from "@/lib/configDraft";
-import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
@@ -519,15 +519,22 @@ export function NonGolfGameView() {
     if (!isBracket) return null;
     const placements = bracketPlacements(resolvedDraw);
     if (placements.length === 0) return null;
-    const d = game?.points_distribution as PointsDistribution | null | undefined;
+    // Shared with the SERVER roll-up (`effectiveDistribution`) — a null split
+    // pays the total to first place, so the projection and the board agree.
     const perEntrant = pointsForPlacements(
       placements.map((p) => ({ entityId: String(p.seed), position: p.position })),
-      isPlacement(d) ? d.values : [],
+      effectiveDistribution(
+        game?.points_distribution as PointsDistribution | null | undefined,
+        game?.points_total as number | null | undefined,
+      ),
     );
     const out: Record<string, number> = {};
     for (const [teamId, v] of teamPointsFromEntrants(perEntrant, teamBySeed)) out[teamId] = v;
     return out;
-  }, [isBracket, resolvedDraw, game?.points_distribution, teamBySeed]);
+  // `points_total` is in the trigger set because the projection now derives from
+  // it via `effectiveDistribution` (CLAUDE.md #9 — enumerate the FULL set, not
+  // the obvious one). Caught by the React Compiler lint, not by me.
+  }, [isBracket, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
 
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
@@ -994,7 +1001,12 @@ export function NonGolfGameView() {
           // What each match is worth. The game's own placement split, or empty when
           // it pays no per-place values — the header then quotes nothing rather than
           // inventing zeroes.
-          pointsDistribution={isPlacement(game.points_distribution as PointsDistribution | null) ? (game.points_distribution as { values: number[] }).values : []}
+          // Same helper as the projection and the server roll-up: with no authored
+          // split the final is worth the game's total, so the header says so.
+          pointsDistribution={effectiveDistribution(
+            game.points_distribution as PointsDistribution | null,
+            game.points_total as number | null,
+          )}
           canEdit={canEdit}
           onPosted={exitToBoard}
         />
