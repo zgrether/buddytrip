@@ -856,36 +856,69 @@ Applying a course to a game **snapshots** its `par[]` + `handicap_index[]` into
 `games.scorecard_schema.units.metadata` (the shape `strokeHoles` reads); the
 snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 
-## Stop and ask for a look when a surface first becomes REACHABLE
+## Verification Cadence — stop and ask Zach to look
 
-**The trigger is reachability, not completion.** The first time a surface can be
-opened at all, stop and ask Zach to look at it. Three moments, concretely:
+**Stop and ask Zach to look the moment a surface first becomes reachable — not when the
+phase completes.** Stop building *on that surface*, and say plainly that the look is
+outstanding — in the PR body, the commit, the report, wherever the next person reads.
+This is not a full halt. Pure modules, migrations, server wiring, and any other track
+that doesn't sit on top of the surface keep moving; Zach isn't always at a keyboard, and
+a rule that blocks hours of parallel work will be broken the first time it's inconvenient
+— and a rule that's been broken once is dead. What must not happen: building a second
+thing on top of an unlooked-at surface, or letting outstanding looks pile up silently
+until they're one batched review at the end. It replaces the loop the bracket format ran
+on (~35 PRs, #908–#947), where looks landed at phase boundaries and the gap between
+building a surface and seeing it was measured in PRs.
 
-- the first time a **settings page** renders
-- the first time a **play surface** renders
-- the first time **results reach the board**
+**Reachable = you can navigate to it in the running app through normal UI and it renders
+against real data.** Half-wired, unstyled, missing its empty state, and ugly all still
+count as reachable — those are exactly the conditions worth looking at, because they're
+still cheap to change. "It compiles," "the route resolves," "the query returns rows," and
+"the unit test passes" are NOT reachable; none of them put pixels in front of a person.
 
-**Not at every PR** — that is noise, and noise trains the ask to be ignored.
-**And not at phase boundaries**, which is exactly what produced the pattern this
-rule exists to break: six PRs of build, then a look.
+**The ask is specific or it isn't an ask.** Give: the deployed URL or local path, the
+state to be in (which trip / game / competition, and which role — owner vs. member
+matters), what is deliberately not built yet, and one or two concrete questions. "Have a
+look and let me know what you think" wastes the round trip. Zach will look at what he was
+pointed at and answer what he was asked.
 
-**Why, in one line:** across the bracket build a person on a device found roughly
-**three times** as much as every automated mechanism combined — CI found nothing
-at all across 35 PRs — and the cost of looking late is that a wrong assumption
-from the first PR is still being paid for at the sixth.
-(`BRACKET_RETROSPECTIVE.md` carries the count and the worked examples.)
+**Do NOT stop for work with no surface.** Pure modules, migrations, RPCs, type-level
+refactors, and anything whose output is another commit rather than a screen do not trigger
+this. Stopping constantly turns the rule into noise, and a rule that's noise stops being
+followed.
 
-The ask is short and specific: **what is reachable, what state to put it in
-(usually *nothing configured* — that is where the defects were), and what you are
-unsure about.** It is not a request for permission to continue, and it does not
-mean stopping work; it means the next PR is built on a checked assumption rather
-than an unchecked one.
+**The trigger is first render, plus any time the surface's model changes.** Not once per
+change to a surface — most changes don't need a second look — but a change to *what the
+surface is* does. Two of the six bracket reversals were second looks: the header failed
+twice, and the field builder needed re-looking after the model changed underneath it. The
+field-picker rework wasn't a new surface, but it was a new answer to what that surface
+was for, and the first look had been answered against the old one. Re-look when the
+surface starts showing a different entity, a different unit of data, or a different set of
+states. Do not re-look for styling, copy, a bug fix, or one more row in a list that
+already renders rows.
 
-This is the operational half of a finding, not ceremony. The things it catches —
-an empty state, a wrong default, a surface that reads badly, a value with no home
-— are the things no test in this repo has ever caught, and the retrospective is
-explicit that they do not move into the automated columns however hard they are
-pushed.
+**Why this is a rule and not another test.** From `BRACKET_RETROSPECTIVE.md` (PR #947),
+found-by count across the bracket build: CI **0**, guards + compiler **6**, a person on a
+device **~17**, reading **~6** — and most of that reading column is diagnosis of something
+a person had already reported, not independent discovery. A person looking at a running
+surface found roughly three times as much as every automated mechanism combined. CI found
+nothing.
+
+The mechanism behind that number: the format registry can ask *"does this format answer
+every question I know about?"* It cannot ask *"is there a question I don't know about?"*
+Every expensive finding in the bracket build was a question the previous four formats had
+happened to share an answer to — invisible to the registry, invisible to the types, and
+invisible to a test written from the same assumptions as the code. Only a person looking
+at the thing asks the second question, and they ask it in about four seconds without
+being told to. The issues filed off that retrospective (#943, #944, #945, #946) all
+improve the automated column. None of them touch the column that actually found things.
+This rule is that one.
+
+**The cost asymmetry is the whole argument.** An early look costs one round trip and a
+few minutes of Zach's attention. A late look costs everything built on top of the wrong
+surface in between — and the later it lands, the more likely the answer is "that's fine,
+ship it," not because it's right but because by then the shape has set and the cost of
+changing it is visible while the cost of keeping it isn't.
 
 ## What "Done" Means for Any Task
 
@@ -894,6 +927,11 @@ pushed.
 3. Committed with a clear message
 4. No TypeScript errors (`npx tsc --noEmit` passes)
 5. No console errors in the browser
+
+Note that this list is the *end* checkpoint. The first-look checkpoint happens much
+earlier — see **Verification Cadence** above. A task reaching "done" without Zach having
+seen the surface when it first rendered means the rule was skipped, not that the rule
+didn't apply.
 
 ## Local Dev Troubleshooting
 
