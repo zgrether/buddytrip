@@ -740,6 +740,23 @@ CI and local dev off the shared prod project). Two consequences follow:
   rule: still manual, still separate from merging, still never on a merge or a schedule.
   **`--linked` from a laptop stays the default path; the button is the exception.**
 
+- **PUSH ONLY FROM A BRANCH WHOSE MIGRATION IS ALREADY MERGED TO `main`.**
+  `db push --linked` reads the FILESYSTEM, not git — it does not know what is
+  committed, merged, or which branch you are on, and pushes whatever `.sql` sits in
+  `supabase/migrations/`. So check `git status` and `git branch --show-current` first,
+  every time. **This has now happened twice**, which makes it a pattern rather than an
+  accident: an uncommitted 109 reached prod while the merged 108 did not (2026-08-09),
+  and 124 was pushed from its still-open PR branch while `main` had only 122/123
+  (2026-08-17).
+  **Why prod-ahead-of-`main` is worse than untidy: it silently disarms CI.** Every CI
+  job replays migrations *from `main`* (#636), so while prod is ahead, CI rebuilds a
+  database WITHOUT the newer migration — during the 124 window that meant CI would have
+  reconstructed the exact trip-delete regression the hotfix had just removed, and a green
+  run would have meant nothing. The environment built to catch a problem reproduces it
+  instead. If pushing a hotfix ahead of its merge is genuinely necessary, merge the PR
+  immediately after and treat the gap as a window in which CI results are not
+  trustworthy.
+
 **Don't apply migrations via the Supabase MCP tool** (`apply_migration`, raw `execute_sql`
 for DDL). It records the migration under the *apply timestamp*, which differs from the local
 filename timestamp — so the next `supabase db push --linked` fails with "Remote migration
@@ -974,6 +991,18 @@ produced it. Three channels have actually bitten:
 - **A background job you started can contend with the one you are watching.**
   Running the Vitest suite and Playwright against the same stack simultaneously
   manufactures exactly the flakiness you would then go debug.
+- **Repeated `supabase db reset` cycles can leave a suite reproducibly red
+  locally while CI is green.** Observed 2026-08-17: after several resets while
+  iterating on migrations 122–124, three bracket-pick cases in
+  `src/server/lib/broadcastScoreEvents.test.ts` failed **consistently, including
+  in isolation** — which is exactly the signature that normally means "real
+  regression", not "flake". It was neither. **Run the control on `main` before
+  believing it** (CLAUDE.md's standing advice, and what settled it here): the
+  same three failed on `origin/main` with no local changes at all, and `main`'s
+  CI was green. So the tell is not the failure's *consistency* but whether it
+  reproduces on an unmodified tree. If it does, it is your environment; a
+  `supabase stop` / `start` is the reset that clears it — but see the warning
+  above about doing that while another session is mid-run.
 
 **Why this is worth its own rule: the failure mode is believing a result, not
 missing one.** Every case above returns a confident, well-formatted answer about
