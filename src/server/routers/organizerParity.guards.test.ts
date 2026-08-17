@@ -452,6 +452,89 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
   });
 
   // =========================================================================
+  // THE INVITE PAIR — moved on the THIRD attempt (#788 → reverted #790 →
+  // #823 → reverted → here). Both of the reasons behind those reverts are
+  // resolved: the role-INPUT split is back (below, plus migration 103 at the
+  // DB), and migration 122 widened the `trip_members` policies that refused
+  // the writes in CI last time.
+  //
+  // The distinction this pair exists to hold: an Organizer may INVITE, but may
+  // not invite someone AS AN ORGANIZER. A procedure that takes a role as input
+  // cannot be gated on role alone.
+  // =========================================================================
+  describe("the invite pair — moved (migration 122)", () => {
+    it("inviteByEmail admits an Organizer inviting a MEMBER", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.inviteByEmail({
+            tripId,
+            email: `invite-member-${genId("e")}@example.test`,
+            role: "Member",
+          })
+        )
+      ).toBe(false);
+    });
+
+    it("inviteByEmail REFUSES an Organizer inviting an ORGANIZER", async () => {
+      // The whole reason #790 reverted this. The guard admits the caller; the
+      // procedure refuses the grant.
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.inviteByEmail({
+            tripId,
+            email: `invite-organizer-${genId("e")}@example.test`,
+            role: "Organizer",
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("inviteByEmail still admits the OWNER inviting an Organizer", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.caller().tripMembers.inviteByEmail({
+            tripId,
+            email: `owner-invite-org-${genId("e")}@example.test`,
+            role: "Organizer",
+          })
+        )
+      ).toBe(false);
+    });
+
+    it("inviteByEmail refuses a Member", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("member").tripMembers.inviteByEmail({
+            tripId,
+            email: `member-invite-${genId("e")}@example.test`,
+            role: "Member",
+          })
+        )
+      ).toBe(true);
+    });
+
+    it("sendInvitationBlast admits an Organizer (it grants no role)", async () => {
+      expect(
+        await forbidden(() =>
+          ctx
+            .callerAs("planner")
+            .tripMembers.sendInvitationBlast({ tripId, memberUserIds: [memberId] })
+        )
+      ).toBe(false);
+    });
+
+    it("sendInvitationBlast refuses a Member", async () => {
+      expect(
+        await forbidden(() =>
+          ctx
+            .callerAs("member")
+            .tripMembers.sendInvitationBlast({ tripId, memberUserIds: [memberId] })
+        )
+      ).toBe(true);
+    });
+  });
+
+  // =========================================================================
   // HELD BACK — deviations that could NOT move in this change, each blocked by
   // a specific gate. These are still deviations from the ratified rule; the
   // tests pin the CURRENT state so a later sweep is a deliberate act.
@@ -467,33 +550,6 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
           ctx
             .callerAs("planner")
             .ghostCrew.update({ tripId, guestUserId: memberId, name: "Nope" })
-        )
-      ).toBe(true);
-    });
-
-    // Blocked by: the procedure MINTS THE ROLE IT IS GATED ON. `role` defaults
-    // to "Organizer" and is written into trip_members, so an Organizer-gated
-    // version could create another Organizer — exception 1 routed around. It
-    // was briefly Organizer+ (#788) and is reverted; re-widening needs a
-    // server-side split on the role INPUT, not a different guard.
-    it("tripMembers.inviteByEmail (mints the role it is gated on)", async () => {
-      expect(
-        await forbidden(() =>
-          ctx.callerAs("planner").tripMembers.inviteByEmail({
-            tripId,
-            email: `held-invite-${genId("e")}@example.test`,
-            role: "Member",
-          })
-        )
-      ).toBe(true);
-    });
-
-    it("tripMembers.sendInvitationBlast (moves with inviteByEmail)", async () => {
-      expect(
-        await forbidden(() =>
-          ctx
-            .callerAs("planner")
-            .tripMembers.sendInvitationBlast({ tripId, memberUserIds: [memberId] })
         )
       ).toBe(true);
     });

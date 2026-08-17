@@ -164,14 +164,31 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
-  // Owner-only, and #823 proved it is not a guard problem: widening the guard
-  // let an Organizer through and the DATABASE then refused the trip_members
-  // insert ("new row violates row-level security policy"). Blocked on the
-  // trip_members role-column trigger, not on this procedure's shape.
-  it("inviteByEmail — planner cannot invite (Owner only)", async () => {
+  // #786/#824 — was "planner cannot invite (Owner only)". #823 proved that was
+  // never a guard problem: widening the guard let an Organizer through and the
+  // DATABASE refused the trip_members insert. Migration 122 widened that
+  // policy, so the guard could finally move. What an Organizer still cannot do
+  // is invite someone AS AN ORGANIZER — pinned immediately below, since that is
+  // the boundary, not the invite itself.
+  it("inviteByEmail — planner CAN invite a Member", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+      caller.tripMembers.inviteByEmail({
+        tripId,
+        email: `planner-invite-${Date.now()}@example.com`,
+        role: "Member",
+      })
+    ).resolves.toBeTruthy();
+  });
+
+  it("inviteByEmail — planner CANNOT invite an Organizer", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.inviteByEmail({
+        tripId,
+        email: `planner-invite-org-${Date.now()}@example.com`,
+        role: "Organizer",
+      })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -503,11 +520,23 @@ describe("tripMembers router — sendInvitationBlast", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // Owner-only alongside inviteByEmail, and blocked by the same thing: #823
-  // widened the guard and the `last_emailed_at` UPDATE on trip_members then
-  // matched zero rows for an Organizer.
-  it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
+  // #786/#824 — was "planner cannot blast (owner-only)". It moved WHOLESALE,
+  // with no input split, because it takes no role: it sends email and stamps
+  // send-tracking, granting nothing. It was Owner-only only as inviteByEmail's
+  // sibling, and blocked by the same widened policy (#823's CI failure was the
+  // `last_emailed_at` UPDATE matching zero rows for an Organizer).
+  it("sendInvitationBlast — planner CAN blast", async () => {
     const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.sendInvitationBlast({
+        tripId,
+        memberUserIds: [ctx.getUser("member").id],
+      })
+    ).resolves.toBeTruthy();
+  });
+
+  it("sendInvitationBlast — a plain member still cannot blast", async () => {
+    const caller = ctx.callerAs("member");
     await expect(
       caller.tripMembers.sendInvitationBlast({
         tripId,
