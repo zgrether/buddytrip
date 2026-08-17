@@ -419,6 +419,36 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
         )
       ).toBe(true);
     });
+
+    // Migration 123 — removal is a stronger form of `updateRole`, which is
+    // Owner-only. An Organizer who cannot demote a peer must not be able to
+    // delete them either. Enforced by the trigger (covered directly at the
+    // table in `tripMembers.removeScoping.test.ts`); this is the tRPC half.
+    it("tripMembers.remove REFUSES an Organizer removing a fellow Organizer", async () => {
+      // Must be a DIFFERENT Organizer: passing the caller's own id hits the
+      // "Cannot remove yourself" BAD_REQUEST first, which is a separate rule
+      // and would make this pass for the wrong reason.
+      await ctx.admin.from("trip_members")
+        .update({ role: "Organizer" }).eq("trip_id", tripId).eq("user_id", memberId);
+      try {
+        expect(
+          await forbidden(() =>
+            ctx.callerAs("planner").tripMembers.remove({ tripId, userId: memberId })
+          )
+        ).toBe(true);
+      } finally {
+        await ctx.admin.from("trip_members")
+          .update({ role: "Member" }).eq("trip_id", tripId).eq("user_id", memberId);
+      }
+    });
+
+    it("tripMembers.remove REFUSES an Organizer removing the Owner", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.remove({ tripId, userId: ctx.user.id })
+        )
+      ).toBe(true);
+    });
   });
 
   // =========================================================================

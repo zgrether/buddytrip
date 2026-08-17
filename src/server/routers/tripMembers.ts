@@ -368,10 +368,10 @@ export const tripMembersRouter = router({
         userId: z.string(),
       })
     )
-    // #786/#824 — Organizer may remove crew. Removing an OWNER is still
-    // refused, by the migration-122 trigger rather than by this gate, so the
-    // rule holds for a PostgREST caller too (an Organizer with a browser JWT
-    // is exactly the case tRPC can't see).
+    // #786/#824 — Organizer may remove crew, but MEMBERS ONLY. Removing an
+    // Owner (migration 122) or a fellow Organizer (migration 123) is refused
+    // at the DATABASE, so the rule holds for a PostgREST caller too — an
+    // Organizer with a browser JWT is exactly the case tRPC cannot see.
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       if (input.userId === ctx.user!.id) {
@@ -379,6 +379,30 @@ export const tripMembersRouter = router({
           code: "BAD_REQUEST",
           message: "Cannot remove yourself",
         });
+      }
+
+      // The readable half of migration 123. `updateRole` is Owner-only because
+      // only the Owner changes who is trusted (PERMISSIONS.md:186), and removal
+      // is a stronger form of the same act — without this an Organizer couldn't
+      // demote a peer but could delete them. The trigger is the authority and
+      // refuses it regardless; this exists so the normal path gets a sentence
+      // naming the way forward instead of a raw database error.
+      if (ctx.tripRole !== "Owner") {
+        const { data: target } = await ctx.supabase
+          .from("trip_members")
+          .select("role")
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", input.userId)
+          .maybeSingle();
+
+        if (target && target.role !== "Member") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              `Only the trip owner can remove ${target.role === "Owner" ? "the owner" : "an organizer"}. ` +
+              `Ask the owner to remove them, or to change their role to Member first.`,
+          });
+        }
       }
 
       const { error } = await ctx.supabase
