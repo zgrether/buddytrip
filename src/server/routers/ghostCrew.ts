@@ -4,6 +4,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { clearTripTeamAssignments } from "../lib/leaveTrip";
+import { findOrphanBlockers, orphanRefusalMessage } from "../lib/ownerGuard";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
@@ -427,6 +428,28 @@ export const ghostCrewRouter = router({
       // way, leaving the guest visibly still on the trip. This gate is one of
       // #786's remaining ten and will widen when the trip_members role-column
       // trigger lands, so it is checked before that rather than after.
+      // #957 — the SAME orphan guard `users.deleteMe` runs, because this
+      // procedure can reach the same end state by a different route. The
+      // delete below keys on `input.guestUserId` with no `is_guest` filter (the
+      // is_guest re-check lives in `delete_orphan_guest_user`, which gates the
+      // USERS row, not this membership row). So an Owner passing their OWN id
+      // removes their own Owner membership — bypassing `tripMembers.remove`'s
+      // "Cannot remove yourself" guard, which is in a different procedure.
+      //
+      // RLS does not stop it and should not: the policy is
+      // `user_id = auth.uid() OR has_trip_role('Owner')` and self-removal
+      // satisfies both. This is not a permission failure — the Owner IS allowed
+      // to. It is a consequence failure, so the guard keys on the consequence.
+      const blockers = await findOrphanBlockers(ctx.supabase, input.guestUserId, {
+        tripId: ctx.tripId,
+      });
+      if (blockers.length > 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: orphanRefusalMessage(blockers, "leave-trip"),
+        });
+      }
+
       const { error, count } = await ctx.supabase
         .from("trip_members")
         .delete({ count: "exact" })

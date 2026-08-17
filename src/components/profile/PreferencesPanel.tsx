@@ -1040,12 +1040,24 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
   const [confirmText, setConfirmText] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const canDelete = confirmText === "DELETE" && status !== "loading";
+  // `isBlocked` is folded in below (defined after the query) — the button is
+  // disabled for a blocked account, but that is presentation only: the server
+  // refuses regardless (#957 §4.3, a disabled button is not the fix).
+  const canType = confirmText === "DELETE" && status !== "loading";
 
   // Permanently delete the account: server deletes the auth user (cascading /
   // anonymizing their rows per migrations 025+027), then we sign out locally
   // and land on the marketing page.
   const deleteMe = trpc.users.deleteMe.useMutation();
+  // #957 — state the blocker BEFORE the button rather than after a failed
+  // press. The server re-checks in `deleteMe` and is the authority; this is
+  // the courtesy on top of it, so a stale/absent read can never let a delete
+  // through that the server would refuse.
+  const { data: blockerInfo } = trpc.users.deletionBlockers.useQuery();
+  const blockedBy = blockerInfo?.blockers ?? [];
+  const isBlocked = blockedBy.length > 0;
+  const canDelete = canType && !isBlocked;
+
   const deleteAccount = async () => {
     setStatus("loading");
     setErrorMsg("");
@@ -1062,10 +1074,42 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <SheetShell title="Delete account" onClose={onClose}>
+      {/* The old copy claimed this removed "trips you own", which was never
+          true — trips SURVIVE the account (that is #957's whole bug). Saying so
+          accurately matters most on the screen where someone is deciding. */}
       <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-        This permanently removes your account, trips you own, and all
-        associated data. It cannot be undone.
+        This permanently removes your account and your personal data. It cannot
+        be undone.
       </p>
+
+      {isBlocked && (
+        <div
+          data-testid="delete-account-blocked"
+          className="mt-3 rounded-lg p-3"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-danger)",
+          }}
+        >
+          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-danger)" }}>
+            You can&rsquo;t delete your account yet
+          </p>
+          <p className="mt-1.5 text-xs" style={{ color: "var(--color-bt-text)" }}>
+            {blockerInfo?.message}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {blockedBy.map((b) => (
+              <li key={b.tripId} className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                <span style={{ color: "var(--color-bt-text)" }}>{b.title}</span>
+                {" — "}
+                {b.hasTransferTarget
+                  ? "transfer ownership to another member"
+                  : "no one eligible to take it over; delete the trip instead"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p
         className="mt-3 text-xs"
         style={{ color: "var(--color-bt-text-dim)" }}
