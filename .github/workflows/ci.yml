@@ -23,18 +23,31 @@ jobs:
   # unless EVERY changed file is markdown, so anything unanticipated runs the
   # suite. Fail loud, not silent — applied to the pipeline itself.
   #
-  # `src/**` is the one exception to the markdown rule, for the ORDINARY reason
-  # that src/ holds the application: src/content/legal/{privacy,terms}.md is
-  # shipped content, not documentation, so a change to it is a change to the app.
+  # BEFORE YOU ADD A PATH HERE "TO BE SAFE", READ THIS:
   #
-  # It is NOT here because CI would catch a broken one. It would not.
-  # src/app/{privacy,terms}/page.tsx read those files with readFileSync at REQUEST
-  # time (privacy/page.tsx:17), so a malformed file fails neither the build nor
-  # tsc nor any test — it fails the live page. Running the full suite protects
-  # those two files exactly as much as skipping it does: not at all. The real
-  # guard is a render smoke test for the two routes, tracked in #944; nothing in
-  # the repo renders /privacy or /terms today. Do not read this exception as
-  # coverage.
+  #   A FILTER THAT DECIDES WHAT TO RUN IS NOT COVERAGE. It only decides whether
+  #   EXISTING coverage executes. Widening it feels like protection and adds
+  #   none — if nothing tests a thing, running the whole suite protects it
+  #   exactly as much as skipping the suite does: not at all.
+  #
+  # The urge to widen usually comes from noticing something fragile and reaching
+  # for the nearest lever. This is not that lever. The fix for an untested file
+  # is a test; the only thing this filter can do is decide when tests that
+  # already exist get to run.
+  #
+  # `src/**` is the one exception to the markdown rule, and it earns its place
+  # for the ORDINARY reason that src/ holds the application:
+  # src/content/legal/{privacy,terms}.md is shipped content, not documentation,
+  # so a change to it is a change to the app.
+  #
+  # It is NOT here because CI would catch a broken one — and that is the worked
+  # instance of the rule above, which is why it is written down rather than
+  # quietly fixed. src/app/{privacy,terms}/page.tsx read those files with
+  # readFileSync at REQUEST time (privacy/page.tsx:17), so a malformed file fails
+  # neither the build nor tsc nor any test; it fails the live page, in prod, on a
+  # route nobody visits until they need it. Nothing in this repo renders /privacy
+  # or /terms at any layer. The real guard is a render smoke test for the two
+  # routes, tracked in #944. Do not read this exception as coverage.
   #
   # On push-to-main the filter is bypassed entirely (see the output expression) —
   # main always gets the full suite regardless of what changed.
