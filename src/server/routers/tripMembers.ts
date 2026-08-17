@@ -159,8 +159,22 @@ export const tripMembersRouter = router({
         status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may manage the roster now that migration 122
+    // defends the `role` column. Adding crew is helping run the trip.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // ...but GRANTING a privileged role is "changing who is trusted"
+      // (PERMISSIONS.md exception 1), and stays Owner-only. The migration-122
+      // trigger is the authority here and refuses this even via PostgREST; this
+      // check exists so the normal path gets a sentence rather than a raw
+      // database error.
+      if (input.role !== "Member" && ctx.tripRole !== "Owner") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the trip owner can add someone as an Organizer.",
+        });
+      }
+
       // Check if already a member
       const { data: existing } = await ctx.supabase
         .from("trip_members")
@@ -301,7 +315,8 @@ export const tripMembersRouter = router({
         nickname: z.string().max(80),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may set a crew nickname. Touches no role column.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Block setting a nickname on the Owner row — Owner controls their own
       // display name through account settings. Without this guard, any
@@ -353,7 +368,11 @@ export const tripMembersRouter = router({
         userId: z.string(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may remove crew. Removing an OWNER is still
+    // refused, by the migration-122 trigger rather than by this gate, so the
+    // rule holds for a PostgREST caller too (an Organizer with a browser JWT
+    // is exactly the case tRPC can't see).
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       if (input.userId === ctx.user!.id) {
         throw new TRPCError({
@@ -704,7 +723,8 @@ export const tripMembersRouter = router({
         departureTime: z.string().nullable().optional(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may record crew travel. Touches no role column.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: member } = await ctx.supabase
         .from("trip_members")

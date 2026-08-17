@@ -63,10 +63,20 @@ describe("ghostCrew router", () => {
     expect(ghost.is_guest).toBe(true);
   });
 
-  it("create — planner cannot add guest crew (Owner only)", async () => {
+  // #786/#824 — was "planner cannot add guest crew (Owner only)". Adding
+  // placeholder crew moved to Organizer once migration 122 defended the role
+  // column; granting a ROLE is what stays Owner-only, pinned immediately below.
+  it("create — planner CAN add guest crew", async () => {
+    const caller = ctx.callerAs("planner");
+    const g = await caller.ghostCrew.create({ tripId, name: "Added By Planner" });
+    expect(g.id).toBeTruthy();
+    guestUserIds.push(g.id);
+  });
+
+  it("create — planner CANNOT add guest crew as Organizer", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.ghostCrew.create({ tripId, name: "Fail" })
+      caller.ghostCrew.create({ tripId, name: "Fail", role: "Organizer" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -375,12 +385,16 @@ describe("ghostCrew router", () => {
     expect(stillThere?.id).toBe(guest.id);
   });
 
-  it("remove — planner cannot remove guest (Owner only)", async () => {
+  // #786/#824 — was "planner cannot remove guest (Owner only)". Removing crew
+  // moved to Organizer. What an Organizer still cannot do is remove the OWNER,
+  // and that is enforced by the migration-122 trigger rather than this gate —
+  // so it holds for a raw PostgREST caller too. Pinned in
+  // `tripMembers.roleGuard.test.ts`, which writes at the table directly.
+  it("remove — planner CAN remove a guest", async () => {
     const plannerCaller = ctx.callerAs("planner");
-    const members = await plannerCaller.tripMembers.list({ tripId });
-    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
+    const g = await ctx.caller().ghostCrew.create({ tripId, name: "Removable By Planner" });
     await expect(
-      plannerCaller.ghostCrew.remove({ tripId, guestUserId: ghosts[0].id })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      plannerCaller.ghostCrew.remove({ tripId, guestUserId: g.id })
+    ).resolves.toMatchObject({ success: true });
   });
 });
