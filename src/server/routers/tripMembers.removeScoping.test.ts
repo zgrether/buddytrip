@@ -120,4 +120,45 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     await ctx.admin.from("trip_members")
       .insert({ trip_id: tripId, user_id: secondOrganizerId, role: "Organizer", status: "in" });
   }, 60_000);
+
+  // ── migration 124 — the regression 123 shipped ────────────────────────────
+  it("ALLOWS deleting a whole TRIP that has an Organizer on it (cascade)", async () => {
+    // 123 broke this in production. Deleting a trip cascades one DELETE per
+    // trip_members row; an Organizer row then reached the Owner check, and by
+    // that point the OWNER's own row could already be gone from the same
+    // cascade — so has_trip_role returned false and the entire delete raised.
+    //
+    // Neither side's tests covered it: `trips.test.ts`'s delete case has an
+    // Owner-only roster, and 123's tests delete MEMBERSHIPS, never a TRIP. The
+    // cascade is a writer that was not enumerated. It is now.
+    const doomed = `remove-scoping-cascade-${Date.now()}`;
+    await ctx.admin.from("trips").insert({ id: doomed, title: "Cascade Trip" });
+    await ctx.admin.from("trip_members").insert([
+      { trip_id: doomed, user_id: ownerId, role: "Owner", status: "in" },
+      { trip_id: doomed, user_id: secondOrganizerId, role: "Organizer", status: "in" },
+      { trip_id: doomed, user_id: memberId, role: "Member", status: "in" },
+    ]);
+
+    const { error } = await owner.from("trips").delete().eq("id", doomed);
+    expect(error).toBeNull();
+
+    const { data: trip } = await ctx.admin
+      .from("trips").select("id").eq("id", doomed).maybeSingle();
+    const { data: rows } = await ctx.admin
+      .from("trip_members").select("user_id").eq("trip_id", doomed);
+    expect(trip).toBeNull();
+    expect(rows ?? []).toHaveLength(0);
+  }, 60_000);
+
+  it("the cascade allowance does NOT weaken the rule on a live trip", async () => {
+    // The pass is keyed on the parent trip being gone. A live trip still has
+    // its row, so an Organizer acting on one is held to 122/123 exactly as
+    // before — asserted here so a future "simplification" of that condition
+    // can't quietly turn it into a general bypass.
+    const { error } = await organizer
+      .from("trip_members").delete()
+      .eq("trip_id", tripId).eq("user_id", secondOrganizerId);
+    expect(error).not.toBeNull();
+    expect(error!.message).toMatch(/only the trip owner/i);
+  }, 60_000);
 });
