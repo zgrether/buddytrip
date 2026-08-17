@@ -25,8 +25,21 @@ export const ghostCrewRouter = router({
         role: z.enum(["Organizer", "Member"]).default("Member"),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may add placeholder crew now that migration 122
+    // defends the `role` column.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // Granting a privileged role stays Owner-only (PERMISSIONS.md exception
+      // 1). Mirrors `tripMembers.add`; the migration-122 trigger is the
+      // authority and refuses it even via PostgREST, so this is purely to
+      // return a sentence instead of a database error.
+      if (input.role !== "Member" && ctx.tripRole !== "Owner") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the trip owner can add someone as an Organizer.",
+        });
+      }
+
       // Normalize email to lowercase so storage + lookups stay consistent
       // with inviteByEmail (which already lowercases) and the lower-email
       // index. Without this, "Bob@x.com" and "bob@x.com" produce duplicate
@@ -420,7 +433,11 @@ export const ghostCrewRouter = router({
         guestUserId: z.string(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may remove placeholder crew. The #957 orphan guard
+    // below still applies, and the migration-122 trigger independently refuses
+    // removing an Owner — so neither an Organizer nor a raw PostgREST caller
+    // can strand the trip.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // #782 — count asserted. Removing a guest is an explicit act on a row the
       // caller just saw in the roster, so zero rows means the id was stale or

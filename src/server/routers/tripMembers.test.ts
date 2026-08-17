@@ -43,10 +43,22 @@ describe("tripMembers router", () => {
     expect(added.role).toBe("Member");
   });
 
-  it("add — planner cannot add (Owner only)", async () => {
+  // #786/#824 — this asserted the OLD rule ("planner cannot add"). Adding crew
+  // is helping run the trip, and moved to Organizer once migration 122 defended
+  // the role column. What stays Owner-only is GRANTING a role, pinned below.
+  it("add — planner CAN add a Member", async () => {
+    const caller = ctx.callerAs("planner");
+    const uid = genId("addable-user");
+    await ctx.admin.from("users").insert({ id: uid, name: "Addable", is_guest: true });
+    await expect(caller.tripMembers.add({ tripId, userId: uid })).resolves.toBeTruthy();
+    await ctx.admin.from("trip_members").delete().eq("trip_id", tripId).eq("user_id", uid);
+    await ctx.admin.from("users").delete().eq("id", uid);
+  });
+
+  it("add — planner CANNOT grant Organizer (changing who is trusted stays Owner-only)", async () => {
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.add({ tripId, userId: genId("fake-user") })
+      caller.tripMembers.add({ tripId, userId: genId("fake-user"), role: "Organizer" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -239,16 +251,17 @@ describe("tripMembers router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("updateNickname — planner cannot rename (Owner only)", async () => {
+  // #786/#824 — was "planner cannot rename (Owner only)". A nickname touches no
+  // role column, so it moved to Organizer. The plain-member case below is the
+  // one that still holds and is what actually guards this.
+  it("updateNickname — planner CAN rename a member", async () => {
     const member = ctx.getUser("member");
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.updateNickname({
-        tripId,
-        userId: member.id,
-        nickname: "Nope",
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      caller.tripMembers.updateNickname({ tripId, userId: member.id, nickname: "Renamed By Planner" })
+    ).resolves.toMatchObject({ success: true });
+    await ctx.admin.from("trip_members").update({ nickname: null })
+      .eq("trip_id", tripId).eq("user_id", member.id);
   });
 
   it("updateNickname — plain member cannot rename others", async () => {

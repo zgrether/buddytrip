@@ -321,15 +321,21 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
   });
 
   // =========================================================================
-  // HELD BACK — deviations that could NOT move in this change, each blocked by
-  // a specific gate. These are still deviations from the ratified rule; the
-  // tests pin the CURRENT state so a later sweep is a deliberate act.
+  // THE trip_members CLUSTER — moved in #786/#824, unblocked by migration 122.
+  //
+  // These six sat in "held back" below until the role-column trigger existed.
+  // It does now (migration 122), so RLS could widen to `is_trip_planner` and
+  // the guards followed. `updateMemberTravel` and `ghostCrew.remove` are new
+  // rows here — they are part of the same cluster but were never covered by
+  // this file, which is why only four of the six failed when the guards moved.
+  //
+  // What did NOT move with them is the role GRANT, pinned at the end: an
+  // Organizer may add crew, but only the Owner may make someone an Organizer.
+  // Migration 122 enforces that at the database (including for a PostgREST
+  // caller); these assert the tRPC half.
   // =========================================================================
-  describe("held back — still Owner-only, with a blocking reason", () => {
-    // Blocked by: RLS is row-granular. Widening trip_members INSERT/UPDATE/
-    // DELETE lets an Organizer set any member's role via direct PostgREST,
-    // including their own to 'Owner'. Needs a role-column trigger first.
-    it("tripMembers.add (trip_members cluster)", async () => {
+  describe("trip_members cluster — moved (migration 122)", () => {
+    it("tripMembers.add admits an Organizer", async () => {
       expect(
         await forbidden(() =>
           ctx.callerAs("planner").tripMembers.add({
@@ -337,35 +343,120 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
             userId: ctx.getUser("outsider").id,
           })
         )
-      ).toBe(true);
+      ).toBe(false);
     });
 
-    it("tripMembers.remove (trip_members cluster)", async () => {
-      expect(
-        await forbidden(() =>
-          ctx.callerAs("planner").tripMembers.remove({ tripId, userId: memberId })
-        )
-      ).toBe(true);
-    });
-
-    it("tripMembers.updateNickname (trip_members cluster)", async () => {
+    it("tripMembers.updateNickname admits an Organizer", async () => {
       expect(
         await forbidden(() =>
           ctx
             .callerAs("planner")
-            .tripMembers.updateNickname({ tripId, userId: memberId, nickname: "Nope" })
+            .tripMembers.updateNickname({ tripId, userId: memberId, nickname: "By Organizer" })
         )
-      ).toBe(true);
+      ).toBe(false);
     });
 
-    it("ghostCrew.create (trip_members cluster)", async () => {
+    it("tripMembers.updateMemberTravel admits an Organizer", async () => {
       expect(
         await forbidden(() =>
-          ctx.callerAs("planner").ghostCrew.create({ tripId, name: "Held Guest" })
+          ctx
+            .callerAs("planner")
+            .tripMembers.updateMemberTravel({ tripId, targetUserId: memberId, travelMode: "driving" })
+        )
+      ).toBe(false);
+    });
+
+    it("ghostCrew.create admits an Organizer", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").ghostCrew.create({ tripId, name: "Organizer Guest" })
+        )
+      ).toBe(false);
+    });
+
+    it("ghostCrew.remove admits an Organizer", async () => {
+      const g = await ctx.caller().ghostCrew.create({ tripId, name: "Removable" });
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").ghostCrew.remove({ tripId, guestUserId: g.id })
+        )
+      ).toBe(false);
+    });
+
+    it("tripMembers.remove admits an Organizer", async () => {
+      // Removed LAST in this block: it deletes the row the earlier cases add.
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.remove({
+            tripId,
+            userId: ctx.getUser("outsider").id,
+          })
+        )
+      ).toBe(false);
+    });
+
+    // ── the boundary that did NOT move ────────────────────────────────────
+    it("tripMembers.add REFUSES an Organizer granting Organizer", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.add({
+            tripId,
+            userId: ctx.getUser("outsider").id,
+            role: "Organizer",
+          })
         )
       ).toBe(true);
     });
 
+    it("ghostCrew.create REFUSES an Organizer granting Organizer", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").ghostCrew.create({
+            tripId,
+            name: "Should Not Exist",
+            role: "Organizer",
+          })
+        )
+      ).toBe(true);
+    });
+
+    // Migration 123 — removal is a stronger form of `updateRole`, which is
+    // Owner-only. An Organizer who cannot demote a peer must not be able to
+    // delete them either. Enforced by the trigger (covered directly at the
+    // table in `tripMembers.removeScoping.test.ts`); this is the tRPC half.
+    it("tripMembers.remove REFUSES an Organizer removing a fellow Organizer", async () => {
+      // Must be a DIFFERENT Organizer: passing the caller's own id hits the
+      // "Cannot remove yourself" BAD_REQUEST first, which is a separate rule
+      // and would make this pass for the wrong reason.
+      await ctx.admin.from("trip_members")
+        .update({ role: "Organizer" }).eq("trip_id", tripId).eq("user_id", memberId);
+      try {
+        expect(
+          await forbidden(() =>
+            ctx.callerAs("planner").tripMembers.remove({ tripId, userId: memberId })
+          )
+        ).toBe(true);
+      } finally {
+        await ctx.admin.from("trip_members")
+          .update({ role: "Member" }).eq("trip_id", tripId).eq("user_id", memberId);
+      }
+    });
+
+    it("tripMembers.remove REFUSES an Organizer removing the Owner", async () => {
+      expect(
+        await forbidden(() =>
+          ctx.callerAs("planner").tripMembers.remove({ tripId, userId: ctx.user.id })
+        )
+      ).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // HELD BACK — deviations that could NOT move in this change, each blocked by
+  // a specific gate. These are still deviations from the ratified rule; the
+  // tests pin the CURRENT state so a later sweep is a deliberate act.
+  // =========================================================================
+  describe("held back — still Owner-only, with a blocking reason", () => {
     // Blocked by: link_guest_to_account (migration 095) hardcodes an Owner
     // check inside the guest -> real-user MERGE path, which runs in the signup
     // trigger. Widening tRPC alone would half-open this: editing a name would

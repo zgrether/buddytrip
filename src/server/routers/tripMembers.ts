@@ -159,8 +159,22 @@ export const tripMembersRouter = router({
         status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may manage the roster now that migration 122
+    // defends the `role` column. Adding crew is helping run the trip.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // ...but GRANTING a privileged role is "changing who is trusted"
+      // (PERMISSIONS.md exception 1), and stays Owner-only. The migration-122
+      // trigger is the authority here and refuses this even via PostgREST; this
+      // check exists so the normal path gets a sentence rather than a raw
+      // database error.
+      if (input.role !== "Member" && ctx.tripRole !== "Owner") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the trip owner can add someone as an Organizer.",
+        });
+      }
+
       // Check if already a member
       const { data: existing } = await ctx.supabase
         .from("trip_members")
@@ -301,7 +315,8 @@ export const tripMembersRouter = router({
         nickname: z.string().max(80),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may set a crew nickname. Touches no role column.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Block setting a nickname on the Owner row — Owner controls their own
       // display name through account settings. Without this guard, any
@@ -353,13 +368,41 @@ export const tripMembersRouter = router({
         userId: z.string(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may remove crew, but MEMBERS ONLY. Removing an
+    // Owner (migration 122) or a fellow Organizer (migration 123) is refused
+    // at the DATABASE, so the rule holds for a PostgREST caller too — an
+    // Organizer with a browser JWT is exactly the case tRPC cannot see.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       if (input.userId === ctx.user!.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Cannot remove yourself",
         });
+      }
+
+      // The readable half of migration 123. `updateRole` is Owner-only because
+      // only the Owner changes who is trusted (PERMISSIONS.md:186), and removal
+      // is a stronger form of the same act — without this an Organizer couldn't
+      // demote a peer but could delete them. The trigger is the authority and
+      // refuses it regardless; this exists so the normal path gets a sentence
+      // naming the way forward instead of a raw database error.
+      if (ctx.tripRole !== "Owner") {
+        const { data: target } = await ctx.supabase
+          .from("trip_members")
+          .select("role")
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", input.userId)
+          .maybeSingle();
+
+        if (target && target.role !== "Member") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message:
+              `Only the trip owner can remove ${target.role === "Owner" ? "the owner" : "an organizer"}. ` +
+              `Ask the owner to remove them, or to change their role to Member first.`,
+          });
+        }
       }
 
       const { error } = await ctx.supabase
@@ -704,7 +747,8 @@ export const tripMembersRouter = router({
         departureTime: z.string().nullable().optional(),
       })
     )
-    .use(requireTripRole("Owner"))
+    // #786/#824 — Organizer may record crew travel. Touches no role column.
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: member } = await ctx.supabase
         .from("trip_members")
