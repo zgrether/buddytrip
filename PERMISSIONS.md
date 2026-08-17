@@ -95,13 +95,17 @@ or it erases others' content. If you find yourself writing
 `requireTripRole("Owner")` for anything else, that is a deviation from this rule
 and needs a reason — not a shrug.
 
-> **⚠️ The code does not YET fully match this principle — 10 of 19 deviations
-> remain.** #786 reconciled 11 across both layers (migration 101 + the tRPC
-> guards), then **2 were reverted** (#790) — and a second attempt to re-land
-> them (#823) was reverted too, this time with CI evidence. The 10 that are left are not drift: each is blocked by a specific
-> gate that cannot move without a separate, deliberate change, and each is
+> **⚠️ The code now matches this principle except for ONE deviation.** #786
+> reconciled 9 across both layers (migration 101 + the tRPC guards); the invite
+> pair moved, was reverted twice (#790, #823), and landed on the third attempt;
+> and the six-procedure `trip_members` cluster moved once **migration 122** built
+> the role-column trigger that migrations 030 and 101 had only *named* — it had
+> never actually existed. Migration 123 then scoped removal to Members and
+> ghosts, and 124 fixed a cascade regression 123 shipped.
+> **`ghostCrew.update` is the one that remains**, blocked by a hardcoded Owner
+> check inside `link_guest_to_account()` on the signup-path merge. It is
 > enumerated with its blocker in **Audit notes → Owner/Organizer deviations** at
-> the end of this file. Until they are reconciled, the per-row matrix below
+> the end of this file. Until it is reconciled, the per-row matrix below
 > reflects the CODE, which is ground truth; where a row says Owner-only and the
 > principle says Organizer, the row is a known deviation, not a counter-example
 > to the rule.
@@ -181,14 +185,15 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | Action | Owner | Organizer | Member | tRPC |
 |--------|:-----:|:---------:|:------:|------|
 | View roster | ✓ | ✓ | ✓ | `tripMembers.list`, `checkEmail` |
-| Add member | ✓ | — | — | `tripMembers.add` *(Owner)* |
-| Invite by email / blast | ✓ | — | — | `inviteByEmail`, `sendInvitationBlast` *(Owner — see the deviations note; the DB half is done, the guard is blocked)* |
+| Add member | ✓ | ✓ | — | `tripMembers.add` *(Owner/Organizer; only the Owner may add someone AS an Organizer — mig 122)* |
+| Invite by email / blast | ✓ | ✓ | — | `inviteByEmail`, `sendInvitationBlast` *(Owner/Organizer; only the Owner may invite someone AS an Organizer — the split is in the procedure, mirrored at the DB by mig 103)* |
 | Promote/demote role | ✓ | — | — | `updateRole` *(Owner; not self)* |
-| Rename (trip nickname) | ✓ | — | — | `updateNickname` *(Owner; not the Owner)* |
-| Remove member | ✓ | — | — | `remove` *(Owner; not self)* |
-| Add / edit / remove ghost (placeholder) crew | ✓ | — | — | `ghostCrew.create` / `update` / `remove` *(Owner)* |
+| Rename (trip nickname) | ✓ | ✓ | — | `updateNickname` *(Owner/Organizer; not the Owner)* |
+| Remove member | ✓ | ✓ | — | `remove` *(Owner/Organizer; not self. An Organizer may remove **Members and ghosts only** — removing an Owner or a fellow Organizer is Owner-only, enforced at the DB by mig 122/123, because removal is a stronger form of `updateRole`)* |
+| Add / remove ghost (placeholder) crew | ✓ | ✓ | — | `ghostCrew.create` / `remove` *(Owner/Organizer; only the Owner may add one AS an Organizer)* |
+| **Edit** ghost (placeholder) crew | ✓ | **—** | — | `ghostCrew.update` *(Owner — see the deviations note; `link_guest_to_account` hardcodes an Owner check inside the signup-path merge)* |
 | Set **own** travel info | ✓ | ✓ | ✓ | `tripMembers.updateTravel` *(self)* |
-| Set **another member's** travel info | ✓ | — | — | `tripMembers.updateMemberTravel` *(Owner)* |
+| Set **another member's** travel info | ✓ | ✓ | — | `tripMembers.updateMemberTravel` *(Owner/Organizer)* |
 
 ### Lodging & logistics — `logistics`
 
@@ -544,17 +549,21 @@ change (migration 101), so no layer disagrees:
 | Competition | `teamAssignments.remove` | `team_assignments_delete` |
 | Games (destructive) | `games.delete`, `games.resetScoring`, `games.resetToSkeleton` | `assert_game_owner()` (delete needed none — `games_write` was already Owner+Organizer) |
 
-### Remaining — 10 deviations, each with a named blocker
+### Deviations — 1 remaining
+
+The resolved rows are kept struck-through rather than deleted: what unblocked them
+is the useful part, and #824 spent months being described as blocked by a trigger
+that had never been built.
 
 These are NOT drift. Each is a deviation from the ratified rule that a specific
 gate prevents moving, and the blocker is the work, not the guard swap.
 
 | Procedures | Blocked by |
 |---|---|
-| `tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `ghostCrew.create`, `.remove` | **RLS is row-granular.** Widening `trip_members` INSERT/UPDATE/DELETE lets an Organizer calling PostgREST directly set any member's `role` — including their own, to `'Owner'`. Exception 1 would hold only in the client. Needs a role-column trigger on `trip_members` first — the fix migration 030 itself named — and that trigger sits on the signup/merge write path, so it is its own migration with its own verification. |
-| `tripMembers.inviteByEmail`, `.sendInvitationBlast` | **The procedure writes `trip_members`, whose policy is Owner-only.** Two separate problems were tangled here; only one is solved. *(a)* It **mints the role it is gated on** — solved in principle by a server-side split on the role INPUT, and solved in fact at the DB by **migration 103**, which shipped. *(b)* It **cannot do its job as an Organizer**: `inviteByEmail` INSERTs a `trip_members` row and `sendInvitationBlast` UPDATEs `last_emailed_at`, and both policies are Owner-only (plus self-insert). #823 widened the guard and CI proved this directly — `new row violates row-level security policy for table "trip_members"`, and `expected 1 row(s), affected 0`. **#796 did not fix (b).** It made the failure LOUD rather than permitted, which is why #823 failed in CI instead of silently writing nothing the way #788 did. Blocked on the same `trip_members` role-column trigger as the row above. |
+| ~~`tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `ghostCrew.create`, `.remove`~~ | **RESOLVED — migration 122** built the `trip_members` role-column trigger that migrations 030 and 101 had only *named*. It had never existed; `pg_trigger` returned nothing for the table until then, and everything downstream reasoned about its behaviour rather than its existence. With the column defended, the policies widened to `is_trip_planner` and the six guards followed. Migration 123 then scoped removal: an Organizer may remove **Members and ghosts only**, because removal is a stronger form of `updateRole`. (124 fixed a regression 123 shipped — a trip DELETE cascades through `trip_members`, and an Organizer row then hit the Owner check after the Owner's own row had already gone.) |
+| ~~`tripMembers.inviteByEmail`, `.sendInvitationBlast`~~ | **RESOLVED on the third attempt** (#788 → reverted #790 → #823 → reverted → landed). Two tangled problems, both now closed: *(a)* it **minted the role it was gated on** — fixed by the role-INPUT split in the procedure (the guard admits Organizers; the procedure refuses a non-Owner granting `Organizer`), mirrored at the DB by migration 103; *(b)* it **could not do its job as an Organizer** — its `trip_members` INSERT and `last_emailed_at` UPDATE were refused by the Owner-only policies, which migration 122 widened. Re-verified by probe before re-widening: both writes now succeed as an Organizer writing directly, with an `Organizer`-role insert still refused. `sendInvitationBlast` moved wholesale — it takes no role. |
 | `ghostCrew.update` | **`link_guest_to_account()`** (migration 095) hardcodes an Owner check inside the guest→real-user MERGE path, which runs in the signup trigger. Widening tRPC alone half-opens it: editing a placeholder's name would work, pasting an email that matches an account would fail at the database. |
-| `teamAssignments.setCaptain` | **A shared assert.** `set_team_captain` calls `assert_competition_owner`, which also guards `delete_competition_cascade` — exception 4. Widening the shared assert would widen `competitions.delete`. It also may not be a deviation at all: a captain holds real RLS grants (migrations 065 / 094), so appointing one is arguably "changing who is trusted" one level down — i.e. a sixth exception rather than a gap. That is a product call, not a code one. |
+| `teamAssignments.setCaptain` | **NOT a deviation — decided, and this row previously said otherwise.** Appointing a captain is Owner-only by decision, recorded in the matrix above with its reasoning (captain is an *identity* tier; roster and structure stay Owner-only). This row used to end "that is a product call, not a code one", which kept the question open and got it re-asked at least three times. It is not open. The shared-assert concern (`assert_competition_owner` guarding both `set_team_captain` and `delete_competition_cascade`) is moot while `setCaptain` is not being widened. |
 
 **A procedure that takes a role as INPUT cannot be gated on role alone.** This is
 the misjudgement that produced the #790 revert, stated precisely: "inviting crew
