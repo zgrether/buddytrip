@@ -193,7 +193,8 @@ describe("migration 122 — the signup path stays inert (the regression cases)",
       email, password: PASSWORD, email_confirm: true, user_metadata: { name: "Real Account" },
     });
     expect(error).toBeNull(); // <- signup did NOT break
-    const realId = data!.user.id;
+    const realId = data?.user?.id;
+    expect(realId).toBeTruthy();
 
     // The membership was repointed to the real account, role intact.
     const { data: row } = await c.admin.from("trip_members").select("user_id, role")
@@ -201,7 +202,7 @@ describe("migration 122 — the signup path stays inert (the regression cases)",
     expect(row).toMatchObject({ role: "Member" });
 
     await c.admin.from("trip_members").delete().eq("trip_id", trip);
-    await c.admin.auth.admin.deleteUser(realId);
+    if (realId) await c.admin.auth.admin.deleteUser(realId);
     await c.admin.from("users").delete().eq("id", ghostId);
     await c.cleanup();
   }, 90_000);
