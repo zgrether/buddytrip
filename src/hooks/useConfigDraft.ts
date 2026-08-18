@@ -135,6 +135,12 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
   const [justSaved, setJustSaved] = useState(false);
   useEffect(() => { if (anyTouched) setJustSaved(false); }, [anyTouched]);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Spans the WHOLE commit — the mutation AND the `onSaved` refetch after it — where
+  // `saveConfigM.isPending` covers only the mutation. Needed because T4 moved `reset`
+  // to AFTER that refetch: the draft now stays touched (so `dirty` stays true) while
+  // the refetch is in flight, which without this would re-enable Save mid-commit and
+  // let a second click write against the now-stale `baseline.hash`.
+  const [committing, setCommitting] = useState(false);
   const saveConfigM = trpc.games.saveConfig.useMutation();
 
   // Hard-teardown durability (localStorage). Base = the frozen baseline's hash — literally the
@@ -167,18 +173,34 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
    *  bar) closes the panel on success and leaves it open (with the inline error) on
    *  failure. A no-op call (not dirty / already saving) returns `false`: nothing landed. */
   async function handleSave(): Promise<boolean> {
-    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending) return false;
+    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending || committing) return false;
     setSaveError(null);
+    setCommitting(true);
     try {
       await saveConfigM.mutateAsync({ tripId, gameId, baseHash: baseline.hash, payload: toPayload(configDraft, baseline.draft) });
     } catch (e) {
       setSaveError((e as { message?: string })?.message || "Couldn’t save your changes — try again.");
+      setCommitting(false);
       return false;
     }
     clearDraftOutbox();
-    reset(true);
     setJustSaved(true);
-    await onSaved?.();
+    // T4 — REFRESH THE SERVER MIRROR BEFORE DROPPING THE LOCAL SLICES. `reset` nulls every
+    // draft slice, and each field renders `slice ?? serverConfigDraft.<field>`, so resetting
+    // first made the whole form fall back to a mirror that is stale BY CONSTRUCTION — the
+    // refetch that refreshes it is the very `onSaved` below. Measured: every field displayed
+    // its PRE-SAVE value for ~237ms, with the panel still mounted, after the write had
+    // already landed. Ordering it this way means the slices are only dropped once the mirror
+    // they fall back to agrees with them, so the swap is invisible instead of a flash.
+    //
+    // `finally`, because a failed refetch must still clear the draft: the WRITE landed, so
+    // keeping the slices would leave the page dirty against data it already committed.
+    try {
+      await onSaved?.();
+    } finally {
+      reset(true);
+      setCommitting(false);
+    }
     void hashQ.refetch();
     return true;
   }
@@ -224,7 +246,9 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
     /** Exposed so a view's course-staging handlers can surface a course-load failure into
      *  the SAME error slot the Save uses (rack / stroke / match). */
     setSaveError,
-    saving: saveConfigM.isPending,
+    /** The WHOLE commit, not just the mutation — the save bar stays disabled through the
+     *  post-write refetch too, so Save cannot be re-clicked against a stale baseHash. */
+    saving: saveConfigM.isPending || committing,
     handleSave,
     handleCancel,
   };
