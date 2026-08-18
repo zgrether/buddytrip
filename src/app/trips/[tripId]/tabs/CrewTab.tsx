@@ -511,7 +511,7 @@ function EmptyOrganizersInvitation() {
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
-  // Crew tab doesn't read canEdit anymore — see the `if (!isOwner)` gate
+  // Crew tab doesn't read canEdit anymore — see the `if (!canManageCrew)` gate
   // below. Roster management (add/remove/rename/role changes) is
   // intentionally Owner-only this iteration. canEdit still flows to
   // Lodging / Schedule / Comp via the same TabProps shape.
@@ -532,8 +532,36 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
     setShowEmailModal(true);
   };
 
+  // ── Capabilities (#786/#824) ────────────────────────────────────────────
+  // THE ROLE SOURCE IS THIS TRIP'S ROSTER, and that is the load-bearing part.
+  // `me` is found in `members`, which comes from `tripMembers.list({ tripId })`
+  // — so the role is scoped to the trip being viewed. A control gated on an
+  // ambient or global "am I an organizer" would pass every positive check
+  // ("the button shows for an Organizer") and still leak on a trip where the
+  // viewer holds no role at all. If you add a capability here, derive it from
+  // `myTripRole` and nothing else.
   const me = members.find((m) => m.user_id === currentUser?.id);
-  const isOwner = me?.role === "Owner";
+  const myTripRole = me?.role ?? null;
+  const isOwner = myTripRole === "Owner";
+
+  // EACH CONTROL STATES ITS OWN RULE. Deliberately not one flag with
+  // exceptions layered on top: the roster surface mixes procedures that moved
+  // to Organizer with three that did not, and a single gate re-narrowed at each
+  // site is how the wrong one gets widened later.
+  //
+  //   canManageCrew  — add / remove / rename / travel / ghost create+remove /
+  //                    invite / blast. All moved to Organizer once migration
+  //                    122 defended the role column.
+  //   canManageRoles — `tripMembers.updateRole`. Owner-only: exception 1, only
+  //                    the Owner changes who is trusted.
+  //   canEditGhost   — `ghostCrew.update`. Owner-only for a DIFFERENT reason —
+  //                    `link_guest_to_account()` hardcodes an Owner check
+  //                    inside the signup-path merge, so widening the client
+  //                    would half-open it (rename works, email-paste fails at
+  //                    the DB). The last live deviation in PERMISSIONS.md.
+  const canManageCrew = myTripRole === "Owner" || myTripRole === "Organizer";
+  const canManageRoles = isOwner;
+  const canEditGhost = isOwner;
 
   // Member view sort: Owner → Organizer → Active member → Invited → Placeholder.
   const statusOrder: Record<DerivedStatus, number> = { active: 0, invited: 1, placeholder: 2 };
@@ -568,12 +596,12 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   // ── Read-only roster view: Owner gets the management chrome below;
   // everyone else (including Organizer/Organizer) sees this read-only
-  // list. We gate on isOwner rather than the broader canEdit because
+  // list. We gate on canManageCrew rather than the broader canEdit because
   // crew-management privileges (add/remove/rename, role changes) are
   // intentionally Owner-only for now — Planners can edit Lodging /
   // Schedule / Comp via canEdit elsewhere, but the roster itself is
   // a single-person responsibility this iteration. ────────────────────
-  if (!isOwner) {
+  if (!canManageCrew) {
     return (
       <div className={embedded ? "@container" : "@container px-4"}>
         <TabHeader
@@ -706,7 +734,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           Each carries a right-justified Send/Resend email button that
           opens the blast modal — the previously-redundant header-corner
           email button is gone (Task 59). */}
-      {isOwner &&
+      {canManageCrew &&
         (() => {
           const pending = members.filter(
             (m) => deriveStatus(m) === "invited" && !m.last_emailed_at
@@ -768,7 +796,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                 "nobody here" prompts; the Crew invitation alone carries it.
               - once crew exists, show the compact invitation to promote someone.
               Populated state uses the standard CrewSection rendering. */}
-          {organizers.length === 0 && isOwner ? (
+          {organizers.length === 0 && canManageCrew ? (
             restCrew.length > 0 ? (
               <section>
                 <h2
@@ -794,7 +822,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
               title="Organizers"
               tone="accent"
               members={organizers}
-              isOwnerView={isOwner}
+              isOwnerView={canManageCrew}
               currentUserId={currentUser?.id}
               onEditMember={(m) => setEditingMemberId(m.memberId)}
               emptyHint="No other organizers yet — promote someone to share planning work."
@@ -803,7 +831,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           {/* CREW section: when empty + organizer view, render the
               invitation card per addendum §2. Populated state uses
               the standard CrewSection rendering. */}
-          {restCrew.length === 0 && isOwner ? (
+          {restCrew.length === 0 && canManageCrew ? (
             <section>
               <h2
                 className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
@@ -827,7 +855,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
               title="Crew"
               tone="planning"
               members={restCrew}
-              isOwnerView={isOwner}
+              isOwnerView={canManageCrew}
               currentUserId={currentUser?.id}
               onEditMember={(m) => setEditingMemberId(m.memberId)}
               // This branch only renders when the viewer is NOT the
@@ -855,13 +883,13 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
         <aside
           className={[
             "hidden gap-5",
-            isOwner
+            canManageCrew
               ? "min-[640px]:grid min-[640px]:grid-cols-2"
               : "min-[640px]:block",
             "min-[900px]:flex min-[900px]:flex-col min-[900px]:gap-4",
           ].join(" ")}
         >
-          {isOwner &&
+          {canManageCrew &&
             <AddCrewComposer tripId={tripId} boosted={isEmpty} />}
           <StatusLegend members={members} />
         </aside>
@@ -881,7 +909,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           used to be. Brings the FAB → modal pattern in line with the
           other tabs (Add Property, Add Receipt, Add Agenda) per
           round-4 item 9. */}
-      {isOwner && showMobileAdd && (
+      {canManageCrew && showMobileAdd && (
         <ScrollLock>
         <div className="fixed inset-0 z-50 sm:hidden">
           <div
@@ -968,7 +996,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           >
             <CrewEmailPanel
               trip={trip}
-              isOwner={isOwner}
+              isOwner={canManageCrew}
               preselectMemberIds={emailPreselectIds}
               onClose={() => setShowEmailModal(false)}
             />
@@ -987,7 +1015,8 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             <MemberEditor
               tripId={tripId}
               member={target}
-              canManageRoles={!!isOwner}
+              canManageRoles={canManageRoles}
+              canEditGhost={canEditGhost}
               tripStartDate={trip.start_date ?? null}
               tripEndDate={trip.end_date ?? null}
               onClose={() => setEditingMemberId(null)}
@@ -1001,7 +1030,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           md:hidden gets tightened here via a sm:hidden wrapper so
           Lodging / Receipts / Agenda keep their existing md threshold
           unchanged. */}
-      {isOwner && (
+      {canManageCrew && (
         <div className="sm:hidden">
           <TabFab
             onClick={() => setShowMobileAdd((v) => !v)}
@@ -1013,7 +1042,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
       )}
 
       {/* Bottom-right primary action on small placeholder-only state. */}
-      {!isOwner && totalCount === 0 && (
+      {!canManageCrew && totalCount === 0 && (
         <p
           className="mt-6 flex items-center gap-2 rounded-xl px-4 py-3 text-sm"
           style={{

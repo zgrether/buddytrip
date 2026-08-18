@@ -2122,6 +2122,7 @@ export default function IdeaZonePanel({
               tripId={tripId}
               member={target}
               canManageRoles={isOwner}
+              canEditGhost={isOwner}
               onClose={() => setEditingMemberId(null)}
             />
           );
