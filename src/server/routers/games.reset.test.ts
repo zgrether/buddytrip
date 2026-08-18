@@ -158,10 +158,12 @@ describe("games.resetToSkeleton — one game's config cleared, identity kept (in
     expect(tg.competition_format).toBeNull();
     expect(tg.pairings_published_at).toBeNull();
     expect(tg.scoring_enabled).toBe(false); // un-armed
-    // IDENTITY kept: shell + the per-match point VALUE survives (§E-1).
+    // IDENTITY kept: shell + the per-match point VALUE (§E-1), which now rides in
+    // `points_total` rather than in a preserved distribution blob (125).
     expect(tg.name).toBe("SkelTarget");
     expect(tg.game_type_id).toBe("gtt_match_play");
-    expect(tg.points_distribution).toMatchObject({ type: "per_match", value: 2 });
+    expect(tg.points_distribution).toBeNull();
+    expect(Number(tg.points_total)).toBe(2);
 
     // SIBLING untouched: config + scoring all survive.
     expect(await count("game_participants", sibling)).toBe(2);

@@ -218,9 +218,14 @@ describe("resetToSkeleton — also clears config, keeps identity, un-arms", () =
     expect(sg.name).toBe("Stroke"); // shell identity
     expect(sg.game_type_id).toBe("gtt_stroke_play");
 
-    // Per-match distribution is the point VALUE (identity) — KEPT, not nulled.
+    // The per-match point VALUE is identity and still survives (125) — but it now
+    // lives in `points_total`, where value belongs, not inside the config blob. The
+    // distribution is config and clears on EVERY format: a newly added game has none.
+    // Lifting the value out is what keeps "the name and point value are kept" true for
+    // pre-A2b games, whose value was stored ONLY in the distribution.
     const mg = await gameRow(match);
-    expect(mg.points_distribution).toMatchObject({ type: "per_match", value: 2 });
+    expect(mg.points_distribution).toBeNull();
+    expect(Number(mg.points_total)).toBe(2);
 
     // Manual: format/rules/split cleared, total kept.
     const ng = await gameRow(manual);
