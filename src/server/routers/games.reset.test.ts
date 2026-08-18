@@ -105,7 +105,11 @@ describe("games.resetScoring — one game's results cleared, config + identity k
     expect(tg.scorecard_schema).not.toBeNull();
     expect(tg.competition_format).toBe("head_to_head");
     expect(tg.points_distribution).toMatchObject({ type: "per_match", value: 2 });
-    expect(tg.status).toBe("pending");
+    // #895/126: a scores reset returns the game to READY, and a ready game is one
+    // that has been switched on — so `status` tracks `scoring_enabled` rather than
+    // being forced flat. This line used to assert 'pending' NEXT TO scoring_enabled
+    // true on the line below: the split go-live state, encoded as expected behaviour.
+    expect(tg.status).toBe("active");
     expect(tg.corrections_open).toBe(false);
     expect(tg.scoring_enabled).toBe(true); // stays armed
 

@@ -194,7 +194,11 @@ async function configure(gameId: string) {
     bracket_config: { size: 4 }, rules_for_today: "No gimmes.",
     competition_format: "bracket_se", tee_time: "09:00",
     points_distribution: { type: "placement", split: [3, 1] },
-    pairings_published_at: new Date(0).toISOString(), scoring_enabled: true, entry_mode: "outcome",
+    // The go-live triple, set together the way go-live sets it (#25/126). Previously
+    // this fixture switched scoring on while leaving status 'pending' — itself a split
+    // state, which made the level-1 snapshot incoherent and the comparison meaningless.
+    status: "active", scoring_enabled: true, pairings_published_at: new Date(0).toISOString(),
+    entry_mode: "outcome",
   }).eq("id", gameId));
   return { matchId, groupId };
 }
