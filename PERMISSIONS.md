@@ -103,9 +103,10 @@ and needs a reason — not a shrug.
 > never actually existed. Migration 123 then scoped removal to Members and
 > ghosts, and 124 fixed a cascade regression 123 shipped.
 > **`ghostCrew.update` is the one that remains**, blocked by a hardcoded Owner
-> check inside `link_guest_to_account()` on the signup-path merge. It is
-> enumerated with its blocker in **Audit notes → Owner/Organizer deviations** at
-> the end of this file. Until it is reconciled, the per-row matrix below
+> check inside `link_guest_to_account()`, which is the only gate on a merge
+> primitive `authenticated` can call directly via PostgREST. It is enumerated
+> with its blocker in **Audit notes → Owner/Organizer deviations** at the end of
+> this file. Until it is reconciled, the per-row matrix below
 > reflects the CODE, which is ground truth; where a row says Owner-only and the
 > principle says Organizer, the row is a known deviation, not a counter-example
 > to the rule.
@@ -191,7 +192,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | Rename (trip nickname) | ✓ | ✓ | — | `updateNickname` *(Owner/Organizer; not the Owner)* |
 | Remove member | ✓ | ✓ | — | `remove` *(Owner/Organizer; not self. An Organizer may remove **Members and ghosts only** — removing an Owner or a fellow Organizer is Owner-only, enforced at the DB by mig 122/123, because removal is a stronger form of `updateRole`)* |
 | Add / remove ghost (placeholder) crew | ✓ | ✓ | — | `ghostCrew.create` / `remove` *(Owner/Organizer; only the Owner may add one AS an Organizer)* |
-| **Edit** ghost (placeholder) crew | ✓ | **—** | — | `ghostCrew.update` *(Owner — see the deviations note; `link_guest_to_account` hardcodes an Owner check inside the signup-path merge)* |
+| **Edit** ghost (placeholder) crew | ✓ | **—** | — | `ghostCrew.update` *(Owner — see the deviations note; `link_guest_to_account` checks Owner inside the function, and that check is the only gate on a merge primitive `authenticated` can call directly)* |
 | Set **own** travel info | ✓ | ✓ | ✓ | `tripMembers.updateTravel` *(self)* |
 | Set **another member's** travel info | ✓ | ✓ | — | `tripMembers.updateMemberTravel` *(Owner/Organizer)* |
 
@@ -562,8 +563,24 @@ gate prevents moving, and the blocker is the work, not the guard swap.
 |---|---|
 | ~~`tripMembers.add`, `.remove`, `.updateNickname`, `.updateMemberTravel`, `ghostCrew.create`, `.remove`~~ | **RESOLVED — migration 122** built the `trip_members` role-column trigger that migrations 030 and 101 had only *named*. It had never existed; `pg_trigger` returned nothing for the table until then, and everything downstream reasoned about its behaviour rather than its existence. With the column defended, the policies widened to `is_trip_planner` and the six guards followed. Migration 123 then scoped removal: an Organizer may remove **Members and ghosts only**, because removal is a stronger form of `updateRole`. (124 fixed a regression 123 shipped — a trip DELETE cascades through `trip_members`, and an Organizer row then hit the Owner check after the Owner's own row had already gone.) |
 | ~~`tripMembers.inviteByEmail`, `.sendInvitationBlast`~~ | **RESOLVED on the third attempt** (#788 → reverted #790 → #823 → reverted → landed). Two tangled problems, both now closed: *(a)* it **minted the role it was gated on** — fixed by the role-INPUT split in the procedure (the guard admits Organizers; the procedure refuses a non-Owner granting `Organizer`), mirrored at the DB by migration 103; *(b)* it **could not do its job as an Organizer** — its `trip_members` INSERT and `last_emailed_at` UPDATE were refused by the Owner-only policies, which migration 122 widened. Re-verified by probe before re-widening: both writes now succeed as an Organizer writing directly, with an `Organizer`-role insert still refused. `sendInvitationBlast` moved wholesale — it takes no role. |
-| `ghostCrew.update` | **`link_guest_to_account()`** (migration 095) hardcodes an Owner check inside the guest→real-user MERGE path, which runs in the signup trigger. Widening tRPC alone half-opens it: editing a placeholder's name would work, pasting an email that matches an account would fail at the database. |
+| `ghostCrew.update` | **`link_guest_to_account()`** (migration 095) checks Owner **inside the function**, and that check is the only thing standing in front of it. The wrapper is `GRANT EXECUTE ... TO authenticated` **by design** — the core `merge_guest_to_real_user` is revoked from `authenticated` because it takes two arbitrary ids and moves one identity's entire history onto another ("an account-takeover primitive", migration 095). So the wrapper is reachable from a browser JWT, and widening tRPC alone half-opens it: editing a placeholder's name would work, pasting an email that matches an account would still fail at the database. **Verified by probe:** an Organizer calling `rpc(link_guest_to_account)` directly is refused by that check; calling the core is refused by the ACL; the Owner succeeds. Remove the check and the first becomes allowed — an Organizer could merge any placeholder on their trip into any account, moving `game_participants`, `score_entries`, `game_results`, `team_assignments` and the `game_matches` side JSONB. Migration 122's trigger does **not** cover this; it guards `trip_members.role`, and the merge moves everything else. **NOT a signup-path risk** — see the correction below. |
 | `teamAssignments.setCaptain` | **NOT a deviation — decided, and this row previously said otherwise.** Appointing a captain is Owner-only by decision, recorded in the matrix above with its reasoning (captain is an *identity* tier; roster and structure stay Owner-only). This row used to end "that is a product call, not a code one", which kept the question open and got it re-asked at least three times. It is not open. The shared-assert concern (`assert_competition_owner` guarding both `set_team_captain` and `delete_competition_cascade`) is moot while `setCaptain` is not being widened. |
+
+> **Correction, recorded because the earlier wording sent readers the wrong way.**
+> This row used to say the Owner check sits in a merge path "which runs in the
+> signup trigger". The **merge** runs in the signup trigger; the **wrapper does
+> not**. `handle_new_user` calls `merge_guest_to_real_user` **directly** —
+> verified against the deployed bodies, which show no reference to
+> `link_guest_to_account` and no back-edge from the core. So the Owner check is
+> unreachable from signup and changing this function carries **no signup risk**.
+>
+> The conclusion was right and the reason was wrong, in the direction that made
+> this look scarier and less tractable than it is. The real reason to keep it is
+> stronger: it is the sole gate on an account-merge primitive a browser JWT can
+> call. If Organizers should ever link placeholders, the shape is **not**
+> deleting the check — it is widening it to `is_trip_planner` **inside the
+> wrapper**, where it still covers the PostgREST path. That is a decision about
+> the trust boundary, not a cleanup.
 
 **A procedure that takes a role as INPUT cannot be gated on role alone.** This is
 the misjudgement that produced the #790 revert, stated precisely: "inviting crew
