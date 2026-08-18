@@ -772,8 +772,9 @@ function IdeaCard({
               trips.lockDestination and the × opens the remove/archive modal
               (ideas.remove / archivedIdeas.archive); all three moved to
               requireTripRole("Organizer") in #788. Deliberately `canEdit`, not
-              `isOwner` — the crew controls further down this file stay on
-              `isOwner` because tripMembers.remove did NOT move. */}
+              `isOwner`. The planner controls further down stay on `isOwner`
+              because they remove ORGANIZERS, which migration 123 reserves to the
+              Owner — not because `tripMembers.remove` is unmoved; it moved. */}
           {canEdit && (
             <div
               className="flex items-center justify-between pt-3 mt-auto"
@@ -1682,9 +1683,13 @@ export function CoPlannerPanel({
       <div className="space-y-1.5">
         {planners.map((m) => {
           const isSelf = m.user_id === currentUser?.id;
-          // DELIBERATELY `isOwner` (#789): this is `tripMembers.remove`, one of
-          // the held-back deviations — the server still refuses an Organizer, so
-          // showing the × would be worse than hiding it.
+          // STILL `isOwner`, but the REASON CHANGED (#786/#824). This is
+          // `tripMembers.remove`, which DID move to Organizer — the old comment
+          // here said it hadn't, and that stopped being true. It stays Owner-only
+          // at this site because this is the PLANNERS list: every row is an
+          // Organizer, and migration 123 reserves removing a fellow Organizer to
+          // the Owner (removal is a stronger form of `updateRole`). The crew
+          // list below is the one an Organizer may now manage.
           const canRemove = isOwner && !isSelf && m.role !== "Owner";
           const hasVoted = allVoterIds.has(m.user_id);
           return (
