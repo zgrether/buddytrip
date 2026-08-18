@@ -490,11 +490,26 @@ function OuterColumn({
     );
   }
 
-  // `N PTS` only once the game is configured (the SAME gate as Ready) — a
-  // setting-up game reads `—` even if it carries a stray points value, so the
-  // column and the state always agree.
   const pts = game.pointsTotal;
-  if (game.configured && pts != null && pts > 0) {
+  // The value renders whenever one is SET, regardless of readiness (T1).
+  //
+  // This used to be gated on `game.configured` — the same predicate as Ready —
+  // so a stroke/rack/match game with points but no roster yet read `—`
+  // permanently, not transiently: `isConfigured` is roster-gated for golf, and
+  // points alone satisfy it only for manual formats. The stated reason was that
+  // the column and the state should always agree.
+  //
+  // Two problems with that. Readiness is ALREADY communicated by the state chip,
+  // so the column was a second, weaker encoding of the same fact — and it paid
+  // for that redundancy by destroying a distinction, because `—` then meant both
+  // "no value set" and "value set, not yet configured". And it optimised a
+  // scoring-time invariant on a screen that spends weeks as a PLANNING surface:
+  // point values are agreed early and rules firm up as the trip approaches, so
+  // suppressing the value hid the competition exactly while it was being formed.
+  //
+  // `—` now means only "no value set". If not-yet-configured ever needs weight
+  // in this column, DIM it — do not hide it.
+  if (pts != null && pts > 0) {
     return (
       <span className="text-[13px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text)" }}>
         {fmtPts(pts)} <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>PTS</span>

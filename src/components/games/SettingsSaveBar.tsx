@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 /**
  * SettingsSaveBar — the settings page's ONE commit affordance (Draft-Then-Save P1
  * §2.7), shared across every format's settings page (match extracted it here in P2 so
@@ -13,20 +11,24 @@ import { useState } from "react";
  * full-width two-button row (STYLE_GUIDE §5, inline-styled — the repo has no shared
  * <Button>).
  *
- * Exit-behavior alignment: BOTH bottom buttons now CLOSE the panel (like the trip modals),
- * so neither leaves you "closed but still on the page":
+ * Exit behaviour: BOTH bottom buttons CLOSE the panel (like the trip modals), so
+ * neither leaves you "closed but still on the page":
  *  - **Cancel is ALWAYS enabled** — it means "leave." `onDiscard` discards the draft and
  *    closes (a no-op reset when clean). Disabled only mid-save.
- *  - **Save is disabled until dirty** — `onSave` commits and returns whether it LANDED; on
- *    success the bar calls `onLeave` to close, on failure the panel stays open with the
- *    inline error below (readiness / concurrency CONFLICT / course-matches-groupings freeze
- *    all arrive as real sentences here). No "Saved" hint any more — a landed save closes.
+ *  - **Save is disabled until dirty** — `onSave` commits and returns whether it LANDED;
+ *    on success the bar calls `onLeave` to close, on failure the panel stays open with
+ *    the inline error below (readiness / concurrency CONFLICT / course-matches-groupings
+ *    freeze all arrive as real sentences here).
  *
- * **The one exception is `stayOpenOnSave`** — see its prop note. When a save keeps the
- * panel open, the bar must say so and offer a way out, because the muscle memory built by
- * every other save is that Save exits: the ghost button becomes **Done** and a short line
- * confirms the write. Leaving it as a silently-still-open panel with a greyed-out Save
- * would read as a failure, which is the opposite of what happened.
+ * A LANDED SAVE ALWAYS CLOSES — including the Setup/Scoring flip, which used to be an
+ * exception (`stayOpenOnSave`) paired with a "Saved. Close to see the game" hint. That
+ * accommodation existed because editing a setting on an in-progress game meant
+ * enter → change → save (which closed) → reopen. That requirement is gone: the only
+ * remaining restriction is that scoring can't start without matches set, and that is
+ * enforced SERVER-side (`save_game_config`'s `NOT_READY`, and `assertGameReady` behind
+ * `games.enableScoring` / `matches.enableScoring`) — neither of which knows this panel
+ * exists. A refused flip still returns `ok === false` and still holds the panel open
+ * with its error, so removing the exception cannot hide a refusal.
  */
 export function SettingsSaveBar({
   dirty,
@@ -36,7 +38,6 @@ export function SettingsSaveBar({
   onDiscard,
   onLeave,
   saveDisabledReason,
-  stayOpenOnSave = false,
 }: {
   dirty: boolean;
   saving: boolean;
@@ -51,29 +52,8 @@ export function SettingsSaveBar({
    *  e.g. a points distribution that no longer sums to the total (C1). Distinct from
    *  `error`, which is a RED post-save failure. Cancel stays enabled (you can leave). */
   saveDisabledReason?: string | null;
-  /**
-   * This save changes something whose effect is OUTSIDE the panel, so a landed
-   * save must not close. Exactly one field qualifies today — the Setup/Scoring
-   * toggle, which decides the surface the panel is covering — and the flag is
-   * computed once in `useConfigDraft` (`stayOpenOnSave`) and passed straight
-   * through, so the four views cannot compute it four ways.
-   *
-   * Read at CLICK time: the `.then` closure below captures this render's value,
-   * which is what we want — `reset(true)` clears the difference during the await,
-   * so re-reading it afterwards would always say false.
-   */
-  stayOpenOnSave?: boolean;
 }) {
   const blocked = !!saveDisabledReason;
-  // A save landed and deliberately did NOT close the panel. Local because it is
-  // pure presentation — nothing outside this bar needs to know.
-  //
-  // It is never cleared, and does not need to be: both readers below AND it with
-  // `!dirty`, so the moment the user edits again the confirmation hides and the
-  // ghost button goes back to "Cancel" on its own. (An effect clearing it on
-  // `dirty` was the first version; it is redundant, and the React Compiler lint
-  // rightly refuses `setState` inside an effect.)
-  const [savedInPlace, setSavedInPlace] = useState(false);
 
   return (
     <div data-testid="settings-save-bar">
@@ -93,18 +73,6 @@ export function SettingsSaveBar({
           data-testid="settings-save-error"
         >
           {error}
-        </p>
-      )}
-      {/* The stayed-open confirmation. Without it the panel just sits there with a
-          greyed-out Save, which reads as "the save failed" — the exact opposite of
-          what happened. Names the write AND the way out. */}
-      {savedInPlace && !dirty && !saving && !error && (
-        <p
-          className="mb-2 rounded-lg px-3 py-2 text-[12.5px] leading-snug"
-          style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)", color: "var(--color-bt-accent)" }}
-          data-testid="settings-saved-in-place"
-        >
-          Saved. Close to see the game.
         </p>
       )}
       {/* Cancel (Ghost, auto-width, left) + Save (Primary, fills) — full width, crew/lodging.
@@ -128,18 +96,15 @@ export function SettingsSaveBar({
           }}
           data-testid="settings-cancel"
         >
-          {/* After a stayed-open save the draft is clean, so this button's
-              discard is a no-op and all it does is leave — which is what the
-              user now needs and what "Cancel" would misdescribe. */}
-          {savedInPlace && !dirty ? "Done" : "Cancel"}
+          Cancel
         </button>
         <button
           type="button"
           onClick={() => {
             void onSave().then((ok) => {
-              if (!ok) return;
-              if (stayOpenOnSave) setSavedInPlace(true);
-              else onLeave();
+              // A landed save always closes. A failed save returns false and
+              // leaves the panel open with its inline error above.
+              if (ok) onLeave();
             });
           }}
           disabled={!dirty || saving || blocked}
