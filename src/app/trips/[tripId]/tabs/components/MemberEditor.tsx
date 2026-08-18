@@ -98,6 +98,13 @@ interface MemberEditorProps {
   member: MemberEditorTarget;
   /** True when the current user is the trip Owner — enables role changes. */
   canManageRoles: boolean;
+  /** #786/#824 — `ghostCrew.update` stays OWNER-ONLY: `link_guest_to_account()`
+   *  hardcodes an Owner check inside the signup-path merge, so widening the
+   *  client alone would half-open it (rename works, email-paste fails at the
+   *  DB). Separate from `canManageRoles`, which is Owner-only for a different
+   *  reason (only the Owner changes who is trusted). Two Owner-only rules with
+   *  two causes — one flag for both is how the wrong one gets widened. */
+  canEditGhost: boolean;
   /** Trip span — seeds the travel date pickers' month + tints the trip dates. */
   tripStartDate?: string | null;
   tripEndDate?: string | null;
@@ -108,6 +115,7 @@ export function MemberEditor({
   tripId,
   member,
   canManageRoles,
+  canEditGhost,
   tripStartDate,
   tripEndDate,
   onClose,
@@ -486,7 +494,7 @@ export function MemberEditor({
               <input
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                disabled={isOwnerRow}
+                disabled={isOwnerRow || (member.isGuest && !canEditGhost)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 style={{
                   background: "var(--color-bt-base)",
@@ -518,6 +526,7 @@ export function MemberEditor({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={member.isGuest && !canEditGhost}
                   placeholder={`${member.displayName.toLowerCase().replace(/\s+/g, "")}@example.com`}
                   className="w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none"
                   style={{
