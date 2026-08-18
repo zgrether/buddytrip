@@ -245,10 +245,15 @@ export function ChecklistRow({
    * bubbles the click to it, which is exactly the tappable-but-inert bug #879
    * shipped (a modal painting under the thing it was covering while still taking
    * taps). As a sibling it is topmost, so it receives the tap and stops there.
+   *
+   * LEFT-JUSTIFIED, not centred: several of these stack in one panel, and
+   * centring put "Requires:" at a different x on every row, so the eye had to
+   * re-find the label each time. Left-aligned, the scaffolding word lines up and
+   * the varying part — the requirement itself — is what moves.
    */
   const scrim = blockedBy && (
     <div
-      className="absolute inset-0 z-[2] grid place-items-center rounded-xl"
+      className="absolute inset-0 z-[2] flex items-center rounded-xl"
       style={{ background: "var(--color-bt-overlay-row)", cursor: "not-allowed" }}
       // Absorb the tap and go no further. There is nothing to do here: the copy
       // has already named where to go.
@@ -256,7 +261,7 @@ export function ChecklistRow({
       data-testid={testId ? `${testId}-scrim` : "row-scrim"}
     >
       <span
-        className="flex items-center gap-1.5 px-3 text-center"
+        className="flex items-center gap-1.5 px-3 text-left"
         style={{ fontSize: 11.5, fontWeight: 650, letterSpacing: "0.01em", lineHeight: 1.3 }}
       >
         {blockedBy.kind === "locked" ? (
