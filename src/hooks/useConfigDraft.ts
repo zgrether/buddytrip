@@ -5,7 +5,6 @@ import { trpc } from "@/lib/trpc-client";
 import { GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import type { DraftView } from "@/lib/draftOutbox";
-import { scoringToggleChanged } from "@/lib/configDraft";
 import type { SaveConfigPayload, BaseConfigDraft } from "@/lib/configDraft";
 
 /**
@@ -206,33 +205,22 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
     discardRef.current = handleCancel;
   });
 
-  /**
-   * The Setup/Scoring toggle CHANGED during this editing session — so a landed
-   * save must NOT close the panel.
-   *
-   * ── Why this one field is the exception ─────────────────────────────────────
-   * Every other setting's result is visible right where you changed it: rename
-   * the game and the header updates, set a course and the row fills in. Closing
-   * on save is a fine default for those. The toggle is the only field whose
-   * effect is OUTSIDE the panel — it decides which surface the game view renders
-   * (setup placeholder vs the live board), and the panel is covering that
-   * surface. So committing it used to eject you, and you had to re-enter to keep
-   * editing. Reported as "you have to click save to leave and then come back in
-   * to edit something", which was literal: Save was how you left.
-   *
-   * The comparison itself — against the frozen baseline rather than the live
-   * server value, and "changed" rather than "is set" — lives in
-   * `scoringToggleChanged`, which is where both of those choices are explained
-   * and where they are unit-tested.
-   */
-  const stayOpenOnSave = scoringToggleChanged(configDraft, baseline?.draft);
+  // `stayOpenOnSave` REMOVED (T2). The Setup/Scoring flip used to hold the panel
+  // open, because committing it ejected you and you had to re-enter to keep
+  // editing — reported literally as "you have to click save to leave and then
+  // come back in to edit something". That workflow requirement is gone, so the
+  // accommodation went with it: a landed save now closes for every setting. The
+  // readiness rule it was entangled with is untouched and lives server-side
+  // (`save_game_config`'s NOT_READY, `assertGameReady`), so nothing about the
+  // panel's lifetime enforces it. `scoringToggleChanged` stays in configDraft.ts
+  // with its unit tests — no current caller, but it is the tested expression of
+  // "did the toggle move", which the reset audit (T3) may well want.
 
   return {
     dirty,
     baseline,
     justSaved,
     saveError,
-    stayOpenOnSave,
     /** Exposed so a view's course-staging handlers can surface a course-load failure into
      *  the SAME error slot the Save uses (rack / stroke / match). */
     setSaveError,

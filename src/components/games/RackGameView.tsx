@@ -721,7 +721,6 @@ export function RackGameView() {
   // confirm-on-leave sync + the atomic Save. Format-specific pieces are passed in.
   const {
     dirty, saveError, setSaveError, saving, handleSave: handleSaveConfig,
-    stayOpenOnSave,
   } = useConfigDraft<RackConfigDraft, typeof draftBundle>({
     tripId, gameId: gid, view: "rack", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -1076,7 +1075,6 @@ export function RackGameView() {
               onSave={handleSaveConfig}
               onDiscard={confirmDiscard}
               onLeave={leave}
-              stayOpenOnSave={stayOpenOnSave}
             />
           }
         />

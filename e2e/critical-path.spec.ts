@@ -176,14 +176,12 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   await expect(saveBtn).toBeEnabled({ timeout: 20_000 });
   await saveBtn.click();
 
-  // 5b. This save flips the Setup/Scoring toggle, so it deliberately does NOT
-  //     close the panel (#881): that field's effect is the surface the panel is
-  //     covering, so committing it used to eject you and force a re-entry to keep
-  //     editing. The confirmation is the landed-save signal in place of the panel
-  //     disappearing, and the ghost button becomes the way out.
-  await expect(page.getByTestId("settings-saved-in-place")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("settings-cancel")).toHaveText("Done");
-  await page.getByTestId("settings-cancel").click();
+  // 5b. A landed save CLOSES the panel — for every setting, including this
+  //     Setup/Scoring flip. It used to stay open with a "Saved. Close to see the
+  //     game" hint (#881), an accommodation for a workflow requirement that no
+  //     longer exists (T2). The panel going away IS the landed-save signal; a
+  //     FAILED save still holds it open with the inline error, so this assertion
+  //     also proves the save landed rather than merely returning.
   await expect(page.getByTestId("settings-save-bar")).toBeHidden({ timeout: 20_000 });
 
   // 6. Closing lands back on the board (nothing else was open underneath) — the
