@@ -74,6 +74,18 @@ async function liveSchema(): Promise<Record<string, string[]>> {
   return out;
 }
 
+/**
+ * DO NOT "simplify" this by dropping id-like columns instead of normalising them.
+ *
+ * Dropping them is the obvious move — they hold minted values that cannot match
+ * between two games, so they look like noise. They are not. `bracket_matches
+ * .winner_entrant_id` is an id-like column whose null-vs-set state IS the assertion
+ * that level 1 cleared the bracket picks, and that omission is one of the seven this
+ * test found. Dropping id-like columns would have deleted exactly the check that
+ * caught it, and the test would still have passed — on nothing.
+ *
+ * So: normalise to presence (`"«set»"` / `null`), never omit.
+ */
 const ID_LIKE = /^id$|_id$/;
 const MINTED_TS = /^(created_at|updated_at)$/;
 

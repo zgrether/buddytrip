@@ -143,6 +143,19 @@ BEGIN
          rules_for_today       = NULL,
          competition_format    = NULL,
          tee_time              = NULL,
+         -- The per-match point VALUE is identity and must survive (the UI promises
+         -- "the name and point value are kept"). For pre-A2b games it is stored ONLY
+         -- inside points_distribution.value, with points_total NULL — 1 production game
+         -- is in exactly that shape — so clearing the blob unconditionally would delete
+         -- a point value. Lift it to points_total, where value belongs, and then clear
+         -- the distribution as config. Both SET expressions read the OLD row, so this
+         -- sees the pre-clear value. This is NOT a keep-list entry: the distribution
+         -- still goes on every format, per spec.
+         points_total          = COALESCE(
+           points_total,
+           CASE WHEN points_distribution->>'type' = 'per_match'
+                THEN (points_distribution->>'value')::numeric END
+         ),
          points_distribution   = NULL,
          pairings_published_at = NULL,
          scoring_enabled       = false,
