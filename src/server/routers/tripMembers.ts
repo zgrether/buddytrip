@@ -6,6 +6,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { clearTripTeamAssignments } from "../lib/leaveTrip";
+import { findParticipationBlockers, participationRefusalMessage } from "../lib/participationGuard";
 
 /** Resolve a member's trip display name (nickname → account name) for
  *  system chat lines. Best-effort; falls back to "Someone". */
@@ -140,6 +141,28 @@ export const tripMembersRouter = router({
         return { result: "match" as const };
       }
       return { result: "invite" as const };
+    }),
+
+  // -----------------------------------------------------------------------
+  // removalBlockers — games this member is playing in / has scores in (#951).
+  //
+  // Read-only, for the UI to state the blocker BEFORE the remove button rather
+  // than after a failed press. `remove` re-checks and is the authority; this is
+  // the courtesy on top of it, never a substitute.
+  // -----------------------------------------------------------------------
+  removalBlockers: authedProcedure
+    .input(z.object({ tripId: z.string(), userId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const blockers = await findParticipationBlockers(ctx.supabase, ctx.tripId!, input.userId);
+      const message: string | null =
+        blockers.length === 0
+          ? null
+          : participationRefusalMessage(
+              await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId),
+              blockers
+            );
+      return { blockers, message };
     }),
 
   // -----------------------------------------------------------------------
@@ -403,6 +426,21 @@ export const tripMembersRouter = router({
               `Ask the owner to remove them, or to change their role to Member first.`,
           });
         }
+      }
+
+      // #951 — REFUSE rather than orphan. A removal deletes trip_members and
+      // nothing else: every scoring table keys to `users`, so nothing cascades
+      // and nothing errors, and the participation is silently left behind. The
+      // shared predicate is the same one `ghostCrew.remove` runs — the sibling
+      // gap #957 was exactly a guard present in one procedure and missing from
+      // its twin.
+      const blockers = await findParticipationBlockers(ctx.supabase, ctx.tripId!, input.userId);
+      if (blockers.length > 0) {
+        const name = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: participationRefusalMessage(name, blockers),
+        });
       }
 
       const { error } = await ctx.supabase

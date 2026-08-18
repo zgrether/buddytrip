@@ -5,6 +5,7 @@ import { requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { clearTripTeamAssignments } from "../lib/leaveTrip";
 import { findOrphanBlockers, orphanRefusalMessage } from "../lib/ownerGuard";
+import { findParticipationBlockers, participationRefusalMessage } from "../lib/participationGuard";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
@@ -464,6 +465,23 @@ export const ghostCrewRouter = router({
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: orphanRefusalMessage(blockers, "leave-trip"),
+        });
+      }
+
+      // #951 — the SAME participation guard `tripMembers.remove` runs. A ghost
+      // that has played is exactly as orphanable as a real member: the scoring
+      // tables key to `users`, and a placeholder has a users row like anyone
+      // else. `delete_orphan_guest_user` below no-ops for a guest with score
+      // history (ON DELETE RESTRICT), which preserves the USERS row but does
+      // nothing about the membership — so without this the ghost still drops
+      // off the roster and their scorecard row still reads "Player".
+      const partBlockers = await findParticipationBlockers(ctx.supabase, ctx.tripId!, input.guestUserId);
+      if (partBlockers.length > 0) {
+        const { data: gu } = await ctx.supabase
+          .from("users").select("name").eq("id", input.guestUserId).maybeSingle();
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: participationRefusalMessage((gu?.name as string) ?? "That crew member", partBlockers),
         });
       }
 

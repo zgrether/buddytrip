@@ -191,6 +191,17 @@ export function MemberEditor({
       onClose();
     },
   });
+  // #951 — state the blocker BEFORE the destructive button, not after a failed
+  // press. The mutation re-checks server-side and is the authority; this is the
+  // courtesy on top of it, so a stale read can never permit a removal the
+  // server would refuse.
+  const { data: removalInfo } = trpc.tripMembers.removalBlockers.useQuery(
+    { tripId, userId: member.user_id ?? "" },
+    { enabled: !!member.user_id }
+  );
+  const removalBlockers = removalInfo?.blockers ?? [];
+  const removalBlocked = removalBlockers.length > 0;
+
   const removeGuest = trpc.ghostCrew.remove.useMutation({
     onSuccess: () => {
       utils.tripMembers.list.invalidate({ tripId });
@@ -622,13 +633,39 @@ export function MemberEditor({
               Space above comes from the Travel group's paddingBottom. */}
           {!isOwnerRow && (
             <div style={{ borderTop: "1px solid var(--color-bt-subtle-border)", paddingTop: 18, paddingBottom: 16 }}>
-              <ConfirmDeleteButton
-                label="Remove from trip"
-                confirmLabel="Remove"
-                prompt="Remove this person from the trip?"
-                pending={removeMember.isPending || removeGuest.isPending}
-                onConfirm={handleRemove}
-              />
+              {removalBlocked ? (
+                <div
+                  data-testid="removal-blocked"
+                  className="rounded-lg p-3"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                >
+                  <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                    Can&rsquo;t remove them yet
+                  </p>
+                  <p className="mt-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {removalInfo?.message}
+                  </p>
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {removalBlockers.map((b) => (
+                      <li key={b.gameId} className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                        <span style={{ color: "var(--color-bt-text)" }}>{b.gameName}</span>
+                        {b.hasScores ? " — has scores" : " — in the field, no scores yet"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <ConfirmDeleteButton
+                  label="Remove from trip"
+                  confirmLabel="Remove"
+                  prompt="Remove this person from the trip?"
+                  pending={removeMember.isPending || removeGuest.isPending}
+                  onConfirm={handleRemove}
+                />
+              )}
             </div>
           )}
         </div>
