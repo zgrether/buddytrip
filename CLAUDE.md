@@ -33,6 +33,7 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 | Rights | **Owner / Organizer / Member** (trip) · **co_admin** (comp) · **delegate** (game) | trip role VALUE is `Organizer` (mig 029, not "Planner"); the one game-scope term is `delegate` |
 | A person | **member** (trip) / **participant** (game) / **guest** (placeholder) | ghost == guest — grep hazard |
 | Container | **competition** (code) / **cup** (UI) | not "Events" |
+| Bracket structure | **main** / **lower** / **final** (`bracket_matches.bracket`) | `lower`, never "losers" — the column names a STRUCTURE, not the people in it. The grand final is `final`, NOT `main` round N+1: an entrant can reach it having lost, which no `main` match permits. `consolation` is single-elim only and can never co-occur with `lower`. |
 
 ## Commit Rules
 
