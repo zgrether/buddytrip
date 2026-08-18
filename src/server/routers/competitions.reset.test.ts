@@ -165,7 +165,9 @@ describe("resetScoring — clears results, keeps config + identity, stays armed"
     expect(sg.modifiers).toMatchObject({ glorious_holes: {} });
     expect(sg.competition_format).toBe("head_to_head");
     // Unscored lifecycle, but STILL ARMED (scoring_enabled kept).
-    expect(sg.status).toBe("pending");
+    // #895/126: still armed AND now consistent with it — an enabled game reads
+    // 'active', not 'pending'. The old pairing here was the split state itself.
+    expect(sg.status).toBe("active");
     expect(sg.corrections_open).toBe(false);
     expect(sg.scoring_enabled).toBe(true);
 
