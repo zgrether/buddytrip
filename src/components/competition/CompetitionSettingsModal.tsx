@@ -388,15 +388,15 @@ export function CompetitionSettingsModal({
                         testId="comp-reset-scoring-btn"
                         icon={<RotateCcw size={16} />}
                         title="Reset all scoring"
-                        subtitle="Clears every game's scores — teams and setup stay"
+                        subtitle="Clears every game’s scores, results, and bracket picks — teams and setup stay"
                         onClick={() => openDanger("reset-scoring")}
                       />
                       <Row
                         tone="warning"
                         testId="comp-reset-skeleton-btn"
                         icon={<Eraser size={16} />}
-                        title="Reset all games to skeleton"
-                        subtitle="Clears pairings, courses, handicaps, and scores"
+                        title="Reset all game settings"
+                        subtitle="Clears every game’s scores AND its whole setup — only names and point values stay"
                         onClick={() => openDanger("reset-skeleton")}
                       />
                       <Row
@@ -551,7 +551,7 @@ export function CompetitionSettingsModal({
                   tone="warning"
                   icon={<RotateCcw size={22} />}
                   title="Reset all scoring?"
-                  body="Clears all scores. Teams, games, and setup stay — every game is ready to re-score."
+                  body="Clears all scores, results, and bracket picks. Teams, games, and setup stay — every game is ready to re-score."
                   confirmLabel="Reset scoring"
                   pendingLabel="Resetting…"
                   pending={resetScoring.isPending}
@@ -567,9 +567,9 @@ export function CompetitionSettingsModal({
                 <ConfirmScreen
                   tone="warning"
                   icon={<Eraser size={22} />}
-                  title="Reset all games to skeleton?"
-                  body="Resets every game to unconfigured. Teams stay; all pairings, courses, handicaps, and scores are cleared — each game needs setting up again."
-                  confirmLabel="Reset to skeleton"
+                  title="Reset all game settings?"
+                  body="Puts every game back to newly-added. Teams stay; scores, pairings, groupings, brackets, courses, who’s running each game, and every setting are cleared — only names and point values stay."
+                  confirmLabel="Reset settings"
                   pendingLabel="Resetting…"
                   pending={resetToSkeleton.isPending}
                   error={dangerError}

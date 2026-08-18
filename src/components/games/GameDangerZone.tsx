@@ -133,7 +133,7 @@ export function GameDangerZone({
           icon={<RotateCcw size={16} />}
           tone="warning"
           label="Reset scores"
-          blurb="Clears scores; pairings, course, handicaps, and points stay."
+          blurb="Clears every score, result, and bracket pick. Pairings, course, handicaps, and points stay."
           onClick={() => setConfirm("scoring")}
           testId="game-reset-scoring-btn"
         />
@@ -141,7 +141,7 @@ export function GameDangerZone({
           icon={<Eraser size={16} />}
           tone="warning"
           label="Reset game settings"
-          blurb="Clears the setup; the name and point value are kept."
+          blurb="Clears the scores AND the whole setup. Only the name and point value stay."
           onClick={() => setConfirm("skeleton")}
           testId="game-reset-skeleton-btn"
         />
@@ -160,7 +160,7 @@ export function GameDangerZone({
           tone="warning"
           icon={<RotateCcw size={18} />}
           title="Reset this game's scores?"
-          body="Clears all scores for this game. Pairings, course, handicaps, and points stay — it's ready to re-score."
+          body="Clears all scores, results, and bracket picks for this game. Pairings, course, handicaps, and points stay — it’s ready to re-score."
           confirmLabel="Reset scores"
           pendingLabel="Resetting…"
           isPending={resetScoring.isPending}
@@ -173,8 +173,8 @@ export function GameDangerZone({
         <DangerConfirmModal
           tone="warning"
           icon={<Eraser size={18} />}
-          title="Reset this game to skeleton?"
-          body="Resets this game to unconfigured — pairings, course, handicaps, and scores are cleared. The name and point value stay; you'll set it up again."
+          title="Reset this game’s settings?"
+          body="Puts this game back to newly-added: scores, pairings, groupings, the bracket, the course, who’s running it, and every setting are cleared. Only the name and point value stay."
           confirmLabel="Reset settings"
           pendingLabel="Resetting…"
           isPending={resetToSkeleton.isPending}
