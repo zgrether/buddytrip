@@ -136,20 +136,31 @@ export const usersRouter = router({
   // -----------------------------------------------------------------------
   // deleteMe — permanently delete the CALLER's own account.
   //
-  // Deletes the auth.users row via the service-role admin client; the
-  // on_auth_user_deleted trigger (migration 025) removes the matching
-  // public.users row, and the FK behaviors set in migration 027 cascade /
-  // anonymize the rest (the user's expenses + transient rows go; trip content
-  // they authored survives with created_by nulled). Always self — it never
-  // accepts an id, so a caller can only ever delete their own account.
+  // Deletes the auth.users row via the service-role admin client. The
+  // on_auth_user_deleted trigger (migration 025) then CONVERTS the matching
+  // public.users row to a placeholder rather than deleting it (migration 130):
+  // name "Deleted User", email + avatar nulled, is_guest true. They can never
+  // sign in again, and every shared record that references them — scores,
+  // match sides, results, expenses and the splits OTHER people owe — keeps
+  // resolving. Only rows that are about the person alone (push subscriptions,
+  // read receipts) are deleted. Always self — it never accepts an id, so a
+  // caller can only ever delete their own account.
   //
-  // #957 — REFUSED when it would orphan a trip. `trip_members.user_id` is
-  // ON DELETE CASCADE to `public.users`, so deleting the account removes the
-  // membership but NOT the trip: a sole Owner's trip survives populated with
-  // zero Owners, and `trips.delete` (Owner-only) can then never be satisfied
-  // by anyone. Verified empirically, not just by reading. The guard is shared
-  // with `ghostCrew.remove` — see `server/lib/ownerGuard.ts` for why it lives
-  // in application code rather than a DB trigger.
+  // The old comment here described migration 027's FK fan-out ("the user's
+  // expenses + transient rows go"). That was accurate and was the bug:
+  // deleting one account removed 2 expenses and the 14 splits owed by 14 other
+  // people. Their balances changed because someone else left.
+  //
+  // #957 — REFUSED when it would orphan a trip. STILL REQUIRED after migration
+  // 130, and for a changed reason worth writing down, because the obvious read
+  // is that keeping the row makes this guard unnecessary. It does not: the
+  // membership row now SURVIVES, so a sole Owner's trip keeps an Owner who is
+  // a placeholder and can never sign in. `trips.delete` (Owner-only) is just
+  // as unsatisfiable as it was when the row vanished — the orphan mode moved
+  // from "zero Owners" to "an Owner nobody can act as", which is the same dead
+  // end. The guard is shared with `ghostCrew.remove` — see
+  // `server/lib/ownerGuard.ts` for why it lives in application code rather
+  // than a DB trigger.
   // -----------------------------------------------------------------------
   deleteMe: authedProcedure.mutation(async ({ ctx }) => {
     const blockers = await findOrphanBlockers(ctx.supabase, ctx.user.id);
