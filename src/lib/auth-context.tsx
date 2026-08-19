@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { QueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 
 const AuthContext = createContext<User | null>(null);
@@ -20,7 +19,6 @@ export function AuthProvider({
 }) {
   const [user, setUser] = useState<User | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     const supabase = createClient();
@@ -41,20 +39,16 @@ export function AuthProvider({
         queryClient.clear();
       }
 
-      if (event === "SIGNED_IN") {
-        const pendingToken =
-          typeof window !== "undefined"
-            ? sessionStorage.getItem("pendingInviteToken")
-            : null;
-        if (pendingToken) {
-          sessionStorage.removeItem("pendingInviteToken");
-          router.push(`/invite?token=${pendingToken}`);
-        }
-      }
+      // NOTE: this used to consume a `pendingInviteToken` from sessionStorage
+      // and re-navigate to /invite after sign-in. That hop is gone: the invite
+      // destination now travels as `?next=` (login/page.tsx → /auth/callback),
+      // which survives a confirmation email opened in a different tab, app, or
+      // browser — the exact case sessionStorage cannot cross, and the one an
+      // emailed invite always takes.
     });
 
     return () => subscription.unsubscribe();
-  }, [queryClient, router]);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider value={user}>
