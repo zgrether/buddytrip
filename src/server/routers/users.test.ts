@@ -144,7 +144,7 @@ describe("users router", () => {
   });
 
   describe("deleteMe", () => {
-    it("permanently removes the caller's auth + public.users rows", async () => {
+    it("removes the caller's auth row and converts public.users to a placeholder", async () => {
       const admin = getAdminClient();
       const email = `delete-test-${Date.now()}-${Math.random()
         .toString(36)
@@ -180,19 +180,37 @@ describe("users router", () => {
         const res = await factory(callerCtx).users.deleteMe();
         expect(res).toEqual({ ok: true });
 
-        // auth.users row gone
+        // auth.users row gone — they can never sign in again. This half is
+        // what "delete my account" actually promises, and it is unchanged.
         const { data: after } = await admin.auth.admin.getUserById(tempId);
         expect(after?.user ?? null).toBeNull();
-        // public.users row gone via the on_auth_user_deleted trigger (025)
+
+        // public.users row KEPT, as a placeholder (migration 130). This
+        // assertion used to be `toBeNull()`, back when the trigger deleted the
+        // row and the FK fan-out decided everyone else's fate — which is how
+        // deleting one account removed 2 expenses and the 14 splits owed by 14
+        // OTHER people, and left scores and match sides pointing at a row that
+        // no longer existed. The row now survives, emptied of the person, so
+        // every shared record still resolves.
         const { data: pub } = await admin
           .from("users")
-          .select("id")
+          .select("id, name, email, avatar_url, is_guest")
           .eq("id", tempId)
           .maybeSingle();
-        expect(pub).toBeNull();
+        expect(pub).toBeTruthy();
+        expect(pub!.name).toBe("Deleted User");
+        expect(pub!.is_guest).toBe(true);
+        // Required, not cosmetic: handle_new_user auto-links a signup to any
+        // row with a matching email and is_guest = true, so a retained address
+        // would hand the deleted account to whoever next signed up with it.
+        expect(pub!.email).toBeNull();
+        expect(pub!.avatar_url).toBeNull();
       } finally {
         // safety net if an assertion threw before deleteMe ran
         await admin.auth.admin.deleteUser(tempId).catch(() => {});
+        // the placeholder outlives the auth row by design, so the suite has to
+        // clear it explicitly now
+        await admin.from("users").delete().eq("id", tempId);
       }
     });
 
