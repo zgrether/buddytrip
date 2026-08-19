@@ -58,10 +58,27 @@ export async function postSystemMessage(
  * §8-F3). The extra work here is forced by chat's shape, not invented
  * complexity: TWO visibility channels, each with its OWN last_read_at
  * (chat_reads) and its OWN per-member visibility floor
- * (chat_visible_from / planning_visible_from on trip_members) — list()
- * already applies that floor, so a message from before a member
- * joined/was promoted must not count as unread just because it's newer
- * than their (null) read mark.
+ * (chat_visible_from / planning_visible_from on trip_members) — a message
+ * from before a member joined/was promoted must not count as unread just
+ * because it's newer than their (null) read mark.
+ *
+ * #982 — `chat_visible_from` still gates the CREW count here, even though
+ * `list()` above no longer gates crew HISTORY with it. That's deliberate,
+ * not leftover: it's what makes "unread is zero right after joining" true
+ * with no extra write anywhere. A brand-new member has no `chat_reads` row
+ * (lastReadAt = null), so without the floor they'd show unread for the
+ * trip's ENTIRE prior history the moment it became visible — a badge of
+ * hundreds on a first visit, which is the exact failure §2.3 rules out. The
+ * floor already excludes everything before they joined regardless of
+ * lastReadAt, which is the one thing this function needs and the one thing
+ * `chat_visible_from` was already reliably stamped with on every add path
+ * (tripMembers.ts, ghostCrew.ts). Seeding a `chat_reads` row at join instead
+ * was considered and rejected: `chat_reads` isn't repointed by
+ * `merge_guest_to_real_user` (CLAUDE.md's guest-conversion section lists it
+ * as a table an uncovered write gets cascade-deleted from), so a row seeded
+ * for a still-guest invitee would vanish the moment they actually sign up —
+ * gone exactly when it would start mattering. The floor has no such gap:
+ * it lives on `trip_members`, which the merge DOES repoint.
  *
  * A plain function, not a procedure, so both `unreadCountByChannel` (the
  * Chat tab's per-segment dots) and `unreadCount` (the summed total used by
@@ -140,8 +157,16 @@ async function countUnreadByChannel(
 export const messagesRouter = router({
   // -----------------------------------------------------------------------
   // list — Crew chat: any member. Organizers chat: Owner/Organizer only.
-  // Both honor the per-member visibility floor so members added (crew) or
-  // promoted (planning) later don't see history from before they joined.
+  //
+  // Only Organizers chat honors the visibility floor now (#982). Migration
+  // 008 introduced `chat_visible_from` for Crew too, "so they do not see
+  // prior banter" — reversed here, deliberately: a trip chat is the trip's
+  // shared planning record, not a private conversation someone joins, and
+  // withholding it just means 16 people re-explaining decisions to whoever
+  // was added last. That tradeoff is real for Organizers chat, which stays
+  // gated — a newly-promoted Organizer seeing past owner-only strategizing
+  // is the "banter" case migration 008 was actually protecting, and #982
+  // never asked for that to change.
   // -----------------------------------------------------------------------
   list: authedProcedure
     .input(
@@ -168,19 +193,23 @@ export const messagesRouter = router({
       }
 
       // Visibility floor: NULL = sees all history; a timestamp = only
-      // messages from that point forward (set when added/promoted).
-      const floorCol =
-        input.visibility === "crew" ? "chat_visible_from" : "planning_visible_from";
+      // messages from that point forward (set when promoted). Crew no
+      // longer has a floor at all (#982) — every member sees the full
+      // trip record regardless of when they joined; only Organizers chat
+      // still gates on `planning_visible_from`. `chat_visible_from` is
+      // still stamped on every new membership (unchanged — it still backs
+      // the unread-count floor in `countUnreadByChannel` below), it's just
+      // no longer read here.
       let visibilityFloor: string | null = null;
-      if (input.channel === "trip") {
+      if (input.channel === "trip" && input.visibility === "planning") {
         const { data: memberRow } = await ctx.supabase
           .from("trip_members")
-          .select(floorCol)
+          .select("planning_visible_from")
           .eq("trip_id", ctx.tripId)
           .eq("user_id", ctx.user!.id)
           .maybeSingle();
         if (memberRow) {
-          visibilityFloor = (memberRow as Record<string, string | null>)[floorCol] ?? null;
+          visibilityFloor = (memberRow as Record<string, string | null>).planning_visible_from ?? null;
         }
       }
 

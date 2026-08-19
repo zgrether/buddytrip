@@ -163,7 +163,17 @@ describe("messages router", () => {
 
   // ── Per-member visibility floor ────────────────────────────────────────
 
-  it("list — chat_visible_from floor hides crew history from before a member joined", async () => {
+  // #982 — REVERSED from the original "floor hides crew history" behavior.
+  // Migration 008 gated Crew chat on `chat_visible_from` "so they do not see
+  // prior banter"; a real-device walkthrough found that gate is what made a
+  // newly-joined member's chat look like an empty room with a stray unread
+  // badge on it. A trip chat is the trip's shared planning record, not a
+  // private conversation someone joins — so a member now sees the FULL crew
+  // history regardless of when they were added. `chat_visible_from` is still
+  // stamped on every new membership (it still backs the unread-count floor,
+  // covered below) and still set here to prove it's genuinely ignored for
+  // history now, not merely absent.
+  it("list — crew history is visible from before a member joined (chat_visible_from no longer gates it)", async () => {
     const floorTrip = await ctx.createTrip("Floor Test");
     const owner = ctx.caller();
 
@@ -201,8 +211,105 @@ describe("messages router", () => {
     });
     expect(memberView.some((m) => m.text === "Welcome aboard")).toBe(true);
     expect(memberView.some((m) => m.text === "Banter before you joined")).toBe(
-      false
+      true
     );
+  });
+
+  // ── #982 — new member: history + unread, and the existing-member guard ──
+
+  it("new member sees full crew history AND unread is zero on join, with no other activity", async () => {
+    const trip = await ctx.createTrip("New Member Zero Unread");
+    const owner = ctx.caller();
+
+    const priorPlanning = await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      text: "Deciding on dates back in June",
+    });
+
+    // Mirrors the real add path (tripMembers.ts / ghostCrew.ts): every
+    // membership insert stamps chat_visible_from to "now" at join time.
+    const joinFloor = new Date(
+      new Date(priorPlanning.created_at as string).getTime() + 1
+    ).toISOString();
+    await ctx.admin.from("trip_members").insert({
+      trip_id: trip,
+      user_id: ctx.getUser("member").id,
+      role: "Member",
+      status: "in",
+      chat_visible_from: joinFloor,
+    });
+
+    const memberView = await ctx.callerAs("member").messages.list({ tripId: trip });
+    expect(memberView.some((m) => m.text === "Deciding on dates back in June")).toBe(
+      true
+    );
+
+    const unread = await ctx.callerAs("member").messages.unreadCount({ tripId: trip });
+    expect(unread).toBe(0);
+  });
+
+  it("a new member's own join notice produces no unread badge", async () => {
+    const trip = await ctx.createTrip("Join Notice No Badge");
+    await ctx.admin.from("trip_members").insert({
+      trip_id: trip,
+      user_id: ctx.getUser("member").id,
+      role: "Member",
+      status: "in",
+      chat_visible_from: new Date().toISOString(),
+    });
+
+    // The real add paths post this via postSystemMessage; reproduced directly
+    // here since this test targets messages.unreadCount, not the add procedure.
+    await ctx.admin.from("messages").insert({
+      id: genId("msg"),
+      trip_id: trip,
+      user_id: null,
+      channel: "trip",
+      visibility: "crew",
+      message_type: "system",
+      text: "member joined the crew",
+    });
+
+    const unread = await ctx.callerAs("member").messages.unreadCount({ tripId: trip });
+    expect(unread).toBe(0);
+
+    const memberView = await ctx.callerAs("member").messages.list({ tripId: trip });
+    expect(memberView.some((m) => m.text === "member joined the crew")).toBe(true);
+  });
+
+  it("a trip with no prior messages: empty room, no badge, for a new member", async () => {
+    const trip = await ctx.createTrip("Truly Empty Room");
+    await ctx.admin.from("trip_members").insert({
+      trip_id: trip,
+      user_id: ctx.getUser("member").id,
+      role: "Member",
+      status: "in",
+      chat_visible_from: new Date().toISOString(),
+    });
+
+    const memberView = await ctx.callerAs("member").messages.list({ tripId: trip });
+    expect(memberView).toEqual([]);
+
+    const unread = await ctx.callerAs("member").messages.unreadCount({ tripId: trip });
+    expect(unread).toBe(0);
+  });
+
+  it("existing member: unread behaves exactly as before (#982 regression guard)", async () => {
+    // The regression risk named in the spec: a fix scoped to new members
+    // must not change what an already-caught-up member sees.
+    const trip = await ctx.createTrip("Existing Member Unaffected");
+    await ctx.addTripMember(trip, "member", "Member");
+    const owner = ctx.caller();
+    const member = ctx.callerAs("member");
+
+    await member.messages.markRead({ tripId: trip, visibility: "crew" });
+    expect(await member.messages.unreadCount({ tripId: trip })).toBe(0);
+
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "one" });
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "two" });
+
+    expect(await member.messages.unreadCount({ tripId: trip })).toBe(2);
   });
 
   // ── unreadCount — server-side count replacing the client page-scan (F3) ──
