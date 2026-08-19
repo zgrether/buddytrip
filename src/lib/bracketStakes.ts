@@ -93,6 +93,27 @@ export function matchStakes(
   if (!isFinal && !isConsolation) return null;
 
   const positions = allPositions(resolved, lastRound);
+  return stakesFromPositions(positions, isFinal ? [1, 2] : [3, 4], distribution);
+}
+
+/**
+ * The stakes CALCULATION, shared by every bracket format.
+ *
+ * Split out when double elimination arrived, and the split is the point: this function
+ * does not know, and must not learn, which format it is serving. A format supplies two
+ * things — the positions a full run awards, and which two places THIS match settles —
+ * and the arithmetic is identical from there.
+ *
+ * The alternative was a branch inside `matchStakes` on whether the draw has a `lower`
+ * bracket, which is exactly the "module needs to know which format it's in" signal that
+ * says the abstraction is wrong. Two thin callers over one calculation instead.
+ */
+export function stakesFromPositions(
+  positions: readonly number[],
+  [betterPlace, worsePlace]: readonly [number, number],
+  distribution: readonly number[]
+): MatchStakes | null {
+  if (distribution.length === 0 || positions.length === 0) return null;
   const scored = pointsForPlacements(
     positions.map((p, i) => ({ entityId: String(i), position: p })),
     distribution
@@ -101,12 +122,9 @@ export function matchStakes(
     const index = positions.indexOf(position);
     return index === -1 ? 0 : scored.get(String(index)) ?? 0;
   };
-
-  const [betterPlace, worsePlace] = isFinal ? [1, 2] : [3, 4];
   const better = pointsAt(betterPlace);
   const worse = pointsAt(worsePlace);
   const name = (p: number) => (p === 1 ? "1st" : p === 2 ? "2nd" : p === 3 ? "3rd" : "4th");
-
   return {
     better,
     worse,
