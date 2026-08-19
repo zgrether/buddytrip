@@ -91,42 +91,43 @@ export function BracketBoard({
    *  final rows is a double-elim draw, and there is nothing to configure. */
   const isDouble = lower.length > 0 || finals.length > 0;
   /**
-   * COLUMNS COUNTED FROM THE RIGHT — the tournament converges, so the layout is
-   * anchored to what rounds converge TO, not to where their losers came from.
+   * COLUMNS COUNTED FROM THE RIGHT, each tier walking leftward INDEPENDENTLY.
    *
-   * Anchoring the lower tier to its FEEDERS (the previous rule) forced upper matches
-   * apart to make room for lower rounds between them, so the upper bracket acquired
-   * gaps it does not need: two independent left-to-right layouts colliding. Counting
-   * from the right is one layout, and it does not collide.
+   * The tournament converges, so the layout is anchored to what rounds converge TO,
+   * not to where their losers came from. Anchoring to feeders forced upper matches
+   * apart to make room and gave the upper bracket gaps it does not need.
    *
-   *   column 0 (rightmost)  the Grand Final, and the if-necessary game with it
-   *   column 1              the Upper Final and the Lower Final, side by side
-   *   leftward from there   each tier walks independently, one column per round
+   *   column 0 (rightmost)  Grand Final, with the if-necessary game under it
+   *   column 1              Upper Final and Lower Final, side by side
+   *   leftward              one column per round, per tier, independently
    *
-   * Counted from the right, upper round r lands at grid column r — its NATURAL
-   * spacing, unchanged from a single-elim board of the same size. That equality is the
-   * test that the extra columns are gone.
+   * The lower tier has 2(W-1) rounds against the upper's W, so it EXTENDS FURTHER
+   * LEFT rather than sharing or stacking. The extra columns land on the far left,
+   * outside the upper bracket entirely, which is why the upper pitch is untouched.
    *
-   * SHARED COLUMNS. The lower tier has 2(W-1) rounds against the upper's W, so it runs
-   * out of columns and the excess pair up, stacked vertically — which is what the
-   * spreadsheet does, and why it fits in seven columns rather than one per lower round.
-   * The two columns NEAREST the convergence (Lower Final, and the round feeding it)
-   * keep a column each, because those are the rounds whose separation matters most;
-   * every column left of them holds two. The upper bracket's count sets the total and
-   * the lower tier fits inside it, never the reverse.
+   * Divergence starts as soon as W >= 3 — that is FIVE entrants, not eight: 5 and 8
+   * both build an 8-slot draw with 3 upper and 4 lower rounds, so they lay out
+   * identically. There is no 5-vs-8 difference to encode.
    */
-  const gridCols = lastRound + 1;
-  /** Lower round -> grid column, walking leftward from the convergence. */
-  const lowerColumn = new Map<number, number>();
-  {
-    let col = 1;                                  // 1 = counted from the right
-    const descending = [...lowerRounds].sort((a, b) => b - a);
-    for (let i = 0; i < descending.length; i++) {
-      lowerColumn.set(descending[i], gridCols - col);
-      // The first two get a column each; after that, every column takes a pair.
-      if (i === 0 || i === 1 || i % 2 === 1) col += 1;
-    }
-  }
+  const upperColumnsFromRight = lastRound;
+  const lowerRoundsAll = [...new Set(lower.map((m) => m.round))].sort((a, b) => a - b);
+  const lowerColumnsFromRight = lowerRoundsAll.length;
+  const gridCols = Math.max(upperColumnsFromRight, lowerColumnsFromRight) + 1;
+  /** Upper round r: r-th from the right among upper rounds. */
+  const upperColumn = (r: number) => gridCols - (lastRound - r + 1);
+  /** What the if-necessary game is waiting on, named after the entrant when known. */
+  const ifNecessaryNote = (() => {
+    const gf1 = finals.find((m) => m.round === 1);
+    if (!gf1) return "";
+    const n = display.get(matchKey(gf1))?.number;
+    const who = gf1.bSeed !== null ? bySeed.get(gf1.bSeed) : undefined;
+    const name = who ? (who.partner ? `${who.name} & ${who.partner}` : who.name) : null;
+    return name
+      ? `Played only if ${name} wins match ${n}`
+      : `Played only if the lower-bracket entrant wins match ${n}`;
+  })();
+  /** Lower round k: k-th from the right among lower rounds. */
+  const lowerColumnOf = (k: number) => gridCols - (lowerColumnsFromRight - k + 1);
 
   if (matches.length === 0) return null;
 
@@ -186,7 +187,7 @@ export function BracketBoard({
           <div style={{ gridColumn: "1 / -1", gridRow: 3, ...EYEBROW }}>Lower bracket · second life</div>
 
           {upperRounds.map((round) => (
-            <div key={`u${round}`} style={{ gridColumn: round, gridRow: 2 }}>
+            <div key={`u${round}`} style={{ gridColumn: upperColumn(round), gridRow: 2 }}>
               <div className="flex flex-col" style={{ gap: roundLayout(round, BRACKET_METRICS).gap, paddingTop: roundLayout(round, BRACKET_METRICS).offset }}>
                 {main.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
                   <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
@@ -195,18 +196,21 @@ export function BracketBoard({
             </div>
           ))}
 
-          {[...new Set([...lowerColumn.values()])].sort((a, b) => a - b).map((col) => (
-            // One cell per COLUMN, not per round: two lower rounds can share a column,
-            // and two grid items placed in the same cell overlap rather than stack.
-            <div key={`lc${col}`} className="flex flex-col" style={{ gridColumn: col, gridRow: 4, gap: BRACKET_METRICS.baseGap }}>
-              {lowerRounds
-                .filter((r) => lowerColumn.get(r) === col)
-                .map((round) => (
-                  <div key={`l${round}`} className="flex flex-col" style={{ gap: BRACKET_METRICS.baseGap }}>
-                    {lower.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
-                      <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
-                    ))}
-                  </div>
+          {lowerRounds.map((round) => (
+            <div key={`l${round}`} className="flex flex-col" style={{ gridColumn: lowerColumnOf(round), gridRow: 4, gap: BRACKET_METRICS.baseGap }}>
+              {lower
+                .filter((m) => m.round === round)
+                .sort((a, b) => a.slot - b.slot)
+                // A match whose seats are ALL permanently empty is not a match: nobody
+                // will ever play it, `drawComplete` already treats it as satisfied, and a
+                // card with two dead seats is visual weight for something that does not
+                // exist. Dropping it is the render finally agreeing with the model.
+                .filter((m) => {
+                  const d = display.get(matchKey(m));
+                  return !((d?.aVacant ?? false) && (d?.bVacant ?? false));
+                })
+                .map((m) => (
+                  <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
                 ))}
             </div>
           ))}
@@ -223,6 +227,20 @@ export function BracketBoard({
                     {doubleRoundName("final", m.round, 1)}
                   </div>
                   <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                  {/* The one place the placeholder convention cannot explain itself: this
+                      match exists CONDITIONALLY, and "Winner of 14 · Loser of 14" is true
+                      while telling a newcomer nothing about when it is played. Named
+                      after the entrant when we know who it is, since "if Danny K. wins"
+                      is a sentence and "if the lower-bracket entrant wins" is a rule. */}
+                  {m.round === 2 && (
+                    <p
+                      className="text-center"
+                      style={{ fontSize: 11, marginTop: 4, color: "var(--color-bt-text-dim)", lineHeight: 1.3 }}
+                      data-testid="bracket-if-necessary-note"
+                    >
+                      {ifNecessaryNote}
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -396,16 +414,18 @@ function Slot({
       </div>
     );
   }
-  // PERMANENTLY EMPTY — nobody is ever coming. Distinct from waiting, and given no
-  // placeholder: naming a feeder that can never deliver is the waiting/empty conflation
-  // reappearing with better typography. Dimmed and wordless, so the eye skips it.
+  // PERMANENTLY EMPTY — rendered as a BYE, which is what it is: nobody is coming.
+  // It had its own dim "·", and that read as a rendering failure rather than as a
+  // state. "Bye" already appears on this board (match 1, match 8) and is understood,
+  // so the third seat state gets the existing word rather than a new symbol. A match
+  // whose seats are ALL permanently empty is not rendered at all — see the tier above.
   if (seed === null && vacant) {
     return (
       <div
-        style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption, opacity: 0.45 }}
-        data-testid="bracket-slot-vacant"
+        style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption }}
+        data-testid="bracket-slot-bye"
       >
-        <span aria-hidden>·</span>
+        <span>Bye</span>
       </div>
     );
   }
