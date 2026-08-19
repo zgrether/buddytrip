@@ -168,6 +168,49 @@ worth less than it appears**, and this one has been giving false confidence.
 **Also missed, by everything:** every visual defect, every empty state, and every
 piece of copy.
 
+### Amendment (2026-08-19) — the count is about CLASSES, not about strength
+
+The reading most likely to be taken from the table above is "types are weak."
+That is not what it found, and the difference matters before #943–#946 are worked,
+because two of those four are automation items whose value depends entirely on the
+class of thing they are aimed at.
+
+What the table actually says is that in THIS build, the expensive questions were not
+expressible as types. "Does this format answer a question I have not thought of" has
+no type. "Is the payout right" has no type. So types held two of seven boundaries —
+not because the mechanism is weak, but because it was pointed at a class it cannot
+address.
+
+**The double-elim build produced the control.** Widening `BracketSide` from
+`main | consolation` to the four values migration 127 admits is a closed set of
+values, which is exactly what a union expresses. The compiler then refused SEVEN
+separate sites that had re-narrowed the union locally — two `z.enum` wire validators,
+four component prop types, and a test helper that would have rejected nothing at
+runtime at all. Types held all seven, and a person on a device would have found none
+of them, because six of the seven fail before anything renders.
+
+So the generalisation is not a ranking. **Each mechanism catches a different class,
+and the useful question is which class a given risk falls into** — not which
+mechanism is strongest:
+
+| Class of risk | What actually catches it |
+|---|---|
+| A closed set of values, or a shape | the compiler — cheaply, exhaustively, before render |
+| An invariant over data the code writes | a guard test (the hash-invariant tests remain the best-performing mechanism here) |
+| A model that is coherently wrong | a CONCRETE anchor, hand-computed — see below |
+| A question nobody thought to ask | a person on a device, and so far nothing else |
+
+**On concrete anchors, which the double-elim tree also produced evidence for.** Its
+shape tests are mostly invariants — rounds halve, the drop map is a bijection, every
+entrant has room to lose twice. All were green against a match count that was wrong.
+The error was caught only by a single hand-computed number (15 emitted matches at 8
+entrants, where I had asserted 14 by conflating matches PLAYED with matches EMITTED).
+
+Invariants check internal consistency; they cannot catch a model that is coherently
+wrong, because a wrong model is internally consistent. That is an argument for keeping
+at least one concrete, hand-computed anchor per case — not for preferring anchors,
+which are brittle and blind to cases nobody enumerated.
+
 ---
 
 ## 7 · Is double elimination cheap?

@@ -156,6 +156,52 @@ describe("the structure can host a real tournament", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  /**
+   * CONCRETE ANCHORS — one hand-computed shape per entrant count.
+   *
+   * The invariants above check internal consistency, and they cannot catch a model
+   * that is coherently WRONG, because a wrong model is internally consistent. That is
+   * not hypothetical here: every invariant was green against an 8-entrant count I had
+   * asserted as 14, by conflating matches PLAYED in a no-reset run (2n-2) with matches
+   * EMITTED (which always include the if-necessary final). Only a hand-computed number
+   * caught it.
+   *
+   * So these are derived on paper from the geometry, NOT generated from the module —
+   * a table produced by the code under test restates the implementation and can only
+   * agree with it.
+   *
+   *   size 4  (n=3,4)   main 2+1        lower 1+1              + 2 finals =  7
+   *   size 8  (n=5..8)  main 4+2+1      lower 2+2+1+1          + 2 finals = 15
+   *   size 16 (n=9,16)  main 8+4+2+1    lower 4+4+2+2+1+1      + 2 finals = 31
+   *
+   * Note the shape depends on SIZE, not on n — 5 and 8 entrants play the same tree,
+   * differing only in how many round-1 seats are byes. That is the bye design stated
+   * as an assertion rather than as a comment.
+   */
+  const ANCHORS: Record<number, { main: number[]; lower: number[]; total: number }> = {
+    3:  { main: [2, 1],       lower: [1, 1],             total: 7 },
+    4:  { main: [2, 1],       lower: [1, 1],             total: 7 },
+    5:  { main: [4, 2, 1],    lower: [2, 2, 1, 1],       total: 15 },
+    6:  { main: [4, 2, 1],    lower: [2, 2, 1, 1],       total: 15 },
+    7:  { main: [4, 2, 1],    lower: [2, 2, 1, 1],       total: 15 },
+    8:  { main: [4, 2, 1],    lower: [2, 2, 1, 1],       total: 15 },
+    9:  { main: [8, 4, 2, 1], lower: [4, 4, 2, 2, 1, 1], total: 31 },
+    16: { main: [8, 4, 2, 1], lower: [4, 4, 2, 2, 1, 1], total: 31 },
+  };
+
+  it.each(COUNTS)("has the hand-computed shape at %i entrants", (n) => {
+    const draw = buildDoubleDraw(n);
+    const perRound = (side: string) => {
+      const rounds = only(draw, side).map((m) => m.round);
+      const max = rounds.length === 0 ? 0 : Math.max(...rounds);
+      return Array.from({ length: max }, (_, i) => rounds.filter((r) => r === i + 1).length);
+    };
+    const want = ANCHORS[n];
+    expect(perRound("main"), `main at ${n}`).toEqual(want.main);
+    expect(perRound("lower"), `lower at ${n}`).toEqual(want.lower);
+    expect(draw, `total at ${n}`).toHaveLength(want.total);
+  });
+
   it("matches the standard printed shape at 8 entrants", () => {
     // One concrete anchor against the invariants above, at the size most people can
     // check by eye: 4+2+1 winners, 2+2+1+1 lower, 2 finals.
