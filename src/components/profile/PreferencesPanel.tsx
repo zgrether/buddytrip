@@ -1132,6 +1132,12 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
         value={confirmText}
         onChange={(e) => setConfirmText(normalizeDeleteConfirmationInput(e.target.value))}
         autoFocus
+        // The `uppercase` class below is COSMETIC ONLY — it paints the text
+        // uppercase but does not touch `value`. `normalizeDeleteConfirmationInput`
+        // above is what's authoritative: it keeps `confirmText` itself uppercase,
+        // which is what `isDeleteConfirmed` compares. This class used to be the
+        // ONLY uppercasing, which was the bug — don't drop the JS normalization
+        // and lean on this class alone again.
         className="mt-2 w-full rounded-lg px-3 py-2.5 text-sm uppercase tracking-wider outline-none"
         style={{
           background: "var(--color-bt-card-raised)",
