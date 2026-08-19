@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
+import { joinNoticeText } from "@/lib/joinMessage";
 import { clearTripTeamAssignments } from "../lib/leaveTrip";
 import { findParticipationBlockers, participationRefusalMessage } from "../lib/participationGuard";
 
@@ -241,7 +242,8 @@ export const tripMembersRouter = router({
         await postSystemMessage(ctx.supabase, {
           tripId: ctx.tripId!,
           visibility: "crew",
-          text: `${name} joined the crew`,
+          text: joinNoticeText(name),
+          subjectUserId: input.userId,
         });
       } catch {
         /* system message failure shouldn't block the add */
@@ -596,7 +598,8 @@ export const tripMembersRouter = router({
           await postSystemMessage(ctx.supabase, {
             tripId: ctx.tripId!,
             visibility: "crew",
-            text: `${existing.name ?? email.split("@")[0]} joined the crew`,
+            text: joinNoticeText(existing.name ?? email.split("@")[0]),
+            subjectUserId: existing.id,
           });
         } catch {
           /* best-effort */

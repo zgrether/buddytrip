@@ -33,13 +33,32 @@ const Visibility = z.enum(["crew", "planning"]);
  */
 export async function postSystemMessage(
   _supabase: unknown,
-  args: { tripId: string; visibility: "crew" | "planning"; text: string }
+  args: {
+    tripId: string;
+    visibility: "crew" | "planning";
+    text: string;
+    /**
+     * Who the line is ABOUT, when it is about a person — written to
+     * `messages.user_id`. It is not an author (system rows have none); it is
+     * what lets ONE join row render two ways, so the joiner reads a welcome
+     * and everyone else reads the notice, without a second row in the
+     * transcript (see `src/lib/joinMessage.ts`).
+     *
+     * Costs nothing elsewhere: unread already excludes system rows outright
+     * (`neq("message_type","system")` below), the chat panel branches on
+     * `message_type` before it ever looks at `user_id`, and
+     * `merge_guest_to_real_user` already repoints `messages.user_id` — so an
+     * invitee's join line follows them across the guest→real conversion
+     * instead of pointing at a deleted placeholder.
+     */
+    subjectUserId?: string | null;
+  }
 ) {
   const admin = createAdminClient();
   const { error } = await admin.from("messages").insert({
     id: crypto.randomUUID(),
     trip_id: args.tripId,
-    user_id: null,
+    user_id: args.subjectUserId ?? null,
     channel: "trip",
     team_id: null,
     text: args.text,
@@ -62,6 +81,18 @@ export async function postSystemMessage(
  * already applies that floor, so a message from before a member
  * joined/was promoted must not count as unread just because it's newer
  * than their (null) read mark.
+ *
+ * #982 — the floor is ALSO what makes "unread is zero right after joining"
+ * true, with no extra write anywhere. A brand-new member has no `chat_reads`
+ * row (lastReadAt = null), so without it they would show unread for the
+ * trip's ENTIRE prior history on their first visit. Seeding a `chat_reads`
+ * row at join instead was considered and rejected: `chat_reads` is
+ * cascade-deleted by an uncovered `merge_guest_to_real_user` write (see
+ * CLAUDE.md's guest-conversion section), so a row seeded for a still-guest
+ * invitee would vanish the moment they signed up — gone exactly when it
+ * would start mattering, and on the most common way people arrive. The
+ * floor has no such gap: it lives on `trip_members`, which the merge DOES
+ * repoint.
  *
  * A plain function, not a procedure, so both `unreadCountByChannel` (the
  * Chat tab's per-segment dots) and `unreadCount` (the summed total used by

@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
+import { joinNoticeText } from "@/lib/joinMessage";
 import { clearTripTeamAssignments } from "../lib/leaveTrip";
 import { findOrphanBlockers, orphanRefusalMessage } from "../lib/ownerGuard";
 import { findParticipationBlockers, participationRefusalMessage } from "../lib/participationGuard";
@@ -100,7 +101,8 @@ export const ghostCrewRouter = router({
             await postSystemMessage(ctx.supabase, {
               tripId: ctx.tripId,
               visibility: "crew",
-              text: `${input.name} joined the crew`,
+              text: joinNoticeText(input.name),
+              subjectUserId: existingUser.id,
             });
           } catch {
             /* never block the add on a failed system message */
@@ -158,7 +160,8 @@ export const ghostCrewRouter = router({
             await postSystemMessage(ctx.supabase, {
               tripId: ctx.tripId,
               visibility: "crew",
-              text: `${input.name} joined the crew`,
+              text: joinNoticeText(input.name),
+              subjectUserId: existingUser.id,
             });
           } catch {
             /* never block the add on a failed system message */
@@ -233,7 +236,8 @@ export const ghostCrewRouter = router({
         await postSystemMessage(ctx.supabase, {
           tripId: ctx.tripId,
           visibility: "crew",
-          text: `${input.name} joined the crew`,
+          text: joinNoticeText(input.name),
+          subjectUserId: guest.id,
         });
       } catch {
         /* never block the add on a failed system message */

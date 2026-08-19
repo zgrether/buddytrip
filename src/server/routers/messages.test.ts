@@ -205,6 +205,124 @@ describe("messages router", () => {
     );
   });
 
+  // ── #982 — what a new member actually lands in ─────────────────────────
+  //
+  // The spec these were first written against said new members should get full
+  // crew history, and that decision was REVERSED before it shipped. Migration
+  // 008's original rationale — "so they do not see prior banter" — is the
+  // better one, and not only because of existing members' informality: a new
+  // person scrolling back through sixteen people's unfiltered conversation may
+  // find discussion ABOUT THEMSELVES, and that cannot be undone. A momentarily
+  // confusing empty room is much the smaller problem. The floor stays; what
+  // changed is the join message that makes the empty room read as a beginning.
+  //
+  // The assertions below pin the state the reversal restored, so nobody has to
+  // re-derive it from the fact that `list()` simply doesn't mention crew.
+
+  it("a new member does NOT see crew history from before they joined, and unread is zero", async () => {
+    const trip = await ctx.createTrip("New Member Floor");
+    const owner = ctx.caller();
+
+    const prior = await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      text: "Deciding on dates back in June",
+    });
+
+    // Mirrors the real add path (tripMembers.ts / ghostCrew.ts): every
+    // membership insert stamps chat_visible_from at join time.
+    const joinFloor = new Date(
+      new Date(prior.created_at as string).getTime() + 1
+    ).toISOString();
+    await ctx.admin.from("trip_members").insert({
+      trip_id: trip,
+      user_id: ctx.getUser("member").id,
+      role: "Member",
+      status: "in",
+      chat_visible_from: joinFloor,
+    });
+
+    const memberView = await ctx.callerAs("member").messages.list({ tripId: trip });
+    expect(memberView.some((m) => m.text === "Deciding on dates back in June")).toBe(false);
+
+    // Zero with no `chat_reads` row anywhere — the floor is what delivers this,
+    // which is why nothing is seeded at join.
+    expect(await ctx.callerAs("member").messages.unreadCount({ tripId: trip })).toBe(0);
+  });
+
+  it("a trip with no prior messages: empty room, no badge, for a new member", async () => {
+    const trip = await ctx.createTrip("Truly Empty Room");
+    await ctx.admin.from("trip_members").insert({
+      trip_id: trip,
+      user_id: ctx.getUser("member").id,
+      role: "Member",
+      status: "in",
+      chat_visible_from: new Date().toISOString(),
+    });
+
+    expect(await ctx.callerAs("member").messages.list({ tripId: trip })).toEqual([]);
+    expect(await ctx.callerAs("member").messages.unreadCount({ tripId: trip })).toBe(0);
+  });
+
+  it("existing member: unread behaves exactly as before (#982 regression guard)", async () => {
+    // The regression risk named in the spec: nothing done for new members may
+    // change what an already-caught-up member sees.
+    const trip = await ctx.createTrip("Existing Member Unaffected");
+    await ctx.addTripMember(trip, "member", "Member");
+    const owner = ctx.caller();
+    const member = ctx.callerAs("member");
+
+    await member.messages.markRead({ tripId: trip, visibility: "crew" });
+    expect(await member.messages.unreadCount({ tripId: trip })).toBe(0);
+
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "one" });
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "two" });
+
+    expect(await member.messages.unreadCount({ tripId: trip })).toBe(2);
+  });
+
+  // ── #982 — the join line: ONE row, two readings ────────────────────────
+
+  it("tripMembers.add writes exactly ONE join row, carrying the joiner as its subject", async () => {
+    // The whole point of putting the joiner on `user_id` is that the two
+    // wordings come from one row. If this ever becomes two rows, everyone
+    // reads a greeting addressed to someone else and the transcript doubles.
+    const trip = await ctx.createTrip("One Join Row");
+    const outsider = ctx.getUser("outsider");
+    await ctx.caller().tripMembers.add({ tripId: trip, userId: outsider.id });
+
+    const { data: rows } = await ctx.admin
+      .from("messages")
+      .select("id, text, user_id, message_type")
+      .eq("trip_id", trip)
+      .eq("message_type", "system");
+
+    expect(rows).toHaveLength(1);
+    expect(rows![0].user_id).toBe(outsider.id);
+    // Stored form is third person; the welcome variant is derived at render
+    // (src/lib/joinMessage.ts), never stored.
+    expect(rows![0].text).toContain("has now joined the chat");
+    expect(rows![0].text).not.toContain("Hey ");
+  });
+
+  it("the join row badges nobody — not the joiner, not anyone else", async () => {
+    const trip = await ctx.createTrip("Join Row No Badge");
+    await ctx.addTripMember(trip, "planner", "Organizer");
+    await ctx.caller().tripMembers.add({ tripId: trip, userId: ctx.getUser("member").id });
+
+    // The joiner: their own line, and a floor stamped at join.
+    expect(await ctx.callerAs("member").messages.unreadCount({ tripId: trip })).toBe(0);
+    // Everyone else: system rows are excluded from the count outright, so a
+    // membership change never lights up a badge for the people already there.
+    expect(await ctx.callerAs("planner").messages.unreadCount({ tripId: trip })).toBe(0);
+
+    // ...but it IS in the transcript for both of them — one row, two readings.
+    const joinerView = await ctx.callerAs("member").messages.list({ tripId: trip });
+    const othersView = await ctx.callerAs("planner").messages.list({ tripId: trip });
+    expect(joinerView.filter((m) => m.message_type === "system")).toHaveLength(1);
+    expect(othersView.filter((m) => m.message_type === "system")).toHaveLength(1);
+  });
+
   // ── unreadCount — server-side count replacing the client page-scan (F3) ──
 
   it("unreadCount — zero right after the caller marks crew read", async () => {
