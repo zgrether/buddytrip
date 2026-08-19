@@ -4,6 +4,30 @@ import { useState } from "react";
 import { ArrowLeft, Check, Loader2, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { authCallbackUrl, signupConfirmationUrl } from "@/lib/authRedirect";
+
+/**
+ * Context a deep link carries onto this page: what the person was linked to,
+ * who sent it, and the address to prefill. Resolved server-side from a
+ * capability token (see `login/page.tsx`) — never taken from the URL, so the
+ * copy on an auth screen can't be authored by whoever crafted the link.
+ *
+ * Not invite-shaped on purpose. A league, game or competition link would fill
+ * the same three fields; only the resolver differs.
+ */
+export type DeepLinkContext = {
+  /** Human name of the thing they were linked to, e.g. the trip title. */
+  resourceName: string;
+  /** Who sent it, when known. */
+  inviterName: string | null;
+  /**
+   * The address the link was sent to. PREFILLED, NEVER LOCKED (#981): locking
+   * would block anyone who genuinely wants a different address, while
+   * prefilling removes the retyping that creates the mismatch in the first
+   * place — and a wrong address that is visible is a correctable one.
+   */
+  prefillEmail: string | null;
+};
 
 type Mode =
   | "signin"
@@ -83,29 +107,68 @@ function Input({
   );
 }
 
+// ── Deep-link context header ───────────────────────────────────────────
+// Replaces the generic "Welcome back" / "Create your account" subtitle when the
+// person arrived from a link that knows where they were going. The wording
+// mirrors the invite email's ("{inviter} invited you to join {trip}") so the
+// page reads as a continuation of the mail, not a different product.
+//
+// It says "added you to", not "invited you to join": there is no accept step
+// here and never was one to build — `tripMembers.inviteByEmail` writes the
+// roster row before the email is sent, so by the time anyone reads this they
+// are already on the crew. Copy that implies a pending decision would be a lie
+// about state, and would put a button on the screen with nothing to do.
+function LinkContextHeader({
+  context,
+  mode,
+}: {
+  context: DeepLinkContext;
+  mode: "signin" | "signup";
+}) {
+  return (
+    <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+      <span style={{ color: "var(--color-bt-text)" }}>
+        {context.inviterName ? (
+          <>
+            <strong>{context.inviterName}</strong> added you to{" "}
+            <strong>{context.resourceName}</strong>.
+          </>
+        ) : (
+          <>
+            You&apos;ve been added to <strong>{context.resourceName}</strong>.
+          </>
+        )}
+      </span>{" "}
+      {mode === "signup"
+        ? "Create your account to see it."
+        : "Sign in and we'll take you straight there."}
+    </p>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────
 export default function LoginClient({
   initialMode = "signin",
   next = null,
+  context = null,
 }: {
   initialMode?: "signin" | "signup";
   /** Same-origin path to return to after auth (already validated by the page).
-   *  Set when an involuntary expiry bounced the user here mid-round. */
+   *  Set when an involuntary expiry bounced the user here mid-round, when the
+   *  middleware bounced a deep link, or when an invite link named a trip. */
   next?: string | null;
+  /** What the person was linked to, when they arrived from a deep link. */
+  context?: DeepLinkContext | null;
 }) {
   // Post-auth destination. Falls back to "/" (the home-page smart redirect).
   const dest = next ?? "/";
-  // Auth flows that leave the app (OAuth, magic link) come back through
-  // /auth/callback, which already honors ?next= — hand it the same destination
-  // so those paths return to the scorecard too, not just password sign-in.
-  const callbackNext = next ? `?next=${encodeURIComponent(next)}` : "";
   const [mode, setMode] = useState<Mode>(initialMode);
   // Tracks which primary panel (signin | signup) opened the magic-link flow
   // so the back button returns to the right place.
   const [magicLinkReturn, setMagicLinkReturn] = useState<"signin" | "signup">(
     initialMode === "signup" ? "signup" : "signin"
   );
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(context?.prefillEmail ?? "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -131,7 +194,7 @@ export default function LoginClient({
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${origin}/auth/callback${callbackNext}` },
+      options: { redirectTo: authCallbackUrl(origin, next) },
     });
   }
 
@@ -166,10 +229,16 @@ export default function LoginClient({
           data: { name },
           // Route the confirmation link through our auth callback so the token
           // is exchanged for a session there (sets the cookie) and the user
-          // lands logged-in on the dashboard. Without this, redirect_to falls
-          // back to the Site URL (the marketing page), which never exchanges
-          // the token — the user appears signed out and has to log in manually.
-          emailRedirectTo: `${origin}/auth/callback?next=/dashboard`,
+          // lands logged-in. Without this, redirect_to falls back to the Site
+          // URL (the marketing page), which never exchanges the token — the
+          // user appears signed out and has to log in manually.
+          //
+          // `next` is what carries a deep link across the confirmation email:
+          // Supabase stores this whole URL as `redirect_to`, puts it in the
+          // mail, and bounces the browser to it after verifying the token, so
+          // /auth/callback gets the same ?next= it would have got in-app. With
+          // no `next` this stays `?next=/dashboard`, exactly as before.
+          emailRedirectTo: signupConfirmationUrl(origin, next),
         },
       });
       if (signUpError) throw signUpError;
@@ -198,7 +267,7 @@ export default function LoginClient({
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${origin}/auth/callback${callbackNext}` },
+        options: { emailRedirectTo: authCallbackUrl(origin, next) },
       });
       if (otpError) throw otpError;
       switchMode("magic-link-sent");
@@ -267,9 +336,13 @@ export default function LoginClient({
                 </svg>
                 BuddyTrip
               </h1>
-              <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                Welcome back
-              </p>
+              {context ? (
+                <LinkContextHeader context={context} mode="signin" />
+              ) : (
+                <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                  Welcome back
+                </p>
+              )}
             </div>
 
             {/* Google OAuth */}
@@ -359,9 +432,13 @@ export default function LoginClient({
                 </svg>
                 BuddyTrip
               </h1>
-              <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                Create your account
-              </p>
+              {context ? (
+                <LinkContextHeader context={context} mode="signup" />
+              ) : (
+                <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                  Create your account
+                </p>
+              )}
             </div>
 
             {/* Google OAuth */}
