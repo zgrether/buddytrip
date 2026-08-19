@@ -5,6 +5,7 @@ import { Send, ChevronDown, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
+import { systemLineForViewer } from "@/lib/joinMessage";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -757,7 +758,20 @@ function ChatBody({
                 ) : null;
 
               // System lifecycle lines render centered + muted, no bubble.
+              //
+              // ONE row, two readings (#982): a join line carries the joiner on
+              // `user_id`, so the person it is about reads a welcome and everyone
+              // else reads the notice. Writing two rows instead would double the
+              // transcript and show everyone a greeting addressed to someone
+              // else. The name is resolved HERE, from the live roster, so a
+              // nickname change doesn't strand a stale name in the transcript.
               if (msg.message_type === "system") {
+                const line = systemLineForViewer({
+                  text: msg.text,
+                  subjectUserId: msg.user_id,
+                  viewerId: currentUserId,
+                  subjectName: msg.user_id ? memberNames[msg.user_id] : null,
+                });
                 return (
                   <Fragment key={msg.id}>
                     {divider}
@@ -766,7 +780,7 @@ function ChatBody({
                         className="text-[10px] italic px-2 text-center"
                         style={{ color: "var(--color-bt-text-dim)" }}
                       >
-                        {msg.text}
+                        {line}
                       </span>
                     </div>
                   </Fragment>
