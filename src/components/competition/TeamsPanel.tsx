@@ -1700,6 +1700,14 @@ export function TeamSheet({
               maxLength={4}
               disabled={!identityEditable}
               readOnly={!identityEditable}
+              // The `uppercase` class below is COSMETIC — `onChange` above already
+              // normalizes `shortName` itself to uppercase, which is what `handleSave`
+              // and the dirty-check compare. Checked after #987 (the delete-account
+              // confirm field relied on this class ALONE, with no JS normalization,
+              // and the comparison silently failed for anyone who typed lowercase):
+              // this input doesn't share that gap, but keep the two in sync — if the
+              // `onChange` normalization above is ever removed, this class must go too
+              // or this becomes the same bug.
               className="w-full rounded-lg px-2 py-2 text-center text-sm uppercase outline-none disabled:opacity-70"
               style={{
                 background: "var(--color-bt-card-raised)",
