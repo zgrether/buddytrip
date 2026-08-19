@@ -34,6 +34,7 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 | A person | **member** (trip) / **participant** (game) / **guest** (placeholder) | ghost == guest — grep hazard |
 | Container | **competition** (code) / **cup** (UI) | not "Events" |
 | Bracket structure | **main** / **lower** / **final** (`bracket_matches.bracket`) | `lower`, never "losers" — the column names a STRUCTURE, not the people in it. The grand final is `final`, NOT `main` round N+1: an entrant can reach it having lost, which no `main` match permits. `consolation` is single-elim only and can never co-occur with `lower`. |
+| Survival in a bracket | **lives** = `2 - losses` (double elim) — alive at 2 or 1, eliminated at 0 | Name the QUANTITY, not the state: "one loss from out" is `lives === 1`, and "if I lose this, am I out?" is a per-SIDE question. A `match.isElimination` boolean is WRONG at the grand final, where one side has 2 lives and the other 1 — it is an elimination match for one side only, which is why the if-necessary final exists. Derive from lives per side; never store. UI says **must-win**, never "sudden death" (that means a playoff in golf, and this is a golf app). BRACKET-LOCAL — must not leak into `cupCompletion`/`competitionPlacement`, which correctly know nothing about brackets. |
 
 ## Commit Rules
 
