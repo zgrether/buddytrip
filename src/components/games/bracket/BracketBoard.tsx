@@ -87,7 +87,6 @@ export function BracketBoard({
   const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
   const rounds = [...new Set(main.map((m) => m.round))].sort((a, b) => a - b);
   const upperRounds = rounds;
-  const lowerLast = lower.reduce((max, m) => Math.max(max, m.round), 0);
   /** Rendering the structure it was GIVEN, not a format flag: a draw carrying lower or
    *  final rows is a double-elim draw, and there is nothing to configure. */
   const isDouble = lower.length > 0 || finals.length > 0;
