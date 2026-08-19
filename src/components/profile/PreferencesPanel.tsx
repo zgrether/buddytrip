@@ -14,6 +14,10 @@ import {
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
+import {
+  isDeleteConfirmed,
+  normalizeDeleteConfirmationInput,
+} from "@/lib/accountDeletionConfirm";
 import { useNotificationPreference } from "@/lib/useNotificationPreference";
 import { NOTIFICATION_TYPES, type NotificationKey } from "@/lib/notificationTypes";
 import { useDevicePush } from "@/lib/useDevicePush";
@@ -1043,7 +1047,14 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
   // `isBlocked` is folded in below (defined after the query) — the button is
   // disabled for a blocked account, but that is presentation only: the server
   // refuses regardless (#957 §4.3, a disabled button is not the fix).
-  const canType = confirmText === "DELETE" && status !== "loading";
+  //
+  // Regression fix: the field displays uppercase via CSS only (`uppercase`
+  // class below) — that never touched the stored value, so a lowercase type-out
+  // (the mobile-keyboard default) rendered as "DELETE" but compared false
+  // forever. `normalizeDeleteConfirmationInput` keeps the stored value in sync
+  // with what's on screen; `isDeleteConfirmed` also trims a trailing space.
+  // See src/lib/accountDeletionConfirm.ts.
+  const canType = isDeleteConfirmed(confirmText) && status !== "loading";
 
   // Permanently delete the account: server deletes the auth user (cascading /
   // anonymizing their rows per migrations 025+027), then we sign out locally
@@ -1119,7 +1130,7 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
       <input
         type="text"
         value={confirmText}
-        onChange={(e) => setConfirmText(e.target.value)}
+        onChange={(e) => setConfirmText(normalizeDeleteConfirmationInput(e.target.value))}
         autoFocus
         className="mt-2 w-full rounded-lg px-3 py-2.5 text-sm uppercase tracking-wider outline-none"
         style={{
