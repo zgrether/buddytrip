@@ -8,6 +8,7 @@ import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
+import type { BracketSide } from "@/lib/bracket";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
 
@@ -192,7 +193,7 @@ export function BracketScoringSurface({
    * check-mark used to wait for all of it. It now waits for a state update.
    */
   const handlePick = useCallback(
-    (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
+    (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
       utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
         prev && applyPickCascading(prev, ref, seed)

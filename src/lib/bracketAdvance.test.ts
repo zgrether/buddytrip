@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDraw } from "./bracket";
+import { type BracketSide, buildDraw } from "./bracket";
 import {
   resolveDraw,
   matchKey,
@@ -347,7 +347,7 @@ describe("applyPick — an optimistic pick equals a fetched one", () => {
 });
 
 /** The stored rows as the `winners` map `resolveDraw` takes. */
-function toWinners(rows: { bracket: "main" | "consolation"; round: number; slot: number; winnerSeed: number | null }[]) {
+function toWinners(rows: { bracket: BracketSide; round: number; slot: number; winnerSeed: number | null }[]) {
   return Object.fromEntries(rows.map((m) => [matchKey(m), m.winnerSeed]));
 }
 

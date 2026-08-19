@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
+import type { BracketSide } from "@/lib/bracket";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
 import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
 import { matchStakes, type MatchStakes } from "@/lib/bracketStakes";
@@ -58,7 +59,7 @@ export function BracketBoard({
   /** Organizer view when true; the member's read-only board when false. */
   canPick?: boolean;
   /** `seed` is the winner, or null to clear. Only called when `canPick`. */
-  onPick?: (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => void;
+  onPick?: (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => void;
 }) {
   const display = bracketDisplay(matches);
   const bySeed = new Map(entrants.map((e) => [e.seed, e]));
@@ -146,7 +147,7 @@ function MatchCard({
   canPick: boolean;
   /** What this match is worth, or null when the game pays no placement split. */
   stakes: MatchStakes | null;
-  onPick?: (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => void;
+  onPick?: (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => void;
 }) {
   const d = display.get(matchKey(match));
   const ref = { bracket: match.bracket, round: match.round, slot: match.slot };
@@ -210,8 +211,8 @@ function Slot({
   pending: string | null;
   bySeed: Map<number, BracketEntrantMeta>;
   canPick: boolean;
-  onPick?: (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => void;
-  matchRef: { bracket: "main" | "consolation"; round: number; slot: number };
+  onPick?: (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => void;
+  matchRef: { bracket: BracketSide; round: number; slot: number };
 }) {
   const seed = seat === "a" ? match.aSeed : match.bSeed;
   const meta = seed === null ? undefined : bySeed.get(seed);

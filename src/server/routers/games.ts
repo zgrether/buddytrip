@@ -21,7 +21,7 @@ import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } 
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
-import type { BracketDrawMatch } from "@/lib/bracket";
+import { BRACKET_SIDES, type BracketDrawMatch } from "@/lib/bracket";
 import { resolveDraw, matchKey, orphanedByPick, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
@@ -598,7 +598,7 @@ export const gamesRouter = router({
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        bracket: z.enum(["main", "consolation"]),
+        bracket: z.enum(BRACKET_SIDES),
         round: z.number().int().positive(),
         slot: z.number().int().positive(),
         /** The winning SEED, or null to clear the pick. */
@@ -1493,7 +1493,7 @@ export const gamesRouter = router({
           bracketDraw: z
             .array(
               z.object({
-                bracket: z.enum(["main", "consolation"]),
+                bracket: z.enum(BRACKET_SIDES),
                 round: z.number().int().positive(),
                 slot: z.number().int().positive(),
                 // Round 1 only. A null in round 1 is a BYE; in a later round it is

@@ -21,7 +21,28 @@
  * plays whom without touching the tree's shape.
  */
 
-export type BracketSide = "main" | "consolation";
+/**
+ * Which STRUCTURE a match belongs to — not who is in it (CLAUDE.md glossary,
+ * ratified before migration 127 widened the matching CHECK).
+ *
+ *   main         the winners' bracket. Single elim is main alone.
+ *   lower        the second-life bracket (double elim only). `lower`, never
+ *                "losers": the value names a structure, not people.
+ *   final        the grand final. Its own value rather than `main` round N+1,
+ *                because advancement has NO link column — position IS the link
+ *                (slot s -> ceil(s/2), seat by parity). As a main round the grand
+ *                final would be the ONLY match whose entrants do not come from the
+ *                round below it, forcing a special case into the one rule that has
+ *                none. Round 2 of `final` is the if-necessary final.
+ *   consolation  the single-elim 3rd-place play-off. Double elim produces 3rd
+ *                structurally, so `consolation` and `lower` NEVER co-occur.
+ */
+export const BRACKET_SIDES = ["main", "lower", "final", "consolation"] as const;
+
+/** Derived from `BRACKET_SIDES` so the type, the wire validators (`z.enum`) and the
+ *  DB CHECK (migration 127) all trace to ONE list. Four sites repeated this union
+ *  before double elim widened it, which is the shape CLAUDE.md #24 describes. */
+export type BracketSide = (typeof BRACKET_SIDES)[number];
 
 /** One match in the draw. Round 1 carries seeds; every later round derives its
  *  participants from the winners below, so both seats are null. */
