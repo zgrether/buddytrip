@@ -9,6 +9,7 @@ import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
+import type { MatchStakes } from "@/lib/bracketStakes";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
 
@@ -70,6 +71,8 @@ export function BracketScoringSurface({
   matches,
   entrants,
   pointsDistribution,
+  stakesFor,
+  mustWin,
   canEdit,
   onPosted,
 }: {
@@ -85,6 +88,10 @@ export function BracketScoringSurface({
   /** The game's placement split, for the per-match stakes. Empty = no per-place
    *  values, and the headers quote nothing. */
   pointsDistribution: readonly number[];
+  /** Format-supplied, so neither this surface nor the board asks which format it is
+   *  rendering. Absent → the board's single-elim defaults. */
+  stakesFor?: (m: ResolvedMatch) => MatchStakes | null;
+  mustWin?: (seed: number) => boolean;
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
@@ -245,6 +252,8 @@ export function BracketScoringSurface({
         matches={matches}
         entrants={entrants}
         pointsDistribution={pointsDistribution}
+        stakesFor={stakesFor}
+        mustWin={mustWin}
         canPick={canEdit && !isLocked}
         onPick={handlePick}
       />

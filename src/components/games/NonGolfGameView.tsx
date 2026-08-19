@@ -36,6 +36,10 @@ import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bra
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
 import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
+import type { BracketSide } from "@/lib/bracket";
+import { resolveDoubleDraw, lossesBySeed, isMustWin } from "@/lib/bracketDoubleAdvance";
+import { doubleBracketPlacements, doublePositionsAwarded, doubleSettledPlaces } from "@/lib/bracketDoublePlacements";
+import { stakesFromPositions } from "@/lib/bracketStakes";
 import { DEFAULT_BRACKET_CONFIG, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
@@ -444,15 +448,29 @@ export function NonGolfGameView() {
     { tripId: tripId!, gameId: urlGameId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId && isBracket },
   );
+  /**
+   * Single or double elimination, chosen HERE rather than inside either resolver.
+   *
+   * This is the composition root, and picking a strategy is what it is for. The rule
+   * the spec sets is that a MODULE must not have to ask which format it is in — so
+   * `resolveDraw`, `resolveDoubleDraw`, and the two placement rules each know only
+   * their own format, and this line is the one place that knows both exist.
+   */
+  const isDouble = (configDraft.bracketConfig?.elimination ?? "single") === "double";
   const resolvedDraw = useMemo(() => {
-    const rows = (drawQ.data ?? []) as { bracket: "main" | "consolation"; round: number; slot: number; aSeed: number | null; bSeed: number | null; winnerSeed: number | null }[];
+    const rows = (drawQ.data ?? []) as { bracket: BracketSide; round: number; slot: number; aSeed: number | null; bSeed: number | null; winnerSeed: number | null }[];
     const winners: WinnerBySeed = {};
     for (const r of rows) winners[matchKey(r)] = r.winnerSeed;
-    return resolveDraw(
-      rows.map((r) => ({ bracket: r.bracket, round: r.round, slot: r.slot, aSeed: r.aSeed, bSeed: r.bSeed })),
-      winners,
-    );
-  }, [drawQ.data]);
+    const draw = rows.map((r) => ({ bracket: r.bracket, round: r.round, slot: r.slot, aSeed: r.aSeed, bSeed: r.bSeed }));
+    return isDouble ? resolveDoubleDraw(draw, winners) : resolveDraw(draw, winners);
+  }, [drawQ.data, isDouble]);
+
+  /** Lives per seed, for the board's per-side must-win marker. Bracket-local — this
+   *  must not travel to the competition layer (glossary). */
+  const bracketLosses = useMemo(
+    () => (isDouble ? lossesBySeed(resolvedDraw) : new Map<number, number>()),
+    [isDouble, resolvedDraw],
+  );
 
   /**
    * Seed → who that is, for the board's rows.
@@ -517,7 +535,7 @@ export function NonGolfGameView() {
    */
   const bracketProjection = useMemo<Record<string, number> | null>(() => {
     if (!isBracket) return null;
-    const placements = bracketPlacements(resolvedDraw);
+    const placements = isDouble ? doubleBracketPlacements(resolvedDraw) : bracketPlacements(resolvedDraw);
     if (placements.length === 0) return null;
     // Shared with the SERVER roll-up (`effectiveDistribution`) — a null split
     // pays the total to first place, so the projection and the board agree.
@@ -534,7 +552,7 @@ export function NonGolfGameView() {
   // `points_total` is in the trigger set because the projection now derives from
   // it via `effectiveDistribution` (CLAUDE.md #9 — enumerate the FULL set, not
   // the obvious one). Caught by the React Compiler lint, not by me.
-  }, [isBracket, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
+  }, [isBracket, isDouble, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
 
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
@@ -1003,6 +1021,15 @@ export function NonGolfGameView() {
           }}
           matches={resolvedDraw}
           entrants={bracketEntrantMeta}
+          // Double elim supplies its own stakes and its own must-win predicate; single
+          // elim passes neither and the board falls back to its defaults.
+          stakesFor={isDouble
+            ? (m) => {
+                const places = doubleSettledPlaces(m);
+                return places ? stakesFromPositions(doublePositionsAwarded(resolvedDraw), places, effectiveDistribution(game.points_distribution as PointsDistribution | null, game.points_total as number | null)) : null;
+              }
+            : undefined}
+          mustWin={isDouble ? (seed: number) => isMustWin(bracketLosses, seed) : undefined}
           // What each match is worth. The game's own placement split, or empty when
           // it pays no per-place values — the header then quotes nothing rather than
           // inventing zeroes.

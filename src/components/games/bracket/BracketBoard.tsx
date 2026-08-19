@@ -50,6 +50,8 @@ export function BracketBoard({
   pointsDistribution = [],
   canPick = false,
   onPick,
+  stakesFor,
+  mustWin,
 }: {
   matches: ResolvedMatch[];
   entrants: BracketEntrantMeta[];
@@ -60,11 +62,25 @@ export function BracketBoard({
   canPick?: boolean;
   /** `seed` is the winner, or null to clear. Only called when `canPick`. */
   onPick?: (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => void;
+  /** What a match is worth. Supplied by the CALLER so this component never has to ask
+   *  which format it is rendering — double elim passes its own, single elim gets the
+   *  default below. Branching here on "does the draw have a lower bracket" is exactly
+   *  the signal the spec calls out. */
+  stakesFor?: (m: ResolvedMatch) => MatchStakes | null;
+  /** "If I lose this, am I out?" — PER SEED, because at the grand final the same match
+   *  is must-win for one side and not the other (glossary: lives). Unstyled and applied
+   *  to every match on purpose for the first look: the open question is whether it is
+   *  noise at this density, and that cannot be judged from a version that hides it. */
+  mustWin?: (seed: number) => boolean;
 }) {
+  const stakes = stakesFor ?? ((m: ResolvedMatch) => matchStakes(m, matches, pointsDistribution));
   const display = bracketDisplay(matches);
   const bySeed = new Map(entrants.map((e) => [e.seed, e]));
   const main = matches.filter((m) => m.bracket === "main");
   const consolation = matches.filter((m) => m.bracket === "consolation");
+  const lower = matches.filter((m) => m.bracket === "lower");
+  const finals = matches.filter((m) => m.bracket === "final");
+  const lowerRounds = [...new Set(lower.map((m) => m.round))].sort((a, b) => a - b);
   const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
   const rounds = [...new Set(main.map((m) => m.round))].sort((a, b) => a - b);
 
@@ -107,13 +123,70 @@ export function BracketBoard({
                   .filter((m) => m.round === round)
                   .sort((a, b) => a.slot - b.slot)
                   .map((m) => (
-                    <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
+                    <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
                   ))}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* THE LOWER BRACKET, and the grand final it converges into.
+          Stacked below the winners' columns rather than beside them — deliberately the
+          plainest thing that renders, because the Cadence look is about whether this
+          reads at all, not about how it is arranged. Columns use the SAME
+          `roundLayout` as `main`, which is wrong in a knowable way: the lower bracket's
+          feeders are not the pair directly below, so the centring is decorative here.
+          Left as-is for the first look rather than guessed at. */}
+      {lower.length > 0 && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--color-bt-border)" }}>
+          <div style={{ ...EYEBROW, marginBottom: 7 }} data-testid="bracket-lower-heading">
+            Lower bracket · second life
+          </div>
+          <div className="flex items-start" style={{ gap: 26, minWidth: "min-content", overflowX: "auto" }}>
+            {lowerRounds.map((round) => (
+              <div key={round} className="flex flex-col" style={{ minWidth: BRACKET_COLUMN_WIDTH }}>
+                <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
+                  {`Lower ${round}`}
+                </div>
+                <div className="flex flex-col" style={{ gap: BRACKET_METRICS.baseGap }}>
+                  {lower
+                    .filter((m) => m.round === round)
+                    .sort((a, b) => a.slot - b.slot)
+                    .map((m) => (
+                      <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {finals.length > 0 && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--color-bt-border)" }}>
+          <div style={{ ...EYEBROW, marginBottom: 7 }} data-testid="bracket-final-heading">
+            Grand final
+          </div>
+          <div className="flex items-start" style={{ gap: 26 }}>
+            {finals.sort((a, b) => a.round - b.round).map((m) => {
+              // The if-necessary final is VISIBLE BEFORE IT IS PLAYED, so its appearance
+              // reads as the rule working rather than as a bug. It has no occupants
+              // until the lower-bracket entrant wins the first final — that is what
+              // makes it unnecessary, and why it must be labelled rather than hidden.
+              const necessary = m.round === 1 || m.aSeed !== null || m.bSeed !== null;
+              return (
+                <div key={matchKey(m)} style={{ minWidth: BRACKET_COLUMN_WIDTH, opacity: necessary ? 1 : 0.45 }}>
+                  <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
+                    {m.round === 1 ? "Final" : necessary ? "Decider" : "If necessary"}
+                  </div>
+                  <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {consolation.length > 0 && (
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--color-bt-border)" }}>
@@ -129,7 +202,7 @@ export function BracketBoard({
           </div>
           <div style={{ maxWidth: BRACKET_COLUMN_WIDTH }}>
             {consolation.map((m) => (
-              <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={matchStakes(m, matches, pointsDistribution)} />
+              <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
             ))}
           </div>
         </div>
@@ -139,8 +212,9 @@ export function BracketBoard({
 }
 
 function MatchCard({
-  match, display, bySeed, canPick, onPick, stakes,
+  match, display, bySeed, canPick, onPick, stakes, mustWin,
 }: {
+  mustWin?: (seed: number) => boolean;
   match: ResolvedMatch;
   display: ReturnType<typeof bracketDisplay>;
   bySeed: Map<number, BracketEntrantMeta>;
@@ -188,8 +262,8 @@ function MatchCard({
           <span data-testid="bracket-match-stakes">{stakes.label}</span>
         )}
       </div>
-      <Slot seat="a" match={match} pending={d?.aPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />
-      <Slot seat="b" match={match} pending={d?.bPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} />
+      <Slot seat="a" match={match} pending={d?.aPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} mustWin={mustWin} />
+      <Slot seat="b" match={match} pending={d?.bPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} mustWin={mustWin} />
     </div>
   );
 }
@@ -204,8 +278,9 @@ function MatchCard({
  * clearing is one column wide, and everything above re-derives.
  */
 function Slot({
-  seat, match, pending, bySeed, canPick, onPick, matchRef,
+  seat, match, pending, bySeed, canPick, onPick, matchRef, mustWin,
 }: {
+  mustWin?: (seed: number) => boolean;
   seat: "a" | "b";
   match: ResolvedMatch;
   pending: string | null;
@@ -295,6 +370,26 @@ function Slot({
       <span className="min-w-0 flex-1" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {meta ? (meta.partner ? `${meta.name} & ${meta.partner}` : meta.name) : `Seed ${seed}`}
       </span>
+      {/* MUST-WIN, per side. Unstyled on purpose for the first look: the open
+          question is whether this is noise at 15 matches, and a version that
+          already hides it cannot answer that. Deliberately shown on EVERY match
+          so the worst case is what gets judged. */}
+      {/* Only on a match still to be played. `!won` was not enough: it left the marker
+          on the LOSER's row of a settled match, which is both meaningless (it is over)
+          and doubles the count — 8 markers on a board where 4 are real. Must-win is a
+          question about a match you are about to play. */}
+      {seed !== null && match.playable && mustWin?.(seed) && (
+        <span
+          data-testid="bracket-must-win"
+          style={{
+            ...EYEBROW, flexShrink: 0, color: "var(--color-bt-warning)",
+            border: "1px solid var(--color-bt-warning-border)", borderRadius: 4,
+            padding: "1px 4px", lineHeight: 1.2,
+          }}
+        >
+          Must win
+        </span>
+      )}
       {canPick && (
         <span
           style={{
