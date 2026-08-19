@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isObviouslyBogusPath } from "@/lib/botPaths";
+import { safeNextPath } from "@/lib/nextPath";
 
 export async function middleware(request: NextRequest) {
   // Credential scanners, 404'd at the edge BEFORE anything else. They were being
@@ -109,16 +110,39 @@ export async function middleware(request: NextRequest) {
       return res;
     }
 
+    // Carry WHERE THEY WERE GOING across the bounce. Without this, every deep
+    // link to a signed-out browser is a dead end that lands on /login with the
+    // destination discarded — which is what an existing-account invite email
+    // (`sendInviteExistingUser`, a plain `/trips/{id}` link with no token) did
+    // to anyone who wasn't already signed in on that device.
+    //
+    // Deliberately generic: this is the same `?next=` chain an involuntary
+    // session expiry already uses (authExpiry.ts), so a link to a trip, a game,
+    // or a competition all survive re-auth the same way, and nothing here knows
+    // what an invite is. `safeNextPath` on the READ side (login/page.tsx,
+    // auth/callback) is what makes honoring it safe — this side only has to
+    // avoid writing a useless one.
     const url = request.nextUrl.clone();
+    const intended = request.nextUrl.pathname + request.nextUrl.search;
     url.pathname = "/login";
+    url.search = "";
+    // "/" is where login lands anyway, so a next of "/" is pure URL noise.
+    if (intended !== "/") url.searchParams.set("next", intended);
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from /login
+  // Redirect authenticated users away from /login — honoring `?next=` so a deep
+  // link opened on a device that already has a session goes where it points
+  // instead of being flattened to "/". Same param, same chain; the destination
+  // is validated by whatever serves it, and a bogus one just 404s in-app rather
+  // than leaving the origin (see nextPath.ts).
   if (user && request.nextUrl.pathname === "/login") {
+    const requested = safeNextPath(request.nextUrl.searchParams.get("next"));
     const url = request.nextUrl.clone();
+    url.search = "";
+    url.hash = "";
     url.pathname = "/";
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(requested ? new URL(requested, request.nextUrl.origin) : url);
   }
 
   return supabaseResponse;

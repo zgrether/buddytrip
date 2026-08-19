@@ -187,8 +187,36 @@ describe("middleware auth path is unchanged", () => {
     expect(MIDDLEWARE_SRC).not.toContain("auth.getSession()");
   });
 
+  // This asserted the two lines were ADJACENT (`url.pathname = "/login"`
+  // immediately followed by the redirect). #980 deliberately puts code between
+  // them — the bounce now carries where the user was going as `?next=` — so the
+  // adjacency is gone while the invariant it was protecting is not. Rewritten to
+  // pin the invariant (a page route still redirects to /login) plus the ordering,
+  // rather than the exact adjacent text.
   it("a real page route still 307s to /login", () => {
-    expect(MIDDLEWARE_SRC).toMatch(/url\.pathname = "\/login";\s*\n\s*return NextResponse\.redirect\(url\);/);
+    expect(MIDDLEWARE_SRC).toMatch(/url\.pathname = "\/login";/);
+    const loginAt = MIDDLEWARE_SRC.indexOf('url.pathname = "/login";');
+    const redirectAt = MIDDLEWARE_SRC.indexOf("return NextResponse.redirect(url);", loginAt);
+    expect(loginAt).toBeGreaterThan(-1);
+    expect(redirectAt).toBeGreaterThan(loginAt);
+  });
+
+  it("...and carries the intended destination across the bounce as ?next=", () => {
+    // The other half of #980: a deep link to a signed-out browser used to lose
+    // its destination entirely. Guarded here for the same reason as the 401
+    // contract above — it fails silently, as a link that merely lands somewhere
+    // plausible instead of where it pointed.
+    expect(MIDDLEWARE_SRC).toMatch(/const intended = request\.nextUrl\.pathname \+ request\.nextUrl\.search;/);
+    expect(MIDDLEWARE_SRC).toMatch(/url\.searchParams\.set\("next", intended\)/);
+  });
+
+  it("a `next` READ back out of the URL goes through safeNextPath, never raw", () => {
+    // Writing `next` is safe; honoring one is the open-redirect. The authed
+    // bounce off /login is the read side, and it must validate.
+    expect(MIDDLEWARE_SRC).toContain("safeNextPath");
+    expect(MIDDLEWARE_SRC).toMatch(
+      /safeNextPath\(request\.nextUrl\.searchParams\.get\("next"\)\)/
+    );
   });
 
   it("the bogus 404 runs BEFORE the auth check, not after", () => {

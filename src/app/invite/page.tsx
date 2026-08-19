@@ -1,265 +1,116 @@
-"use client";
+export const dynamic = "force-dynamic";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { AlertCircle, Check, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase-server";
+import { resolveAccessRoute } from "@/lib/accessRoute";
+import { resolveInviteLink, viewerCanSeeTrip } from "@/server/lib/inviteLink";
+import IdentityChoice from "./IdentityChoice";
+import InviteMessage from "./InviteMessage";
 
-type InviteState =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "already-accepted" }
-  | { kind: "processing"; tripName: string }
-  | { kind: "success"; tripId: string; tripName: string };
+/**
+ * Invite landing — ROUTING ONLY.
+ *
+ * ── There is no accept step, and building one would have been wrong ────────
+ * An invited person is already on the roster: `tripMembers.inviteByEmail`
+ * inserts their `trip_members` row (status `invited`) BEFORE the email is sent.
+ * The invite is a notification that you've been added, not an offer. So this
+ * page has exactly one job — work out the shortest path from wherever this
+ * person is to the trip, and put them on it.
+ *
+ * This REPLACES a client-side accept flow that stamped `invites.accepted_at`
+ * and self-inserted into `trip_members` from the browser. That flow was dead in
+ * practice as well as wrong in principle: `invites` SELECT is gated on
+ * `is_trip_member`, so the only session that could read the invite was one that
+ * was already a member — which is exactly the case where the insert was
+ * skipped. The arm never ran for anyone it was written for. (It also meant the
+ * only greeting an unauthenticated invitee ever saw was a bare `/login` saying
+ * "Welcome back" — #980.)
+ *
+ * Server-rendered on purpose. The decision needs the session AND a
+ * service-role read of `invites`, and doing it here means no spinner, no
+ * client waterfall, and no flash of the wrong screen before the redirect.
+ *
+ * The branching itself lives in `resolveAccessRoute` (client-safe, pure) so it
+ * is not invite-specific: this file supplies facts, that one decides.
+ */
+export default async function InvitePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
+  const { token } = await searchParams;
 
-export default function InvitePage() {
-  return (
-    <Suspense
-      fallback={
-        <div
-          className="flex min-h-screen items-center justify-center"
-          style={{ background: "var(--color-bt-base)" }}
-        >
-          <Loader2 size={32} className="animate-spin" style={{ color: "var(--color-bt-accent)" }} />
-        </div>
-      }
-    >
-      <InviteContent />
-    </Suspense>
-  );
-}
+  const invite = await resolveInviteLink(token);
 
-function InviteContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const token = searchParams.get("token");
-  const [state, setState] = useState<InviteState>(
-    token ? { kind: "loading" } : { kind: "error", message: "No invite token provided." }
-  );
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  useEffect(() => {
-    if (!token) return;
+  const viewer = user ? { id: user.id, email: user.email ?? null } : null;
+  const viewerCanSeeTarget =
+    viewer && invite ? await viewerCanSeeTrip(viewer.id, invite.tripId) : false;
 
-    async function processInvite() {
-      const supabase = createClient();
+  const route = resolveAccessRoute({
+    target: invite?.target ?? null,
+    viewer,
+    viewerCanSeeTarget,
+    addressee: invite?.addressee ?? null,
+  });
 
-      // Check if user is logged in
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  switch (route.kind) {
+    // Branch 1 — an active session that IS the invited person. Straight to the
+    // trip, no interstitial. Nothing to confirm and nobody to confirm it to.
+    case "go":
+      redirect(route.path);
 
-      if (!session?.user) {
-        // Not logged in — store token and redirect to login
-        sessionStorage.setItem("pendingInviteToken", token!);
-        router.push(`/login`);
-        return;
-      }
+    // Branches 3 & 4 — no session. `mode` is already the right one (sign in if
+    // the address has an account, sign up if it doesn't), and `invite` rides
+    // along so the auth page can name the trip and prefill the address without
+    // any of that being readable — or writable — in the URL.
+    case "authenticate":
+      redirect(
+        `/login?mode=${route.mode}&next=${encodeURIComponent(route.next)}` +
+          `&invite=${encodeURIComponent(invite!.token)}`
+      );
 
-      // User is logged in — validate token
-      const { data: invite, error } = await supabase
-        .from("invites")
-        .select("id, trip_id, email, role, accepted_at, expires_at, trips(title)")
-        .eq("token", token!)
-        .single();
+    // Branch 2 — a session, but a different account. Never resolved silently:
+    // signing someone out without asking is hostile, and guessing they meant
+    // the account they're in is how scores get entered under the wrong name.
+    case "identity-choice":
+      return (
+        <IdentityChoice
+          tripName={invite!.target.resourceName}
+          inviterName={invite!.inviterName}
+          invitedEmail={route.invitedEmail}
+          next={route.next}
+          token={invite!.token}
+          viewerEmail={viewer!.email}
+          viewerCanSee={route.viewerCanSee}
+        />
+      );
 
-      if (error || !invite) {
-        setState({
-          kind: "error",
-          message: "This invite link has expired or isn't valid.",
-        });
-        return;
-      }
+    // Signed in as the invited person, but not on the roster — removed after
+    // the invite went out, most likely. Say so plainly rather than bouncing
+    // them into a trip page that will refuse them without explanation.
+    case "no-access":
+      return (
+        <InviteMessage
+          title="You're not on this trip"
+          body={
+            "Your invite to " +
+            (invite?.target.resourceName ?? "this trip") +
+            " is no longer active. Ask whoever invited you to add you again."
+          }
+        />
+      );
 
-      if (invite.accepted_at) {
-        setState({ kind: "already-accepted" });
-        return;
-      }
-
-      const expiresAt = new Date(invite.expires_at);
-      if (expiresAt < new Date()) {
-        setState({
-          kind: "error",
-          message: "This invite link has expired.",
-        });
-        return;
-      }
-
-      const tripData = invite.trips as unknown as { title: string } | null;
-      const tripName = tripData?.title ?? "the trip";
-
-      setState({ kind: "processing", tripName });
-
-      // Mark invite as accepted
-      await supabase
-        .from("invites")
-        .update({ accepted_at: new Date().toISOString() })
-        .eq("id", invite.id);
-
-      // Check if already a member
-      const { data: existingMember } = await supabase
-        .from("trip_members")
-        .select("user_id")
-        .eq("trip_id", invite.trip_id)
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-
-      if (!existingMember) {
-        // Add to trip
-        await supabase.from("trip_members").insert({
-          trip_id: invite.trip_id,
-          user_id: session.user.id,
-          role: invite.role,
-          status: "in",
-        });
-      }
-
-      setState({ kind: "success", tripId: invite.trip_id, tripName });
-
-      // Auto-redirect after 1.5 seconds
-      setTimeout(() => {
-        router.push(`/trips/${invite.trip_id}`);
-      }, 1500);
-    }
-
-    processInvite();
-  }, [token, router]);
-
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center px-4"
-      style={{ background: "var(--color-bt-base)" }}
-    >
-      <div
-        className="w-full max-w-[400px] rounded-xl border px-6 py-8 text-center"
-        style={{
-          background: "var(--color-bt-card)",
-          borderColor: "var(--color-bt-border)",
-        }}
-      >
-        {/* Loading */}
-        {state.kind === "loading" && (
-          <div className="space-y-4">
-            <Loader2
-              size={32}
-              className="mx-auto animate-spin"
-              style={{ color: "var(--color-bt-accent)" }}
-            />
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Getting your invite ready...
-            </p>
-          </div>
-        )}
-
-        {/* Error */}
-        {state.kind === "error" && (
-          <div className="space-y-4">
-            <AlertCircle
-              size={32}
-              className="mx-auto"
-              style={{ color: "var(--color-bt-danger)" }}
-            />
-            <div>
-              <h2
-                className="text-lg font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                Invite not found
-              </h2>
-              <p
-                className="mt-2 text-sm"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {state.message}
-              </p>
-            </div>
-            <button
-              onClick={() => router.push("/login")}
-              className="rounded-xl px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{
-                background: "var(--color-bt-accent)",
-                color: "var(--color-bt-base)",
-              }}
-            >
-              Go to BuddyTrip
-            </button>
-          </div>
-        )}
-
-        {/* Already accepted */}
-        {state.kind === "already-accepted" && (
-          <div className="space-y-4">
-            <Check
-              size={32}
-              className="mx-auto"
-              style={{ color: "var(--color-bt-accent)" }}
-            />
-            <div>
-              <h2
-                className="text-lg font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                Already accepted
-              </h2>
-              <p
-                className="mt-2 text-sm"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                This invite has already been accepted.
-              </p>
-            </div>
-            <button
-              onClick={() => router.push("/login")}
-              className="rounded-xl px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{
-                background: "var(--color-bt-accent)",
-                color: "var(--color-bt-base)",
-              }}
-            >
-              Sign in to BuddyTrip
-            </button>
-          </div>
-        )}
-
-        {/* Processing */}
-        {state.kind === "processing" && (
-          <div className="space-y-4">
-            <Loader2
-              size={32}
-              className="mx-auto animate-spin"
-              style={{ color: "var(--color-bt-accent)" }}
-            />
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Joining {state.tripName}...
-            </p>
-          </div>
-        )}
-
-        {/* Success */}
-        {state.kind === "success" && (
-          <div className="space-y-4">
-            <div
-              className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-              style={{ background: "var(--color-bt-tag-bg)" }}
-            >
-              <Check size={24} style={{ color: "var(--color-bt-accent)" }} />
-            </div>
-            <div>
-              <h2
-                className="text-lg font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                You&apos;re in!
-              </h2>
-              <p
-                className="mt-2 text-sm"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Taking you to {state.tripName}...
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    case "unresolvable":
+      return (
+        <InviteMessage
+          title="This invite link isn't valid"
+          body="The link may have been mistyped, or the trip may have been deleted. Ask whoever invited you for a fresh link."
+        />
+      );
+  }
 }
