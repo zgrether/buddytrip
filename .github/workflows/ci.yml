@@ -10,6 +10,26 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+# ── Job timeouts ───────────────────────────────────────────────────────────
+# Every job below carries `timeout-minutes`. GitHub's default is 360, which is
+# not a timeout so much as an afternoon: on 2026-08-19 two unrelated PRs each
+# hung 50+ minutes inside `npx playwright install --with-deps chromium` (apt,
+# not the browser — the browser was a cache hit restoring in 2s) and would have
+# held the merge gate red, and burned a runner, for six hours apiece before
+# failing with nothing in the log to explain it.
+#
+# Nothing here fixes apt; that is GitHub's side. What these do is turn a silent
+# six-hour hang into a legible failure in minutes, for this and every future
+# infra stall — a stuck job now reports a timeout, which is a diagnosis, instead
+# of a spinner, which is not.
+#
+# The numbers are ~4-5x observed wall clock, measured on real runs rather than
+# picked: `changes` ~7s, `test` 4m18s-4m54s across four runs, `e2e` 4m17s green
+# end to end. Generous enough that a slow-but-working run is never killed;
+# tight enough that a hang is obvious while you are still looking at the PR.
+# If a job legitimately grows past its limit, raise the number — do not remove
+# it.
+
 jobs:
   # Decide ONCE whether this change needs the full suite. Both merge-gating jobs
   # read this and skip their own STEPS when it says no, so a docs-only PR reports
@@ -57,6 +77,9 @@ jobs:
   # broken gate stops the line rather than waving changes through.
   changes:
     runs-on: ubuntu-latest
+    # A paths-filter and nothing else (~7s). Bounded anyway: `test` and `e2e`
+    # both `needs:` it, so a hang here stalls the whole pipeline just as surely.
+    timeout-minutes: 5
     outputs:
       code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
     steps:
@@ -71,6 +94,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # eslint + tsc + a local Supabase + the full vitest suite: 4m18s-4m54s observed.
+    timeout-minutes: 20
     # GATE THE STEPS, NEVER THE JOB. A job-level `if:` produces a SKIPPED job, and
     # whether a branch ruleset counts "skipped" as satisfying a required check is
     # exactly the ambiguity that leaves a PR pending forever with nothing to click.
@@ -150,6 +175,10 @@ jobs:
   # bill anyway.
   e2e:
     runs-on: ubuntu-latest
+    # Everything `test` does plus a Playwright install, a production build and the
+    # three merge-blocking specs: 4m17s observed green. The extra headroom over
+    # `test` is for the build, the most variable step here (1m26s observed).
+    timeout-minutes: 25
     needs: [changes, test]
     steps:
       - uses: actions/checkout@v4
