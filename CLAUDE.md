@@ -115,6 +115,35 @@ seam, never on a calendar.
   - **After any behaviour change, grep tests for assertions of the OLD behaviour
     before pushing** (e.g. relaxing a zod floor → a test asserting the old
     rejection) — proactively, not as a second red CI run.
+- **ASSERT THE MECHANISM, NOT THE OUTCOME.** The outcome is reachable by paths the
+  test was not written for, so an outcome assertion passes while the thing it exists
+  to check goes unexercised. Three instances in one week (2026-08-18/19), three
+  different mechanisms, one shape:
+  - A DOM probe polled a board row for `/(—|PTS)/` to detect a point value. The
+    em-dash in the row's own sub-title *"Ready — enable scoring"* satisfied it, so it
+    reported the reported bug REPRODUCED against a string that structurally could not
+    contain a points column. A false CONFIRMATION — worse than a false pass, because a
+    bug report corroborates it. Fixed by matching `/d+s*PTS/`, which the prose cannot
+    produce.
+  - A migration probe checked a literal against a literal list (`IF 'lower' IN
+    ('main','lower',...)`), which would have passed with the migration absent
+    entirely. Fixed by INSERTING `lower` and `losers` in a rolled-back transaction and
+    asserting one is admitted and the other refused — a constraint that rejects nothing
+    is not a constraint.
+  - A bracket test named COMEBACK dropped seed 1 in "main round 1" — but at every
+    entrant count with byes the top seed RECEIVES one and has no round-1 match to lose.
+    So at 5 of 8 counts it exercised an UNDEFEATED champion while asserting a comeback,
+    and the suite read as covering a path it never took. The worst of the three: not a
+    weak check but a MISLABELLED one. Caught only because the assertion was
+    `losses.get(1) === 1` and not `champion === 1`, which would have passed.
+
+  **How to apply:** ask *what would leave this green that shouldn't?* If the answer
+  includes the bug you are guarding against — or the bug you are trying to CONFIRM —
+  the assertion is decorative. Prefer the exact value over a weaker property, a pattern
+  the surrounding content cannot produce over a substring, and a real write over a
+  simulated one. And check the test's NAME against what it actually exercises: a test
+  whose name claims a path it does not take is worse than no test, because it stops
+  anyone looking again.
 
 ## Seed Data Rules
 
