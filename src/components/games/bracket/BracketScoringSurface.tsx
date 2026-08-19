@@ -213,7 +213,9 @@ export function BracketScoringSurface({
       pendingPicks.current += 1;
       pickMutation.mutate({ tripId, gameId, ...ref, winnerSeed: seed });
     },
-    [pickMutation, utils, tripId, gameId]
+    // `resolve` belongs here: it selects WHICH walk the optimistic cascade runs, so a
+    // stale closure would cascade a double-elim pick through the single-elim resolver.
+    [pickMutation, utils, tripId, gameId, resolve]
   );
 
   /**
