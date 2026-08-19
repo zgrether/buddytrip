@@ -91,9 +91,43 @@ export function BracketBoard({
   /** Rendering the structure it was GIVEN, not a format flag: a draw carrying lower or
    *  final rows is a double-elim draw, and there is nothing to configure. */
   const isDouble = lower.length > 0 || finals.length > 0;
-  /** Upper rounds sit at 2r-1 and lower at k+1, so the widest of those, plus one column
-   *  per final on the right. */
-  const gridCols = Math.max(lastRound * 2 - 1, lowerLast + 1) + finals.length;
+  /**
+   * COLUMNS COUNTED FROM THE RIGHT — the tournament converges, so the layout is
+   * anchored to what rounds converge TO, not to where their losers came from.
+   *
+   * Anchoring the lower tier to its FEEDERS (the previous rule) forced upper matches
+   * apart to make room for lower rounds between them, so the upper bracket acquired
+   * gaps it does not need: two independent left-to-right layouts colliding. Counting
+   * from the right is one layout, and it does not collide.
+   *
+   *   column 0 (rightmost)  the Grand Final, and the if-necessary game with it
+   *   column 1              the Upper Final and the Lower Final, side by side
+   *   leftward from there   each tier walks independently, one column per round
+   *
+   * Counted from the right, upper round r lands at grid column r — its NATURAL
+   * spacing, unchanged from a single-elim board of the same size. That equality is the
+   * test that the extra columns are gone.
+   *
+   * SHARED COLUMNS. The lower tier has 2(W-1) rounds against the upper's W, so it runs
+   * out of columns and the excess pair up, stacked vertically — which is what the
+   * spreadsheet does, and why it fits in seven columns rather than one per lower round.
+   * The two columns NEAREST the convergence (Lower Final, and the round feeding it)
+   * keep a column each, because those are the rounds whose separation matters most;
+   * every column left of them holds two. The upper bracket's count sets the total and
+   * the lower tier fits inside it, never the reverse.
+   */
+  const gridCols = lastRound + 1;
+  /** Lower round -> grid column, walking leftward from the convergence. */
+  const lowerColumn = new Map<number, number>();
+  {
+    let col = 1;                                  // 1 = counted from the right
+    const descending = [...lowerRounds].sort((a, b) => b - a);
+    for (let i = 0; i < descending.length; i++) {
+      lowerColumn.set(descending[i], gridCols - col);
+      // The first two get a column each; after that, every column takes a pair.
+      if (i === 0 || i === 1 || i % 2 === 1) col += 1;
+    }
+  }
 
   if (matches.length === 0) return null;
 
@@ -138,14 +172,22 @@ export function BracketBoard({
           style={{
             display: "grid",
             gridTemplateColumns: `repeat(${gridCols}, ${BRACKET_COLUMN_WIDTH}px)`,
-            columnGap: 18, rowGap: 22, minWidth: "min-content", alignItems: "start",
+            // 26 is the single-elim board's column gap. Matching it exactly is what makes
+            // "the upper bracket is no wider apart than single elim" a measurable claim
+            // rather than an approximate one.
+            columnGap: 26, rowGap: 22, minWidth: "min-content", alignItems: "start",
           }}
         >
+          {/* Per-round headers are gone (Option A): the spreadsheet has none and is
+              legible, and with two lower rounds sharing a column a single header
+              cannot name both tiers' rounds anyway. What remains is one caption per
+              TIER — the lower one still has to say "second life", because that is what
+              carries the meaning must-win no longer repeats on every row. */}
+          <div style={{ gridColumn: "1 / -1", gridRow: 1, ...EYEBROW }}>Upper bracket</div>
+          <div style={{ gridColumn: "1 / -1", gridRow: 3, ...EYEBROW }}>Lower bracket · second life</div>
+
           {upperRounds.map((round) => (
-            <div key={`u${round}`} style={{ gridColumn: round * 2 - 1, gridRow: 1 }}>
-              <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
-                {doubleRoundName("main", round, lastRound)}
-              </div>
+            <div key={`u${round}`} style={{ gridColumn: round, gridRow: 2 }}>
               <div className="flex flex-col" style={{ gap: roundLayout(round, BRACKET_METRICS).gap, paddingTop: roundLayout(round, BRACKET_METRICS).offset }}>
                 {main.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
                   <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
@@ -154,36 +196,38 @@ export function BracketBoard({
             </div>
           ))}
 
-          {lowerRounds.map((round) => (
-            <div key={`l${round}`} style={{ gridColumn: round + 1, gridRow: 2 }}>
-              <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
-                {doubleRoundName("lower", round, lowerLast)}
-              </div>
-              <div className="flex flex-col" style={{ gap: BRACKET_METRICS.baseGap }}>
-                {lower.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
-                  <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+          {[...new Set([...lowerColumn.values()])].sort((a, b) => a - b).map((col) => (
+            // One cell per COLUMN, not per round: two lower rounds can share a column,
+            // and two grid items placed in the same cell overlap rather than stack.
+            <div key={`lc${col}`} className="flex flex-col" style={{ gridColumn: col, gridRow: 4, gap: BRACKET_METRICS.baseGap }}>
+              {lowerRounds
+                .filter((r) => lowerColumn.get(r) === col)
+                .map((round) => (
+                  <div key={`l${round}`} className="flex flex-col" style={{ gap: BRACKET_METRICS.baseGap }}>
+                    {lower.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
+                      <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                    ))}
+                  </div>
                 ))}
-              </div>
             </div>
           ))}
 
-          {finals.sort((a, b) => a.round - b.round).map((m, i) => {
-            // Spans both tiers and centres between them, so it reads as the point the
-            // two streams arrive at rather than as a third block.
-            const d = display.get(matchKey(m));
-            const vacant = (d?.aVacant ?? false) && (d?.bVacant ?? false);
-            return (
-              <div
-                key={matchKey(m)}
-                style={{ gridColumn: gridCols - (finals.length - 1 - i), gridRow: "1 / span 2", alignSelf: "center", opacity: vacant ? 0.4 : 1 }}
-              >
-                <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
-                  {doubleRoundName("final", m.round, 1)}
+          <div
+            style={{ gridColumn: gridCols, gridRow: "2 / span 3", alignSelf: "center", display: "flex", flexDirection: "column", gap: BRACKET_METRICS.baseGap }}
+          >
+            {finals.sort((a, b) => a.round - b.round).map((m) => {
+              const d = display.get(matchKey(m));
+              const vacant = (d?.aVacant ?? false) && (d?.bVacant ?? false);
+              return (
+                <div key={matchKey(m)} style={{ opacity: vacant ? 0.4 : 1 }}>
+                  <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
+                    {doubleRoundName("final", m.round, 1)}
+                  </div>
+                  <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
                 </div>
-                <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       ) : (
       <>
