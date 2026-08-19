@@ -25,6 +25,12 @@ export interface MatchDisplay {
    *  empty half of a bye, which the view renders as "Bye" from its own flag). */
   aPending: string | null;
   bPending: string | null;
+  /** PERMANENTLY EMPTY — nobody will ever occupy this seat, as distinct from a seat
+   *  waiting on a result. Set only by the double-elim labeller; single elimination has
+   *  no such seat, and its one empty-forever case (a bye) is already named by `bye`.
+   *  Rendering the two identically is what made an unplayed lower bracket look broken. */
+  aVacant?: boolean;
+  bVacant?: boolean;
 }
 
 /**

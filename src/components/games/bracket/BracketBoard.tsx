@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
+import { doubleBracketDisplay, doubleRoundName } from "@/lib/bracketDoubleLabels";
 import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
 import { matchStakes, type MatchStakes } from "@/lib/bracketStakes";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
@@ -74,7 +75,9 @@ export function BracketBoard({
   mustWin?: (seed: number) => boolean;
 }) {
   const stakes = stakesFor ?? ((m: ResolvedMatch) => matchStakes(m, matches, pointsDistribution));
-  const display = bracketDisplay(matches);
+  const display = matches.some((m) => m.bracket === "lower" || m.bracket === "final")
+    ? doubleBracketDisplay(matches)
+    : bracketDisplay(matches);
   const bySeed = new Map(entrants.map((e) => [e.seed, e]));
   const main = matches.filter((m) => m.bracket === "main");
   const consolation = matches.filter((m) => m.bracket === "consolation");
@@ -83,6 +86,14 @@ export function BracketBoard({
   const lowerRounds = [...new Set(lower.map((m) => m.round))].sort((a, b) => a - b);
   const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
   const rounds = [...new Set(main.map((m) => m.round))].sort((a, b) => a - b);
+  const upperRounds = rounds;
+  const lowerLast = lower.reduce((max, m) => Math.max(max, m.round), 0);
+  /** Rendering the structure it was GIVEN, not a format flag: a draw carrying lower or
+   *  final rows is a double-elim draw, and there is nothing to configure. */
+  const isDouble = lower.length > 0 || finals.length > 0;
+  /** Upper rounds sit at 2r-1 and lower at k+1, so the widest of those, plus one column
+   *  per final on the right. */
+  const gridCols = Math.max(lastRound * 2 - 1, lowerLast + 1) + finals.length;
 
   if (matches.length === 0) return null;
 
@@ -97,6 +108,85 @@ export function BracketBoard({
         overflowX: "auto",
       }}
     >
+      {isDouble ? (
+        /**
+         * ONE TOURNAMENT, CONVERGING RIGHTWARD.
+         *
+         * The stacked version read as three separate brackets, because each block
+         * started at the left margin and lower round k sat at column k of its own row —
+         * unrelated to where its feeders were. The one relationship a newcomer has to
+         * see (these two streams meet HERE) was the one the layout hid.
+         *
+         * So position is derived from the FEEDER, on one grid:
+         *
+         *   upper round r  ->  column 2r - 1
+         *   lower round k  ->  column k + 1
+         *   grand final    ->  the last column, spanning both tiers
+         *
+         * Upper rounds sit two columns apart because the lower bracket runs at twice
+         * their cadence (a minor and a major round per upper round after the first).
+         * That is what puts each lower major round in the same column as the upper round
+         * whose losers it receives, and the Lower Final directly beneath the Upper Final
+         * with the Grand Final to the right of both — convergence you can see.
+         *
+         * The borrowed `roundLayout` offsets are GONE from the lower tier rather than
+         * approximated. They encode "centre on the pair directly below", which is true
+         * in `main` and false in `lower`, so keeping them implied a relationship that
+         * does not exist. Wrong spacing is worse than none.
+         */
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${gridCols}, ${BRACKET_COLUMN_WIDTH}px)`,
+            columnGap: 18, rowGap: 22, minWidth: "min-content", alignItems: "start",
+          }}
+        >
+          {upperRounds.map((round) => (
+            <div key={`u${round}`} style={{ gridColumn: round * 2 - 1, gridRow: 1 }}>
+              <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
+                {doubleRoundName("main", round, lastRound)}
+              </div>
+              <div className="flex flex-col" style={{ gap: roundLayout(round, BRACKET_METRICS).gap, paddingTop: roundLayout(round, BRACKET_METRICS).offset }}>
+                {main.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
+                  <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {lowerRounds.map((round) => (
+            <div key={`l${round}`} style={{ gridColumn: round + 1, gridRow: 2 }}>
+              <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
+                {doubleRoundName("lower", round, lowerLast)}
+              </div>
+              <div className="flex flex-col" style={{ gap: BRACKET_METRICS.baseGap }}>
+                {lower.filter((m) => m.round === round).sort((a, b) => a.slot - b.slot).map((m) => (
+                  <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {finals.sort((a, b) => a.round - b.round).map((m, i) => {
+            // Spans both tiers and centres between them, so it reads as the point the
+            // two streams arrive at rather than as a third block.
+            const d = display.get(matchKey(m));
+            const vacant = (d?.aVacant ?? false) && (d?.bVacant ?? false);
+            return (
+              <div
+                key={matchKey(m)}
+                style={{ gridColumn: gridCols - (finals.length - 1 - i), gridRow: "1 / span 2", alignSelf: "center", opacity: vacant ? 0.4 : 1 }}
+              >
+                <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
+                  {doubleRoundName("final", m.round, 1)}
+                </div>
+                <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+      <>
       {/* `items-start`, not the default stretch: each round column is exactly as
           tall as its own content, and the vertical placement comes from the
           computed offsets below rather than from how the columns happen to
@@ -131,61 +221,7 @@ export function BracketBoard({
         })}
       </div>
 
-      {/* THE LOWER BRACKET, and the grand final it converges into.
-          Stacked below the winners' columns rather than beside them — deliberately the
-          plainest thing that renders, because the Cadence look is about whether this
-          reads at all, not about how it is arranged. Columns use the SAME
-          `roundLayout` as `main`, which is wrong in a knowable way: the lower bracket's
-          feeders are not the pair directly below, so the centring is decorative here.
-          Left as-is for the first look rather than guessed at. */}
-      {lower.length > 0 && (
-        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--color-bt-border)" }}>
-          <div style={{ ...EYEBROW, marginBottom: 7 }} data-testid="bracket-lower-heading">
-            Lower bracket · second life
-          </div>
-          <div className="flex items-start" style={{ gap: 26, minWidth: "min-content", overflowX: "auto" }}>
-            {lowerRounds.map((round) => (
-              <div key={round} className="flex flex-col" style={{ minWidth: BRACKET_COLUMN_WIDTH }}>
-                <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
-                  {`Lower ${round}`}
-                </div>
-                <div className="flex flex-col" style={{ gap: BRACKET_METRICS.baseGap }}>
-                  {lower
-                    .filter((m) => m.round === round)
-                    .sort((a, b) => a.slot - b.slot)
-                    .map((m) => (
-                      <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
-                    ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {finals.length > 0 && (
-        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--color-bt-border)" }}>
-          <div style={{ ...EYEBROW, marginBottom: 7 }} data-testid="bracket-final-heading">
-            Grand final
-          </div>
-          <div className="flex items-start" style={{ gap: 26 }}>
-            {finals.sort((a, b) => a.round - b.round).map((m) => {
-              // The if-necessary final is VISIBLE BEFORE IT IS PLAYED, so its appearance
-              // reads as the rule working rather than as a bug. It has no occupants
-              // until the lower-bracket entrant wins the first final — that is what
-              // makes it unnecessary, and why it must be labelled rather than hidden.
-              const necessary = m.round === 1 || m.aSeed !== null || m.bSeed !== null;
-              return (
-                <div key={matchKey(m)} style={{ minWidth: BRACKET_COLUMN_WIDTH, opacity: necessary ? 1 : 0.45 }}>
-                  <div className="text-center" style={{ ...EYEBROW, marginBottom: 2 }}>
-                    {m.round === 1 ? "Final" : necessary ? "Decider" : "If necessary"}
-                  </div>
-                  <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      </>
       )}
 
       {consolation.length > 0 && (
@@ -262,8 +298,8 @@ function MatchCard({
           <span data-testid="bracket-match-stakes">{stakes.label}</span>
         )}
       </div>
-      <Slot seat="a" match={match} pending={d?.aPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} mustWin={mustWin} />
-      <Slot seat="b" match={match} pending={d?.bPending ?? null} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} mustWin={mustWin} />
+      <Slot seat="a" match={match} pending={d?.aPending ?? null} vacant={d?.aVacant ?? false} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} mustWin={mustWin} />
+      <Slot seat="b" match={match} pending={d?.bPending ?? null} vacant={d?.bVacant ?? false} bySeed={bySeed} canPick={canPick} onPick={onPick} matchRef={ref} mustWin={mustWin} />
     </div>
   );
 }
@@ -278,8 +314,9 @@ function MatchCard({
  * clearing is one column wide, and everything above re-derives.
  */
 function Slot({
-  seat, match, pending, bySeed, canPick, onPick, matchRef, mustWin,
+  seat, match, pending, vacant, bySeed, canPick, onPick, matchRef, mustWin,
 }: {
+  vacant: boolean;
   mustWin?: (seed: number) => boolean;
   seat: "a" | "b";
   match: ResolvedMatch;
@@ -313,6 +350,19 @@ function Slot({
       // Secondary, like the pending row — a bye is a state, not a competitor.
       <div style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption }} data-testid="bracket-slot-bye">
         <span>Bye</span>
+      </div>
+    );
+  }
+  // PERMANENTLY EMPTY — nobody is ever coming. Distinct from waiting, and given no
+  // placeholder: naming a feeder that can never deliver is the waiting/empty conflation
+  // reappearing with better typography. Dimmed and wordless, so the eye skips it.
+  if (seed === null && vacant) {
+    return (
+      <div
+        style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption, opacity: 0.45 }}
+        data-testid="bracket-slot-vacant"
+      >
+        <span aria-hidden>·</span>
       </div>
     );
   }
@@ -370,15 +420,18 @@ function Slot({
       <span className="min-w-0 flex-1" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {meta ? (meta.partner ? `${meta.name} & ${meta.partner}` : meta.name) : `Seed ${seed}`}
       </span>
-      {/* MUST-WIN, per side. Unstyled on purpose for the first look: the open
-          question is whether this is noise at 15 matches, and a version that
-          already hides it cannot answer that. Deliberately shown on EVERY match
-          so the worst case is what gets judged. */}
+      {/* MUST-WIN — the GRAND FINAL only (T5).
+          Everywhere else it restated its own column heading: the lower bracket is
+          headed "second life", so every row in it is must-win by definition and the
+          badge added nothing while spending the signal. At the grand final it is the
+          one place nothing else says it — true for the entrant who came through the
+          lower bracket, false for the one who did not, which is the asymmetry the
+          if-necessary final exists for. `isMustWin` is unchanged; this is scope. */}
       {/* Only on a match still to be played. `!won` was not enough: it left the marker
           on the LOSER's row of a settled match, which is both meaningless (it is over)
           and doubles the count — 8 markers on a board where 4 are real. Must-win is a
           question about a match you are about to play. */}
-      {seed !== null && match.playable && mustWin?.(seed) && (
+      {seed !== null && match.playable && match.bracket === "final" && mustWin?.(seed) && (
         <span
           data-testid="bracket-must-win"
           style={{
