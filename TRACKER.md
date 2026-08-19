@@ -56,6 +56,12 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
   desktop master-detail is still unmapped. *Captured here, not yet an issue.*
 - **Incomplete features** — see §5. That inventory is the input to ranking what's next; it is not itself a
   plan, and it is deliberately unranked.
+- **First-run walkthrough, Part B — an E2E harness** — #943 asked for "a written checklist,
+  not code," and Part A (a real-device pass, done manually as an invited crew member) found
+  six things a person catches that nothing automated does (findings #980–#984). Turning that
+  kind of walkthrough into a repeatable E2E harness is Part B, still unbuilt. *Captured here
+  per the tracker discipline — not yet promoted to its own issue, since nobody is about to
+  build it.*
 - ~~**WS4 — design reconciliation**~~ — **COMPLETE** (closed 2026-07-25, Zach). Any future
   design-vs-shipped pass gets its own ticket rather than riding this standing item.
 
