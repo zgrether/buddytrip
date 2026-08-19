@@ -1,147 +1,291 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * The "don't orphan a participant" guard (#951).
+ * The "don't destroy history by removing a person" guard (#951, extended #997).
  *
- * Removing someone from a trip deletes their `trip_members` row and nothing
- * else. Every scoring table keys to `users`, not to `trip_members`, so nothing
- * cascades and nothing errors — the removal is a SILENT SUCCESS that leaves
- * their participation behind. It surfaces later as a scorecard row reading
- * "Player", because names resolve from `tripMembers.list` while ids come from
- * `game_participants` (#952 owns that string; it is currently the only thing
- * that makes this class visible at all).
+ * Removing someone from a trip deletes their `trip_members` row, and
+ * `delete_orphan_guest_user` then hard-deletes their `users` row once they are
+ * on no trips. Nothing cascades usefully and almost nothing errors, so the
+ * removal is a SILENT SUCCESS that takes their history with it.
+ *
+ * ── THE RULE: participation without a result is a PLAN. With a result it is
+ *    HISTORY. Plans are removable; history is not. ────────────────────────────
+ *
+ * Being drawn into a bracket months before the trip is a plan — remove them and
+ * the slot becomes a bye, which the tree builder already handles at every
+ * entrant count. Winning a match is a result. The same shape applies to a
+ * `game_participants` row in a game nobody has scored: slotted in for a round
+ * that hasn't happened.
+ *
+ * This is the definition, expressed as predicates over existing columns. It is
+ * written here because it is the thing that would otherwise be re-derived
+ * differently by the next person — which is exactly how the gap below opened:
+ *
+ *   | Concept                  | Signal                                          |
+ *   |--------------------------|-------------------------------------------------|
+ *   | own scores (result)      | `score_entries.participant_id`                   |
+ *   | own game result (result) | `game_results.entity_id`                         |
+ *   | decided match (result)   | `game_matches.result IS NOT NULL` or `status='complete'`, with them a side |
+ *   | decided bracket (result) | `bracket_matches.winner_entrant_id IS NOT NULL`, their entrant a side |
+ *   | played game (result)     | `game_participants` row in a game that has ANY score entries |
+ *   | draw only (PLAN)         | `bracket_entrant_members` with no decided match involving them |
+ *   | slotted only (PLAN)      | `game_participants` in a game with zero score entries |
+ *   | receipts (always result) | `expenses.paid_by_user_id`, `expense_splits.user_id` |
+ *
+ * Note it never reads `bracket_matches.bracket`. The question is "does a decided
+ * result involve this person", which is independent of bracket STRUCTURE — so
+ * migration 127's `lower`/`final` values, and the double-elim work generally,
+ * cannot change this guard's answer.
+ *
+ * ── Money is a result the moment it exists ────────────────────────────────
+ * A receipt has no plan phase: it records money that already moved. Both
+ * directions block — the payer, and everyone split into it. The second is the
+ * one that gets dismissed: "Charlie hasn't done anything" feels true right up
+ * until you notice removing him changes what everyone else owes, because the
+ * total no longer reconciles.
  *
  * ── Why ONE guard rather than a cascade per table ──────────────────────────
- * It is not one table. A removal today orphans:
- *
- *   game_participants.user_id          score_entries.participant_id
- *   score_entries.submitted_by         game_results.entity_id
- *   game_delegates.user_id/.granted_by match_hole_outcomes.submitted_by
- *   bracket_entrant_members.user_id    game_matches.side_a / .side_b  (JSONB)
- *
- * `team_assignments` is the only one currently cleared (`clearTripTeamAssignments`).
- *
- * The last entry is why "add the missing cascades" is not merely unattractive
- * but IMPOSSIBLE: `game_matches.side_a/side_b` hold `{type,id}` inside JSONB,
- * which cannot be an FK and therefore cannot cascade. One guard on the removal
- * is the only shape available. (Same JSONB blind spot CLAUDE.md's merge rule
- * already warns about — a column-name audit cannot see it.)
+ * `game_matches.side_a/side_b` hold `{type,id}` inside JSONB, which cannot be
+ * an FK and therefore cannot cascade. Of the nine columns recording a
+ * contribution, ONE currently refuses a delete, four are structurally invisible
+ * to the database, and five actively CASCADE. So an application guard is the
+ * only available mechanism; FK RESTRICT is a backstop for the six it can see,
+ * never the primary defence.
  *
  * ── Why this one is APPLICATION-layer, unlike #824's and #957's guards ─────
- * Three guards now sit at three layers, and the criterion that separates them
- * is whether bypassing the app GAINS the actor something:
+ * The criterion is whether bypassing the app GAINS the actor something:
  *
  *   #824 role trigger (DB)   an Organizer setting their own role to Owner
- *                            gains a privilege. The app is the only thing in
- *                            the way, so the check cannot live there.
- *   #957/#123 Owner-row (DB) removing the Owner strands the trip for everyone
- *                            in a state nobody can recover through the app.
+ *                            gains a privilege.
+ *   #957/#123 Owner-row (DB) removing the Owner strands the trip for everyone.
  *   THIS ONE (app)           the actor is ALREADY entitled to delete the row.
  *                            Bypassing gains nothing; the consequence is a mess
- *                            on their own trip, and it is recoverable — the
- *                            codebase already has a verb for moving a person's
- *                            history (`merge_guest_to_real_user` repoints).
- *
- * DB hardening is deliberately deferred (see the issue): a BEFORE DELETE
- * trigger on `trip_members` is exactly what broke production in migration 123,
- * and it would have to be threaded past the trip-cascade path AND the merge's
- * collision delete. Bad trade three weeks out, against a threat that requires
- * deliberately bypassing your own UI to corrupt your own trip.
+ *                            on their own trip, and it is recoverable.
  */
 
-export interface ParticipationBlocker {
+/** Why a game blocks. Ordered roughly by how irreplaceable the data is. */
+export type BlockReason =
+  | "scores"
+  | "result"
+  | "decided-match"
+  | "decided-bracket"
+  | "played-game";
+
+export interface GameBlocker {
   gameId: string;
   gameName: string;
-  /** Real per-hole scores exist. This is the half that is irreplaceable. */
+  reasons: BlockReason[];
+  /** Real per-hole scores exist for THEM. The half that is irreplaceable. */
   hasScores: boolean;
 }
 
+export interface ContributionBlockers {
+  games: GameBlocker[];
+  /** Receipts they paid for. */
+  expensesPaid: number;
+  /** Receipts someone else paid that they are split into. */
+  expenseSplits: number;
+}
+
+export function hasContributions(b: ContributionBlockers): boolean {
+  return b.games.length > 0 || b.expensesPaid > 0 || b.expenseSplits > 0;
+}
+
+const EMPTY: ContributionBlockers = { games: [], expensesPaid: 0, expenseSplits: 0 };
+
 /**
- * Games in `tripId` where `userId` is still a participant or has scores.
+ * Everything in `tripId` that makes removing `userId` destroy a result.
  *
- * Empty array = removing them is clean, which is the common case (10 of 16 on
- * the trip of record). Both signals are checked because they can diverge: a
- * score row can outlive its participant row, and it is the half holding data
- * that cannot be re-derived.
+ * An empty result means removing them is clean — the common case, and it must
+ * stay frictionless: someone added by mistake, or who dropped out during
+ * planning before anything happened, deletes without argument.
  */
-export async function findParticipationBlockers(
+export async function findContributionBlockers(
   supabase: SupabaseClient,
   tripId: string,
   userId: string
-): Promise<ParticipationBlocker[]> {
-  const { data: games, error: gamesErr } = await supabase
-    .from("games")
-    .select("id, name")
-    .eq("trip_id", tripId);
+): Promise<ContributionBlockers> {
+  const [{ data: games, error: gamesErr }, paid, splits] = await Promise.all([
+    supabase.from("games").select("id, name").eq("trip_id", tripId),
+    supabase
+      .from("expenses")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", tripId)
+      .eq("paid_by_user_id", userId),
+    // expense_splits has no trip_id — scope through the parent expense.
+    supabase
+      .from("expense_splits")
+      .select("expense_id, expenses!inner(trip_id)", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("expenses.trip_id", tripId),
+  ]);
   if (gamesErr) throw new Error(`Failed to read the trip's games: ${gamesErr.message}`);
+  if (paid.error) throw new Error(`Failed to read expenses: ${paid.error.message}`);
+  if (splits.error) throw new Error(`Failed to read expense splits: ${splits.error.message}`);
+
+  const money = { expensesPaid: paid.count ?? 0, expenseSplits: splits.count ?? 0 };
 
   const gameIds = (games ?? []).map((g) => g.id as string);
-  if (gameIds.length === 0) return [];
+  if (gameIds.length === 0) return { ...EMPTY, ...money };
 
-  const [parts, scores] = await Promise.all([
-    supabase.from("game_participants").select("game_id").eq("user_id", userId).in("game_id", gameIds),
+  const [ownScores, anyScores, parts, results, decidedMatches, entrantRows] = await Promise.all([
     supabase
       .from("score_entries")
       .select("game_id")
       .eq("participant_id", userId)
       .eq("participant_type", "user")
       .in("game_id", gameIds),
+    // Which games have been scored AT ALL — the difference between "slotted
+    // into a round that hasn't happened" and "played in a game that has".
+    supabase.from("score_entries").select("game_id").in("game_id", gameIds),
+    supabase.from("game_participants").select("game_id").eq("user_id", userId).in("game_id", gameIds),
+    supabase.from("game_results").select("game_id").eq("entity_id", userId).in("game_id", gameIds),
+    // Decided matches only, filtered for THEM in JS rather than with a
+    // PostgREST `->>` filter on the JSONB. The filter form would be fewer rows,
+    // but its syntax is the one thing here that cannot be checked without a
+    // live PostgREST — and a mistyped filter returns the WRONG SET rather than
+    // an error, which is precisely how a guard silently stops guarding.
+    // `game_matches` is tens of rows per trip; the trade is not close.
+    supabase
+      .from("game_matches")
+      .select("game_id, result, status, side_a, side_b")
+      .in("game_id", gameIds),
+    supabase.from("bracket_entrant_members").select("entrant_id").eq("user_id", userId),
   ]);
-  if (parts.error) throw new Error(`Failed to read game participants: ${parts.error.message}`);
-  if (scores.error) throw new Error(`Failed to read score entries: ${scores.error.message}`);
+  for (const [what, res] of [
+    ["score entries", ownScores],
+    ["scored games", anyScores],
+    ["game participants", parts],
+    ["game results", results],
+    ["matches", decidedMatches],
+    ["bracket entrants", entrantRows],
+  ] as const) {
+    if (res.error) throw new Error(`Failed to read ${what}: ${res.error.message}`);
+  }
 
-  const scored = new Set((scores.data ?? []).map((r) => r.game_id as string));
-  const involved = new Set<string>([
-    ...(parts.data ?? []).map((r) => r.game_id as string),
-    ...scored,
-  ]);
-  if (involved.size === 0) return [];
+  const reasons = new Map<string, Set<BlockReason>>();
+  const add = (gameId: string, reason: BlockReason) => {
+    if (!gameIds.includes(gameId)) return;
+    const set = reasons.get(gameId) ?? new Set<BlockReason>();
+    set.add(reason);
+    reasons.set(gameId, set);
+  };
 
-  const nameOf = new Map((games ?? []).map((g) => [g.id as string, (g.name as string | null) ?? "Untitled game"]));
-  return [...involved].map((gameId) => ({
+  const scoredGameIds = new Set((ownScores.data ?? []).map((r) => r.game_id as string));
+  scoredGameIds.forEach((id) => add(id, "scores"));
+
+  const playedGames = new Set((anyScores.data ?? []).map((r) => r.game_id as string));
+  for (const r of parts.data ?? []) {
+    const gameId = r.game_id as string;
+    // PLAN vs RESULT: a participant row only blocks once the game has been
+    // scored by somebody. Slotted into an unplayed round is removable.
+    if (playedGames.has(gameId)) add(gameId, "played-game");
+  }
+
+  for (const r of results.data ?? []) add(r.game_id as string, "result");
+
+  for (const m of decidedMatches.data ?? []) {
+    const decided = m.result !== null || m.status === "complete";
+    if (!decided) continue;
+    const sideId = (side: unknown) =>
+      side && typeof side === "object" ? (side as { id?: string }).id : undefined;
+    if (sideId(m.side_a) === userId || sideId(m.side_b) === userId) {
+      add(m.game_id as string, "decided-match");
+    }
+  }
+
+  // Bracket: a draw is a plan. A decided match involving their entrant is not.
+  const entrantIds = (entrantRows.data ?? []).map((r) => r.entrant_id as string);
+  if (entrantIds.length > 0) {
+    const { data: bm, error: bmErr } = await supabase
+      .from("bracket_matches")
+      .select("game_id, entrant_a_id, entrant_b_id, winner_entrant_id")
+      .in("game_id", gameIds)
+      .not("winner_entrant_id", "is", null);
+    if (bmErr) throw new Error(`Failed to read bracket matches: ${bmErr.message}`);
+    const mine = new Set(entrantIds);
+    for (const r of bm ?? []) {
+      if (mine.has(r.entrant_a_id as string) || mine.has(r.entrant_b_id as string)) {
+        add(r.game_id as string, "decided-bracket");
+      }
+    }
+  }
+
+  const nameOf = new Map(
+    (games ?? []).map((g) => [g.id as string, (g.name as string | null) ?? "Untitled game"])
+  );
+  const blockers: GameBlocker[] = [...reasons.entries()].map(([gameId, set]) => ({
     gameId,
     gameName: nameOf.get(gameId) ?? "Untitled game",
-    hasScores: scored.has(gameId),
+    reasons: [...set],
+    hasScores: scoredGameIds.has(gameId),
   }));
+
+  return { games: blockers, ...money };
 }
 
 /**
  * The refusal message.
  *
- * Names the games, because ~40% of a real roster is in the blocked case and a
- * message that just says "no" would be hit often enough to be infuriating. It
- * points at the DOCUMENTED workaround (`GAME_FORMATS.md`: enter a score for
- * anyone who can't play, so the field stays complete) rather than leaving the
- * person stuck — there is no withdrawal feature yet, and this refusal exists
- * precisely so that one can be designed properly later
- * (`DEFERRED.md` — Withdrawn status: scores preserved, excluded from ranking).
+ * Counts PER CATEGORY, because "no" on its own is useless to someone deciding
+ * whether this is one stray thing they could unwind or a real history. It must
+ * also offer a next move — a refusal with no available action is a dead end,
+ * and this codebase has produced three of those (the ownership-transfer message
+ * with no eligible target, the disabled delete button with no stated reason,
+ * and this one before it said anything actionable).
  */
-export function participationRefusalMessage(
+export function contributionRefusalMessage(
   displayName: string,
-  blockers: ParticipationBlocker[]
+  b: ContributionBlockers
 ): string {
-  const names = blockers.slice(0, 3).map((b) => `"${b.gameName}"`);
-  const rest = blockers.length - names.length;
-  const list = rest > 0 ? `${names.join(", ")} and ${rest} more` : names.join(", ");
-  const scored = blockers.filter((b) => b.hasScores).length;
-  const total = blockers.length;
-  const g = (n: number) => `${n} game${n > 1 ? "s" : ""}`;
+  const clauses: string[] = [];
 
-  // The count and the LIST must describe the same set. Found by looking at the
-  // rendered panel: an earlier version said "has scores in 1 game" and then
-  // named two, because the count came from the scored subset while the list
-  // came from all blockers. ~40% of a real roster reaches this message, so a
-  // sentence that contradicts the list under it is not a cosmetic problem.
-  const what =
-    scored === 0
-      ? `is playing in ${g(total)}`
-      : scored === total
-        ? `has scores in ${total > 1 ? "all " : ""}${g(total)}`
-        : `is playing in ${g(total)}, with scores in ${scored}`;
+  if (b.games.length > 0) {
+    const names = b.games.slice(0, 3).map((g) => `"${g.gameName}"`);
+    const rest = b.games.length - names.length;
+    const list = rest > 0 ? `${names.join(", ")} and ${rest} more` : names.join(", ");
+    const scored = b.games.filter((g) => g.hasScores).length;
+    const g = (n: number) => `${n} game${n === 1 ? "" : "s"}`;
+    // The count and the LIST must describe the same set. An earlier version
+    // said "has scores in 1 game" and then named two, because the count came
+    // from the scored subset while the list came from all blockers.
+    const what =
+      scored === 0
+        ? `has results in ${g(b.games.length)}`
+        : scored === b.games.length
+          ? `has scores in ${b.games.length > 1 ? "all " : ""}${g(b.games.length)}`
+          : `has results in ${g(b.games.length)}, with scores in ${scored}`;
+    clauses.push(`${what}: ${list}`);
+  }
+
+  if (b.expensesPaid > 0) {
+    clauses.push(`paid for ${b.expensesPaid} expense${b.expensesPaid === 1 ? "" : "s"}`);
+  }
+  if (b.expenseSplits > 0) {
+    clauses.push(
+      `is split into ${b.expenseSplits} ${b.expensesPaid > 0 ? "more" : `expense${b.expenseSplits === 1 ? "" : "s"}`}`
+    );
+  }
+
+  const joined =
+    clauses.length === 1
+      ? clauses[0]
+      : `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
+
+  // The next move is category-aware. "Enter a score for them" is the documented
+  // workaround (GAME_FORMATS.md) for someone who can't play, and it is real
+  // advice when a GAME is the blocker — but it is nonsense when the blocker is
+  // a receipt, and a suggestion that doesn't apply is the same dead end as no
+  // suggestion at all.
+  const moves = [
+    b.games.length > 0 ? "enter a score for them if they can't play" : null,
+    "rename them if the name is wrong",
+    "leave them on the roster",
+  ].filter((x): x is string => x !== null);
 
   return (
-    `${displayName} ${what}: ${list}. Removing them now would leave those scores ` +
-    `attached to someone no longer on the trip, and the scorecard would stop showing their name. ` +
-    `Enter a score for them if they can't play, or leave them on the roster.`
+    `${displayName} can't be removed — ${joined}. Removing them would change results ` +
+    `other people are part of. You can ${moves.slice(0, -1).join(", ")}, or ` +
+    `${moves[moves.length - 1]} — either way their history stays attached.`
   );
 }

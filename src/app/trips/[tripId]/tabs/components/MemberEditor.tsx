@@ -199,8 +199,12 @@ export function MemberEditor({
     { tripId, userId: member.user_id ?? "" },
     { enabled: !!member.user_id }
   );
-  const removalBlockers = removalInfo?.blockers ?? [];
-  const removalBlocked = removalBlockers.length > 0;
+  // The server decides `blocked` — the predicate spans games plus two expense
+  // counts now, and a client re-deriving it is how the two drift apart.
+  const removalBlocked = removalInfo?.blocked ?? false;
+  const removalGames = removalInfo?.blockers.games ?? [];
+  const removalPaid = removalInfo?.blockers.expensesPaid ?? 0;
+  const removalSplits = removalInfo?.blockers.expenseSplits ?? 0;
 
   const removeGuest = trpc.ghostCrew.remove.useMutation({
     onSuccess: () => {
@@ -649,12 +653,28 @@ export function MemberEditor({
                     {removalInfo?.message}
                   </p>
                   <ul className="mt-2 flex flex-col gap-1">
-                    {removalBlockers.map((b) => (
+                    {removalGames.map((b) => (
                       <li key={b.gameId} className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                         <span style={{ color: "var(--color-bt-text)" }}>{b.gameName}</span>
-                        {b.hasScores ? " — has scores" : " — in the field, no scores yet"}
+                        {b.hasScores ? " — has scores" : " — has a result"}
                       </li>
                     ))}
+                    {removalPaid > 0 && (
+                      <li className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                        <span style={{ color: "var(--color-bt-text)" }}>
+                          {removalPaid === 1 ? "1 expense" : `${removalPaid} expenses`}
+                        </span>
+                        {" — they paid"}
+                      </li>
+                    )}
+                    {removalSplits > 0 && (
+                      <li className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                        <span style={{ color: "var(--color-bt-text)" }}>
+                          {removalSplits === 1 ? "1 expense" : `${removalSplits} expenses`}
+                        </span>
+                        {" — they're split into"}
+                      </li>
+                    )}
                   </ul>
                 </div>
               ) : (
