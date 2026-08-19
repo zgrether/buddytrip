@@ -1030,6 +1030,7 @@ export function NonGolfGameView() {
               }
             : undefined}
           mustWin={isDouble ? (seed: number) => isMustWin(bracketLosses, seed) : undefined}
+          resolve={isDouble ? resolveDoubleDraw : undefined}
           // What each match is worth. The game's own placement split, or empty when
           // it pays no per-place values — the header then quotes nothing rather than
           // inventing zeroes.

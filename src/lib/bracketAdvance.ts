@@ -183,7 +183,13 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
   }
 
   // Emitted in the caller's order so the view can render the draw as stored.
-  return draw.map((m) => resolved.get(matchKey(m))!);
+  // Rows this resolver does not handle (a double-elim draw's `lower`/`final`) are
+  // DROPPED rather than emitted as `undefined`. The non-null assertion here used to
+  // put holes in the array, and the first consumer to read `.bracket` off one threw —
+  // which is exactly how a double-elim pick failed: it crashed in the optimistic
+  // cascade before the mutation was ever sent, so there was no error to see anywhere.
+  // A resolver that returns a hole is worse than one that returns less.
+  return draw.map((m) => resolved.get(matchKey(m))).filter((m): m is ResolvedMatch => m !== undefined);
 }
 
 /** The side of a decided match that did NOT advance. Null while the match is
@@ -253,6 +259,38 @@ export function applyPick<T extends BracketMatchRef & { winnerSeed: number | nul
  * null, and so on up. Every orphan in the tree is visible in a single resolve —
  * no loop, and no second definition of "orphaned".
  */
+/**
+ * The cascade, generic over the RESOLVER.
+ *
+ * "Orphaned" is defined here as *a stored winner who is no longer one of their match's
+ * occupants after re-resolution* — which needs no knowledge of the tree's shape and so
+ * works for both formats. The single-elim version walks upward positionally; that walk
+ * cannot describe a double-elim draw, where changing a `main` result moves people
+ * between two brackets rather than only upward.
+ *
+ * Same guarantee either way (#925): clearing a result is a STATEMENT that what followed
+ * is void, and those downstream picks must not revive if the original is re-picked.
+ */
+export function applyPickCascadingWith<T extends BracketDrawMatch & { winnerSeed: number | null }>(
+  rows: readonly T[],
+  ref: BracketMatchRef,
+  winnerSeed: number | null,
+  resolve: (draw: BracketDrawMatch[], winners: WinnerBySeed) => ResolvedMatch[]
+): T[] {
+  const picked = applyPick(rows, ref, winnerSeed);
+  const winners: WinnerBySeed = {};
+  for (const m of picked) winners[matchKey(m)] = m.winnerSeed;
+  const byKey = new Map(resolve(picked, winners).map((r) => [matchKey(r), r]));
+
+  const target = matchKey(ref);
+  return picked.map((m) => {
+    if (matchKey(m) === target || m.winnerSeed === null) return m;
+    const r = byKey.get(matchKey(m));
+    const stillIn = r && (r.winnerSeed === m.winnerSeed);
+    return stillIn ? m : { ...m, winnerSeed: null };
+  });
+}
+
 export function applyPickCascading<T extends BracketDrawMatch & { winnerSeed: number | null }>(
   rows: readonly T[],
   ref: BracketMatchRef,

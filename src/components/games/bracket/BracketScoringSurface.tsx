@@ -7,7 +7,8 @@ import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
+import { applyPickCascadingWith, drawComplete, resolveDraw, type WinnerBySeed } from "@/lib/bracketAdvance";
+import type { BracketDrawMatch } from "@/lib/bracket";
 import type { BracketSide } from "@/lib/bracket";
 import type { MatchStakes } from "@/lib/bracketStakes";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
@@ -73,6 +74,7 @@ export function BracketScoringSurface({
   pointsDistribution,
   stakesFor,
   mustWin,
+  resolve,
   canEdit,
   onPosted,
 }: {
@@ -91,6 +93,9 @@ export function BracketScoringSurface({
   /** Format-supplied, so neither this surface nor the board asks which format it is
    *  rendering. Absent → the board's single-elim defaults. */
   stakesFor?: (m: ResolvedMatch) => MatchStakes | null;
+  /** How to resolve the draw — supplied by the caller so the optimistic cascade uses the
+   *  SAME walk the board rendered with. Absent → single elim. */
+  resolve?: (draw: BracketDrawMatch[], winners: WinnerBySeed) => ResolvedMatch[];
   mustWin?: (seed: number) => boolean;
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
@@ -203,7 +208,7 @@ export function BracketScoringSurface({
     (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
       utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
-        prev && applyPickCascading(prev, ref, seed)
+        prev && applyPickCascadingWith(prev, ref, seed, resolve ?? resolveDraw)
       );
       pendingPicks.current += 1;
       pickMutation.mutate({ tripId, gameId, ...ref, winnerSeed: seed });
