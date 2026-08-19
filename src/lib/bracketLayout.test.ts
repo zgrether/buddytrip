@@ -5,6 +5,7 @@ import {
   BRACKET_METRICS,
   SLOT_HEIGHT,
   MATCH_HEADER_HEIGHT,
+  lowerTierCentres,
   type BracketMetrics,
 } from "./bracketLayout";
 import { bracketSize, roundCount, buildDraw } from "./bracket";
@@ -86,6 +87,86 @@ describe("the geometry matches the draw the app actually builds", () => {
       const top = cardCentre(1, 0, M);
       const bottom = cardCentre(1, firstRound.length - 1, M);
       expect(finalCentre).toBeCloseTo((top + bottom) / 2, 10);
+    }
+  });
+});
+
+describe("lowerTierCentres — the lower tier centres on its SAME-TIER feeders", () => {
+  const M = BRACKET_METRICS;
+  const unit = M.cardHeight + M.baseGap;
+  const k = (r: number, s: number) => `${r}:${s}`;
+
+  /** The 8-entrant lower bracket: 2 + 2 + 1 + 1. */
+  const full = [
+    { round: 1, slot: 1 }, { round: 1, slot: 2 },
+    { round: 2, slot: 1 }, { round: 2, slot: 2 },
+    { round: 3, slot: 1 },
+    { round: 4, slot: 1 },
+  ];
+
+  it("lays round 1 out uniformly — it is the tier's ground truth", () => {
+    const c = lowerTierCentres(full, M);
+    expect(c.get(k(1, 1))).toBe(M.cardHeight / 2);
+    expect(c.get(k(1, 2))! - c.get(k(1, 1))!).toBe(unit);
+  });
+
+  it("centres a MAJOR round on its one lower feeder, ignoring the upper dropper", () => {
+    // Match 10 takes `Winner of 8` and `Loser of 6`. Only the first constrains it —
+    // satisfying both would drag the tier toward the upper rows.
+    const c = lowerTierCentres(full, M);
+    expect(c.get(k(2, 1))).toBe(c.get(k(1, 1)));
+    expect(c.get(k(2, 2))).toBe(c.get(k(1, 2)));
+  });
+
+  it("centres a MINOR round BETWEEN its two feeders — the reported bug", () => {
+    // Match 12 takes Winner of 10 and Winner of 11, and sat level with 10.
+    const c = lowerTierCentres(full, M);
+    const mid = (c.get(k(2, 1))! + c.get(k(2, 2))!) / 2;
+    expect(c.get(k(3, 1))).toBe(mid);
+    expect(c.get(k(3, 1))).not.toBe(c.get(k(2, 1)));
+  });
+
+  it("centres the Lower Final on the round below it", () => {
+    // Match 13 takes Winner of 12 and Loser of 7 — it centres on 12 alone.
+    const c = lowerTierCentres(full, M);
+    expect(c.get(k(4, 1))).toBe(c.get(k(3, 1)));
+  });
+
+  it("converges inward moving right, the way the upper tier does", () => {
+    const c = lowerTierCentres(full, M);
+    const spread = (r: number) => {
+      const cs = full.filter((m) => m.round === r).map((m) => c.get(k(r, m.slot))!);
+      return Math.max(...cs) - Math.min(...cs);
+    };
+    expect(spread(3)).toBeLessThan(spread(2));
+  });
+
+  it("THE DEGENERATE CASE: an unanchored match inherits spacing, never zero", () => {
+    // 5 entrants: match 9 (round 1, slot 2) is all-bye and is not rendered, so round 2
+    // slot 2 has no same-tier anchor at all. A naive implementation returns 0 here and
+    // stacks it on top of its sibling.
+    const sparse = full.filter((m) => !(m.round === 1 && m.slot === 2));
+    const c = lowerTierCentres(sparse, M);
+    const a = c.get(k(2, 1))!;
+    const b = c.get(k(2, 2))!;
+    expect(b).not.toBe(0);
+    expect(b).not.toBe(a);          // never overlapping
+    expect(b - a).toBe(unit);       // inherited the round's spacing
+  });
+
+  it("distributes evenly when a round has no anchors at all", () => {
+    const orphaned = [{ round: 2, slot: 1 }, { round: 2, slot: 2 }];
+    const c = lowerTierCentres(orphaned, M);
+    // Round 2 is the first round PRESENT, so it is treated as the tier's ground truth.
+    expect(c.get(k(2, 1))).toBe(M.cardHeight / 2);
+    expect(c.get(k(2, 2))! - c.get(k(2, 1))!).toBe(unit);
+  });
+
+  it("returns a centre for every match it was given", () => {
+    for (const set of [full, full.filter((m) => m.round !== 1)]) {
+      const c = lowerTierCentres(set, M);
+      expect(c.size).toBe(set.length);
+      for (const v of c.values()) expect(Number.isFinite(v)).toBe(true);
     }
   });
 });

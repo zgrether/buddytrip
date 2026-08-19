@@ -101,3 +101,82 @@ export function cardCentre(round: number, index: number, metrics: BracketMetrics
   const { offset, span } = roundLayout(round, metrics);
   return offset + index * span + metrics.cardHeight / 2;
 }
+
+/**
+ * Vertical centres for the LOWER tier — the same rule the upper bracket uses, applied
+ * to a tier whose feeders are not the pair directly below it.
+ *
+ * A match sits centred between its feeders. Applied here, that means match 12 centres
+ * between 10 and 11 rather than sitting level with 10, and the tier converges inward as
+ * it moves right, the way the upper one does.
+ *
+ * ── Only SAME-TIER feeders constrain vertical position ──────────────────────
+ * The qualifier is what keeps the tiers decoupled. A major round's match takes a lower
+ * survivor AND an upper dropper — match 10 is `Winner of 8` + `Loser of 6` — and it
+ * centres on 8 ALONE. Trying to satisfy both would drag lower matches toward upper rows
+ * and reintroduce exactly the coupling the right-to-left column rule removed.
+ *
+ *   minor round (odd)   two lower feeders  -> centre between them
+ *   major round (even)  one lower feeder   -> centre on it
+ *   round 1             no lower feeders   -> uniform, it is the tier's ground truth
+ *
+ * ── The degenerate case, which is the one that breaks ───────────────────────
+ * A feeder can be ABSENT: at 5 entrants match 9 is all-bye and is not rendered, so
+ * match 11 has no same-tier anchor at all. That is precisely where a naive
+ * implementation divides by zero or silently returns 0 and stacks two cards on top of
+ * each other — and the odd counts are already where this geometry breaks.
+ *
+ * So an unanchored match INHERITS its round's spacing: it is placed one span from the
+ * nearest anchored sibling, where the span is measured from the anchored siblings
+ * themselves and falls back to the base unit when there is only one. A round with no
+ * anchors at all distributes evenly. Never zero, never overlapping.
+ */
+export function lowerTierCentres(
+  matches: readonly { round: number; slot: number }[],
+  metrics: BracketMetrics
+): Map<string, number> {
+  const unit = metrics.cardHeight + metrics.baseGap;
+  const centres = new Map<string, number>();
+  const key = (round: number, slot: number) => `${round}:${slot}`;
+  const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
+
+  for (const round of rounds) {
+    const slots = matches.filter((m) => m.round === round).map((m) => m.slot).sort((a, b) => a - b);
+
+    // What each slot is anchored to, in this tier only.
+    const anchored: (number | null)[] = slots.map((slot) => {
+      if (round === rounds[0]) return null;                      // the tier's first round
+      if (round % 2 === 1) {
+        // MINOR: centre between the two feeders below.
+        const a = centres.get(key(round - 1, slot * 2 - 1));
+        const b = centres.get(key(round - 1, slot * 2));
+        if (a !== undefined && b !== undefined) return (a + b) / 2;
+        return a ?? b ?? null;                                    // one present: sit on it
+      }
+      // MAJOR: one lower feeder, same slot. The upper dropper is deliberately ignored.
+      return centres.get(key(round - 1, slot)) ?? null;
+    });
+
+    // Fill the gaps rather than leaving them at zero.
+    const known = anchored.map((c, i) => ({ c, i })).filter((x): x is { c: number; i: number } => x.c !== null);
+    const span = known.length >= 2
+      ? (known[known.length - 1].c - known[0].c) / (known[known.length - 1].i - known[0].i)
+      : unit;
+
+    slots.forEach((slot, i) => {
+      let centre = anchored[i];
+      if (centre === null) {
+        if (known.length === 0) {
+          centre = i * unit + metrics.cardHeight / 2;             // uniform: no anchors at all
+        } else {
+          // Nearest anchored sibling, offset by the round's own spacing.
+          const near = known.reduce((best, x) => (Math.abs(x.i - i) < Math.abs(best.i - i) ? x : best), known[0]);
+          centre = near.c + (i - near.i) * span;
+        }
+      }
+      centres.set(key(round, slot), centre);
+    });
+  }
+
+  return centres;
+}

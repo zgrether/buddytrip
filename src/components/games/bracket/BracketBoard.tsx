@@ -5,7 +5,7 @@ import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
 import { doubleBracketDisplay, doubleRoundName } from "@/lib/bracketDoubleLabels";
-import { roundLayout, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
+import { roundLayout, lowerTierCentres, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
 import { matchStakes, type MatchStakes } from "@/lib/bracketStakes";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
 
@@ -115,6 +115,19 @@ export function BracketBoard({
   const gridCols = Math.max(upperColumnsFromRight, lowerColumnsFromRight) + 1;
   /** Upper round r: r-th from the right among upper rounds. */
   const upperColumn = (r: number) => gridCols - (lastRound - r + 1);
+  /** Only the lower matches that actually render — an all-bye match is dropped, and its
+   *  absence is exactly what leaves a later match without a same-tier anchor. */
+  const lowerRendered = lower.filter((m) => {
+    const d = display.get(matchKey(m));
+    return !((d?.aVacant ?? false) && (d?.bVacant ?? false));
+  });
+  /** Vertical centres for the lower tier: every match centred on its SAME-TIER feeders,
+   *  which is the rule the upper bracket already uses. */
+  const lowerCentres = lowerTierCentres(lowerRendered, BRACKET_METRICS);
+  const lowerHeight = Math.max(
+    0,
+    ...[...lowerCentres.values()].map((c) => c + BRACKET_METRICS.cardHeight / 2),
+  );
   /** What the if-necessary game is waiting on, named after the entrant when known. */
   const ifNecessaryNote = (() => {
     const gf1 = finals.find((m) => m.round === 1);
@@ -197,20 +210,25 @@ export function BracketBoard({
           ))}
 
           {lowerRounds.map((round) => (
-            <div key={`l${round}`} className="flex flex-col" style={{ gridColumn: lowerColumnOf(round), gridRow: 4, gap: BRACKET_METRICS.baseGap }}>
-              {lower
+            // POSITIONED, not stacked. A flex column top-aligns the tier as a block,
+            // which is why match 12 sat level with 10 instead of between 10 and 11.
+            <div
+              key={`l${round}`}
+              style={{ gridColumn: lowerColumnOf(round), gridRow: 4, position: "relative", height: lowerHeight }}
+            >
+              {lowerRendered
                 .filter((m) => m.round === round)
                 .sort((a, b) => a.slot - b.slot)
-                // A match whose seats are ALL permanently empty is not a match: nobody
-                // will ever play it, `drawComplete` already treats it as satisfied, and a
-                // card with two dead seats is visual weight for something that does not
-                // exist. Dropping it is the render finally agreeing with the model.
-                .filter((m) => {
-                  const d = display.get(matchKey(m));
-                  return !((d?.aVacant ?? false) && (d?.bVacant ?? false));
-                })
                 .map((m) => (
-                  <MatchCard key={matchKey(m)} match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                  <div
+                    key={matchKey(m)}
+                    style={{
+                      position: "absolute", left: 0, right: 0,
+                      top: (lowerCentres.get(`${m.round}:${m.slot}`) ?? 0) - BRACKET_METRICS.cardHeight / 2,
+                    }}
+                  >
+                    <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
+                  </div>
                 ))}
             </div>
           ))}
