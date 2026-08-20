@@ -44,6 +44,21 @@ async function makeGameWith(userId: string, opts: { withScore: boolean; name: st
   return g.id;
 }
 
+/**
+ * Insert a fixture row, failing LOUDLY.
+ *
+ * A guard test whose fixture silently fails to insert PASSES BY ABSENCE: it
+ * asserts a refusal that never had anything to refuse, or — worse — asserts a
+ * clean removal that was only clean because the blocking row was never created.
+ * This file shipped exactly that bug: `result: "a"` violates
+ * `game_matches_result_check` (a_win | b_win | halve), the insert failed
+ * unchecked, and the guard was blamed for the fixture's mistake.
+ */
+async function seed(table: string, rows: Record<string, unknown> | Record<string, unknown>[]) {
+  const { error } = await ctx.admin.from(table).insert(rows as never);
+  if (error) throw new Error(`fixture insert into ${table} failed: ${error.message}`);
+}
+
 describe("#951 — removal refuses rather than orphaning participation", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
@@ -163,7 +178,7 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
     const target = ctx.getUser("member").id;
     const scoredGame = await makeGameWith(target, { withScore: true, name: "Has Scores" });
     const resultGame = await makeGameWith(target, { withScore: false, name: "Has A Result" });
-    await ctx.admin.from("game_results").insert({
+    await seed("game_results", {
       id: crypto.randomUUID(), game_id: resultGame, entity_id: target,
       entity_type: "user", position: 1,
     });
@@ -241,9 +256,9 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
       tripId, gameTypeId: STROKE, name: "Undecided Draw",
     })) as { id: string };
     const entrantId = crypto.randomUUID();
-    await ctx.admin.from("bracket_entrants").insert({ id: entrantId, game_id: g.id, seed: 1 });
-    await ctx.admin.from("bracket_entrant_members").insert({ entrant_id: entrantId, user_id: target });
-    await ctx.admin.from("bracket_matches").insert({
+    await seed("bracket_entrants", { id: entrantId, game_id: g.id, seed: 1 });
+    await seed("bracket_entrant_members", { entrant_id: entrantId, user_id: target });
+    await seed("bracket_matches", {
       id: crypto.randomUUID(), game_id: g.id, bracket: "main", round: 1, slot: 1,
       entrant_a_id: entrantId, winner_entrant_id: null,
     });
@@ -271,11 +286,11 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
     })) as { id: string };
     const a = crypto.randomUUID();
     const b = crypto.randomUUID();
-    await ctx.admin.from("bracket_entrants").insert([
+    await seed("bracket_entrants", [
       { id: a, game_id: g.id, seed: 1 }, { id: b, game_id: g.id, seed: 2 },
     ]);
-    await ctx.admin.from("bracket_entrant_members").insert({ entrant_id: a, user_id: target });
-    await ctx.admin.from("bracket_matches").insert({
+    await seed("bracket_entrant_members", { entrant_id: a, user_id: target });
+    await seed("bracket_matches", {
       id: crypto.randomUUID(), game_id: g.id, bracket: "main", round: 1, slot: 1,
       entrant_a_id: a, entrant_b_id: b, winner_entrant_id: b,
     });
@@ -297,10 +312,10 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
     const g = (await ctx.caller().games.create({
       tripId, gameTypeId: STROKE, name: "Settled Match",
     })) as { id: string };
-    await ctx.admin.from("game_matches").insert({
+    await seed("game_matches", {
       id: crypto.randomUUID(), game_id: g.id, match_number: 1,
       side_a: { type: "user", id: target }, side_b: { type: "user", id: ctx.getUser("outsider").id },
-      result: "a", status: "complete",
+      result: "a_win", status: "complete",
     });
 
     await expect(
@@ -314,7 +329,7 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
   it("REFUSES when they PAID for an expense", async () => {
     const target = ctx.getUser("member").id;
     const expenseId = crypto.randomUUID();
-    await ctx.admin.from("expenses").insert({
+    await seed("expenses", {
       id: expenseId, trip_id: tripId, title: "Green fees", amount: 400, paid_by_user_id: target,
     });
 
@@ -333,10 +348,10 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
     const target = ctx.getUser("member").id;
     const payer = ctx.getUser("outsider").id;
     const expenseId = crypto.randomUUID();
-    await ctx.admin.from("expenses").insert({
+    await seed("expenses", {
       id: expenseId, trip_id: tripId, title: "Dinner", amount: 300, paid_by_user_id: payer,
     });
-    await ctx.admin.from("expense_splits").insert([
+    await seed("expense_splits", [
       { expense_id: expenseId, user_id: payer, amount: 150 },
       { expense_id: expenseId, user_id: target, amount: 150 },
     ]);
@@ -361,15 +376,15 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
     const gameId = await makeGameWith(target, { withScore: true, name: "Multi Round" });
 
     const paidId = crypto.randomUUID();
-    await ctx.admin.from("expenses").insert({
+    await seed("expenses", {
       id: paidId, trip_id: tripId, title: "Cart hire", amount: 90, paid_by_user_id: target,
     });
     const splitIds = [crypto.randomUUID(), crypto.randomUUID()];
     for (const id of splitIds) {
-      await ctx.admin.from("expenses").insert({
+      await seed("expenses", {
         id, trip_id: tripId, title: "Shared", amount: 60, paid_by_user_id: payer,
       });
-      await ctx.admin.from("expense_splits").insert({ expense_id: id, user_id: target, amount: 30 });
+      await seed("expense_splits", { expense_id: id, user_id: target, amount: 30 });
     }
 
     const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
