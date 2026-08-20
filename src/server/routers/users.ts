@@ -106,16 +106,36 @@ export const usersRouter = router({
       const query = input.query.trim().toLowerCase();
       if (!query.includes("@")) return [];
 
-      const { data, error } = await ctx.supabase
-        .from("users")
-        .select("id, name, email, is_guest, avatar_icon")
-        .eq("email", query)
-        .neq("id", ctx.user.id)
-        .eq("is_guest", false)
-        .limit(1);
+      // The one read of `users` that genuinely crosses trip boundaries: the
+      // address may belong to someone the caller shares no trip with, which is
+      // the entire reason `users_select` was `USING (true)`. It now goes
+      // through `lookup_user_by_email` (migration 133), a definer that answers
+      // exactly this question — one row, exact address — so the narrowed
+      // policy (migration 134) doesn't have to admit a table scan to serve it.
+      const { data, error } = await ctx.supabase.rpc("lookup_user_by_email", {
+        p_email: query,
+      });
 
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      return data ?? [];
+
+      // Same verdict the old `.neq`/`.eq` filters expressed, applied here
+      // because the definer deliberately returns the row rather than
+      // pre-filtering it: a real account that isn't the caller.
+      const row = (data ?? [])[0];
+      if (!row || row.is_guest || row.id === ctx.user.id) return [];
+
+      // `email` is echoed from the input it matched on — the definer does not
+      // return it (the caller already has it), and `CrewSearchInput` renders
+      // `name ?? email`, so the response shape stays byte-identical.
+      return [
+        {
+          id: row.id,
+          name: row.name,
+          email: query,
+          is_guest: row.is_guest,
+          avatar_icon: row.avatar_icon,
+        },
+      ];
     }),
 
   // -----------------------------------------------------------------------

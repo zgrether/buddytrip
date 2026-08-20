@@ -52,13 +52,17 @@ export const ghostCrewRouter = router({
       // accounts and miss each other on lookup.
       const email = input.email?.trim().toLowerCase() || null;
 
-      // If email provided, check it against existing accounts
+      // If email provided, check it against existing accounts.
+      // Crosses trip boundaries — the address may already belong to an account
+      // with no connection to this trip, which is the case this branch exists
+      // to catch — so it goes through the definer (migration 133) rather than
+      // reading `users`, which migration 134 narrows.
       if (email) {
-        const { data: existingUser } = await ctx.supabase
-          .from("users")
-          .select("id, is_guest")
-          .eq("email", email)
-          .maybeSingle();
+        const { data: existingRows } = await ctx.supabase.rpc(
+          "lookup_user_by_email",
+          { p_email: email }
+        );
+        const existingUser = (existingRows ?? [])[0] ?? null;
 
         if (existingUser && !existingUser.is_guest) {
           // Real account exists — check if already a member
@@ -175,19 +179,24 @@ export const ghostCrewRouter = router({
         }
       }
 
-      // Create guest users row
+      // Create guest users row.
+      //
+      // INSERT and RETURNING are split — CLAUDE.md enforced pattern #4, and
+      // here it is load-bearing rather than precautionary. A RETURNING clause
+      // is evaluated against the SELECT policy, and migration 134 narrows that
+      // to self-plus-shares-a-trip. This placeholder shares no trip yet (its
+      // `trip_members` row is inserted below), so `.select().single()` would
+      // have found nothing and failed — with the row already written.
+      //
+      // Nothing needs re-reading: every column returned was supplied here.
       const guestId = `ghost-${crypto.randomUUID()}`;
-      const { data: guest, error: guestError } = await ctx.supabase
-        .from("users")
-        .insert({
-          id: guestId,
-          name: input.name,
-          email,
-          is_guest: true,
-          created_by: ctx.user!.id,
-        })
-        .select("id, name, email, is_guest, created_by, created_at")
-        .single();
+      const { error: guestError } = await ctx.supabase.from("users").insert({
+        id: guestId,
+        name: input.name,
+        email,
+        is_guest: true,
+        created_by: ctx.user!.id,
+      });
 
       if (guestError) {
         throw new TRPCError({
@@ -195,6 +204,15 @@ export const ghostCrewRouter = router({
           message: `Failed to create guest user: ${guestError.message}`,
         });
       }
+
+      const guest = {
+        id: guestId,
+        name: input.name,
+        email,
+        is_guest: true as const,
+        created_by: ctx.user!.id,
+        created_at: null as string | null,
+      };
 
       // Insert trip_members row (guests are always "in")
       const { error: memberError } = await ctx.supabase
@@ -307,11 +325,19 @@ export const ghostCrewRouter = router({
       // minting a duplicate email. (When existingUser is this same ghost,
       // the email is unchanged and the plain update below is a safe no-op.)
       if (email) {
-        const { data: existingUser } = await ctx.supabase
-          .from("users")
-          .select("id, name, email, is_guest, created_at")
-          .eq("email", email)
-          .maybeSingle();
+        // Cross-boundary read (migration 133's definer, not `users` — see
+        // migration 134). `email` is echoed from the input it matched on and
+        // `created_at` is null: the definer returns neither, and no consumer
+        // reads either — the sibling reuse branch in `create` already returns
+        // `created_at: null` for the same reason.
+        const { data: existingRows } = await ctx.supabase.rpc(
+          "lookup_user_by_email",
+          { p_email: email }
+        );
+        const found = (existingRows ?? [])[0] ?? null;
+        const existingUser = found
+          ? { ...found, email, created_at: null as string | null }
+          : null;
 
         if (existingUser && existingUser.id !== input.guestUserId) {
           // Reject if that user is already a member of this trip.

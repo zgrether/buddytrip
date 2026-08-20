@@ -126,11 +126,14 @@ export const tripMembersRouter = router({
 
       // Exact match on the normalized (lowercased) email. inviteByEmail
       // already does this; ilike couldn't use a btree and seq-scanned users.
-      const { data, error } = await ctx.supabase
-        .from("users")
-        .select("id, is_guest")
-        .eq("email", email)
-        .maybeSingle();
+      //
+      // Crosses trip boundaries by design — the whole point is to recognise an
+      // address that belongs to someone not on this trip — so it goes through
+      // `lookup_user_by_email` (migration 133) rather than reading `users`
+      // directly, which migration 134 narrows to self-plus-shares-a-trip.
+      const { data, error } = await ctx.supabase.rpc("lookup_user_by_email", {
+        p_email: email,
+      });
 
       if (error) {
         throw new TRPCError({
@@ -142,7 +145,10 @@ export const tripMembersRouter = router({
       // A real BT account = users row with is_guest=false. Guest rows
       // exist for placeholders and unaccepted invites; matching one of
       // those shouldn't tell the organizer "already on BuddyTrip".
-      if (data && !data.is_guest) {
+      // The definer returns rows, so this is `[0]` rather than maybeSingle's
+      // row-or-null — the address is UNIQUE, so there is at most one either way.
+      const match = (data ?? [])[0];
+      if (match && !match.is_guest) {
         return { result: "match" as const };
       }
       return { result: "invite" as const };
@@ -550,12 +556,15 @@ export const tripMembersRouter = router({
       const inviterName = inviterResult.data?.name ?? "Someone";
       const tripName = tripResult.data?.title ?? "a trip";
 
-      // Check if a real (non-guest) account exists for this email
-      const { data: existing } = await ctx.supabase
-        .from("users")
-        .select("id, name, is_guest")
-        .eq("email", email)
-        .maybeSingle();
+      // Check if a real (non-guest) account exists for this email.
+      // Cross-boundary by nature — inviting is precisely how someone who is
+      // not yet on this trip gets recognised — so it reads through the definer
+      // (migration 133), not `users` (narrowed by migration 134).
+      const { data: existingRows } = await ctx.supabase.rpc(
+        "lookup_user_by_email",
+        { p_email: email }
+      );
+      const existing = (existingRows ?? [])[0] ?? null;
 
       // ── Path A: Real account exists — add to trip directly ──────────
       if (existing && !existing.is_guest) {
