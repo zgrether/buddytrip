@@ -133,3 +133,21 @@ $function$;
 
 COMMENT ON FUNCTION public.delete_orphan_guest_user(text) IS
   'Hard-deletes a guest users row once they are on no trips. No-ops when a foreign key still references them (expenses, splits, submitted scores) — the placeholder survives with its history. Primary defence against removing someone who contributed is the application guard in participationGuard.ts (#996); four of the nine contribution columns have no FK at all.';
+
+-- ── Restate what `user_delete_blocking_fks()` means now ──────────────────
+--
+-- Migration 129 shipped it with "Must return zero rows", which was correct
+-- while `handle_user_delete` DELETED the users row: any blocking FK failed the
+-- whole auth-user delete and made an account undeleteable (#993).
+--
+-- Migration 130 removed that premise — account deletion converts the row and
+-- never deletes it — and this migration deliberately adds two blocking FKs. So
+-- the invariant is no longer "nothing blocks" but "only declared things block",
+-- which is what `userDeleteFks.coverage.test.ts` now asserts, in both
+-- directions: nothing undeclared blocks, and each declared one still does.
+--
+-- The comment is updated rather than the function, because the QUERY is still
+-- exactly right — it reports every FK that would block. Only the expectation
+-- about its output changed.
+COMMENT ON FUNCTION public.user_delete_blocking_fks() IS
+  'Every FK into public.users whose ON DELETE (NO ACTION / RESTRICT) would block a delete of that row. Account deletion no longer deletes the row at all (migration 130), so these do not make an account undeleteable; they gate delete_orphan_guest_user, which catches the violation on purpose. Output must match the declared set in userDeleteFks.coverage.test.ts — nothing undeclared may block, and every declared entry must still block (migration 131).';
