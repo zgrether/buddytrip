@@ -604,37 +604,69 @@ These patterns have been established through prior work. Follow them exactly —
     `status` / `corrections_open` directly, anywhere outside this module, is
     the eighth instance arriving.
 
-25. **A game's three go-live signals move TOGETHER, always — `status`,
-    `scoring_enabled`, `pairings_published_at`.** Going live sets all three;
-    coming back out of live clears all three. There is no legitimate state where
-    one has moved and the others have not, and nothing in the type system says
-    so — they are three ordinary columns that happen to have to agree.
-    **Never write one without the other two.**
+25. **Scoring cannot be open on a game that has neither been announced nor
+    started** — `NOT (scoring_enabled AND pairings_published_at IS NULL AND
+    status = 'pending')`. Enforced by a CHECK since migration 135, so it binds
+    the service-role client too. `status` is a SEPARATE lifecycle axis and moves
+    on its own; the three columns are only loosely coupled.
 
-    **What breaks, concretely.** `matches.listByGame` reads TWO of them a few
-    lines apart: the access gate keys on `status === "pending"`
-    (`matches.ts:739`), while the `published` flag it returns to the client keys
-    on `pairings_published_at` (`matches.ts:732`). So the two ways to get this
-    wrong produce two different silent failures — move `status` alone and a
-    member is let through the gate but told the pairings aren't announced yet
-    (a live game reading as "not announced"); move `pairings_published_at` alone
-    and members are refused outright while the game looks live to staff. The
-    third, `scoring_enabled`, gates the score WRITE, so getting that one out of
-    step leaves members able to see a game they cannot enter a score into.
-    Nobody gets an error in any of these cases.
+    **This entry previously said something else, and it was wrong.** It read
+    "A game's three go-live signals move TOGETHER, always… There is no
+    legitimate state where one has moved and the others have not… Never write
+    one without the other two", and claimed "today all three writes are correct
+    and atomic". Read against the code, two writes have always moved `status`
+    alone, both deliberately:
 
-    **Today all three writes are correct and atomic** — `games.enableScoring` /
-    the disable path (`games.ts:902` / `games.ts:923`) and
-    `matches.enableScoring` (`matches.ts:700`) each set all three in ONE update.
-    The risk is entirely in what gets added next: a new mutation, a partial
-    reset, or an optimistic client `setData` that patches the one field it cares
-    about. **The tell:** any write to one of these three columns that isn't
-    setting the other two in the same statement.
+    - `games.finish` sets `status='complete'` + `scoring_enabled=true` and
+      leaves `pairings_published_at` as it was — **18 of 23 prod games are in
+      exactly that state**, so it is the common case, not an edge one
+    - `scores.upsertEntry` flips `status` pending→active alone when the first
+      score lands — the behaviour the glossary names ("Live (first score flips
+      it)")
 
-    This lived only in `DEFERRED.md` under deferred work until the 2026-08-08
-    rules audit — a load-bearing invariant filed under a heading that invites
-    pruning, with no test. It still has no test; the mechanism above is what
-    you'd need to write one.
+    A trigger enforcing the stated rule would have broken finalize and score
+    entry. The rule was asserted from reading the two enableScoring paths (which
+    genuinely do write all three) and generalised to the whole column set
+    without checking the others.
+
+    **The obvious replacement was ALSO wrong, and it took the test suite to say
+    so.** `scoring_enabled ⇒ pairings_published_at IS NOT NULL` fits every write
+    path and every existing row in prod and local. It was written as a CHECK,
+    and it broke **47 tests**. The reason is a GUARD, not a write:
+    `games.finish` has no live-ness check at all — it will finalize a game
+    sitting in `pending` that was never taken live, setting `scoring_enabled =
+    true` on the way past (deliberately, so a later correction edit passes the
+    score-entry gate). So `complete + scoring + never published` is reachable,
+    the seeds that produce it were reproducing a real shortcut, and prod showing
+    zero such rows only meant nobody had taken it yet.
+
+    **So enumerate the GUARDS, not only the writers.** Both attempts at this
+    rule were derived from the set of statements that write these columns. What
+    falsified the second one was a procedure that writes only one of them and
+    guards on none — invisible to that enumeration.
+
+    **The reads are still worth knowing**, and are why a desync is silent rather
+    than loud: `matches.listByGame` keys its access gate on
+    `status === "pending"` (`matches.ts:739`) while the `published` flag it
+    returns keys on `pairings_published_at` (`matches.ts:732`), and
+    `scoring_enabled` gates the score WRITE. Nobody gets an error in any
+    mismatched combination — which is the reason to constrain what can be
+    written rather than to trust callers.
+
+    **What the constraint says, and why that and not more:** `pending` +
+    never-published is a game that has not begun, and scoring being open on it
+    is the state F11 probed — a participant can write `score_entries` (that
+    policy gates on `scoring_enabled`, never on `status`) to a game nobody has
+    been told about. Finish's shortcut is untouched because its result is
+    `complete`: the game happened and is being recorded, and `scoring_enabled`
+    there is bookkeeping for corrections rather than an open door.
+
+    **The lesson worth more than the rule:** this entry was wrong for months
+    with no test, and it was wrong in the confident direction — "always",
+    "never", "there is no legitimate state". Three of its claims fell to a
+    twenty-minute read of the callers. History: lived in `DEFERRED.md`, promoted
+    here by the 2026-08-08 rules audit, probed by the 2026-08-20 RLS audit
+    (F11), corrected and given a constraint by migration 135.
 
 26. **A SELECT policy is also an UPDATE check, so widening one silently opens
     the matching write.** Postgres evaluates a table's `SELECT` policies against
