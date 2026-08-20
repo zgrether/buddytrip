@@ -7,7 +7,11 @@ import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
 import { clearTripTeamAssignments } from "../lib/leaveTrip";
-import { findParticipationBlockers, participationRefusalMessage } from "../lib/participationGuard";
+import {
+  findContributionBlockers,
+  contributionRefusalMessage,
+  hasContributions,
+} from "../lib/participationGuard";
 
 /** Resolve a member's trip display name (nickname → account name) for
  *  system chat lines. Best-effort; falls back to "Someone". */
@@ -155,15 +159,18 @@ export const tripMembersRouter = router({
     .input(z.object({ tripId: z.string(), userId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const blockers = await findParticipationBlockers(ctx.supabase, ctx.tripId!, input.userId);
-      const message: string | null =
-        blockers.length === 0
-          ? null
-          : participationRefusalMessage(
-              await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId),
-              blockers
-            );
-      return { blockers, message };
+      const blockers = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
+      // `blocked` is returned explicitly rather than left for the client to
+      // re-derive: the predicate now spans games AND two expense counts, and a
+      // client re-implementing it is how the two drift apart.
+      const blocked = hasContributions(blockers);
+      const message: string | null = !blocked
+        ? null
+        : contributionRefusalMessage(
+            await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId),
+            blockers
+          );
+      return { blocked, blockers, message };
     }),
 
   // -----------------------------------------------------------------------
@@ -436,12 +443,12 @@ export const tripMembersRouter = router({
       // shared predicate is the same one `ghostCrew.remove` runs — the sibling
       // gap #957 was exactly a guard present in one procedure and missing from
       // its twin.
-      const blockers = await findParticipationBlockers(ctx.supabase, ctx.tripId!, input.userId);
-      if (blockers.length > 0) {
+      const blockers = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
+      if (hasContributions(blockers)) {
         const name = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: participationRefusalMessage(name, blockers),
+          message: contributionRefusalMessage(name, blockers),
         });
       }
 
