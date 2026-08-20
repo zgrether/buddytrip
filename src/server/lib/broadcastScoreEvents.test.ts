@@ -250,8 +250,14 @@ describe("096 broadcast trigger — game lifecycle", () => {
   it("broadcasts on go-live, finalize and re-open-for-correction", async (t) => {
     if (!requireRealtime(t)) return;
 
+    // The go-live patch writes all three columns a real go-live writes, not
+    // just `scoring_enabled`. Migration 135 refuses scoring opening on a game
+    // that is still `pending` and was never published, so the bare flag is now
+    // an impossible state rather than a convenient poke — and the point of this
+    // test is that a LIFECYCLE CHANGE broadcasts, which a genuine go-live
+    // exercises better anyway.
     for (const patch of [
-      { scoring_enabled: true },
+      { scoring_enabled: true, status: "active", pairings_published_at: new Date().toISOString() },
       { status: "complete" },
       { corrections_open: true },
     ]) {
