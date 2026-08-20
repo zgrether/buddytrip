@@ -106,36 +106,47 @@ export function cardCentre(round: number, index: number, metrics: BracketMetrics
  * Vertical centres for the LOWER tier — the same rule the upper bracket uses, applied
  * to a tier whose feeders are not the pair directly below it.
  *
- * A match sits centred between its feeders. Applied here, that means match 12 centres
- * between 10 and 11 rather than sitting level with 10, and the tier converges inward as
- * it moves right, the way the upper one does.
- *
  * ── Only SAME-TIER feeders constrain vertical position ──────────────────────
- * The qualifier is what keeps the tiers decoupled. A major round's match takes a lower
- * survivor AND an upper dropper — match 10 is `Winner of 8` + `Loser of 6` — and it
- * centres on 8 ALONE. Trying to satisfy both would drag lower matches toward upper rows
- * and reintroduce exactly the coupling the right-to-left column rule removed.
+ * A major round's match takes a lower survivor AND an upper dropper — match 10 is
+ * `Winner of 8` + `Loser of 6` — and only the first constrains it. Satisfying both
+ * would drag lower matches toward upper rows and reintroduce exactly the coupling the
+ * right-to-left column rule removed.
  *
- *   minor round (odd)   two lower feeders  -> centre between them
- *   major round (even)  one lower feeder   -> centre on it
- *   round 1             no lower feeders   -> uniform, it is the tier's ground truth
+ * ── A CONSUMER MAY NOT SIT LEVEL WITH ITS FEEDER ────────────────────────────
+ * The correction. Keyed on how many same-tier feeders a match has, which is what the
+ * rule is actually about — not on round parity, which only correlates with it:
+ *
+ *   TWO feeders   centred between them. Already correct, unchanged.
+ *   ONE feeder    OFFSET from it, never level. Centring on a single feeder puts the
+ *                 consumer on that feeder's row, which is what made matches 12 and 13
+ *                 read as inline rather than as an arm.
+ *   NO feeder     the inherited-spacing fallback below.
+ *
+ * The offset is DOWNWARD by half a slot. Downward because the other arm arrives from
+ * the upper tier, which sits above — so dropping the consumer leaves the room that arm
+ * needs, and the offset reads as the connection it is. Half a slot because it must be
+ * visible enough not to look like an alignment coincidence, while staying small enough
+ * that the cumulative drift across a deep lower bracket stays modest: it accrues once
+ * per one-feeder round, so a 64-entrant draw drifts by five half-slots, not fifty.
  *
  * ── The degenerate case, which is the one that breaks ───────────────────────
- * A feeder can be ABSENT: at 5 entrants match 9 is all-bye and is not rendered, so
- * match 11 has no same-tier anchor at all. That is precisely where a naive
- * implementation divides by zero or silently returns 0 and stacks two cards on top of
- * each other — and the odd counts are already where this geometry breaks.
+ * A feeder can be ABSENT — at 5 entrants match 9 is all-bye — leaving a match with no
+ * same-tier anchor at all. That is precisely where a naive implementation divides by
+ * zero or silently returns 0 and stacks two cards on top of each other, and the odd
+ * counts are already where this geometry breaks.
  *
- * So an unanchored match INHERITS its round's spacing: it is placed one span from the
- * nearest anchored sibling, where the span is measured from the anchored siblings
- * themselves and falls back to the base unit when there is only one. A round with no
- * anchors at all distributes evenly. Never zero, never overlapping.
+ * So an unanchored match INHERITS its round's spacing: placed one span from the nearest
+ * anchored sibling, the span measured from the anchored siblings themselves and falling
+ * back to the base unit when there is only one. A round with no anchors at all
+ * distributes evenly. Never zero, never overlapping.
  */
 export function lowerTierCentres(
   matches: readonly { round: number; slot: number }[],
   metrics: BracketMetrics
 ): Map<string, number> {
   const unit = metrics.cardHeight + metrics.baseGap;
+  /** How far a single-feeder consumer sits below its feeder. */
+  const armOffset = unit / 2;
   const centres = new Map<string, number>();
   const key = (round: number, slot: number) => `${round}:${slot}`;
   const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
@@ -143,21 +154,19 @@ export function lowerTierCentres(
   for (const round of rounds) {
     const slots = matches.filter((m) => m.round === round).map((m) => m.slot).sort((a, b) => a - b);
 
-    // What each slot is anchored to, in this tier only.
     const anchored: (number | null)[] = slots.map((slot) => {
       if (round === rounds[0]) return null;                      // the tier's first round
-      if (round % 2 === 1) {
-        // MINOR: centre between the two feeders below.
-        const a = centres.get(key(round - 1, slot * 2 - 1));
-        const b = centres.get(key(round - 1, slot * 2));
-        if (a !== undefined && b !== undefined) return (a + b) / 2;
-        return a ?? b ?? null;                                    // one present: sit on it
-      }
-      // MAJOR: one lower feeder, same slot. The upper dropper is deliberately ignored.
-      return centres.get(key(round - 1, slot)) ?? null;
+      // Every same-tier feeder this match could have. A minor round takes two slots from
+      // the round below; a major round takes the one at its own slot.
+      const candidates = round % 2 === 1
+        ? [centres.get(key(round - 1, slot * 2 - 1)), centres.get(key(round - 1, slot * 2))]
+        : [centres.get(key(round - 1, slot))];
+      const found = candidates.filter((c): c is number => c !== undefined);
+      if (found.length === 2) return (found[0] + found[1]) / 2;  // centred between
+      if (found.length === 1) return found[0] + armOffset;       // offset, never level
+      return null;                                               // fallback below
     });
 
-    // Fill the gaps rather than leaving them at zero.
     const known = anchored.map((c, i) => ({ c, i })).filter((x): x is { c: number; i: number } => x.c !== null);
     const span = known.length >= 2
       ? (known[known.length - 1].c - known[0].c) / (known[known.length - 1].i - known[0].i)
@@ -167,9 +176,8 @@ export function lowerTierCentres(
       let centre = anchored[i];
       if (centre === null) {
         if (known.length === 0) {
-          centre = i * unit + metrics.cardHeight / 2;             // uniform: no anchors at all
+          centre = i * unit + metrics.cardHeight / 2;
         } else {
-          // Nearest anchored sibling, offset by the round's own spacing.
           const near = known.reduce((best, x) => (Math.abs(x.i - i) < Math.abs(best.i - i) ? x : best), known[0]);
           centre = near.c + (i - near.i) * span;
         }

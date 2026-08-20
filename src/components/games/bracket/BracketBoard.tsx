@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
@@ -78,6 +79,7 @@ export function BracketBoard({
   const display = matches.some((m) => m.bracket === "lower" || m.bracket === "final")
     ? doubleBracketDisplay(matches)
     : bracketDisplay(matches);
+  const gridRef = useRef<HTMLDivElement>(null);
   const bySeed = new Map(entrants.map((e) => [e.seed, e]));
   const main = matches.filter((m) => m.bracket === "main");
   const consolation = matches.filter((m) => m.bracket === "consolation");
@@ -115,19 +117,69 @@ export function BracketBoard({
   const gridCols = Math.max(upperColumnsFromRight, lowerColumnsFromRight) + 1;
   /** Upper round r: r-th from the right among upper rounds. */
   const upperColumn = (r: number) => gridCols - (lastRound - r + 1);
-  /** Only the lower matches that actually render — an all-bye match is dropped, and its
-   *  absence is exactly what leaves a later match without a same-tier anchor. */
-  const lowerRendered = lower.filter((m) => {
+  /**
+   * EVERY match renders, at its structural position, always (T1).
+   *
+   * This reverses dropping all-bye matches. The structure is the thing being read, and a
+   * hole in it makes everything downstream look arbitrary: at 5 entrants match 9
+   * disappeared and "Winner of 10 vs Winner of 11" then appeared with nothing visibly
+   * feeding it, which reads as randomised rather than as a bracket.
+   *
+   * A match nobody can play is DIMMED instead — visually inert, clearly not awaiting
+   * anything, but present so the shape is complete. Consistent with `Bye`, which already
+   * says "nobody is coming" without removing the seat.
+   */
+  const unplayable = (m: ResolvedMatch) => {
     const d = display.get(matchKey(m));
-    return !((d?.aVacant ?? false) && (d?.bVacant ?? false));
-  });
+    return (d?.aVacant ?? false) && (d?.bVacant ?? false);
+  };
   /** Vertical centres for the lower tier: every match centred on its SAME-TIER feeders,
    *  which is the rule the upper bracket already uses. */
-  const lowerCentres = lowerTierCentres(lowerRendered, BRACKET_METRICS);
+  const lowerCentres = lowerTierCentres(lower, BRACKET_METRICS);
   const lowerHeight = Math.max(
     0,
     ...[...lowerCentres.values()].map((c) => c + BRACKET_METRICS.cardHeight / 2),
   );
+  /**
+   * Which match feeds which — the pairs the arms are drawn between.
+   *
+   * The same relationships `doubleBracketDisplay` names in its placeholders, so an arm
+   * and the text it sits beside cannot describe different feeds. Upper and lower are
+   * each same-tier; the two arms into the grand final are the convergence itself, and
+   * are the one relationship a newcomer most needs to see.
+   */
+  const connectorPairs = (() => {
+    if (!isDouble) return [];
+    const out: { from: string; to: string; dim: boolean }[] = [];
+    const dimOf = (m: ResolvedMatch) => unplayable(m);
+    const byKey = new Map(matches.map((m) => [matchKey(m), m]));
+    const link = (from: string, to: string) => {
+      const a = byKey.get(from), b = byKey.get(to);
+      if (a && b) out.push({ from, to, dim: dimOf(a) || dimOf(b) });
+    };
+    for (const m of main) {
+      if (m.round === 1) continue;
+      link(matchKey({ bracket: "main", round: m.round - 1, slot: m.slot * 2 - 1 }), matchKey(m));
+      link(matchKey({ bracket: "main", round: m.round - 1, slot: m.slot * 2 }), matchKey(m));
+    }
+    const firstLower = lowerRounds[0];
+    for (const m of lower) {
+      if (m.round === firstLower) continue;
+      const feeders = m.round % 2 === 1
+        ? [m.slot * 2 - 1, m.slot * 2].map((sl) => ({ round: m.round - 1, slot: sl }))
+        : [{ round: m.round - 1, slot: m.slot }];
+      for (const f of feeders) link(matchKey({ bracket: "lower", ...f }), matchKey(m));
+    }
+    const gf1 = finals.find((m) => m.round === 1);
+    if (gf1) {
+      link(matchKey({ bracket: "main", round: lastRound, slot: 1 }), matchKey(gf1));
+      const lowerLastRound = lowerRounds[lowerRounds.length - 1];
+      if (lowerLastRound !== undefined) link(matchKey({ bracket: "lower", round: lowerLastRound, slot: 1 }), matchKey(gf1));
+      const gf2 = finals.find((m) => m.round === 2);
+      if (gf2) link(matchKey(gf1), matchKey(gf2));
+    }
+    return out;
+  })();
   /** What the if-necessary game is waiting on, named after the entrant when known. */
   const ifNecessaryNote = (() => {
     const gf1 = finals.find((m) => m.round === 1);
@@ -181,6 +233,8 @@ export function BracketBoard({
          * in `main` and false in `lower`, so keeping them implied a relationship that
          * does not exist. Wrong spacing is worse than none.
          */
+        <div ref={gridRef} style={{ position: "relative" }}>
+        <ConnectorLayer pairs={connectorPairs} host={gridRef} />
         <div
           style={{
             display: "grid",
@@ -216,7 +270,7 @@ export function BracketBoard({
               key={`l${round}`}
               style={{ gridColumn: lowerColumnOf(round), gridRow: 4, position: "relative", height: lowerHeight }}
             >
-              {lowerRendered
+              {lower
                 .filter((m) => m.round === round)
                 .sort((a, b) => a.slot - b.slot)
                 .map((m) => (
@@ -225,6 +279,7 @@ export function BracketBoard({
                     style={{
                       position: "absolute", left: 0, right: 0,
                       top: (lowerCentres.get(`${m.round}:${m.slot}`) ?? 0) - BRACKET_METRICS.cardHeight / 2,
+                      opacity: unplayable(m) ? 0.4 : 1,
                     }}
                   >
                     <MatchCard match={m} display={display} bySeed={bySeed} canPick={canPick} onPick={onPick} stakes={stakes(m)} mustWin={mustWin} />
@@ -263,6 +318,7 @@ export function BracketBoard({
               );
             })}
           </div>
+        </div>
         </div>
       ) : (
       <>
@@ -326,6 +382,88 @@ export function BracketBoard({
   );
 }
 
+
+/**
+ * CONNECTOR ARMS — measured, not computed.
+ *
+ * The two tiers position themselves by different rules (the upper by `roundLayout`
+ * offsets in flow, the lower by absolute centres), and the grand final is centred across
+ * both. There is no single formula that yields all three sets of coordinates, so this
+ * reads the rendered geometry instead: it finds each card by `data-match-key` and draws
+ * elbows between the pairs it is given.
+ *
+ * That also means the arms cannot disagree with the layout. A computed connector drawn
+ * from the layout's INPUTS would keep pointing at where a card was supposed to be; one
+ * drawn from its rect points at where it is.
+ *
+ * Re-measures on resize, because the upper tier is in normal flow and its offsets move
+ * with the container.
+ */
+function ConnectorLayer({
+  pairs, host,
+}: {
+  /** [feeder, consumer] match keys, plus whether either end is inert. */
+  pairs: { from: string; to: string; dim: boolean }[];
+  host: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [paths, setPaths] = useState<{ d: string; dim: boolean }[]>([]);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useLayoutEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    const measure = () => {
+      const base = el.getBoundingClientRect();
+      const rectOf = (key: string) => {
+        const card = el.querySelector(`[data-match-key="${CSS.escape(key)}"]`);
+        if (!card) return null;
+        const r = card.getBoundingClientRect();
+        return { left: r.left - base.left, right: r.right - base.left, mid: r.top - base.top + r.height / 2 };
+      };
+      const next: { d: string; dim: boolean }[] = [];
+      for (const { from, to, dim } of pairs) {
+        const a = rectOf(from);
+        const b = rectOf(to);
+        if (!a || !b) continue;                  // a match not on screen has no arm
+        // An elbow: out of the feeder's right edge, across the gutter, then into the
+        // consumer's left edge at its own height.
+        const midX = a.right + (b.left - a.right) / 2;
+        next.push({ d: `M ${a.right} ${a.mid} H ${midX} V ${b.mid} H ${b.left}`, dim });
+      }
+      setPaths(next);
+      setSize({ w: base.width, h: base.height });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pairs, host]);
+
+  if (paths.length === 0) return null;
+  return (
+    <svg
+      width={size.w}
+      height={size.h}
+      style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
+      aria-hidden
+      data-testid="bracket-connectors"
+    >
+      {paths.map((p, i) => (
+        <path
+          key={i}
+          d={p.d}
+          fill="none"
+          stroke="var(--color-bt-border)"
+          strokeWidth={1}
+          // A dimmed match gets a dimmed arm: the structure stays legible without
+          // implying a live path through something nobody can play.
+          opacity={p.dim ? 0.35 : 1}
+        />
+      ))}
+    </svg>
+  );
+}
+
 function MatchCard({
   match, display, bySeed, canPick, onPick, stakes, mustWin,
 }: {
@@ -354,6 +492,7 @@ function MatchCard({
         height: BRACKET_METRICS.cardHeight,
       }}
       data-testid={`bracket-match-${d?.number ?? "?"}`}
+      data-match-key={matchKey(match)}
     >
       {/* The shared eyebrow recipe (STYLE_GUIDE §2b) — 10px / 700 / 0.08em /
           uppercase / text-dim, the same one match play's card header already

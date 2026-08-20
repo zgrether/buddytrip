@@ -18,7 +18,9 @@ import { bracketSize, buildDraw, roundCount } from "./bracket";
  * cannot host a real tournament.
  */
 
-const COUNTS = [3, 4, 5, 6, 7, 8, 9, 16];
+// 32 and 64 added for the scale pass: the odd counts got attention because that is
+// where byes break, and the large ones had never been run at all.
+const COUNTS = [3, 4, 5, 6, 7, 8, 9, 16, 32, 64];
 
 const only = (draw: ReturnType<typeof buildDoubleDraw>, side: string) =>
   draw.filter((m) => m.bracket === side);
@@ -187,6 +189,10 @@ describe("the structure can host a real tournament", () => {
     8:  { main: [4, 2, 1],    lower: [2, 2, 1, 1],       total: 15 },
     9:  { main: [8, 4, 2, 1], lower: [4, 4, 2, 2, 1, 1], total: 31 },
     16: { main: [8, 4, 2, 1], lower: [4, 4, 2, 2, 1, 1], total: 31 },
+    //   size 32  main 16+8+4+2+1     lower 8+8+4+4+2+2+1+1        + 2 finals =  63
+    //   size 64  main 32+16+8+4+2+1  lower 16+16+8+8+4+4+2+2+1+1  + 2 finals = 127
+    32: { main: [16, 8, 4, 2, 1],     lower: [8, 8, 4, 4, 2, 2, 1, 1],           total: 63 },
+    64: { main: [32, 16, 8, 4, 2, 1], lower: [16, 16, 8, 8, 4, 4, 2, 2, 1, 1],   total: 127 },
   };
 
   it.each(COUNTS)("has the hand-computed shape at %i entrants", (n) => {

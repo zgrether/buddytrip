@@ -20,7 +20,9 @@ import { drawComplete, matchKey, type ResolvedMatch, type WinnerBySeed } from ".
  *               This is the only path that exercises the if-necessary final at all.
  */
 
-const COUNTS = [3, 4, 5, 6, 7, 8, 9, 16];
+// 32 and 64 added for the scale pass: the odd counts got attention because that is
+// where byes break, and the large ones had never been run at all.
+const COUNTS = [3, 4, 5, 6, 7, 8, 9, 16, 32, 64];
 
 /** Play a draw to completion, one decidable match at a time. Returns the recorded
  *  winners and the final resolution — the same pair a real game accumulates. */
