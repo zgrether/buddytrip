@@ -21,7 +21,38 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
 let ctx: TestContext;
 
-describe("account deletion is not blocked by any FK into public.users", () => {
+/**
+ * Every FK into `public.users` that BLOCKS a delete must be a deliberate,
+ * declared choice — not an accident of a column added with the default.
+ *
+ * ── This assertion CHANGED in migration 131, and the reason is the point ──
+ *
+ * It used to be `toEqual([])`: no blocking FK, ever. That was correct while
+ * `handle_user_delete` DELETED the `public.users` row, because then any
+ * blocking FK failed the whole auth-user delete and made an account
+ * undeleteable (#993).
+ *
+ * Migration 130 changed the premise. Account deletion now CONVERTS the row to
+ * a placeholder and never deletes it, so a blocking FK cannot break account
+ * deletion any more. The only thing that still deletes a `users` row is
+ * `delete_orphan_guest_user`, which catches `foreign_key_violation` on purpose
+ * — there, being blocked is the DESIRED outcome: the placeholder survives with
+ * its history rather than taking an expense and everyone's splits with it.
+ *
+ * So the invariant is no longer "nothing blocks" but "only these block, and we
+ * said so". Same shape as the configHash coverage guard: read the live
+ * catalog, and require every row to be in a declared set. A new blocking FK
+ * added carelessly still fails here; a deliberate one is written down.
+ */
+const DELIBERATELY_BLOCKING: Record<string, string> = {
+  // Shared ledger entries. Deleting a person must never change what someone
+  // else owes, so these refuse — and `delete_orphan_guest_user` swallows the
+  // refusal, leaving the placeholder in place (migration 131, reversing 027).
+  expenses_paid_by_user_id_fkey: "expenses.paid_by_user_id",
+  expense_splits_user_id_fkey: "expense_splits.user_id",
+};
+
+describe("FKs into public.users that block a delete are declared, not accidental", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
   }, 30_000);
@@ -31,11 +62,28 @@ describe("account deletion is not blocked by any FK into public.users", () => {
   }, 30_000);
 
   // ── Observational: the class, not the instance ──────────────────────────
-  it("no FK into public.users has a blocking ON DELETE", async () => {
+  it("every blocking FK into public.users is one we declared", async () => {
     const { data, error } = await ctx.admin.rpc("user_delete_blocking_fks");
     expect(error).toBeNull();
-    // Named in the failure so the message says WHICH column, not just a count.
-    expect(data ?? []).toEqual([]);
+
+    const found = (data ?? []) as { constraint_name: string; child_table: string; child_column: string }[];
+    const undeclared = found.filter((f) => !(f.constraint_name in DELIBERATELY_BLOCKING));
+    // Names the column in the failure, so the message says WHICH one is new
+    // rather than just that a count moved.
+    expect(undeclared.map((f) => `${f.child_table}.${f.child_column}`)).toEqual([]);
+  });
+
+  it("...and each declared one is actually still there", async () => {
+    // The other direction, which a one-sided allowlist misses: if a future
+    // migration quietly relaxes one of these back to CASCADE, deleting a
+    // placeholder would silently destroy shared money again — the exact
+    // regression migration 131 exists to prevent. An entry that no longer
+    // matches reality is a stale claim, so it fails too.
+    const { data } = await ctx.admin.rpc("user_delete_blocking_fks");
+    const names = new Set(((data ?? []) as { constraint_name: string }[]).map((f) => f.constraint_name));
+    for (const declared of Object.keys(DELIBERATELY_BLOCKING)) {
+      expect(names.has(declared), `${declared} no longer blocks`).toBe(true);
+    }
   });
 
   // ── Behavioural: the exact production failure (#993) ────────────────────
