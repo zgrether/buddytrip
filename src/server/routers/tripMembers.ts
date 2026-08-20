@@ -926,10 +926,11 @@ export const tripMembersRouter = router({
       const verifiedIds = (memberRows ?? []).map((m) => m.user_id).filter(Boolean) as string[];
       if (verifiedIds.length === 0) return { sent: 0 };
 
-      // Fetch user records with emails
+      // Fetch user records with emails. `is_guest` decides, PER RECIPIENT,
+      // which link that person gets — see the send loop below.
       const { data: users } = await ctx.supabase
         .from("users")
-        .select("id, name, email")
+        .select("id, name, email, is_guest")
         .in("id", verifiedIds);
 
       // Build invitation message. Prefer the explicit body the panel sent
@@ -941,12 +942,42 @@ export const tripMembersRouter = router({
         input.message?.trim() || trip.about_message?.trim() || buildCannedInvitation(trip);
 
       const { sendInvitationBlast: sendBlast } = await import("@/lib/email");
+      const { ensureInviteToken } = await import("@/server/lib/inviteToken");
       const now = new Date().toISOString();
       const sentIds: string[] = [];
 
+      // The branch is PER RECIPIENT, not per send: one blast to sixteen people
+      // legitimately produces both link types, because what differs is whether
+      // THAT person already has an account.
+      //
+      //   is_guest = true  → no account → mint/reuse a token → `/invite?token=`
+      //                      → the auth-aware router (#988), which names the
+      //                        trip and leads with "create your account".
+      //   is_guest = false → real account → raw `/trips/{uuid}`, unchanged.
+      //                      Signed out, middleware bounces them to /login
+      //                      carrying `?next=`, which is correct for a
+      //                      returning user and is what #988 already fixed.
+      //
+      // Before this, EVERY recipient got the raw trip URL, so a brand-new
+      // person met a "Welcome back" sign-in wall — access was never broken
+      // (signing up with the same address merges the placeholder and `?next=`
+      // completes the trip), but the front door was wrong for exactly the
+      // people being invited for the first time.
       for (const user of users ?? []) {
         if (!user.email) continue;
         try {
+          // Idempotent: reuses this person's existing token on a re-send, so
+          // "Resend invites" does not mint a second one. A null (read failure,
+          // or an insert RLS refused) degrades to the raw trip URL — the
+          // pre-existing behaviour — rather than dropping the send.
+          const token = user.is_guest
+            ? await ensureInviteToken(ctx.supabase, {
+                tripId: ctx.tripId,
+                email: user.email,
+                createdBy: ctx.user!.id,
+              })
+            : null;
+
           await sendBlast({
             toEmail: user.email,
             toName: user.name ?? user.email.split("@")[0],
@@ -954,6 +985,7 @@ export const tripMembersRouter = router({
             tripTitle: trip.title,
             invitationMessage,
             tripId: ctx.tripId,
+            token,
           });
           sentIds.push(user.id);
         } catch {

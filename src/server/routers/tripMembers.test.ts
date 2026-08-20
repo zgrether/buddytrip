@@ -510,6 +510,88 @@ describe("tripMembers router — sendInvitationBlast", () => {
     expect(after?.email_count).toBe(startCount + 1);
   });
 
+  // ── Per-recipient link selection + idempotent minting ────────────────────
+  //
+  // The two-disjoint-systems bug: `ghostCrew.create` (crew tab) makes a
+  // placeholder and mints nothing; the blast then emailed everyone the raw
+  // `/trips/{uuid}`. So #988's invite router was live but unreachable from the
+  // path actually used to invite people.
+  it("mints a token for a placeholder, and NOT for a real account, in one send", async () => {
+    vi.mocked(sendInvitationBlast).mockClear();
+    const admin = ctx.admin;
+    const caller = ctx.caller();
+    const member = ctx.getUser("member");
+
+    // A crew-tab placeholder: `ghost-` prefixed id (ghostCrew.create's shape,
+    // deliberately distinct from inviteByEmail's bare UUID — that incidental
+    // difference is what made this bug findable, so it is preserved on purpose).
+    const ghostId = `ghost-${genId("blastlink")}`;
+    const ghostEmail = `${genId("ghost")}@example.com`.toLowerCase();
+    await admin.from("users").insert({
+      id: ghostId, name: "Placeholder Pal", email: ghostEmail, is_guest: true,
+    });
+    await ctx.addTripMemberById(tripId, ghostId, "Member");
+
+    const result = await caller.tripMembers.sendInvitationBlast({
+      tripId,
+      memberUserIds: [ghostId, member.id],
+    });
+    expect(result.sent).toBe(2);
+
+    const calls = vi.mocked(sendInvitationBlast).mock.calls.map((c) => c[0]);
+    const toGhost = calls.find((c) => c.toEmail === ghostEmail);
+    const toReal = calls.find((c) => c.toEmail !== ghostEmail);
+
+    // The whole point: ONE send, TWO link types, split on is_guest.
+    expect(toGhost?.token).toBeTruthy();
+    expect(toReal?.token).toBeFalsy();
+
+    // And the token is a real row, not a fabricated string.
+    const { data: row } = await admin
+      .from("invites").select("token, role, email")
+      .eq("trip_id", tripId).eq("email", ghostEmail).maybeSingle();
+    expect(row?.token).toBe(toGhost?.token);
+    // Default role, not copied from trip_members: nothing reads invites.role
+    // (#980 / migration 128), and copying an Organizer role would be refused
+    // by invites_insert for a non-Owner sender.
+    expect(row?.role).toBe("Member");
+
+    await admin.from("users").delete().eq("id", ghostId);
+  }, 30_000);
+
+  it("re-sending REUSES the token — no second row per blast", async () => {
+    vi.mocked(sendInvitationBlast).mockClear();
+    const admin = ctx.admin;
+    const caller = ctx.caller();
+
+    const ghostId = `ghost-${genId("resend")}`;
+    const ghostEmail = `${genId("resend")}@example.com`.toLowerCase();
+    await admin.from("users").insert({
+      id: ghostId, name: "Resend Pal", email: ghostEmail, is_guest: true,
+    });
+    await ctx.addTripMemberById(tripId, ghostId, "Member");
+
+    await caller.tripMembers.sendInvitationBlast({ tripId, memberUserIds: [ghostId] });
+    await caller.tripMembers.sendInvitationBlast({ tripId, memberUserIds: [ghostId] });
+    await caller.tripMembers.sendInvitationBlast({ tripId, memberUserIds: [ghostId] });
+
+    const tokens = vi
+      .mocked(sendInvitationBlast)
+      .mock.calls.map((c) => c[0].token);
+    expect(tokens).toHaveLength(3);
+    // Same token every time — a person keeps ONE link however often they are
+    // chased. Three distinct tokens would mean every "Resend invites" click
+    // silently accumulated another live credential.
+    expect(new Set(tokens).size).toBe(1);
+    expect(tokens[0]).toBeTruthy();
+
+    const { data: rows } = await admin
+      .from("invites").select("id").eq("trip_id", tripId).eq("email", ghostEmail);
+    expect(rows).toHaveLength(1);
+
+    await admin.from("users").delete().eq("id", ghostId);
+  }, 30_000);
+
   it("sendInvitationBlast — member cannot blast", async () => {
     const caller = ctx.callerAs("member");
     await expect(
