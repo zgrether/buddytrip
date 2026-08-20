@@ -91,6 +91,7 @@ export async function sendInvitationBlast({
   tripTitle,
   invitationMessage,
   tripId,
+  token,
 }: {
   toEmail: string;
   toName: string;
@@ -98,10 +99,34 @@ export async function sendInvitationBlast({
   tripTitle: string;
   invitationMessage: string;
   tripId: string;
+  /**
+   * Present ONLY for a recipient with no account (`users.is_guest = true`).
+   * Swaps the link from the raw trip URL to the `/invite` capability link, so
+   * the person reaches the auth-aware router (#988) instead of a bare sign-in
+   * wall. Omitted for real accounts, who can simply be sent to the trip.
+   *
+   * The token is what makes it safe to name the trip to a signed-out reader:
+   * an unguessable bearer capability distinguishes "you were sent this" from
+   * "you found this". That is why the fix is a token link and NOT teaching
+   * `/trips/{uuid}` to render trip context for strangers — the latter would
+   * leak trip titles to anyone holding or guessing a UUID.
+   */
+  token?: string | null;
 }) {
   const from = requireFrom();
   if (from === null) return;
-  const tripUrl = `${BASE_URL}/trips/${tripId}`;
+
+  // Per-RECIPIENT, not per-send: one blast to sixteen people legitimately
+  // produces both link types, because the split is on whether THAT person has
+  // an account.
+  const hasToken = typeof token === "string" && token.length > 0;
+  const tripUrl = hasToken
+    ? `${BASE_URL}/invite?token=${encodeURIComponent(token!)}`
+    : `${BASE_URL}/trips/${tripId}`;
+  const ctaLabel = hasToken ? "Join the Trip" : "View Trip";
+  const ctaLead = hasToken
+    ? "Tap below to create your free account &mdash; you&apos;ll land straight on the trip."
+    : "Tap below to check it out &mdash; see what&apos;s planned so far.";
 
   return resend.emails.send({
     from,
@@ -111,12 +136,10 @@ export async function sendInvitationBlast({
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
         <p style="margin:0 0 16px">Hey ${toName},</p>
         <p style="margin:0 0 16px;white-space:pre-wrap">${invitationMessage}</p>
-        <p style="margin:0 0 24px">
-          Tap below to check it out &mdash; see what&apos;s planned so far.
-        </p>
+        <p style="margin:0 0 24px">${ctaLead}</p>
         <a href="${tripUrl}"
            style="display:inline-block;background:#2dd4bf;color:#0d1f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">
-          View Trip
+          ${ctaLabel}
         </a>
         <p style="margin:24px 0 0;color:#94a3b8;font-size:14px">
           See you there,<br/>${ownerName}

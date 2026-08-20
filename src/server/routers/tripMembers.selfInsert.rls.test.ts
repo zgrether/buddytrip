@@ -64,8 +64,10 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
   it("a REMOVED member cannot re-add themselves", async () => {
     // The sharpest case, because knowing the UUID isn't hypothetical here:
     // anyone ever on the trip has it, and a forwarded invite email carries it
-    // too (`sendInvitationBlast` links to /trips/{uuid}). Before this fix,
-    // removal from a trip was not enforceable.
+    // too — `sendInvitationBlast` still links to /trips/{uuid} for recipients
+    // who already have an account (placeholders now get a /invite?token= link
+    // instead, but that narrows the leak, it does not close it). Before this
+    // fix, removal from a trip was not enforceable.
     const uid = genId("rejoiner");
     const rejoinTrip = await ctx.createTrip("Rejoin Test");
     await ctx.admin
