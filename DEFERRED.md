@@ -563,6 +563,43 @@ this so the migration is painless; nothing here is built pre-launch.
 
 ## Other Post-Launch (non-engine)
 
+### Claim a placeholder — the sanctioned way back to your own history
+
+**This one is referenced by shipped code, which is why it is written down rather
+than left implied.** Migration 132's comment and `link_guest_to_account`'s
+refusal message both point at "the claim feature" as the correct path for
+reconnecting a person to a placeholder's history. Nothing named that exists yet.
+The forward reference is deliberate — 132 permanently closes the *automatic*
+route (an address match re-attaching a deleted account's rows to whoever now
+holds that address) and it needs to be clear that the closure is a choice about
+mechanism, not a decision that reattachment is always wrong.
+
+**What exists today.** An owner can link a placeholder to an account through
+`ghostCrew.update`'s auto-link branch, which merges via `link_guest_to_account`.
+That is already a deliberate human act by someone with authority over the trip,
+and it stays. Migration 132 carves exactly one case out of it: a placeholder
+carrying `users.deleted_at` refuses, because that row is not "a person who never
+signed up" — it is a person who asked to stop being findable, and an owner
+typing their old address is not that person changing their mind.
+
+**What claiming would add.** Consent from the *claimant*, which the owner path
+structurally cannot produce. The shape, roughly: the owner nominates a
+placeholder for an account; the person holding that account is asked, in the
+app, whether that history is theirs; the merge runs on their yes. That inverts
+who decides — which is the whole reason it can safely serve the deleted case the
+owner path must refuse.
+
+**Deliberately not scoped further.** No schema, no procedure, no surface is
+designed here, because the demand for it is currently zero: prod holds **zero**
+rows with `deleted_at` set (checked when 132 shipped), so nobody is presently
+locked out of anything. Build it when a real person asks to get their history
+back, not before — and if that never happens, the refusal message should lose
+its second sentence rather than this growing a feature to justify it.
+
+**Files if revived:** `link_guest_to_account` (migration 132) is the guard to
+relax; `src/server/routers/ghostCrew.ts` holds the app-level pre-check that
+turns the refusal into a sentence.
+
 ### Unify receipt opt-in / opt-out
 
 Today opt-in/out only covers members already *in* a split. A member left off
