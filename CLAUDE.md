@@ -636,6 +636,39 @@ These patterns have been established through prior work. Follow them exactly —
     pruning, with no test. It still has no test; the mechanism above is what
     you'd need to write one.
 
+26. **A SELECT policy is also an UPDATE check, so widening one silently opens
+    the matching write.** Postgres evaluates a table's `SELECT` policies against
+    the **NEW row** on `UPDATE`: a row may not be moved out of your own
+    visibility. Verified in isolation on a synthetic table, because the error it
+    produces (`new row violates row-level security policy for table "X"`) reads
+    like the UPDATE policy refused the write and sends you to the wrong policy.
+
+    **What this currently holds up.** It is the only thing refusing the
+    "pivot a row into another container via UPDATE" move across this schema —
+    `trip_members.trip_id`, `games.trip_id`, `teams.competition_id`,
+    `team_assignments.team_id`. None of them is stopped by a deliberate guard.
+
+    `trip_members` is the one to know about. `trip_members_update` is
+    `USING (user_id = auth.uid() OR is_trip_planner(trip_id))` with no
+    `WITH CHECK`, and the role-guard trigger's STEP 1 returns early whenever
+    `role` is unchanged — so nothing on the UPDATE path stops a member
+    repointing their own row's `trip_id` at any trip in the database. That is
+    #985 through a different verb, and it is refused **only** because
+    `trip_members_select` is `is_trip_member(trip_id)`.
+
+    Migration 128 left self-UPDATE alone on the reasoning that "members still
+    write their own row (travel, status, nickname)". That is an argument about
+    COLUMNS, and RLS is ROW-level. The conclusion was right; the reason given
+    for it does not hold, and the next person to widen that SELECT policy will
+    not find a second line of defence behind it.
+
+    **The rule:** before widening any container-scoped SELECT policy, work out
+    what the matching UPDATE policy would then admit. The two are coupled and
+    the coupling appears nowhere in the policy text. And it gives NO protection
+    at all where SELECT is `USING (true)` — `courses`, `golf_courses`,
+    `game_type_templates`, `api_usage_daily` today (`users` was the fifth until
+    migration 134).
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
