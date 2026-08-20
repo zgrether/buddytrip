@@ -355,6 +355,29 @@ export const ghostCrewRouter = router({
           // require the ghost's membership row to still exist. So merge first,
           // then set status on the row it just repointed. (Role rides along
           // untouched, since the merge only rewrites user_id.)
+          // #999 — a placeholder that is a DELETED ACCOUNT may not be linked.
+          // `link_guest_to_account` refuses this itself (migration 132) and is
+          // the authority; this check exists so the normal path gets a sentence
+          // instead of a raw check_violation wrapped in a 500 — the same reason
+          // `tripMembers.add` pre-checks a rule its trigger also enforces.
+          //
+          // It reads `deleted_at` because nothing else can tell the two apart:
+          // a deleted account IS a placeholder in every structural sense after
+          // migration 130, which is what makes the roster keep working.
+          const { data: ghostRow } = await ctx.supabase
+            .from("users")
+            .select("deleted_at")
+            .eq("id", input.guestUserId)
+            .maybeSingle();
+          if (ghostRow?.deleted_at) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message:
+                "That person deleted their account. Their history can't be reattached to a new one — " +
+                "add this crew member as a new placeholder instead.",
+            });
+          }
+
           const { error: mergeErr } = await ctx.supabase.rpc("link_guest_to_account", {
             p_trip_id: ctx.tripId,
             p_ghost_id: input.guestUserId,
