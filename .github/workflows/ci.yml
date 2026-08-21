@@ -146,7 +146,106 @@ jobs:
       # more churn on the prod IO budget, no cross-branch `db push` deadlock.
       - name: Start local Supabase (applies migrations)
         if: needs.changes.outputs.code == 'true'
-        run: supabase start
+        # -x: start only what the suite uses. Candidate fix for #1013 — Realtime
+        # raised `:alarm_handler: {:set, {:system_memory_high_watermark, []}}` at
+        # BOOT on the runner, i.e. the box was already past the VM's memory
+        # threshold before a single test ran, and channel joins were then never
+        # answered (the socket upgraded fine — HTTP 101 through Kong — but the
+        # join push got silence, and nothing appeared in Realtime's own log).
+        #
+        # The excluded set is what nothing in src/ or e2e/ touches, verified by
+        # grep rather than assumed: no test uses storage, mailpit or studio.
+        # Locally these are ~1GB of the stack, logflare alone 551MB.
+        run: |
+          echo "───── memory BEFORE ─────"; free -m
+          supabase start -x studio,imgproxy,mailpit,logflare,vector,edge-runtime,supavisor
+          echo "───── memory AFTER ─────"; free -m
+      # TEMPORARY — diagnosing #1013 (Realtime unreachable on the runner, so the
+      # 15 broadcast-contract cases have never executed here). Delete once that
+      # is answered; it exists to gather signal in ONE run rather than five.
+      #
+      # The question it has to settle: does the socket never open, or does it
+      # open and the JOIN go unanswered? `TIMED_OUT` from realtime-js cannot
+      # distinguish those, and a local repro is impossible — Realtime works
+      # fine locally, including with the runner's own legacy JWT (tested).
+      - name: "DIAGNOSTIC (#1013): is Realtime actually up here?"
+        if: needs.changes.outputs.code == 'true'
+        continue-on-error: true
+        run: |
+          echo "───── containers (status + restarts) ─────"
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+          echo
+          echo "───── realtime container logs (tail) ─────"
+          RT=$(docker ps -a --filter name=realtime --format '{{.Names}}' | head -1)
+          echo "container: ${RT:-<none found>}"
+          [ -n "$RT" ] && docker logs --tail 120 "$RT" 2>&1 || echo "(no realtime container)"
+          echo
+          echo "───── does Kong route the websocket path? ─────"
+          API=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
+          KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
+          echo "api: $API"
+          # A websocket UPGRADE attempt. 101 = Kong routed it and Realtime spoke;
+          # 404/502 = never reached Realtime; anything else is its own answer.
+          curl -sS -o /dev/null -w 'upgrade attempt -> HTTP %{http_code}\n' \
+            --http1.1 \
+            -H "Connection: Upgrade" -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Version: 13" \
+            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+            "${API}/realtime/v1/websocket?apikey=${KEY}&vsn=1.0.0" || true
+          echo
+          echo "───── plain GET on the same path (routing sanity) ─────"
+          curl -sS -o /dev/null -w 'plain GET -> HTTP %{http_code}\n' \
+            "${API}/realtime/v1/websocket?apikey=${KEY}&vsn=1.0.0" || true
+      # Round 2 of #1013. Round 1 established the socket OPENS (HTTP 101 through
+      # Kong) and the container is healthy with clean startup logs — so the
+      # failure is at the JOIN, not the connection. This drives a join with
+      # realtime-js's own logger on, then dumps what Realtime made of it.
+      - name: "DIAGNOSTIC (#1013): what happens to the JOIN?"
+        if: needs.changes.outputs.code == 'true'
+        continue-on-error: true
+        run: |
+          # In the WORKSPACE, not /tmp: an ESM import resolves node_modules by
+          # walking up from the script's own directory, so /tmp/probe.mjs cannot
+          # see the repo's dependencies. Round 2 died on exactly that
+          # (ERR_MODULE_NOT_FOUND) and produced no signal at all.
+          cat > ./join-probe.mjs <<'PROBE'
+          import { createClient } from "@supabase/supabase-js";
+          const [url, key] = [process.env.API_URL, process.env.ANON_KEY];
+          const rt = createClient(url, key, {
+            realtime: { logger: (kind, msg, data) =>
+              console.log(`  [rt] ${kind} ${msg} ${data ? JSON.stringify(data).slice(0, 300) : ""}`) },
+          });
+          const ch = rt.channel("diagnostic:1013");
+          const status = await new Promise((res) => {
+            const t = setTimeout(() => res("SENTINEL_TIMEOUT_20s"), 20000);
+            ch.subscribe((s, err) => {
+              console.log(`  [subscribe] status=${s} err=${err ? String(err) : "none"}`);
+              if (s !== "SUBSCRIBED") return;
+              clearTimeout(t); res(s);
+            });
+          });
+          console.log(`\n  RESULT: ${status}`);
+          process.exit(0);
+          PROBE
+          export API_URL=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
+          export ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
+          node ./join-probe.mjs 2>&1 || true
+          echo
+          echo "───── the TENANT realtime resolves joins against ─────"
+          # Last standing hypothesis. Ruled out so far: key format, routing
+          # (HTTP 101), container health, and memory (14GB free). Realtime logs
+          # NOTHING when the join arrives — neither accept nor refuse — which is
+          # what a failed tenant lookup looks like. Locally this row is
+          # external_id=realtime-dev with a jwt_secret set.
+          DB=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB" -Atc "select external_id, (jwt_secret is not null) as jwt_set, max_concurrent_users from _realtime.tenants;" 2>&1 || echo "(tenant query failed)"
+          echo
+          echo "───── realtime's own env (how it identifies the tenant) ─────"
+          RT=$(docker ps -a --filter name=realtime --format '{{.Names}}' | head -1)
+          [ -n "$RT" ] && docker exec "$RT" env 2>/dev/null | grep -iE "^(DB_|TENANT|TZ|REGION|TMP|APP_NAME|SECURE|JWT)" | sed -E 's/(SECRET|PASSWORD|KEY)=.*/\1=<redacted>/' || true
+          echo
+          echo "───── realtime logs DURING/AFTER the join attempt ─────"
+          [ -n "$RT" ] && docker logs --tail 60 "$RT" 2>&1 || true
       - name: Point the suite at local Supabase
         if: needs.changes.outputs.code == 'true'
         run: |
