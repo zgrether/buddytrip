@@ -79,6 +79,13 @@ export function BracketBoard({
   const display = matches.some((m) => m.bracket === "lower" || m.bracket === "final")
     ? doubleBracketDisplay(matches)
     : bracketDisplay(matches);
+  /**
+   * The board scrolls horizontally, and a scroll container's RIGHT padding is dropped
+   * once you scroll to the end — so the board's own `padding: 12` gave the last column
+   * no breathing room and the grand final sat flush against the border and scrollbar.
+   * The padding therefore lives on the scrolled CONTENT (this host, and the single-elim
+   * row), where it is honoured at every scroll position.
+   */
   const gridRef = useRef<HTMLDivElement>(null);
   const bySeed = new Map(entrants.map((e) => [e.seed, e]));
   const main = matches.filter((m) => m.bracket === "main");
@@ -196,8 +203,11 @@ export function BracketBoard({
       link(matchKey({ bracket: "main", round: lastRound, slot: 1 }), matchKey(gf1));
       const lowerLastRound = lowerRounds[lowerRounds.length - 1];
       if (lowerLastRound !== undefined) link(matchKey({ bracket: "lower", round: lowerLastRound, slot: 1 }), matchKey(gf1));
-      const gf2 = finals.find((m) => m.round === 2);
-      if (gf2) link(matchKey(gf1), matchKey(gf2));
+      // The if-necessary match is deliberately NOT linked. An arm would imply the grand
+      // final ADVANCES someone into it, and it does not — it is the same two entrants
+      // playing again. It floats, stacked directly beneath, and its own caption says
+      // when it happens ("Played only if X wins match 14"), which is the honest
+      // statement of a conditional rematch.
     }
     return out;
   })();
@@ -264,6 +274,10 @@ export function BracketBoard({
             // "the upper bracket is no wider apart than single elim" a measurable claim
             // rather than an approximate one.
             columnGap: 26, rowGap: 22, minWidth: "min-content", alignItems: "start",
+            // On the GRID, not the host and not the scroll container: the grid is the
+            // element that overflows, so it is the only one whose right edge the
+            // scrollWidth actually follows.
+            paddingRight: 12,
           }}
         >
           {/* Per-round headers are gone (Option A): the spreadsheet has none and is
@@ -348,7 +362,7 @@ export function BracketBoard({
           tall as its own content, and the vertical placement comes from the
           computed offsets below rather than from how the columns happen to
           stretch against each other. */}
-      <div className="flex items-start" style={{ gap: 26, minWidth: "min-content" }}>
+      <div className="flex items-start" style={{ gap: 26, minWidth: "min-content", paddingRight: 12 }}>
         {rounds.map((round) => {
           const { offset, gap } = roundLayout(round, BRACKET_METRICS);
           return (
