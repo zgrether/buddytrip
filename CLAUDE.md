@@ -730,6 +730,49 @@ These patterns have been established through prior work. Follow them exactly —
     `game_type_templates`, `api_usage_daily` today (`users` was the fifth until
     migration 134).
 
+27. **A score has TWO storage shapes, and a SIDE is not a person. Any predicate
+    over `score_entries` + user ids is blind to whole categories of real game.**
+    Both halves are properties of the schema, both fail by answering *no*, and
+    `findContributionBlockers` had both at once (#1016).
+
+    - **Two tables.** `entry_mode='outcome'` match play stores the score in
+      `match_hole_outcomes` — read directly by `computeMatchPlayResults`, no
+      gross, no handicap, no stroke index. Such a game has **ZERO
+      `score_entries` rows** however many holes are decided. So "has anyone
+      played this?" asked over `score_entries` alone answers no for an
+      outcome-mode game *the entire time it is being played*. Not an edge case
+      and not a 2v2 quirk: it is every outcome game, for its whole life, until
+      `games.finish`. Compounding it, `matchOutcomes.upsertOutcome` deliberately
+      runs no recompute (mirroring `scores.upsertEntry`), so the usual fallback
+      signals are empty too — no `game_results`, no decided `game_matches`.
+      Seventeen holes in, every column such a predicate reads is empty.
+    - **Two id shapes.** A 1v1 side is a user; a 2v2 side is a minted
+      `play_group`. The `game_matches.side_a/side_b` JSONB ref, the
+      `game_results` row (`mkResult` keys by the side's own type) and the
+      `score_entries` row (`participant_type='play_group'`) are **all keyed to
+      the group**. Prod's one completed 2v2 game carries four result rows — two
+      `play_group`, two `team`, and not one keyed to a person. Resolve through
+      `game_participants.play_group_id` (what `setPairings`' `mkSide` writes),
+      which forces the read into two rounds: a side id is not knowable until the
+      participant rows come back.
+
+    **The tell, and it is the whole reason this is written down:**
+    `competitionLeaderboard` had already met the first half and already runs the
+    second query, commented *"an outcome game never has `score_entries` rows, so
+    it needs its OWN 'started' source"*. The guard was the same derivation
+    WITHOUT that source — so the board could show a game underway while the guard
+    held that nobody had played it. **One question, two answers, one of them
+    wrong.** When you write a "has this been played / is this person in it"
+    predicate, go read the one that already exists before deriving a second.
+
+    **Unrelated but found in the same read, and the same failure direction:**
+    that guard answered "which games have scores" by collecting distinct ids out
+    of a **fetched row set**. PostgREST caps a response at 1000 rows and one
+    scored 16-player round is 288 of them, so a few games into a real trip the
+    reply truncates and game ids silently fall out of the answer — a guard that
+    grows *more permissive* the more the trip is used. Existence questions take
+    `head: true` counts, which return a count and no rows and cannot be capped.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
