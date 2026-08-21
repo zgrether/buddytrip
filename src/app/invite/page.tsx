@@ -69,6 +69,26 @@ export default async function InvitePage({
     // along so the auth page can name the trip and prefill the address without
     // any of that being readable — or writable — in the URL.
     case "authenticate":
+      // …unless the link no longer names anyone. A CLAIM merges the placeholder
+      // away, so the invited address ends up held by nobody: `hasAccount` is
+      // false and the route below would send this visitor to SIGN UP with it
+      // prefilled, minting an empty account that lands straight on "You're not
+      // on this trip". Handled here rather than in `resolveAccessRoute` because
+      // it is a fact about the CAPABILITY, not about the viewer — the same
+      // class of answer as the token resolving to nothing at all, which is why
+      // `resolveInviteLink` is the layer that decides it.
+      if (invite!.spent) {
+        return (
+          <InviteMessage
+            title="This invite has already been used"
+            body={
+              "Someone has already joined " +
+              invite!.target.resourceName +
+              " with this link. If that wasn't you, ask whoever invited you for a fresh one."
+            }
+          />
+        );
+      }
       redirect(
         `/login?mode=${route.mode}&next=${encodeURIComponent(route.next)}` +
           `&invite=${encodeURIComponent(invite!.token)}`
@@ -87,6 +107,14 @@ export default async function InvitePage({
           token={invite!.token}
           viewerEmail={viewer!.email}
           viewerCanSee={route.viewerCanSee}
+          // The claim offer is SUPPRESSED when this account is already on the
+          // trip, because `claim_placeholder_by_invite` refuses exactly that
+          // case — merging there resolves the `trip_members` collision by
+          // deleting the placeholder's row, which is the row carrying its
+          // nickname and role. Rendering the offer anyway would be a button
+          // whose only outcome is a refusal, which is the same reason
+          // "Continue as …" is gated on `viewerCanSee` in the first place.
+          claimable={route.viewerCanSee ? null : invite!.placeholder}
         />
       );
 
