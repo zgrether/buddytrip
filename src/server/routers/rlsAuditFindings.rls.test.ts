@@ -351,6 +351,145 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
     });
   });
 
+  // ── F5 — anyone on the trip could add splits to anyone's receipt ────────
+
+  describe("F5 (migration 140) — splits belong to the receipt's people", () => {
+    it("a member cannot add a split to a receipt they neither own, paid, nor logged", async () => {
+      const id = genId("exp");
+      await ctx.admin.from("expenses").insert({
+        id, trip_id: tripId, title: "Not mine", amount: 90,
+        paid_by_user_id: ctx.getUser("owner").id,
+        created_by: ctx.getUser("owner").id,
+      });
+      await ctx.admin.from("expense_splits").insert({
+        expense_id: id, user_id: ctx.getUser("owner").id, amount: 45,
+      });
+
+      const { error } = await ctx.authedClient("member").from("expense_splits").insert({
+        expense_id: id, user_id: ctx.getUser("outsider").id, amount: 999,
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it("...but CAN insert splits for a receipt they logged, even if someone else paid", async () => {
+      // The flow that made Owner-OR-payer unusable, and the reason migration 138
+      // added `created_by`: "I'm recording that the owner paid for dinner."
+      const id = genId("exp");
+      const { error: expErr } = await ctx.authedClient("member").from("expenses").insert({
+        id, trip_id: tripId, title: "I logged it", amount: 60,
+        paid_by_user_id: ctx.getUser("owner").id,
+        created_by: ctx.getUser("member").id,
+      });
+      expect(expErr).toBeNull();
+
+      const { error } = await ctx.authedClient("member").from("expense_splits").insert([
+        { expense_id: id, user_id: ctx.getUser("owner").id, amount: 30 },
+        { expense_id: id, user_id: ctx.getUser("member").id, amount: 30 },
+      ]);
+      expect(error).toBeNull();
+    });
+  });
+
+  // ── F8 / F9 — the captain arms ──────────────────────────────────────────
+
+  describe("F8/F9 (migration 140) — captaincy is two doors, not row access", () => {
+    let teamId: string;
+
+    beforeAll(async () => {
+      teamId = genId("team");
+      await ctx.admin.from("teams").insert({
+        id: teamId, competition_id: competitionId,
+        name: "Alpha", short_name: "ALP", color: "#2dd4bf", color_dim: "#134e4a",
+      });
+      await ctx.admin.from("team_assignments").insert([
+        { competition_id: competitionId, user_id: ctx.getUser("member").id, team_id: teamId, is_captain: true },
+        { competition_id: competitionId, user_id: ctx.getUser("owner").id, team_id: teamId, is_captain: false },
+      ]);
+    }, 30_000);
+
+    it("a captain cannot swap a teammate by writing the table", async () => {
+      const { error, count } = await ctx
+        .authedClient("member")
+        .from("team_assignments")
+        .update({ user_id: ctx.getUser("outsider").id }, { count: "exact" })
+        .eq("team_id", teamId).eq("user_id", ctx.getUser("owner").id);
+      expect(error === null ? count : 0).toBe(0);
+    });
+
+    it("a captain cannot move their team to another competition", async () => {
+      const otherCup = await ctx.createCompetition(tripId, "Rival Cup");
+      const { error, count } = await ctx
+        .authedClient("member")
+        .from("teams")
+        .update({ competition_id: otherCup }, { count: "exact" })
+        .eq("id", teamId);
+      expect(error === null ? count : 0).toBe(0);
+    });
+
+    it("...and can no longer rename it by writing the table either", async () => {
+      const { error, count } = await ctx
+        .authedClient("member")
+        .from("teams")
+        .update({ name: "Direct" }, { count: "exact" })
+        .eq("id", teamId);
+      expect(error === null ? count : 0).toBe(0);
+    });
+
+    it("but a captain CAN still rename and recolour through the definer", async () => {
+      // Nothing was taken away — the capability moved. If this breaks, the
+      // narrowing removed a power captains are supposed to have.
+      const { error } = await ctx.authedClient("member").rpc("update_team_identity", {
+        p_team_id: teamId, p_name: "Renamed", p_short_name: "RNM",
+        p_color: null, p_color_dim: null,
+      });
+      expect(error).toBeNull();
+
+      const { data } = await ctx.admin
+        .from("teams").select("name, competition_id").eq("id", teamId).single();
+      expect(data?.name).toBe("Renamed");
+      expect(data?.competition_id).toBe(competitionId); // and the cup did not move
+    });
+
+    it("...and CAN still reorder, but only with a genuine permutation", async () => {
+      const roster = [ctx.getUser("owner").id, ctx.getUser("member").id];
+      const ok = await ctx.authedClient("member").rpc("reorder_team_roster", {
+        p_competition_id: competitionId, p_team_id: teamId, p_ordered_user_ids: roster,
+      });
+      expect(ok.error).toBeNull();
+
+      // Swapping someone in through the reorder door is refused too — the
+      // permutation check is what let reorder sit on the captain gate at all.
+      const swap = await ctx.authedClient("member").rpc("reorder_team_roster", {
+        p_competition_id: competitionId, p_team_id: teamId,
+        p_ordered_user_ids: [ctx.getUser("outsider").id, ctx.getUser("member").id],
+      });
+      expect(swap.error).not.toBeNull();
+    });
+
+    it("trip staff are unaffected on both tables", async () => {
+      const assignments = await ctx
+        .authedClient("owner")
+        .from("team_assignments")
+        .update({ is_captain: false }, { count: "exact" })
+        .eq("team_id", teamId).eq("user_id", ctx.getUser("member").id);
+      expect(assignments.error).toBeNull();
+      expect(assignments.count).toBe(1);
+
+      const team = await ctx
+        .authedClient("owner")
+        .from("teams")
+        .update({ name: "Owner Renamed" }, { count: "exact" })
+        .eq("id", teamId);
+      expect(team.error).toBeNull();
+      expect(team.count).toBe(1);
+
+      // put the captaincy back for any later case
+      await ctx.admin.from("team_assignments")
+        .update({ is_captain: true })
+        .eq("team_id", teamId).eq("user_id", ctx.getUser("member").id);
+    });
+  });
+
   // ── F10 / F11 — games invariants ────────────────────────────────────────
 
   describe("F10/F11 (migration 135) — a game's competition and its go-live state", () => {
