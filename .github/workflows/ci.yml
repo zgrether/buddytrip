@@ -137,7 +137,14 @@ jobs:
         with:
           # Pinned (not `latest`): `latest` resolves the newest release from a
           # gateway that intermittently times out and blocks the merge-gating job.
-          version: 2.78.1
+          #
+          # 2.78.1 → 2.115.0 to test whether #1013 (Realtime never answers a
+          # channel join on the runner) is an upstream defect already fixed. Read
+          # the PR before concluding anything from a green run: this changes
+          # Postgres, GoTrue, PostgREST, Kong and Realtime all at once, so a pass
+          # shows the SYMPTOM is gone and is consistent with several stories
+          # about why.
+          version: 2.115.0
       # Step 0 (ENVIRONMENT_AUDIT.md): the suite runs against an EPHEMERAL LOCAL
       # Supabase started here — NOT the shared prod project. `supabase start` boots
       # the full stack (Docker is preinstalled on ubuntu-latest) and applies every
@@ -150,12 +157,25 @@ jobs:
       - name: Point the suite at local Supabase
         if: needs.changes.outputs.code == 'true'
         run: |
-          supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=' > supabase.env
+          supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY|PUBLISHABLE_KEY|SECRET_KEY)=' > supabase.env
           set -a; . ./supabase.env; set +a
+          # Prefer the NEW-format keys (sb_publishable_ / sb_secret_), falling
+          # back to the legacy JWTs so this works on either CLI.
+          #
+          # Required by the 2.115 bump: that CLI still PRINTS the legacy JWTs,
+          # but the stack no longer grants them table access. The tell was
+          # `permission denied for table trips` across 102 files while
+          # global-setup still reported "Signed in 4 shared test users" — auth
+          # accepted the JWT, PostgREST refused it. Exactly what global-setup's
+          # own error hint has always warned about ("If 'Legacy API keys are
+          # disabled', update SUPABASE_SERVICE_ROLE_KEY to the new format").
+          #
+          # `.env.local` has used the new format all along, which is why this
+          # never bit locally.
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SECRET_KEY:-$SERVICE_ROLE_KEY}"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
           } >> "$GITHUB_ENV"
           rm -f supabase.env
@@ -193,19 +213,22 @@ jobs:
       - uses: supabase/setup-cli@v1
         if: needs.changes.outputs.code == 'true'
         with:
-          version: 2.78.1
+          version: 2.115.0
       - name: Start local Supabase (applies migrations)
         if: needs.changes.outputs.code == 'true'
         run: supabase start
       - name: Point the app + suite at local Supabase
         if: needs.changes.outputs.code == 'true'
         run: |
-          supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=' > supabase.env
+          supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY|PUBLISHABLE_KEY|SECRET_KEY)=' > supabase.env
           set -a; . ./supabase.env; set +a
+          # New-format keys preferred, legacy as fallback — same reasoning as the
+          # `test` job above (2.115 prints the legacy JWTs but no longer grants
+          # them table access).
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
-            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SECRET_KEY:-$SERVICE_ROLE_KEY}"
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
           } >> "$GITHUB_ENV"
           rm -f supabase.env
