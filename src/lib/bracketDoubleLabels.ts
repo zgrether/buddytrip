@@ -41,6 +41,7 @@
 import { matchKey, type ResolvedMatch } from "./bracketAdvance";
 import type { MatchDisplay } from "./bracketLabels";
 import { dropSlot, feederMainRound } from "./bracketDouble";
+import { lowerColumnFromRight, lowerTierCentres, BRACKET_METRICS } from "./bracketLayout";
 
 /** A seat's source: which match it comes from, and whether it takes that match's
  *  winner or its loser. Null when the seat has no feeder (upper round 1). */
@@ -119,7 +120,32 @@ function sourcesOf(m: ResolvedMatch, lowerCounts: Map<number, number>, mainLast:
  */
 export function doubleBracketDisplay(resolved: ResolvedMatch[]): Map<string, MatchDisplay> {
   const main = resolved.filter((m) => m.bracket === "main").sort((a, b) => a.round - b.round || a.slot - b.slot);
-  const lower = resolved.filter((m) => m.bracket === "lower").sort((a, b) => a.round - b.round || a.slot - b.slot);
+  /**
+   * The lower tier is numbered in READING ORDER — down each column, then rightward —
+   * not by (round, slot).
+   *
+   * Since a major shares its minor feeder's column, ordering by round interleaved two
+   * rounds in one column and the numbers came out scrambled: a column read 8, 10, 9, 11
+   * top to bottom, which looks random to anyone scanning it. Every measurement passed;
+   * only looking at it caught this.
+   *
+   * Reading order also keeps the property the placeholders depend on — a feeder always
+   * carries a LOWER number than the match it feeds. A feeder is either directly above in
+   * the same column (minor -> major) or in the column to its left (major -> next minor),
+   * and both come earlier in this ordering.
+   */
+  const lowerRaw = resolved.filter((m) => m.bracket === "lower");
+  const lowerRoundCount = new Set(lowerRaw.map((m) => m.round)).size;
+  const lowerCentres = lowerTierCentres(lowerRaw, BRACKET_METRICS);
+  const lower = [...lowerRaw].sort((a, b) => {
+    // Columns are counted from the RIGHT, so left-to-right is DESCENDING.
+    const colA = lowerColumnFromRight(a.round, lowerRoundCount);
+    const colB = lowerColumnFromRight(b.round, lowerRoundCount);
+    if (colA !== colB) return colB - colA;
+    const cA = lowerCentres.get(`${a.round}:${a.slot}`) ?? 0;
+    const cB = lowerCentres.get(`${b.round}:${b.slot}`) ?? 0;
+    return cA - cB;
+  });
   const finals = resolved.filter((m) => m.bracket === "final").sort((a, b) => a.round - b.round);
   const ordered = [...main, ...lower, ...finals];
   if (ordered.length === 0) return new Map();
