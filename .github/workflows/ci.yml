@@ -191,7 +191,11 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         continue-on-error: true
         run: |
-          cat > /tmp/join-probe.mjs <<'PROBE'
+          # In the WORKSPACE, not /tmp: an ESM import resolves node_modules by
+          # walking up from the script's own directory, so /tmp/probe.mjs cannot
+          # see the repo's dependencies. Round 2 died on exactly that
+          # (ERR_MODULE_NOT_FOUND) and produced no signal at all.
+          cat > ./join-probe.mjs <<'PROBE'
           import { createClient } from "@supabase/supabase-js";
           const [url, key] = [process.env.API_URL, process.env.ANON_KEY];
           const rt = createClient(url, key, {
@@ -212,7 +216,7 @@ jobs:
           PROBE
           export API_URL=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
           export ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
-          node /tmp/join-probe.mjs || true
+          node ./join-probe.mjs 2>&1 || true
           echo
           echo "───── realtime logs DURING/AFTER the join attempt ─────"
           RT=$(docker ps -a --filter name=realtime --format '{{.Names}}' | head -1)
