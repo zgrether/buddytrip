@@ -183,6 +183,40 @@ jobs:
           echo "───── plain GET on the same path (routing sanity) ─────"
           curl -sS -o /dev/null -w 'plain GET -> HTTP %{http_code}\n' \
             "${API}/realtime/v1/websocket?apikey=${KEY}&vsn=1.0.0" || true
+      # Round 2 of #1013. Round 1 established the socket OPENS (HTTP 101 through
+      # Kong) and the container is healthy with clean startup logs — so the
+      # failure is at the JOIN, not the connection. This drives a join with
+      # realtime-js's own logger on, then dumps what Realtime made of it.
+      - name: "DIAGNOSTIC (#1013): what happens to the JOIN?"
+        if: needs.changes.outputs.code == 'true'
+        continue-on-error: true
+        run: |
+          cat > /tmp/join-probe.mjs <<'PROBE'
+          import { createClient } from "@supabase/supabase-js";
+          const [url, key] = [process.env.API_URL, process.env.ANON_KEY];
+          const rt = createClient(url, key, {
+            realtime: { logger: (kind, msg, data) =>
+              console.log(`  [rt] ${kind} ${msg} ${data ? JSON.stringify(data).slice(0, 300) : ""}`) },
+          });
+          const ch = rt.channel("diagnostic:1013");
+          const status = await new Promise((res) => {
+            const t = setTimeout(() => res("SENTINEL_TIMEOUT_20s"), 20000);
+            ch.subscribe((s, err) => {
+              console.log(`  [subscribe] status=${s} err=${err ? String(err) : "none"}`);
+              if (s !== "SUBSCRIBED") return;
+              clearTimeout(t); res(s);
+            });
+          });
+          console.log(`\n  RESULT: ${status}`);
+          process.exit(0);
+          PROBE
+          export API_URL=$(supabase status -o env | grep '^API_URL=' | cut -d= -f2- | tr -d '"')
+          export ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
+          node /tmp/join-probe.mjs || true
+          echo
+          echo "───── realtime logs DURING/AFTER the join attempt ─────"
+          RT=$(docker ps -a --filter name=realtime --format '{{.Names}}' | head -1)
+          [ -n "$RT" ] && docker logs --tail 60 "$RT" 2>&1 || true
       - name: Point the suite at local Supabase
         if: needs.changes.outputs.code == 'true'
         run: |
