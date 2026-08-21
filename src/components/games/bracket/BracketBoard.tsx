@@ -439,17 +439,34 @@ function ConnectorLayer({
         const card = el.querySelector(`[data-match-key="${CSS.escape(key)}"]`);
         if (!card) return null;
         const r = card.getBoundingClientRect();
-        return { left: r.left - base.left, right: r.right - base.left, mid: r.top - base.top + r.height / 2 };
+        return {
+          left: r.left - base.left, right: r.right - base.left,
+          top: r.top - base.top, bottom: r.bottom - base.top,
+          mid: r.top - base.top + r.height / 2,
+          centreX: r.left - base.left + r.width / 2,
+        };
       };
       const next: { d: string; dim: boolean }[] = [];
       for (const { from, to, dim } of pairs) {
         const a = rectOf(from);
         const b = rectOf(to);
         if (!a || !b) continue;                  // a match not on screen has no arm
-        // An elbow: out of the feeder's right edge, across the gutter, then into the
-        // consumer's left edge at its own height.
-        const midX = a.right + (b.left - a.right) / 2;
-        next.push({ d: `M ${a.right} ${a.mid} H ${midX} V ${b.mid} H ${b.left}`, dim });
+        if (b.left < a.right) {
+          // SAME COLUMN — the consumer is stacked beneath its feeder rather than beside
+          // it, which happens for every minor -> major pair sharing a column and for the
+          // grand final -> if-necessary pair.
+          //
+          // The elbow below assumes the consumer is to the RIGHT. Here `b.left` is left
+          // of `a.right`, so its midpoint lands INSIDE both cards and the arm is drawn
+          // straight through them. A vertical stub between the two edges is the honest
+          // shape: they are stacked, so the connection is vertical.
+          next.push({ d: `M ${a.centreX} ${a.bottom} V ${b.top}`, dim });
+        } else {
+          // An elbow: out of the feeder's right edge, across the gutter, then into the
+          // consumer's left edge at its own height.
+          const midX = a.right + (b.left - a.right) / 2;
+          next.push({ d: `M ${a.right} ${a.mid} H ${midX} V ${b.mid} H ${b.left}`, dim });
+        }
       }
       setPaths(next);
     };
