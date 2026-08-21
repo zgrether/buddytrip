@@ -29,6 +29,7 @@ import { evenShare, isPlacement, type PointsDistribution } from "./pointsDistrib
 import { isMatchPlayFormat } from "./gameRoutes";
 import type { ModifiersMap } from "./modifiers";
 import { buildDraw, type BracketDrawMatch } from "./bracket";
+import { buildDoubleDraw } from "./bracketDouble";
 
 /**
  * WINNER TAKES ALL (item 6) — stroke/placement's default & degenerate case: one
@@ -644,7 +645,19 @@ export function nonGolfDraftToPayload(
       teamId: bracket?.teamByUser[userIds[0]] ?? null,
       userIds: [...userIds],
     })),
-    bracketDraw: buildDraw(pool.length, { consolation: draft.bracketConfig?.consolation ?? false }),
+    // THE PERSISTED DRAW MUST MATCH THE CHOSEN FORMAT. This built a single-elim tree
+    // unconditionally, so a game saved as "double" would have been stored with no lower
+    // bracket and no grand final at all — the setting recorded, the structure not. That
+    // is why the toggle stayed disabled: enabling it alone would have produced games
+    // labelled double that were single underneath.
+    //
+    // Consolation is not passed to the double builder, and cannot be: double elimination
+    // produces 3rd structurally, so a play-off would be a second answer to a settled
+    // question (and the setup row hides it for the same reason).
+    bracketDraw:
+      draft.bracketConfig?.elimination === "double"
+        ? buildDoubleDraw(pool.length)
+        : buildDraw(pool.length, { consolation: draft.bracketConfig?.consolation ?? false }),
   };
 }
 
