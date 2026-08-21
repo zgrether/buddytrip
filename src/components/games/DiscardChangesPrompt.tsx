@@ -14,17 +14,27 @@ import { createPortal } from "react-dom";
  * Discard is the DANGER action and it is never the default — the safe options come
  * first, and the destructive one is styled as destructive (STYLE_GUIDE §5), because
  * the thing it destroys is the user's unsaved work.
+ *
+ * `message` names WHAT is at stake, and defaults to the game-settings wording every
+ * existing caller already relies on. The Edit Team modal passes its own, because only
+ * PART of that surface drafts — identity + roster order commit on Save, while add /
+ * remove / captain ★ apply on tap — so a generic "your changes" would promise to undo
+ * membership acts that already landed. A confirm prompt that overstates its own scope
+ * is worse than no prompt: it gets read as a guarantee.
  */
 export function DiscardChangesPrompt({
   onDiscard,
   onKeepEditing,
   onSave,
   saving,
+  message = "Your changes to this game haven’t been saved yet. Leaving now discards them.",
 }: {
   onDiscard: () => void;
   onKeepEditing: () => void;
   onSave: () => void;
   saving: boolean;
+  /** What leaving would discard. Defaults to the game-settings wording. */
+  message?: string;
 }) {
   // Portaled to body: the shell it guards is itself body-portaled at z-50, and this
   // prompt (rendered by the game view, inside the z-30 panel) would otherwise be
@@ -45,7 +55,7 @@ export function DiscardChangesPrompt({
       >
         <div style={{ fontSize: 16.5, fontWeight: 700, color: "var(--color-bt-text)" }}>Unsaved changes</div>
         <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          Your changes to this game haven’t been saved yet. Leaving now discards them.
+          {message}
         </p>
         <div className="mt-4 flex flex-col gap-2">
           <button
