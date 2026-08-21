@@ -36,19 +36,33 @@ let channel: RealtimeChannel;
 /**
  * Whether a Realtime websocket is actually reachable in this environment.
  *
- * On the GitHub runner the container starts but channel joins never complete,
- * so these tests SKIP there rather than failing a merge gate on infrastructure.
- * The emit/listen contract they exist to protect is enforced everywhere by
- * `useRealtimeScoreEvents.contract.test.ts`, which needs no infrastructure; this
- * file is the deeper runtime proof that runs locally.
+ * On the GitHub runner the container starts but channel joins never complete
+ * (#1013). These tests therefore FAIL there — see the throw at the end of
+ * `beforeAll` — and skip only locally.
  *
- * A skip is reported loudly on purpose — a silently-skipped test is worse than
- * no test, because it reads as coverage.
+ * This comment used to say they "SKIP there rather than failing a merge gate on
+ * infrastructure", and that sentence is why the rule above it now exists: it
+ * described the intent accurately and the consequence not at all. The tests
+ * skipped, the summary said `15 skipped` among 3036 passed, and for months
+ * every green run was read as evidence about a file that never executed — while
+ * one of its assertions was wrong the whole time (#1011). "A silently-skipped
+ * test is worse than no test, because it reads as coverage" was already written
+ * here, three lines below the thing that made it silent.
+ *
+ * The emit/listen contract is still enforced everywhere by
+ * `useRealtimeScoreEvents.contract.test.ts`, which needs no infrastructure;
+ * this file is the deeper runtime proof.
  */
 let realtimeUp = false;
 let lastStatus = "not attempted";
 
-/** Skip with a visible reason when Realtime isn't available here. */
+/**
+ * Skip with a visible reason when Realtime isn't available here.
+ *
+ * LOCAL ONLY. In CI this is unreachable — `beforeAll` throws before any case
+ * runs, because a silent skip there is the defect (#1013, and the comment at
+ * that throw). A contributor without a working stack still gets a skip.
+ */
 function requireRealtime(t: { skip: (note?: string) => void }): boolean {
   if (realtimeUp) return true;
   console.warn(
@@ -105,10 +119,22 @@ beforeAll(async () => {
   rt = createClient(SUPABASE_URL, ANON_KEY);
 
   // Opening the websocket is the one step that depends on infrastructure beyond
-  // Postgres. Retry to a deadline (a contended local stack can miss the first
-  // join), but do NOT fail the file if Realtime is simply unreachable — see
-  // `realtimeUp` below.
-  const deadline = Date.now() + 60_000;
+  // Postgres. Retry to a deadline — a contended local stack can miss the first
+  // join — then branch on where we are (see the throw below).
+  //
+  // Trimmed from 15s/60s because this budget is spent IN FULL every time
+  // Realtime is missing — ~83s per CI run to learn nothing.
+  //
+  // 13s, NOT 10s, and the 3s matters: realtime-js's own channel timeout is
+  // 10s, and the sentinel below only exists to catch `subscribe()` never
+  // calling back at all. At 10s the two race and the sentinel usually wins,
+  // which replaces realtime-js's `TIMED_OUT` — "the socket opened and the JOIN
+  // went unanswered" — with our uninformative `LOCAL_TIMEOUT`. Observed in CI:
+  // the status regressed from `TIMED_OUT after 6 attempts` to `LOCAL_TIMEOUT
+  // after 4`. Sitting just above their timeout keeps the more specific status,
+  // which is the one #1013 needs to tell "never connected" from "connected,
+  // join ignored".
+  const deadline = Date.now() + 45_000;
   let attempt = 0;
   for (;;) {
     attempt += 1;
@@ -118,7 +144,7 @@ beforeAll(async () => {
     });
 
     const status = await new Promise<string>((resolve) => {
-      const t = setTimeout(() => resolve("LOCAL_TIMEOUT"), 15_000);
+      const t = setTimeout(() => resolve("LOCAL_TIMEOUT"), 13_000);
       channel.subscribe((s) => {
         clearTimeout(t);
         resolve(s);
@@ -134,6 +160,46 @@ beforeAll(async () => {
       lastStatus = `${status} after ${attempt} attempts`;
       break;
     }
+  }
+
+  // ── The skip is LOUD in CI, and that is the point ───────────────────────
+  //
+  // These 15 cases are the whole migration 096/118 broadcast contract,
+  // including CLAUDE.md #20's rule that a payload on a PUBLIC topic carries no
+  // data — a security invariant about what an unauthenticated listener
+  // receives. They had never once executed in CI, because Realtime is
+  // unreachable there and the file skipped itself politely:
+  //
+  //     Tests  3036 passed | 15 skipped (3051)
+  //
+  // which reads as normal in a passing summary. Every green run was cited as
+  // evidence for a file that never ran, and one of its assertions had in fact
+  // been wrong for weeks (#1011).
+  //
+  // The defect was never "these do not run" — plenty of things legitimately do
+  // not run. It was that NOTHING SAID SO anywhere a person would look. An
+  // exclusion that is declared and visibly failing is a known gap; a quiet one
+  // is an unknown one, and this project has now been bitten by the same shape
+  // twice (see the vitest.config.mts note on broadcastAmplification, where a
+  // file's header claimed an exclusion it did not have).
+  //
+  // So: locally, skip — a contributor without a working stack should not be
+  // blocked. In CI, fail. Deliberately in `beforeAll`, for two reasons: it
+  // reports ONCE rather than fifteen times, and vitest's `retry: 2` does not
+  // wrap hooks, so a deterministic infrastructure gap cannot be papered over by
+  // a retry that was meant for a transient PostgREST 502.
+  //
+  // Tracked as #1013. If Realtime turns out to be impractical on a runner, the
+  // fix is to say so explicitly — not to make this quiet again.
+  if (!realtimeUp && process.env.CI) {
+    throw new Error(
+      `Realtime is unreachable in CI (${lastStatus}), so the 15 broadcast-contract ` +
+        `cases in this file did not run. That includes the public-topic payload rule ` +
+        `(CLAUDE.md #20). This is a HARD FAILURE on purpose: these used to skip ` +
+        `silently, and a green CI run was never evidence about any of them. ` +
+        `See issue #1013 — either make Realtime reachable in CI, or declare the ` +
+        `exclusion explicitly. Do not restore the silent skip.`,
+    );
   }
 }, 120_000);
 
