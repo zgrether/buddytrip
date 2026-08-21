@@ -297,20 +297,30 @@ export const teamAssignmentsRouter = router({
       // resending the whole permutation. Errors ARE surfaced below. Contrast
       // matches.reorder, which does assert: its input is a closed set with
       // no concurrent editor.
-      const results = await Promise.all(
-        input.orderedUserIds.map((userId, i) =>
-          ctx.supabase
-            .from("team_assignments")
-            .update({ sort_order: i })
-            .eq("competition_id", input.competitionId)
-            .eq("user_id", userId)
-        )
-      );
-      const failed = results.find((r) => r.error);
-      if (failed?.error) {
+      // The write goes through `reorder_team_roster` (migration 138) rather
+      // than touching the table, because migration 139 removes the captain arm
+      // from `team_assignments_update`. A captain needs SOME way to reorder,
+      // and a row-level policy cannot say "sort_order only" — so the capability
+      // lives in a definer that can perform no other operation.
+      //
+      // The permutation check above is kept, not replaced: it produces the
+      // BAD_REQUEST the client expects, where the RPC's own re-check raises. It
+      // is also no longer the thing standing between a captain and a roster
+      // swap, which is the point — that guarantee is now structural.
+      //
+      // Note this also fixes a latent scoping bug in the fan-out it replaces:
+      // those updates filtered on (competition_id, user_id) and never team_id,
+      // so a user on two teams in one competition would have had both rows
+      // renumbered. The RPC filters on team_id.
+      const { error: reorderErr } = await ctx.supabase.rpc("reorder_team_roster", {
+        p_competition_id: input.competitionId,
+        p_team_id: input.teamId,
+        p_ordered_user_ids: input.orderedUserIds,
+      });
+      if (reorderErr) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to reorder roster: ${failed.error.message}`,
+          message: `Failed to reorder roster: ${reorderErr.message}`,
         });
       }
       return { success: true };

@@ -109,23 +109,44 @@ export const teamsRouter = router({
     )
     .use(requireTeamIdentityEdit())
     .mutation(async ({ ctx, input }) => {
-      const patch: Record<string, unknown> = {};
-      if (input.name !== undefined) patch.name = input.name;
-      if (input.shortName !== undefined) patch.short_name = input.shortName;
-      if (input.color !== undefined) patch.color = input.color;
-      if (input.colorDim !== undefined) patch.color_dim = input.colorDim;
+      // Through `update_team_identity` (migration 138) rather than the table,
+      // because migration 139 removes the captain arm from `teams_update`. A
+      // captain must still be able to rename and recolour a team they run, and
+      // a row-level policy cannot say "these four columns only" — so the
+      // capability lives in a definer whose UPDATE omits `competition_id` by
+      // construction, and a captain can no longer move their team between cups.
+      //
+      // NULL means "leave alone", which is exactly what the optional inputs
+      // already meant, so the argument list maps one-to-one onto the old patch.
+      const { error } = await ctx.supabase.rpc("update_team_identity", {
+        p_team_id: input.teamId,
+        p_name: input.name ?? null,
+        p_short_name: input.shortName ?? null,
+        p_color: input.color ?? null,
+        p_color_dim: input.colorDim ?? null,
+      });
 
-      const { data, error } = await ctx.supabase
-        .from("teams")
-        .update(patch)
-        .eq("id", input.teamId)
-        .select()
-        .single();
-
-      if (error || !data) {
+      if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to update team: ${error?.message}`,
+          message: `Failed to update team: ${error.message}`,
+        });
+      }
+
+      // Read back separately — the RPC returns void, and the caller's contract
+      // is the updated row. Split rather than combined for the same reason
+      // enforced pattern #4 splits INSERT..RETURNING: the write and the read
+      // are answerable to different policies.
+      const { data, error: readErr } = await ctx.supabase
+        .from("teams")
+        .select()
+        .eq("id", input.teamId)
+        .single();
+
+      if (readErr || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to read back team: ${readErr?.message}`,
         });
       }
 
