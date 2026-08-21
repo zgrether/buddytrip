@@ -79,6 +79,12 @@ export const expensesRouter = router({
           title: input.title,
           amount: input.amount,
           paid_by_user_id: input.paidByUserId,
+          // Who LOGGED this receipt, which is not necessarily who paid — this
+          // procedure lets any member record an expense on someone else's
+          // behalf. Migration 139 uses it so `expense_splits_insert` can admit
+          // the person creating a receipt without admitting everyone else on
+          // the trip to add rows to it afterwards.
+          created_by: ctx.user!.id,
           ...(input.date !== undefined ? { date: input.date } : {}),
         })
         .select()
