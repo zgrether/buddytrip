@@ -36,14 +36,22 @@ let channel: RealtimeChannel;
 /**
  * Whether a Realtime websocket is actually reachable in this environment.
  *
- * On the GitHub runner the container starts but channel joins never complete,
- * so these tests SKIP there rather than failing a merge gate on infrastructure.
- * The emit/listen contract they exist to protect is enforced everywhere by
- * `useRealtimeScoreEvents.contract.test.ts`, which needs no infrastructure; this
- * file is the deeper runtime proof that runs locally.
+ * On the GitHub runner the container starts but channel joins never complete
+ * (#1013). These tests therefore FAIL there — see the throw at the end of
+ * `beforeAll` — and skip only locally.
  *
- * A skip is reported loudly on purpose — a silently-skipped test is worse than
- * no test, because it reads as coverage.
+ * This comment used to say they "SKIP there rather than failing a merge gate on
+ * infrastructure", and that sentence is why the rule above it now exists: it
+ * described the intent accurately and the consequence not at all. The tests
+ * skipped, the summary said `15 skipped` among 3036 passed, and for months
+ * every green run was read as evidence about a file that never executed — while
+ * one of its assertions was wrong the whole time (#1011). "A silently-skipped
+ * test is worse than no test, because it reads as coverage" was already written
+ * here, three lines below the thing that made it silent.
+ *
+ * The emit/listen contract is still enforced everywhere by
+ * `useRealtimeScoreEvents.contract.test.ts`, which needs no infrastructure;
+ * this file is the deeper runtime proof.
  */
 let realtimeUp = false;
 let lastStatus = "not attempted";
@@ -114,11 +122,19 @@ beforeAll(async () => {
   // Postgres. Retry to a deadline — a contended local stack can miss the first
   // join — then branch on where we are (see the throw below).
   //
-  // 10s per attempt is already enormous for a websocket join (a healthy one is
-  // sub-second); the retries exist for contention, not for slowness. Trimmed
-  // from 15s/60s because this budget is spent in full every time Realtime is
-  // MISSING, which in CI was ~83 seconds per run to learn nothing.
-  const deadline = Date.now() + 40_000;
+  // Trimmed from 15s/60s because this budget is spent IN FULL every time
+  // Realtime is missing — ~83s per CI run to learn nothing.
+  //
+  // 13s, NOT 10s, and the 3s matters: realtime-js's own channel timeout is
+  // 10s, and the sentinel below only exists to catch `subscribe()` never
+  // calling back at all. At 10s the two race and the sentinel usually wins,
+  // which replaces realtime-js's `TIMED_OUT` — "the socket opened and the JOIN
+  // went unanswered" — with our uninformative `LOCAL_TIMEOUT`. Observed in CI:
+  // the status regressed from `TIMED_OUT after 6 attempts` to `LOCAL_TIMEOUT
+  // after 4`. Sitting just above their timeout keeps the more specific status,
+  // which is the one #1013 needs to tell "never connected" from "connected,
+  // join ignored".
+  const deadline = Date.now() + 45_000;
   let attempt = 0;
   for (;;) {
     attempt += 1;
@@ -128,7 +144,7 @@ beforeAll(async () => {
     });
 
     const status = await new Promise<string>((resolve) => {
-      const t = setTimeout(() => resolve("LOCAL_TIMEOUT"), 10_000);
+      const t = setTimeout(() => resolve("LOCAL_TIMEOUT"), 13_000);
       channel.subscribe((s) => {
         clearTimeout(t);
         resolve(s);
