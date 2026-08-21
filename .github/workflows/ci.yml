@@ -144,9 +144,32 @@ jobs:
       # migration in supabase/migrations/. Seed is disabled in config.toml, so the
       # placeholder dev seed.sql never runs. This is what unshares CI from prod: no
       # more churn on the prod IO budget, no cross-branch `db push` deadlock.
+      # `-x`: start only what the suite actually uses. Seven containers and ~1GB
+      # off every run of both gating jobs.
+      #
+      # THE LIST IS CHECKED, NOT GUESSED, and the first attempt at checking it
+      # was wrong in a way worth recording: a grep with `--include=*.ts` reported
+      # "nothing touches storage" while `AddPropertySheet.tsx` — a .tsx file —
+      # uploads to the `lodging-photos` bucket. Absence of matches was really
+      # absence of search. `storage-api` is therefore NOT excluded here.
+      #
+      # Re-verified across .ts AND .tsx, over src/ + e2e/ + supabase/:
+      #   storage-api   USED (AddPropertySheet) — stays
+      #   studio        config.toml only
+      #   mailpit       config.toml only (mail goes out via Resend, not SMTP)
+      #   imgproxy      one hit, a false positive: a zod `.transform()`
+      #   logflare      no references
+      #   vector        no references
+      #   edge-runtime  no references, and no supabase/functions directory
+      #   supavisor     `[db.pooler] enabled = false`
+      #
+      # Unrelated to #1013 — the same trim was tried while diagnosing that and
+      # did NOT fix it (Realtime still never answers the channel join). It is
+      # here purely because it is free, and it should not have died on that
+      # branch.
       - name: Start local Supabase (applies migrations)
         if: needs.changes.outputs.code == 'true'
-        run: supabase start
+        run: supabase start -x studio,imgproxy,mailpit,logflare,vector,edge-runtime,supavisor
       - name: Point the suite at local Supabase
         if: needs.changes.outputs.code == 'true'
         run: |
@@ -194,9 +217,12 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         with:
           version: 2.78.1
+      # Same trimmed set as the `test` job above — see the reasoning there, and
+      # note `storage-api` is deliberately NOT excluded: the app uploads lodging
+      # photos to it, and this job drives the real app in a browser.
       - name: Start local Supabase (applies migrations)
         if: needs.changes.outputs.code == 'true'
-        run: supabase start
+        run: supabase start -x studio,imgproxy,mailpit,logflare,vector,edge-runtime,supavisor
       - name: Point the app + suite at local Supabase
         if: needs.changes.outputs.code == 'true'
         run: |
