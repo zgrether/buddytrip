@@ -201,26 +201,65 @@ describe("6. the gate did NOT widen past reorder — captain still refused", () 
 
 describe("5. RLS enforces the same boundary BELOW tRPC", () => {
   // These bypass the procedure entirely — a JWT-scoped anon-key client hitting
-  // PostgREST, which is what RLS actually guards. Migration 094 widened
-  // team_assignments_update to owner/organizer OR that team's captain; this
-  // proves the widening stopped where it was supposed to.
+  // PostgREST, which is what RLS actually guards.
+  //
+  // THE BOUNDARY MOVED IN MIGRATION 140, and these were rewritten with it.
+  // Migration 094 widened team_assignments_update to owner/organizer OR that
+  // team's captain, and this block proved the widening stopped where intended.
+  // The 2026-08-20 RLS audit (F8) found where it did NOT stop: a policy is
+  // row-level, so admitting a captain to reorder also admitted them to rewrite
+  // `user_id` and swap a teammate for anyone in the database — roster control
+  // `requireTeamIdentityEdit` explicitly reserves to the Owner.
+  //
+  // So the captain arm is gone and the capability moved into
+  // `reorder_team_roster`, a definer that validates a permutation and writes
+  // `sort_order` alone. A captain has the same power and no longer needs write
+  // access to the row to exercise it — which is what these now assert.
 
-  it("captain CAN update sort_order on their own team", async () => {
-    const db = ctx.authedClient("member");
-    const { error } = await db
-      .from("team_assignments")
-      .update({ sort_order: 5 })
-      .eq("competition_id", competitionId)
-      .eq("user_id", captainId);
-    expect(error).toBeNull();
-
-    const { data } = await ctx.admin
+  it("captain CANNOT update the roster table directly any more (migration 140)", async () => {
+    const { data: before } = await ctx.admin
       .from("team_assignments")
       .select("sort_order")
       .eq("competition_id", competitionId)
       .eq("user_id", captainId)
       .single();
-    expect(data?.sort_order).toBe(5);
+
+    const db = ctx.authedClient("member");
+    await db
+      .from("team_assignments")
+      .update({ sort_order: 5 })
+      .eq("competition_id", competitionId)
+      .eq("user_id", captainId);
+
+    const { data: after } = await ctx.admin
+      .from("team_assignments")
+      .select("sort_order")
+      .eq("competition_id", competitionId)
+      .eq("user_id", captainId)
+      .single();
+    expect(after?.sort_order).toBe(before?.sort_order);
+  });
+
+  it("...but reorders through the definer, which is the point of removing the arm", async () => {
+    // Nothing was taken away. If this fails, migration 140 removed a power
+    // captains are supposed to have rather than relocating it.
+    const db = ctx.authedClient("member");
+    const { error } = await db.rpc("reorder_team_roster", {
+      p_competition_id: competitionId,
+      p_team_id: teamA,
+      p_ordered_user_ids: [teamAOther, captainId],
+    });
+    expect(error).toBeNull();
+
+    const { data } = await ctx.admin
+      .from("team_assignments")
+      .select("user_id, sort_order")
+      .eq("competition_id", competitionId)
+      .eq("team_id", teamA)
+      .order("sort_order", { ascending: true });
+    expect((data ?? []).map((r) => r.user_id)).toEqual([teamAOther, captainId]);
+    // 0-based, matching the fan-out the RPC replaced (migration 139).
+    expect((data ?? []).map((r) => r.sort_order)).toEqual([0, 1]);
   });
 
   it("captain CANNOT update another team's rows — the boundary the migration establishes", async () => {
@@ -250,14 +289,19 @@ describe("5. RLS enforces the same boundary BELOW tRPC", () => {
     expect(after?.sort_order).not.toBe(99);
   });
 
-  it("captain CANNOT move a row to another team (WITH CHECK on the post-image)", async () => {
+  it("captain CANNOT move a row to another team", async () => {
+    // Was a WITH CHECK rejection on the post-image (an error). Since migration
+    // 140 the captain arm is gone from USING too, so the row is filtered out
+    // before the check is ever reached and this is a silent no-op — the same
+    // shape as the other-team case above. Asserting on the DATA rather than on
+    // the error is what makes this survive that move: the guarantee is "the row
+    // did not change", not "a particular error was raised".
     const db = ctx.authedClient("member");
-    const { error } = await db
+    await db
       .from("team_assignments")
       .update({ team_id: teamB })
       .eq("competition_id", competitionId)
       .eq("user_id", captainId);
-    expect(error).not.toBeNull();
 
     const { data } = await ctx.admin
       .from("team_assignments")
