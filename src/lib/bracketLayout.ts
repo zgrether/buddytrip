@@ -122,12 +122,17 @@ export function cardCentre(round: number, index: number, metrics: BracketMetrics
  *                 read as inline rather than as an arm.
  *   NO feeder     the inherited-spacing fallback below.
  *
- * The offset is DOWNWARD by half a slot. Downward because the other arm arrives from
- * the upper tier, which sits above — so dropping the consumer leaves the room that arm
- * needs, and the offset reads as the connection it is. Half a slot because it must be
- * visible enough not to look like an alignment coincidence, while staying small enough
- * that the cumulative drift across a deep lower bracket stays modest: it accrues once
- * per one-feeder round, so a 64-entrant draw drifts by five half-slots, not fifty.
+ * The offset is DOWNWARD by a FULL slot. Downward because the other arm arrives from
+ * the upper tier above, so dropping the consumer leaves the room that arm needs.
+ *
+ * A full slot rather than half because a major now SHARES ITS MINOR FEEDER'S COLUMN —
+ * the fix for the lower tier reaching left of the upper bracket. Two cards in one
+ * column at half a slot apart would overlap: cards are 88px and a slot is 100px. The
+ * spacing and the column model are one decision, not two.
+ *
+ * Which is also why the tier's first round steps by TWO slots: each of its matches has
+ * a major sitting directly beneath it in the same column, and that major needs a slot
+ * of its own.
  *
  * ── The degenerate case, which is the one that breaks ───────────────────────
  * A feeder can be ABSENT — at 5 entrants match 9 is all-bye — leaving a match with no
@@ -145,8 +150,11 @@ export function lowerTierCentres(
   metrics: BracketMetrics
 ): Map<string, number> {
   const unit = metrics.cardHeight + metrics.baseGap;
-  /** How far a single-feeder consumer sits below its feeder. */
-  const armOffset = unit / 2;
+  /** How far a single-feeder consumer sits below its feeder — a full slot, because it
+   *  shares the feeder's column and must not overlap it. */
+  const armOffset = unit;
+  /** The first round steps by two slots, leaving room for each match's major beneath it. */
+  const baseStep = unit * 2;
   const centres = new Map<string, number>();
   const key = (round: number, slot: number) => `${round}:${slot}`;
   const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
@@ -170,13 +178,13 @@ export function lowerTierCentres(
     const known = anchored.map((c, i) => ({ c, i })).filter((x): x is { c: number; i: number } => x.c !== null);
     const span = known.length >= 2
       ? (known[known.length - 1].c - known[0].c) / (known[known.length - 1].i - known[0].i)
-      : unit;
+      : baseStep;
 
     slots.forEach((slot, i) => {
       let centre = anchored[i];
       if (centre === null) {
         if (known.length === 0) {
-          centre = i * unit + metrics.cardHeight / 2;
+          centre = i * baseStep + metrics.cardHeight / 2;
         } else {
           const near = known.reduce((best, x) => (Math.abs(x.i - i) < Math.abs(best.i - i) ? x : best), known[0]);
           centre = near.c + (i - near.i) * span;
@@ -187,4 +195,53 @@ export function lowerTierCentres(
   }
 
   return centres;
+}
+
+/**
+ * Which column a lower round occupies, counted FROM THE RIGHT.
+ *
+ * A major round shares the column of the minor that feeds it, so the lower tier is
+ * `rounds / 2` columns wide — always one narrower than the upper bracket, which is what
+ * removes the overhang that made the tier reach left of it.
+ *
+ * Exported and shared with the board rather than restated there: the column rule and
+ * the vertical rule have to agree about which matches land in one column, or two cards
+ * end up in the same place. `lowerColumnsDoNotOverlap` below is the check that they do.
+ */
+export function lowerColumnFromRight(round: number, totalLowerRounds: number): number {
+  return Math.ceil((totalLowerRounds - round + 1) / 2);
+}
+
+/**
+ * Do any two matches sharing a column overlap vertically?
+ *
+ * The invariant the shared-column change introduces. "No match sits level with a match
+ * it consumes" (T2) is about a consumer and its feeder; this is about ANY two cards that
+ * now occupy one column — a different question, and one that only exists because majors
+ * stopped getting a column of their own.
+ *
+ * Returns the offending pairs so a failure names them rather than just counting.
+ */
+export function lowerColumnsDoNotOverlap(
+  matches: readonly { round: number; slot: number }[],
+  metrics: BracketMetrics
+): { a: string; b: string; gap: number }[] {
+  const centres = lowerTierCentres(matches, metrics);
+  const total = new Set(matches.map((m) => m.round)).size;
+  const byColumn = new Map<number, { key: string; centre: number }[]>();
+  for (const m of matches) {
+    const col = lowerColumnFromRight(m.round, total);
+    const centre = centres.get(`${m.round}:${m.slot}`);
+    if (centre === undefined) continue;
+    byColumn.set(col, [...(byColumn.get(col) ?? []), { key: `${m.round}:${m.slot}`, centre }]);
+  }
+  const bad: { a: string; b: string; gap: number }[] = [];
+  for (const cards of byColumn.values()) {
+    const sorted = [...cards].sort((x, y) => x.centre - y.centre);
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = sorted[i].centre - sorted[i - 1].centre;
+      if (gap < metrics.cardHeight) bad.push({ a: sorted[i - 1].key, b: sorted[i].key, gap });
+    }
+  }
+  return bad;
 }

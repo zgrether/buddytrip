@@ -6,7 +6,7 @@ import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
 import { doubleBracketDisplay, doubleRoundName } from "@/lib/bracketDoubleLabels";
-import { roundLayout, lowerTierCentres, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
+import { roundLayout, lowerTierCentres, lowerColumnFromRight, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
 import { matchStakes, type MatchStakes } from "@/lib/bracketStakes";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
 
@@ -111,10 +111,31 @@ export function BracketBoard({
    * both build an 8-slot draw with 3 upper and 4 lower rounds, so they lay out
    * identically. There is no 5-vs-8 difference to encode.
    */
-  const upperColumnsFromRight = lastRound;
   const lowerRoundsAll = [...new Set(lower.map((m) => m.round))].sort((a, b) => a - b);
-  const lowerColumnsFromRight = lowerRoundsAll.length;
-  const gridCols = Math.max(upperColumnsFromRight, lowerColumnsFromRight) + 1;
+  const lowerRoundTotal = lowerRoundsAll.length;
+  /**
+   * A MAJOR ROUND SHARES ITS MINOR FEEDER'S COLUMN.
+   *
+   * The lower tier has 2(W-1) rounds against the upper's W, so giving each its own
+   * column made the tier reach (W-2) columns LEFT of the upper bracket — 226px each,
+   * 904px at 64 entrants. That overhang WAS the span problem, and it came from the
+   * round count, not from how the dropper is rendered: `Loser of 56` is a seat inside
+   * the major's card, never a column of its own, so moving it to a label on the arm
+   * would have removed nothing. Measured before building, at both ends.
+   *
+   * Pairing each major with the minor that feeds it makes the lower tier exactly W-1
+   * columns — always one NARROWER than the upper bracket, at every size. The overhang
+   * is removed at its source rather than compensated for by right-aligning the tier.
+   *
+   * The major keeps its box, number, winner indicator and both seats. It shares a
+   * column; it does not collapse into a one-seat card. The vertical rule pays for that
+   * (see `lowerTierCentres`): a one-feeder consumer sits a FULL slot below its feeder
+   * rather than half, because two cards sharing a column half a slot apart overlap —
+   * cards are 88px and a slot is 100px. Spacing and column model are one decision.
+   */
+  const lowerColumnsFromRight = (k: number) => lowerColumnFromRight(k, lowerRoundTotal);
+  const lowerColumnCount = lowerRoundTotal === 0 ? 0 : Math.max(...lowerRoundsAll.map(lowerColumnsFromRight));
+  const gridCols = Math.max(lastRound, lowerColumnCount) + 1;
   /** Upper round r: r-th from the right among upper rounds. */
   const upperColumn = (r: number) => gridCols - (lastRound - r + 1);
   /**
@@ -191,8 +212,8 @@ export function BracketBoard({
       ? `Played only if ${name} wins match ${n}`
       : `Played only if the lower-bracket entrant wins match ${n}`;
   })();
-  /** Lower round k: k-th from the right among lower rounds. */
-  const lowerColumnOf = (k: number) => gridCols - (lowerColumnsFromRight - k + 1);
+  /** Lower round k: its PAIR's column, counted from the right. */
+  const lowerColumnOf = (k: number) => gridCols - lowerColumnsFromRight(k);
 
   if (matches.length === 0) return null;
 
@@ -263,16 +284,17 @@ export function BracketBoard({
             </div>
           ))}
 
-          {lowerRounds.map((round) => (
-            // POSITIONED, not stacked. A flex column top-aligns the tier as a block,
-            // which is why match 12 sat level with 10 instead of between 10 and 11.
+          {[...new Set(lowerRounds.map(lowerColumnOf))].sort((a, b) => a - b).map((col) => (
+            // One cell per COLUMN — a column now holds a minor round AND the major it
+            // feeds, so grouping by round would put two grid items in one cell, where
+            // they overlap rather than stack.
             <div
-              key={`l${round}`}
-              style={{ gridColumn: lowerColumnOf(round), gridRow: 4, position: "relative", height: lowerHeight }}
+              key={`lc${col}`}
+              style={{ gridColumn: col, gridRow: 4, position: "relative", height: lowerHeight }}
             >
               {lower
-                .filter((m) => m.round === round)
-                .sort((a, b) => a.slot - b.slot)
+                .filter((m) => lowerColumnOf(m.round) === col)
+                .sort((a, b) => a.round - b.round || a.slot - b.slot)
                 .map((m) => (
                   <div
                     key={matchKey(m)}

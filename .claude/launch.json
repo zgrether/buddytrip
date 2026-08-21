@@ -4,21 +4,31 @@
     {
       "name": "Next.js dev",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "runtimeArgs": [
+        "node_modules/next/dist/bin/next",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
     {
       "name": "Next.js prod",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "start"],
+      "runtimeArgs": [
+        "node_modules/next/dist/bin/next",
+        "start"
+      ],
       "port": 3000
     },
     {
       "name": "Supabase local",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["supabase", "start"],
-      "port": 54323
+      "runtimeArgs": [
+        "supabase",
+        "start"
+      ],
+      "port": 54323,
+      "autoPort": false
     }
   ]
 }
