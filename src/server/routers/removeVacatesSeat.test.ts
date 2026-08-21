@@ -3,7 +3,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 import { findContributionBlockers } from "../lib/participationGuard";
 
 /**
- * #1013 — removing someone vacates their match seat instead of leaving a "Player".
+ * #1016 — removing someone vacates their match seat instead of leaving a "Player".
  *
  * The reported sequence, in three steps, every one of which behaved correctly on
  * its own:

@@ -75,7 +75,7 @@ export async function clearTripTeamAssignments(
  * Take them out of this trip's GAMES: vacate any match seat they hold, and drop
  * their `game_participants` rows.
  *
- * ── The bug this exists for (#1013) ────────────────────────────────────────
+ * ── The bug this exists for (#1016) ────────────────────────────────────────
  * Removal deleted `trip_members` and cleared `team_assignments`, and stopped
  * there. `game_matches.side_a/side_b` still pointed at them, so the seat kept
  * rendering — as `"Player"`, because names resolve through `tripMembers.list`
@@ -177,7 +177,7 @@ export async function vacateTripGameSeats(
  *
  * The umbrella exists so the next table is added in one place instead of two.
  * `team_assignments` was found missing from both paths once (#120) and
- * `game_participants` from both paths again (#951/#1013); each time the fix had
+ * `game_participants` from both paths again (#951/#1016); each time the fix had
  * to be made twice and could have been made once. Two call sites that must
  * always agree is the shape CLAUDE.md #22 names — the delta between them IS the
  * bug — so there is now no delta to have.

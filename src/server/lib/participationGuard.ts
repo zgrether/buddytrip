@@ -37,7 +37,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * migration 127's `lower`/`final` values, and the double-elim work generally,
  * cannot change this guard's answer.
  *
- * ── A PERSON is not the only shape a side comes in (#1013) ─────────────────
+ * ── A PERSON is not the only shape a side comes in (#1016) ─────────────────
  * Two of the signals above are asked of a SIDE, and a side is a person only in
  * 1v1. A 2v2 side is a minted `play_group` — `{type:"play_group", id:<pgId>}` in
  * the JSONB, and `entity_type='play_group'` in `game_results` (`mkResult` keys
@@ -52,7 +52,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * `mkSide`). That is also why the queries run in two rounds — a side id is not
  * knowable until the participant rows come back.
  *
- * ── PLAYED is not a synonym for `score_entries` (#1013) ────────────────────
+ * ── PLAYED is not a synonym for `score_entries` (#1016) ────────────────────
  * `entry_mode='outcome'` match play stores the score in `match_hole_outcomes` —
  * read directly by `computeMatchPlayResults`, with no gross, no handicap, no
  * stroke index. An outcome game has ZERO `score_entries` rows however many holes

@@ -123,7 +123,7 @@ describe("every trip_members deletion in the app clears assignments too", () => 
       // The UMBRELLA, not either half of it. A path that called only
       // `clearTripTeamAssignments` would satisfy the old form of this check and
       // still leave the match seat behind — which is exactly what both removal
-      // paths did until #1013.
+      // paths did until #1016.
       if (deletesMembership && !src.includes("clearTripParticipation")) {
         offenders.push(path.relative(root, file));
       }
