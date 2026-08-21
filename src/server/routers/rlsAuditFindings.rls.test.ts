@@ -290,6 +290,67 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
     });
   });
 
+  // ── F4 — a member could write their own share to any figure ─────────────
+
+  describe("F4 (migration 137) — opting out is not setting what you owe", () => {
+    let expenseId: string;
+
+    beforeAll(async () => {
+      expenseId = genId("exp");
+      await ctx.admin.from("expenses").insert({
+        id: expenseId, trip_id: tripId, title: "Dinner",
+        amount: 90, paid_by_user_id: ctx.getUser("owner").id,
+      });
+      await ctx.admin.from("expense_splits").insert([
+        { expense_id: expenseId, user_id: ctx.getUser("owner").id, amount: 45 },
+        { expense_id: expenseId, user_id: ctx.getUser("member").id, amount: 45 },
+      ]);
+    }, 30_000);
+
+    it("a member cannot write their own share down to an arbitrary figure", async () => {
+      for (const amount of [1, -9999]) {
+        const { error } = await ctx
+          .authedClient("member")
+          .from("expense_splits")
+          .update({ amount })
+          .eq("expense_id", expenseId)
+          .eq("user_id", ctx.getUser("member").id);
+        expect(error).not.toBeNull();
+      }
+    });
+
+    it("...but can still opt out, and opt back in", async () => {
+      const out = await ctx
+        .authedClient("member")
+        .from("expense_splits")
+        .update({ opted_out: true, amount: 0 }, { count: "exact" })
+        .eq("expense_id", expenseId).eq("user_id", ctx.getUser("member").id);
+      expect(out.error).toBeNull();
+      expect(out.count).toBe(1);
+
+      const back = await ctx
+        .authedClient("member")
+        .from("expense_splits")
+        .update({ opted_out: false, amount: null }, { count: "exact" })
+        .eq("expense_id", expenseId).eq("user_id", ctx.getUser("member").id);
+      expect(back.error).toBeNull();
+      expect(back.count).toBe(1);
+    });
+
+    it("an owner can still write a real figure — the other policy arm", async () => {
+      // Permissive policies OR, checks included, so the Owner never has to
+      // satisfy the opt-out constraint. If this breaks, the fix caught the
+      // wrong people.
+      const { error, count } = await ctx
+        .authedClient("owner")
+        .from("expense_splits")
+        .update({ amount: 60 }, { count: "exact" })
+        .eq("expense_id", expenseId).eq("user_id", ctx.getUser("member").id);
+      expect(error).toBeNull();
+      expect(count).toBe(1);
+    });
+  });
+
   // ── F10 / F11 — games invariants ────────────────────────────────────────
 
   describe("F10/F11 (migration 135) — a game's competition and its go-live state", () => {
