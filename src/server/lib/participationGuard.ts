@@ -23,19 +23,54 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  *   | Concept                  | Signal                                          |
  *   |--------------------------|-------------------------------------------------|
- *   | own scores (result)      | `score_entries.participant_id`                   |
- *   | own game result (result) | `game_results.entity_id`                         |
+ *   | own scores (result)      | `score_entries.participant_id` — theirs or their side's |
+ *   | own game result (result) | `game_results.entity_id` — theirs or their side's |
  *   | decided match (result)   | `game_matches.result IS NOT NULL` or `status='complete'`, with them a side |
  *   | decided bracket (result) | `bracket_matches.winner_entrant_id IS NOT NULL`, their entrant a side |
- *   | played game (result)     | `game_participants` row in a game that has ANY score entries |
+ *   | played game (result)     | `game_participants` row in a game anyone has PLAYED |
  *   | draw only (PLAN)         | `bracket_entrant_members` with no decided match involving them |
- *   | slotted only (PLAN)      | `game_participants` in a game with zero score entries |
+ *   | slotted only (PLAN)      | `game_participants` in a game nobody has played |
  *   | receipts (always result) | `expenses.paid_by_user_id`, `expense_splits.user_id` |
  *
  * Note it never reads `bracket_matches.bracket`. The question is "does a decided
  * result involve this person", which is independent of bracket STRUCTURE — so
  * migration 127's `lower`/`final` values, and the double-elim work generally,
  * cannot change this guard's answer.
+ *
+ * ── A PERSON is not the only shape a side comes in (#1013) ─────────────────
+ * Two of the signals above are asked of a SIDE, and a side is a person only in
+ * 1v1. A 2v2 side is a minted `play_group` — `{type:"play_group", id:<pgId>}` in
+ * the JSONB, and `entity_type='play_group'` in `game_results` (`mkResult` keys
+ * the row by the side ref's own id). So comparing a side id to a USER id answers
+ * "no" for every doubles match ever played, and answers it silently.
+ *
+ * Prod's completed 2v2 game carries four `game_results` rows — two `play_group`,
+ * two `team`, and NOT ONE keyed to a user. `score_entries` is the third: a 2v2
+ * entry is one row per SIDE, written with `participant_type='play_group'`. All
+ * three therefore resolve a side through `game_participants.play_group_id`,
+ * which is what makes a person a member of a doubles side (`setPairings`'
+ * `mkSide`). That is also why the queries run in two rounds — a side id is not
+ * knowable until the participant rows come back.
+ *
+ * ── PLAYED is not a synonym for `score_entries` (#1013) ────────────────────
+ * `entry_mode='outcome'` match play stores the score in `match_hole_outcomes` —
+ * read directly by `computeMatchPlayResults`, with no gross, no handicap, no
+ * stroke index. An outcome game has ZERO `score_entries` rows however many holes
+ * are decided, so a "has anyone played this?" probe over `score_entries` alone
+ * reports an 18-hole match as untouched.
+ *
+ * This exact derivation had already been made, and already needed the second
+ * source: `competitionLeaderboard` runs a `match_hole_outcomes` query beside its
+ * `score_entries` one, commented "an outcome game never has score_entries rows,
+ * so it needs its OWN 'started' source". This guard was the same derivation
+ * WITHOUT that source — so the board could show a game underway while the guard
+ * held that nobody had played it.
+ *
+ * The two gaps compounded: `matchOutcomes.setHole` deliberately does not run
+ * `computeMatchPlayResults` (no per-write recompute, mirroring `scores`), so
+ * until `games.finish` an outcome game has no `game_results` and no decided
+ * `game_matches` either. Every column this guard read was empty, at any side
+ * shape, for a game seventeen holes in.
  *
  * ── Money is a result the moment it exists ────────────────────────────────
  * A receipt has no plan phase: it records money that already moved. Both
@@ -128,18 +163,16 @@ export async function findContributionBlockers(
   const gameIds = (games ?? []).map((g) => g.id as string);
   if (gameIds.length === 0) return { ...EMPTY, ...money };
 
-  const [ownScores, anyScores, parts, results, decidedMatches, entrantRows] = await Promise.all([
+  // ── Round 1: who they are in these games, and what the games look like ────
+  // Everything here is answerable from their user id alone. The queries that
+  // need to know their SIDE ids wait for round 2, because a doubles side id is
+  // only discoverable from the participant rows this round returns.
+  const [parts, decidedMatches, entrantRows] = await Promise.all([
     supabase
-      .from("score_entries")
-      .select("game_id")
-      .eq("participant_id", userId)
-      .eq("participant_type", "user")
+      .from("game_participants")
+      .select("game_id, play_group_id")
+      .eq("user_id", userId)
       .in("game_id", gameIds),
-    // Which games have been scored AT ALL — the difference between "slotted
-    // into a round that hasn't happened" and "played in a game that has".
-    supabase.from("score_entries").select("game_id").in("game_id", gameIds),
-    supabase.from("game_participants").select("game_id").eq("user_id", userId).in("game_id", gameIds),
-    supabase.from("game_results").select("game_id").eq("entity_id", userId).in("game_id", gameIds),
     // Decided matches only, filtered for THEM in JS rather than with a
     // PostgREST `->>` filter on the JSONB. The filter form would be fewer rows,
     // but its syntax is the one thing here that cannot be checked without a
@@ -153,15 +186,65 @@ export async function findContributionBlockers(
     supabase.from("bracket_entrant_members").select("entrant_id").eq("user_id", userId),
   ]);
   for (const [what, res] of [
-    ["score entries", ownScores],
-    ["scored games", anyScores],
     ["game participants", parts],
-    ["game results", results],
     ["matches", decidedMatches],
     ["bracket entrants", entrantRows],
   ] as const) {
     if (res.error) throw new Error(`Failed to read ${what}: ${res.error.message}`);
   }
+
+  // Every id this person answers to as a SIDE: themselves, plus any doubles
+  // group they are a member of. `game_participants.play_group_id` is what
+  // `setPairings`' `mkSide` writes when it mints a 2v2 side, so it is the only
+  // link from a person to the id their side is recorded under — and the same id
+  // `scores.upsertEntry` writes as `participant_id` for a 2v2 entry.
+  const mySideIds = new Set<string>([userId]);
+  const myGameIds = new Set<string>();
+  for (const r of parts.data ?? []) {
+    myGameIds.add(r.game_id as string);
+    const pgId = r.play_group_id as string | null;
+    if (pgId) mySideIds.add(pgId);
+  }
+  const sideIds = [...mySideIds];
+
+  // ── Round 2: what has been PLAYED, and what is recorded under their sides ──
+  //
+  // "Has anyone played this game?" is asked as a COUNT per game they are in,
+  // not by fetching the games' score rows and collecting the distinct ids the
+  // reply happens to contain. PostgREST caps a response at 1000 rows, and a
+  // scored 16-player round is 288 of them — so the row-collecting form would
+  // start dropping game ids out of the "played" set a few games into a real
+  // trip, and every dropped id is a game this guard then reports as unplayed.
+  // A guard that gets more permissive the more a trip is used is worse than no
+  // guard. `head: true` returns the count and no rows, so it cannot be capped.
+  //
+  // The probe is per game they PARTICIPATE in (typically one to five), not per
+  // game on the trip, which is what keeps the fan-out small.
+  const probeGameIds = [...myGameIds];
+  const [ownScores, results, playedFlags] = await Promise.all([
+    supabase
+      .from("score_entries")
+      .select("game_id")
+      .in("participant_id", sideIds)
+      .in("game_id", gameIds),
+    supabase.from("game_results").select("game_id").in("entity_id", sideIds).in("game_id", gameIds),
+    Promise.all(
+      probeGameIds.map(async (gid) => {
+        // TWO sources, because the score has two storage shapes: `score_entries`
+        // for gross entry, `match_hole_outcomes` for outcome entry. Either one
+        // alone answers "nobody has played this" for the other mode's games.
+        const [s, o] = await Promise.all([
+          supabase.from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", gid),
+          supabase.from("match_hole_outcomes").select("id", { count: "exact", head: true }).eq("game_id", gid),
+        ]);
+        if (s.error) throw new Error(`Failed to count scores in ${gid}: ${s.error.message}`);
+        if (o.error) throw new Error(`Failed to count hole outcomes in ${gid}: ${o.error.message}`);
+        return [gid, (s.count ?? 0) + (o.count ?? 0) > 0] as const;
+      })
+    ),
+  ]);
+  if (ownScores.error) throw new Error(`Failed to read score entries: ${ownScores.error.message}`);
+  if (results.error) throw new Error(`Failed to read game results: ${results.error.message}`);
 
   const reasons = new Map<string, Set<BlockReason>>();
   const add = (gameId: string, reason: BlockReason) => {
@@ -174,13 +257,9 @@ export async function findContributionBlockers(
   const scoredGameIds = new Set((ownScores.data ?? []).map((r) => r.game_id as string));
   scoredGameIds.forEach((id) => add(id, "scores"));
 
-  const playedGames = new Set((anyScores.data ?? []).map((r) => r.game_id as string));
-  for (const r of parts.data ?? []) {
-    const gameId = r.game_id as string;
-    // PLAN vs RESULT: a participant row only blocks once the game has been
-    // scored by somebody. Slotted into an unplayed round is removable.
-    if (playedGames.has(gameId)) add(gameId, "played-game");
-  }
+  // PLAN vs RESULT: a participant row only blocks once the game has been played
+  // by somebody. Slotted into an unplayed round is removable.
+  for (const [gid, played] of playedFlags) if (played) add(gid, "played-game");
 
   for (const r of results.data ?? []) add(r.game_id as string, "result");
 
@@ -189,7 +268,9 @@ export async function findContributionBlockers(
     if (!decided) continue;
     const sideId = (side: unknown) =>
       side && typeof side === "object" ? (side as { id?: string }).id : undefined;
-    if (sideId(m.side_a) === userId || sideId(m.side_b) === userId) {
+    const a = sideId(m.side_a);
+    const b = sideId(m.side_b);
+    if ((a && mySideIds.has(a)) || (b && mySideIds.has(b))) {
       add(m.game_id as string, "decided-match");
     }
   }
