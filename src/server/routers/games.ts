@@ -21,8 +21,9 @@ import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } 
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
-import type { BracketDrawMatch } from "@/lib/bracket";
-import { resolveDraw, matchKey, orphanedByPick, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { BRACKET_SIDES, type BracketDrawMatch } from "@/lib/bracket";
+import { resolveDraw, matchKey, orphanedByPick, applyPickCascadingWith, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { resolveDoubleDraw } from "@/lib/bracketDoubleAdvance";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
@@ -598,7 +599,7 @@ export const gamesRouter = router({
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        bracket: z.enum(["main", "consolation"]),
+        bracket: z.enum(BRACKET_SIDES),
         round: z.number().int().positive(),
         slot: z.number().int().positive(),
         /** The winning SEED, or null to clear the pick. */
@@ -652,7 +653,14 @@ export const gamesRouter = router({
         winners[matchKey(m)] = seedOf(m.winner_entrant_id);
       }
 
-      const target = resolveDraw(draw, winners).find(
+      // The SAME walk the board rendered with. Validating a double-elim pick against the
+      // single-elim resolver refuses every `lower`/`final` match — that resolver builds
+      // its map from `main` alone, so the target is simply not there. Read off the draw
+      // itself rather than the game row: the persisted structure is the authority for how
+      // it must be resolved, and it cannot disagree with itself.
+      const isDouble = draw.some((m) => m.bracket === "lower" || m.bracket === "final");
+      const resolved = isDouble ? resolveDoubleDraw(draw, winners) : resolveDraw(draw, winners);
+      const target = resolved.find(
         (m) => m.bracket === input.bracket && m.round === input.round && m.slot === input.slot
       );
       if (!target) {
@@ -686,11 +694,17 @@ export const gamesRouter = router({
        * (`orphanedByPick` → `applyPickCascading` → `resolveDraw`), so the two
        * cannot disagree about what a pick invalidates.
        */
-      const orphanRefs = orphanedByPick(
-        draw.map((m) => ({ ...m, winnerSeed: winners[matchKey(m)] ?? null })),
-        { bracket: input.bracket, round: input.round, slot: input.slot },
-        input.winnerSeed
-      );
+      const rowsWithWinners = draw.map((m) => ({ ...m, winnerSeed: winners[matchKey(m)] ?? null }));
+      const ref = { bracket: input.bracket, round: input.round, slot: input.slot };
+      const orphanRefs = isDouble
+        // Double elim cannot use the positional walk: changing a `main` result moves
+        // people BETWEEN brackets rather than only upward, so "orphaned" is defined by
+        // re-resolution — a stored winner who is no longer one of their match's
+        // occupants. Same rule the client's cascade runs, so the two cannot disagree.
+        ? applyPickCascadingWith(rowsWithWinners, ref, input.winnerSeed, resolveDoubleDraw)
+            .filter((m, i) => m.winnerSeed === null && rowsWithWinners[i].winnerSeed !== null)
+            .map((m) => ({ bracket: m.bracket, round: m.round, slot: m.slot }))
+        : orphanedByPick(rowsWithWinners, ref, input.winnerSeed);
       const orphanIds = orphanRefs
         .map((r) => matches.find((m) => m.bracket === r.bracket && m.round === r.round && m.slot === r.slot)?.id)
         .filter((id): id is string => !!id);
@@ -1493,7 +1507,7 @@ export const gamesRouter = router({
           bracketDraw: z
             .array(
               z.object({
-                bracket: z.enum(["main", "consolation"]),
+                bracket: z.enum(BRACKET_SIDES),
                 round: z.number().int().positive(),
                 slot: z.number().int().positive(),
                 // Round 1 only. A null in round 1 is a BYE; in a later round it is

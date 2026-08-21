@@ -7,7 +7,10 @@ import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { applyPickCascading, drawComplete } from "@/lib/bracketAdvance";
+import { applyPickCascadingWith, drawComplete, resolveDraw, type WinnerBySeed } from "@/lib/bracketAdvance";
+import type { BracketDrawMatch } from "@/lib/bracket";
+import type { BracketSide } from "@/lib/bracket";
+import type { MatchStakes } from "@/lib/bracketStakes";
 import type { ResolvedMatch } from "@/lib/bracketAdvance";
 import { BracketBoard, type BracketEntrantMeta } from "./BracketBoard";
 
@@ -69,6 +72,9 @@ export function BracketScoringSurface({
   matches,
   entrants,
   pointsDistribution,
+  stakesFor,
+  mustWin,
+  resolve,
   canEdit,
   onPosted,
 }: {
@@ -84,6 +90,13 @@ export function BracketScoringSurface({
   /** The game's placement split, for the per-match stakes. Empty = no per-place
    *  values, and the headers quote nothing. */
   pointsDistribution: readonly number[];
+  /** Format-supplied, so neither this surface nor the board asks which format it is
+   *  rendering. Absent → the board's single-elim defaults. */
+  stakesFor?: (m: ResolvedMatch) => MatchStakes | null;
+  /** How to resolve the draw — supplied by the caller so the optimistic cascade uses the
+   *  SAME walk the board rendered with. Absent → single elim. */
+  resolve?: (draw: BracketDrawMatch[], winners: WinnerBySeed) => ResolvedMatch[];
+  mustWin?: (seed: number) => boolean;
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
@@ -192,15 +205,17 @@ export function BracketScoringSurface({
    * check-mark used to wait for all of it. It now waits for a state update.
    */
   const handlePick = useCallback(
-    (ref: { bracket: "main" | "consolation"; round: number; slot: number }, seed: number | null) => {
+    (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
       utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
-        prev && applyPickCascading(prev, ref, seed)
+        prev && applyPickCascadingWith(prev, ref, seed, resolve ?? resolveDraw)
       );
       pendingPicks.current += 1;
       pickMutation.mutate({ tripId, gameId, ...ref, winnerSeed: seed });
     },
-    [pickMutation, utils, tripId, gameId]
+    // `resolve` belongs here: it selects WHICH walk the optimistic cascade runs, so a
+    // stale closure would cascade a double-elim pick through the single-elim resolver.
+    [pickMutation, utils, tripId, gameId, resolve]
   );
 
   /**
@@ -244,6 +259,8 @@ export function BracketScoringSurface({
         matches={matches}
         entrants={entrants}
         pointsDistribution={pointsDistribution}
+        stakesFor={stakesFor}
+        mustWin={mustWin}
         canPick={canEdit && !isLocked}
         onPick={handlePick}
       />
