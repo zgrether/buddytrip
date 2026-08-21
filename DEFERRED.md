@@ -565,6 +565,13 @@ this so the migration is painless; nothing here is built pre-launch.
 
 ### Claim a placeholder — the sanctioned way back to your own history
 
+> **PARTLY BUILT (2026-08-21, migration 141).** A *token-authorized self-claim*
+> now exists: the holder of a valid invite token attaches the placeholder it was
+> addressed to onto whatever account they actually signed in with
+> (`claim_placeholder_by_invite`, `invites.claim`, the third option on the #988
+> landing page). It is a DIFFERENT mechanism from the one described below and it
+> does not close this entry — see "Two mechanisms" at the end.
+
 **This one is referenced by shipped code, which is why it is written down rather
 than left implied.** Migration 132's comment and `link_guest_to_account`'s
 refusal message both point at "the claim feature" as the correct path for
@@ -599,6 +606,32 @@ its second sentence rather than this growing a feature to justify it.
 **Files if revived:** `link_guest_to_account` (migration 132) is the guard to
 relax; `src/server/routers/ghostCrew.ts` holds the app-level pre-check that
 turns the refusal into a sentence.
+
+**Two mechanisms, and only one of them is built.** Migration 141's claim and the
+one described above answer different questions, which is why the arrival of the
+first does not retire the second:
+
+| | Built (141) | Still deferred (above) |
+|---|---|---|
+| Who initiates | the claimant, holding a token | the owner, nominating |
+| What authorizes it | possession of an invite token addressed to that placeholder | the owner's judgement, then the claimant's yes |
+| Serves a `deleted_at` placeholder | **no** — refuses, per 132 | yes, that is its whole purpose |
+| Exists because | someone invited at one address signs in with another | someone wants their deleted history back |
+
+The consent 141 collects is consent to attach *this placeholder* to *my current
+account*, given by someone who can prove they were invited to it. That is not
+the consent the deleted case needs, which is a person confirming that history
+recorded before they deleted their account should come back — a question a token
+minted for a trip invitation cannot ask. So **132's guard still holds, in all
+three callers**, and the refusal message's second sentence still points at
+something unbuilt.
+
+What 141 *does* change here: the demand is no longer zero for the mechanism in
+general, and one of the two hard parts (invoking the merge safely from outside
+`handle_new_user`, with the preconditions the core assumes) is now solved and has
+a worked example to copy. Prod still holds **zero** rows with `deleted_at` set,
+so the trigger for building the owner-nominates variant is unchanged: a real
+person asking for their history back.
 
 ### Unify receipt opt-in / opt-out
 

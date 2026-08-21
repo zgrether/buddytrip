@@ -1130,6 +1130,30 @@ produced it. Three channels have actually bitten:
 - **A background job you started can contend with the one you are watching.**
   Running the Vitest suite and Playwright against the same stack simultaneously
   manufactures exactly the flakiness you would then go debug.
+- **AND YOU MAY NOT HAVE THE DATABASE YOU THINK YOU HAVE.** On 2026-08-21 a
+  `vitest run` in a worktree seeded trips, guest users, games and score entries
+  into **PRODUCTION** and deleted them again. `vitest.config.mts` and
+  `global-setup.ts` both load `.env.local`, that file's
+  `NEXT_PUBLIC_SUPABASE_URL` was the prod project, and #636 — which moved CI and
+  local dev onto an ephemeral local stack on 2026-07-18 — never updated it.
+  Nothing caught it for a month, because **`.env.local` is gitignored**: it
+  drifts per machine and never appears in a diff or a review.
+  **The tell is latency and nothing else.** The suite passes identically against
+  either database. The same 8 tests took **35s against prod and 1.5s against
+  local**; if an integration file feels slow in a way it did not used to,
+  check what it is connected to before you optimise anything. (The secondary
+  tell is an error that makes no sense locally — "Could not find the function
+  … in the schema cache" for a migration you just applied, because you applied
+  it to a database the run is not using.)
+  **This is now guarded, not remembered** —
+  `src/__tests__/helpers/assertLocalTestDatabase.ts`, called first thing in
+  `global-setup.ts`, aborts any run pointed at a non-local host.
+  `ALLOW_REMOTE_TEST_DB=1` is the per-command opt-in. Do not weaken it to a
+  warning; the failure mode is "the run looked completely normal".
+  **A `supabase migration up` does NOT reload PostgREST's schema cache**, so a
+  brand-new function 404s from `.rpc()` even though it exists. Fix without
+  resetting the shared stack (which would wipe another session's data):
+  `docker exec supabase_db_buddytrip psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"`
 - **Repeated `supabase db reset` cycles can leave a suite reproducibly red
   locally while CI is green.** Observed 2026-08-17: after several resets while
   iterating on migrations 122–124, three bracket-pick cases in
