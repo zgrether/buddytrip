@@ -415,6 +415,15 @@ describe("118 broadcast trigger — a bracket pick", () => {
   /** Seed a two-entrant draw directly, so these cases stay about the trigger
    *  rather than about the save path that normally builds one. */
   async function seedDraw(gameId: string): Promise<string> {
+    // Entrant ids are DETERMINISTIC (`<gameId>:e1`), and each case cleans up at
+    // its END — so a case that fails mid-way leaves its rows behind and the next
+    // two die on a duplicate key instead of running. That is how ONE real
+    // failure in this block presented as three, and how the leftovers then
+    // survived in the local database run after run, looking like flake.
+    //
+    // Clearing first makes each case independent of whether the last one
+    // finished. Cheap, and it keeps a genuine failure legible as one failure.
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", gameId);
     const rows = [1, 2].map((seed) => ({ id: `${gameId}:e${seed}`, game_id: gameId, team_id: null, seed }));
     const e = await ctx.admin.from("bracket_entrants").insert(rows);
     if (e.error) throw new Error(`seed entrants: ${e.error.message}`);
@@ -467,7 +476,15 @@ describe("118 broadcast trigger — a bracket pick", () => {
     await ctx.admin.from("bracket_matches").update({ winner_entrant_id: `${compGameId}:e1` }).eq("id", matchId);
     await waitFor(1);
     expect(received).toHaveLength(1);
-    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId"]);
+    // Same key set as the 096 twin above, `id` included — that is the message
+    // uuid `realtime.send` stamps on when the payload has no `id` of its own,
+    // not a field of ours. This copy was written without it and had been failing
+    // since; nothing caught it because the whole file SKIPS in CI, where the
+    // Realtime websocket never comes up.
+    //
+    // The 096 twin's warning applies here verbatim: if this fails because
+    // someone added a field, REMOVE the field rather than widening this.
+    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id"]);
 
     await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
     await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
