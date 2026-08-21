@@ -429,7 +429,6 @@ function ConnectorLayer({
   host: React.RefObject<HTMLDivElement | null>;
 }) {
   const [paths, setPaths] = useState<{ d: string; dim: boolean }[]>([]);
-  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   useLayoutEffect(() => {
     const el = host.current;
@@ -453,7 +452,6 @@ function ConnectorLayer({
         next.push({ d: `M ${a.right} ${a.mid} H ${midX} V ${b.mid} H ${b.left}`, dim });
       }
       setPaths(next);
-      setSize({ w: base.width, h: base.height });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -464,8 +462,14 @@ function ConnectorLayer({
   if (paths.length === 0) return null;
   return (
     <svg
-      width={size.w}
-      height={size.h}
+      // 100% of the host, NEVER a measured pixel width. Sizing this from a measurement
+      // made the overlay participate in layout: it kept the width it was measured at,
+      // so after a resize the board's scrollWidth was the STALE SVG rather than the
+      // grid — 1222 against a grid of 878 — and the board scrolled horizontally while
+      // the bracket itself fitted. An overlay that can force its own container to
+      // scroll is not an overlay.
+      width="100%"
+      height="100%"
       style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
       aria-hidden
       data-testid="bracket-connectors"
