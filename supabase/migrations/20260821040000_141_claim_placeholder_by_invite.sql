@@ -190,14 +190,20 @@ BEGIN
   -- on `user_id`. It was missed because that sweep keyed on the column NAME,
   -- and this one is `participant_id`.
   --
-  -- Pre-existing, and reachable from signup too — this wrapper does not fix it,
-  -- it refuses to trip over it. Refusing rather than deleting a side is
-  -- deliberate: two identities holding a score for the same hole is genuinely
-  -- ambiguous data, and silently dropping one of them is the guess this whole
-  -- feature is written to avoid.
+  -- Pre-existing. This wrapper does not fix it, it refuses to trip over it.
+  -- Refusing rather than deleting a side is deliberate: two identities holding
+  -- a score for the same hole is genuinely ambiguous data, and silently
+  -- dropping one of them is the guess this whole feature is written to avoid.
   --
-  -- Still reachable despite the guard above, because the merge is global: the
-  -- claimant may share a DIFFERENT trip with this placeholder.
+  -- NOT reachable from signup, despite the shape suggesting it: `handle_new_user`
+  -- inserts the real `users` row immediately before merging, so the merge target
+  -- is an id that is seconds old and owns no score rows to collide with. The
+  -- exposed callers are the ones merging into an account that ALREADY EXISTS —
+  -- `link_guest_to_account` and this one.
+  --
+  -- And it stays reachable here despite the already-a-member guard above,
+  -- because the merge is global: the claimant may share a DIFFERENT trip with
+  -- this placeholder, which is the case the test seeds.
   IF EXISTS (
     SELECT 1
     FROM public.score_entries g
