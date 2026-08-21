@@ -231,8 +231,20 @@ jobs:
           export ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '"')
           node ./join-probe.mjs 2>&1 || true
           echo
-          echo "───── realtime logs DURING/AFTER the join attempt ─────"
+          echo "───── the TENANT realtime resolves joins against ─────"
+          # Last standing hypothesis. Ruled out so far: key format, routing
+          # (HTTP 101), container health, and memory (14GB free). Realtime logs
+          # NOTHING when the join arrives — neither accept nor refuse — which is
+          # what a failed tenant lookup looks like. Locally this row is
+          # external_id=realtime-dev with a jwt_secret set.
+          DB=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB" -Atc "select external_id, (jwt_secret is not null) as jwt_set, max_concurrent_users from _realtime.tenants;" 2>&1 || echo "(tenant query failed)"
+          echo
+          echo "───── realtime's own env (how it identifies the tenant) ─────"
           RT=$(docker ps -a --filter name=realtime --format '{{.Names}}' | head -1)
+          [ -n "$RT" ] && docker exec "$RT" env 2>/dev/null | grep -iE "^(DB_|TENANT|TZ|REGION|TMP|APP_NAME|SECURE|JWT)" | sed -E 's/(SECRET|PASSWORD|KEY)=.*/\1=<redacted>/' || true
+          echo
+          echo "───── realtime logs DURING/AFTER the join attempt ─────"
           [ -n "$RT" ] && docker logs --tail 60 "$RT" 2>&1 || true
       - name: Point the suite at local Supabase
         if: needs.changes.outputs.code == 'true'
