@@ -146,7 +146,20 @@ jobs:
       # more churn on the prod IO budget, no cross-branch `db push` deadlock.
       - name: Start local Supabase (applies migrations)
         if: needs.changes.outputs.code == 'true'
-        run: supabase start
+        # -x: start only what the suite uses. Candidate fix for #1013 — Realtime
+        # raised `:alarm_handler: {:set, {:system_memory_high_watermark, []}}` at
+        # BOOT on the runner, i.e. the box was already past the VM's memory
+        # threshold before a single test ran, and channel joins were then never
+        # answered (the socket upgraded fine — HTTP 101 through Kong — but the
+        # join push got silence, and nothing appeared in Realtime's own log).
+        #
+        # The excluded set is what nothing in src/ or e2e/ touches, verified by
+        # grep rather than assumed: no test uses storage, mailpit or studio.
+        # Locally these are ~1GB of the stack, logflare alone 551MB.
+        run: |
+          echo "───── memory BEFORE ─────"; free -m
+          supabase start -x studio,imgproxy,mailpit,logflare,vector,edge-runtime,supavisor
+          echo "───── memory AFTER ─────"; free -m
       # TEMPORARY — diagnosing #1013 (Realtime unreachable on the runner, so the
       # 15 broadcast-contract cases have never executed here). Delete once that
       # is answered; it exists to gather signal in ONE run rather than five.
