@@ -70,3 +70,127 @@ export async function clearTripTeamAssignments(
     .eq("user_id", userId)
     .in("competition_id", competitionIds);
 }
+
+/**
+ * Take them out of this trip's GAMES: vacate any match seat they hold, and drop
+ * their `game_participants` rows.
+ *
+ * ── The bug this exists for (#1013) ────────────────────────────────────────
+ * Removal deleted `trip_members` and cleared `team_assignments`, and stopped
+ * there. `game_matches.side_a/side_b` still pointed at them, so the seat kept
+ * rendering — as `"Player"`, because names resolve through `tripMembers.list`
+ * and they are no longer on it. The seat looked like a person nobody could act
+ * on: not assignable, not clearable, not anybody.
+ *
+ * This is the same removal-that-clears-everything-but-one-table shape as
+ * `clearTripTeamAssignments` above and #882's participant zombies, arriving for
+ * the third time through a third table.
+ *
+ * ── Why VACATE rather than tombstone ───────────────────────────────────────
+ * An unfilled seat is a state the game already has and already renders: matches
+ * sit empty through the whole of setup, `setPairings` writes `null` sides on
+ * purpose, and `assignPlayer` vacates a seat every time it moves someone. So
+ * there is nothing to invent — the seat goes back to the state it was in before
+ * anyone was put in it. Readiness is DERIVED (`isConfigured` recomputes
+ * `paired === total` on every read), so the game returns to Setting-up with no
+ * state written anywhere.
+ *
+ * ── Why a USER side and not a doubles side ─────────────────────────────────
+ * A 1v1 seat IS the person, so it empties. A 2v2 seat is a `play_group` SHARED
+ * with their partner — emptying it would remove the partner too, from a match
+ * they are still in. Their membership of that group is the `game_participants`
+ * row, so deleting the row below is what takes them out of the pair, and the
+ * side survives with its remaining member. Both cases are handled by the same
+ * two steps; only one of them touches the JSONB.
+ *
+ * ── The order is load-bearing ──────────────────────────────────────────────
+ * Seats first, participant rows second. The participant row is what makes a
+ * person a member of a doubles side; delete it first and a `play_group` side
+ * can no longer be resolved to them at all.
+ *
+ * Best-effort, exactly like `clearTripTeamAssignments`: the removal the owner
+ * already watched succeed must not fail because the tidy-up did, and a failure
+ * leaves the state we were already in rather than a worse one.
+ *
+ * NOTE this runs only AFTER `findContributionBlockers` has passed, which is what
+ * makes it safe. A match with a recorded result — scores, hole outcomes, a
+ * decided status — refuses the removal outright, so a seat is never vacated out
+ * from under a result. That guard is the precondition for this function, not a
+ * separate concern.
+ */
+export async function vacateTripGameSeats(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<void> {
+  const { data: games } = await supabase.from("games").select("id").eq("trip_id", tripId);
+  const gameIds = ((games ?? []) as { id: string }[]).map((g) => g.id);
+  if (gameIds.length === 0) return;
+
+  type Side = { type?: string; id?: string } | null;
+  const { data: matches } = await supabase
+    .from("game_matches")
+    .select("id, game_id, side_a, side_b")
+    .in("game_id", gameIds);
+
+  for (const m of (matches ?? []) as { id: string; game_id: string; side_a: Side; side_b: Side }[]) {
+    const onA = m.side_a?.id === userId;
+    const onB = m.side_b?.id === userId;
+    if (!onA && !onB) continue;
+
+    await supabase
+      .from("game_matches")
+      .update(onA ? { side_a: null } : { side_b: null })
+      .eq("id", m.id);
+
+    // A match-play handicap is RELATIVE — `setHandicap` gives one side the
+    // strokes and zeroes the other — so the survivor's number was set against
+    // the person who just left and means nothing without them. `assignPlayer`
+    // already clears both sides' handicaps whenever it vacates a match; this is
+    // the same clean-up for the same reason. The handicap's home follows the
+    // side's type: a user side keeps it on `game_participants`, a doubles side
+    // on `play_groups`.
+    const other = onA ? m.side_b : m.side_a;
+    if (other?.id) {
+      if (other.type === "play_group") {
+        await supabase
+          .from("play_groups")
+          .update({ handicap_strokes: null })
+          .eq("id", other.id)
+          .eq("game_id", m.game_id);
+      } else {
+        await supabase
+          .from("game_participants")
+          .update({ handicap_strokes: null })
+          .eq("game_id", m.game_id)
+          .eq("user_id", other.id);
+      }
+    }
+  }
+
+  await supabase.from("game_participants").delete().eq("user_id", userId).in("game_id", gameIds);
+}
+
+/**
+ * Everything leaving a trip clears beyond the membership row — the ONE entry
+ * point both removal paths call.
+ *
+ * The umbrella exists so the next table is added in one place instead of two.
+ * `team_assignments` was found missing from both paths once (#120) and
+ * `game_participants` from both paths again (#951/#1013); each time the fix had
+ * to be made twice and could have been made once. Two call sites that must
+ * always agree is the shape CLAUDE.md #22 names — the delta between them IS the
+ * bug — so there is now no delta to have.
+ *
+ * **Any new path that deletes a `trip_members` row must call this**, and the
+ * source guard in `leaveTripAssignments.test.ts` fails the build if one doesn't.
+ * `merge_guest_to_real_user` stays exempt for the reason given above.
+ */
+export async function clearTripParticipation(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<void> {
+  await clearTripTeamAssignments(supabase, tripId, userId);
+  await vacateTripGameSeats(supabase, tripId, userId);
+}

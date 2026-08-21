@@ -6,7 +6,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
-import { clearTripTeamAssignments } from "../lib/leaveTrip";
+import { clearTripParticipation } from "../lib/leaveTrip";
 import {
   findContributionBlockers,
   contributionRefusalMessage,
@@ -471,11 +471,12 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Leaving the trip means leaving its cups. Without this the member keeps a
-      // `team_assignments` row for a trip they are no longer on, and the surfaces
-      // that read assignments directly go on counting them while the ones that
-      // intersect with the crew do not — see `clearTripTeamAssignments`.
-      await clearTripTeamAssignments(ctx.supabase, ctx.tripId, input.userId);
+      // Leaving the trip means leaving its cups AND its games. Without this the
+      // member keeps a `team_assignments` row for a trip they are no longer on
+      // (surfaces reading assignments directly go on counting them while the ones
+      // that intersect with the crew do not) and keeps their match seat, which
+      // renders as an unactionable "Player" — see `clearTripParticipation`.
+      await clearTripParticipation(ctx.supabase, ctx.tripId, input.userId);
 
       return { success: true };
     }),
