@@ -38,6 +38,8 @@ import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
+import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
+import { identityDiffers, orderDiffers, hasUnsavedTeamWork } from "@/lib/teamDraft";
 
 interface Props {
   competitionId: string;
@@ -1372,12 +1374,32 @@ export function TeamSheet({
   // action and are deliberately NOT part of it (see the rule at `orderDraft`).
   const trimmedName = name.trim();
   const trimmedShort = shortName.trim();
-  const identityDirty =
-    isEdit && team
-      ? trimmedName !== team.name ||
-        trimmedShort.toUpperCase() !== (team.short_name ?? "").toUpperCase() ||
-        selectedColor !== team.color
-      : true;
+
+  // The live form, and the two baselines it gets compared against.
+  //
+  // `serverBaseline` is the team as saved — the reference for "can this be saved?".
+  // `leaveBaseline` is the reference for "would leaving lose work?", which in CREATE
+  // mode is the EMPTY form the modal opened with, not the server (there is no server
+  // row yet). Same comparison, different baseline — see `teamDraft.ts` for why these
+  // are two questions and not one.
+  const currentIdentity = { name, shortName, color: selectedColor };
+  const serverBaseline = {
+    name: team?.name ?? "",
+    shortName: team?.short_name ?? "",
+    color: team?.color ?? "",
+  };
+  // The colour the picker opened on (create mode auto-picks the first unused one),
+  // captured once so moving OFF it counts as work worth keeping. useState with a lazy
+  // initialiser, NOT useRef — this is read during render to build the baseline, which
+  // is exactly what react-hooks/refs forbids of a ref.
+  const [openingColor] = useState(() => selectedColor);
+  const leaveBaseline = isEdit && team
+    ? serverBaseline
+    : { name: "", shortName: "", color: openingColor };
+
+  // Create mode is always submittable for a valid new team, edited or not — which is
+  // exactly why the leave-guard below can't reuse this.
+  const identityDirty = isEdit && team ? identityDiffers(currentIdentity, serverBaseline) : true;
 
   // Roster section data (edit mode). Deduped against any other observer of the
   // same query keys (the Rosters overlay / leaderboard), so these are cache hits.
@@ -1433,12 +1455,29 @@ export function TeamSheet({
 
   // Dirty only when the draft actually differs — dragging a row and putting it
   // back leaves Save disabled, same as retyping the original name.
-  const orderDirty =
-    orderDraft !== null &&
-    (orderDraft.length !== serverOrderedIds.length ||
-      !orderDraft.every((id, i) => id === serverOrderedIds[i]));
+  const orderDirty = orderDiffers(orderDraft, serverOrderedIds);
 
   const canSubmit = !!trimmedName && !!trimmedShort && (identityDirty || orderDirty);
+
+  // ── Confirm-on-leave ──────────────────────────────────────────────────────
+  // Every exit from this modal — Cancel, the ×, and a backdrop tap — used to call
+  // onClose() bare, so an in-progress rename / recolour / reorder died silently on a
+  // stray tap outside the card. The four game-settings surfaces already guard exactly
+  // this with DiscardChangesPrompt; this is the same gate on the same class of draft,
+  // not a new mechanism.
+  //
+  // SCOPE, deliberately: identity + order only. Add / remove / captain ★ have already
+  // been written by the time you get here, so the prompt must not offer to undo them —
+  // hence the custom `message` rather than the default "your changes".
+  const unsavedWork = hasUnsavedTeamWork({
+    identity: currentIdentity,
+    baseline: leaveBaseline,
+    orderDraft,
+    serverOrder: serverOrderedIds,
+  });
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  // `saving` and `requestClose` live below, next to the mutations they read —
+  // `create` / `update` are declared after this point.
 
   // The leaderboard roll-up (competitions.leaderboard) bakes in each team's
   // color / name / short_name, and the board renders from that bootstrap-seeded
@@ -1471,6 +1510,20 @@ export function TeamSheet({
       utils.competitions.myTeamColor.invalidate({ tripId });
     },
   });
+
+  const saving = create.isPending || update.isPending || reorder.isPending;
+
+  /**
+   * The ONE exit path. Cancel, the ×, and the backdrop all route through it, so no
+   * dismissal can skip the gate — the bug being fixed was three call sites each
+   * calling onClose() directly, and only a single funnel keeps a fourth from
+   * reintroducing it.
+   */
+  function requestClose() {
+    if (saving) return; // a commit is in flight; let it land rather than racing it
+    if (unsavedWork) return setConfirmLeave(true);
+    onClose();
+  }
 
   function handleNameChange(value: string) {
     setName(value);
@@ -1579,7 +1632,7 @@ export function TeamSheet({
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         className="flex w-full max-w-md flex-col rounded-t-2xl sm:rounded-2xl"
@@ -1599,7 +1652,7 @@ export function TeamSheet({
           </h3>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close"
             className="flex h-8 w-8 items-center justify-center rounded-lg"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -1816,14 +1869,17 @@ export function TeamSheet({
             }}
           >
             {/* Cancel discards the whole draft — identity AND order — by closing;
-                the local state dies with the unmount, so nothing is written.
+                the local state dies with the unmount, so nothing is written. It now
+                asks first when there IS a draft (requestClose), because the same tap
+                used to throw away a rename with no way back.
                 It does NOT undo an add, a remove, or a captain change: those are
                 membership acts that applied when tapped. Deliberate, per the
-                rule at `orderDraft`, not an oversight. */}
+                rule at `orderDraft`, not an oversight — and the reason the prompt
+                names identity + order specifically instead of "your changes". */}
             <button
               type="button"
-              onClick={onClose}
-              disabled={create.isPending || update.isPending || reorder.isPending}
+              onClick={requestClose}
+              disabled={saving}
               className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
               style={{
                 background: "transparent",
@@ -1848,6 +1904,34 @@ export function TeamSheet({
               {isEdit ? "Save Team" : "Add Team"}
             </button>
           </div>
+        )}
+
+        {/* Portals to body at z-[60], so it clears this modal's z-50 card.
+            Rendered INSIDE the card on purpose: a portal's React events bubble
+            through the REACT tree, not the DOM one, so a prompt mounted as a
+            sibling of the card would have its clicks reach the backdrop's
+            requestClose — re-arming the prompt the moment you dismissed it.
+            The card's stopPropagation is what contains that. */}
+        {confirmLeave && (
+          <DiscardChangesPrompt
+            saving={saving}
+            // Names the drafted set exactly. NOT "your changes": add / remove /
+            // captain ★ already wrote when they were tapped, and a prompt that
+            // offered to discard them would be making a promise it cannot keep.
+            message="Your team’s details and roster order haven’t been saved yet. Leaving now discards them."
+            onKeepEditing={() => setConfirmLeave(false)}
+            onDiscard={() => {
+              setConfirmLeave(false);
+              setOrderDraft(null);
+              onClose();
+            }}
+            // Dismiss FIRST: handleSave closes on success, but on failure it stays
+            // open and writes an inline error — which the prompt would cover.
+            onSave={() => {
+              setConfirmLeave(false);
+              void handleSave();
+            }}
+          />
         )}
       </div>
     </div>
