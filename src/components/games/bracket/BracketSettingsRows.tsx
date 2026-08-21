@@ -182,9 +182,10 @@ export function BracketSettingsRows({
           choice whose whole content is the control, and an accordion that opens
           to reveal one toggle is a tap that buys nothing.
 
-          Double elimination is deliberately shown-but-disabled — single ships
-          complete first, and a control that names the direction beats a silent
-          absence. */}
+          Double elimination was shown-but-disabled while single shipped first.
+          The engine is built (tree, advancement walk, placement, board), and the
+          persisted draw now follows this setting (`configDraft`), so the control
+          is live. A game saved as double gets a double draw. */}
       <ChecklistRow
         icon={ListTree}
         title="Bracket Type"
@@ -196,7 +197,7 @@ export function BracketSettingsRows({
             value={config.elimination}
             options={[
               { value: "single", label: "Single" },
-              { value: "double", label: "Double", disabled: true },
+              { value: "double", label: "Double" },
             ]}
             onChange={(next) => onConfigChange({ ...config, elimination: next })}
             disabled={!canEdit}
@@ -221,6 +222,12 @@ export function BracketSettingsRows({
           more. Below that it is shown-but-disabled with the reason, rather than
           vanishing (ChecklistRow's own posture — a setting isn't missing, its
           prerequisite is). */}
+      {/* HIDDEN under double elimination. A 3rd-place play-off is a single-elim
+          concept: double elim produces 3rd structurally (the last entrant out of the
+          lower bracket), so offering the toggle would be a second answer to a question
+          the format has already settled — and `buildDoubleDraw` emits no consolation
+          match for it to control. */}
+      {config.elimination !== "double" && (
       <ChecklistRow
         icon={Medal}
         title="3rd-place match"
@@ -251,6 +258,7 @@ export function BracketSettingsRows({
           />
         }
       />
+      )}
 
       {/* MATCH FORMAT — was "Entrants", which collided with "The Field": both
           sound like "who is in", and only one of them is. This row is about the
