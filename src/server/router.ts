@@ -3,6 +3,7 @@ import { usersRouter } from "./routers/users";
 import { tripsRouter } from "./routers/trips";
 import { tripMembersRouter } from "./routers/tripMembers";
 import { ghostCrewRouter } from "./routers/ghostCrew";
+import { invitesRouter } from "./routers/invites";
 import { ideasRouter } from "./routers/ideas";
 import { datePollRouter } from "./routers/datePoll";
 import { expensesRouter } from "./routers/expenses";
@@ -31,6 +32,7 @@ export const appRouter = router({
   trips: tripsRouter,
   tripMembers: tripMembersRouter,
   ghostCrew: ghostCrewRouter,
+  invites: invitesRouter,
   ideas: ideasRouter,
   datePoll: datePollRouter,
   expenses: expensesRouter,
