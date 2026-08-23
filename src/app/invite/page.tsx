@@ -6,6 +6,7 @@ import { resolveAccessRoute } from "@/lib/accessRoute";
 import { resolveInviteLink, viewerCanSeeTrip } from "@/server/lib/inviteLink";
 import IdentityChoice from "./IdentityChoice";
 import InviteMessage from "./InviteMessage";
+import { buildAuthHandoff } from "./authHandoff";
 
 /**
  * Invite landing — ROUTING ONLY.
@@ -68,6 +69,12 @@ export default async function InvitePage({
     // the address has an account, sign up if it doesn't), and `invite` rides
     // along so the auth page can name the trip and prefill the address without
     // any of that being readable — or writable — in the URL.
+    //
+    // The return path comes back HERE, not to the trip — see `authHandoff.ts`.
+    // Someone who takes the "Already have an account? Sign in" escape from the
+    // sign-up form arrives as a DIFFERENT account than the invite names, and
+    // sending them onward to the trip lands them on its no-access state with
+    // the claim never offered.
     case "authenticate":
       // …unless the link no longer names anyone. A CLAIM merges the placeholder
       // away, so the invited address ends up held by nobody: `hasAccount` is
@@ -89,10 +96,7 @@ export default async function InvitePage({
           />
         );
       }
-      redirect(
-        `/login?mode=${route.mode}&next=${encodeURIComponent(route.next)}` +
-          `&invite=${encodeURIComponent(invite!.token)}`
-      );
+      redirect(buildAuthHandoff({ mode: route.mode, token: invite!.token }));
 
     // Branch 2 — a session, but a different account. Never resolved silently:
     // signing someone out without asking is hostile, and guessing they meant

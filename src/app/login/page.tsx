@@ -39,6 +39,11 @@ export default async function LoginPage({
         resourceName: invite.target.resourceName,
         inviterName: invite.inviterName,
         prefillEmail: invite.addressee.email,
+        // Only set when a placeholder is actually standing and claimable, so the
+        // sign-in offer the header makes is one the app can keep. It is the
+        // claim (migration 141) that makes "sign in with the account you already
+        // have" work at all — before that, the sentence would have been a lie.
+        claimableName: invite.placeholder?.name ?? null,
       }
     : null;
 

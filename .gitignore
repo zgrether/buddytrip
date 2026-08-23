@@ -61,3 +61,8 @@ next-env.d.ts
 # Playwright auth state (session — never commit)
 e2e/.auth/
 .next-measure/
+
+# Throwaway scripts run from the repo root so they can resolve node_modules.
+# They routinely carry local Supabase keys; one reached a commit and was caught
+# by push protection rather than by anything here.
+/*.scratch.mjs
