@@ -158,9 +158,13 @@ export default function IdentityChoice({
               </dl>
             </div>
 
+            {/* One line, about IDENTITY. An earlier draft also explained that
+                anything already recorded for this person would become theirs —
+                cut, because the reader is usually someone who just got invited,
+                has no scores yet, does not know the concept, and did not ask.
+                This screen has one job: confirm this is you at another address. */}
             <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Any scores already entered for {claimable.name} become yours. Only continue if that
-              invite was meant for you.
+              Only continue if that&apos;s another email of yours.
             </p>
 
             {claim.error && (
