@@ -54,6 +54,26 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 - **Check findings against in-flight work before reporting.** Before finalizing
   a report or PR, check it against open branches/PRs and say so explicitly if a
   finding contradicts or undermines one.
+- **A message that states a finding must be PRODUCED BY the thing that found
+  it.** If the text says "none" and the search did not run, the message is a
+  literal, not a result — and it is indistinguishable from a real one.
+
+  Worked instance: `grep … src/ | head -5; echo "(none — app never calls
+  storage)"` printed its conclusion for a grep that never executed, because the
+  `&&` chain had already broken on a failed `git checkout` and the `;` ran the
+  echo regardless. The app *does* call storage. Same family as `| head` masking
+  a non-zero exit, and as a skipped test reporting green: **the reporting was
+  separable from the check.**
+
+  So: derive the summary from the output (`n=$(… | wc -l); echo "$n hits"`),
+  never pre-write it. Applies to echo-the-conclusion shell, hardcoded summary
+  strings in scripts, and any place a human-readable claim can be emitted
+  without the work behind it having happened.
+
+  The companion error, from the other direction: **absence of matches is
+  absence of search.** The same grep passed `--include=*.ts` at a `.tsx` file.
+  Before reading "no hits" as "does not exist", check that the filter could
+  have seen it.
 
 ## Issue Tracking (GitHub issues + `TRACKER.md`)
 
