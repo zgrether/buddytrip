@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
 import { config } from "dotenv";
+import { assertLocalTestDatabase } from "./assertLocalTestDatabase";
 
 config({ path: resolve(__dirname, "../../../.env.local") });
 
@@ -44,6 +45,12 @@ const USERS = [
 const PASSWORD = "BuddyTripTest2026!";
 
 export async function setup() {
+  // BEFORE any client is built, and before the first write. This is the single
+  // chokepoint every run passes through, which is why the guard lives here
+  // rather than in `test-setup.ts` (per-file) or in a convention nobody can
+  // enforce. See `assertLocalTestDatabase` for what it caught.
+  assertLocalTestDatabase(SUPABASE_URL);
+
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const result: Record<string, SharedUser> = {};
 

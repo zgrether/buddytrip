@@ -38,6 +38,35 @@ export type ResolvedInviteLink = {
   addressee: LinkAddressee;
   /** Who sent it, for the copy that names them. Null if the row lost its author. */
   inviterName: string | null;
+  /**
+   * The placeholder this token was addressed to, when one is still standing on
+   * this trip and can be claimed. `null` once it has been merged away — by
+   * signup, by an owner's link, or by a claim.
+   *
+   * The NAME is the point: the claim screen has to say whose history it is
+   * about to attach, because that sentence is the entire narrowing on a
+   * forwardable token (migration 141). A forwardee reads a name that isn't
+   * theirs and stops.
+   */
+  placeholder: { name: string } | null;
+  /**
+   * The link named someone, and no longer names anyone reachable: the invite is
+   * accepted AND no `users` row holds the address — neither an account nor a
+   * placeholder.
+   *
+   * This exists because a CLAIM creates that state and nothing else describes
+   * it. After a claim the address belongs to nobody: `hasAccount` is false, so
+   * an unauthenticated visitor to the same link would be routed to SIGN UP with
+   * it prefilled, producing a brand-new empty account that lands on "You're not
+   * on this trip". A dead end manufactured by the fix.
+   *
+   * Deliberately NOT the same thing as `accepted_at`, and resolution is NOT
+   * gated on it. Signup stamps `accepted_at` for every invite to an address the
+   * moment that address signs up, including for people who went on to join
+   * perfectly well — refusing those links would break the re-click that branch
+   * 1 exists to serve.
+   */
+  spent: boolean;
 };
 
 /**
@@ -66,7 +95,9 @@ export async function resolveInviteLink(
 
   const { data: invite, error } = await admin
     .from("invites")
-    .select("token, trip_id, email, created_by, trips(title), inviter:users!invites_created_by_fkey(name)")
+    .select(
+      "token, trip_id, email, created_by, accepted_at, trips(title), inviter:users!invites_created_by_fkey(name)"
+    )
     .eq("token", token)
     .maybeSingle();
 
@@ -82,6 +113,8 @@ export async function resolveInviteLink(
   const email = (invite.email ?? "").trim().toLowerCase();
   if (!email) return null;
 
+  const addressee = await lookupAddressee(admin, email, invite.trip_id);
+
   return {
     token,
     tripId: invite.trip_id,
@@ -91,29 +124,70 @@ export async function resolveInviteLink(
     },
     addressee: {
       email,
-      hasAccount: await addressHasAccount(admin, email),
+      hasAccount: addressee.hasAccount,
     },
     inviterName: inviter?.name ?? null,
+    placeholder: addressee.placeholder,
+    spent: Boolean(invite.accepted_at) && !addressee.exists,
   };
 }
 
 /**
- * Whether an address already has a real account, which is what picks sign-in
- * over sign-up. A `users` row with `is_guest = true` is a PLACEHOLDER, not an
- * account — that is precisely the invited-but-never-signed-up person, who needs
- * sign-up. The row is replaced by a real one at signup, when
- * `handle_new_user` → `merge_guest_to_real_user` converts it.
+ * Everything the address itself tells us, in one read.
+ *
+ * `hasAccount` is what picks sign-in over sign-up. A `users` row with
+ * `is_guest = true` is a PLACEHOLDER, not an account — that is precisely the
+ * invited-but-never-signed-up person, who needs sign-up. The row is replaced by
+ * a real one at signup, when `handle_new_user` → `merge_guest_to_real_user`
+ * converts it.
+ *
+ * `exists` is the same read's other half: whether ANY row holds the address.
+ * It separates "already an account" from "nobody at all", which is the state a
+ * claim leaves behind and the only way to tell a spent link from a fresh one.
+ *
+ * `placeholder` is offered ONLY when that guest is on THIS trip and carries no
+ * `deleted_at`. Both conditions mirror guards `claim_placeholder_by_invite`
+ * enforces itself — the DB is the authority, and this is the courtesy on top of
+ * it, so the screen never renders an offer whose only outcome is a refusal.
+ * (`users.email` is UNIQUE and `ghostCrew.create` reuses one guest row across
+ * trips, so a placeholder for this address may well exist while belonging to
+ * some other trip entirely.)
  */
-async function addressHasAccount(
+async function lookupAddressee(
   admin: ReturnType<typeof createAdminClient>,
-  email: string
-): Promise<boolean> {
+  email: string,
+  tripId: string
+): Promise<{
+  exists: boolean;
+  hasAccount: boolean;
+  placeholder: { name: string } | null;
+}> {
   const { data } = await admin
     .from("users")
-    .select("id, is_guest")
+    .select("id, name, is_guest, deleted_at")
     .eq("email", email)
     .maybeSingle();
-  return Boolean(data && data.is_guest === false);
+
+  if (!data) return { exists: false, hasAccount: false, placeholder: null };
+  if (data.is_guest === false) return { exists: true, hasAccount: true, placeholder: null };
+  if (data.deleted_at) return { exists: true, hasAccount: false, placeholder: null };
+
+  const { data: membership } = await admin
+    .from("trip_members")
+    .select("nickname")
+    .eq("trip_id", tripId)
+    .eq("user_id", data.id)
+    .maybeSingle();
+
+  return {
+    exists: true,
+    hasAccount: false,
+    // Same COALESCE the RPC applies when it reads the name off the row it is
+    // about to repoint: the trip nickname is what the crew recognises.
+    placeholder: membership
+      ? { name: membership.nickname || data.name || "this crew member" }
+      : null,
+  };
 }
 
 /**
