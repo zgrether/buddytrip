@@ -1170,6 +1170,19 @@ produced it. Three channels have actually bitten:
   `global-setup.ts`, aborts any run pointed at a non-local host.
   `ALLOW_REMOTE_TEST_DB=1` is the per-command opt-in. Do not weaken it to a
   warning; the failure mode is "the run looked completely normal".
+  **And the env is now SPLIT, so the guard is not load-bearing on its own:**
+  `.env.test` (the local stack) is loaded AHEAD of `.env.local` (whatever you
+  develop against — prod is the normal choice), by ONE shared loader
+  (`src/__tests__/helpers/testEnv.ts`) that both `vitest.config.mts` and
+  `global-setup.ts` call. A real env var beats both files, which is how CI's
+  ephemeral stack wins. **The reason it is one loader:** the guard judges what
+  the run RESOLVES, so a guard reading one file while the clients are built
+  from another is a guard that cannot see what it guards — pinned by
+  `testEnv.test.ts`, whose decisive case removes `.env.test` and asserts the
+  resolution falls through to `.env.local`'s prod URL *and* that the guard
+  throws on it. The earlier fix — repointing `.env.local` at local — is NOT the
+  answer: it silently changes which data `next dev` shows, paying an unrelated
+  cost to fix this one.
   **A `supabase migration up` does NOT reload PostgREST's schema cache**, so a
   brand-new function 404s from `.rpc()` even though it exists. Fix without
   resetting the shared stack (which would wipe another session's data):

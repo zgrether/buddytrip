@@ -12,12 +12,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
-import { config } from "dotenv";
 import { assertLocalTestDatabase } from "./assertLocalTestDatabase";
+import { loadTestEnv, resolvedSupabaseUrl } from "./testEnv";
 
-config({ path: resolve(__dirname, "../../../.env.local") });
+// The SAME loader `vitest.config.mts` uses — `.env.test` (local stack) ahead of
+// `.env.local` (the app's own environment, which points at prod). Two callers
+// resolving the environment separately is how the guard below ends up judging
+// something other than what the clients are built from.
+loadTestEnv(resolve(__dirname, "../../.."));
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_URL = resolvedSupabaseUrl()!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const AUTH_FILE = resolve(__dirname, "../../../.test-auth.json");
 
