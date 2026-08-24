@@ -21,6 +21,18 @@ export type DeepLinkContext = {
   /** Who sent it, when known. */
   inviterName: string | null;
   /**
+   * The crew name waiting on this invite, when a placeholder is still standing
+   * and can be claimed — otherwise null.
+   *
+   * It exists so the SIGN-UP screen can stop implying a second account is
+   * required. Someone invited at an address they don't use for BuddyTrip reads
+   * "Create your account to see it", concludes the app wants them to make a
+   * duplicate, and backs out — before ever reaching the sign-in link at the
+   * bottom of the form. Naming the alternative in the same breath as the
+   * instruction is what prevents that.
+   */
+  claimableName: string | null;
+  /**
    * The address the link was sent to. PREFILLED, NEVER LOCKED (#981): locking
    * would block anyone who genuinely wants a different address, while
    * prefilling removes the retyping that creates the mismatch in the first
@@ -139,9 +151,20 @@ function LinkContextHeader({
           </>
         )}
       </span>{" "}
-      {mode === "signup"
-        ? "Create your account to see it."
-        : "Sign in and we'll take you straight there."}
+      {mode === "signin" ? (
+        "Sign in and we'll take you straight there."
+      ) : context.claimableName ? (
+        // Both routes, in the order a person needs them. The second sentence is
+        // the whole point: without it the reader believes a second account is
+        // being demanded of them and leaves.
+        <>
+          Create an account with this email — or if you already use BuddyTrip
+          with a different one, sign in with that instead and you can still join
+          as <strong style={{ color: "var(--color-bt-text)" }}>{context.claimableName}</strong>.
+        </>
+      ) : (
+        "Create your account to see it."
+      )}
     </p>
   );
 }

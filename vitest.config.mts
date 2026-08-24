@@ -1,9 +1,15 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
-import { config } from "dotenv";
+import { loadTestEnv } from "./src/__tests__/helpers/testEnv";
 
-// Load .env.local for test environment
-config({ path: path.resolve(__dirname, ".env.local") });
+// `.env.test` (the local Supabase stack) ahead of `.env.local` (the app's own
+// environment, which points at prod so `next dev` shows real data). Real env
+// vars beat both, which is how CI's ephemeral stack wins.
+//
+// Shared with `global-setup.ts` deliberately: the guard that refuses a non-local
+// database reads whatever this resolves to, and a guard reading a different
+// resolution than the clients use cannot see what it is guarding.
+loadTestEnv(__dirname);
 
 export default defineConfig({
   // Match the Next app's automatic JSX runtime so component .tsx files (which omit

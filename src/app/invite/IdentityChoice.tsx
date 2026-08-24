@@ -91,20 +91,25 @@ export default function IdentityChoice({
           <h1 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
             {inviterName ? `${inviterName} added you to ${tripName}` : `You've been added to ${tripName}`}
           </h1>
-          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            That invite went to{" "}
-            <strong style={{ color: "var(--color-bt-text)" }}>{invitedEmail}</strong>, but
-            you&apos;re signed in
-            {viewerEmail ? (
-              <>
-                {" "}
-                as <strong style={{ color: "var(--color-bt-text)" }}>{viewerEmail}</strong>
-              </>
-            ) : (
-              " as someone else"
-            )}
-            .
-          </p>
+          {/* Suppressed while confirming: the panel below restates both
+              addresses, and saying each of them twice on one screen makes the
+              reader skim past the pair that actually needs checking. */}
+          {!(confirming && claimable) && (
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              That invite went to{" "}
+              <strong style={{ color: "var(--color-bt-text)" }}>{invitedEmail}</strong>, but
+              you&apos;re signed in
+              {viewerEmail ? (
+                <>
+                  {" "}
+                  as <strong style={{ color: "var(--color-bt-text)" }}>{viewerEmail}</strong>
+                </>
+              ) : (
+                " as someone else"
+              )}
+              .
+            </p>
+          )}
         </div>
 
         {confirming && claimable ? (
@@ -113,25 +118,54 @@ export default function IdentityChoice({
              address the invite went to. A person who was forwarded this link
              reads someone else's name here and backs out. */
           <div className="space-y-4">
+            {/* The two facts a person has to check are a NAME and an ADDRESS.
+                In prose they read as filler and get skimmed; as labelled rows
+                they read as a form of identification, which is what they are.
+                Someone who was forwarded this link sees a name that is not
+                theirs next to an address that is not theirs. */}
             <div
-              className="space-y-2 rounded-xl border px-4 py-3 text-sm"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+              className="rounded-xl border px-4 py-3"
+              style={{ borderColor: "var(--color-bt-border)" }}
             >
-              <p>
-                This will attach{" "}
-                <strong style={{ color: "var(--color-bt-text)" }}>{claimable.name}</strong>
-                &apos;s place on {tripName} — and anything already recorded for them — to{" "}
-                <strong style={{ color: "var(--color-bt-text)" }}>
-                  {viewerEmail ?? "this account"}
-                </strong>
-                .
-              </p>
-              <p>
-                The invite was sent to{" "}
-                <span className="font-mono text-[12px]">{invitedEmail}</span>. Only continue if
-                that&apos;s you.
-              </p>
+              <dl className="space-y-2.5 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt style={{ color: "var(--color-bt-text-dim)" }}>You&apos;d join as</dt>
+                  <dd
+                    className="text-right font-semibold"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {claimable.name}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt style={{ color: "var(--color-bt-text-dim)" }}>Invite was sent to</dt>
+                  <dd
+                    className="break-all text-right font-mono text-[12px]"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {invitedEmail}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt style={{ color: "var(--color-bt-text-dim)" }}>You&apos;re signed in as</dt>
+                  <dd
+                    className="break-all text-right font-mono text-[12px]"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {viewerEmail ?? "this account"}
+                  </dd>
+                </div>
+              </dl>
             </div>
+
+            {/* One line, about IDENTITY. An earlier draft also explained that
+                anything already recorded for this person would become theirs —
+                cut, because the reader is usually someone who just got invited,
+                has no scores yet, does not know the concept, and did not ask.
+                This screen has one job: confirm this is you at another address. */}
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Only continue if that&apos;s another email of yours.
+            </p>
 
             {claim.error && (
               <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
@@ -148,7 +182,7 @@ export default function IdentityChoice({
                 style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
                 {claim.isPending && <Loader2 size={16} className="animate-spin" />}
-                Yes — join as {claimable.name}
+                Yes — I&apos;m {claimable.name}
               </button>
 
               <button
