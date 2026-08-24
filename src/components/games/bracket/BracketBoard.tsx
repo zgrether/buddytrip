@@ -6,7 +6,7 @@ import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
 import { bracketDisplay, roundName } from "@/lib/bracketLabels";
 import { doubleBracketDisplay, doubleRoundName } from "@/lib/bracketDoubleLabels";
-import { roundLayout, lowerTierCentres, lowerColumnFromRight, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
+import { roundLayout, lowerTierCentres, lowerColumn, BRACKET_METRICS, SLOT_HEIGHT, MATCH_HEADER_HEIGHT, BRACKET_COLUMN_WIDTH } from "@/lib/bracketLayout";
 import { matchStakes, type MatchStakes } from "@/lib/bracketStakes";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
 
@@ -140,11 +140,21 @@ export function BracketBoard({
    * rather than half, because two cards sharing a column half a slot apart overlap —
    * cards are 88px and a slot is 100px. Spacing and column model are one decision.
    */
-  const lowerColumnsFromRight = (k: number) => lowerColumnFromRight(k, lowerRoundTotal);
-  const lowerColumnCount = lowerRoundTotal === 0 ? 0 : Math.max(...lowerRoundsAll.map(lowerColumnsFromRight));
+  /**
+   * BOTH TIERS START AT COLUMN 1, and the lower tier extends RIGHT.
+   *
+   * Upper round r and lower round r share a column, which is what the spreadsheet and
+   * the printed references both do. The lower tier has more rounds, so it continues
+   * past the upper bracket's last column, and the grand final sits right of both.
+   *
+   * Counting from the right instead put the lower tier's surplus on the LEFT and shoved
+   * the upper bracket over — upper round 1 at x=933 against lower round 1 at x=29 on a
+   * 64-entrant board. Same column count either way; only the end the surplus lands on
+   * changes.
+   */
+  const lowerColumnCount = lowerRoundTotal === 0 ? 0 : Math.max(...lowerRoundsAll.map(lowerColumn));
   const gridCols = Math.max(lastRound, lowerColumnCount) + 1;
-  /** Upper round r: r-th from the right among upper rounds. */
-  const upperColumn = (r: number) => gridCols - (lastRound - r + 1);
+  const upperColumn = (r: number) => r;
   /**
    * EVERY match renders, at its structural position, always (T1).
    *
@@ -222,9 +232,6 @@ export function BracketBoard({
       ? `Played only if ${name} wins match ${n}`
       : `Played only if the lower-bracket entrant wins match ${n}`;
   })();
-  /** Lower round k: its PAIR's column, counted from the right. */
-  const lowerColumnOf = (k: number) => gridCols - lowerColumnsFromRight(k);
-
   if (matches.length === 0) return null;
 
   return (
@@ -298,17 +305,17 @@ export function BracketBoard({
             </div>
           ))}
 
-          {[...new Set(lowerRounds.map(lowerColumnOf))].sort((a, b) => a - b).map((col) => (
-            // One cell per COLUMN — a column now holds a minor round AND the major it
-            // feeds, so grouping by round would put two grid items in one cell, where
-            // they overlap rather than stack.
+          {lowerRounds.map((round) => (
+            // One cell per ROUND, which is now also one per column: lower round k shares
+            // upper round k's column, so every match of a round lands in the same place.
+            // (This grouped by COLUMN while majors shared one with their minor.)
             <div
-              key={`lc${col}`}
-              style={{ gridColumn: col, gridRow: 4, position: "relative", height: lowerHeight }}
+              key={`l${round}`}
+              style={{ gridColumn: lowerColumn(round), gridRow: 4, position: "relative", height: lowerHeight }}
             >
               {lower
-                .filter((m) => lowerColumnOf(m.round) === col)
-                .sort((a, b) => a.round - b.round || a.slot - b.slot)
+                .filter((m) => m.round === round)
+                .sort((a, b) => a.slot - b.slot)
                 .map((m) => (
                   <div
                     key={matchKey(m)}

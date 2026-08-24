@@ -7,7 +7,7 @@ import {
   SLOT_HEIGHT,
   MATCH_HEADER_HEIGHT,
   lowerTierCentres,
-  lowerColumnFromRight,
+  lowerColumn,
   lowerColumnsDoNotOverlap,
   type BracketMetrics,
 } from "./bracketLayout";
@@ -110,7 +110,9 @@ describe("lowerTierCentres — the lower tier centres on its SAME-TIER feeders",
   it("lays round 1 out uniformly — it is the tier's ground truth", () => {
     const c = lowerTierCentres(full, M);
     expect(c.get(k(1, 1))).toBe(M.cardHeight / 2);
-    expect(c.get(k(1, 2))! - c.get(k(1, 1))!).toBe(unit * 2); // two slots: each match has its major beneath it
+    // One slot. It was two while a major shared this column and needed room beneath
+    // each match; left-anchored columns give every round its own column again.
+    expect(c.get(k(1, 2))! - c.get(k(1, 1))!).toBe(unit);
   });
 
   it("OFFSETS a one-feeder match from its feeder, never level with it", () => {
@@ -120,8 +122,11 @@ describe("lowerTierCentres — the lower tier centres on its SAME-TIER feeders",
     // the upper arm arriving from above.
     const c = lowerTierCentres(full, M);
     expect(c.get(k(2, 1))).not.toBe(c.get(k(1, 1)));
-    expect(c.get(k(2, 1))! - c.get(k(1, 1))!).toBe(unit);
-    expect(c.get(k(2, 2))! - c.get(k(1, 2))!).toBe(unit);
+    // HALF a slot. A full slot was needed only while the consumer sat in its feeder's
+    // column, where anything less overlapped (88px cards, 100px slots). It is now
+    // BESIDE its feeder and cannot overlap at any offset.
+    expect(c.get(k(2, 1))! - c.get(k(1, 1))!).toBe(unit / 2);
+    expect(c.get(k(2, 2))! - c.get(k(1, 2))!).toBe(unit / 2);
   });
 
   it("centres a MINOR round BETWEEN its two feeders — the reported bug", () => {
@@ -158,7 +163,7 @@ describe("lowerTierCentres — the lower tier centres on its SAME-TIER feeders",
     const b = c.get(k(2, 2))!;
     expect(b).not.toBe(0);
     expect(b).not.toBe(a);          // never overlapping
-    expect(b - a).toBe(unit * 2);   // inherited the round's spacing
+    expect(b - a).toBe(unit);       // inherited the round's spacing
   });
 
   it("distributes evenly when a round has no anchors at all", () => {
@@ -166,7 +171,7 @@ describe("lowerTierCentres — the lower tier centres on its SAME-TIER feeders",
     const c = lowerTierCentres(orphaned, M);
     // Round 2 is the first round PRESENT, so it is treated as the tier's ground truth.
     expect(c.get(k(2, 1))).toBe(M.cardHeight / 2);
-    expect(c.get(k(2, 2))! - c.get(k(2, 1))!).toBe(unit * 2);
+    expect(c.get(k(2, 2))! - c.get(k(2, 1))!).toBe(unit);
   });
 
   it("returns a centre for every match it was given", () => {
@@ -221,22 +226,38 @@ describe("the invariant: no match sits level with a match it consumes", () => {
   });
 });
 
-describe("shared columns: a major sits in its minor feeder's column", () => {
-  it.each([8, 16, 32, 64])("makes the lower tier narrower than the upper bracket at %i", (n) => {
-    // The span fix, as arithmetic. The tier was (W-2) columns wider than the upper
-    // bracket and reached left of it; pairing each major with its minor makes it W-1.
+describe("left-anchored columns: lower round k shares upper round k's column", () => {
+  it.each([4, 8, 16, 32, 64])("puts every match of a lower round in ONE column at %i", (n) => {
+    // The reported defect: the board grouped lower matches by FEEDER CHAIN, so two
+    // matches of the same round landed in different columns while a match and its
+    // consumer shared one. A round is a column.
     const lower = buildDoubleDraw(n).filter((m) => m.bracket === "lower");
-    const total = new Set(lower.map((m) => m.round)).size;
-    const cols = new Set(lower.map((m) => lowerColumnFromRight(m.round, total)));
+    if (lower.length === 0) return;
+    const byRound = new Map<number, Set<number>>();
+    for (const m of lower) {
+      byRound.set(m.round, (byRound.get(m.round) ?? new Set()).add(lowerColumn(m.round)));
+    }
+    for (const [round, cols] of byRound) {
+      expect(cols.size, `round ${round} at ${n} spans ${cols.size} columns`).toBe(1);
+    }
+  });
+
+  it.each([4, 8, 16, 32, 64])("gives the lower tier MORE columns than the upper at %i", (n) => {
+    // The direction that changed. Counting from the right made the surplus extend LEFT
+    // and shove the upper bracket over; left-anchoring extends it RIGHT, where there is
+    // nothing to displace. The lower tier genuinely has 2(W-1) rounds against W, so it
+    // is wider — that was never the problem, only which end it grew from.
+    const lower = buildDoubleDraw(n).filter((m) => m.bracket === "lower");
+    if (lower.length === 0) return;
+    const cols = new Set(lower.map((m) => lowerColumn(m.round)));
     const upperRounds = Math.log2(2 ** Math.ceil(Math.log2(n)));
-    expect(cols.size, `lower columns at ${n}`).toBe(upperRounds - 1);
-    expect(cols.size).toBeLessThan(upperRounds);
+    expect(cols.size).toBe(2 * (upperRounds - 1));
+    expect(Math.min(...cols), "the lower tier starts at column 1, beside upper round 1").toBe(1);
   });
 
   it.each([3, 4, 5, 6, 7, 8, 9, 16, 32, 64])("never overlaps two cards in one column at %i", (n) => {
-    // The failure mode the change introduces, and the reason a one-feeder consumer now
-    // sits a FULL slot below its feeder rather than half: at half a slot two cards in
-    // one column would overlap, because a card is 88px and a slot is 100px.
+    // Still worth checking, though it is now hard to violate: a column holds one round,
+    // and a round's matches are spaced a full slot apart.
     const lower = buildDoubleDraw(n).filter((m) => m.bracket === "lower");
     if (lower.length === 0) return;
     const bad = lowerColumnsDoNotOverlap(lower, BRACKET_METRICS);
