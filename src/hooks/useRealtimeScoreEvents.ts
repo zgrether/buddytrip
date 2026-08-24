@@ -110,7 +110,36 @@ export function acquire(topic: string, handler: Handler): () => void {
     // zone would otherwise stay invisible until the backstop refetch — the same
     // self-heal useRealtimeGame does on its SUBSCRIBED tick.
     channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") for (const h of [...created.handlers]) h(null);
+      if (status === "SUBSCRIBED") {
+        for (const h of [...created.handlers]) h(null);
+        return;
+      }
+      /**
+       * A DEAD SUBSCRIPTION MUST SAY SO — CLAUDE.md #22, which this hook was not
+       * following while `useRealtimeChat` and `useRealtimeMembers` both were.
+       *
+       * Branching only on SUBSCRIBED makes a channel that never establishes
+       * indistinguishable from a healthy one with nothing to report: the board
+       * renders, looks right, and silently stops updating until the 5-minute
+       * backstop. That is the failure mode that cost chat three sessions, and it
+       * is the more likely one on a golf course — a backgrounded tab, a network
+       * handoff, a dead zone.
+       *
+       * Found while diagnosing the bracket-pick gap: the local browser could not
+       * hold a websocket at all (close code 1006), and chat and members each said
+       * so in the console while THIS hook — the one carrying every score and every
+       * pick — said nothing.
+       *
+       * Reporting only, deliberately. No retry and no state change: the client
+       * reconnects on its own and the SUBSCRIBED arm above backfills when it does.
+       */
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        console.error(
+          `[realtime] score-event channel "${topic}" is not live (status: ${status}). ` +
+            `Scores, bracket picks and lifecycle changes from other devices will not ` +
+            `arrive until it reconnects.`,
+        );
+      }
     });
 
     entry = created;
@@ -147,6 +176,15 @@ type ScoreEventUtils = {
   };
   scores: {
     listByGame: { invalidate: (i?: { tripId: string; gameId: string }) => unknown };
+  };
+  games: {
+    bracketDraw: {
+      invalidate: (
+        i?: { tripId: string; gameId: string },
+        f?: undefined,
+        o?: { cancelRefetch: boolean },
+      ) => unknown;
+    };
   };
 };
 
@@ -210,6 +248,44 @@ export function makeScoreEventHandler(
     } else {
       coalesceInvalidation(`scores:${tripId}:*`, () => {
         void utils.scores.listByGame.invalidate();
+      });
+    }
+
+    /**
+     * THE BRACKET'S SCORE. A pick is a result exactly as a hole score is, and it
+     * broadcasts on the same topic — migration 118's `bracket_matches_pick_broadcast`
+     * fires on `winner_entrant_id` changing — but this handler's key list did not
+     * carry the query that holds it, so the event arrived and refreshed nothing a
+     * bracket renders.
+     *
+     * The draw is `STRUCTURE_QUERY` (`staleTime: Infinity`), so nothing else was
+     * going to catch it either: no poll, and `games.configHash` deliberately
+     * EXCLUDES `winner_entrant_id` (CLAUDE.md #16 — a result must never churn the
+     * config hash), so the ~20s config sync is silent on picks by design. The only
+     * invalidators were the picking client's own mutation and finalize. That is
+     * CLAUDE.md #22's "two lists that happen to match", except they did not: your
+     * own picks appeared and everyone else's never did, until a hard reload.
+     *
+     * `cancelRefetch: false` for the same measured reason `BracketScoringSurface`
+     * uses it — a second invalidation during an in-flight refetch otherwise cancels
+     * it and the first response never reaches the cache
+     * (`src/lib/invalidateCancelsRefetch.test.ts`). A remote burst is precisely when
+     * that overlaps a local pick's refetch.
+     *
+     * Invalidate-only, like everything above: the payload is a SIGNAL (#20), and the
+     * refetch is what re-applies auth. Nothing here reads the event's contents.
+     */
+    if (gameId) {
+      coalesceInvalidation(`bracketDraw:${tripId}:${gameId}`, () => {
+        void utils.games.bracketDraw.invalidate({ tripId, gameId }, undefined, {
+          cancelRefetch: false,
+        });
+      });
+    } else {
+      coalesceInvalidation(`bracketDraw:${tripId}:*`, () => {
+        void utils.games.bracketDraw.invalidate(undefined, undefined, {
+          cancelRefetch: false,
+        });
       });
     }
   };
