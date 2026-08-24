@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Dice5, Lightbulb, Luggage, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -8,7 +8,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
-import { ROLE_COLOR, type BadgedRole } from "@/lib/roleColor";
+import { ROLE_COLOR, badgedRole, type BadgedRole } from "@/lib/roleColor";
 import { useIsShellDesktop, useHasRailRoom } from "./breakpoints";
 import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./rail/useRailWidth";
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
@@ -631,6 +631,39 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
   );
 }
 
+/**
+ * Which marks the rendered rows ACTUALLY paint — the key's input.
+ *
+ * `KeyEdge` below already promises the key "cannot describe a colour the rows
+ * don't paint". True, but that is about the swatch's VALUE, and it left the key
+ * free to NAME a mark no row carries: a plain Member with no cups read
+ * "Owner · Organizer · Cup", a key to three things none of which were on
+ * screen. This extends the same guarantee from colour to PRESENCE.
+ *
+ * Derived from the ROWS, not from the viewer's own role. The rail is a
+ * multi-trip list and someone can be an Organizer on one trip and a plain
+ * Member on three others, so "what role am I" answers a different question than
+ * "what are these marks" — and would be wrong here. Reads through the SAME
+ * `badgedRole` / `hasCompetition` that `RailTripRow` reads, so the key and the
+ * rows cannot drift (CLAUDE.md #24).
+ *
+ * Roles come back in the fixed Owner→Organizer order the key has always shown,
+ * NOT in row order, so the legend doesn't reshuffle as trips are added.
+ */
+export function railKeyMarks(
+  rows: { myRole?: string | null; hasCompetition?: boolean | null }[]
+): { roles: BadgedRole[]; cup: boolean } {
+  const present = new Set<BadgedRole>();
+  let cup = false;
+  for (const t of rows) {
+    const r = badgedRole(t.myRole);
+    if (r) present.add(r);
+    if (t.hasCompetition === true) cup = true;
+  }
+  const ordered: BadgedRole[] = (["Owner", "Organizer"] as const).filter((r) => present.has(r));
+  return { roles: ordered, cup };
+}
+
 /** The key's swatch — the same 3px edge the rows draw, from the same source,
  *  so the legend cannot describe a colour the rows don't paint. */
 function KeyEdge({ role }: { role: BadgedRole }) {
@@ -722,6 +755,35 @@ function TripsColumn({
   active.sort(compareActive);
   past.sort(comparePast);
 
+  const { roles: rolesPainted, cup: cupPainted } = railKeyMarks([...active, ...past]);
+  const keyItems: ReactNode[] = [];
+  for (const role of rolesPainted) {
+    keyItems.push(
+      <span key={role} className="inline-flex items-center gap-[7px] whitespace-nowrap">
+        <KeyEdge role={role} />
+        {role}
+      </span>
+    );
+  }
+  if (cupPainted) {
+    keyItems.push(
+      <span key="cup" className="inline-flex items-center gap-[7px] whitespace-nowrap">
+        <span
+          aria-hidden="true"
+          className="inline-flex h-3 w-3 items-center justify-center rounded-full"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          <Trophy size={7} strokeWidth={2.5} />
+        </span>
+        Cup
+      </span>
+    );
+  }
+
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
@@ -754,35 +816,24 @@ function TripsColumn({
           it just can't happen mid-pair. `RAIL_MIN_PX` was raised so the whole
           key fits on one line at the floor, making the wrap a safety net rather
           than the normal case. */}
-      <div
-        className="flex flex-wrap items-center gap-x-[7px] gap-y-[3px] px-1.5 pb-2 text-[11px]"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
-          <KeyEdge role="Owner" />
-          Owner
-        </span>
-        <span style={{ opacity: 0.35 }}>·</span>
-        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
-          <KeyEdge role="Organizer" />
-          Organizer
-        </span>
-        <span style={{ opacity: 0.35 }}>·</span>
-        <span className="inline-flex items-center gap-[7px] whitespace-nowrap">
-          <span
-            aria-hidden="true"
-            className="inline-flex h-3 w-3 items-center justify-center rounded-full"
-            style={{
-              background: "var(--color-bt-accent-faint)",
-              color: "var(--color-bt-accent)",
-              border: "1px solid var(--color-bt-accent-border)",
-            }}
-          >
-            <Trophy size={7} strokeWidth={2.5} />
-          </span>
-          Cup
-        </span>
-      </div>
+      {/* Built from `keyItems` above. The whole row is dropped when nothing is
+          marked — an empty key with two orphaned separators reads worse than
+          the over-full one this replaced. Separators are interleaved rather
+          than rendered per-item so the line never opens or closes on a `·`. */}
+      {keyItems.length > 0 && (
+        <div
+          data-testid="rail-key"
+          className="flex flex-wrap items-center gap-x-[7px] gap-y-[3px] px-1.5 pb-2 text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {keyItems.map((item, i) => (
+            <Fragment key={i}>
+              {i > 0 && <span style={{ opacity: 0.35 }}>·</span>}
+              {item}
+            </Fragment>
+          ))}
+        </div>
+      )}
 
       {isError ? (
         <RailLoadError onRetry={onRetry} />

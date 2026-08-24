@@ -154,6 +154,30 @@ describe("sendInvitationBlast — link selection", () => {
     expect(html).not.toContain("see what");
   });
 
+  it("does not promise the trip IMMEDIATELY — email signup confirms first (#1035)", async () => {
+    await sendInvitationBlast({ ...base, token: "abc123" });
+    const html = htmlOf();
+
+    /**
+     * The bare promise — "create your free account [and|—] you'll land straight
+     * on the trip" — is true for Continue with Google (no confirmation) and
+     * false for email/password (confirm your address first, several steps).
+     *
+     * Asserted as the OLD SENTENCE SHAPE rather than as an absence of the
+     * phrase "land straight on the trip", because the corrected copy still
+     * contains that phrase — it is merely scoped by "once that's done". A
+     * `not.toContain("land straight on the trip")` would therefore fail on the
+     * FIXED copy while the actual defect (an unqualified promise) went
+     * unexpressed. This regex matches the old sentence and cannot match the
+     * new one.
+     */
+    expect(html).not.toMatch(/free account\s*(&mdash;|—)?\s*(and\s+)?you(&apos;|')ll land straight/i);
+
+    // …and the qualifier is actually present, so this can't pass by the
+    // sentence having been deleted rather than corrected.
+    expect(html).toMatch(/once that(&apos;|')s done/i);
+  });
+
   it("carries the owner's message in BOTH variants", async () => {
     // The reason the token link goes through this builder rather than
     // sendInviteNewUser: that one has a canned body and would silently drop

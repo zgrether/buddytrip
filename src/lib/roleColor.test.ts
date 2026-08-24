@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROLE_COLOR, badgedRole } from "./roleColor";
+import { railKeyMarks } from "@/components/shell/ContextRail";
 
 const src = (p: string) => readFileSync(join(process.cwd(), "src", p), "utf8");
 
@@ -78,13 +79,33 @@ describe("source guard — no second copy of a role colour", () => {
     // longer exists. The only mentions left are the comments explaining why it
     // went, so comment lines are stripped and the check is on what can RENDER.
     //
-    // This used to assert exact markup (`<span>Owner</span>`) and broke the
-    // moment the key's spans were regrouped to stop the trophy wrapping away
-    // from its label — a true invariant reported as broken by a cosmetic
-    // change. The invariant is the three WORDS being present as label text, so
-    // it now matches a bare JSX text node on its own line: markup-tolerant, but
-    // still falsified if a label is deleted (a `role="Owner"` prop would not
-    // satisfy it).
+    // ── This assertion has now moved TWICE, in the same direction ───────────
+    // It began as exact markup (`<span>Owner</span>`) and broke when the key's
+    // spans were regrouped to stop the trophy wrapping away from its label — a
+    // true invariant reported as broken by a cosmetic change. It was relaxed to
+    // "the word appears as a bare JSX text node on its own line", and broke
+    // again for the same reason: #1036 made the key render only the marks the
+    // rows actually paint, so the two role labels are now produced by iterating
+    // `railKeyMarks(...)` and rendering `{role}` — the literals are gone from
+    // the markup while the invariant is not merely intact but STRONGER.
+    //
+    // `BadgedRole` is the typed union `"Owner" | "Organizer"`, so the labels are
+    // now exactly the role values and `tsc` guarantees both the words and the
+    // absence of any third one. A grep for literals cannot see that, and each
+    // time it has fired it has been wrong about the code and right only about
+    // the markup it happened to be written against.
+    //
+    // So the ROLE half is asserted where it now lives — behaviourally, via the
+    // predicate that produces the labels (fuller coverage in
+    // `components/shell/railKeyMarks.test.ts`). "Cup" is still a literal in the
+    // key's markup and is still checked as one.
+    for (const word of ["Owner", "Organizer"] as const) {
+      expect(
+        railKeyMarks([{ myRole: word }]).roles,
+        `the rail key should render "${word}" as a label`,
+      ).toEqual([word]);
+    }
+
     // Strip comment BLOCKS, not comment lines: the surviving "Admin" mentions
     // live inside a `{/* … */}` JSX comment whose continuation lines start with
     // ordinary prose, so a per-line filter walks straight past them.
@@ -93,12 +114,10 @@ describe("source guard — no second copy of a role colour", () => {
       .replace(/\/\/.*$/gm, "")
       .split("\n");
 
-    for (const word of ["Owner", "Organizer", "Cup"]) {
-      expect(
-        code.some((l) => l.trim() === word),
-        `the rail key should render "${word}" as a label`,
-      ).toBe(true);
-    }
+    expect(
+      code.some((l) => l.trim() === "Cup"),
+      'the rail key should render "Cup" as a label',
+    ).toBe(true);
     expect(
       code.join("\n"),
       "'Admin' names a grouping that no longer exists",

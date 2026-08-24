@@ -124,8 +124,29 @@ export async function sendInvitationBlast({
     ? `${BASE_URL}/invite?token=${encodeURIComponent(token!)}`
     : `${BASE_URL}/trips/${tripId}`;
   const ctaLabel = hasToken ? "Join the Trip" : "View Trip";
+  /**
+   * "once that's done" is doing real work — do not trim it back (#1035).
+   *
+   * This read "you'll land straight on the trip", which is FALSE for
+   * email/password signup: they confirm their address first, which is several
+   * steps and a second inbox visit. It is TRUE for Continue with Google, which
+   * skips confirmation entirely — so one sentence was right on one branch and
+   * wrong on the other.
+   *
+   * The obvious fix — branch the sentence — is NOT AVAILABLE HERE, and that is
+   * the whole reason this is worded rather than forked: the email is sent
+   * before the person has chosen an auth method, so at send time there is
+   * nothing to branch on. Softening for both is the only option the send
+   * boundary permits.
+   *
+   * What survives is the part that is true either way and is the useful half:
+   * finishing signup lands you on THIS trip, not on a generic home screen.
+   * The invite link's `next` parameter survives the confirmation round trip
+   * (verified on device), so the destination promise still holds — only the
+   * implied immediacy was wrong.
+   */
   const ctaLead = hasToken
-    ? "Tap below to create your free account &mdash; you&apos;ll land straight on the trip."
+    ? "Tap below to create your free account &mdash; once that&apos;s done, you&apos;ll land straight on the trip."
     : "Tap below to check it out &mdash; see what&apos;s planned so far.";
 
   return resend.emails.send({
@@ -273,7 +294,12 @@ export async function sendInviteNewUser({
           on BuddyTrip &mdash; where your crew plans the whole trip in one place.
         </p>
         <p style="margin:0 0 24px">
-          Tap below to create your free account and you'll land straight on the trip.
+          <!-- Same correction as the crew-invite lead above, and for the same
+               reason: "you'll land straight on the trip" is true for OAuth and
+               false for email/password, which confirms first. See the ctaLead
+               comment — the sentence cannot be branched at send time, because
+               the auth method isn't chosen yet. -->
+          Tap below to create your free account &mdash; once that's done, you'll land straight on the trip.
         </p>
         <a href="${inviteUrl}"
            style="display:inline-block;background:#2dd4bf;color:#0d1f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">
