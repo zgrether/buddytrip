@@ -4,38 +4,54 @@ import {
   type RawStrokeEntry,
   type StrokeStanding,
 } from "@/lib/strokePlay";
-import { strokeHoles } from "@/lib/matchPlay";
+import {
+  strokeHoles,
+  buildDecided,
+  buildDecidedFromOutcomes,
+  matchState,
+  type DecidedHole,
+  type HoleOutcomeResult,
+  type MatchState,
+} from "@/lib/matchPlay";
 import { clampStrokes, effectiveStrokes } from "@/lib/handicap";
-import { fmtToPar } from "@/lib/rackNStack";
+import { fmtToPar, playerStats, computeRack, type RackPlayer, type RackResult, type Team } from "@/lib/rackNStack";
+import { gloriousConfig } from "@/lib/gloriousHoles";
+import { type ModifiersMap } from "@/lib/modifiers";
 import { unitsFromSchema, strokeIndexOf, PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { Participant, ScoreUnit, ScoreValues } from "@/components/games/types";
 
 /**
- * Quick Stroke Play's local-storage state shape + the read/derive helpers
- * shared by the page (`app/quick-game/page.tsx`) and the dashboard card, which
- * needed `QuickGameState` + the subtitle deriver without importing a page
- * component. Split out of the page originally for that reason (#879); course
- * selection + handicaps (Phase 0/1) extended it in place.
+ * Quick Games' local-storage state + the read/derive helpers shared by the page
+ * (`app/quick-game/page.tsx`), the dashboard card, and the context rail — all of
+ * which need the state type and its derived summaries without importing a page
+ * component. Split out for that reason (#879); course selection + handicaps
+ * extended it (#1049); match play + rack-n-stack made it a discriminated union.
  *
  * The page remains the only WRITER (via `localStorage.setItem`); this module
- * only reads and derives — including the netting math, so a handicap game
- * can't disagree between the dashboard card, the entry screen, and the final
- * standings (CLAUDE.md #8, the same discipline the trip-side game views use).
+ * only reads and derives — including all the netting/match math, so a handicap
+ * game can't disagree between the dashboard card, the entry screen, and the
+ * final standings (CLAUDE.md #8, the same discipline the trip-side views use).
  */
 export const QUICK_GAME_STORAGE_KEY = "bt-quick-game";
 
 /**
- * Bump when `QuickGameState`'s shape changes. `migrateQuickGameState` is the
- * ONE place that reads an on-disk payload of any past version and normalizes
- * it — crew have in-progress rounds in local storage across a deploy, so a
- * bare `JSON.parse(raw) as QuickGameState` is not safe once the shape grows
- * (course/strokes below were added after ship; the next addition gets the
- * same treatment here, not a second ad-hoc reader).
+ * Bump when the persisted shape changes. `migrateQuickGameState` is the ONE
+ * place that reads an on-disk payload of any past version and normalizes it —
+ * crew have in-progress rounds in local storage across a deploy, so a bare
+ * `JSON.parse(raw) as QuickGameState` is not safe once the shape grows.
+ *
+ * v2 added `course`/`strokes`/`version` (#1049). v3 adds `format` — the
+ * discriminator that makes match/rack expressible.
  */
-export const QUICK_GAME_STATE_VERSION = 2;
+export const QUICK_GAME_STATE_VERSION = 3;
 
-/** A course applied to the round — captured, not referenced (Phase 0 T0.3):
+/** Which game the saved round is. ONE storage key holds ONE game (the dashboard
+ *  card and the rail each have a single slot; concurrent quick games would need
+ *  a disambiguation UI nobody asked for), so this names WHICH. */
+export type QuickGameFormat = "stroke" | "match" | "rack";
+
+/** A course applied to the round — captured, not referenced (#1049 T0.3):
  *  the par/index/tee facts are fetched once at selection and frozen into
  *  `schema` via the shared `buildCourseSnapshot`, so the scorecard renders
  *  with no further network — a round survives losing signal mid-course. */
@@ -46,18 +62,105 @@ export interface QuickGameCourse {
   schema: ScorecardSchema;
 }
 
-export interface QuickGameState {
+interface QuickGameCommon {
   version: number;
   players: Participant[];
+  /** Per-SCORING-ENTITY gross, `{ [entityId]: { [unitLabel]: gross } }`.
+   *  stroke/rack key it by PLAYER id; match keys it by SIDE id (a 2v2 side is
+   *  one score column — one ball, one score), mirroring how `MatchEntryView`
+   *  keys `values` off `m.a.id`. */
   values: ScoreValues;
   finished: boolean;
   currentHole: number;
   /** null = no course selected — the default 18-hole par-72 layout. */
   course: QuickGameCourse | null;
+}
+
+/** Quick Stroke Play — per-player ABSOLUTE handicaps (0–18 each). */
+export interface QuickStrokeState extends QuickGameCommon {
+  format: "stroke";
   /** { [playerId]: handicapStrokes }. Absent player ⇒ 0 (scratch). Per-round,
    *  per-player — there is no user record to hang it on (typed names). */
   strokes: Record<string, number>;
 }
+
+/** Quick Rack n Stack — per-player ABSOLUTE handicaps (net stroke play, same
+ *  model as stroke), plus the A/B team each player racks for. */
+export interface QuickRackState extends QuickGameCommon {
+  format: "rack";
+  strokes: Record<string, number>;
+  /** { [playerId]: "A" | "B" }. `computeRack` racks the two teams slot-by-slot. */
+  teams: Record<string, Team>;
+}
+
+/**
+ * One side of a quick match. `playerIds` is 1 (a 1v1) or 2 (a 2v2) — the count
+ * IS the shape, never a setting (trip-side's `MatchSides.playersPerSide: 1 | 2`).
+ * `id` is the side's own minted key into `values`; a quick match has no
+ * `play_group`, and the scoring core never wanted one (Phase 0 T0.3 — a side is
+ * never an id in `buildDecided`/`HoleOutcomeRow`).
+ */
+export interface QuickMatchSide {
+  id: string;
+  playerIds: string[];
+  /**
+   * RELATIVE handicap strokes this side RECEIVES. Match play gives strokes to
+   * exactly ONE side — never split, never both (`RelHandicapControl`: "one
+   * signed value, strokes to exactly ONE side"). So at most one of the two
+   * sides is non-zero. This is NOT the per-player absolute model stroke/rack
+   * use: absolute would allocate A's 10 and B's 4 against the same hardest
+   * holes and cancel on the overlap, landing strokes on index 5–10; relative
+   * gives A six strokes on index 1–6. Different holes, different result — and
+   * relative is what trip-side scores, so it is what Quick matches.
+   */
+  strokes: number;
+}
+
+/** Quick Match Play — one match per round (a foursome having a match), either
+ *  entry mode, optionally with Glorious Finishing Holes. */
+export interface QuickMatchState extends QuickGameCommon {
+  format: "match";
+  /**
+   * PICKED AT SETUP, never inferred. `score` = enter each side's gross per hole
+   * (one ball: alternate shot / scramble); `outcome` = record who won the hole
+   * (the only way to score a format with no per-side stroke, and what makes
+   * best-ball expressible).
+   */
+  entryMode: "score" | "outcome";
+  sideA: QuickMatchSide;
+  sideB: QuickMatchSide;
+  /** `{ [unitLabel]: result }` — outcome mode's storage. Empty in score mode. */
+  outcomes: Record<string, HoleOutcomeResult>;
+  /** `games.modifiers`'s local twin. Only `glorious_holes` exists today. */
+  modifiers: ModifiersMap;
+}
+
+export type QuickGameState = QuickStrokeState | QuickRackState | QuickMatchState;
+
+/** Narrowing helpers — used at every reader so nothing branches on shape. */
+export const isStrokeGame = (s: QuickGameState): s is QuickStrokeState => s.format === "stroke";
+export const isRackGame = (s: QuickGameState): s is QuickRackState => s.format === "rack";
+export const isMatchGame = (s: QuickGameState): s is QuickMatchState => s.format === "match";
+
+/** The user-facing name of each format — the ONE place these strings live, so a
+ *  new reader can't hardcode "Quick Stroke Play" the way the dashboard card, the
+ *  rail, the setup `<h1>`, the app-bar `gameName` and the settings title each
+ *  did before the T0.4 sweep. */
+export const QUICK_GAME_LABEL: Record<QuickGameFormat, string> = {
+  stroke: "Quick Stroke Play",
+  match: "Quick Match Play",
+  rack: "Quick Rack n Stack",
+};
+
+/** The `game_type_id` each quick format scores as. Load-bearing, not cosmetic:
+ *  `gloriousConfig` guards on `isMatchPlayFormat(gameTypeId)`, so a quick match
+ *  must present as `gtt_match_play` for the modifier to apply at all — and rack
+ *  must NOT, which is exactly why glorious stays inert there (by design). */
+export const QUICK_GAME_TYPE_ID: Record<QuickGameFormat, string> = {
+  stroke: "gtt_stroke_play",
+  match: "gtt_match_play",
+  rack: "gtt_rack_n_stack",
+};
 
 /** One editable roster row — the shared shape for both the pre-start setup
  *  screen and the post-start roster editor (§1/§2), so "start a game" and
@@ -67,6 +170,18 @@ export interface DraftPlayerRow {
   id: string;
   name: string;
   strokes: number;
+}
+
+/** Draft rows for the roster editor, format-aware. Stroke/rack carry each
+ *  player's own absolute handicap; a MATCH's strokes are per-SIDE and relative,
+ *  owned by the relative control rather than the per-player rows, so its rows
+ *  read 0 — the one place that asymmetry is expressed. */
+export function draftRowsFrom(state: QuickGameState): DraftPlayerRow[] {
+  return state.players.map((p) => ({
+    id: p.id,
+    name: p.name,
+    strokes: isMatchGame(state) ? 0 : state.strokes[p.id] ?? 0,
+  }));
 }
 
 /**
@@ -96,33 +211,84 @@ export function buildRosterFromDrafts(
 /**
  * Normalize a raw local-storage payload of ANY past shape into the current
  * `QuickGameState`. A pre-course-selection save (no `version`/`course`/
- * `strokes` fields) is the common case this guards — it must load as a
- * scratch, no-course round rather than fail or half-populate. Returns null for
- * anything that isn't recognizably a Quick Game state at all (corrupt JSON is
- * already caught by the caller's try/catch; this catches a wrong SHAPE).
+ * `strokes`) and a pre-`format` save (v2, always stroke play) are the cases
+ * this guards — both must load as a playable round rather than fail or
+ * half-populate. Returns null for anything that isn't recognizably a Quick Game
+ * state (corrupt JSON is already caught by the caller's try/catch; this catches
+ * a wrong SHAPE).
+ *
+ * **The format is READ, never INFERRED.** A missing `format` means v2, which
+ * was always stroke play — that default is a fact about the old writer, not a
+ * guess from the payload's shape. Inferring would be the dangerous kind of
+ * wrong: a match payload carries `players` and `values` too, so a shape-sniffing
+ * validator would accept it and render a match as stroke standings — no crash,
+ * just a plausible-looking wrong answer. An UNRECOGNIZED format string is
+ * rejected outright rather than coerced to stroke, for the same reason: a
+ * format this build doesn't know is not a stroke round.
  */
 export function migrateQuickGameState(raw: unknown): QuickGameState | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (!Array.isArray(r.players)) return null;
   if (typeof r.values !== "object" || r.values === null) return null;
-  const course =
-    r.course && typeof r.course === "object" ? (r.course as QuickGameCourse) : null;
-  const strokes =
-    r.strokes && typeof r.strokes === "object" && r.strokes !== null
-      ? (r.strokes as Record<string, number>)
-      : {};
-  const currentHole =
-    typeof r.currentHole === "number" && r.currentHole > 0 ? r.currentHole : 1;
-  return {
+
+  // Read the discriminator. Absent ⇒ v2 ⇒ stroke (what the old writer wrote).
+  const rawFormat = r.format === undefined ? "stroke" : r.format;
+  if (rawFormat !== "stroke" && rawFormat !== "match" && rawFormat !== "rack") return null;
+
+  const course = r.course && typeof r.course === "object" ? (r.course as QuickGameCourse) : null;
+  const currentHole = typeof r.currentHole === "number" && r.currentHole > 0 ? r.currentHole : 1;
+  const common = {
     version: QUICK_GAME_STATE_VERSION,
     players: r.players as Participant[],
     values: r.values as ScoreValues,
     finished: r.finished === true,
     currentHole,
     course,
-    strokes,
   };
+  const strokesOf = (v: unknown): Record<string, number> =>
+    v && typeof v === "object" ? (v as Record<string, number>) : {};
+
+  if (rawFormat === "match") {
+    // A match needs BOTH sides to be meaningful — a half-written match is not a
+    // playable round, so it is rejected rather than half-populated.
+    const side = (v: unknown): QuickMatchSide | null => {
+      if (!v || typeof v !== "object") return null;
+      const s = v as Record<string, unknown>;
+      if (typeof s.id !== "string" || !Array.isArray(s.playerIds) || s.playerIds.length < 1) return null;
+      return {
+        id: s.id,
+        playerIds: s.playerIds as string[],
+        strokes: typeof s.strokes === "number" ? clampStrokes(s.strokes) : 0,
+      };
+    };
+    const sideA = side(r.sideA);
+    const sideB = side(r.sideB);
+    if (!sideA || !sideB) return null;
+    return {
+      ...common,
+      format: "match",
+      entryMode: r.entryMode === "outcome" ? "outcome" : "score",
+      sideA,
+      sideB,
+      outcomes:
+        r.outcomes && typeof r.outcomes === "object"
+          ? (r.outcomes as Record<string, HoleOutcomeResult>)
+          : {},
+      modifiers: r.modifiers && typeof r.modifiers === "object" ? (r.modifiers as ModifiersMap) : {},
+    };
+  }
+
+  if (rawFormat === "rack") {
+    return {
+      ...common,
+      format: "rack",
+      strokes: strokesOf(r.strokes),
+      teams: r.teams && typeof r.teams === "object" ? (r.teams as Record<string, Team>) : {},
+    };
+  }
+
+  return { ...common, format: "stroke", strokes: strokesOf(r.strokes) };
 }
 
 /** Client-only. Returns null on no saved game, corrupt JSON, an unrecognized
@@ -151,38 +317,63 @@ export function quickGameUnits(state: QuickGameState | null): ScoreUnit[] {
 }
 
 /**
- * Per-player stroked-hole sets (`pips`) — the same shape `ScoreEntryView` /
- * `StandardGrid` take, computed the same way the trip-side stroke game does
- * (`strokeHoles(effectiveStrokes(p), strokeIndexOf(units))`). Quick Game has
- * no course applied ⇒ every set is empty ⇒ net ≡ gross, unchanged from before
- * handicaps existed.
+ * Stroked-hole sets (`pips`) — the shape `ScoreEntryView` / `StandardGrid` /
+ * `MatchEntryView` take, computed the way the trip-side views do
+ * (`strokeHoles(strokes, strokeIndexOf(units))`).
+ *
+ * Keyed by whatever the format SCORES as: player id for stroke/rack, side id
+ * for match. No course applied ⇒ sequential index; no handicaps ⇒ every set is
+ * empty ⇒ net ≡ gross.
+ *
+ * **Outcome mode still gets pips.** There is no stroke to net there — the
+ * outcome IS the decision — but the pip is exactly how players know who is
+ * getting a shot on this hole so they can settle it themselves. Computing
+ * nothing from it is the point, not a reason to hide it.
  */
 export function quickGamePips(state: QuickGameState): Record<string, Set<string>> {
   const scIndex = strokeIndexOf(quickGameUnits(state));
   const m: Record<string, Set<string>> = {};
-  for (const p of state.players) {
-    const n = effectiveStrokes({ handicap_strokes: state.strokes[p.id] });
-    m[p.id] = new Set([...strokeHoles(n, scIndex)].map(String));
+  const put = (id: string, n: number) => {
+    m[id] = new Set([...strokeHoles(effectiveStrokes({ handicap_strokes: n }), scIndex)].map(String));
+  };
+  if (isMatchGame(state)) {
+    put(state.sideA.id, state.sideA.strokes);
+    put(state.sideB.id, state.sideB.strokes);
+  } else {
+    for (const p of state.players) put(p.id, state.strokes[p.id]);
   }
   return m;
 }
 
-/** Participant ids with at least one scored cell — the ONE "has this round
+/** The ids this format scores as — player ids for stroke/rack, side ids for
+ *  match. The ONE place that mapping lives, so `scoredParticipantIds`, the pips
+ *  and the standings can't disagree about what a "scoring entity" is. */
+export function scoringEntityIds(state: QuickGameState): string[] {
+  return isMatchGame(state) ? [state.sideA.id, state.sideB.id] : state.players.map((p) => p.id);
+}
+
+/** Scoring entities with at least one scored cell — the ONE "has this round
  *  started" predicate. Shared by the subtitle, the roster-edit guard, and
  *  their tests, so none of them derives "started" a second, driftable way
  *  (CLAUDE.md #27's local-storage-scale sibling: there's no DB here, but the
  *  same "don't re-derive it" discipline applies). */
 export function scoredParticipantIds(state: QuickGameState): string[] {
-  return state.players
-    .filter((p) => Object.keys(state.values[p.id] ?? {}).length > 0)
-    .map((p) => p.id);
+  return scoringEntityIds(state).filter((id) => Object.keys(state.values[id] ?? {}).length > 0);
 }
 
-/** Whether ANY player has a scored cell — the roster-edit / reset-vs-refuse
- *  gate. False the whole time a round is set up but unscored, true the moment
- *  the first cell is tapped (mirrors "Live" elsewhere in the glossary: first
- *  score flips it). */
+/**
+ * Whether the round has started — the roster-edit / reset-vs-refuse gate and
+ * the "replacing an in-progress round" confirm.
+ *
+ * **Outcome mode has no `score_entries` twin here, and asking the wrong
+ * question would answer no for a match's entire life.** That is CLAUDE.md #27's
+ * exact failure ("a score has TWO storage shapes"), reproduced at
+ * local-storage scale: an outcome match writes `outcomes`, never `values`, so a
+ * `values`-only predicate reports "not started" seventeen holes in. Both
+ * sources are folded in here, once.
+ */
 export function hasAnyScore(state: QuickGameState): boolean {
+  if (isMatchGame(state) && Object.keys(state.outcomes).length > 0) return true;
   return scoredParticipantIds(state).length > 0;
 }
 
@@ -212,44 +403,293 @@ export function quickGameStandings(state: QuickGameState): StrokeStanding[] {
   );
 }
 
-const DEFAULT_SUBTITLE = "Keep score right now — no trip needed";
+// ── Starting a round ─────────────────────────────────────────────────────────
 
 /**
- * The dashboard card's subtitle for the current Quick Stroke Play state.
+ * Legal player counts per format. Match play is the constrained one: a side
+ * holds exactly 1 or 2 players (trip-side `MatchSides.playersPerSide: 1 | 2`),
+ * so a match is 2 players or 4 — never 3.
  *
- * Four states (in order of precedence):
- *   1. No saved game               → the always-available pitch line.
- *   2. Game exists, no scores yet  → "Hole N of {units.length} · no scores
- *      yet". "In progress" starts at CREATION, not at first score — a game
- *      with players and no scores must not name a leader. Unit count is
- *      COURSE-driven (`quickGameUnits`), so a 9-hole round reads "Hole N of 9"
- *      rather than always "of 18".
- *   3. Someone leading             → "Zach leading at +7 thru 8".
- *   4. Tied                        → "Tied at +7 thru 8" (no name — more than
- *      one player shares position 1).
+ * THREE PLAYERS IS REFUSED, not benched. Trip-side leaves an unpaired member
+ * out of the match, but there you picked them off a roster; here you TYPED
+ * their name, so silently dropping them is a worse answer than saying so. And
+ * a 3-way match does not exist anywhere in this codebase — inventing one for
+ * the local-storage surface is precisely the "two implementations of one idea"
+ * this project keeps paying for.
+ */
+export function quickFormatPlayerCountError(format: QuickGameFormat, count: number): string | null {
+  if (format === "match") {
+    if (count === 2 || count === 4) return null;
+    return "Match play needs 2 or 4 players. Add one or drop one.";
+  }
+  if (format === "rack") {
+    return count >= 2 ? null : "Rack n Stack needs at least 2 players.";
+  }
+  return count >= 1 ? null : "Add at least one player.";
+}
+
+/** A quick match is a 2v2 exactly when four people are playing. NOT a setting —
+ *  the count IS the shape (handoff: "it's how many names you enter"). */
+export const isDoubles = (playerCount: number) => playerCount === 4;
+
+/**
+ * Build the two sides from the roster order. 1v1 pairs [0] vs [1]; a 2v2 pairs
+ * by the caller's `partnerOf` choice — which of the other three is with player
+ * one — and the remaining two become the opposing side. One tap, no matrix.
+ */
+export function buildQuickMatchSides(
+  playerIds: string[],
+  partnerId: string | null
+): { sideA: QuickMatchSide; sideB: QuickMatchSide } | null {
+  const mk = (ids: string[]): QuickMatchSide => ({ id: crypto.randomUUID(), playerIds: ids, strokes: 0 });
+  if (playerIds.length === 2) return { sideA: mk([playerIds[0]]), sideB: mk([playerIds[1]]) };
+  if (playerIds.length === 4) {
+    const first = playerIds[0];
+    const partner = partnerId && partnerId !== first && playerIds.includes(partnerId) ? partnerId : playerIds[1];
+    const rest = playerIds.filter((id) => id !== first && id !== partner);
+    if (rest.length !== 2) return null;
+    return { sideA: mk([first, partner]), sideB: mk(rest) };
+  }
+  return null;
+}
+
+// ── Match play ───────────────────────────────────────────────────────────────
+
+/**
+ * The LIVE glorious config for a quick match, through the SHARED
+ * `gloriousConfig` — which applies both guards for us:
+ *   - format: only `gtt_match_play`, so rack/stroke are inert by construction;
+ *   - entry mode: `score` returns `NO_GLORIOUS` (you cannot double the value of
+ *     a hole whose outcome you never recorded — a measured bug, `75c95f02`).
+ * Calling the shared fn rather than reading `modifiers` directly is what stops
+ * Quick Play from becoming a second, more permissive implementation of the
+ * mechanic.
+ */
+export function quickMatchGlorious(state: QuickMatchState) {
+  return gloriousConfig(QUICK_GAME_TYPE_ID.match, state.modifiers, state.entryMode);
+}
+
+/**
+ * Whether the Glorious Finishing Holes modifier can be OFFERED at all.
+ *
+ * Hidden (not disabled) in two cases, both because the mechanic genuinely
+ * cannot apply and an inert-but-visible toggle is the silent-wrong failure this
+ * codebase keeps finding:
+ *   - **score entry** — `gloriousConfig` refuses it (see above);
+ *   - **a 9-hole round** — `holeWeight` is `hole > 18 − n` against a hardcoded
+ *     `ROUND_HOLES = 18`, so on nine holes NO hole ever clears the bar and the
+ *     modifier does exactly nothing. That 18 is deliberate and frozen on the
+ *     trip side; making Quick Play's copy relative to round length would fork a
+ *     scoring mechanic that has a measured bug behind it, so the honest move is
+ *     to not offer what can't work.
+ */
+export function quickMatchGloriousAvailable(state: {
+  entryMode: "score" | "outcome";
+  course: QuickGameCourse | null;
+}): boolean {
+  if (state.entryMode === "score") return false;
+  return unitsFromSchema(state.course?.schema).length >= 18;
+}
+
+/** The decided holes for a quick match, from WHICHEVER source its entry mode
+ *  uses — the two converge on one `DecidedHole[]` exactly as the trip side's do
+ *  (Phase 0: nothing downstream can tell them apart). */
+export function quickMatchDecided(state: QuickMatchState): DecidedHole[] {
+  const units = quickGameUnits(state);
+  if (state.entryMode === "outcome") {
+    return buildDecidedFromOutcomes(
+      Object.entries(state.outcomes)
+        .map(([label, result]) => ({ hole: Number(label), result }))
+        .filter((r) => Number.isFinite(r.hole) && r.hole >= 1 && r.hole <= units.length)
+    );
+  }
+  const scIndex = strokeIndexOf(units);
+  return buildDecided(
+    state.values[state.sideA.id] ?? {},
+    state.values[state.sideB.id] ?? {},
+    state.sideA.strokes,
+    state.sideB.strokes,
+    scIndex,
+    units.length
+  );
+}
+
+/** The live match state — the ONE frozen `matchState`, weighted by the shared
+ *  glorious config. Everything that reports on a quick match (the strip, the
+ *  dashboard card, the rail, the final screen) reads THIS, so they cannot
+ *  disagree about who is up. */
+export function quickMatchState(state: QuickMatchState): MatchState {
+  const units = quickGameUnits(state);
+  return matchState(quickMatchDecided(state), units.length, quickMatchGlorious(state));
+}
+
+/** A side's display name — the players' first names, joined. "Zach" for a 1v1,
+ *  "Zach & Brad" for a 2v2. */
+export function quickSideName(state: QuickMatchState, side: QuickMatchSide): string {
+  const byId = new Map(state.players.map((p) => [p.id, p]));
+  const names = side.playerIds.map((id) => byId.get(id)?.name.split(/\s+/)[0] ?? "Player");
+  return names.join(" & ") || "Side";
+}
+
+/** The ONE match id a quick round has. Stable (derived from the side ids, which
+ *  are minted once at setup) so `OutcomeValues`' match-keyed map survives a
+ *  reload without storing a redundant field. */
+export const quickMatchId = (state: QuickMatchState) => `${state.sideA.id}:${state.sideB.id}`;
+
+/**
+ * The quick match as the `MatchGroupData` the SHARED entry views take — the
+ * adapter, and the only place Quick Play's state shape meets the trip-side
+ * component contract. Both `MatchEntryView` (score) and `MatchOutcomeEntryView`
+ * (outcome) consume this, so neither view learns anything about Quick Play
+ * (the don't-couple constraint) and neither mode gets its own second adapter.
+ *
+ * `aPlayers`/`bPlayers` is what makes a 2v2 render as two stacked chips rather
+ * than a collapsed single name — the field that already existed for exactly
+ * this (Phase 0 T0.3) and needs no play_group to populate.
+ */
+export function quickMatchGroupData(state: QuickMatchState): {
+  matchId: string;
+  label: string;
+  a: Participant;
+  b: Participant;
+  aPlayers: { id: string; name: string }[];
+  bPlayers: { id: string; name: string }[];
+  strokesA: number;
+  strokesB: number;
+} {
+  const byId = new Map(state.players.map((p) => [p.id, p]));
+  const chips = (side: QuickMatchSide) =>
+    side.playerIds.map((id) => ({ id, name: byId.get(id)?.name ?? "Player" }));
+  const asParticipant = (side: QuickMatchSide, i: number): Participant => ({
+    id: side.id,
+    name: quickSideName(state, side),
+    color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+  });
+  return {
+    matchId: quickMatchId(state),
+    label: "Match",
+    a: asParticipant(state.sideA, 0),
+    b: asParticipant(state.sideB, 1),
+    aPlayers: chips(state.sideA),
+    bPlayers: chips(state.sideB),
+    strokesA: state.sideA.strokes,
+    strokesB: state.sideB.strokes,
+  };
+}
+
+// ── Rack n Stack ─────────────────────────────────────────────────────────────
+
+/**
+ * The racked slots + team points, through the SHARED `computeRack`.
+ *
+ * Always `"current"` mode, never `"projected"`: `projectedNetToPar` normalizes
+ * with a hardcoded `× 18`, so on a 9-hole quick round the projection would be
+ * silently doubled. Current mode has no such term. (The trip-side board offers
+ * the toggle because its rounds are 18.)
+ */
+export function quickRackResult(state: QuickRackState): RackResult {
+  const units = quickGameUnits(state);
+  const scIndex = strokeIndexOf(units);
+  const par = units.map((u) => u.par ?? 0);
+  const coursePar = par.reduce((a, b) => a + b, 0);
+  const players: RackPlayer[] = state.players.map((p) => ({
+    id: p.id,
+    team: state.teams[p.id] ?? "A",
+    stats: playerStats(state.values[p.id] ?? {}, effectiveStrokes({ handicap_strokes: state.strokes[p.id] }), par, scIndex),
+  }));
+  return computeRack(players, "current", coursePar);
+}
+
+const DEFAULT_SUBTITLE = "Keep score right now — no trip needed";
+
+/** The saved round's display TITLE — the ONE place this string is decided.
+ *  Before the T0.4 sweep, five separate sites hardcoded "Quick Stroke Play":
+ *  the dashboard card, the rail's summary, the setup `<h1>`, the in-game app-bar
+ *  `gameName` and the settings-panel title. Each would have announced a match as
+ *  stroke play. They all read this now. */
+export function quickGameTitle(state: QuickGameState | null): string {
+  return QUICK_GAME_LABEL[state?.format ?? "stroke"];
+}
+
+/**
+ * The dashboard card / rail subtitle for the current quick round.
+ *
+ * FORMAT-AWARE — this is the reader Phase 0 named as lying: it computed stroke
+ * standings ("Zach leading at −1 thru 2") for whatever was saved, so a match
+ * would have been described in a vocabulary that cannot express it. A match
+ * wants "2 UP thru 5"; a rack wants the team score.
+ *
+ * Shared shape across all three: no saved game → the pitch line; saved but
+ * unscored → "Hole N of {units.length} · no scores yet" (in progress starts at
+ * CREATION, not at first score — a round with players and no scores must not
+ * name a leader), unit count COURSE-driven so a 9-hole round reads "of 9".
+ */
+export function quickGameSubtitle(state: QuickGameState | null): string {
+  if (!state) return DEFAULT_SUBTITLE;
+
+  const units = quickGameUnits(state);
+  if (!hasAnyScore(state)) {
+    return `Hole ${state.currentHole} of ${units.length} · no scores yet`;
+  }
+  if (isMatchGame(state)) return quickMatchSubtitle(state);
+  if (isRackGame(state)) return quickRackSubtitle(state);
+  return quickStrokeSubtitle(state, units);
+}
+
+/**
+ * Match: the running state in match-play vocabulary — "2 UP thru 5", "AS thru
+ * 5", or the closing margin ("3&2") once decided. Reads the SHARED
+ * `quickMatchState`, so the card, the rail and the in-game strip cannot
+ * disagree about who is up.
+ */
+function quickMatchSubtitle(state: QuickMatchState): string {
+  const st = quickMatchState(state);
+  if (st.over && st.margin) {
+    const winner = st.leader === "A" ? state.sideA : st.leader === "B" ? state.sideB : null;
+    return winner ? `${quickSideName(state, winner)} won ${st.margin}` : `Halved after ${st.thru}`;
+  }
+  if (st.diff === 0) return `All square thru ${st.thru}`;
+  const leadSide = st.leader === "A" ? state.sideA : state.sideB;
+  const dormie = st.dormie ? " · dormie" : "";
+  return `${quickSideName(state, leadSide)} ${st.up} up thru ${st.thru}${dormie}`;
+}
+
+/** Rack: the team score from the SHARED `computeRack` — "Team A leads 3–2". */
+function quickRackSubtitle(state: QuickRackState): string {
+  const { points } = quickRackResult(state);
+  const thru = Math.max(
+    0,
+    ...state.players.map((p) => Object.keys(state.values[p.id] ?? {}).length)
+  );
+  if (points.A === points.B) return `Tied ${fmtPointsPair(points.A, points.B)} thru ${thru}`;
+  const lead = points.A > points.B ? "Team A" : "Team B";
+  const hi = Math.max(points.A, points.B);
+  const lo = Math.min(points.A, points.B);
+  return `${lead} leads ${fmtPointsPair(hi, lo)} thru ${thru}`;
+}
+
+/** Rack points are half-points on a halved slot, so 2.5 must not render "2.5–1"
+ *  as "2.5-1" in one place and "2½" in another. One formatter, both numbers. */
+function fmtPointsPair(x: number, y: number): string {
+  const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  return `${f(x)}–${f(y)}`;
+}
+
+/**
+ * Stroke: "Zach leading at +7 thru 8" / "Tied at +7 thru 8".
  *
  * The "who's leading" determination reuses `computeStrokePlayStandings` fed by
  * `netStrokeEntries` over `quickGamePips` — the SAME two calls `ScoreEntryView`'s
  * running total and "Leading" badge run (#825, so a handicap game's total can't
- * crown a different player than the standings), now genuinely netting a
- * handicap round instead of always calling `netStrokeEntries(raw, {})`
- * (the second reader Phase 0 found already computing gross).
+ * crown a different player than the standings).
  *
  * `toPar` / `thru` are DISPLAY figures computed on top of whichever entityId the
  * shared call already named the leader — they don't participate in deciding WHO
  * leads, only in describing them, so they can't be the source of a disagreement
  * with the entry screen's own badge.
  */
-export function quickGameSubtitle(state: QuickGameState | null): string {
-  if (!state) return DEFAULT_SUBTITLE;
-
+function quickStrokeSubtitle(state: QuickStrokeState, units: ScoreUnit[]): string {
   const scoredIds = scoredParticipantIds(state);
-  const units = quickGameUnits(state);
-
-  if (scoredIds.length === 0) {
-    return `Hole ${state.currentHole} of ${units.length} · no scores yet`;
-  }
-
   const pips = quickGamePips(state);
   const rawEntries: RawStrokeEntry[] = [];
   for (const p of state.players) {
