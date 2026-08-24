@@ -118,8 +118,15 @@ export function doublePositionsAwarded(resolved: ResolvedMatch[]): number[] {
   for (const round of rounds) {
     // A match with no possible occupants eliminates nobody; one with a single occupant
     // is a bye and eliminates nobody either.
+    //
+    // `neverContested` rather than `aSeed === null && bSeed === null`, which is what
+    // this line used to say. That test is "empty right now", so a lower match merely
+    // WAITING on its feeders counted as unfillable and its elimination went missing
+    // from the position multiset — the same conflation that produced the phantom bye
+    // in the advancement walk, written out a second time here. Both now read the one
+    // field the walk propagates.
     const eliminations = lower.filter(
-      (m) => m.round === round && !m.bye && !(m.aSeed === null && m.bSeed === null),
+      (m) => m.round === round && !m.bye && !m.neverContested,
     ).length;
     if (eliminations === 0) continue;
     for (let i = 0; i < eliminations; i++) positions.push(position);

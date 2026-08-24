@@ -75,6 +75,23 @@ export interface ResolvedMatch extends BracketDrawMatch {
    * bracket surface cannot answer "can I tap this?" differently (CLAUDE.md #24).
    */
   decidable: boolean;
+  /**
+   * NOBODY WILL EVER OCCUPY THIS ROW — not "both seats are null right now".
+   *
+   * The distinction Phase 2 named as the three seat states: filled, WAITING, and
+   * PERMANENTLY EMPTY. `aSeed === null && bSeed === null` conflates the last two,
+   * and it is only equivalent to this field in ROUND 1, where seats are seeded at
+   * build time and there is no upstream to wait for. Everywhere else a row with
+   * two null seats is usually just waiting on its feeders.
+   *
+   * A sibling field for the same reason `decidable` is one: three separate places
+   * were each answering this question their own way, and two of the three were
+   * answering it wrongly (see the header of `bracketDoubleAdvance.ts`). Derived
+   * during resolution, where the feeder chain is actually known — a consumer
+   * holding a single `ResolvedMatch` CANNOT compute it, which is precisely why
+   * every consumer that tried got it wrong.
+   */
+  neverContested: boolean;
 }
 
 /**
@@ -134,6 +151,21 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
   const resolved = new Map<string, ResolvedMatch>();
   // Occupants fed upward from the round below, filled in as each round resolves.
   const incoming = new Map<string, { a?: number | null; b?: number | null }>();
+  /**
+   * Rows nobody will ever occupy, PROPAGATED rather than re-tested per row.
+   *
+   * Round 1 is the only place "both seats null" means it: those seats are seeded
+   * at build time, so nothing upstream can fill them later. Above round 1 a row is
+   * unreachable only when BOTH of its feeders are unreachable — a rule that has to
+   * be carried forward, which is why it is a set built during the walk rather than
+   * a predicate over one row.
+   *
+   * Single elim does not manufacture byes above round 1 (`bye = round === 1 && …`),
+   * so it never had the phantom-bye defect this field exists to fix. It fills the
+   * field anyway so `neverContested` means the same thing in both formats and a
+   * shared consumer cannot be reading a double-elim-only value.
+   */
+  const unreachable = new Set<string>();
 
   for (let round = 1; round <= lastRound; round++) {
     for (const m of main.filter((x) => x.round === round)) {
@@ -144,6 +176,14 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
       const bye = round === 1 && isBye(m);
       const winnerSeed = winnerOf({ aSeed, bSeed, bye }, winners[matchKey(m)] ?? null);
 
+      const neverContested =
+        round === 1
+          ? m.aSeed === null && m.bSeed === null
+          : [m.slot * 2 - 1, m.slot * 2].every((slot) =>
+              unreachable.has(matchKey({ bracket: "main", round: round - 1, slot })),
+            );
+      if (neverContested) unreachable.add(matchKey(m));
+
       resolved.set(matchKey(m), {
         ...m,
         aSeed,
@@ -152,6 +192,7 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
         bye,
         playable: aSeed !== null && bSeed !== null && winnerSeed === null,
         decidable: aSeed !== null && bSeed !== null && !bye,
+        neverContested,
       });
 
       if (winnerSeed !== null && round < lastRound) {
@@ -179,6 +220,10 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
       // No byes in a consolation match — it exists only when there are semis to
       // lose, so both seats are real people or neither is.
       decidable: aSeed !== null && bSeed !== null,
+      // Fed by the two semis' LOSERS, so it is unreachable only when neither semi
+      // can ever produce one — i.e. both are unreachable themselves. A semi that
+      // is merely undecided leaves this waiting, not empty.
+      neverContested: semis.every((s) => !s || s.neverContested),
     });
   }
 
