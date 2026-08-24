@@ -137,14 +137,23 @@ export function BracketScoringSurface({
   const [pickError, setPickError] = useState<string | null>(null);
 
   /**
-   * How many picks are still in flight.
+   * How many picks are still in flight. Only the LAST one reconciles, so a burst
+   * of taps costs one refetch instead of one per tap.
    *
-   * Only the LAST one reconciles. Without this, tapping two matches quickly is a
-   * visible flicker: the first pick's refetch is already on the wire when the
-   * second is applied optimistically, and it lands carrying server state that
-   * predates the second — wiping a mark the user can see, until that pick's own
-   * refetch puts it back. The counter is not about saving requests; it is about
-   * never letting a stale response overwrite a newer local truth.
+   * ── What this does NOT do, corrected ────────────────────────────────────────
+   * This comment used to claim the counter was "not about saving requests; it is
+   * about never letting a stale response overwrite a newer local truth." It
+   * cannot do that, and never did. It gates whether a NEW reconcile is ISSUED. A
+   * refetch ALREADY IN FLIGHT is untouched by it — and `reconcile`'s deliberate
+   * `cancelRefetch: false` guarantees such a fetch is left to finish and its data
+   * lands (`invalidateCancelsRefetch.test.ts`). So the exact scenario described —
+   * "the first pick's refetch is already on the wire when the second is applied
+   * optimistically, and it lands carrying server state that predates the second"
+   * — was not prevented here. It was the change-a-winner flash, and it is fixed
+   * in `handlePick` by cancelling in-flight fetches before the optimistic write.
+   *
+   * Saving requests is a real benefit and worth keeping; it was just described as
+   * something stronger than it is.
    */
   const pendingPicks = useRef(0);
   const reconcile = useCallback(() => {
@@ -207,6 +216,41 @@ export function BracketScoringSurface({
   const handlePick = useCallback(
     (ref: { bracket: BracketSide; round: number; slot: number }, seed: number | null) => {
       setPickError(null);
+      /**
+       * CANCEL BEFORE WRITING — the fix for the change-a-winner flash.
+       *
+       * A refetch already on the wire predates this tap by definition, so it
+       * cannot carry newer truth. `reconcile()` deliberately passes
+       * `cancelRefetch: false` (so a reconcile never throws away a response it
+       * asked for), which means such a fetch is left alone AND ITS DATA LANDS —
+       * verified in `invalidateCancelsRefetch.test.ts`. Landing after this
+       * setData, it reinstates exactly what the cascade just cleared.
+       *
+       * That is the reported symptom: "when you change the winner of a match and
+       * it has to clear out the old results, sometimes they clear and switch to
+       * the new winner/loser, but sometimes they flash the old ones briefly."
+       * The "sometimes" is whether a reconcile was still in flight — a render bug
+       * is not intermittent, a race is. A CHANGE shows it and a first pick does
+       * not, because a change is the case where the optimistic write REMOVES
+       * things: a stale response reinstating a whole cleared subtree across both
+       * brackets is loud, one reinstating "no winner yet" is invisible.
+       *
+       * `pendingPicks` below does NOT cover this, despite its comment claiming to
+       * ("never letting a stale response overwrite a newer local truth"). It gates
+       * whether a NEW reconcile is ISSUED; it has no effect on a fetch already in
+       * flight. The invariant was stated but never implemented — this line is what
+       * implements it.
+       *
+       * NOT awaited, on purpose: cancellation dispatches synchronously and only
+       * its promise settles later, so the mark still paints in this tick. A pick
+       * costs ~806ms in production, which is the entire reason for the optimistic
+       * patch — do not make this handler `async`.
+       *
+       * Orthogonal to CLAUDE.md #1, which governs ROLLBACK (invalidate and re-pull,
+       * never an onMutate snapshot-restore). That is unchanged; this only decides
+       * which response is allowed to win.
+       */
+      void utils.games.bracketDraw.cancel({ tripId, gameId });
       utils.games.bracketDraw.setData({ tripId, gameId }, (prev) =>
         prev && applyPickCascadingWith(prev, ref, seed, resolve ?? resolveDraw)
       );
