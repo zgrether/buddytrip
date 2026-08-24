@@ -37,6 +37,19 @@ export interface LBGame {
    *  pairings / stroke-rack participants / manual points). Drives BOTH the
    *  Setting-up↔Ready lifecycle and the `N PTS`/`—` column — one signal. */
   configured?: boolean;
+  /**
+   * NEW: nothing configured yet — the game still carries only what the add-game
+   * modal wrote (name, format, the zero points sentinel, maybe a delegate).
+   *
+   * A SEPARATE and earlier question from `configured`, which is the Ready
+   * threshold and is unchanged. Server-derived from `GAME_CONFIG_COLS` (see
+   * `isNew` in gameReadiness.ts) rather than re-derived here, so the board reads
+   * one authoritative answer.
+   *
+   * Optional, and ABSENT READS AS NOT-NEW — the same fail-safe direction the
+   * server predicate uses, and what keeps hand-built fixtures valid.
+   */
+  isNewGame?: boolean;
   /** A course is applied to this game — drives the scorecard chip's button vs
    *  muted-status three-way (course is optional, never an error). */
   hasCourse?: boolean;

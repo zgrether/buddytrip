@@ -102,21 +102,41 @@ export function formatIcon(gameTypeId: string | null): LucideIcon {
  *   complete              → completed   (done)
  *   active  &  started    → on-tap      (scores flowing — genuinely underway)
  *   active  & !started    → ready       (Ready for Play — enabled/pairings up, unscored)
- *   pending &  configured → preparing   (Preparing for Gameplay — roster set, not enabled)
- *   pending & !configured → skeleton    (barely configured)
+ *   pending & !isNewGame  → preparing   (Configuring — setup started, not finished)
+ *   pending &  isNewGame  → skeleton    (New — only identity, nothing configured)
  * Total + disjoint = a clean 5-way partition (every game in exactly one section).
  *
- * `configured` (roster earned, server-derived) gates preparing↔skeleton; it also
- * feeds the outer `N PTS`/`—` column so the two can't disagree. Course/handicaps
- * never gate this (locked, readiness model).
+ * ── The pending split used to be `configured`, and it meant neither label ─────
+ *
+ * It was `configured ? "preparing" : "skeleton"`, rendered as "Configuring" and
+ * "New" — but `configured` is the READY threshold (is the format's required
+ * roster assigned?), which is a different question from "has setup begun". The
+ * two labels were attached to a predicate that means neither of them:
+ *
+ *   • a non-golf / manual / bracket game read CONFIGURING from the instant of
+ *     creation, because `isConfigured` falls through to `hasPoints` and the
+ *     add-game modal always writes a points sentinel. It could never be New.
+ *   • a golf game read NEW through course, points, modifiers, rules and tee time
+ *     — anything short of a roster. A stroke game with a tee time and 8 points
+ *     read "New".
+ *
+ * `isNewGame` is derived from `GAME_CONFIG_COLS` (see `isNew` in
+ * gameReadiness.ts): New ⟺ every configuration column is still at its creation
+ * value and no configuration child row exists. `configured` is UNCHANGED and
+ * still gates the pending→active Ready threshold everywhere else; it simply no
+ * longer decides which of the two SETUP labels a game wears.
+ *
+ * Absent `isNewGame` reads as NOT New — the same fail-safe direction the server
+ * predicate takes, so a fixture or an older cached payload degrades to the old
+ * "Configuring" answer rather than claiming a game is untouched.
  */
 export type GameSection = "completed" | "on-tap" | "ready" | "preparing" | "skeleton";
 export function sectionOf(game: LBGame): GameSection {
-  // lifecycle-guard-allow: board SECTIONING is a 5-way partition over status × started × configured, which gameLifecycle deliberately does not model — it answers only end-of-life questions (final/locked/correcting). Routing the first line through isFinal and leaving the rest would split one partition across two vocabularies for no gain.
+  // lifecycle-guard-allow: board SECTIONING is a 5-way partition over status × started × isNewGame, which gameLifecycle deliberately does not model — it answers only end-of-life questions (final/locked/correcting). Routing the first line through isFinal and leaving the rest would split one partition across two vocabularies for no gain.
   if (game.status === "complete") return "completed";
   // lifecycle-guard-allow: the same 5-way partition — `active` split on `started` is the On Tap ↔ Ready distinction, which has no counterpart in gameLifecycle.
   if (game.status === "active") return game.started === true ? "on-tap" : "ready";
-  return game.configured ? "preparing" : "skeleton";
+  return game.isNewGame === true ? "skeleton" : "preparing";
 }
 
 /**
@@ -269,10 +289,23 @@ export function GameRow({
       : section === "ready"
       ? "Ready to play"
       : section === "preparing"
-      ? "Ready — enable scoring"
-      : section === "skeleton"
-      ? tappable
+      ? // Configuring now spans "setup has begun" through "everything is set,
+        // just not enabled" — the section is no longer gated on `configured`, so
+        // the subtitle is where that distinction lives. Keeping the old single
+        // string would have promised an Enable button on a half-built game: the
+        // server refuses it (`assertGameReady`) and the setup page's gate is shut.
+        // `configured` keeps its exact meaning here; it just stopped deciding the
+        // section.
+        game.configured
+        ? "Ready — enable scoring"
+        : tappable
         ? "Tap to keep setting up"
+        : "Setup in progress"
+      : section === "skeleton"
+      ? // NEW: nothing has been configured, so "keep setting up" was wrong — there
+        // is nothing to keep. This is the start of the job, not the middle of it.
+        tappable
+        ? "Tap to set up"
         : null
       : null;
 

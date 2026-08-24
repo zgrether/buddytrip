@@ -8,7 +8,7 @@ import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
-import { isConfigured, MATCH_PLAY_TYPES, RACK_TYPE, ROSTER_TYPES } from "@/server/lib/gameReadiness";
+import { isConfigured, isNew, MATCH_PLAY_TYPES, RACK_TYPE, ROSTER_TYPES } from "@/server/lib/gameReadiness";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
 /** Head-to-head sizing for the team-size-derived per_match formats (rack-n-stack,
@@ -69,7 +69,18 @@ export async function computeCompetitionLeaderboard(
       // resolved from the game type AND it (`resolveResultStrategy`) — a bracket
       // is not a game type, so `game_type_id` alone stopped answering "how is
       // this game awarded?". Free: this select already names its columns.
-      .select("id, name, points_distribution, points_total, status, game_type_id, competition_format, course_id, scoring_enabled, entry_mode, corrections_open, display_order")
+      // The remaining CONFIG columns (`config`, `modifiers`, `bracket_config`,
+      // `rules_for_today`, `scorecard_schema`, `tee_time`, `back_course_id`) ride
+      // here for `isNew`. They are NOT optional extras: `isNew` reports "not New"
+      // for any config column it cannot see, so omitting one would quietly restore
+      // the old always-Configuring answer for every game. `gameStateCoverage.test.ts`
+      // asserts this select carries every column the predicate reads.
+      //
+      // `scorecard_schema` is the largest of them and is the one that would be
+      // tempting to leave out — it is also load-bearing. `games.clearCourse` nulls
+      // `course_id` but leaves the format's base schema behind, so it is the ONLY
+      // column that still says "this game was configured" after a course is removed.
+      .select("id, name, points_distribution, points_total, status, game_type_id, competition_format, course_id, back_course_id, scoring_enabled, entry_mode, corrections_open, display_order, config, modifiers, bracket_config, rules_for_today, scorecard_schema, tee_time")
       .eq("competition_id", competitionId)
       // ONE global order for the whole board (migration 108). Every lifecycle
       // section sorts by this, which is what makes a game keep its place as it
@@ -164,8 +175,10 @@ export async function computeCompetitionLeaderboard(
     // and only thing to roll up by. Skipped entirely when the competition has no
     // bracket.
     bracketGameIds.length
-      ? supabase.from("bracket_entrants").select("id, team_id").in("game_id", bracketGameIds)
-      : Promise.resolve({ data: [] as { id: string; team_id: string | null }[] }),
+      // `game_id` rides along for the New/Configuring split — a seeded entrant is a
+      // configuration act, and this query is already being issued.
+      ? supabase.from("bracket_entrants").select("id, game_id, team_id").in("game_id", bracketGameIds)
+      : Promise.resolve({ data: [] as { id: string; game_id: string; team_id: string | null }[] }),
   ]);
   const results = resultsRes.data;
   /**
@@ -179,8 +192,13 @@ export async function computeCompetitionLeaderboard(
    * competitor still score everyone else correctly.
    */
   const teamByEntrant = new Map<string, string | null>(
-    ((entrantRowsRes.data ?? []) as { id: string; team_id: string | null }[]).map((e) => [e.id, e.team_id ?? null])
+    ((entrantRowsRes.data ?? []) as { id: string; game_id: string; team_id: string | null }[]).map((e) => [e.id, e.team_id ?? null])
   );
+  /** Seeded entrants per bracket game — a configuration act, so it feeds `isNew`. */
+  const entrantCountByGame = new Map<string, number>();
+  for (const e of (entrantRowsRes.data ?? []) as { game_id: string }[]) {
+    entrantCountByGame.set(e.game_id, (entrantCountByGame.get(e.game_id) ?? 0) + 1);
+  }
   /**
    * Did that read FAIL, as opposed to returning nothing?
    *
@@ -539,6 +557,27 @@ export async function computeCompetitionLeaderboard(
           ((typeId && ROSTER_TYPES.has(typeId)) ? groupedParticipantCountByGame : participantCountByGame).get(gid) ?? 0,
           hasPoints
         ),
+        /**
+         * NEW — nothing configured yet, only what the add-game modal wrote.
+         *
+         * Shipped as its own signal rather than re-derived on the client, so the
+         * board reads one authoritative answer. `configured` above is UNCHANGED —
+         * this is a second, earlier question, not a new Ready threshold.
+         *
+         * The child-row count is composed from the three sets this function
+         * already fetched: participants, match rows and bracket entrants. Any row
+         * in any of them means somebody built something. `play_groups` and
+         * `bracket_matches` are not counted directly and do not need to be — a
+         * play group is only ever created by the group builder, which assigns
+         * participants in the same call, and a draw's matches are minted by the
+         * field builder, which writes `bracket_config` and the entrants alongside.
+         * Both are covered transitively; `gameNewState.test.ts` pins each.
+         */
+        isNewGame: isNew(g as Record<string, unknown>, (
+          (participantCountByGame.get(gid) ?? 0) +
+          (totalMatchRowsByGame.get(gid) ?? 0) +
+          (entrantCountByGame.get(gid) ?? 0)
+        )),
         // Course presence (§ scorecard three-way) — surfaced so the row's
         // scorecard chip can be a real button (course set) vs a muted status
         // icon (no course). Course is optional and never an error.
