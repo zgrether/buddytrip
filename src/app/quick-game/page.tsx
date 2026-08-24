@@ -23,6 +23,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
+import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
 import { Stepper } from "@/components/games/Stepper";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
@@ -35,8 +36,15 @@ import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/Danger
  * the localStorage key stay as they were; those are identifiers, not the
  * user-facing name.
  *
- * Reuses ScoreEntryView / StandardGrid / FinalStandings UNCHANGED — only the
- * persistence backend differs: the whole game state lives in **local storage**,
+ * Reuses ScoreEntryView / StandardGrid / FinalStandings / ScorecardSheet
+ * UNCHANGED — the scorecard is the SAME `Sheet`-based overlay every other golf
+ * format uses (CLAUDE.md's Reuse target: "Scorecard = a Sheet overlay, not a
+ * full-page route"). This page's grid view first shipped as a bespoke
+ * full-screen route instead — the exact "reinvent it slightly differently"
+ * this rule exists to prevent, and the mismatch with every other golf
+ * surface (plus a since-fixed horizontal-scroll complaint on it) is what
+ * caught it. Only the persistence backend differs from the trip-side games:
+ * the whole game state lives in **local storage**,
  * no DB row, no auth beyond the standing session (the route was never public —
  * Phase 0 confirmed `/quick-game` sits behind the same middleware auth gate as
  * every other trip surface), free-text player names. Finish computes standings
@@ -359,24 +367,32 @@ export default function QuickGamePage() {
     setState(null);
     router.push("/dashboard");
   }
+  /** Stage a `state`'s roster/course into the editable drafts — shared by
+   *  `openRosterEditor` (edit in place) and `resetGame` (edit via a return to
+   *  setup), so the two can't drift into different pre-fill rules. */
+  function prefillDrafts(s: QuickGameState) {
+    setDraftPlayers(s.players.map((p) => ({ id: p.id, name: p.name, strokes: s.strokes[p.id] ?? 0 })));
+    setDraftCourse(s.course);
+    setCourseError(null);
+  }
+
   /**
-   * Reset Game (#879 item 1b) — clears scores and hole progress, KEEPS the
-   * players, the course, and the handicaps. This is the ONE reset path Quick
-   * Stroke Play has: before this there was no way to start over mid-round
-   * short of playing to Finish (which unlocks `playAgain`, and that one wipes
-   * everything) or leaving via `discard`, which exits to the dashboard
-   * entirely.
-   *
-   * "Clear scores, keep the round's setup" over "delete the game" to match the
-   * app's one other reset ladder (`games.resetScoring` — "clears this game's
-   * results; config kept", `GameDangerZone.tsx`): reset means start the SAME
-   * game over, not lose it. Course and handicaps are part of "the same game"
-   * setup, same as players — only `values`/`finished`/`currentHole` are the
-   * per-round SCORE state this clears.
+   * Reset Game (#879 item 1b; revised — feedback: hole 1 was the wrong
+   * landing spot). Clears scores AND returns to the setup screen, with the
+   * current players/handicaps/course staged as editable drafts — not blank
+   * (that's `playAgain`) and not straight back into hole-1 scoring (the old
+   * behavior). "The odds are much higher that's what you want" after a
+   * reset: you're at least as likely to want to fix a handicap or swap a
+   * player as you are to re-score the identical setup, and the old behavior
+   * made the second case one extra trip (gear → Players & handicaps) while
+   * this makes it zero. Tapping Start immediately reproduces the old
+   * behavior exactly, so nothing is lost for the "just re-score it" case.
    *
    * This is also the ONE reset path once scores exist — a roster edit is
-   * refused past that point (§1) and points here instead, so this is the
-   * affordance that message names, not a second path.
+   * refused past that point (§1) and points here instead. It's no longer a
+   * separate path from the roster editor at all — it's the SAME setup
+   * screen, reached with `state` cleared instead of merely staged, via the
+   * shared `prefillDrafts`.
    *
    * Not a `useScoreSaver.clearAll` situation (#807's fix target): that bug was
    * specific to `reconcileScores`' overlay-only merge dropping an empty SERVER
@@ -385,7 +401,9 @@ export default function QuickGamePage() {
    * it is atomic and there is nothing this can race against.
    */
   function resetGame() {
-    setState((s) => (s ? { ...s, values: {}, finished: false, currentHole: 1 } : s));
+    if (!state) return;
+    prefillDrafts(state);
+    setState(null);
     setView("entry");
     setConfirmReset(false);
     setSettingsOpen(false);
@@ -397,12 +415,12 @@ export default function QuickGamePage() {
    * and the dashboard subtitle). Past that point the gear-panel row is
    * disabled and names Reset Game instead of opening this — "refuse, and
    * point at the existing affordance", not a third path (handoff decision).
+   * Edits IN PLACE (`state` stays non-null, only its roster slice changes) —
+   * the pre-score case, where there's no round to lose by staying on it.
    */
   function openRosterEditor() {
     if (!state || hasAnyScore(state)) return;
-    setDraftPlayers(state.players.map((p) => ({ id: p.id, name: p.name, strokes: state.strokes[p.id] ?? 0 })));
-    setDraftCourse(state.course);
-    setCourseError(null);
+    prefillDrafts(state);
     setSettingsOpen(false);
     setView("roster");
   }
@@ -421,13 +439,6 @@ export default function QuickGamePage() {
 
   const units = quickGameUnits(state);
   const pips = state ? quickGamePips(state) : undefined;
-
-  const gridHeader = (
-    <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-      <button onClick={() => setView("entry")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
-      <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
-    </div>
-  );
 
   // ── Setup ──
   if (!state) {
@@ -505,18 +516,10 @@ export default function QuickGamePage() {
     );
   }
 
-  // ── Final ──
+  // ── Final ── FinalStandings stays mounted underneath; the scorecard is a
+  // sibling `ScorecardSheet` overlay (the shared pattern every golf format
+  // uses), not a separate route that replaces it.
   if (state.finished) {
-    if (view === "grid") {
-      return (
-        <div className="fixed inset-0 z-50 flex flex-col">
-          {gridHeader}
-          <div className="min-h-0 flex-1">
-            <StandardGrid units={units} participants={state.players} values={state.values} pips={pips} direction="low_wins" />
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="fixed inset-0 z-50">
         <FinalStandings
@@ -528,6 +531,11 @@ export default function QuickGamePage() {
           onPlayAgain={playAgain}
           onDiscard={discard}
         />
+        {view === "grid" && (
+          <ScorecardSheet subtitle={state.course?.name} onClose={() => setView("entry")}>
+            <StandardGrid units={units} participants={state.players} values={state.values} pips={pips} direction="low_wins" />
+          </ScorecardSheet>
+        )}
       </div>
     );
   }
@@ -535,40 +543,41 @@ export default function QuickGamePage() {
   // ── Playing ──
   return (
     <div className="fixed inset-0 z-50">
-      {view === "grid" ? (
-        <div className="flex h-full flex-col">
-          {gridHeader}
-          <div className="min-h-0 flex-1">
-            <StandardGrid
-              units={units}
-              participants={state.players}
-              values={state.values}
-              pips={pips}
-              direction="low_wins"
-              onCellTap={(label) => {
-                setCurrentHole(Number(label) || 1);
-                setView("entry");
-              }}
-            />
-          </div>
-        </div>
-      ) : (
-        <ScoreEntryView
-          gameName="Quick Stroke Play"
-          units={units}
-          participants={state.players}
-          values={state.values}
-          pips={pips}
-          direction="low_wins"
-          currentHole={state.currentHole}
-          onHoleChange={setCurrentHole}
-          onChange={onChange}
-          onClear={onClear}
-          onBack={() => router.push("/dashboard")}
-          onOpenGrid={() => setView("grid")}
-          onFinish={finish}
-          onConfig={() => setSettingsOpen(true)}
-        />
+      <ScoreEntryView
+        gameName="Quick Stroke Play"
+        units={units}
+        participants={state.players}
+        values={state.values}
+        pips={pips}
+        direction="low_wins"
+        currentHole={state.currentHole}
+        onHoleChange={setCurrentHole}
+        onChange={onChange}
+        onClear={onClear}
+        onBack={() => router.push("/dashboard")}
+        onOpenGrid={() => setView("grid")}
+        onFinish={finish}
+        onConfig={() => setSettingsOpen(true)}
+      />
+
+      {/* Scorecard — a sibling `ScorecardSheet` overlay on top of the (still
+          mounted) entry screen, the SAME pattern every trip-side golf format
+          uses, not a route that replaces it. Tapping a cell jumps to that
+          hole AND closes the sheet (`view` back to "entry") in one action. */}
+      {view === "grid" && (
+        <ScorecardSheet subtitle={state.course?.name} onClose={() => setView("entry")}>
+          <StandardGrid
+            units={units}
+            participants={state.players}
+            values={state.values}
+            pips={pips}
+            direction="low_wins"
+            onCellTap={(label) => {
+              setCurrentHole(Number(label) || 1);
+              setView("entry");
+            }}
+          />
+        </ScorecardSheet>
       )}
 
       {/* Settings gear (#879 item 1b) — top-right of the game page header, same
