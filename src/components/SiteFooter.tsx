@@ -24,11 +24,20 @@ import { usePathname } from "next/navigation";
  * visibly break its sizing, but it would still be an unreachable dead zone of
  * page underneath a fixed surface that never scrolls it into view. The
  * footer just doesn't belong on these routes.
+ *
+ * `/quick-game` is the same case, hit for real: its full-screen entry/grid
+ * overlays (`fixed inset-0`) sit on a translucent header (`rgba(…, 0.85)`,
+ * matching every other game surface), so the footer's own painted-but-covered
+ * content wasn't invisible — it bled through the 15% gap, readable behind the
+ * header bar. `/quick-game` isn't under `/trips/`, so the exclusion above
+ * never covered it.
  */
 export function SiteFooter() {
   const pathname = usePathname();
   const isAppShellRoute =
-    pathname === "/dashboard" || (pathname.startsWith("/trips/") && !pathname.startsWith("/trips/new"));
+    pathname === "/dashboard" ||
+    pathname === "/quick-game" ||
+    (pathname.startsWith("/trips/") && !pathname.startsWith("/trips/new"));
   if (pathname === "/" || isAppShellRoute) return null;
 
   const link: React.CSSProperties = {
