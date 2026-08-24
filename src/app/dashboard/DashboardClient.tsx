@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Zap } from "lucide-react";
-import { readQuickGameState, quickGameSubtitle, quickGameTitle } from "@/lib/quickGame";
+import { ChevronDown, ChevronRight, Zap, Swords } from "lucide-react";
+import {
+  readAllQuickGames,
+  quickGameSubtitle,
+  QUICK_GAME_LABEL,
+  QUICK_GAME_TILE_FORMATS,
+  type QuickGameFormat,
+  type QuickGameState,
+} from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { HelperCards } from "@/components/HelperCards";
 import { trpc } from "@/lib/trpc-client";
@@ -71,25 +78,30 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
   const [creating, setCreating] = useState(false);
 
   /**
-   * Quick Stroke Play card subtitle (#879 item 1c) — read from local storage,
-   * the ONLY place this game's state lives (no DB, no tRPC). Initialized to the
-   * no-saved-game default (`quickGameSubtitle(null)`) and corrected in an
-   * effect, not a `useState` initializer — `localStorage` is undefined during
-   * SSR, and reading it synchronously on the client's first render would
-   * mismatch whatever the server sent. Same reasoning `/quick-game` itself
-   * documents for its own resume-from-storage read.
+   * Quick Golf Games — one tile per format (§1 of the per-format-slots
+   * redesign), read from local storage, the ONLY place this state lives (no
+   * DB, no tRPC). `readAllQuickGames` returns whatever's saved for EACH format
+   * in one call, so this and the rail's list can't enumerate "what's in
+   * progress" two different, driftable ways.
+   *
+   * A tile's OWN label (`QUICK_GAME_LABEL[format]`) never depends on whether
+   * anything is saved for it — that's the fix for the bug this redesign
+   * replaces rather than patches: the single card used to announce whatever
+   * format happened to be saved (or "Quick Stroke Play" by default when
+   * nothing was), so an empty entry point promised a specific format behind
+   * what was actually a picker. Two tiles, each always named for what it is,
+   * removes the case where a label can be wrong.
+   *
+   * Initialized empty (not read synchronously) and corrected in an effect, not
+   * a `useState` initializer — `localStorage` is undefined during SSR, and
+   * reading it on the client's first render would mismatch whatever the server
+   * sent. Same reasoning `/quick-game` itself documents for its own
+   * resume-from-storage read.
    */
-  // Title AND subtitle both come from the saved state — the card used to
-  // hardcode "Quick Stroke Play", so a saved match would have been announced
-  // under the wrong game's name (one of the readers the T0.4 sweep found).
-  const [quickGameCard, setQuickGameCard] = useState(() => ({
-    title: quickGameTitle(null),
-    subtitle: quickGameSubtitle(null),
-  }));
+  const [quickGames, setQuickGames] = useState<Partial<Record<QuickGameFormat, QuickGameState>>>({});
   useEffect(() => {
-    const saved = readQuickGameState();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuickGameCard({ title: quickGameTitle(saved), subtitle: quickGameSubtitle(saved) });
+    setQuickGames(readAllQuickGames());
   }, []);
 
   // ── Current user ──────────────────────────────────────────────────────────
@@ -202,37 +214,54 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
       <main
         className="mx-auto max-w-[896px] px-4 pb-24 pt-4"
       >
-        {/* Quick Stroke Play — a user-level scratch game, relocated here from
+        {/* Quick Golf Games — a user-level scratch section, relocated here from
             the app header (which is trip/competition-scoped). Always
             available on the dashboard, regardless of trip context and ABOVE
             the "My Trips" heading (#879 item 1d) — it isn't a trip, and
-            sitting inside that section read as one. Opens the local
-            stroke-play game; a format picker is deferred to the
-            standalone-game work (renamed from "Quick Game" in #879 item 1a —
-            that name promised a picker this doesn't have). The subtitle
-            reflects what's actually saved in local storage (item 1c). */}
-        <button
-          onClick={() => router.push("/quick-game")}
-          data-testid="quick-game-strip"
-          className="mb-6 flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-left transition-opacity hover:opacity-90"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-          >
-            <Zap size={20} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              {quickGameCard.title}
-            </div>
-            <div className="truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {quickGameCard.subtitle}
-            </div>
+            sitting inside that section read as one.
+            ONE TILE PER FORMAT, not one slot behind a picker (the redesign
+            this replaces): each tile IS its format, labeled by what it is
+            whether or not a round is saved, and either starts one or resumes
+            one. `data-testid="quick-game-strip"` stays on the SECTION
+            wrapper (not either tile) so `e2e/slow-paths-latency.spec.ts`'s
+            existing "dashboard has painted" marker keeps working — it only
+            ever used this element's PRESENCE as a settle signal, never its
+            content. */}
+        <div className="mb-6" data-testid="quick-game-strip">
+          <div className="mb-2 px-0.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Quick Golf Games
           </div>
-          <ChevronRight size={18} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-        </button>
+          <div className="grid grid-cols-2 gap-3">
+            {QUICK_GAME_TILE_FORMATS.map((format) => {
+              const Icon = format === "match" ? Swords : Zap;
+              const saved = quickGames[format] ?? null;
+              return (
+                <button
+                  key={format}
+                  onClick={() => router.push(`/quick-game?format=${format}`)}
+                  data-testid={`quick-game-tile-${format}`}
+                  className="flex flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left transition-opacity hover:opacity-90"
+                  style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+                >
+                  <span
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+                    style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+                  >
+                    <Icon size={20} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                      {QUICK_GAME_LABEL[format]}
+                    </div>
+                    <div className="mt-0.5 truncate text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {quickGameSubtitle(saved)}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* ── Header — hidden when the user has no trips. The empty
             state has its own centered "New trip" CTA, so the welcome

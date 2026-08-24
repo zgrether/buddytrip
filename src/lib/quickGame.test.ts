@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   quickGameSubtitle,
   quickGameTitle,
@@ -15,6 +15,11 @@ import {
   hasAnyScore,
   buildRosterFromDrafts,
   migrateQuickGameState,
+  readQuickGameState,
+  writeQuickGameState,
+  clearQuickGameState,
+  readAllQuickGames,
+  quickGameStorageKey,
   QUICK_GAME_STATE_VERSION,
   QUICK_GAME_LABEL,
   type QuickGameState,
@@ -684,5 +689,163 @@ describe("migrateQuickGameState — the format is READ, never inferred", () => {
 
   it("a half-written match (one side) is rejected rather than half-populated", () => {
     expect(migrateQuickGameState({ ...matchGame(), sideB: undefined })).toBeNull();
+  });
+});
+
+// ── Per-format storage (#1051 — the slots redesign) ─────────────────────────
+//
+// In-memory localStorage polyfill for the node test env — the established
+// pattern in this repo (draftOutbox.test.ts / outcomeOutbox.test.ts), not
+// invented here.
+describe("per-format storage", () => {
+  // The pre-#1051 single key. Hardcoded deliberately, not imported — this
+  // string IS the migration contract with whatever's already on a real
+  // device, and importing a constant that could be renamed later would let
+  // this test silently stop proving the thing it exists to prove.
+  const LEGACY_KEY = "bt-quick-game";
+
+  beforeEach(() => {
+    const store = new Map<string, string>();
+    (globalThis as unknown as { window: unknown }).window = globalThis;
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+      key: () => null,
+      length: 0,
+    } as Storage;
+  });
+
+  it("write → read round-trips a round under its OWN format's key", () => {
+    const s = state({ values: { p1: { "1": 4 } } });
+    writeQuickGameState(s);
+    expect(readQuickGameState("stroke")).toEqual(s);
+    expect(readQuickGameState("match")).toBeNull(); // a different format's key is untouched
+  });
+
+  it("a stroke round and a match round coexist — separate keys, both resumable", () => {
+    const strokeRound = state({ currentHole: 5 });
+    const match = matchGame({ entryMode: "outcome", outcomes: { "1": "side_a" } });
+    writeQuickGameState(strokeRound);
+    writeQuickGameState(match);
+    expect(readQuickGameState("stroke")).toEqual(strokeRound);
+    expect(readQuickGameState("match")).toEqual(match);
+  });
+
+  it("starting a match with a stroke round open does not touch the stroke round", () => {
+    const strokeRound = state({ values: { p1: { "1": 5 } }, currentHole: 2 });
+    writeQuickGameState(strokeRound);
+    // "Starting a match" is just writing under the match key — never a write,
+    // read, or clear that goes anywhere near the stroke key.
+    writeQuickGameState(matchGame());
+    expect(readQuickGameState("stroke")).toEqual(strokeRound);
+  });
+
+  it("clearQuickGameState removes only that format's round", () => {
+    writeQuickGameState(state());
+    writeQuickGameState(matchGame());
+    clearQuickGameState("stroke");
+    expect(readQuickGameState("stroke")).toBeNull();
+    expect(readQuickGameState("match")).not.toBeNull();
+  });
+
+  it("readAllQuickGames lists exactly what's saved, keyed by format", () => {
+    expect(readAllQuickGames()).toEqual({});
+    writeQuickGameState(matchGame());
+    expect(Object.keys(readAllQuickGames())).toEqual(["match"]);
+    writeQuickGameState(state());
+    const all = readAllQuickGames();
+    expect(Object.keys(all).sort()).toEqual(["match", "stroke"]);
+  });
+
+  it("readAllQuickGames only enumerates TILE formats — a rack round on disk is not listed", () => {
+    writeQuickGameState(rackGame());
+    expect(readAllQuickGames()).toEqual({});
+    // But it's not gone — a rack round still round-trips through its own key
+    // directly, matching "no tile yet" rather than "deleted".
+    expect(readQuickGameState("rack")).not.toBeNull();
+  });
+
+  it("a format's key never returns a DIFFERENT format's state, even if the key were tampered with", () => {
+    // Simulates a write that went to the wrong key (should never happen through
+    // the public API, but the reader must not trust the key over the payload).
+    localStorage.setItem(quickGameStorageKey("stroke"), JSON.stringify(matchGame()));
+    expect(readQuickGameState("stroke")).toBeNull();
+  });
+
+  describe("legacy single-key migration", () => {
+    it("a v2 (no `format`) legacy payload migrates to the STROKE key, round intact", () => {
+      const v2 = {
+        version: 2,
+        players: [{ id: "p1", name: "Zach", color: "#2dd4bf" }],
+        values: { p1: { "1": 4, "2": 5 } },
+        finished: false,
+        currentHole: 3,
+        course: null,
+        strokes: { p1: 6 },
+      };
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(v2));
+      const loaded = readQuickGameState("stroke");
+      expect(loaded).not.toBeNull();
+      expect(loaded!.format).toBe("stroke");
+      expect(loaded!.currentHole).toBe(3);
+      expect((loaded as QuickStrokeState).strokes).toEqual({ p1: 6 });
+      // The legacy key is consumed, not left behind to re-migrate every load.
+      expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+    });
+
+    it("a v1 (no version/course/strokes) legacy payload migrates to the STROKE key as a scratch round", () => {
+      const v1 = {
+        players: [{ id: "p1", name: "Zach", color: "#2dd4bf" }],
+        values: {},
+        finished: false,
+        currentHole: 1,
+      };
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(v1));
+      const loaded = readQuickGameState("stroke");
+      expect(loaded).not.toBeNull();
+      expect(loaded!.format).toBe("stroke");
+      expect((loaded as QuickStrokeState).strokes).toEqual({});
+      expect(loaded!.course).toBeNull();
+    });
+
+    it("a match-format legacy payload migrates to the MATCH key, not stroke", () => {
+      const m = matchGame({ entryMode: "outcome", outcomes: { "1": "side_a" } });
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(m));
+      // Reading the STROKE key must NOT surface the match round.
+      expect(readQuickGameState("stroke")).toBeNull();
+      const loaded = readQuickGameState("match");
+      expect(loaded).toEqual({ ...m, version: QUICK_GAME_STATE_VERSION });
+    });
+
+    it("migration is idempotent — reading twice does not duplicate or re-trigger anything", () => {
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(state()));
+      const first = readQuickGameState("stroke");
+      const second = readQuickGameState("stroke");
+      expect(second).toEqual(first);
+      expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+    });
+
+    it("migration never clobbers a round already saved under the target format's key", () => {
+      const existing = state({ currentHole: 9, values: { p1: { "1": 3 } } });
+      writeQuickGameState(existing); // the stroke key already has a real round
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(state({ currentHole: 1 }))); // a different one, legacy
+      const loaded = readQuickGameState("stroke");
+      // The EXISTING per-format round wins — nothing here is silently overwritten.
+      expect(loaded).toEqual(existing);
+    });
+
+    it("readAllQuickGames also triggers the migration — either read path works", () => {
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(matchGame()));
+      expect(readAllQuickGames().match).not.toBeUndefined();
+      expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+    });
+
+    it("no legacy key and nothing saved → both formats read null, no crash", () => {
+      expect(readQuickGameState("stroke")).toBeNull();
+      expect(readQuickGameState("match")).toBeNull();
+      expect(readAllQuickGames()).toEqual({});
+    });
   });
 });
