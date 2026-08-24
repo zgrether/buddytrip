@@ -124,6 +124,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
       utils: {
         competitions: { faceBootstrap: spy("faceBootstrap"), leaderboard: spy("leaderboard") },
         scores: { listByGame: spy("scores") },
+        games: { bracketDraw: spy("bracketDraw") },
       },
     };
   }
@@ -168,6 +169,75 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   });
 
   /**
+   * THE BRACKET'S SCORE — a pick is a result, and it was reaching nobody.
+   *
+   * `bracket_matches_pick_broadcast` (migration 118) fires on `winner_entrant_id`
+   * changing and sends on this exact topic — the DB half worked and has its own
+   * end-to-end test. What was missing was the key: this handler invalidated
+   * faceBootstrap, leaderboard and scores, and a bracket renders from NONE of
+   * them. It reads `games.bracketDraw`.
+   *
+   * Nothing else was going to catch it either. The draw is `STRUCTURE_QUERY`
+   * (`staleTime: Infinity`, no poll), and `games.configHash` deliberately excludes
+   * `winner_entrant_id` (CLAUDE.md #16 — a result must never churn the config
+   * hash), so the ~20s config sync is silent on picks BY DESIGN. The only
+   * invalidators were the picking client's own mutation and finalize: your picks
+   * appeared, everyone else's never did.
+   */
+  it("invalidates the BRACKET DRAW — a pick is a result and nothing else refetches it", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    flushWindow();
+
+    expect(calls).toContain(
+      'bracketDraw.invalidate({"tripId":"trip-1","gameId":"g-1"})',
+    );
+    // Still invalidate-only — a bracket pick is as much a SIGNAL as a hole score
+    // (#20), and the refetch is what re-applies auth.
+    expect(calls.some((c) => c.includes("setData"))).toBe(false);
+  });
+
+  it("invalidates the whole bracket-draw key on a reconnect backfill too", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    flushWindow();
+    expect(calls).toContain("bracketDraw.invalidate()");
+  });
+
+  /**
+   * ONE INVALIDATOR, NOT TWO LISTS THAT HAPPEN TO MATCH (CLAUDE.md #22).
+   *
+   * The delta between the local pick path and this one WAS the bug, and it is the
+   * same shape chat had: posting worked, receiving didn't. So rather than assert
+   * the four keys by name — a list that drifts exactly as the last one did — this
+   * asserts the PROPERTY: every query a bracket surface refetches after its own
+   * pick must also be refetched when somebody else's arrives.
+   *
+   * `games.getById` is in the local set via finalize (the game row carries the
+   * lock state) and is covered here by the games-lifecycle broadcast on `status` /
+   * `corrections_open`, which is a different trigger and a different event — so it
+   * is named as a deliberate exclusion rather than silently absent.
+   */
+  it("covers every key the local pick path refreshes", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    flushWindow();
+
+    // What BracketScoringSurface invalidates after a local pick / finalize.
+    const localPickKeys = ["bracketDraw"];
+    for (const key of localPickKeys) {
+      expect(
+        calls.some((c) => c.startsWith(`${key}.invalidate`)),
+        `a remote pick must refresh '${key}' — the local pick path does, and the ` +
+          `difference between those two lists is exactly how this broke`,
+      ).toBe(true);
+    }
+  });
+
+  /**
    * THE POINT OF THE COALESCER, pinned at the handler level.
    *
    * This is the production shape in miniature: a reset emits ~73 broadcasts
@@ -190,7 +260,13 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     expect(count("faceBootstrap.invalidate")).toBe(1);
     expect(count("leaderboard.invalidate")).toBe(1);
     expect(count("scores.invalidate")).toBe(1);
-    expect(calls).toHaveLength(3); // 219 handler calls per query → 1 refetch each
+    // The bracket draw joined the key set when remote picks started reaching the
+    // board; it coalesces exactly like the other three. The total moved 3 → 4
+    // because there are four QUERIES now, not because a burst costs more — which
+    // is the property this test exists to hold, and the per-query counts above are
+    // what actually state it.
+    expect(count("bracketDraw.invalidate")).toBe(1);
+    expect(calls).toHaveLength(4); // 219 handler calls per query → 1 refetch each
   });
 
   it("keeps DIFFERENT games separate — the key is not too coarse", () => {
@@ -306,6 +382,46 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
 
     relA();
     relB();
+  });
+
+  /**
+   * A DEAD SUBSCRIPTION MUST SAY SO — CLAUDE.md #22.
+   *
+   * The hook branched only on SUBSCRIBED, so a channel that never established was
+   * indistinguishable from a healthy one with nothing to report. Found the hard
+   * way while diagnosing the bracket-pick gap: the browser could not hold a
+   * websocket at all (close code 1006), and `useRealtimeChat` and
+   * `useRealtimeMembers` each said so in the console while THIS hook — the one
+   * carrying every score and every pick — was silent.
+   *
+   * Asserts the three dead statuses individually rather than "logs on a bad
+   * status", because branching on only one of them is exactly the shape of the
+   * original defect.
+   */
+  it.each(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"])("reports a dead channel (%s)", (status) => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const rel = acquire(TOPIC, vi.fn());
+
+    created[0].subCb?.(status);
+
+    expect(spy, `status ${status} must be reported, not swallowed`).toHaveBeenCalledTimes(1);
+    const msg = String(spy.mock.calls[0][0]);
+    expect(msg).toContain(TOPIC);
+    expect(msg).toContain(status);
+
+    spy.mockRestore();
+    rel();
+  });
+
+  it("says nothing on a healthy subscribe", () => {
+    // The other half — a hook that cried wolf on every connect would be ignored
+    // within a day, which is the same outcome as saying nothing.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const rel = acquire(TOPIC, vi.fn());
+    created[0].subCb?.("SUBSCRIBED");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    rel();
   });
 
   it("separate competitions get separate channels", () => {
