@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, Table2, Check } from "lucide-react";
+import { ChevronLeft, Table2, Check, Settings } from "lucide-react";
 import { buildDecidedFromOutcomes, matchState, outcomeBottomState, type HoleOutcomeResult } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { MatchCard } from "./MatchCard";
@@ -49,6 +49,11 @@ interface MatchOutcomeEntryViewProps {
   meId?: string;
   saveStatus?: SaveStatusMap;
   onRetryCell?: (matchId: string, hole: string) => void;
+  /** Open a settings surface from the header gear — the SAME optional slot
+   *  `ScoreEntryView` and `MatchEntryView` have. Omitted trip-side (GameChrome
+   *  publishes the gear to the app bar); supplied by a standalone caller that
+   *  owns its own header. */
+  onConfig?: () => void;
   hideHeader?: boolean;
   glorious?: GloriousConfig;
 }
@@ -71,6 +76,7 @@ export function MatchOutcomeEntryView({
   meId,
   saveStatus = {},
   onRetryCell,
+  onConfig,
   hideHeader = false,
   glorious = NO_GLORIOUS,
 }: MatchOutcomeEntryViewProps) {
@@ -188,8 +194,15 @@ export function MatchOutcomeEntryView({
           </div>
           {/* Scorecard now lives in the hole-navigator meta line (thumb zone),
               matching stroke/rack — this standalone-route header keeps only a
-              spacer so the title stays centered (Wave 2 parity). */}
-          <div className="h-9 w-9" />
+              spacer so the title stays centered (Wave 2 parity), or the
+              settings gear when a caller supplies `onConfig`. */}
+          {onConfig ? (
+            <button onClick={onConfig} aria-label="Configuration" className="flex h-9 w-9 items-center justify-center">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          ) : (
+            <div className="h-9 w-9" />
+          )}
         </header>
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, Table2 } from "lucide-react";
+import { ChevronLeft, Table2, Settings } from "lucide-react";
 import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { StrokeKeypad } from "./StrokeKeypad";
@@ -87,6 +87,12 @@ interface MatchEntryViewProps {
   saveStatus?: SaveStatusMap;
   /** Re-fire the save for a flagged cell. */
   onRetryCell?: (participantId: string, unitLabel: string) => void;
+  /** Open a settings surface from the header gear — the SAME optional slot
+   *  `ScoreEntryView` has. Omitted trip-side, where `GameChrome` publishes the
+   *  gear to the app bar instead; supplied by a standalone caller that owns its
+   *  own header (Quick Play). Additive and generic: no caller learns anything
+   *  about another. */
+  onConfig?: () => void;
   /** #550: hide the view's own header — as a panel the app bar carries
    *  back/title + the scorecard action, so this second header is dropped. */
   hideHeader?: boolean;
@@ -113,6 +119,7 @@ export function MatchEntryView({
   meId,
   saveStatus = {},
   onRetryCell,
+  onConfig,
   hideHeader = false,
   glorious = NO_GLORIOUS,
 }: MatchEntryViewProps) {
@@ -271,8 +278,17 @@ export function MatchEntryView({
             </div>
           </div>
           {/* Scorecard relocated to the hole-navigator meta line (thumb zone),
-              matching stroke/rack — spacer keeps the title centered (Wave 2). */}
-          <div className="h-9 w-9" />
+              matching stroke/rack — spacer keeps the title centered (Wave 2).
+              The settings gear takes the same corner `ScoreEntryView` puts it in
+              when a caller supplies `onConfig`; the spacer is the omitted case,
+              so the title stays centered either way. */}
+          {onConfig ? (
+            <button onClick={onConfig} aria-label="Configuration" className="flex h-9 w-9 items-center justify-center">
+              <Settings size={19} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          ) : (
+            <div className="h-9 w-9" />
+          )}
         </header>
       )}
 

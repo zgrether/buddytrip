@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Zap } from "lucide-react";
-import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
+import { readQuickGameState, quickGameSubtitle, quickGameTitle } from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { HelperCards } from "@/components/HelperCards";
 import { trpc } from "@/lib/trpc-client";
@@ -79,10 +79,17 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
    * mismatch whatever the server sent. Same reasoning `/quick-game` itself
    * documents for its own resume-from-storage read.
    */
-  const [quickGameCardSubtitle, setQuickGameCardSubtitle] = useState(() => quickGameSubtitle(null));
+  // Title AND subtitle both come from the saved state — the card used to
+  // hardcode "Quick Stroke Play", so a saved match would have been announced
+  // under the wrong game's name (one of the readers the T0.4 sweep found).
+  const [quickGameCard, setQuickGameCard] = useState(() => ({
+    title: quickGameTitle(null),
+    subtitle: quickGameSubtitle(null),
+  }));
   useEffect(() => {
+    const saved = readQuickGameState();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuickGameCardSubtitle(quickGameSubtitle(readQuickGameState()));
+    setQuickGameCard({ title: quickGameTitle(saved), subtitle: quickGameSubtitle(saved) });
   }, []);
 
   // ── Current user ──────────────────────────────────────────────────────────
@@ -218,10 +225,10 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Quick Stroke Play
+              {quickGameCard.title}
             </div>
             <div className="truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {quickGameCardSubtitle}
+              {quickGameCard.subtitle}
             </div>
           </div>
           <ChevronRight size={18} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />

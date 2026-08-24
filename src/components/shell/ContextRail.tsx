@@ -6,7 +6,7 @@ import { Dice5, Lightbulb, Luggage, PanelLeftClose, PanelLeftOpen, Plus, Trophy 
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
-import { readQuickGameState, quickGameSubtitle } from "@/lib/quickGame";
+import { readQuickGameState, quickGameSubtitle, quickGameTitle } from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { ROLE_COLOR, badgedRole, type BadgedRole } from "@/lib/roleColor";
 import { useIsShellDesktop, useHasRailRoom } from "./breakpoints";
@@ -998,7 +998,7 @@ function useQuickGameSummary(): { title: string; subtitle: string } | null {
   // and setState-inside-an-effect is what the React Compiler lint refuses.
   const [summary] = useState<{ title: string; subtitle: string } | null>(() => {
     const state = readQuickGameState();
-    return state ? { title: "Quick Stroke Play", subtitle: quickGameSubtitle(state) } : null;
+    return state ? { title: quickGameTitle(state), subtitle: quickGameSubtitle(state) } : null;
   });
   return summary;
 }
