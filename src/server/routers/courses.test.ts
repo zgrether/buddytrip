@@ -102,6 +102,43 @@ describe("courses router — global library", () => {
     expect(tees[1]).toMatchObject({ name: "White", slopeRating: 124 });
   });
 
+  it("accepts 15 tee sets — Pebble Beach's real golfcourseapi count, which the old max(12) rejected", async () => {
+    // golfcourseapi tags male/female tees separately and combo tees ("White/Green
+    // Combo") duplicate that split again — Pebble Beach itself returns 15 distinct
+    // tee sets (measured live 2026-08-24). A cap that rejects real data is not a
+    // guard, it's a landmine; this pins the raised ceiling against the actual
+    // count rather than an arbitrary smaller one that would pass by accident.
+    const names = [
+      "Blue", "Gold", "Gold/White Combo", "White", "White/Green Combo", "Green",
+      "Green/Red Combo", "Red", "Gold (W)", "Gold/White Combo (W)", "White (W)",
+      "White/Green Combo (W)", "Green (W)", "Green/Red Combo (W)", "Red (W)",
+    ];
+    expect(names).toHaveLength(15);
+    const course = await ctx.caller().courses.create({
+      name: "Fifteen Tee GC",
+      holeCount: 18,
+      par: PAR,
+      handicapIndex: IDX,
+      source: "golfcourseapi",
+      teeSets: names.map((name) => ({ name, yards: Array(18).fill(400) })),
+    });
+    courseIds.push(course.id as string);
+    expect((course.tee_sets as unknown[]).length).toBe(15);
+  });
+
+  it("still rejects an absurd tee-set count (the cap exists for a reason)", async () => {
+    const names = Array.from({ length: 31 }, (_, i) => `Tee ${i}`);
+    await expect(
+      ctx.caller().courses.create({
+        name: "Too Many Tees GC",
+        holeCount: 18,
+        par: PAR,
+        handicapIndex: IDX,
+        teeSets: names.map((name) => ({ name, yards: Array(18).fill(400) })),
+      })
+    ).rejects.toThrow();
+  });
+
   it("list + getById surface a saved course", async () => {
     const list = await ctx.caller().courses.list({ limit: 50 });
     expect(list.some((c: { id: string }) => c.id === courseIds[0])).toBe(true);

@@ -128,9 +128,19 @@ function RosterFields({
   courseBusy: boolean;
   courseError: string | null;
 }) {
+  // Matches Stepper's own "compact" sizing math (STEPPER_SIZES.compact) so the
+  // "Handicaps" header centers over the stepper it labels rather than guessing.
+  const STROKES_COL_WIDTH = 112;
+  const REMOVE_COL_WIDTH = 32;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 px-0.5">
+          <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Players</span>
+          <span className="text-center text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)", width: STROKES_COL_WIDTH }}>Handicaps</span>
+          <span style={{ width: REMOVE_COL_WIDTH, flexShrink: 0 }} />
+        </div>
         {draftPlayers.map((r, i) => (
           <div key={r.id} className="flex items-center gap-2">
             <input
@@ -140,27 +150,32 @@ function RosterFields({
               className="min-w-0 flex-1"
               style={{ height: 46, borderRadius: 12, padding: "0 14px", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 15 }}
             />
-            <Stepper
-              size="compact"
-              value={r.strokes}
-              min={0}
-              max={MAX_STROKES}
-              onChange={(n) => onChangeStrokes(r.id, n)}
-              formatValue={(n) => (n === 0 ? "SCR" : String(n))}
-              dimValue={r.strokes === 0}
-              testId={`quick-game-strokes-${i}`}
-            />
-            {draftPlayers.length > 1 && (
-              <button
-                type="button"
-                onClick={() => onRemove(r.id)}
-                aria-label="Remove player"
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={16} />
-              </button>
-            )}
+            <div style={{ width: STROKES_COL_WIDTH, flexShrink: 0 }}>
+              <Stepper
+                size="compact"
+                value={r.strokes}
+                min={0}
+                max={MAX_STROKES}
+                onChange={(n) => onChangeStrokes(r.id, n)}
+                formatValue={(n) => (n === 0 ? "SCR" : String(n))}
+                dimValue={r.strokes === 0}
+                testId={`quick-game-strokes-${i}`}
+              />
+            </div>
+            {/* The slot is always reserved (not conditionally rendered) so a
+                solo row doesn't narrow and drift out of alignment with the
+                "Players"/"Handicaps" header above it — only the button itself
+                is conditional on the floor of 1. */}
+            <button
+              type="button"
+              onClick={() => onRemove(r.id)}
+              aria-label="Remove player"
+              disabled={draftPlayers.length <= 1}
+              className="flex h-8 items-center justify-center rounded-full disabled:invisible"
+              style={{ width: REMOVE_COL_WIDTH, flexShrink: 0, color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
           </div>
         ))}
       </div>
@@ -424,8 +439,10 @@ export default function QuickGamePage() {
             <X size={18} />
           </button>
         </div>
-        <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Stroke play · name 1–4 players.</p>
 
+        {/* No separate instructional line — the "Players"/"Handicaps" column
+            headers inside RosterFields communicate the same thing (feedback:
+            the prose subtitle was redundant with them). */}
         <div className="mt-4">
           <RosterFields
             draftPlayers={draftPlayers}

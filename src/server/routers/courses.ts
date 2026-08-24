@@ -48,7 +48,13 @@ export const coursesRouter = router({
         par: z.array(z.number().int().min(3).max(7)),
         handicapIndex: z.array(z.number().int().min(1)).optional(),
         hasStrokeIndex: z.boolean().optional(),
-        teeSets: z.array(teeSetSchema).max(12).optional(),
+        // Cap was 12 — too tight for real data. golfcourseapi tags male/female
+        // tees separately and combo tees ("White/Green Combo") duplicate that
+        // split again; Pebble Beach itself (the SAME course that caught the
+        // bogey-rating bound above) returns 15 distinct tee sets, and
+        // courses.create rejected every one of them (BAD_REQUEST, `too_big`).
+        // Measured 2026-08-24 via the live golfcourseapi response, not guessed.
+        teeSets: z.array(teeSetSchema).max(30).optional(),
         source: z.enum(["manual", "golfcourseapi"]).optional(),
         providerId: z.string().max(120).optional(),
       })
