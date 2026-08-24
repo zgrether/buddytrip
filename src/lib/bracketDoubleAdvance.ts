@@ -30,6 +30,44 @@
  * it is never going to be occupied, and the entrant beside it should advance free
  * rather than stall. `Feed.empty` carries that distinction, and it is the whole reason
  * odd entrant counts work.
+ *
+ * ── THE PHANTOM BYE, and the fourth instance of one conflation ──────────────
+ * This module had the three states in its vocabulary and the two-state test in its
+ * code. `winnerFeed`/`loserFeed` asked `aSeed === null && bSeed === null` and called
+ * that NEVER — which is "is this row empty RIGHT NOW", not "can it ever be filled".
+ *
+ * What it produced, from the device report: match 13 takes `Winner of 12` and
+ * `Loser of 7`. The dropper from 7 arrived first; match 12 was undecided because ITS
+ * feeders (10 and 11) had not been played, so 12 had two null seats, so `winnerFeed(12)`
+ * said NEVER, so `fromFeeds` saw one occupant against a permanently-empty seat and
+ * declared a BYE. The dropper advanced into the grand final without playing. Order of
+ * arrival decided whether a real match was skipped — which is why a test that fills
+ * seats in only one order passes against it.
+ *
+ * The answer is `ResolvedMatch.neverContested`, PROPAGATED during the walk: a row is
+ * unreachable only when both of its feeds are. Round 1 is the sole place the old test
+ * was right, because its seats are seeded at build time.
+ *
+ * ── Three answers to one question, two of them wrong ────────────────────────
+ * "Can this seat ever be filled" was being derived independently in three places:
+ *
+ *   1. this walk — WRONG (the test above)
+ *   2. `doubleBracketDisplay` (bracketDoubleLabels.ts) — CORRECT: it threads a
+ *      `produces` map through the draw in dependency order and asks whether a seat's
+ *      SOURCE can still yield what the seat takes
+ *   3. `doublePositionsAwarded` (bracketDoublePlacements.ts) — WRONG, its own copy of
+ *      the same two-state test
+ *
+ * `bracketStakes` is NOT a fourth: it reads `m.bye` off the resolved match, so it
+ * inherited this walk's answer rather than forming its own.
+ *
+ * The correct predicate already existed at (2) when (1) and (3) were written, which is
+ * CLAUDE.md #27 exactly — go read the one that exists before deriving a second. Worse,
+ * the board renders "Bye" from this walk's `m.bye`, so the wrong answer was the one on
+ * screen while the label module beside it knew better. `neverContested` is now a field
+ * on the resolved match, so (1) and (3) read ONE value; (2) keeps its own chain because
+ * it answers a finer, per-SEAT question (which source, and winner-or-loser), and it is
+ * the one that was right.
  */
 
 import { isBye, type BracketDrawMatch } from "./bracket";
@@ -52,11 +90,18 @@ interface Feed {
 const WAITING: Feed = { seed: null, empty: false };
 const NEVER: Feed = { seed: null, empty: true };
 
-/** The winner leaving a resolved match, as a feed. A match nobody played sends
- *  nobody; a bye sends its lone occupant without a recorded result. */
+/**
+ * The winner leaving a resolved match, as a feed.
+ *
+ * A row nobody will EVER play sends nobody; a bye sends its lone occupant without a
+ * recorded result; an undecided row that can still be filled sends WAITING.
+ *
+ * The unreachability test is `m.neverContested`, NOT `aSeed === null && bSeed === null`
+ * — see the module header. Those two are equivalent only in round 1.
+ */
 function winnerFeed(m: ResolvedMatch | undefined): Feed {
   if (!m) return NEVER;
-  if (m.aSeed === null && m.bSeed === null) return NEVER; // never contested
+  if (m.neverContested) return NEVER;
   if (m.bye) return { seed: m.aSeed, empty: false };
   if (m.winnerSeed === null) return WAITING;
   return { seed: m.winnerSeed, empty: false };
@@ -68,11 +113,15 @@ function winnerFeed(m: ResolvedMatch | undefined): Feed {
  * A bye produces no loser — nobody played, so nobody lost. That is the single most
  * consequential line in this file at odd entrant counts: it is what turns a lower seat
  * into permanently-empty rather than perpetually-waiting.
+ *
+ * Everything else that has not been decided is WAITING. A row that is undecided
+ * because its own feeders are undecided still produces a loser eventually, and saying
+ * NEVER about it is what manufactured the phantom bye.
  */
 function loserFeed(m: ResolvedMatch | undefined): Feed {
   if (!m) return NEVER;
   if (m.bye) return NEVER;
-  if (m.aSeed === null && m.bSeed === null) return NEVER;
+  if (m.neverContested) return NEVER;
   if (m.winnerSeed === null) return WAITING;
   return { seed: m.winnerSeed === m.aSeed ? m.bSeed : m.aSeed, empty: false };
 }
@@ -83,6 +132,9 @@ function loserFeed(m: ResolvedMatch | undefined): Feed {
 function fromFeeds(m: BracketDrawMatch, a: Feed, b: Feed, recorded: number | null): ResolvedMatch {
   const aSeed = a.seed;
   const bSeed = b.seed;
+  // A bye needs the other seat to be PERMANENTLY empty. `b.empty` carries that and
+  // `bSeed === null` does not — a WAITING feed is also seedless, and treating it as a
+  // bye is what advanced an entrant past a match that had not been played.
   const bye = (aSeed !== null && b.empty) || (bSeed !== null && a.empty);
   // A bye's occupant may be sitting in either seat, so normalise it into A — every
   // consumer reads a bye's survivor from `aSeed` (`winnerFeed` above included).
@@ -101,6 +153,10 @@ function fromFeeds(m: BracketDrawMatch, a: Feed, b: Feed, recorded: number | nul
     bye,
     playable: !bye && aSeed !== null && bSeed !== null && winnerSeed === null,
     decidable: !bye && aSeed !== null && bSeed !== null,
+    // Unreachable ⟺ NEITHER feed can ever deliver anyone. One empty feed and one
+    // waiting feed is a row that will eventually hold exactly one entrant — a future
+    // bye, not an empty row.
+    neverContested: a.empty && b.empty,
   };
 }
 
@@ -132,6 +188,10 @@ export function resolveDoubleDraw(draw: BracketDrawMatch[], winners: WinnerBySee
           bye,
           playable: !bye && m.aSeed !== null && m.bSeed !== null && (rec === m.aSeed || rec === m.bSeed ? false : true),
           decidable: !bye && m.aSeed !== null && m.bSeed !== null,
+          // ROUND 1 IS THE ONE PLACE two null seats really mean unreachable: these
+          // seats are seeded when the draw is built, so nothing upstream can arrive
+          // later. Every other row gets the propagated answer from `fromFeeds`.
+          neverContested: m.aSeed === null && m.bSeed === null,
         });
       } else {
         const feedA = winnerFeed(resolved.get(matchKey({ bracket: "main", round: round - 1, slot: m.slot * 2 - 1 })));
