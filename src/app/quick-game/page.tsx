@@ -11,7 +11,6 @@ import {
   quickGameUnits,
   quickGamePips,
   quickGameStandings,
-  hasAnyScore,
   buildRosterFromDrafts,
   type QuickGameState,
   type QuickGameCourse,
@@ -388,11 +387,12 @@ export default function QuickGamePage() {
    * this makes it zero. Tapping Start immediately reproduces the old
    * behavior exactly, so nothing is lost for the "just re-score it" case.
    *
-   * This is also the ONE reset path once scores exist — a roster edit is
-   * refused past that point (§1) and points here instead. It's no longer a
-   * separate path from the roster editor at all — it's the SAME setup
-   * screen, reached with `state` cleared instead of merely staged, via the
-   * shared `prefillDrafts`.
+   * This and the roster editor (`openRosterEditor`/`saveRoster`, below) are
+   * now two INDEPENDENT affordances, not one gating the other: this clears
+   * SCORES and returns to setup; that edits players/handicaps/course
+   * WITHOUT touching scores, any time. Both stage via the same
+   * `prefillDrafts` so they can't drift into different pre-fill rules — the
+   * only difference is whether `state` gets cleared (this) or kept (that).
    *
    * Not a `useScoreSaver.clearAll` situation (#807's fix target): that bug was
    * specific to `reconcileScores`' overlay-only merge dropping an empty SERVER
@@ -410,16 +410,35 @@ export default function QuickGamePage() {
   }
 
   /**
-   * Roster editor (§1) — allowed only before any score exists (`hasAnyScore`,
-   * the ONE "has this round started" predicate, shared with the reset guard
-   * and the dashboard subtitle). Past that point the gear-panel row is
-   * disabled and names Reset Game instead of opening this — "refuse, and
-   * point at the existing affordance", not a third path (handoff decision).
-   * Edits IN PLACE (`state` stays non-null, only its roster slice changes) —
-   * the pre-score case, where there's no round to lose by staying on it.
+   * Roster editor (§1) — REVISED: no longer gated on `hasAnyScore`. The
+   * original design refused this once a score existed and pointed at Reset
+   * Game instead ("refuse, and point at the existing affordance"). Feedback,
+   * after using it: "I don't think we need to worry about disabling players
+   * & handicaps... it should just be a label and whether a score gets netted
+   * or not... meaning they can change on the fly during the round." So this
+   * is now a plain, always-available edit — same screen, same
+   * `buildRosterFromDrafts` floor/cap rules, no refusal state to render.
+   *
+   * Editing mid-round is SAFE here in a way it isn't for most persisted
+   * state, because netting is derived at READ time, never snapshotted
+   * (`quickGamePips`, mirroring CLAUDE.md #11's "derived, never snapshotted"
+   * discipline for Glorious Finishing Holes): changing a handicap changes
+   * what the next render computes for EVERY hole, past and future, with no
+   * migration. A renamed/kept player keeps their id (from `prefillDrafts`),
+   * so their scores stay attached; a removed player's old score-values just
+   * go unread (their id drops out of `state.players`, and nothing keys off
+   * player ids that aren't in that list). `saveRoster` therefore does NOT
+   * touch `values`/`currentHole` any more — that clear was only safe under
+   * the old before-any-score invariant, and wiping scores on a plain roster
+   * tweak would contradict "on the fly during the round".
+   *
+   * The one thing this does NOT relitigate: a COURSE swap mid-round still
+   * goes through the same screen/save path, and a hole-count change (18↔9)
+   * after scores exist on the dropped holes is unaddressed — nobody has
+   * asked for it, and guarding against it wasn't part of this ask.
    */
   function openRosterEditor() {
-    if (!state || hasAnyScore(state)) return;
+    if (!state) return;
     prefillDrafts(state);
     setSettingsOpen(false);
     setView("roster");
@@ -428,12 +447,10 @@ export default function QuickGamePage() {
     setView("entry");
   }
   function saveRoster() {
-    if (!state || hasAnyScore(state)) return; // defensive — the UI already refuses to reach here
+    if (!state) return;
     const roster = buildRosterFromDrafts(draftPlayers);
     if (!roster) return;
-    setState((s) =>
-      s ? { ...s, players: roster.players, strokes: roster.strokes, course: draftCourse, values: {}, currentHole: 1 } : s
-    );
+    setState((s) => (s ? { ...s, players: roster.players, strokes: roster.strokes, course: draftCourse } : s));
     setView("entry");
   }
 
@@ -485,8 +502,8 @@ export default function QuickGamePage() {
     );
   }
 
-  // ── Roster editor (§1) — reachable only pre-score; the gear row that opens
-  // it is disabled once hasAnyScore(state) is true. ──
+  // ── Roster editor (§1) — reachable any time, mid-round included; scores
+  // are untouched by a save here (only Reset Game clears them). ──
   if (view === "roster") {
     return (
       <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--color-bt-base)" }}>
@@ -583,9 +600,9 @@ export default function QuickGamePage() {
       {/* Settings gear (#879 item 1b) — top-right of the game page header, same
           affordance every other game surface uses (`ScoreEntryView`'s existing
           `onConfig` slot — no new chrome). "Players & handicaps" opens the
-          roster editor when the round hasn't started scoring; once it has, the
-          row is disabled and names Reset Game (below) rather than a second
-          edit path (handoff decision — refuse, don't build a third ladder). */}
+          roster editor at any point, scores or no — always available, no
+          refusal state (feedback: "it should just be a label" — see
+          `openRosterEditor`'s doc comment for the reversal this replaced). */}
       {settingsOpen && (
         <SettingsSlideOver
           title="Quick Stroke Play settings"
@@ -597,13 +614,8 @@ export default function QuickGamePage() {
             <SettingsNavRow
               icon={<Users size={16} />}
               label="Players & handicaps"
-              blurb={
-                hasAnyScore(state)
-                  ? "Scores exist — use Reset game below to edit players."
-                  : "Add, remove, or rename players · set handicaps."
-              }
+              blurb="Add, remove, or rename players · set handicaps."
               onClick={openRosterEditor}
-              disabled={hasAnyScore(state)}
               testId="quick-game-edit-roster-btn"
             />
           </div>
