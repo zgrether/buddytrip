@@ -41,7 +41,7 @@
 import { matchKey, type ResolvedMatch } from "./bracketAdvance";
 import type { MatchDisplay } from "./bracketLabels";
 import { dropSlot, feederMainRound } from "./bracketDouble";
-import { lowerColumnFromRight, lowerTierCentres, BRACKET_METRICS } from "./bracketLayout";
+import { lowerTierCentres, BRACKET_METRICS } from "./bracketLayout";
 
 /** A seat's source: which match it comes from, and whether it takes that match's
  *  winner or its loser. Null when the seat has no feeder (upper round 1). */
@@ -135,13 +135,12 @@ export function doubleBracketDisplay(resolved: ResolvedMatch[]): Map<string, Mat
    * and both come earlier in this ordering.
    */
   const lowerRaw = resolved.filter((m) => m.bracket === "lower");
-  const lowerRoundCount = new Set(lowerRaw.map((m) => m.round)).size;
   const lowerCentres = lowerTierCentres(lowerRaw, BRACKET_METRICS);
   const lower = [...lowerRaw].sort((a, b) => {
-    // Columns are counted from the RIGHT, so left-to-right is DESCENDING.
-    const colA = lowerColumnFromRight(a.round, lowerRoundCount);
-    const colB = lowerColumnFromRight(b.round, lowerRoundCount);
-    if (colA !== colB) return colB - colA;
+    // One round per column, left to right — so reading order is simply round, then
+    // vertical position within it. (It needed a column lookup while majors shared a
+    // column with their minor; left-anchoring removed that.)
+    if (a.round !== b.round) return a.round - b.round;
     const cA = lowerCentres.get(`${a.round}:${a.slot}`) ?? 0;
     const cB = lowerCentres.get(`${b.round}:${b.slot}`) ?? 0;
     return cA - cB;

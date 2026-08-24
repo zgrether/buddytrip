@@ -150,11 +150,18 @@ export function lowerTierCentres(
   metrics: BracketMetrics
 ): Map<string, number> {
   const unit = metrics.cardHeight + metrics.baseGap;
-  /** How far a single-feeder consumer sits below its feeder — a full slot, because it
-   *  shares the feeder's column and must not overlap it. */
-  const armOffset = unit;
-  /** The first round steps by two slots, leaving room for each match's major beneath it. */
-  const baseStep = unit * 2;
+  /**
+   * How far a single-feeder consumer sits below its feeder.
+   *
+   * HALF a slot. It was a full slot while a major shared its minor's column — two cards
+   * in one column half a slot apart overlap, since cards are 88px and a slot is 100px.
+   * Left-anchored columns give every round its own column again, so the consumer is
+   * BESIDE its feeder rather than beneath it and cannot overlap it at any offset. Half a
+   * slot is enough to read as an arm and keeps the cumulative drift small.
+   */
+  const armOffset = unit / 2;
+  /** One slot, for the same reason: no major sits beneath a round-1 match any more. */
+  const baseStep = unit;
   const centres = new Map<string, number>();
   const key = (round: number, slot: number) => `${round}:${slot}`;
   const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
@@ -198,18 +205,30 @@ export function lowerTierCentres(
 }
 
 /**
- * Which column a lower round occupies, counted FROM THE RIGHT.
+ * Which column a lower round occupies — LEFT-ANCHORED, one round per column.
  *
- * A major round shares the column of the minor that feeds it, so the lower tier is
- * `rounds / 2` columns wide — always one narrower than the upper bracket, which is what
- * removes the overhang that made the tier reach left of it.
+ * Lower round k sits in the same column as UPPER round k, and that follows from the
+ * structure rather than from taste: lower round 1 is fed entirely by upper round 1
+ * (both its seats are losers of it), so it belongs beside it; lower round 2 pairs a
+ * lower survivor with an upper round-2 dropper, so it belongs beside upper round 2.
+ * Column 1 is both-losers, and as you move right winners start playing losers.
  *
- * Exported and shared with the board rather than restated there: the column rule and
- * the vertical rule have to agree about which matches land in one column, or two cards
- * end up in the same place. `lowerColumnsDoNotOverlap` below is the check that they do.
+ * Beyond the upper bracket's last round the lower tier simply continues into columns of
+ * its own, and the grand final sits right of both.
+ *
+ * ── This REVERSES counting from the right, and the reversal is the point ────
+ * Anchoring each tier rightward from the grand final made the lower tier's surplus
+ * rounds extend LEFT, which shoved the upper bracket right — at 64 entrants upper round
+ * 1 sat at x=933 while lower round 1 sat at x=29. The column COUNT is identical either
+ * way (11 at 64, 5 at 8); only which end the surplus lands on changes. Left-anchoring
+ * puts it on the right, where there is nothing to displace, and puts upper round 1 back
+ * at the left margin.
+ *
+ * Exported rather than restated in the board: the column rule and the vertical rule
+ * have to agree about which matches share a column.
  */
-export function lowerColumnFromRight(round: number, totalLowerRounds: number): number {
-  return Math.ceil((totalLowerRounds - round + 1) / 2);
+export function lowerColumn(round: number): number {
+  return round;
 }
 
 /**
@@ -227,10 +246,9 @@ export function lowerColumnsDoNotOverlap(
   metrics: BracketMetrics
 ): { a: string; b: string; gap: number }[] {
   const centres = lowerTierCentres(matches, metrics);
-  const total = new Set(matches.map((m) => m.round)).size;
   const byColumn = new Map<number, { key: string; centre: number }[]>();
   for (const m of matches) {
-    const col = lowerColumnFromRight(m.round, total);
+    const col = lowerColumn(m.round);
     const centre = centres.get(`${m.round}:${m.slot}`);
     if (centre === undefined) continue;
     byColumn.set(col, [...(byColumn.get(col) ?? []), { key: `${m.round}:${m.slot}`, centre }]);
