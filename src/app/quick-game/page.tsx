@@ -2,69 +2,247 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, RotateCcw } from "lucide-react";
-import { computeStrokePlayStandings, type StrokeEntry, type StrokeStanding } from "@/lib/strokePlay";
-import { STROKE_PLAY_UNITS, PLAYER_COLORS } from "@/lib/strokePlayConfig";
-import { QUICK_GAME_STORAGE_KEY, type QuickGameState } from "@/lib/quickGame";
+import { Plus, X, RotateCcw, Users, ChevronRight } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
+import {
+  QUICK_GAME_STORAGE_KEY,
+  QUICK_GAME_STATE_VERSION,
+  migrateQuickGameState,
+  quickGameUnits,
+  quickGamePips,
+  quickGameStandings,
+  hasAnyScore,
+  buildRosterFromDrafts,
+  type QuickGameState,
+  type QuickGameCourse,
+  type DraftPlayerRow,
+} from "@/lib/quickGame";
+import { MAX_STROKES } from "@/lib/handicap";
+import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
+import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
+import { Stepper } from "@/components/games/Stepper";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
-import type { Participant } from "@/components/games/types";
 
 /**
- * Quick Stroke Play ⚡ (Slice A2) — a context-free stroke-play game. Renamed
- * from "Quick Game" (#879 item 1a): the old name promised a format picker that
+ * Quick Stroke Play ⚡ (Slice A2, extended Phase 1 with course selection +
+ * handicaps + roster editing). A context-free stroke-play game. Renamed from
+ * "Quick Game" (#879 item 1a): the old name promised a format picker that
  * doesn't exist — it only ever does stroke play. The route (`/quick-game`) and
  * the localStorage key stay as they were; those are identifiers, not the
  * user-facing name.
  *
  * Reuses ScoreEntryView / StandardGrid / FinalStandings UNCHANGED — only the
  * persistence backend differs: the whole game state lives in **local storage**,
- * no DB row, no tRPC, no auth, free-text player names. Finish computes standings
- * client-side via the SAME shared `computeStrokePlayStandings`. This is exactly
- * what the persistence-agnostic split (CLAUDE.md pattern #7/#8) was built for.
+ * no DB row, no auth beyond the standing session (the route was never public —
+ * Phase 0 confirmed `/quick-game` sits behind the same middleware auth gate as
+ * every other trip surface), free-text player names. Finish computes standings
+ * client-side via the SAME shared helpers a handicap trip game does
+ * (`quickGameStandings`) — this is exactly what the persistence-agnostic split
+ * (CLAUDE.md pattern #7/#8) was built for.
  *
- * `QuickGameState` and the storage key now live in `@/lib/quickGame` — the
- * dashboard card (#879 item 1c) reads the same saved state to show what's in
- * progress, and needed the type/key without importing this page component.
+ * Course selection reuses `CoursePicker` AS-IS (Phase 0 found it takes only
+ * `{onApply, onClose}` — no trip/game coupling, no extraction needed) and
+ * CAPTURES the applied course's snapshot into local storage via the shared,
+ * pure `buildCourseSnapshot` (one fetch at selection, no network on every
+ * scorecard render — the round survives losing signal mid-course).
+ *
+ * `QuickGameState` and the derive helpers live in `@/lib/quickGame` — the
+ * dashboard card (#879 item 1c) reads the same saved state, and Quick Game's
+ * own readers (final standings, the subtitle) share them too so a handicap
+ * round can't net differently in two places (CLAUDE.md #8/#18).
  */
-function gridStandings(state: QuickGameState): StrokeStanding[] {
-  const entries: StrokeEntry[] = [];
-  for (const p of state.players)
-    for (const u of STROKE_PLAY_UNITS) {
-      const v = state.values[p.id]?.[u.label];
-      if (v != null) entries.push({ participant_id: p.id, value: v });
-    }
-  return computeStrokePlayStandings(
-    state.players.map((p) => p.id),
-    entries
+
+function blankDraftPlayers(): DraftPlayerRow[] {
+  return [
+    { id: crypto.randomUUID(), name: "", strokes: 0 },
+    { id: crypto.randomUUID(), name: "", strokes: 0 },
+  ];
+}
+
+/** A settings-panel navigation row in the SAME visual grammar as `DangerRow`
+ *  (icon-square + label + blurb + chevron) but neutral-toned — "Players &
+ *  handicaps" isn't destructive, so it doesn't borrow the warning/danger
+ *  vocabulary that row reserves for the danger zone. `disabled` carries its
+ *  own blurb text (the caller passes the reason in via `blurb`) rather than
+ *  a separate message slot — mirrors how locked rows elsewhere in the app
+ *  explain themselves inline instead of failing silently. */
+function SettingsNavRow({
+  icon, label, blurb, onClick, disabled, testId,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  blurb: string;
+  onClick: () => void;
+  disabled?: boolean;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3 rounded-[11px] px-3 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-50 disabled:hover:bg-transparent"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      data-testid={testId}
+    >
+      <span
+        className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[9px]"
+        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{label}</span>
+        <span className="mt-0.5 block text-xs leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{blurb}</span>
+      </span>
+      <ChevronRight size={17} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+    </button>
+  );
+}
+
+/**
+ * The editable roster form — player rows (name + handicap stepper, add/remove)
+ * plus the course-select row. Shared VERBATIM by the pre-start setup screen
+ * and the post-start roster editor (§1/§2) so "start a game" and "edit an
+ * in-progress roster" can't drift into two different floor/cap/course rules.
+ * Handicap entry lives HERE, not the gear panel (decision, handoff §"Decisions"):
+ * a stroke only means anything if it's set before scoring, and the gear panel
+ * is found after a round is already under way.
+ */
+function RosterFields({
+  draftPlayers, onChangeName, onChangeStrokes, onAdd, onRemove,
+  draftCourse, onOpenCoursePicker, onClearCourse, courseBusy, courseError,
+}: {
+  draftPlayers: DraftPlayerRow[];
+  onChangeName: (id: string, name: string) => void;
+  onChangeStrokes: (id: string, n: number) => void;
+  onAdd: () => void;
+  onRemove: (id: string) => void;
+  draftCourse: QuickGameCourse | null;
+  onOpenCoursePicker: () => void;
+  onClearCourse: () => void;
+  courseBusy: boolean;
+  courseError: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        {draftPlayers.map((r, i) => (
+          <div key={r.id} className="flex items-center gap-2">
+            <input
+              value={r.name}
+              onChange={(e) => onChangeName(r.id, e.target.value)}
+              placeholder={`Player ${i + 1}`}
+              className="min-w-0 flex-1"
+              style={{ height: 46, borderRadius: 12, padding: "0 14px", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 15 }}
+            />
+            <Stepper
+              size="compact"
+              value={r.strokes}
+              min={0}
+              max={MAX_STROKES}
+              onChange={(n) => onChangeStrokes(r.id, n)}
+              formatValue={(n) => (n === 0 ? "SCR" : String(n))}
+              dimValue={r.strokes === 0}
+              testId={`quick-game-strokes-${i}`}
+            />
+            {draftPlayers.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onRemove(r.id)}
+                aria-label="Remove player"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {draftPlayers.length < 4 && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="flex items-center gap-1.5 self-start"
+          style={{ padding: "8px 12px", borderRadius: 10, border: "1.5px dashed var(--color-bt-accent)", color: "var(--color-bt-accent)", fontSize: 13, fontWeight: 600 }}
+        >
+          <Plus size={15} /> Add player
+        </button>
+      )}
+
+      <div>
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Course</label>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenCoursePicker}
+            disabled={courseBusy}
+            className="flex min-w-0 flex-1 items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm disabled:opacity-60"
+            style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}
+          >
+            <span className="truncate" style={{ color: draftCourse ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
+              {courseBusy ? "Loading course…" : (draftCourse?.name ?? "Select a course (optional)")}
+            </span>
+          </button>
+          {draftCourse && !courseBusy && (
+            <button
+              type="button"
+              onClick={onClearCourse}
+              aria-label="Clear course"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        {courseError && (
+          <p className="mt-1.5" style={{ fontSize: 12.5, color: "var(--color-bt-danger)" }}>{courseError}</p>
+        )}
+      </div>
+    </div>
   );
 }
 
 export default function QuickGamePage() {
   const router = useRouter();
+  const utils = trpc.useUtils();
   const [state, setState] = useState<QuickGameState | null>(null);
-  const [names, setNames] = useState<string[]>(["", ""]);
-  const [view, setView] = useState<"entry" | "grid">("entry");
+  const [view, setView] = useState<"entry" | "grid" | "roster">("entry");
   // currentHole lives IN the persisted state so a refresh resumes on the same
   // hole (not just the scores).
   const setCurrentHole = (h: number) =>
     setState((s) => (s ? { ...s, currentHole: h } : s));
   const [hydrated, setHydrated] = useState(false);
-  // Settings gear (#879 item 1b) — a lightweight panel with one action.
+  // Settings gear (#879 item 1b) — a lightweight panel with two actions:
+  // "Players & handicaps" (below) and Reset Game (danger zone).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Draft roster — shared by the pre-start setup screen (blank) and the
+  // post-start roster editor (pre-populated from `state` in openRosterEditor).
+  const [draftPlayers, setDraftPlayers] = useState<DraftPlayerRow[]>(() => blankDraftPlayers());
+  const [draftCourse, setDraftCourse] = useState<QuickGameCourse | null>(null);
+  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
+  const [courseBusy, setCourseBusy] = useState(false);
+  const [courseError, setCourseError] = useState<string | null>(null);
 
   // Resume any in-progress game from local storage. Must be in an effect (not a
   // useState initializer) so it stays client-only — localStorage is undefined
   // during SSR. The set-state-in-effect rule over-flags this legitimate case.
+  // Reads through `migrateQuickGameState` — a saved game from before course/
+  // handicaps existed must resume as a scratch, no-course round, not fail.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(QUICK_GAME_STORAGE_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (raw) setState(JSON.parse(raw) as QuickGameState);
+      const migrated = raw ? migrateQuickGameState(JSON.parse(raw)) : null;
+      if (migrated) setState(migrated);
     } catch {
       /* ignore corrupt storage */
     }
@@ -84,21 +262,61 @@ export default function QuickGamePage() {
     }
   }, [state, hydrated]);
 
+  // ── Draft roster editing (shared by setup + roster editor) ────────────────
+  function setDraftName(id: string, name: string) {
+    setDraftPlayers((rows) => rows.map((r) => (r.id === id ? { ...r, name } : r)));
+  }
+  function setDraftStrokes(id: string, n: number) {
+    setDraftPlayers((rows) => rows.map((r) => (r.id === id ? { ...r, strokes: n } : r)));
+  }
+  function addDraftRow() {
+    setDraftPlayers((rows) => (rows.length < 4 ? [...rows, { id: crypto.randomUUID(), name: "", strokes: 0 }] : rows));
+  }
+  function removeDraftRow(id: string) {
+    setDraftPlayers((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
+  }
+  const canSubmitRoster = buildRosterFromDrafts(draftPlayers) !== null;
+
+  // Course picker → CAPTURE (Phase 0 T0.3): fetch once, build the snapshot via
+  // the shared pure `buildCourseSnapshot` (the exact function the trip-side
+  // draft path runs), freeze it into the draft. No re-fetch after this.
+  function applyCourseToDraft(c: { id: string; name: string; teeName?: string }) {
+    setCourseBusy(true);
+    setCourseError(null);
+    void (async () => {
+      try {
+        const course = await utils.courses.getById.fetch({ courseId: c.id });
+        const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, "gtt_stroke_play", c.teeName);
+        if (!snap.ok) {
+          setCourseError(
+            snap.reason === "bad_index"
+              ? "That course's stroke index isn't a valid permutation — fix it before use."
+              : "That course can't be used for stroke play."
+          );
+          return;
+        }
+        setDraftCourse({ id: c.id, name: c.name, teeName: c.teeName, schema: snap.schema });
+      } catch {
+        setCourseError("Couldn't load that course — try again.");
+      } finally {
+        setCourseBusy(false);
+        setCoursePickerOpen(false);
+      }
+    })();
+  }
+
   function start() {
-    // Floor of 1 (#954/#955): a solo round is a real round — there was never a
-    // reason for 2, it was the other half of a sentence describing a foursome
-    // (COMPETITION_ENGINE.md:88-89). Cap of 4 stays: the entry grid shows one
-    // card's players on one screen, and past four you scroll past people
-    // you're directly comparing. Different justifications — don't reason
-    // about them together.
-    const valid = names.map((n) => n.trim()).filter(Boolean).slice(0, 4);
-    if (valid.length < 1) return;
-    const players: Participant[] = valid.map((name, i) => ({
-      id: crypto.randomUUID(),
-      name,
-      color: PLAYER_COLORS[i % PLAYER_COLORS.length],
-    }));
-    setState({ players, values: {}, finished: false, currentHole: 1 });
+    const roster = buildRosterFromDrafts(draftPlayers);
+    if (!roster) return;
+    setState({
+      version: QUICK_GAME_STATE_VERSION,
+      players: roster.players,
+      strokes: roster.strokes,
+      course: draftCourse,
+      values: {},
+      finished: false,
+      currentHole: 1,
+    });
     setView("entry");
   }
 
@@ -118,7 +336,8 @@ export default function QuickGamePage() {
   }
   function playAgain() {
     setState(null);
-    setNames(["", ""]);
+    setDraftPlayers(blankDraftPlayers());
+    setDraftCourse(null);
     setView("entry");
   }
   function discard() {
@@ -127,15 +346,22 @@ export default function QuickGamePage() {
   }
   /**
    * Reset Game (#879 item 1b) — clears scores and hole progress, KEEPS the
-   * players. This is the ONE reset path Quick Stroke Play has: before this
-   * there was no way to start over mid-round short of playing to Finish
-   * (which unlocks `playAgain`, and that one wipes the roster too) or leaving
-   * via `discard`, which exits to the dashboard entirely.
+   * players, the course, and the handicaps. This is the ONE reset path Quick
+   * Stroke Play has: before this there was no way to start over mid-round
+   * short of playing to Finish (which unlocks `playAgain`, and that one wipes
+   * everything) or leaving via `discard`, which exits to the dashboard
+   * entirely.
    *
-   * "Clear scores, keep players" over "delete the game" to match the app's
-   * one other reset ladder (`games.resetScoring` — "clears this game's
+   * "Clear scores, keep the round's setup" over "delete the game" to match the
+   * app's one other reset ladder (`games.resetScoring` — "clears this game's
    * results; config kept", `GameDangerZone.tsx`): reset means start the SAME
-   * game over, not lose it. It also means not re-typing 2–4 names.
+   * game over, not lose it. Course and handicaps are part of "the same game"
+   * setup, same as players — only `values`/`finished`/`currentHole` are the
+   * per-round SCORE state this clears.
+   *
+   * This is also the ONE reset path once scores exist — a roster edit is
+   * refused past that point (§1) and points here instead, so this is the
+   * affordance that message names, not a second path.
    *
    * Not a `useScoreSaver.clearAll` situation (#807's fix target): that bug was
    * specific to `reconcileScores`' overlay-only merge dropping an empty SERVER
@@ -149,6 +375,37 @@ export default function QuickGamePage() {
     setConfirmReset(false);
     setSettingsOpen(false);
   }
+
+  /**
+   * Roster editor (§1) — allowed only before any score exists (`hasAnyScore`,
+   * the ONE "has this round started" predicate, shared with the reset guard
+   * and the dashboard subtitle). Past that point the gear-panel row is
+   * disabled and names Reset Game instead of opening this — "refuse, and
+   * point at the existing affordance", not a third path (handoff decision).
+   */
+  function openRosterEditor() {
+    if (!state || hasAnyScore(state)) return;
+    setDraftPlayers(state.players.map((p) => ({ id: p.id, name: p.name, strokes: state.strokes[p.id] ?? 0 })));
+    setDraftCourse(state.course);
+    setCourseError(null);
+    setSettingsOpen(false);
+    setView("roster");
+  }
+  function cancelRosterEdit() {
+    setView("entry");
+  }
+  function saveRoster() {
+    if (!state || hasAnyScore(state)) return; // defensive — the UI already refuses to reach here
+    const roster = buildRosterFromDrafts(draftPlayers);
+    if (!roster) return;
+    setState((s) =>
+      s ? { ...s, players: roster.players, strokes: roster.strokes, course: draftCourse, values: {}, currentHole: 1 } : s
+    );
+    setView("entry");
+  }
+
+  const units = quickGameUnits(state);
+  const pips = state ? quickGamePips(state) : undefined;
 
   const gridHeader = (
     <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
@@ -169,36 +426,64 @@ export default function QuickGamePage() {
         </div>
         <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Stroke play · name 1–4 players.</p>
 
-        <div className="mt-4 flex flex-col gap-2">
-          {names.map((n, i) => (
-            <input
-              key={i}
-              value={n}
-              onChange={(e) => setNames((arr) => arr.map((x, j) => (j === i ? e.target.value : x)))}
-              placeholder={`Player ${i + 1}`}
-              style={{ height: 46, borderRadius: 12, padding: "0 14px", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 15 }}
-            />
-          ))}
+        <div className="mt-4">
+          <RosterFields
+            draftPlayers={draftPlayers}
+            onChangeName={setDraftName}
+            onChangeStrokes={setDraftStrokes}
+            onAdd={addDraftRow}
+            onRemove={removeDraftRow}
+            draftCourse={draftCourse}
+            onOpenCoursePicker={() => setCoursePickerOpen(true)}
+            onClearCourse={() => setDraftCourse(null)}
+            courseBusy={courseBusy}
+            courseError={courseError}
+          />
         </div>
-
-        {names.length < 4 && (
-          <button
-            onClick={() => setNames((n) => [...n, ""])}
-            className="mt-2 flex items-center gap-1.5"
-            style={{ padding: "8px 12px", borderRadius: 10, border: "1.5px dashed var(--color-bt-accent)", color: "var(--color-bt-accent)", fontSize: 13, fontWeight: 600 }}
-          >
-            <Plus size={15} /> Add player
-          </button>
-        )}
 
         <button
           onClick={start}
-          disabled={names.map((n) => n.trim()).filter(Boolean).length < 1}
+          disabled={!canSubmitRoster}
           className="mt-5 w-full disabled:opacity-40"
           style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
         >
           Start game
         </button>
+
+        {coursePickerOpen && (
+          <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourseToDraft} />
+        )}
+      </div>
+    );
+  }
+
+  // ── Roster editor (§1) — reachable only pre-score; the gear row that opens
+  // it is disabled once hasAnyScore(state) is true. ──
+  if (view === "roster") {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--color-bt-base)" }}>
+        <div className="flex shrink-0 items-center justify-between gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+          <button onClick={cancelRosterEdit} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>Cancel</button>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Players &amp; handicaps</span>
+          <button onClick={saveRoster} disabled={!canSubmitRoster} className="disabled:opacity-40" style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 700 }}>Save</button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+          <RosterFields
+            draftPlayers={draftPlayers}
+            onChangeName={setDraftName}
+            onChangeStrokes={setDraftStrokes}
+            onAdd={addDraftRow}
+            onRemove={removeDraftRow}
+            draftCourse={draftCourse}
+            onOpenCoursePicker={() => setCoursePickerOpen(true)}
+            onClearCourse={() => setDraftCourse(null)}
+            courseBusy={courseBusy}
+            courseError={courseError}
+          />
+        </div>
+        {coursePickerOpen && (
+          <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourseToDraft} />
+        )}
       </div>
     );
   }
@@ -210,7 +495,7 @@ export default function QuickGamePage() {
         <div className="fixed inset-0 z-50 flex flex-col">
           {gridHeader}
           <div className="min-h-0 flex-1">
-            <StandardGrid units={STROKE_PLAY_UNITS} participants={state.players} values={state.values} direction="low_wins" />
+            <StandardGrid units={units} participants={state.players} values={state.values} pips={pips} direction="low_wins" />
           </div>
         </div>
       );
@@ -219,8 +504,8 @@ export default function QuickGamePage() {
       <div className="fixed inset-0 z-50">
         <FinalStandings
           participants={state.players}
-          standings={gridStandings(state)}
-          unitCount={STROKE_PLAY_UNITS.length}
+          standings={quickGameStandings(state)}
+          unitCount={units.length}
           dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
           onScorecard={() => setView("grid")}
           onPlayAgain={playAgain}
@@ -238,9 +523,10 @@ export default function QuickGamePage() {
           {gridHeader}
           <div className="min-h-0 flex-1">
             <StandardGrid
-              units={STROKE_PLAY_UNITS}
+              units={units}
               participants={state.players}
               values={state.values}
+              pips={pips}
               direction="low_wins"
               onCellTap={(label) => {
                 setCurrentHole(Number(label) || 1);
@@ -252,9 +538,10 @@ export default function QuickGamePage() {
       ) : (
         <ScoreEntryView
           gameName="Quick Stroke Play"
-          units={STROKE_PLAY_UNITS}
+          units={units}
           participants={state.players}
           values={state.values}
+          pips={pips}
           direction="low_wins"
           currentHole={state.currentHole}
           onHoleChange={setCurrentHole}
@@ -269,26 +556,44 @@ export default function QuickGamePage() {
 
       {/* Settings gear (#879 item 1b) — top-right of the game page header, same
           affordance every other game surface uses (`ScoreEntryView`'s existing
-          `onConfig` slot — no new chrome). One action for now: Reset Game. The
-          gear is placed here, not a bare Reset in the header, so the row below
-          (hole-navigation chevron) doesn't have to share the corner — and so a
-          format picker has somewhere to land later without moving anything. */}
+          `onConfig` slot — no new chrome). "Players & handicaps" opens the
+          roster editor when the round hasn't started scoring; once it has, the
+          row is disabled and names Reset Game (below) rather than a second
+          edit path (handoff decision — refuse, don't build a third ladder). */}
       {settingsOpen && (
         <SettingsSlideOver
           title="Quick Stroke Play settings"
           onClose={() => setSettingsOpen(false)}
           testId="quick-game-settings-panel"
         >
-          <SectionLabel danger>Danger zone</SectionLabel>
+          <SectionLabel>Game</SectionLabel>
           <div className="mt-2">
-            <DangerRow
-              icon={<RotateCcw size={16} />}
-              tone="warning"
-              label="Reset game"
-              blurb="Clears all scores. Players stay — it's ready to score again."
-              onClick={() => setConfirmReset(true)}
-              testId="quick-game-reset-btn"
+            <SettingsNavRow
+              icon={<Users size={16} />}
+              label="Players & handicaps"
+              blurb={
+                hasAnyScore(state)
+                  ? "Scores exist — use Reset game below to edit players."
+                  : "Add, remove, or rename players · set handicaps."
+              }
+              onClick={openRosterEditor}
+              disabled={hasAnyScore(state)}
+              testId="quick-game-edit-roster-btn"
             />
+          </div>
+
+          <div className="mt-5">
+            <SectionLabel danger>Danger zone</SectionLabel>
+            <div className="mt-2">
+              <DangerRow
+                icon={<RotateCcw size={16} />}
+                tone="warning"
+                label="Reset game"
+                blurb="Clears all scores. Players stay — it's ready to score again."
+                onClick={() => setConfirmReset(true)}
+                testId="quick-game-reset-btn"
+              />
+            </div>
           </div>
 
           {/* Nested INSIDE the panel, not a sibling — `SettingsSlideOver` portals
