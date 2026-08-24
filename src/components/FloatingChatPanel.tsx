@@ -731,7 +731,13 @@ function ChatBody({
           ref={scrollRef}
           onScroll={handleScroll}
           data-testid="chat-scroll"
-          className="absolute inset-0 flex flex-col-reverse overflow-y-auto overflow-x-hidden"
+          // `overscroll-contain` stops the scroll CHAINING to the page behind
+          // when this list reaches either end. Without it a flick at the top of
+          // the history scrolls the trip page underneath, which also made the
+          // sheet's drag-to-resize hard to land: the handle itself already
+          // claims its gesture (`touchAction: "none"`, ChatSheet), so the
+          // interference was coming from here, not from the handle.
+          className="absolute inset-0 flex flex-col-reverse overflow-y-auto overflow-x-hidden overscroll-contain"
         >
           {/* Bottom-most. The scroll target for `scrollToBottom`, and the
               sentinel `handleScroll` measures distance-from-bottom against. */}
@@ -941,6 +947,11 @@ function ChatBody({
             minHeight: "2.25rem", // leading-5 (20px) + py-1.5 (12px) + border (2px)
             maxHeight: "4.5rem", // ~3 lines (leading-5 = 20px × 3 + py-1.5), then scrolls
             overflowY: "auto",
+            // Contained for the same reason as the message list, and it matters
+            // MORE here: a one- or two-line draft has nothing to scroll, so a
+            // drag on the composer chains to the page immediately rather than
+            // only at an end.
+            overscrollBehavior: "contain",
           }}
         />
         <button
