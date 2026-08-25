@@ -24,7 +24,12 @@ import {
   resolvePrefs,
   type NotificationKey,
 } from "@/lib/notificationTypes";
-import { notificationsRowSummary } from "@/lib/devicePushState";
+import {
+  notificationsRowSummary,
+  testSendMessage,
+  type TestSendMessage,
+} from "@/lib/devicePushState";
+import { isUnauthorizedError } from "@/lib/authExpiry";
 import { NotificationsSheetBody } from "@/components/profile/NotificationsSheetBody";
 import { useDevicePush } from "@/lib/useDevicePush";
 import { CheckboxBox } from "@/components/games/Checkbox";
@@ -707,6 +712,30 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
 function NotificationsSheet({ onClose }: { onClose: () => void }) {
   const device = useDevicePush();
 
+  /**
+   * The self-test's result, held here rather than shown as a toast.
+   *
+   * The parent owns this because `NotificationsSheetBody` is presentational by
+   * contract (props in, callbacks out) — the same split that lets the four
+   * permission states be render-tested in a `node` environment.
+   */
+  const [testResult, setTestResult] = useState<TestSendMessage | null>(null);
+
+  const testSend = trpc.notifications.testSend.useMutation({
+    onSuccess: (res) => setTestResult(testSendMessage(res)),
+    // A THROWN mutation is a different failure from a send that reported zero
+    // delivered, and it must not be reported with the same words: this one never
+    // reached the sender at all. The session case is called out because it is the
+    // one that looks like a broken button while meaning "sign in again".
+    onError: (err) =>
+      setTestResult({
+        message: isUnauthorizedError(err)
+          ? "Your session expired — sign in again, then try the test."
+          : "The test couldn't be sent. Check your connection and try again.",
+        tone: "error",
+      }),
+  });
+
   return (
     <SheetShell title="Notifications" onClose={onClose} dismissLabel="Close">
       <NotificationsSheetBody
@@ -718,6 +747,15 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
         categorySlot={EXPOSED_CATEGORIES.map((key) => (
           <NotificationCategoryRow key={key} categoryKey={key} />
         ))}
+        onTestSend={() => {
+          // Cleared on every tap. A stale result sitting under a button being
+          // pressed again is indistinguishable from the new one, and this is a
+          // control people press twice on purpose.
+          setTestResult(null);
+          testSend.mutate();
+        }}
+        testBusy={testSend.isPending}
+        testResult={testResult}
       />
     </SheetShell>
   );

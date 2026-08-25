@@ -221,3 +221,96 @@ export function devicePushCopy(state: DevicePushState): DevicePushCopy {
       };
   }
 }
+
+// ── The self-test ───────────────────────────────────────────────────────────
+
+/**
+ * What `notifications.testSend` reports back.
+ *
+ * Mirrored here rather than imported from `src/server/lib/sendPush.ts`: this
+ * module is client-safe and that one pulls in `web-push` and the service-role
+ * client. The fields are the subset the copy below actually branches on.
+ */
+export interface TestSendOutcome {
+  /** Successful per-DEVICE sends. */
+  sent: number;
+  /** Device rows found for this account. */
+  subscriptionsFound: number;
+  /** Sends that failed for a reason other than a dead endpoint. */
+  failed: number;
+  /** Dead endpoints (404/410) pruned during this send. */
+  removedDead: number;
+  /** VAPID keys absent — nothing was sent, and that is not an error. */
+  notConfigured: boolean;
+}
+
+export interface TestSendMessage {
+  message: string;
+  tone: "success" | "error";
+}
+
+/**
+ * What to tell someone who just tapped "Send a test notification".
+ *
+ * ── The distinction this copy exists to make ────────────────────────────────
+ * A successful send is NOT a delivered notification, and conflating the two is
+ * exactly what made the chat investigation cost a morning. `push_send_log`
+ * showed 14 sends, 3 delivered, ZERO failures — every one of those "delivered"
+ * rows means the push service returned 2xx, and nothing more. Whether a handset
+ * ever rendered it is invisible from the server, permanently.
+ *
+ * So the success string does not say "it worked". It says how many devices were
+ * handed a push and then names the thing the person is looking at as the real
+ * result: if nothing appears, the failure is on THIS device, below the layer any
+ * log can see. That sentence is the entire diagnostic value of the button —
+ * without it the toast is one more thing that says success while the phone stays
+ * silent.
+ *
+ * Ordered most-specific first: every branch above `sent > 0` is a state in which
+ * the count would be zero for a reason worth naming separately, since "0 devices"
+ * and "2 devices, both rejected" have completely different fixes.
+ */
+export function testSendMessage(r: TestSendOutcome): TestSendMessage {
+  if (r.notConfigured) {
+    return {
+      message: "Push isn't configured on the server, so nothing was sent.",
+      tone: "error",
+    };
+  }
+
+  // No rows at all for this account. The activation control above is the fix,
+  // and it is on the same screen — so point at it rather than explaining push.
+  if (r.subscriptionsFound === 0) {
+    return {
+      message: "No devices are registered for your account. Activate push above, then try again.",
+      tone: "error",
+    };
+  }
+
+  // Every endpoint was gone (404/410) and has just been pruned. This is the one
+  // failure a person can fix themselves in ten seconds, so it says how.
+  if (r.sent === 0 && r.removedDead > 0) {
+    const n = r.removedDead;
+    return {
+      message: `This device's registration had expired and ${n === 1 ? "was" : "were"} removed. Turn push off and on again above to re-register.`,
+      tone: "error",
+    };
+  }
+
+  if (r.sent === 0) {
+    return {
+      message: "The push service rejected every send. Nothing was delivered.",
+      tone: "error",
+    };
+  }
+
+  const devices = `${r.sent} device${r.sent === 1 ? "" : "s"}`;
+  // Failures alongside successes are worth naming — a two-device account where
+  // one endpoint is dead otherwise reads as a clean pass while half of it is
+  // broken.
+  const partial = r.failed > 0 ? ` ${r.failed} other send${r.failed === 1 ? "" : "s"} failed.` : "";
+  return {
+    message: `Sent to ${devices}.${partial} If nothing appears on this device within a few seconds, the push is being dropped here — not on the server.`,
+    tone: "success",
+  };
+}

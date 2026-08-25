@@ -25,6 +25,9 @@ export function NotificationsSheetBody({
   onToggleActivation,
   categorySlot,
   sectionLabelStyle,
+  onTestSend,
+  testBusy = false,
+  testResult = null,
 }: {
   state: DevicePushState;
   /** Browser/server reads still resolving — show neither a claim nor a control. */
@@ -34,10 +37,15 @@ export function NotificationsSheetBody({
   /** The category rows. Rendered only when this device is actually subscribed. */
   categorySlot: React.ReactNode;
   sectionLabelStyle: React.CSSProperties;
+  /** Fire a self-only test push. Omitted → the whole section is absent. */
+  onTestSend?: () => void;
+  testBusy?: boolean;
+  /** The last result, already turned into copy by `testSendMessage`. */
+  testResult?: { message: string; tone: "success" | "error" } | null;
 }) {
   const activation = activationCopy(state);
 
-  // THE TWO RENDER DECISIONS, both stated once and used once.
+  // THE THREE RENDER DECISIONS, each stated once and used once.
   //
   // A control appears only where a tap can achieve something. `blocked` and
   // `unsupported` are explanations, and drawing a disabled checkbox beside
@@ -49,6 +57,12 @@ export function NotificationsSheetBody({
   // no subscription changes nothing, so the switches would be control over
   // nothing.
   const showCategories = state === "on";
+  // Same gate as the categories, and for a stronger version of the same reason:
+  // a test send with no subscription cannot produce a notification, so the
+  // button would be an experiment whose result is known in advance. It is the
+  // states BELOW `on` that need explaining, and the activation control above
+  // already does that.
+  const showTestSend = state === "on" && !!onTestSend;
 
   const activationSub = settling ? null : busy ? "Working…" : activation.sub || null;
   const activationBody = (
@@ -109,6 +123,64 @@ export function NotificationsSheetBody({
           <p className="mt-3" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
             Everything starts on. Uncheck anything you would rather not be told about.
           </p>
+        </div>
+      )}
+
+      {/*
+        THE SELF-TEST — the one control here that answers "is this device
+        actually receiving?", which no amount of server-side logging can.
+
+        `notifications.testSend` has existed and been production-safe since Push
+        Phase 2 ("a permanent self-service 'is push working?' diagnostic"), and
+        nothing has ever called it: `push_send_log` holds ZERO `test_send` rows.
+        A diagnostic with no way to run it is not a diagnostic, and its absence
+        is why a chat investigation had to be conducted through chat messages
+        fighting a 30-minute coalescing gate for a signal this button produces on
+        demand, to one device, in a second.
+
+        Deliberately NOT a toast. The result is the point — it is read, compared
+        against whether a notification actually appeared, and often read twice —
+        and a toast that dismisses itself takes the answer away mid-sentence.
+      */}
+      {showTestSend && (
+        <div className="mt-4" data-testid="test-send">
+          <p style={sectionLabelStyle}>Check this device</p>
+          <button
+            type="button"
+            onClick={onTestSend}
+            disabled={testBusy}
+            className="-mx-2 flex w-[calc(100%+1rem)] items-start gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-60"
+            style={{ borderTop: "0.5px solid var(--color-bt-border)" }}
+          >
+            <div className="min-w-0 flex-1">
+              <div style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
+                {testBusy ? "Sending…" : "Send a test notification"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
+                {/* Says the SCOPE, because the fear this answers is "will this
+                    buzz fifteen people?". It cannot: the procedure reads the
+                    caller's own subscriptions and has no parameter for anyone
+                    else. */}
+                Goes only to your own devices — nobody else is notified.
+              </div>
+            </div>
+          </button>
+          {testResult && (
+            <p
+              data-testid="test-send-result"
+              className="mt-2"
+              style={{
+                fontSize: 11,
+                lineHeight: 1.45,
+                color:
+                  testResult.tone === "success"
+                    ? "var(--color-bt-text-dim)"
+                    : "var(--color-bt-danger)",
+              }}
+            >
+              {testResult.message}
+            </p>
+          )}
         </div>
       )}
     </>
