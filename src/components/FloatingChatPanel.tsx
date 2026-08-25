@@ -7,6 +7,7 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
 import { CHAT_VIEW_HEARTBEAT_MS } from "@/lib/chatViewHeartbeat";
 import { readChatCache, writeChatCache, type CachedMessage } from "@/lib/chatCache";
+import { readChatDraft, writeChatDraft } from "@/lib/chatDraft";
 import { systemLineForViewer } from "@/lib/joinMessage";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -97,7 +98,16 @@ function FloatingChatPanelInner({
   // Drafts are kept per channel so an unsent message stays with the tab it was
   // typed in. Switching tabs swaps the visible draft; hitting Enter only ever
   // sends the draft that belongs to the channel you're currently looking at.
-  const [drafts, setDrafts] = useState<Record<Visibility, string>>({ crew: "", planning: "" });
+  //
+  // SEEDED FROM LOCALSTORAGE, because this component unmounts on close
+  // (`FloatingChatPanel` returns null when `isOpen` is false) and component
+  // state goes with it — so closing the panel used to discard whatever was
+  // typed. Read once in a lazy initializer, like the `seed` below: this is
+  // localStorage, and re-reading per render would cost for no gain.
+  const [drafts, setDrafts] = useState<Record<Visibility, string>>(() => ({
+    crew: readChatDraft(tripId, "crew"),
+    planning: readChatDraft(tripId, "planning"),
+  }));
   const [selectedChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
 
@@ -115,10 +125,20 @@ function FloatingChatPanelInner({
       : "crew";
 
   // The visible draft + writer for the active channel.
+  //
+  // ONE WRITE PATH. `setText` persists as it sets, so there is no second place
+  // that has to remember to — including the `setText("")` in `handleSend`, which
+  // is what clears a sent draft (an empty value removes the entry rather than
+  // storing a blank one). A separate "save the draft" effect would be a second
+  // list of moments to keep in step with this one, which is the shape that made
+  // chat's invalidation bug (CLAUDE.md #22) take three sessions to find.
   const text = drafts[activeChannel];
   const setText = useCallback(
-    (value: string) => setDrafts((d) => ({ ...d, [activeChannel]: value })),
-    [activeChannel]
+    (value: string) => {
+      setDrafts((d) => ({ ...d, [activeChannel]: value }));
+      writeChatDraft(tripId, activeChannel, value);
+    },
+    [tripId, activeChannel]
   );
 
   // Chat history is paginated, not loaded all at once: each page is the newest
