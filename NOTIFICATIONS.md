@@ -13,11 +13,34 @@ remain untouched, and every **NEVER** row is untouched and must stay that way.
 
 **Only categories with a SENDER are EXPOSED in settings** — `game_results` and
 `chat` today.
-Settings live in a single place (profile → Preferences); the category list
-renders only when the device is subscribed, because muting a category without a
+Settings live in a single place — profile → Preferences → **Notifications**, a
+ROW THAT OPENS A MODAL, like name / email / password. Inside it a parent
+activation control sits above the category checkboxes; the category list renders
+only when the device is subscribed, because muting a category without a
 subscription changes nothing. The chat header bell was removed — one stored value
 with two entry points meant a user who muted from the bell had no way to know
 settings governed the same thing.
+
+**The modal replaced a row with two tap targets, and the shape was the bug.**
+Tapping the row toggled the device; a small chevron beside it revealed the
+categories. Nobody taps a chevron, so nobody found the categories — and the
+discoverable target was the destructive one. That defeated the reason the
+category row was required to ship alongside the chat sender at all: someone
+opens preferences to turn chat off, finds no such control, concludes it does not
+exist, and mutes the app at the OS level. **The outcome this subsystem exists to
+prevent was reachable through the shape of the control, with every underlying
+piece working correctly.**
+
+**Activation is NOT derived from the categories**, and must not be. Push needs an
+OS permission prompt, the prompt needs a user gesture, and it can be refused
+permanently — so "check a box and it turns on" ends at a checked box with no
+notifications behind it. The parent control is also the only place the two
+non-control states can live: `blocked` and `unsupported` are EXPLANATIONS, not
+switches, and `blocked` is the one most needed (a person who dismissed the
+prompt months ago has no other way to learn why nothing arrives, and nothing in
+the app can fix it). The server-side half of the same rule: muting every category
+leaves the device SUBSCRIBED — dropping the subscription would make re-enabling
+depend on a prompt the browser may never show again.
 
 That last one is enforced MECHANICALLY, not remembered:
 `src/server/lib/pushCallSites.guard.test.ts` fails the build if any file outside

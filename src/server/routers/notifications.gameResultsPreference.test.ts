@@ -123,3 +123,56 @@ describe("the game_results preference is enforced, not decorative", () => {
     expect((await ctx.caller().notifications.getPreferences()).chat).toBe(true);
   }, 60_000);
 });
+
+/**
+ * ACTIVATION AND PREFERENCES ARE SEPARATE AXES — the invariant the notifications
+ * modal's parent control exists to express.
+ *
+ * The rejected design was to DERIVE activation from the categories: no parent
+ * control, check a box and it turns on, uncheck them all and it turns off. This
+ * is the server-side half of why that cannot work. Muting every category must
+ * leave the device SUBSCRIBED: the subscription is a browser permission plus a
+ * `push_subscriptions` row, and neither is ours to drop because someone stopped
+ * wanting one kind of message. Turning them all back on has to be a checkbox,
+ * not a fresh permission prompt that a browser may refuse permanently.
+ */
+describe("muting every category leaves the device activated", () => {
+  const ENDPOINT = `https://example.test/endpoint/${genId("e")}`;
+
+  it("keeps the push_subscriptions row while sending nothing", async () => {
+    // A registered device, through the same procedure the modal's toggle uses.
+    await ctx.caller().notifications.subscribe({
+      endpoint: ENDPOINT,
+      p256dh: "test-p256dh-key",
+      auth: "test-auth-key",
+    });
+
+    // Mute EVERY exposed category.
+    await ctx.caller().notifications.setPreference({ key: "game_results", enabled: false });
+    await ctx.caller().notifications.setPreference({ key: "chat", enabled: false });
+
+    const res = await send();
+    expect(res.skippedPreferenceOff).toBe(1);
+    expect(res.sent).toBe(0);
+
+    // THE ASSERTION THAT MATTERS: the device is still registered. Asserted on the
+    // ROW rather than on a return value — a helper reporting "still subscribed"
+    // is the thing being checked, so it cannot also be the evidence.
+    const { data } = await ctx.admin
+      .from("push_subscriptions")
+      .select("endpoint")
+      .eq("user_id", userId)
+      .eq("endpoint", ENDPOINT);
+    expect(
+      (data ?? []).length,
+      "muting categories must not unsubscribe the device — re-activating would need a fresh permission prompt, which a browser can refuse permanently"
+    ).toBe(1);
+
+    // And the device is still reported as registered, which is what makes the
+    // modal show the category list rather than the activation prompt.
+    const reg = await ctx.caller().notifications.isRegistered({ endpoint: ENDPOINT });
+    expect(reg.registered).toBe(true);
+
+    await ctx.caller().notifications.unsubscribe({ endpoint: ENDPOINT });
+  });
+});

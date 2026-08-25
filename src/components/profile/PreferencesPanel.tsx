@@ -3,7 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ChevronDown, ArrowLeft } from "lucide-react";
+import { ChevronRight, ArrowLeft } from "lucide-react";
 import {
   IconUser,
   IconMail,
@@ -19,10 +19,15 @@ import {
   normalizeDeleteConfirmationInput,
 } from "@/lib/accountDeletionConfirm";
 import { useNotificationPreference } from "@/lib/useNotificationPreference";
-import { NOTIFICATION_TYPES, type NotificationKey } from "@/lib/notificationTypes";
+import {
+  NOTIFICATION_TYPES,
+  resolvePrefs,
+  type NotificationKey,
+} from "@/lib/notificationTypes";
+import { notificationsRowSummary } from "@/lib/devicePushState";
+import { NotificationsSheetBody } from "@/components/profile/NotificationsSheetBody";
 import { useDevicePush } from "@/lib/useDevicePush";
 import { Checkbox } from "@/components/games/Checkbox";
-import { Collapse } from "@/components/games/Collapse";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { useAuthUser } from "@/lib/auth-context";
 import { Avatar } from "@/components/Avatar";
@@ -199,9 +204,9 @@ export function PreferencesPanel({ onClose }: { onClose: () => void }) {
   const [savedFlash, setSavedFlash] = useState(false);
 
   // ── Edit sheet state ──────────────────────────────────────────────────
-  const [openSheet, setOpenSheet] = useState<null | "name" | "email" | "password" | "delete">(
-    null
-  );
+  const [openSheet, setOpenSheet] = useState<
+    null | "name" | "email" | "password" | "delete" | "notifications"
+  >(null);
 
   // ── OAuth detection ───────────────────────────────────────────────────
   const isGoogleUser = authUser?.app_metadata?.provider === "google";
@@ -390,7 +395,7 @@ export function PreferencesPanel({ onClose }: { onClose: () => void }) {
                     sub="Saved destinations for future trips"
                     onClick={() => setView("ideas")}
                   />
-                  <NotificationSettings />
+                  <NotificationSettings onOpen={() => setOpenSheet("notifications")} />
                 </div>
               </Section>
 
@@ -459,6 +464,9 @@ export function PreferencesPanel({ onClose }: { onClose: () => void }) {
       {openSheet === "delete" && (
         <DeleteAccountSheet onClose={() => setOpenSheet(null)} />
       )}
+      {openSheet === "notifications" && (
+        <NotificationsSheet onClose={() => setOpenSheet(null)} />
+      )}
     </SettingsSlideOver>
   );
 }
@@ -499,7 +507,6 @@ function SettingsRow({
   right,
   onClick,
   lastRow = false,
-  disclosure,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -507,24 +514,6 @@ function SettingsRow({
   right?: React.ReactNode;
   onClick?: () => void;
   lastRow?: boolean;
-  /**
-   * Splits the row into TWO independent tap targets instead of one: the
-   * icon+label area still triggers `onClick` exactly as before, and a
-   * SEPARATE trailing chevron toggles this disclosure.
-   *
-   * Reused, not invented — this is `ChecklistRow`'s "headerControl" accordion
-   * shape (`src/components/games/ChecklistRow.tsx`): "the icon+title toggle
-   * the panel; the control sits beside the chevron OUTSIDE that button,
-   * owning its own taps... so we never nest buttons." A row can have its own
-   * tap action AND a disclosure at the same time — the notifications row
-   * toggles the device on tap, and separately discloses the category list —
-   * and nesting a button inside a button isn't valid HTML, so the two have to
-   * be siblings rather than one control wearing two meanings.
-   *
-   * Mutually exclusive with `right` — the chevron IS the trailing content
-   * in this mode, so `right` is ignored.
-   */
-  disclosure?: { open: boolean; onToggle: () => void; label: string };
 }) {
   const Tag: keyof JSX.IntrinsicElements = onClick ? "button" : "div";
   const interactive = !!onClick;
@@ -550,37 +539,6 @@ function SettingsRow({
     </div>
   );
 
-  if (disclosure) {
-    return (
-      <div className="flex w-full items-center gap-3 px-4 py-3" style={borderStyle}>
-        <Tag
-          type={interactive ? "button" : undefined}
-          onClick={onClick}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-        >
-          {iconBlock}
-          {textBlock}
-        </Tag>
-        <button
-          type="button"
-          onClick={disclosure.onToggle}
-          aria-label={disclosure.label}
-          aria-expanded={disclosure.open}
-          className="flex shrink-0 items-center rounded-lg p-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
-        >
-          <ChevronDown
-            size={16}
-            style={{
-              color: "var(--color-bt-text-dim)",
-              transform: disclosure.open ? "rotate(180deg)" : undefined,
-              transition: "transform 120ms",
-            }}
-          />
-        </button>
-      </div>
-    );
-  }
-
   return (
     <Tag
       type={interactive ? "button" : undefined}
@@ -601,98 +559,52 @@ function SettingsRow({
 
 // ── Notification settings — the ONE location ───────────────────────────────
 //
-// Device subscription, then the categories it can deliver. Everything a user
-// can mute is here; there is no second entry point. The chat header bell used to
-// be one, which meant a single stored value had two controls and someone who
-// muted from the bell had no way to know this page governed the same thing.
+// A ROW THAT OPENS A MODAL, matching name / email / password. This replaces a
+// row with TWO tap targets doing unrelated things: tapping the row toggled the
+// device on and off, while a small chevron beside it revealed the categories.
 //
-// THE CATEGORY LIST RENDERS ONLY WHEN THE DEVICE IS ON, and that is a real
-// constraint rather than tidiness: muting a category without a subscription
-// changes nothing, so showing the switches would offer control that does not
-// exist. Enabling is the deliberate act; the list that appears is a menu of what
-// to mute, which is also why every category defaults ON.
+// That failed in the way that mattered most. Nobody taps a chevron, so nobody
+// found the categories — and the discoverable target was the DESTRUCTIVE one.
+// The two actions were not even related: a chevron means "more of the same
+// thing", and here it meant "the actual settings" while the row itself was a
+// master switch.
 //
-// Only categories with a LIVE SENDER appear. Today that is `game_results`
-// alone. `planning` and `invites` stay defined in the registry — their triggers
-// exist and are waiting on senders — but a row for them would be a control over
-// nothing, which is worse than an absent one. See NOTIFICATIONS.md.
+// It also defeated the reason the category row was required to ship alongside
+// the chat sender in the first place (#1054). Someone opens preferences to turn
+// chat off, finds no such control, concludes it does not exist, and mutes
+// BuddyTrip at the OS level — the exact outcome this subsystem exists to
+// prevent, produced by the shape of the control rather than by any missing
+// feature.
 //
-// ── The chevron is a DISCLOSURE now, not a decoration ───────────────────────
-// It used to be a trailing `ChevronRight` inherited from `SettingsRow`'s
-// default — a right-pointing "go to" arrow on a row that never navigates
-// anywhere, it just toggles in place. Now it drives the category list open and
-// closed, hidden by default, and it disappears entirely in every state where
-// there is nothing to disclose (off, blocked, unsupported, still settling) —
-// a chevron on an empty list is the same "pointing at nothing" bug, just moved.
-// The row's own tap keeps doing what it always did (toggle the device); the
-// chevron is a second, independent control (`SettingsRow`'s `disclosure` prop).
-function NotificationSettings() {
+// The row now shows its STATE (`notificationsRowSummary`) so it can be read
+// without opening it, and everything that can be changed lives in the modal.
+function NotificationSettings({ onOpen }: { onOpen: () => void }) {
   const device = useDevicePush();
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const prefs = trpc.notifications.getPreferences.useQuery(undefined, { staleTime: 60_000 });
 
-  // Hidden by default means hidden every time it BECOMES available again, not
-  // just on first mount — leaving "on" for any reason (turned off, blocked,
-  // unsupported, a re-settle) collapses the list, so re-enabling later never
-  // resumes into a list that was left open pointing at nothing.
-  //
-  // Render-phase adjustment, not an effect — the same idiom `Collapse` itself
-  // uses ("via React's render-phase 'adjust state on change' pattern — not an
-  // effect, that would be a synchronous-setState-in-effect cascade"). A
-  // `useEffect` doing this exact `setState` is what `react-hooks/set-state-in-effect`
-  // exists to catch, and this codebase already has the alternative on hand.
-  const [prevDeviceState, setPrevDeviceState] = useState(device.state);
-  if (device.state !== prevDeviceState) {
-    setPrevDeviceState(device.state);
-    if (device.state !== "on") setCategoriesOpen(false);
-  }
-
-  const hasDisclosure = device.state === "on";
-
-  // Same "name + state" shape as the resolved copy (`devicePushCopy`) — the
-  // label is the control's fixed identity, the sub is what's currently true.
-  // Transient states get their own short sub rather than swallowing the label
-  // into a full sentence ("Checking notifications…") the way this used to.
-  const deviceLabel = device.settling || device.busy ? "Notifications" : device.copy.label;
-  const deviceSub = device.settling ? "Checking…" : device.busy ? "Working…" : device.copy.sub;
+  // Only categories that can actually fire, resolved through the registry
+  // defaults so the summary is right in the ~200ms before prefs land rather
+  // than reading "every category is muted" and then correcting itself.
+  const resolved = resolvePrefs(prefs.data ?? null);
+  const activeLabels = EXPOSED_CATEGORIES.filter((k) => resolved[k]).map(
+    (k) => NOTIFICATION_TYPES.find((t) => t.key === k)?.shortLabel ?? k
+  );
 
   return (
-    <>
-      <SettingsRow
-        icon={<IconBell size={16} stroke={1.75} />}
-        label={deviceLabel}
-        sub={deviceSub}
-        onClick={device.copy.actionable && !device.settling ? device.toggle : undefined}
-        // The device row is the true last row in the card whenever there's no
-        // disclosure below it (off/blocked/unsupported/settling) — nothing
-        // used to follow it here either, before the test row was removed.
-        lastRow={!hasDisclosure}
-        disclosure={
-          hasDisclosure
-            ? {
-                open: categoriesOpen,
-                onToggle: () => setCategoriesOpen((v) => !v),
-                label: categoriesOpen
-                  ? "Hide notification categories"
-                  : "Show notification categories",
-              }
-            : undefined
-        }
-        // No trailing chevron AT ALL outside the "on" state — suppresses the
-        // default `ChevronRight` explicitly rather than falling through to it.
-        // Off is still a real toggle (tap turns it on) but doesn't NAVIGATE,
-        // so a right-pointing arrow there is the same orphaned-chevron bug
-        // this whole change exists to fix; blocked/unsupported/settling were
-        // never actionable and never had a legitimate chevron either.
-        right={hasDisclosure ? undefined : <></>}
-      />
-      {hasDisclosure && (
-        <Collapse open={categoriesOpen}>
-          {EXPOSED_CATEGORIES.map((key) => <NotificationCategoryRow key={key} categoryKey={key} />)}
-        </Collapse>
-      )}
-    </>
+    <SettingsRow
+      icon={<IconBell size={16} stroke={1.75} />}
+      label="Notifications"
+      sub={device.settling ? "Checking…" : notificationsRowSummary(device.state, activeLabels)}
+      // ALWAYS opens the modal — including when blocked or unsupported, which is
+      // deliberate. Those two states are the ones a person most needs explained,
+      // and a row that refuses to open leaves them with a dead control and no
+      // account of why. The modal explains; it just has nothing to toggle.
+      onClick={onOpen}
+      lastRow
+    />
   );
 }
+
 
 /**
  * The categories that have a live sender, in registry order.
@@ -714,15 +626,15 @@ function NotificationSettings() {
 const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results", "chat"];
 
 /**
- * One category row. Indented under the device toggle it depends on, and now
- * rendered inside that row's `Collapse` body — a peer of it visually,
- * beneath it structurally.
+ * One category row, inside the notifications modal beneath the activation
+ * control. It used to sit indented inside a `Collapse` hanging off the settings
+ * row; both the indent and the collapse are gone with the row's second tap
+ * target.
  *
- * NO top border of its own: the device row above it always carries a bottom
- * border while a disclosure exists (`SettingsRow`'s `lastRow={!hasDisclosure}`),
- * so this row drawing ANOTHER divider immediately below it would double the
- * hairline whenever the list is open. This is also the true last row in the
- * card now that the test row is gone, so no bottom border either.
+ * A top hairline separates each category from the activation control and from
+ * each other. In the old shape it deliberately had NO border, because the row
+ * above already drew one and the pair doubled the hairline — inside the modal
+ * there is no such row, so it draws its own.
  *
  * Uses `Checkbox` — the app's boolean control, extracted precisely so surfaces
  * stop inventing their own. There is no switch/pill primitive in this codebase
@@ -734,7 +646,7 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
   const def = NOTIFICATION_TYPES.find((t) => t.key === categoryKey);
 
   return (
-    <div className="flex w-full items-start gap-3 px-4 py-3 pl-11">
+    <div className="flex w-full items-start gap-3 py-3" style={{ borderTop: "0.5px solid var(--color-bt-border)" }}>
       <div className="min-w-0 flex-1">
         <div style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
           {/* The user-facing LABEL, never the key. "Competition & game alerts",
@@ -756,6 +668,54 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
     </div>
   );
 }
+
+/**
+ * NotificationsSheet — the activation control, and the categories beneath it.
+ *
+ * ── Why a parent control rather than deriving activation from the boxes ─────
+ * The simpler design was no parent at all: check a category and it turns
+ * notifications on. It cannot work. Push needs an OS permission prompt, the
+ * prompt needs a user gesture, and it can be refused PERMANENTLY — so the first
+ * check fires a prompt, the person taps Block, and what is left is a checked box
+ * with nothing behind it. A control asserting a state it does not have is worse
+ * than an absent one.
+ *
+ * The parent is also where the two non-control states live. `blocked` and
+ * `unsupported` are EXPLANATIONS, not switches; without a parent element there
+ * is nowhere to put them, which is how "why do I get nothing?" became
+ * unanswerable in the previous shape.
+ *
+ * ── Checkbox, not a switch ──────────────────────────────────────────────────
+ * Including for the parent, which reads like a master switch. There is no
+ * switch/pill primitive in this codebase — nothing renders `role="switch"` —
+ * and inventing one here for a single control is the divergence this project
+ * has spent weeks removing. `Checkbox` is the app's boolean control.
+ *
+ * ── The categories are for turning things OFF ───────────────────────────────
+ * Both default ON (NOTIFICATIONS.md: a category defaulting off means someone
+ * enables notifications and receives nothing, which reads as broken). So this
+ * opens with everything checked, and the copy says so — this is where you come
+ * to STOP getting something, not to start.
+ */
+function NotificationsSheet({ onClose }: { onClose: () => void }) {
+  const device = useDevicePush();
+
+  return (
+    <SheetShell title="Notifications" onClose={onClose}>
+      <NotificationsSheetBody
+        state={device.state}
+        settling={device.settling}
+        busy={device.busy}
+        onToggleActivation={device.toggle}
+        sectionLabelStyle={SECTION_LABEL_STYLE}
+        categorySlot={EXPOSED_CATEGORIES.map((key) => (
+          <NotificationCategoryRow key={key} categoryKey={key} />
+        ))}
+      />
+    </SheetShell>
+  );
+}
+
 
 // ── Avatar hero ───────────────────────────────────────────────────────────
 

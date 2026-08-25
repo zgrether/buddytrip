@@ -91,6 +91,101 @@ export interface DevicePushCopy {
  * performs, so the "don't explain the interaction" rule doesn't apply to them
  * the same way. Not an oversight; narrower in scope on purpose.
  */
+/**
+ * THE ACTIVATION CONTROL, inside the notifications modal — the parent that the
+ * category checkboxes sit under.
+ *
+ * ── Why a parent control exists at all ──────────────────────────────────────
+ * The simpler design was to DERIVE activation from the categories: no parent,
+ * check a box and it turns on. It cannot work. Browser push needs an OS
+ * permission prompt, the prompt needs a user gesture, and it can be refused
+ * PERMANENTLY. So the first check fires a prompt, the person taps Block, and
+ * the result is a checked box with no notifications behind it — a control
+ * asserting a state it does not have.
+ *
+ * The parent is also the only place the awkward states can live. Two of the
+ * four are not controls at all: `blocked` and `unsupported` are EXPLANATIONS,
+ * and without a parent element there is nowhere to put them. `blocked` is the
+ * one most likely to be skipped and the one most needed — someone who dismissed
+ * the prompt six months ago has no other way to discover why nothing arrives,
+ * and nothing in the app can fix it for them.
+ *
+ * ── Why this is separate from `devicePushCopy` ──────────────────────────────
+ * That one is the SETTINGS ROW: a name plus its current value, read at a
+ * glance from a list. This is the control inside the modal, where there is room
+ * to say what the act is and what happens next. Same state, two registers.
+ * Sharing one string would force the row to carry the modal's explanation, or
+ * the modal to carry the row's shorthand.
+ */
+export function activationCopy(state: DevicePushState): DevicePushCopy {
+  switch (state) {
+    case "unsupported":
+      return {
+        label: "This device doesn't support push notifications",
+        sub: "Try adding BuddyTrip to your Home Screen, then open it from there.",
+        actionable: false,
+      };
+    case "blocked":
+      // Said plainly, and it names the control to go and change. The app cannot
+      // re-prompt — browsers will not show the prompt again after a denial — so
+      // the copy IS the entire fix available here.
+      return {
+        label: "Blocked in your browser settings",
+        sub: "Allow notifications for bbmi.app in your browser settings, then come back here.",
+        actionable: false,
+      };
+    case "on":
+      return {
+        label: "Push notifications are activated",
+        sub: "Categories below are live on this device.",
+        actionable: true,
+      };
+    case "off":
+      return {
+        label: "Activate push notifications on this device",
+        sub: "Your browser will ask permission first.",
+        actionable: true,
+      };
+  }
+}
+
+/**
+ * What the SETTINGS ROW says under "Notifications", so the state is readable
+ * without opening the modal.
+ *
+ * `activeLabels` is the short name of every category currently ON, in registry
+ * order — resolved by the caller, since this module deliberately knows nothing
+ * about `users.notification_prefs`.
+ *
+ * ── This does not violate the rule at the top of this file ──────────────────
+ * `deriveDevicePushState` excludes category preferences as an input, and must:
+ * muting a category is not the same act as turning this device off. That rule
+ * is about deriving STATE. This is a SUMMARY of an already-derived state plus
+ * what it is currently delivering, which is exactly what someone wants to read
+ * off a row before deciding whether to tap it.
+ *
+ * The `on`-with-nothing-on case is why this is a function rather than a
+ * template. It must NOT say "Off": the device is activated and the sender is
+ * being turned away at the preference gate, which is a different state with a
+ * different fix, and collapsing the two would send someone to re-activate a
+ * device that is already on.
+ */
+export function notificationsRowSummary(
+  state: DevicePushState,
+  activeLabels: readonly string[]
+): string {
+  switch (state) {
+    case "unsupported":
+      return "Not supported on this device";
+    case "blocked":
+      return "Blocked in browser settings";
+    case "off":
+      return "Off";
+    case "on":
+      return activeLabels.length > 0 ? activeLabels.join(", ") : "On, but every category is muted";
+  }
+}
+
 export function devicePushCopy(state: DevicePushState): DevicePushCopy {
   switch (state) {
     case "unsupported":
