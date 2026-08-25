@@ -27,7 +27,7 @@ import {
 import { notificationsRowSummary } from "@/lib/devicePushState";
 import { NotificationsSheetBody } from "@/components/profile/NotificationsSheetBody";
 import { useDevicePush } from "@/lib/useDevicePush";
-import { Checkbox } from "@/components/games/Checkbox";
+import { CheckboxBox } from "@/components/games/Checkbox";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { useAuthUser } from "@/lib/auth-context";
 import { Avatar } from "@/components/Avatar";
@@ -646,7 +646,20 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
   const def = NOTIFICATION_TYPES.find((t) => t.key === categoryKey);
 
   return (
-    <div className="flex w-full items-start gap-3 py-3" style={{ borderTop: "0.5px solid var(--color-bt-border)" }}>
+    // The whole row toggles, same as the activation control above it — the box
+    // alone is a 20px target next to the label people actually aim at. The row
+    // carries `role="checkbox"` and `CheckboxBox` shows the state, since a
+    // button cannot contain a button.
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={enabled}
+      aria-label={`${def?.label ?? categoryKey} notifications`}
+      onClick={toggle}
+      disabled={loading}
+      className="-mx-2 flex w-[calc(100%+1rem)] items-start gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-60"
+      style={{ borderTop: "0.5px solid var(--color-bt-border)" }}
+    >
       <div className="min-w-0 flex-1">
         <div style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
           {/* The user-facing LABEL, never the key. "Competition & game alerts",
@@ -658,14 +671,8 @@ function NotificationCategoryRow({ categoryKey }: { categoryKey: NotificationKey
           {def?.description ?? ""}
         </div>
       </div>
-      <Checkbox
-        on={enabled}
-        onClick={toggle}
-        disabled={loading}
-        label={`${def?.label ?? categoryKey} notifications`}
-        className="mt-0.5"
-      />
-    </div>
+      <CheckboxBox on={enabled} className="mt-0.5" />
+    </button>
   );
 }
 
@@ -701,7 +708,7 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
   const device = useDevicePush();
 
   return (
-    <SheetShell title="Notifications" onClose={onClose}>
+    <SheetShell title="Notifications" onClose={onClose} dismissLabel="Close">
       <NotificationsSheetBody
         state={device.state}
         settling={device.settling}
@@ -764,10 +771,24 @@ function SheetShell({
   title,
   onClose,
   children,
+  dismissLabel = "Cancel",
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /**
+   * What the dismiss control says. "Cancel" by default, and NOT renamed
+   * globally, because the word is doing real work in most of these sheets:
+   * name / email / password / delete all have a Save-or-confirm step, so
+   * dismissing genuinely abandons an unsaved edit and "Cancel" is the honest
+   * word for that.
+   *
+   * The notifications sheet has no such step — every control in it applies
+   * immediately — so "Cancel" there reads as "undo what I just did", which it
+   * does not do. That is a difference in BEHAVIOUR, not in styling, which is why
+   * this is a per-sheet prop rather than one string changed for all of them.
+   */
+  dismissLabel?: string;
 }) {
   return (
     <ScrollLock>
@@ -797,7 +818,7 @@ function SheetShell({
             className="text-xs hover:underline"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Cancel
+            {dismissLabel}
           </button>
         </div>
         <div className="px-5 py-5">{children}</div>

@@ -1,4 +1,4 @@
-import { Checkbox } from "@/components/games/Checkbox";
+import { CheckboxBox } from "@/components/games/Checkbox";
 import { activationCopy, type DevicePushState } from "@/lib/devicePushState";
 
 /**
@@ -50,29 +50,51 @@ export function NotificationsSheetBody({
   // nothing.
   const showCategories = state === "on";
 
-  return (
+  const activationSub = settling ? null : busy ? "Working…" : activation.sub || null;
+  const activationBody = (
     <>
-      <div className="flex w-full items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div data-testid="activation-label" style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
-            {settling ? "Checking…" : activation.label}
-          </div>
-          {!settling && (
-            <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
-              {busy ? "Working…" : activation.sub}
-            </div>
-          )}
+      <div className="min-w-0 flex-1">
+        <div data-testid="activation-label" style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
+          {settling ? "Checking…" : activation.label}
         </div>
-        {showActivationToggle && (
-          <Checkbox
-            on={state === "on"}
-            onClick={onToggleActivation}
-            disabled={busy}
-            label="Activate push notifications on this device"
-            className="mt-0.5"
-          />
+        {activationSub && (
+          <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
+            {activationSub}
+          </div>
         )}
       </div>
+      {showActivationToggle && <CheckboxBox on={state === "on"} className="mt-0.5" />}
+    </>
+  );
+
+  return (
+    <>
+      {/*
+        THE WHOLE ROW IS THE CONTROL, not just the box. A 20px target beside a
+        300px one that does nothing invites taps on the words — and the words are
+        where the eye goes. `role="checkbox"` therefore lives on the row and
+        `CheckboxBox` is a picture of the state, because a button inside a button
+        is invalid HTML.
+
+        Where there is nothing to toggle (blocked / unsupported / still settling)
+        this renders as a plain div rather than a disabled button: the states
+        that offer no action should not look like an action that failed.
+      */}
+      {showActivationToggle ? (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={state === "on"}
+          aria-label="Activate push notifications on this device"
+          onClick={onToggleActivation}
+          disabled={busy}
+          className="-mx-2 flex w-[calc(100%+1rem)] items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-60"
+        >
+          {activationBody}
+        </button>
+      ) : (
+        <div className="flex w-full items-start gap-3">{activationBody}</div>
+      )}
 
       {showCategories && (
         <div className="mt-4" data-testid="category-list">

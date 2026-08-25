@@ -251,11 +251,38 @@ arrived**:
 R is caught up  ->  a message lands   ->  ONE push
 more messages, R still hasn't looked  ->  R is now behind -> SILENCE
 R opens chat    ->  markRead advances ->  RE-ARMED for the next lull
+R never opens it, 30 min pass         ->  RE-ARMED anyway -> ONE push
 ```
 
 A burst of ten messages to sixteen people is sixteen pushes, not a hundred and
-sixty. Reading the chat is what re-arms it, so someone who never opens chat
-stops being told about it.
+sixty.
+
+### Reading alone was too strict, and production said so within a morning
+
+The gate originally had ONE re-arm: reading. That assumes people open the chat
+between bursts, and most will not — on a four-day trip it means one push on day
+one and silence for the rest of the week.
+
+Measured, not feared. From `push_send_log`, the first morning it was live: **of
+14 chat sends, 3 delivered and 11 were gate-suppressed**, and the three that got
+through all landed in the first 35 minutes, before everyone had fallen behind.
+Zero delivery failures, zero dead endpoints, zero preference skips — the push
+machinery was fine and the gate was turning everyone away.
+
+So **being behind now EXPIRES**: if nothing has been SENT to a recipient for
+`CHAT_REARM_AFTER_MS` (30 min), the next message reaches them even though they
+never caught up. Someone who never opens chat still hears about the dinner plan.
+
+The ceiling is still low, and the honest way to state it is the worst case: a
+person who never opens chat, in a trip where conversation never stops, gets at
+most one push per window — about 32 across a 16-hour day, against the ~500 an
+ungated wiring would send. The realistic case is far lower, because a push that
+gets read re-arms via the READ rule and the next message is a single push.
+
+This needed the one piece of state the app was not already keeping —
+`chat_reads.last_notified_at` (migration 144). Same row, same grain, written by
+the send path and never by `markRead`: **being notified is not having read**, and
+folding them together would mark messages read that nobody has seen.
 
 **Per-RECIPIENT, not per-conversation, and that is the whole choice.** A
 conversation-level silence gate ("first message after N minutes of quiet") fires
@@ -270,16 +297,24 @@ codebase, and this did not add the first one.
 
 ### Two clauses that are not optional
 
-**The viewing window** (`CHAT_ACTIVE_VIEWING_WINDOW_MS`, 5 min) is what
+**The viewing window** (`CHAT_ACTIVE_VIEWING_WINDOW_MS`, 2.5 min) is what
 implements "don't notify someone with the chat open" — the caught-up test alone
 would push them, because the send runs server-side before their client has even
 received the realtime insert, so at decision time a viewer looks exactly like
 someone up to date and away. It is paired with a **client heartbeat**
-(`CHAT_VIEW_HEARTBEAT_MS`, 2 min, in `FloatingChatPanel`, gated on tab
+(`CHAT_VIEW_HEARTBEAT_MS`, 1 min, in `FloatingChatPanel`, gated on tab
 visibility): `markRead` normally only advances when a message arrives, so
 without the heartbeat an open panel left through a lull would buzz at a message
 appearing on screen in front of the person. Both constants live together in
 `src/lib/chatViewHeartbeat.ts` and their relationship is pinned by a test.
+
+The window was **5 minutes and that was too wide**. It only has to be wide
+enough that an open panel is always inside it; every second beyond that is a
+second in which someone who CLOSED the app is mistaken for someone staring at
+the screen. Production showed the cost directly — a message 17 seconds after a
+recipient closed the chat was suppressed as "watching", so reading bought five
+minutes of silence afterwards. Now sized off the heartbeat: two beats plus
+grace.
 
 **The read-position fallback** (`resolveLastSeen`) is
 `chat_reads.last_read_at` -> the member's channel visibility floor

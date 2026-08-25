@@ -158,3 +158,62 @@ describe("NotificationsSheetBody — no expander anywhere", () => {
     }
   );
 });
+
+describe("NotificationsSheetBody — the whole row is the target", () => {
+  /**
+   * Reported from a device: the checkbox alone was the control, and it is a 20px
+   * box beside a 300px label that did nothing. People aim at the words.
+   *
+   * Asserted structurally rather than by clicking: the ROW must be the element
+   * carrying `role="checkbox"`, and there must be exactly ONE such element for
+   * the activation control — a nested button would be invalid HTML and would
+   * also give the row two competing targets again.
+   */
+  it("puts role=checkbox on the row, not on a nested button", () => {
+    const html = render("on");
+    // One control for activation...
+    const controls = html.match(/role="checkbox"/g) ?? [];
+    expect(controls.length).toBe(1);
+    // ...and it is a button that also contains the label text, i.e. the row.
+    const rowStart = html.indexOf('role="checkbox"');
+    const rowTag = html.lastIndexOf("<button", rowStart);
+    expect(rowTag).toBeGreaterThan(-1);
+    const rowEnd = html.indexOf("</button>", rowStart);
+    expect(html.slice(rowTag, rowEnd)).toContain("Push notifications are activated");
+  });
+
+  it("never nests a button inside the activation control", () => {
+    for (const state of ["off", "on"] as const) {
+      const html = render(state);
+      const start = html.indexOf('role="checkbox"');
+      const end = html.indexOf("</button>", start);
+      expect(html.slice(start, end)).not.toContain("<button");
+    }
+  });
+
+  /**
+   * The states with nothing to toggle must not render a DISABLED button. A
+   * greyed-out control reads as "this action failed" rather than "there is no
+   * action here", which is the opposite of what `blocked` needs to communicate.
+   */
+  it.each(["blocked", "unsupported"] as const)(
+    "renders %s as text, not as a disabled control",
+    (state) => {
+      const html = render(state);
+      expect(html).not.toContain('role="checkbox"');
+      expect(html).not.toContain("disabled");
+    }
+  );
+
+  /**
+   * "Your browser will ask permission first" is gone. It narrated the next
+   * screen instead of the control — the same class as the "tap to turn them off
+   * here" line already removed from `devicePushCopy` — and the prompt announces
+   * itself perfectly well.
+   */
+  it("does not narrate the permission prompt", () => {
+    const html = render("off");
+    expect(html.toLowerCase()).not.toContain("ask permission");
+    expect(html.toLowerCase()).not.toContain("will ask");
+  });
+});
