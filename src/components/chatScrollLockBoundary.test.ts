@@ -100,9 +100,22 @@ beforeEach(() => vi.unstubAllGlobals());
 const SWIPE_TOWARD_OLDER = -40;
 const SWIPE_TOWARD_NEWER = 40;
 
-/** `noOverscroll` is `true` for the touch path (SideEffect.js). */
+/**
+ * `noOverscroll` is `true` for the touch path (SideEffect.js).
+ *
+ * The casts are the point of the exercise, not a shortcut around it: the
+ * function's declared parameters are `HTMLElement`/`Event`, and it reads six
+ * properties off them. Handing it a fake with exactly those six is what makes
+ * the behaviour observable in a `node` environment at all.
+ */
 const cancels = (delta: number) =>
-  handleScroll("v", tree.lock, { target: tree.message }, delta, true);
+  handleScroll(
+    "v",
+    tree.lock as unknown as HTMLElement,
+    { target: tree.message } as unknown as Event,
+    delta,
+    true
+  );
 
 describe("react-remove-scroll — column-reverse at the visual bottom", () => {
   /**
