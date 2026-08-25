@@ -6,47 +6,13 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
 import { CHAT_VIEW_HEARTBEAT_MS } from "@/lib/chatViewHeartbeat";
+import { readChatCache, writeChatCache, type CachedMessage } from "@/lib/chatCache";
 import { systemLineForViewer } from "@/lib/joinMessage";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
-// Chat history page size — how many messages each lazy "load older" fetch pulls.
-export const CHAT_PAGE_SIZE = 50;
-
-/**
- * What we actually ASK the server for: one more than a page.
- *
- * The extra row is a has-more SIGNAL, not content. Asking for exactly
- * `CHAT_PAGE_SIZE` makes "is there older history?" unanswerable at the boundary:
- * a full page means either "exactly this many exist" or "more exist", and the
- * old `length === CHAT_PAGE_SIZE` test guessed the second. A channel with
- * exactly 50 messages therefore reported more history and spent a fetch proving
- * otherwise — and 50 is, as it happens, the size of the largest real channel in
- * production, so this was the common case rather than a corner.
- *
- * Asking for 51 makes the test exact: >50 rows back means at least one message
- * exists beyond the page, full stop.
- */
-export const CHAT_FETCH_SIZE = CHAT_PAGE_SIZE + 1;
-
-/**
- * Cursor for the next (older) page, or `undefined` when the history is exhausted.
- *
- * The cursor is the 50th row's timestamp — the last row of the PAGE, not of the
- * over-fetched response. The 51st row is therefore re-fetched as the first row of
- * the next page, which is why the flattened list is de-duplicated by id below.
- * Paying one duplicated row per page is what buys an exact has-more answer.
- */
-export const olderCursor = (lastPage: { created_at: string }[]): string | undefined =>
-  lastPage.length > CHAT_PAGE_SIZE ? lastPage[CHAT_PAGE_SIZE - 1].created_at : undefined;
-
-/** First occurrence wins — the pages are newest-first, so that keeps the copy
- *  from the newer page and drops the overlapped one from the older page. */
-export function dedupeById<T extends { id: string }>(rows: T[]): T[] {
-  const seen = new Set<string>();
-  return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
-}
+import { CHAT_FETCH_SIZE, dedupeById, olderCursor } from "@/components/chatPaging";
 
 type Visibility = "crew" | "planning";
 
@@ -162,13 +128,40 @@ function FloatingChatPanelInner({
   // trip with 10k messages fetches 50 rows, not 10k. `olderCursor` derives the
   // next cursor and decides when the history is exhausted — see its note for why
   // that answer needs the over-fetched 51st row rather than a full-page guess.
+  /**
+   * SEED FROM LOCALSTORAGE so a cold open paints a conversation, not a skeleton.
+   *
+   * `initialData` supplies the cached page as page 0, and `initialDataUpdatedAt: 0`
+   * marks it immediately stale so a background refetch ALWAYS fires. That pair is
+   * the whole mechanism: `isLoading` is false (there is data, so no placeholder),
+   * `isFetching` is true (so the quiet indicator shows), and the server's answer
+   * replaces the cache the moment it lands.
+   *
+   * Read ONCE in a lazy initializer rather than on every render — this is
+   * localStorage, and re-reading it per render would both cost and, worse, hand
+   * React Query a fresh array identity every time.
+   *
+   * `undefined` (not `[]`) when there is no usable cache, because that is what
+   * makes React Query treat the query as genuinely empty and show the loading
+   * placeholder. A cached-but-discarded entry must never arrive as `[]`, which
+   * would render as "no messages yet" — see `readChatCache`.
+   */
+  const [seed] = useState(() => ({
+    crew: readChatCache(tripId, "crew"),
+    planning: readChatCache(tripId, "planning"),
+  }));
+  const seedFor = (rows: CachedMessage[] | null) =>
+    rows && rows.length > 0
+      ? { initialData: { pages: [rows], pageParams: [undefined as string | undefined] }, initialDataUpdatedAt: 0 }
+      : {};
+
   const crewQuery = trpc.messages.list.useInfiniteQuery(
     { tripId, channel: "trip", visibility: "crew", limit: CHAT_FETCH_SIZE },
-    { getNextPageParam: olderCursor }
+    { getNextPageParam: olderCursor, ...seedFor(seed.crew) }
   );
   const planningQuery = trpc.messages.list.useInfiniteQuery(
     { tripId, channel: "trip", visibility: "planning", limit: CHAT_FETCH_SIZE },
-    { enabled: canSeeOrganizers, getNextPageParam: olderCursor }
+    { enabled: canSeeOrganizers, getNextPageParam: olderCursor, ...seedFor(seed.planning) }
   );
 
   // Pages come back newest-first within each page and progressively older across
@@ -211,9 +204,44 @@ function FloatingChatPanelInner({
     [optimisticMessages]
   );
 
+  /**
+   * SERVER-CONFIRMED, per channel. `dataUpdatedAt > 0` means a real fetch has
+   * resolved: the seed above is stamped 0 deliberately, so this is false while
+   * the panel is showing cache alone and true once the server has answered.
+   *
+   * Two things hang off it, and both would be wrong without it — see the
+   * markRead and heartbeat effects below.
+   */
+  const crewConfirmed = crewQuery.dataUpdatedAt > 0;
+  const planningConfirmed = planningQuery.dataUpdatedAt > 0;
+
+  // Persist the newest page back to localStorage. Only ever from CONFIRMED data:
+  // re-writing the seed would be a no-op at best, and after a discarded-cache
+  // read it would write back rows we just decided not to trust.
+  useEffect(() => {
+    if (crewConfirmed) writeChatCache(tripId, "crew", crewMessages as CachedMessage[]);
+  }, [tripId, crewConfirmed, crewMessages]);
+  useEffect(() => {
+    if (planningConfirmed) writeChatCache(tripId, "planning", planningMessages as CachedMessage[]);
+  }, [tripId, planningConfirmed, planningMessages]);
+
   const crewDisplayed = buildDisplayed(crewMessages as ChatMessage[], "crew");
   const planningDisplayed = buildDisplayed(planningMessages as ChatMessage[], "planning");
   const displayed = activeChannel === "crew" ? crewDisplayed : planningDisplayed;
+  /** Has the ACTIVE channel been confirmed by the server this mount? */
+  const confirmed = activeChannel === "crew" ? crewConfirmed : planningConfirmed;
+  /**
+   * Is what this device is showing still being kept up to date?
+   *
+   * "The most recent thing that happened to this query was a success" — a failed
+   * background refetch leaves `errorUpdatedAt` ahead of `dataUpdatedAt`, which is
+   * how a connectivity drop becomes visible to the heartbeat below. Confirmed
+   * data alone is not enough: it stays true forever after one good fetch, which
+   * is exactly the case that would keep stamping through an outage.
+   */
+  const activeChannelQuery = activeChannel === "crew" ? crewQuery : planningQuery;
+  const viewIsCurrent =
+    confirmed && activeChannelQuery.errorUpdatedAt <= activeChannelQuery.dataUpdatedAt;
 
   // ── Read tracking (server-backed, cross-device) ─────────────────────────
   // Read state lives in chat_reads server-side, so the unread badge + the
@@ -271,6 +299,30 @@ function FloatingChatPanelInner({
    *  their own schedule and double the traffic. */
   const heartbeatAtRef = useRef(0);
   useEffect(() => {
+    /**
+     * NOT UNTIL THE FETCH LANDS.
+     *
+     * `markRead` stamps the server's `now()`, which asserts "I have seen
+     * everything up to this instant". Rendered from a cache that may be minutes
+     * stale, that is simply false — it would clear the unread badge and the
+     * new-messages divider for messages still in flight.
+     *
+     * It also protects #1058. `chat_reads.last_read_at` does DOUBLE DUTY: it is
+     * the read position AND the recency-of-looking signal the push gate's
+     * viewing window reads to decide whether someone is watching. Stamping on a
+     * cached render would put a glance-and-close into the viewing window and
+     * suppress their pushes for the next 2.5 minutes, having shown them nothing
+     * new — the same bug #1058 fixed, arriving from the other side.
+     *
+     * Deferring costs nothing visible: the MESSAGES still paint instantly from
+     * cache. Only the stamp waits.
+     *
+     * (The two roles agree today only because you always open onto the newest
+     * messages. If offline read-marking is ever wanted, it needs its own column
+     * rather than overloading this one — the overloading is what makes this
+     * fragile.)
+     */
+    if (!confirmed) return;
     if (displayed.length === 0) return;
     const latest = displayed[displayed.length - 1];
     const ts = latest?.created_at;
@@ -279,7 +331,7 @@ function FloatingChatPanelInner({
     lastMarkedRef.current[activeChannel] = ts;
     heartbeatAtRef.current = Date.now();
     markReadMutate({ tripId, visibility: activeChannel });
-  }, [tripId, activeChannel, displayed, markReadMutate]);
+  }, [tripId, activeChannel, confirmed, displayed, markReadMutate]);
 
   // ── Viewing heartbeat — what makes "no push while you're looking" true ────
   //
@@ -306,6 +358,29 @@ function FloatingChatPanelInner({
     if (!tripId) return;
     const beat = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      /**
+       * ONLY WHILE THE VIEW IS CURRENT.
+       *
+       * The heartbeat stamps `now()`, which claims the person has seen
+       * everything up to this instant. That is true while the panel is open AND
+       * the fetch is healthy. It stops being true the moment connectivity drops:
+       * messages keep arriving server-side, this device cannot see them, and a
+       * beat would mark them read anyway — clearing the unread badge and the
+       * divider for messages that were never delivered.
+       *
+       * A pre-existing hole, introduced with the heartbeat itself in #1054 and
+       * unnoticed until the cache work made "what is this device actually
+       * looking at" a question worth asking. The condition is "the most recent
+       * thing that happened to this query was a SUCCESS" — a failed background
+       * refetch leaves `errorUpdatedAt` ahead of `dataUpdatedAt`, and the beat
+       * simply stops until a fetch succeeds again.
+       *
+       * Consequence when it stops: the person drops out of the push viewing
+       * window after ~2.5 min and becomes notifiable again. That is the right
+       * way round — they are staring at a panel that is no longer being told
+       * anything, so a push is exactly what they need.
+       */
+      if (!viewIsCurrent) return;
       const now = Date.now();
       // A real message-arrival mark within this interval already refreshed the
       // window, so don't spend a write re-proving it.
@@ -315,7 +390,7 @@ function FloatingChatPanelInner({
     };
     const id = setInterval(beat, CHAT_VIEW_HEARTBEAT_MS);
     return () => clearInterval(id);
-  }, [tripId, activeChannel, markReadMutate]);
+  }, [tripId, activeChannel, viewIsCurrent, markReadMutate]);
 
   const sendMessage = trpc.messages.send.useMutation({
     onSuccess: (_, variables) => {
@@ -404,6 +479,11 @@ function FloatingChatPanelInner({
       hasOlder={!!activeQuery.hasNextPage}
       loadingOlder={activeQuery.isFetchingNextPage}
       loading={activeQuery.isLoading}
+      // Refreshing = we already have something on screen and are checking for
+      // more. Distinct from `loading`, which means there is nothing to show yet;
+      // conflating them is what would put a spinner over a readable conversation.
+      refreshing={!activeQuery.isLoading && activeQuery.isFetching && !activeQuery.isFetchingNextPage}
+      olderFailed={activeQuery.isFetchNextPageError}
     />
   );
 
@@ -517,6 +597,15 @@ interface ChatBodyProps {
    *  then replaced by 50 rows, which is a second source of visible motion on a
    *  cold open, independent of scrolling. */
   loading: boolean;
+  /** Content is already on screen and a background fetch is checking for more.
+   *  A quiet line, never a spinner over the conversation — the whole point of
+   *  the cache is that there is something to read while this is true. */
+  refreshing: boolean;
+  /** The last "load older" attempt failed — almost always offline. Said out
+   *  loud, because a silent nothing is indistinguishable from "no more
+   *  history", which is the exact empty-versus-unknown collapse this surface is
+   *  careful about. */
+  olderFailed: boolean;
 }
 
 function ChatBody({
@@ -538,6 +627,8 @@ function ChatBody({
   hasOlder,
   loadingOlder,
   loading,
+  refreshing,
+  olderFailed,
 }: ChatBodyProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
@@ -784,6 +875,30 @@ function ChatBody({
           {/* Bottom-most. The scroll target for `scrollToBottom`, and the
               sentinel `handleScroll` measures distance-from-bottom against. */}
           <div ref={bottomRef} aria-hidden />
+          {/* A quiet line, above the conversation, never over it. The cached
+              messages are readable the whole time this is showing — which is
+              the difference between "the app is fetching" and "the app is
+              empty", and the reason a spinner would be the wrong control. */}
+          {refreshing && displayed.length > 0 && (
+            <div
+              className="sticky top-0 z-10 flex justify-center py-1"
+              style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
+            >
+              Checking for new messages…
+            </div>
+          )}
+          {/* Said out loud rather than left as a silent nothing: on a golf
+              course this is the one place the cache boundary becomes visible to
+              a person, and "nothing happened" reads identically to "there is no
+              more history". */}
+          {olderFailed && (
+            <div
+              className="flex justify-center py-2 text-center"
+              style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
+            >
+              Couldn&apos;t load earlier messages — check your connection.
+            </div>
+          )}
           {loading && <ChatMessagesPlaceholder />}
           {!loading && displayed.length > 0 && (
             <div className="space-y-1.5 px-3 py-2">
