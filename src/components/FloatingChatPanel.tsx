@@ -661,6 +661,69 @@ function ChatBody({
   const atBottomRef = useRef(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [hasNew, setHasNew] = useState(false);
+  /**
+   * SHIELD THE MESSAGE LIST FROM `ScrollLock`'s TOUCH ARBITRATION.
+   *
+   * ── The bug ────────────────────────────────────────────────────────────────
+   * Sitting at the newest message, the FIRST swipe toward older history does
+   * nothing. Nudge the other way a few pixels and immediately reverse, and it
+   * scrolls normally. Only at the bottom, and only when a scroll wasn't already
+   * under way.
+   *
+   * ── Why ────────────────────────────────────────────────────────────────────
+   * `react-remove-scroll` (via `ScrollLock`, wrapping the whole sheet) decides
+   * per gesture whether a touch would scroll something it must block. It reads
+   * the geometry in `handleScroll.js`:
+   *
+   *     elementScroll     = scrollHeight - clientHeight - directionFactor * scrollTop
+   *     availableScrollTop += scrollTop
+   *     // swipe toward older => negative delta =>
+   *     if (!isDeltaPositive && Math.abs(availableScrollTop) < 1) cancel
+   *
+   * `directionFactor` is 1 unless the axis is HORIZONTAL and `direction: rtl` —
+   * the library knows about RTL and knows nothing about `flex-direction:
+   * column-reverse`. This list IS column-reverse, so `scrollTop` is 0 at the
+   * VISUAL BOTTOM and goes negative toward older messages (the same convention
+   * `scrollToBottom` below documents, and the reason it uses `scrollIntoView`
+   * rather than arithmetic).
+   *
+   * So at the newest message `availableScrollTop` is 0, the library concludes
+   * there is no room to scroll back, and `preventDefault()`s the move. The
+   * two-step workaround works because once WebKit has handed a gesture to a
+   * scroller, later `preventDefault()` calls are ignored for that gesture —
+   * which is also why it only bites when a scroll wasn't already running.
+   *
+   * Pinned by `chatScrollLockBoundary.test.ts`, which asserts the library still
+   * behaves this way. If that test ever fails, the library has learned about
+   * column-reverse and this shield can go.
+   *
+   * ── Why stopping propagation is the right escape, not a workaround ─────────
+   * The cancel happens in a BUBBLE-phase `touchmove` listener on `document`, so
+   * stopping propagation at this container means the arbiter never sees moves
+   * that start inside the list — and only those.
+   *
+   * `ScrollLock` keeps doing the job it was added for (#1055): a swipe on the
+   * grip, the segment bar, the composer, the padding or the scrim still can't
+   * scroll the page behind, because none of those are inside this element.
+   * Containment for the list itself is `overscroll-behavior: contain` on the
+   * container below — the platform mechanism for exactly this, already there,
+   * and unlike the library's arithmetic it does not care which way the box is
+   * laid out.
+   *
+   * Safe for React's delegation: nothing inside this subtree has a touch
+   * handler (React attaches at the root container, above this element, so a
+   * bubble-phase stop here would suppress them).
+   */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Passive: this never calls preventDefault — it only keeps the event from
+    // reaching an arbiter that would.
+    const stop = (e: TouchEvent) => e.stopPropagation();
+    el.addEventListener("touchmove", stop, { passive: true });
+    return () => el.removeEventListener("touchmove", stop);
+  }, []);
+
   // One in-flight "load older" at a time. `loadingOlder` alone can't guard it:
   // a burst of scroll events all fire before React re-renders with
   // `isFetchingNextPage` true, so the flag is still false for several of them.
