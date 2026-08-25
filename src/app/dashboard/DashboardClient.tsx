@@ -249,13 +249,24 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
                   >
                     <Icon size={20} />
                   </span>
-                  <div className="min-w-0">
+                  <div className="w-full min-w-0">
                     <div className="text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
                       {QUICK_GAME_LABEL[format]}
                     </div>
-                    <div className="mt-0.5 truncate text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {quickGameSubtitle(saved)}
-                    </div>
+                    {/* No second line at all when nothing's saved — the pitch
+                        line ("Keep score right now…") added a row of text no
+                        tile needed. When a round IS in progress, this WRAPS
+                        (no `truncate`) rather than pushing past the tile: with
+                        `items-start` on the button, a flex child sizes to its
+                        OWN content unless explicitly given `w-full` (above) —
+                        without it, a subtitle longer than the tile just grew
+                        past the button's edge instead of clipping or wrapping
+                        inside it. */}
+                    {saved && (
+                      <div className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {quickGameSubtitle(saved)}
+                      </div>
+                    )}
                   </div>
                 </button>
               );
