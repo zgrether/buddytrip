@@ -86,10 +86,42 @@ export async function subscribeBrowser(): Promise<BrowserSubscription | null> {
  * creates a subscription if none exists. The toggle has to be able to ask "is
  * this device subscribed?" without the act of asking making it true.
  */
+/**
+ * How long to wait for a service worker to become active before concluding
+ * there isn't one.
+ *
+ * `navigator.serviceWorker.ready` NEVER SETTLES when no worker is registered —
+ * it does not reject, it simply hangs forever. That is the documented behaviour,
+ * and it is a trap for exactly this read: the caller has no error to catch and
+ * no value to fall back to, so an un-raced await turns into a permanent
+ * "Checking…" on the notifications row with nothing to explain it.
+ *
+ * Reachable in production, not just in dev. Registration is fire-and-forget with
+ * a swallowed `.catch` (`ServiceWorkerRegistration.tsx`), and `'serviceWorker' in
+ * navigator` is TRUE in the cases that then fail — a blocked registration in
+ * private browsing, a 404 on `/sw.js`, a storage-partitioned context. The
+ * `unsupported` state is checked BEFORE any of that and so never catches it.
+ */
+const SW_READY_TIMEOUT_MS = 3000;
+
+/**
+ * The endpoint this device is currently subscribed with, or null.
+ *
+ * Null covers "no worker, and we waited long enough to say so" as well as "a
+ * worker, but no subscription". Both mean the same thing to every caller — there
+ * is no live browser subscription — so they are deliberately not distinguished.
+ * What matters is that this ALWAYS SETTLES: it gates the `probed` flag, and a
+ * read that never returns leaves the UI asserting nothing forever, which is
+ * strictly worse than reporting `off` on a device that is genuinely off.
+ */
 export async function currentPushEndpoint(): Promise<string | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), SW_READY_TIMEOUT_MS)),
+    ]);
+    if (!reg) return null;
     const sub = await reg.pushManager.getSubscription();
     return sub?.endpoint ?? null;
   } catch {

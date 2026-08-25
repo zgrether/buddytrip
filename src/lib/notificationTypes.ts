@@ -26,6 +26,17 @@ export interface NotificationTypeDef {
   key: NotificationKey;
   /** User-facing label (preferences UI + chat toggle aria). */
   label: string;
+  /**
+   * The same name, short enough to LIST. The settings row summarises what is on
+   * ("Game events, Chat"), and the full labels do not fit — "Competition & game
+   * alerts, Chat messages" truncates to nonsense in a row that is already
+   * `truncate`d.
+   *
+   * A second field rather than a second literal at the call site, for the reason
+   * the registry exists at all: two names for one category, maintained in two
+   * places, is how a rename lands in one of them. The key is still never shown.
+   */
+  shortLabel: string;
   /** One-line description shown under the label. */
   description: string;
   /** Registry default when the user has no stored preference for this key. */
@@ -46,6 +57,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     // users), so the rename needed no jsonb migration.
     key: "game_results",
     label: "Competition & game alerts",
+    shortLabel: "Game events",
     // Deliberately does NOT say "a result is posted" — that phrasing belongs to
     // `scores.upsertEntry` (a NEVER-marked site), so using it here would promise
     // the one thing this category must never send.
@@ -58,6 +70,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
     key: "planning",
     label: "Trip planning",
+    shortLabel: "Trip planning",
     description: "Dates or the destination are locked, or the itinerary changes.",
     defaultOn: true,
     excludes:
@@ -67,6 +80,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
     key: "invites",
     label: "Invites & admin",
+    shortLabel: "Invites",
     description: "You're invited to a trip, added to a team, or an RSVP nudge goes out.",
     defaultOn: true,
     excludes:
@@ -76,6 +90,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
     key: "chat",
     label: "Chat messages",
+    shortLabel: "Chat",
     description: "New messages in any trip or team channel.",
     // ON, like every other category. THE DEVICE TOGGLE IS THE CONSENT GATE:
     // enabling notifications is a deliberate act, and the category list shown at

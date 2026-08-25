@@ -13,11 +13,34 @@ remain untouched, and every **NEVER** row is untouched and must stay that way.
 
 **Only categories with a SENDER are EXPOSED in settings** — `game_results` and
 `chat` today.
-Settings live in a single place (profile → Preferences); the category list
-renders only when the device is subscribed, because muting a category without a
+Settings live in a single place — profile → Preferences → **Notifications**, a
+ROW THAT OPENS A MODAL, like name / email / password. Inside it a parent
+activation control sits above the category checkboxes; the category list renders
+only when the device is subscribed, because muting a category without a
 subscription changes nothing. The chat header bell was removed — one stored value
 with two entry points meant a user who muted from the bell had no way to know
 settings governed the same thing.
+
+**The modal replaced a row with two tap targets, and the shape was the bug.**
+Tapping the row toggled the device; a small chevron beside it revealed the
+categories. Nobody taps a chevron, so nobody found the categories — and the
+discoverable target was the destructive one. That defeated the reason the
+category row was required to ship alongside the chat sender at all: someone
+opens preferences to turn chat off, finds no such control, concludes it does not
+exist, and mutes the app at the OS level. **The outcome this subsystem exists to
+prevent was reachable through the shape of the control, with every underlying
+piece working correctly.**
+
+**Activation is NOT derived from the categories**, and must not be. Push needs an
+OS permission prompt, the prompt needs a user gesture, and it can be refused
+permanently — so "check a box and it turns on" ends at a checked box with no
+notifications behind it. The parent control is also the only place the two
+non-control states can live: `blocked` and `unsupported` are EXPLANATIONS, not
+switches, and `blocked` is the one most needed (a person who dismissed the
+prompt months ago has no other way to learn why nothing arrives, and nothing in
+the app can fix it). The server-side half of the same rule: muting every category
+leaves the device SUBSCRIBED — dropping the subscription would make re-enabling
+depend on a prompt the browser may never show again.
 
 That last one is enforced MECHANICALLY, not remembered:
 `src/server/lib/pushCallSites.guard.test.ts` fails the build if any file outside
@@ -295,3 +318,34 @@ means every subscribed user receives it with **no way to stop** short of
 revoking notifications at the OS level. That is reachable by shipping two
 correct commits in the wrong order, which is why `EXPOSED_CATEGORIES` gained
 `chat` in the same change as the wire point.
+
+## Quiet hours are the OS's job — do not build them here
+
+Filed as an issue during the chat build (#1053) and closed as wontfix the same
+day. Written down because "there is no quiet-hours mechanism" is true, sounds
+like a gap, and will be re-derived by the next person who looks.
+
+**Both platforms already enforce it for web push, and we cannot override them.**
+An installed iOS PWA appears as its own app in Settings, so Focus / Sleep Focus /
+Do Not Disturb / Scheduled Summary apply to it; Android's Chrome web push goes
+through the system notification manager, so DND and Bedtime mode apply. Web push
+has no critical-alert equivalent (that needs native entitlements), and the send
+helpers pass no urgency, TTL, priority or `requireInteraction` — only the
+subscription and a JSON body. There is no version of this we could bypass.
+
+**The decisive asymmetry: server-side suppression DESTROYS a notification, OS
+DND DEFERS it.** Suppress at 2am and the message is never surfaced at all;
+silence it at the OS and it is sitting in the tray at 7am. So a server-side
+implementation would not merely duplicate a control the user already has — it
+would be a strictly worse one, and it would need a timezone column to guess at
+what the device knows natively.
+
+**And chat's read-state gate already did the job this was really about.** A
+night of chat is ONE push per caught-up recipient, not a barrage — the same
+exposure as a text message.
+
+**The general rule, which is the part worth keeping:** an absent mechanism is
+only a gap if the layer below is not already providing it. For anything that
+ends up in a phone's notification tray, the OS is that layer, and it is better
+positioned than we are — it knows the timezone, it follows travel, and the user
+has usually already configured it.
