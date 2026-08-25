@@ -4,14 +4,15 @@ Companion to the registry (`src/lib/notificationTypes.ts`). The registry is the
 code source of truth for the four **categories**; this doc is the source of truth
 for which **write sites** may fan out to them, and how.
 
-**Status: the `game_results` category is WIRED (Phase 3).** One wire point —
-`games.finish`, which covers all four formats — produces two notifications: "a
-game is final" and, when it becomes true, "the cup is clinched". Everything else
-in the table below is still unwired: `planning`, `invites` and `chat` are
-untouched, every BATCH row is untouched (their coalescing is undesigned), and
-every **NEVER** row is untouched and must stay that way.
+**Status: `game_results` and `chat` are WIRED.** `games.finish` (all four
+formats) produces "a game is final" and, when it becomes true, "the cup is
+clinched". `messages.send` produces a **read-state-gated** chat notification —
+the first BATCH row to be wired, and the only one whose coalescing is designed.
+`planning` and `invites` remain untouched (issue #854), the remaining BATCH rows
+remain untouched, and every **NEVER** row is untouched and must stay that way.
 
-**Exactly one category is EXPOSED in settings**, and it is the one with a sender.
+**Only categories with a SENDER are EXPOSED in settings** — `game_results` and
+`chat` today.
 Settings live in a single place (profile → Preferences); the category list
 renders only when the device is subscribed, because muting a category without a
 subscription changes nothing. The chat header bell was removed — one stored value
@@ -32,7 +33,7 @@ import that slips through.
 | `game_results` | Competition & game alerts | **ON** | **yes** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
 | `planning` | Trip planning | **ON** | no | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | no | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
-| `chat` | Chat messages | **ON** | no | new messages, any channel | per-channel prefs — one global switch |
+| `chat` | Chat messages | **ON** | **yes** | new messages, any trip channel (read-state-gated) | per-channel prefs — one global switch; team chat (no read state, no UI) |
 
 ### `game_results` was called `scores`, and the rename was a bug fix
 
@@ -118,8 +119,8 @@ disappearance of that row raises the volume budget.
 | `teamAssignments.assign` | Added to a team | `invites` | BATCH | ~30/trip setup burst; coalesce per recipient |
 | `tripMembers.updateTravel` / `updateMemberTravel` | RSVP / travel change | `invites` | **NEVER** (or heavily BATCH) | ~30–60 over trip life; low signal |
 | `tripMembers.updateRole` | Role changed | `invites` | **ELIGIBLE** | rare; notify the affected user |
-| `messages.send` (trip channel) | New chat message | `chat` | BATCH | hundreds/day live; coalesce hard. |
-| `messages.send` (team channel) | New team-chat message | `chat` | BATCH | same |
+| `messages.send` (trip channel: Crew + Organizers) | New chat message | `chat` | **BATCH — WIRED** | hundreds/day live, coalesced to **one per recipient per read-session**. See the chat section below. |
+| `messages.send` (team channel) | New team-chat message | `chat` | BATCH — **not wired, structurally** | `chat_reads` has no team dimension, so there is no read state to gate on; team chat also has no UI. Needs read tracking first. |
 | `news.create` | News posted | **its own category** (NOT `chat`, NOT `planning`) | **ELIGIBLE** | ~1–5/trip. See the News note above — folding it into `chat` mutes it for anyone who mutes the firehose. |
 
 ## Open questions for Phase 3 (not blocking Phase 2)
@@ -137,9 +138,14 @@ disappearance of that row raises the volume budget.
 2. **`invites` vs. existing email.** Crew-invite + team-assignment already send
    email (`tripMembers.ts`). Wiring `invites` to push would double-notify.
    Decide per-event whether push **replaces** or **supplements** email.
-3. **BATCH mechanics undESIGNED.** Every BATCH row needs a coalescing strategy
-   (per-recipient debounce window) before it's wired — out of scope until Phase 3
-   picks up chat/itinerary.
+3. **BATCH mechanics — designed for CHAT ONLY.** Chat's gate is built and
+   documented below. It does **not** generalise, deliberately: it is free because
+   `chat_reads` already exists, and the remaining BATCH rows
+   (`games.openCorrection`, the itinerary/logistics batch,
+   `teamAssignments.assign`, the invite blast) have no equivalent read-state. Each
+   still needs its own strategy, and lifting chat's into a shared coalescer would
+   mean inventing per-recipient state and a scheduler for them anyway. The next
+   BATCH trigger pays for its own mechanism.
 
 ## What the `game_results` wiring actually does (Phase 3, shipped)
 
@@ -200,3 +206,92 @@ Cup clinch is DERIVED, never stored — `pointsToClinch <= 0`, the same predicat
 the board pill and `GamePageHeader` use. Only the *announcement* is recorded, so
 an un-clinch needs no migration: the same team re-clinching sends nothing, a
 different team clinching does.
+
+## What the `chat` wiring actually does (the first BATCH row)
+
+One call site — `messages.send`, trip channel only.
+`src/server/lib/chatNotify.ts` owns it.
+
+| | |
+|---|---|
+| **Audience** | the CHANNEL's membership, not the trip's — Crew is every member, Organizers is Owner + Organizer (mirroring `is_trip_planner()`), minus the sender |
+| **Coalescing** | read-state-gated; ceiling is **one push per recipient per read-session** |
+| **Payload** | trip title, channel, sender name. **Never the message text** |
+| **Link** | `/trips/{id}` — the trip, not a chat deep link |
+
+### The gate
+
+A recipient is notified only when they were **caught up before this message
+arrived**:
+
+```
+R is caught up  ->  a message lands   ->  ONE push
+more messages, R still hasn't looked  ->  R is now behind -> SILENCE
+R opens chat    ->  markRead advances ->  RE-ARMED for the next lull
+```
+
+A burst of ten messages to sixteen people is sixteen pushes, not a hundred and
+sixty. Reading the chat is what re-arms it, so someone who never opens chat
+stops being told about it.
+
+**Per-RECIPIENT, not per-conversation, and that is the whole choice.** A
+conversation-level silence gate ("first message after N minutes of quiet") fires
+at the START of a conversation and goes quiet through the middle — which is when
+you would actually want to know. Per-recipient fires when *you* fell behind.
+
+**No migration, no scheduler, no new state.** `chat_reads` (migration 010)
+already stores `last_read_at` per (trip, user, visibility) for the unread badge
+and the new-messages divider. The gate is a comparison between two timestamps
+the app was already keeping. There is still no scheduler anywhere in this
+codebase, and this did not add the first one.
+
+### Two clauses that are not optional
+
+**The viewing window** (`CHAT_ACTIVE_VIEWING_WINDOW_MS`, 5 min) is what
+implements "don't notify someone with the chat open" — the caught-up test alone
+would push them, because the send runs server-side before their client has even
+received the realtime insert, so at decision time a viewer looks exactly like
+someone up to date and away. It is paired with a **client heartbeat**
+(`CHAT_VIEW_HEARTBEAT_MS`, 2 min, in `FloatingChatPanel`, gated on tab
+visibility): `markRead` normally only advances when a message arrives, so
+without the heartbeat an open panel left through a lull would buzz at a message
+appearing on screen in front of the person. Both constants live together in
+`src/lib/chatViewHeartbeat.ts` and their relationship is pinned by a test.
+
+**The read-position fallback** (`resolveLastSeen`) is
+`chat_reads.last_read_at` -> the member's channel visibility floor
+(`chat_visible_from` / `planning_visible_from`) -> `joined_at`.
+
+> This one was a real bug, caught by the burst test rather than by review.
+> The first version treated a missing `chat_reads` row as "caught up", which
+> reads as harmless — give them one, then let the normal rule take over. **There
+> is no normal rule to take over.** With no read position, nothing ever moves
+> them into `behind`, so they are caught up on message 1 and on message 400
+> alike: a member who never opens chat would be notified for **every message in
+> the trip**. The burst test read 10 of 10 notified. Each fallback is a real
+> answer to "how far have you seen" rather than a stand-in, which is why the
+> chain converges on the intended behaviour instead of approximating it. The
+> gate's own null branch is now a fail-closed backstop, because the two defaults
+> are not symmetric: silence costs one missed notification, "caught up" costs a
+> push per message forever.
+
+### No message content, structurally
+
+`buildChatPayload` has no text parameter and `ChatNotifyInput` has no text
+field, so `messages.send` cannot pass the message even though it has it in hand.
+A test asserting "the payload does not contain the text" proves it for the one
+string the test chose; a notifier that never RECEIVES the text cannot leak any of
+them. `pushCallSites.guard.test.ts` pins both halves — the notifier must not
+SELECT the column and the input type must not carry it — and both halves were
+control-tested to confirm they go red when breached. Same rule one layer down:
+`push_send_log` is ids and counts (migration 105), never content.
+
+### The category row shipped in the same commit as the sender
+
+Every category defaults ON, because the device toggle is the consent gate and
+the list shown at that moment is a menu of what to MUTE. So a sender wired while
+its category is unexposed does not mean "on by default and easy to find" — it
+means every subscribed user receives it with **no way to stop** short of
+revoking notifications at the OS level. That is reachable by shipping two
+correct commits in the wrong order, which is why `EXPOSED_CATEGORIES` gained
+`chat` in the same change as the wire point.
