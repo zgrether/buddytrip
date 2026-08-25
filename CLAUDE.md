@@ -45,6 +45,23 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 - Verify a PR's base is `main` before merging unless intentionally stacking — a
   stacked PR merged into its base branch instead of `main` strands its content
   off `main` (the wrong-base incident that left PR 2's work unshipped)
+- **Follow-up work goes on a FRESH branch — never onto the branch of a PR that
+  is open for review or just merged.** Push a follow-up commit to a branch whose
+  PR has already merged and it is stranded: the PR is closed, so GitHub fires no
+  `synchronize` event, **no CI run is ever created**, and nothing about the PR
+  page says so. It looks finished.
+
+  **The tell, and it is the only one:** `get_check_runs` (or the PR's checks tab)
+  returns green checks whose timestamps PREDATE your push. Green there means "the
+  commit that merged passed", not "your commit passed" — so read the timestamp,
+  not the colour. `list_workflow_runs` filtered to the branch is the direct check:
+  if `total_count` doesn't include a run at your head SHA, CI never saw it.
+
+  Happened three times in one session (2026-08-25), twice with the fix that
+  mattered most, and each time it was found by accident rather than by anything
+  reporting it. Recovery is: branch fresh from `origin/main`, cherry-pick the
+  stranded commit, verify the tree matches (`git diff --stat <stranded> HEAD`
+  must be empty), open a new PR.
 - **"Unconfirmed" is a valid, preferred answer.** If you can't point to the code
   proving a claim, write "unconfirmed" and list it as an open question — in
   reports, PR descriptions, and commit messages alike.
