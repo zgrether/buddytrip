@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CHAT_PAGE_SIZE, CHAT_FETCH_SIZE, olderCursor, dedupeById } from "./FloatingChatPanel";
+import { CHAT_PAGE_SIZE, CHAT_FETCH_SIZE, olderCursor, dedupeById } from "./chatPaging";
 
 /**
  * The paging arithmetic, which is the part of this change most likely to be
