@@ -373,12 +373,26 @@ function FloatingChatPanelInner({
    * write and three refetches. Nothing renders `viewing_at`, so there is nothing
    * to invalidate — a beat is one write.
    *
-   * Failures are swallowed: missing a beat costs at most one notification the
-   * person did not need, and surfacing it would put a toast on screen for a
+   * ── `meta.suppressErrorToast`, NOT an empty `onError` ──────────────────────
+   * This shipped with `onError: () => {}`, which does NOT suppress anything:
+   * React Query calls the MutationCache's `onError` as well as the mutation's,
+   * and the cache-level one in `providers.tsx` is what shows the toast. So a
+   * failing beat put a toast on screen every 15 seconds — observed in production
+   * against a database missing `viewing_at`, but reachable any time the network
+   * blips while a panel is open.
+   *
+   * `meta: { suppressErrorToast: true }` is the mechanism the cache handler
+   * actually reads, and the one `useScoreSaver` and `useOutcomeSaver` already
+   * use for the same reason: a write with no user-facing surface must not
+   * announce its own failure.
+   *
+   * Suppressing is correct here rather than merely quiet. There is nothing for a
+   * person to do about a missed beat, and the cost of missing one is at most a
+   * notification they did not need. A toast would be an interruption reporting a
    * background timer.
    */
   const { mutate: markViewingMutate } = trpc.messages.markViewing.useMutation({
-    onError: () => {},
+    meta: { suppressErrorToast: true },
   });
   const lastMarkedRef = useRef<Record<Visibility, string | null>>({
     crew: null,
