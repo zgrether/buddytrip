@@ -425,6 +425,34 @@ export const messagesRouter = router({
         .single();
 
       if (error) {
+        /**
+         * A UNIQUE VIOLATION HERE MEANS THE MESSAGE ALREADY LANDED.
+         *
+         * `id` is minted client-side and this is a plain INSERT into a table
+         * whose primary key is that column — so a retry reusing the id cannot
+         * duplicate the message; the key refuses it. That is the property the
+         * client's retry depends on, and it is why a retry must never mint a
+         * fresh id.
+         *
+         * But the refusal is indistinguishable, as a 500, from a send that
+         * genuinely failed — so the one case where the user's message IS safely
+         * stored would report failure and invite them to try again forever.
+         * `CONFLICT` lets the client recognise it by tRPC error CODE rather than
+         * by parsing this string, which is the difference between a contract and
+         * a coincidence of wording.
+         *
+         * DELIBERATELY RETURNS NO ROW. Fetching and returning the existing
+         * message would turn a client-chosen id into an oracle: send with
+         * someone else's message id, read their text out of the error path. The
+         * client needs to know only that the write is done, and the row reaches
+         * it through the normal read path under RLS.
+         */
+        if (error.code === "23505") {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This message has already been sent.",
+          });
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to send message: ${error.message}`,

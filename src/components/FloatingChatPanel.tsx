@@ -8,6 +8,11 @@ import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
 import { CHAT_VIEW_HEARTBEAT_MS } from "@/lib/chatViewHeartbeat";
 import { readChatCache, writeChatCache, type CachedMessage } from "@/lib/chatCache";
 import { readChatDraft, writeChatDraft } from "@/lib/chatDraft";
+import {
+  readFailedOutbox,
+  putFailedMessage,
+  clearFailedMessage,
+} from "@/lib/chatFailedOutbox";
 import { systemLineForViewer } from "@/lib/joinMessage";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -28,6 +33,15 @@ interface ChatMessage {
   visibility?: Visibility;
   message_type?: "user" | "system";
   _optimistic?: boolean;
+  /**
+   * The send failed and the message is held in the durable outbox.
+   *
+   * SEPARATE FROM `_optimistic` rather than a third value of it: a failed row
+   * is still un-confirmed, so every rule that reads "not yet on the server"
+   * keeps applying. What changes is only how it PRESENTS and what actions it
+   * offers, which is a different question from what it is.
+   */
+  _failed?: boolean;
 }
 
 interface FloatingChatPanelProps {
@@ -109,7 +123,35 @@ function FloatingChatPanelInner({
     planning: readChatDraft(tripId, "planning"),
   }));
   const [selectedChannel] = useState<Visibility>("crew");
-  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
+  /**
+   * Un-confirmed messages: in flight, and — recovered from the durable outbox —
+   * ones whose send FAILED in an earlier session.
+   *
+   * Seeded in a lazy initializer, which is possible only because the outbox
+   * stores each message's author: a recovered bubble needs to know whose it is,
+   * and the session read has not resolved at first paint. `buildDisplayed`
+   * filters them to the signed-in account, so a leftover from another account
+   * on a shared phone never renders.
+   */
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>(() =>
+    (["crew", "planning"] as const).flatMap((visibility) =>
+      readFailedOutbox(tripId, visibility).map(
+        (m): ChatMessage => ({
+          id: m.id,
+          trip_id: tripId,
+          user_id: m.userId,
+          channel: "trip",
+          team_id: null,
+          text: m.text,
+          created_at: m.createdAt,
+          visibility,
+          message_type: "user",
+          _optimistic: true,
+          _failed: true,
+        })
+      )
+    )
+  );
 
   // Derived, not stored: non-organizers can never resolve to the planning
   // channel even if they were demoted mid-session with the panel open. The
@@ -217,11 +259,22 @@ function FloatingChatPanelInner({
     (real: ChatMessage[], visibility: Visibility): ChatMessage[] => {
       const realIds = new Set(real.map((m) => m.id));
       const pending = optimisticMessages.filter(
-        (m) => m.visibility === visibility && !realIds.has(m.id)
+        (m) =>
+          m.visibility === visibility &&
+          // The id dedup that retires an optimistic row once its real one
+          // arrives — by realtime, by refetch, or from another device. It is
+          // also what makes a RETRY safe to render: the retried message carries
+          // the id it was sent with, so it replaces its own failed bubble
+          // instead of appearing twice.
+          !realIds.has(m.id) &&
+          // A recovered failure belongs to whoever wrote it. Two accounts on one
+          // phone share the outbox key, and attributing one's unsent message to
+          // the other is worse than not recovering it at all.
+          (!m._failed || m.user_id === currentUser?.id)
       );
       return real.slice().reverse().concat(pending);
     },
-    [optimisticMessages]
+    [optimisticMessages, currentUser?.id]
   );
 
   /**
@@ -412,21 +465,107 @@ function FloatingChatPanelInner({
     return () => clearInterval(id);
   }, [tripId, activeChannel, viewIsCurrent, markReadMutate]);
 
-  const sendMessage = trpc.messages.send.useMutation({
-    onSuccess: (_, variables) => {
-      // The SAME set the realtime INSERT handler invalidates — one shared
-      // helper, because the delta between these two lists WAS the bug (see
-      // chatQueryInvalidation.ts). Do not inline a key list here again.
-      invalidateChatQueries(utils, {
-        tripId,
-        channel: "trip",
-        visibility: variables.visibility,
-      });
+  /**
+   * Callbacks live in `postMessage` below, not here.
+   *
+   * Both outcomes need the message's `created_at` — the outbox stores it so a
+   * recovered bubble keeps its place in the conversation — and `variables`
+   * carries only what the ROUTER takes, which does not include it. Routing both
+   * paths through one `mutateAsync` call site keeps the whole row in scope
+   * instead of reconstructing it from a lookup on every settle.
+   */
+  const sendMessage = trpc.messages.send.useMutation();
+
+  /**
+   * The message already landed; this send was a retry that raced the truth.
+   *
+   * Read off the tRPC error CODE, which the router sets deliberately for the
+   * unique-violation case (`messages.send`) — NOT off the message text, which
+   * would make this depend on Postgres's wording.
+   */
+  const isAlreadySent = (err: unknown): boolean =>
+    (err as { data?: { code?: string } })?.data?.code === "CONFLICT";
+
+  /**
+   * THE SINGLE SEND PATH — first attempt and retry alike.
+   *
+   * Retry re-uses the ORIGINAL id, which is what makes it safe: `messages.id`
+   * is the primary key and the router inserts the client's id verbatim, so a
+   * same-id retry cannot duplicate a message that already landed (the key
+   * refuses it, and the router reports that as `CONFLICT`). Minting a fresh id
+   * on retry is the one change here that would produce duplicates.
+   */
+  const postMessage = useCallback(
+    async (
+      msg: { id: string; text: string; createdAt: string; userId: string },
+      visibility: Visibility
+    ) => {
+      // Un-mark first: a retry of a failed bubble should stop looking failed the
+      // instant it is tapped, or the control appears not to have fired.
+      setOptimisticMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, _failed: false } : m))
+      );
+      const settled = () => {
+        clearFailedMessage(tripId, visibility, msg.id);
+        // The SAME set the realtime INSERT handler invalidates — one shared
+        // helper, because the delta between these two lists WAS the bug (see
+        // chatQueryInvalidation.ts). Do not inline a key list here again.
+        //
+        // The refetch it triggers is also what RETIRES the optimistic row:
+        // `buildDisplayed` drops any optimistic message whose id is in the real
+        // set, and the real row carries the id we sent.
+        invalidateChatQueries(utils, { tripId, channel: "trip", visibility });
+      };
+      try {
+        await sendMessage.mutateAsync({
+          tripId,
+          id: msg.id,
+          channel: "trip",
+          visibility,
+          text: msg.text,
+        });
+        settled();
+      } catch (err) {
+        // Already on the server — the same outcome as a success, reached the
+        // long way round. Treating it as a failure would leave a retry button
+        // on a message everyone else can already read.
+        if (isAlreadySent(err)) {
+          settled();
+          return;
+        }
+        // CLAUDE.md #15: keep the value, flag the error, never roll back to
+        // blank. The durable write happens HERE rather than in a state updater,
+        // because updaters run twice under StrictMode.
+        putFailedMessage(tripId, visibility, msg);
+        setOptimisticMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? { ...m, _failed: true } : m))
+        );
+      }
     },
-    onError: (_, variables) => {
-      setOptimisticMessages((prev) => prev.filter((m) => m.id !== variables.id));
+    [tripId, utils, sendMessage]
+  );
+
+  /** Send it again, exactly as it was. */
+  const retryMessage = useCallback(
+    (msg: ChatMessage) => {
+      if (!msg.user_id) return;
+      void postMessage(
+        { id: msg.id, text: msg.text, createdAt: msg.created_at, userId: msg.user_id },
+        (msg.visibility ?? "crew") as Visibility
+      );
     },
-  });
+    [postMessage]
+  );
+
+  /** Give up on it: the bubble goes and nothing is sent. */
+  const discardMessage = useCallback(
+    (msg: ChatMessage) => {
+      clearFailedMessage(tripId, (msg.visibility ?? "crew") as Visibility, msg.id);
+      setOptimisticMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    },
+    [tripId]
+  );
+
 
   // Plain function, not useCallback: React Compiler memoizes it automatically.
   // A manual dep array here conflicted with the compiler's inferred deps
@@ -437,6 +576,7 @@ function FloatingChatPanelInner({
     if (!trimmed || sendMessage.isPending || !currentUser?.id) return;
 
     const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
     setOptimisticMessages((prev) => [
       ...prev,
       {
@@ -446,7 +586,7 @@ function FloatingChatPanelInner({
         channel: "trip",
         team_id: null,
         text: trimmed,
-        created_at: new Date().toISOString(),
+        created_at: createdAt,
         visibility: activeChannel,
         message_type: "user",
         _optimistic: true,
@@ -454,13 +594,10 @@ function FloatingChatPanelInner({
     ]);
 
     setText("");
-    sendMessage.mutate({
-      tripId,
-      id,
-      channel: "trip",
-      visibility: activeChannel,
-      text: trimmed,
-    });
+    void postMessage(
+      { id, text: trimmed, createdAt, userId: currentUser.id },
+      activeChannel
+    );
   };
 
   // Active-channel accent — mirrors the CrewTab section headers: Organizers
@@ -484,6 +621,8 @@ function FloatingChatPanelInner({
       displayed={displayed}
       activeChannel={activeChannel}
       currentUserId={currentUser?.id}
+      onRetryMessage={retryMessage}
+      onDiscardMessage={discardMessage}
       lastReadSnapshot={dividerSnapshot}
       memberNames={memberNames}
       isPlanningChannel={isPlanningChannel}
@@ -596,6 +735,10 @@ interface ChatBodyProps {
   displayed: ChatMessage[];
   activeChannel: Visibility;
   currentUserId: string | undefined;
+  /** Re-send a failed message, reusing its original id (see `postMessage`). */
+  onRetryMessage: (msg: ChatMessage) => void;
+  /** Drop a failed message: the bubble goes and nothing is sent. */
+  onDiscardMessage: (msg: ChatMessage) => void;
   /** Frozen last-read timestamp for the active channel; the "New" divider sits
    *  before the first other-authored message newer than this. null = no divider. */
   lastReadSnapshot: string | null;
@@ -632,6 +775,8 @@ function ChatBody({
   displayed,
   activeChannel,
   currentUserId,
+  onRetryMessage,
+  onDiscardMessage,
   lastReadSnapshot,
   memberNames,
   isPlanningChannel,
@@ -1056,13 +1201,67 @@ function ChatBody({
                       className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words"
                       style={{
                         background: isMe ? accentFaint : "var(--color-bt-card-raised)",
-                        border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
+                        /* A failed message is BORDERED in danger rather than
+                           filled: it is still your message and still readable,
+                           and a red block reads as an error the app produced
+                           rather than as a message waiting to be sent. */
+                        border: `1px solid ${
+                          msg._failed
+                            ? "var(--color-bt-danger)"
+                            : isMe
+                              ? accentBorder
+                              : "var(--color-bt-border)"
+                        }`,
                         color: "var(--color-bt-text)",
-                        opacity: msg._optimistic ? 0.6 : 1,
+                        /* Dimmed while IN FLIGHT only. A failed message is not
+                           in flight and must not fade into the backdrop — it is
+                           the one bubble here that needs to be noticed. */
+                        opacity: msg._optimistic && !msg._failed ? 0.6 : 1,
                       }}
                     >
                       {msg.text}
                     </div>
+                    {/*
+                      NOT SENT — said plainly, with both ways out.
+
+                      The state is worthless if it is not noticed (a silently
+                      marked bubble is barely better than losing the message), so
+                      this is words rather than a colour cue alone: a border
+                      change is invisible to anyone not looking for it, and this
+                      arrives exactly when attention is elsewhere.
+
+                      Retry first and Discard second, in that order: retry is
+                      what almost everyone wants, and discard is irreversible.
+                    */}
+                    {msg._failed && (
+                      <div
+                        className="mt-1 flex items-center gap-2 px-1"
+                        data-testid="chat-failed-actions"
+                      >
+                        <span
+                          className="text-[10px] font-medium"
+                          style={{ color: "var(--color-bt-danger)" }}
+                        >
+                          Not sent
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onRetryMessage(msg)}
+                          className="text-[10px] font-medium underline underline-offset-2"
+                          style={{ color: "var(--color-bt-text)" }}
+                        >
+                          Retry
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDiscardMessage(msg)}
+                          className="text-[10px] underline underline-offset-2"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </Fragment>
               );

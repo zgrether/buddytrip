@@ -29,6 +29,36 @@ describe("messages router", () => {
     expect(msg.visibility).toBe("crew");
   });
 
+  /**
+   * RETRY SAFETY. The client mints `id` and this is a plain INSERT into a table
+   * whose primary key is that column, so a retry reusing the id cannot duplicate
+   * the message — the key refuses it.
+   *
+   * What the router must do is REPORT that refusal as `CONFLICT` rather than as
+   * a generic 500. The failed-message retry in `FloatingChatPanel` branches on
+   * that code to tell "the send failed" from "it already landed", and without it
+   * the one case where the message is safely stored reports failure forever.
+   *
+   * Asserted on the CODE, not the message text: matching Postgres's wording
+   * would make the contract a coincidence of phrasing.
+   */
+  it("send — re-sending the same id is refused as CONFLICT, and does not duplicate", async () => {
+    const caller = ctx.callerAs("member");
+    const id = genId("msg");
+    const text = "Retried exactly once";
+
+    await caller.messages.send({ tripId, id, text });
+
+    await expect(caller.messages.send({ tripId, id, text })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+
+    // The point of the whole exercise: exactly one copy reached the channel.
+    const msgs = await caller.messages.list({ tripId });
+    expect(msgs.filter((m) => m.id === id)).toHaveLength(1);
+    expect(msgs.filter((m) => m.text === text)).toHaveLength(1);
+  });
+
   it("list — member can view trip messages", async () => {
     const caller = ctx.callerAs("member");
     const msgs = await caller.messages.list({ tripId });
