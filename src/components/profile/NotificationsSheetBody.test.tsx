@@ -24,7 +24,18 @@ import type { DevicePushState } from "@/lib/devicePushState";
 
 const CATEGORIES = <div>CATEGORY-SENTINEL</div>;
 
-function render(state: DevicePushState, opts: { settling?: boolean; busy?: boolean } = {}) {
+function render(
+  state: DevicePushState,
+  opts: {
+    settling?: boolean;
+    busy?: boolean;
+    /** Passed through so the self-test section can be exercised. Omitted by
+     *  default, which is also the "caller didn't wire it" case. */
+    onTestSend?: () => void;
+    testBusy?: boolean;
+    testResult?: { message: string; tone: "success" | "error" } | null;
+  } = {}
+) {
   return renderToStaticMarkup(
     <NotificationsSheetBody
       state={state}
@@ -33,9 +44,15 @@ function render(state: DevicePushState, opts: { settling?: boolean; busy?: boole
       onToggleActivation={() => {}}
       categorySlot={CATEGORIES}
       sectionLabelStyle={{}}
+      onTestSend={opts.onTestSend}
+      testBusy={opts.testBusy ?? false}
+      testResult={opts.testResult ?? null}
     />
   );
 }
+
+/** The self-test section, identified by its testid rather than its copy. */
+const hasTestSend = (html: string) => html.includes('data-testid="test-send"');
 
 /** The activation checkbox, identified by its aria-label rather than by shape. */
 const hasToggle = (html: string) =>
@@ -199,7 +216,11 @@ describe("NotificationsSheetBody — the whole row is the target", () => {
   it.each(["blocked", "unsupported"] as const)(
     "renders %s as text, not as a disabled control",
     (state) => {
-      const html = render(state);
+      // Wired, deliberately. The self-test button carries a `disabled` attribute,
+      // so passing `onTestSend` here is what makes this assertion capable of
+      // failing — without it the test would pass by the section being absent for
+      // a reason unrelated to the state under test.
+      const html = render(state, { onTestSend: () => {} });
       expect(html).not.toContain('role="checkbox"');
       expect(html).not.toContain("disabled");
     }
@@ -215,5 +236,77 @@ describe("NotificationsSheetBody — the whole row is the target", () => {
     const html = render("off");
     expect(html.toLowerCase()).not.toContain("ask permission");
     expect(html.toLowerCase()).not.toContain("will ask");
+  });
+});
+
+
+describe("NotificationsSheetBody — the self-test", () => {
+  /**
+   * ── Why this section is gated on `on` and not merely offered ───────────────
+   * A test send needs a subscription to send TO. On a device that is off,
+   * blocked or unsupported the result is knowable in advance (nothing), so the
+   * button would be an experiment with a foregone conclusion sitting directly
+   * beneath the control that would actually fix it.
+   *
+   * Each case passes `onTestSend`, so a regression that drops the state check
+   * fails here rather than passing because nothing was wired.
+   */
+  it("appears once the device is subscribed", () => {
+    expect(hasTestSend(render("on", { onTestSend: () => {} }))).toBe(true);
+  });
+
+  it.each(["off", "blocked", "unsupported"] as const)(
+    "is absent in the %s state even when the caller wires it",
+    (state) => {
+      expect(hasTestSend(render(state, { onTestSend: () => {} }))).toBe(false);
+    }
+  );
+
+  /** An unwired caller gets no button rather than a dead one. */
+  it("is absent when no handler is supplied", () => {
+    expect(hasTestSend(render("on"))).toBe(false);
+  });
+
+  it("names its scope, because the fear is buzzing the whole trip", () => {
+    const html = render("on", { onTestSend: () => {} });
+    expect(html.toLowerCase()).toContain("only to your own devices");
+  });
+
+  /**
+   * The result is RENDERED IN PLACE, not toasted. It is meant to be read
+   * alongside "did a notification actually appear?", compared, and often read
+   * twice — a toast takes the answer away mid-sentence.
+   */
+  it("shows the result inline and verbatim", () => {
+    const html = render("on", {
+      onTestSend: () => {},
+      testResult: { message: "SENTINEL-RESULT-TEXT", tone: "success" },
+    });
+    expect(html).toContain('data-testid="test-send-result"');
+    expect(html).toContain("SENTINEL-RESULT-TEXT");
+  });
+
+  it("shows nothing where there is no result yet", () => {
+    const html = render("on", { onTestSend: () => {} });
+    expect(html).not.toContain('data-testid="test-send-result"');
+  });
+
+  it("says it is working while the send is in flight", () => {
+    const html = render("on", { onTestSend: () => {}, testBusy: true });
+    expect(html).toContain("Sending…");
+  });
+
+  /**
+   * The activation control must remain the ONLY `role="checkbox"` on this
+   * screen. The self-test is an action, not a state — giving it a checkbox role
+   * (or nesting it inside the activation button) would break the invariant the
+   * "whole row is the target" tests above pin.
+   */
+  it("adds no second checkbox role, and no nested button", () => {
+    const html = render("on", { onTestSend: () => {} });
+    expect((html.match(/role="checkbox"/g) ?? []).length).toBe(1);
+    const start = html.indexOf('role="checkbox"');
+    const end = html.indexOf("</button>", start);
+    expect(html.slice(start, end)).not.toContain("<button");
   });
 });

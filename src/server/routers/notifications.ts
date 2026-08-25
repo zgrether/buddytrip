@@ -14,9 +14,28 @@ import { sendPush } from "../lib/sendPush";
 
 // ── notifications router (Push Phase 2) ─────────────────────────────────────
 //
-// Subscription lifecycle + per-type preferences. Does NOT wire any real event
-// — the one `testSend` procedure is dev/preview-only and gated so it can never
-// reach a real user in production. Phase 3 calls `sendPush` from domain writes.
+// Subscription lifecycle + per-type preferences.
+//
+// ── This header used to be wrong on both counts, and it mattered ────────────
+// It read: "Does NOT wire any real event — the one `testSend` procedure is
+// dev/preview-only and gated so it can never reach a real user in production."
+//
+// Neither half survived contact with the file. Phase 3 wired real senders
+// (`gameFinishNotify`, `chatNotify`). And `testSend` has NO environment gate of
+// any kind — it never had one; it is safe in production for a structural
+// reason instead, which its own doc comment states correctly: it reads the
+// CALLER'S subscriptions and takes no recipient parameter, so there is no path
+// by which it reaches anyone else.
+//
+// The cost of the wrong version was not theoretical. A production
+// investigation into silent chat notifications needed exactly this
+// procedure — and the header said it could not be used in production, while
+// the UI offered no way to call it (zero `test_send` rows had ever been
+// written). The diagnostic existed, was safe, and was talked out of use by a
+// comment. It is now wired into the notifications modal.
+//
+// Kept rather than deleted, per CLAUDE.md: the prior claim is evidence, and a
+// header asserting the opposite of its own file is worth naming once.
 
 const SubscriptionInput = z.object({
   endpoint: z.string().url().max(2000),

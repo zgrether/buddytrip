@@ -261,6 +261,59 @@ summary,
   cursor: pointer;
 }
 
+/* ── iOS: inputs never smaller than 16px on a touch device ────────────────────
+ *
+ * WebKit ZOOMS THE VIEWPORT when an input whose computed `font-size` is under
+ * 16px takes focus, and it does not reliably zoom back out. Chat made it
+ * obvious; it happens anywhere text is entered. At 16px or above it does not
+ * zoom at all.
+ *
+ * Every rung of the type scale (13 · 12 · 14 · 10 · 15 · 11 · 12.5,
+ * `src/lib/typeScale.ts`) is under 16, so any input carrying a scale value
+ * triggers it — 57 of the app's 94 text-entry elements did when this landed
+ * (47 × `text-sm`, 3 × `text-xs`, 5 × inline 13, one each 14/15). The other 37
+ * were already compliant: 34 set no size and inherit the 16px body default
+ * through Tailwind's preflight `font: inherit`, and three set 16 or more.
+ *
+ * ── Why one rule and not 57 edits ──────────────────────────────────────────
+ * The sizes are set PER SURFACE, but the fix does not have to be. Tailwind v4
+ * puts its utilities in `@layer utilities`, and an UNLAYERED rule beats every
+ * layered one regardless of specificity — so this overrides `text-sm` and
+ * `text-xs` with no `!important` and no `:not()` gymnastics.
+ *
+ * It also makes new inputs correct BY DEFAULT rather than policed. A source
+ * guard forbidding sub-16px input sizes would be the wrong guard under this
+ * rule: it would fail surfaces that behave perfectly. The guard that belongs
+ * here is that THIS RULE EXISTS — see `inputZoom.test.ts`.
+ *
+ * ── Why `pointer: coarse` as well as a width ───────────────────────────────
+ * A width query alone misses iPad, which is 768px+ in portrait and zooms
+ * exactly the same way. `pointer: coarse` catches every touch device
+ * regardless of width; the width half keeps narrow desktop windows covered
+ * where a mouse reports `fine`. A touchscreen laptop matching this is fine —
+ * 16px inputs are not a defect there.
+ *
+ * ── What this deliberately does NOT do ─────────────────────────────────────
+ * The viewport meta is untouched: NO `maximum-scale`, NO `user-scalable=no`.
+ * That one-liner fixes the zoom everywhere and disables pinch-zoom for the
+ * whole app, and several BBMI crew are older and will want to zoom a
+ * scorecard. Someone who needs the board bigger should not lose that so an
+ * input behaves. The input type scale is the cheaper thing to give up — and
+ * 12px text is hard to read while you are typing it anyway.
+ *
+ * Non-input type scale is untouched. This is inputs only.
+ *
+ * Checkboxes and radios are excluded: `font-size` does not size them, and
+ * including them would only invite the belief that it does.
+ */
+@media (max-width: 767px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
