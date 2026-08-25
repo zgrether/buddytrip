@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { CHAT_ACTIVE_VIEWING_WINDOW_MS } from "@/lib/chatViewHeartbeat";
+import { CHAT_ACTIVE_VIEWING_WINDOW_MS, CHAT_REARM_AFTER_MS } from "@/lib/chatViewHeartbeat";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
 
@@ -22,12 +22,20 @@ import { recordPushAttempt } from "./recordPushAttempt";
  *   R is caught up  →  a message lands   →  ONE push
  *   more messages, R still hasn't looked →  R is no longer caught up → SILENCE
  *   R opens chat    →  markRead advances →  RE-ARMED for the next lull
+ *   R never opens it, 30 min pass        →  RE-ARMED anyway → ONE push
  *
- * So the ceiling is **one push per recipient per read-session**, and a burst of
- * ten messages to sixteen people is sixteen pushes, not a hundred and sixty.
- * It self-heals: reading the chat is what re-arms it, which is exactly the
- * behaviour you want, because someone who never opens chat stops being told
- * about it.
+ * So the ceiling is **one push per recipient per read-session, or per 30-minute
+ * window if they never read** — a burst of ten messages to sixteen people is
+ * sixteen pushes, not a hundred and sixty.
+ *
+ * ── The second re-arm was added because the first one alone went silent ─────
+ * Reading was originally the ONLY way back, which assumes people open the chat
+ * between bursts. Most will not: on a four-day trip that means one push on day
+ * one and nothing afterwards. Production said so within a morning — of 14 chat
+ * sends, 3 delivered and 11 were gate-suppressed, and the survivors were all
+ * inside the first 35 minutes, before everyone had fallen behind. So being
+ * behind now EXPIRES, and someone who never opens chat still hears about the
+ * dinner plan.
  *
  * This is a per-RECIPIENT silence gate rather than a per-CONVERSATION one, and
  * the difference is the whole reason it was chosen. A conversation-level gate
@@ -36,13 +44,22 @@ import { recordPushAttempt } from "./recordPushAttempt";
  * would actually want to know. Per-recipient fires when *you* fell behind,
  * which is the question the notification is answering.
  *
- * ── Why this needs no migration, no scheduler, and no new state ─────────────
- * `chat_reads` (migration 010) already stores `last_read_at` per
- * (trip, user, visibility), and `messages.markRead` already maintains it for
- * the unread badge and the new-messages divider. The gate is a comparison
- * between two timestamps this app was already keeping. There is no scheduler
- * anywhere in this codebase — no Vercel cron, no pg_cron, no scheduled send —
- * and this deliberately does not add the first one.
+ * ── State: one column, and still no scheduler ──────────────────────────────
+ * The read half is free — `chat_reads` (migration 010) already stores
+ * `last_read_at` per (trip, user, visibility), maintained by `messages.markRead`
+ * for the unread badge and the new-messages divider.
+ *
+ * The time-based re-arm needs one thing the app was not already keeping: WHEN
+ * this recipient was last pushed. That is `chat_reads.last_notified_at`
+ * (migration 144) — same row, same grain, written by the send path on the
+ * service-role client and never by `markRead`. Being notified is not having
+ * read, so the two columns stay separate: folding them together would mark
+ * messages read that nobody has seen.
+ *
+ * There is still NO SCHEDULER anywhere in this codebase — no Vercel cron, no
+ * pg_cron, no scheduled send — and this does not add the first one. The re-arm
+ * is evaluated when a message arrives, not on a timer, so a trip where nobody
+ * talks costs nothing.
  *
  * ── DO NOT GENERALISE THIS ──────────────────────────────────────────────────
  * It is chat-specific ON PURPOSE. It is free only because `chat_reads` happens
@@ -78,7 +95,7 @@ import { recordPushAttempt } from "./recordPushAttempt";
  * relationship between them is the actual mechanism. Re-exported here so the
  * gate's own callers and tests read it from the module they're testing.
  */
-export { CHAT_ACTIVE_VIEWING_WINDOW_MS };
+export { CHAT_ACTIVE_VIEWING_WINDOW_MS, CHAT_REARM_AFTER_MS };
 
 /** Why a recipient did or didn't get this one. */
 export type ChatGateVerdict =
@@ -122,8 +139,17 @@ export function chatGateVerdict(args: {
   prevMessageAt: string | null;
   /** The message that just landed. */
   messageAt: string;
+  /**
+   * `chat_reads.last_notified_at` (migration 144) — when a chat push was last
+   * SENT to this recipient for this channel, or null if never.
+   *
+   * Feeds the TIME-BASED RE-ARM. Null is deliberately the permissive value: a
+   * recipient nobody has ever pushed is eligible on the time rule, which is
+   * what makes the rule take effect for existing rows without a backfill.
+   */
+  lastNotifiedAt: string | null;
 }): ChatGateVerdict {
-  const { lastSeenAt: lastReadAt, prevMessageAt, messageAt } = args;
+  const { lastSeenAt: lastReadAt, prevMessageAt, messageAt, lastNotifiedAt } = args;
   const messageMs = Date.parse(messageAt);
 
   // 1 · Watching right now? A read mark inside the window means their panel is
@@ -148,9 +174,27 @@ export function chatGateVerdict(args: {
   //     state we could not read. Silence is the recoverable mistake.
   if (lastReadAt === null) return "behind";
 
-  // 4 · The gate proper. Caught up before this message → notify. Behind → they
-  //     were already told when they fell behind.
-  return Date.parse(lastReadAt) >= Date.parse(prevMessageAt) ? "notify" : "behind";
+  // 4 · Caught up before this message → notify.
+  if (Date.parse(lastReadAt) >= Date.parse(prevMessageAt)) return "notify";
+
+  // 5 · Behind — but not necessarily silent.
+  //
+  //     THE SECOND RE-ARM, and the reason it exists: rule 4 assumes people open
+  //     the chat between bursts. Most will not. Reading as the ONLY way back
+  //     means one push on the first day of a trip and silence for the rest of
+  //     the week — measured, not feared: 11 of 14 sends in one production
+  //     morning were suppressed here, and the three that got through were all
+  //     inside the first 35 minutes, before everyone had fallen behind.
+  //
+  //     So being behind expires. If nothing has been SENT to this person for
+  //     `CHAT_REARM_AFTER_MS`, they hear the next message even though they never
+  //     caught up. Someone who never opens chat still learns about dinner.
+  //
+  //     Null (never notified) is PERMISSIVE, deliberately — it is what makes
+  //     this rule reach every existing row without a backfill, and a backfill
+  //     would have silenced everyone for the first window after deploy.
+  if (lastNotifiedAt === null) return "notify";
+  return messageMs - Date.parse(lastNotifiedAt) >= CHAT_REARM_AFTER_MS ? "notify" : "behind";
 }
 
 // ── Copy ────────────────────────────────────────────────────────────────────
@@ -332,30 +376,43 @@ export async function notifyChatMessage(
     //     null — see clause 3 of the gate.
     const { data: readRows, error: readErr } = await admin
       .from("chat_reads")
-      .select("user_id, last_read_at")
+      .select("user_id, last_read_at, last_notified_at")
       .eq("trip_id", input.tripId)
       .eq("visibility", input.visibility)
       .in("user_id", audience);
     if (readErr) throw new Error(`read-state read failed: ${readErr.message}`);
 
+    type ReadRow = {
+      user_id: string;
+      last_read_at: string;
+      last_notified_at: string | null;
+    };
     const lastReadById = new Map<string, string>(
-      (readRows ?? []).map((r: { user_id: string; last_read_at: string }) => [
-        r.user_id,
-        r.last_read_at,
-      ])
+      (readRows ?? []).map((r: ReadRow) => [r.user_id, r.last_read_at])
+    );
+    const lastNotifiedById = new Map<string, string | null>(
+      (readRows ?? []).map((r: ReadRow) => [r.user_id, r.last_notified_at])
     );
 
     // 4 · The gate.
     const memberById = new Map(inChannel.map((m) => [m.user_id, m]));
+    /** Resolved read position per recipient — reused by the stamp below, so a
+     *  row the stamp CREATES records the truth instead of inventing one. */
+    const seenById = new Map<string, string | null>();
     for (const userId of audience) {
+      const lastSeenAt = resolveLastSeen(
+        lastReadById.get(userId) ?? null,
+        memberById.get(userId),
+        input.visibility
+      );
+      seenById.set(userId, lastSeenAt);
       const verdict = chatGateVerdict({
-        lastSeenAt: resolveLastSeen(
-          lastReadById.get(userId) ?? null,
-          memberById.get(userId),
-          input.visibility
-        ),
+        lastSeenAt,
         prevMessageAt,
         messageAt: input.messageCreatedAt,
+        // Absent row -> null -> permissive on the time rule, matching the
+        // migration's no-backfill decision.
+        lastNotifiedAt: lastNotifiedById.get(userId) ?? null,
       });
       if (verdict === "notify") result.eligible.push(userId);
       else if (verdict === "active") result.suppressedActive += 1;
@@ -374,6 +431,22 @@ export async function notifyChatMessage(
     //     already behind, the audience empties here, and the expensive half
     //     never runs.
     if (result.eligible.length === 0) {
+      // `recipients` is the AUDIENCE, not zero. It was zero here, and that was
+      // simply wrong by the column's own definition ("post-dedup and
+      // post-actor-exclusion"): the audience was not empty, the gate turned it
+      // away. It cost a real diagnosis — a production investigation into "no
+      // notifications" could not tell "nobody is in this channel" from "the gate
+      // suppressed fifteen people", and had to reconstruct the answer from
+      // `chat_reads` by hand.
+      //
+      // The outcome now names WHICH clause did it, for the same reason
+      // migration 106 split `no_clincher` from `already_claimed`: they are
+      // indistinguishable by any arithmetic over the counters, so the intent has
+      // to be the thing that is stored. `gate_active` (everyone was watching)
+      // and `gate_behind` (everyone had fallen behind) have completely
+      // different fixes, and `gate_mixed` says both were in play.
+      const onlyActive = result.suppressedBehind === 0;
+      const onlyBehind = result.suppressedActive === 0;
       await recordPushAttempt(
         admin,
         {
@@ -383,14 +456,14 @@ export async function notifyChatMessage(
         },
         {
           typeKey: "chat",
-          recipients: 0,
+          recipients: result.audience,
           skippedPreferenceOff: 0,
           subscriptionsFound: 0,
           sent: 0,
           failed: 0,
           removedDead: 0,
           notConfigured: false,
-          outcome: "gate_suppressed",
+          outcome: onlyActive ? "gate_active" : onlyBehind ? "gate_behind" : "gate_mixed",
         }
       );
       return result;
@@ -426,6 +499,70 @@ export async function notifyChatMessage(
         },
       }
     );
+
+    // Stamp the re-arm clock for everyone we just notified.
+    //
+    // AFTER the send, and deliberately not gated on its result. A push handed to
+    // the push service is "sent" as far as this rule is concerned — waiting for
+    // per-device delivery would mean a single dead endpoint keeps someone
+    // permanently re-armed, which is the firehose direction. And this must not
+    // throw: the notification has already gone out, so failing here would only
+    // cost a duplicate 30 minutes later, whereas throwing would surface a push
+    // problem into `messages.send`.
+    //
+    // `upsert`, because a recipient may have no `chat_reads` row at all — they
+    // are reachable via `resolveLastSeen`'s join/floor fallback without ever
+    // having opened the channel. `last_read_at` is deliberately NOT written:
+    // notifying someone is not them reading, and writing it here would clear
+    // their unread badge for a message they have not seen.
+    try {
+      // ONE CLOCK. Stamped with the MESSAGE's own `created_at`, not wall-clock
+      // now, because that is the clock the gate measures against: it asks "has
+      // `CHAT_REARM_AFTER_MS` passed between the message in hand and the last
+      // one we told you about", and both sides of that subtraction have to come
+      // from the same source to mean anything.
+      //
+      // In production the two are the same instant to within milliseconds — the
+      // message timestamp is the database's `now()` and the stamp would be the
+      // app's, microseconds later — so this looks like a distinction without a
+      // difference. It is not: mixing them makes the rule depend on two clocks
+      // agreeing, and the first thing that noticed was a test whose timeline
+      // was not wall-clock. A comparison that is only correct when two clocks
+      // happen to agree is a comparison waiting to be wrong.
+      const stampedAt = input.messageCreatedAt;
+      const { error: stampErr } = await admin.from("chat_reads").upsert(
+        result.eligible.map((userId) => ({
+          trip_id: input.tripId,
+          user_id: userId,
+          visibility: input.visibility,
+          // The recipient's ALREADY-RESOLVED read position — not the message
+          // time, and not now(). This value only lands when the row is being
+          // CREATED (PostgREST leaves existing columns alone on conflict), and
+          // it has to be the truth: writing the message time here would mark a
+          // message READ for the very person being notified that it exists,
+          // clearing their unread badge and new-messages divider for something
+          // they have not seen. It is not a new fact either — `resolveLastSeen`
+          // already derives exactly this from their visibility floor or join
+          // time, so the row merely materialises what the gate was computing.
+          //
+          // Epoch covers the one case where that resolution is null: a recipient
+          // with no member row, reachable only on a channel's FIRST message
+          // (clause 2 notifies before the read position is consulted). "Has read
+          // nothing" is then precisely correct.
+          last_read_at: seenById.get(userId) ?? new Date(0).toISOString(),
+          last_notified_at: stampedAt,
+        })),
+        { onConflict: "trip_id,user_id,visibility", ignoreDuplicates: false }
+      );
+      if (stampErr) {
+        console.error("[notifyChatMessage] re-arm stamp failed", {
+          tripId: input.tripId,
+          err: stampErr.message,
+        });
+      }
+    } catch (err) {
+      console.error("[notifyChatMessage] re-arm stamp threw", { err });
+    }
 
     return result;
   } catch (err) {
