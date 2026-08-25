@@ -295,3 +295,34 @@ means every subscribed user receives it with **no way to stop** short of
 revoking notifications at the OS level. That is reachable by shipping two
 correct commits in the wrong order, which is why `EXPOSED_CATEGORIES` gained
 `chat` in the same change as the wire point.
+
+## Quiet hours are the OS's job — do not build them here
+
+Filed as an issue during the chat build (#1053) and closed as wontfix the same
+day. Written down because "there is no quiet-hours mechanism" is true, sounds
+like a gap, and will be re-derived by the next person who looks.
+
+**Both platforms already enforce it for web push, and we cannot override them.**
+An installed iOS PWA appears as its own app in Settings, so Focus / Sleep Focus /
+Do Not Disturb / Scheduled Summary apply to it; Android's Chrome web push goes
+through the system notification manager, so DND and Bedtime mode apply. Web push
+has no critical-alert equivalent (that needs native entitlements), and the send
+helpers pass no urgency, TTL, priority or `requireInteraction` — only the
+subscription and a JSON body. There is no version of this we could bypass.
+
+**The decisive asymmetry: server-side suppression DESTROYS a notification, OS
+DND DEFERS it.** Suppress at 2am and the message is never surfaced at all;
+silence it at the OS and it is sitting in the tray at 7am. So a server-side
+implementation would not merely duplicate a control the user already has — it
+would be a strictly worse one, and it would need a timezone column to guess at
+what the device knows natively.
+
+**And chat's read-state gate already did the job this was really about.** A
+night of chat is ONE push per caught-up recipient, not a barrage — the same
+exposure as a text message.
+
+**The general rule, which is the part worth keeping:** an absent mechanism is
+only a gap if the layer below is not already providing it. For anything that
+ends up in a phone's notification tray, the OS is that layer, and it is better
+positioned than we are — it knows the timezone, it follows travel, and the user
+has usually already configured it.
