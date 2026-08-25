@@ -124,11 +124,16 @@ disappearance of that row raises the volume budget.
 
 ## Open questions for Phase 3 (not blocking Phase 2)
 
-1. **`news` category home.** Currently mapped to `planning`. A trip-wide
-   announcement is arguably distinct from "dates locked." Recommendation: keep
-   under `planning` for now (4 switches, not 5); split into its own key only if
-   News proves noisy. Splitting later is free — adding a registry key needs no
-   migration.
+1. ~~**`news` category home.**~~ **RESOLVED — News gets its OWN key**, not
+   `planning`. This item said the opposite ("keep under `planning` for now") and
+   was left standing after the **"News must NOT inherit `chat`'s category"**
+   section above corrected it in Aug 2026, so this doc contradicted itself and
+   the contradiction sat in the list a reader is most likely to ACT on. Struck
+   rather than deleted: an open-questions list is read as live work, and the
+   next person to reach it should see that the question was answered, not find
+   it silently missing. **The lesson is the placement, not the answer** — when a
+   question gets resolved in prose elsewhere in the same document, strike it
+   here in the same edit, or the stale version is the one that gets built.
 2. **`invites` vs. existing email.** Crew-invite + team-assignment already send
    email (`tripMembers.ts`). Wiring `invites` to push would double-notify.
    Decide per-event whether push **replaces** or **supplements** email.

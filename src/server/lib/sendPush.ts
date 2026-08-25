@@ -9,8 +9,19 @@ import { getWebPush, pushConfigured } from "./vapid";
 import { recordPushAttempt, type PushAttemptContext } from "./recordPushAttempt";
 
 /**
- * The shared push send helper (Push Phase 2). Phase 3 calls this from domain
- * write points; NOTHING wires a real event yet (one dev-only test send does).
+ * The SINGLE-USER push send helper (Push Phase 2).
+ *
+ * Real events ARE wired: `games.finish` sends "a game is final" and "the cup is
+ * clinched" via `gameFinishNotify.ts`. Those go through `sendPushToUsers`, the
+ * batched sibling — an audience-shaped fan-out does two queries total instead of
+ * two per recipient. THIS helper's only caller is `notifications.testSend`, a
+ * self-only diagnostic, which is also the only thing that may set
+ * `bypassPreference`. A future single-RECIPIENT event belongs here; an audience
+ * never does.
+ *
+ * (This header previously read "NOTHING wires a real event yet". True in Phase 2,
+ * false from the moment Phase 3 shipped — recorded because a helper's own header
+ * claiming it is unused is exactly what talks the next reader out of checking.)
  *
  * Contract:
  *  - PREFERENCE-GATED: checks the recipient's effective on/off for `typeKey`

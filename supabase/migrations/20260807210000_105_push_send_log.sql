@@ -41,8 +41,11 @@ CREATE TABLE IF NOT EXISTS public.push_send_log (
   -- type is added, and the recording path must never be the thing that blocks
   -- shipping a new one.
   trigger                text NOT NULL,
-  -- The notification registry key (src/lib/notificationTypes.ts): scores /
-  -- planning / invites / chat.
+  -- The notification registry key (src/lib/notificationTypes.ts): game_results /
+  -- planning / invites / chat. (`game_results` was called `scores` when this
+  -- migration was written; the rename was a bug fix — "scores" read as every
+  -- score entered, which is the one thing that category must never send. This is
+  -- a bare source comment, not a COMMENT ON, so editing it alters no database.)
   type_key               text NOT NULL,
 
   -- WHERE it came from. All nullable and all WITHOUT foreign keys, deliberately:
