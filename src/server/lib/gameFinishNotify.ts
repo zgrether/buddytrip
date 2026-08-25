@@ -7,7 +7,7 @@ import { sendPushToUsers } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
 
 /**
- * The `scores` category's ONE wire point (Push Phase 3).
+ * The `game_results` category's ONE wire point (Push Phase 3).
  *
  * `games.finish` is now the only finalize for every format (the `games.post`
  * fork was merged away), so this hangs off one procedure and covers all four:

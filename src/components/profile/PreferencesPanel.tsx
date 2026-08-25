@@ -697,11 +697,21 @@ function NotificationSettings() {
 /**
  * The categories that have a live sender, in registry order.
  *
- * Deliberately NOT `NOTIFICATION_KEYS` — the registry defines four and only one
- * can currently produce a notification. Rendering the other three would put
- * three switches on screen that mute nothing.
+ * Deliberately NOT `NOTIFICATION_KEYS` — the registry defines four and only two
+ * can currently produce a notification. Rendering the other two (`planning`,
+ * `invites`) would put switches on screen that mute nothing.
+ *
+ * `chat` LANDED IN THE SAME COMMIT AS ITS SENDER, and that ordering is the rule
+ * rather than a coincidence. Every category defaults ON — the device toggle is
+ * the consent gate, and the list that appears at that moment is a menu of what
+ * to MUTE. So a sender wired while its category is unexposed does not mean "on
+ * by default and easy to find"; it means every subscribed user receives it with
+ * no way to stop short of revoking notifications at the OS level. That is the
+ * outcome this whole subsystem is built to avoid, and it is reachable by
+ * shipping two correct commits in the wrong order. A sender and its row go
+ * together.
  */
-const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results"];
+const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results", "chat"];
 
 /**
  * One category row. Indented under the device toggle it depends on, and now

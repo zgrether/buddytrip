@@ -5,6 +5,7 @@ import { Send, ChevronDown, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
+import { CHAT_VIEW_HEARTBEAT_MS } from "@/lib/chatViewHeartbeat";
 import { systemLineForViewer } from "@/lib/joinMessage";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -265,6 +266,10 @@ function FloatingChatPanelInner({
     crew: null,
     planning: null,
   });
+  /** Last time EITHER path stamped the read mark — one clock shared by the
+   *  message-arrival effect and the heartbeat, so they don't each write on
+   *  their own schedule and double the traffic. */
+  const heartbeatAtRef = useRef(0);
   useEffect(() => {
     if (displayed.length === 0) return;
     const latest = displayed[displayed.length - 1];
@@ -272,8 +277,45 @@ function FloatingChatPanelInner({
     if (!ts) return;
     if (lastMarkedRef.current[activeChannel] === ts) return; // already marked
     lastMarkedRef.current[activeChannel] = ts;
+    heartbeatAtRef.current = Date.now();
     markReadMutate({ tripId, visibility: activeChannel });
   }, [tripId, activeChannel, displayed, markReadMutate]);
+
+  // ── Viewing heartbeat — what makes "no push while you're looking" true ────
+  //
+  // The push gate (src/server/lib/chatNotify.ts) suppresses a recipient whose
+  // read mark moved within CHAT_ACTIVE_VIEWING_WINDOW_MS, because that is the
+  // ONLY server-visible evidence that someone is watching a channel. The effect
+  // above advances that mark when a MESSAGE ARRIVES — which covers an active
+  // conversation and misses a panel left open through a lull. Without this, a
+  // message landing after ten quiet minutes would buzz at someone staring
+  // straight at it.
+  //
+  // So an open panel re-stamps on an interval comfortably shorter than the
+  // window (see chatViewHeartbeat.ts — the two constants are a pair, pinned by
+  // a test). Deliberately cheap: it only does anything during QUIET periods,
+  // since a live conversation already fires the effect above far more often,
+  // and the guard below skips a beat that a real message already covered.
+  //
+  // GATED ON TAB VISIBILITY, not merely on the panel being mounted: a chat left
+  // open in a background tab is not being viewed, and treating it as viewed
+  // would silence notifications for someone who has genuinely walked away. On
+  // hiding, the beats simply stop and they become notifiable again one window
+  // later — no teardown bookkeeping needed.
+  useEffect(() => {
+    if (!tripId) return;
+    const beat = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const now = Date.now();
+      // A real message-arrival mark within this interval already refreshed the
+      // window, so don't spend a write re-proving it.
+      if (now - heartbeatAtRef.current < CHAT_VIEW_HEARTBEAT_MS) return;
+      heartbeatAtRef.current = now;
+      markReadMutate({ tripId, visibility: activeChannel });
+    };
+    const id = setInterval(beat, CHAT_VIEW_HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [tripId, activeChannel, markReadMutate]);
 
   const sendMessage = trpc.messages.send.useMutation({
     onSuccess: (_, variables) => {

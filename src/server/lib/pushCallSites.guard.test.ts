@@ -37,6 +37,8 @@ const ALLOWED: Record<string, string> = {
   "server/lib/sendPushToUsers.ts": "the batched fan-out helper itself",
   "server/lib/gameFinishNotify.ts":
     "the ONE domain wire point — games.finish (all four formats) + cup clinched",
+  "server/lib/chatNotify.ts":
+    "the chat wire point — messages.send, READ-STATE-GATED (BATCH, never 1:1 per message)",
   "server/routers/notifications.ts":
     "testSend — a self-only diagnostic; can never reach another user",
 };
@@ -145,11 +147,83 @@ describe("push call-site allowlist", () => {
     expect(stale, "stale ALLOWED entry — file moved or deleted").toEqual([]);
   });
 
-  it("the wire point is actually wired (the guard can't pass by everything being dead)", () => {
+  it("the wire points are actually wired (the guard can't pass by everything being dead)", () => {
     // Without this, deleting the wiring entirely would make the guard go green —
     // an allowlist proves nothing extra is sending, not that anything is.
     const games = readFileSync(join(SRC, "server/routers/games.ts"), "utf8");
     expect(games).toContain("notifyGameFinished");
     expect(games).toContain("notifyCupClinchedIfDecided");
+
+    const messages = readFileSync(join(SRC, "server/routers/messages.ts"), "utf8");
+    expect(messages).toContain("notifyChatMessage");
+  });
+
+  /**
+   * THE STRUCTURAL NO-CONTENT GUARANTEE, checked as source rather than trusted.
+   *
+   * NOTIFICATIONS.md and CLAUDE.md #20 both forbid message content in a push
+   * payload, and a lock-screen preview of trip chat is the exact leak. A test
+   * that sends one message and asserts the payload lacks THAT string proves it
+   * for one string; this asserts the notifier never obtains any of them.
+   *
+   * Two independent halves, because either alone is defeatable: the notifier
+   * must not SELECT the column, and the router must not PASS it. A future
+   * "let's show a preview after all" has to delete a test that says why not.
+   */
+  it("the chat notifier never reads or receives message text", () => {
+    const notify = readFileSync(join(SRC, "server/lib/chatNotify.ts"), "utf8");
+
+    // Every column list it asks Postgres for, parsed into ACTUAL COLUMN NAMES
+    // rather than substring-matched: "text" is a substring of "message_type",
+    // so a substring check would either false-positive on that or get loosened
+    // until it stopped catching the real thing.
+    const selectedColumns: string[] = [];
+    for (const part of notify.split(".select(").slice(1)) {
+      const open = part.indexOf('"');
+      const close = part.indexOf('"', open + 1);
+      if (open === -1 || close === -1) continue;
+      for (const col of part.slice(open + 1, close).split(",")) {
+        selectedColumns.push(col.trim());
+      }
+    }
+    expect(
+      selectedColumns.length,
+      "expected the notifier to still query something — did .select( move?"
+    ).toBeGreaterThan(0);
+    expect(
+      selectedColumns,
+      "chatNotify selects the message text column — a push payload must never carry content"
+    ).not.toContain("text");
+
+    // And the input type has no text field, so the call site cannot hand it over.
+    //
+    // Comments are stripped and the header dropped BEFORE splitting on the field
+    // terminator, so each chunk begins with a real field name. Without both, a
+    // `text` field that happened to carry a doc comment, or to be declared first,
+    // would sit in a chunk beginning with something else and pass unnoticed.
+    const open = notify.indexOf("{", notify.indexOf("export interface ChatNotifyInput"));
+    expect(open, "ChatNotifyInput not found — did it move?").toBeGreaterThan(-1);
+    const body = stripBlockComments(notify.slice(open + 1, notify.indexOf("}", open)));
+    const fields = body.split(";").map((f) => f.trim()).filter(Boolean);
+    expect(fields.join(" | "), "ChatNotifyInput not found — did it move?").toContain("messageId");
+    expect(
+      fields.filter((f) => f.startsWith("text:") || f.startsWith("text?:")),
+      "ChatNotifyInput gained a text field — the no-content guarantee is structural, not incidental"
+    ).toEqual([]);
   });
 });
+
+/** Block comments out, so a field list can be parsed by position without one of
+ *  its own doc comments standing in for the field name. */
+function stripBlockComments(src: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const open = src.indexOf("/*", i);
+    if (open === -1) return out + src.slice(i);
+    out += src.slice(i, open);
+    const close = src.indexOf("*/", open + 2);
+    if (close === -1) return out;
+    i = close + 2;
+  }
+}

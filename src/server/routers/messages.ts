@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { notifyChatMessage } from "../lib/chatNotify";
 import type { TRPCContext, TripRoleString } from "../trpc";
 
 /**
@@ -427,6 +428,41 @@ export const messagesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to send message: ${error.message}`,
+        });
+      }
+
+      /**
+       * The `chat` category's one wire point. NOT 1:1 with this write —
+       * `notifyChatMessage` is read-state-gated, so a recipient hears about
+       * the message that put them BEHIND and then nothing until they read.
+       * Chat is the highest-volume event in the app; the gate is what makes
+       * wiring it survivable at all (NOTIFICATIONS.md marks it BATCH).
+       *
+       * NOTE WHAT IS NOT PASSED: `input.text`. The notifier has no parameter
+       * for it, so a lock-screen preview of trip chat is unrepresentable
+       * rather than merely avoided.
+       *
+       * Awaited, not fired and forgotten: un-awaited work can be killed when a
+       * serverless function freezes. It never throws — a push failure must not
+       * fail a sent message — and it returns before touching push_subscriptions
+       * whenever the gate empties the audience, which mid-burst is almost
+       * always.
+       *
+       * TEAM CHANNEL IS DELIBERATELY NOT NOTIFIED, and the reason is structural
+       * rather than unfinished work: the gate reads `chat_reads`, which is keyed
+       * (trip_id, user_id, visibility) and has NO team dimension (migration 010),
+       * so there is no read state to gate on. Team chat also has no UI — every
+       * caller in the app sends `channel: "trip"`. If team chat is ever built,
+       * it needs read tracking first, and the gate then follows for free.
+       */
+      if (input.channel === "trip") {
+        const row = data as { id: string; created_at: string };
+        await notifyChatMessage({
+          tripId: ctx.tripId!,
+          visibility: input.visibility,
+          messageId: row.id,
+          messageCreatedAt: row.created_at,
+          senderId: ctx.user!.id,
         });
       }
 
