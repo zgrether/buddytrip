@@ -33,7 +33,14 @@ import type { Participant, ScoreUnit, ScoreValues } from "@/components/games/typ
  * game can't disagree between the dashboard card, the entry screen, and the
  * final standings (CLAUDE.md #8, the same discipline the trip-side views use).
  */
-export const QUICK_GAME_STORAGE_KEY = "bt-quick-game";
+/**
+ * The pre-slots key: ONE game, any format, discriminated by the `format` field
+ * inside it. Read-only now — `ensureLegacyMigrated` moves whatever it holds
+ * into the matching per-format key below (once) and deletes it, so nothing
+ * ever reads it again after that. Kept only so the migration has something to
+ * migrate FROM; never write to it.
+ */
+const QUICK_GAME_LEGACY_STORAGE_KEY = "bt-quick-game";
 
 /**
  * Bump when the persisted shape changes. `migrateQuickGameState` is the ONE
@@ -41,15 +48,33 @@ export const QUICK_GAME_STORAGE_KEY = "bt-quick-game";
  * crew have in-progress rounds in local storage across a deploy, so a bare
  * `JSON.parse(raw) as QuickGameState` is not safe once the shape grows.
  *
- * v2 added `course`/`strokes`/`version` (#1049). v3 adds `format` — the
- * discriminator that makes match/rack expressible.
+ * v2 added `course`/`strokes`/`version` (#1049). v3 added `format` (#1050).
+ * v4 is the same STATE shape — only where it's STORED changed (per-format
+ * keys, below); nothing here needed a bump for that.
  */
 export const QUICK_GAME_STATE_VERSION = 3;
 
-/** Which game the saved round is. ONE storage key holds ONE game (the dashboard
- *  card and the rail each have a single slot; concurrent quick games would need
- *  a disambiguation UI nobody asked for), so this names WHICH. */
+/** Which game a saved round is. Each format gets its OWN storage key
+ *  (`quickGameStorageKey`) — the dashboard's two tiles and the rail's list can
+ *  hold a stroke round and a match round at once, which is the entire point of
+ *  this being tiles instead of one slot behind a picker. */
 export type QuickGameFormat = "stroke" | "match" | "rack";
+
+/** Every format the dashboard actually offers a tile for. `rack`'s state/
+ *  migration/setup UI exist (from #1050) but it has no tile yet — no board was
+ *  built — so it's deliberately excluded here rather than shown half-finished.
+ *  A rack payload under its own key still round-trips correctly if one exists
+ *  from earlier testing; it's just never reachable from a tile. */
+export const QUICK_GAME_TILE_FORMATS = ["stroke", "match"] as const;
+
+/** This format's own storage key. `stroke`'s key intentionally reuses the
+ *  legacy name (`bt-quick-game:stroke`, not a bare `bt-quick-game`) — a real
+ *  key per format, none of them ambiguous with the pre-slots single key, so
+ *  `ensureLegacyMigrated` can tell "already migrated" from "never had one"
+ *  without a separate marker. */
+export function quickGameStorageKey(format: QuickGameFormat): string {
+  return `bt-quick-game:${format}`;
+}
 
 /** A course applied to the round — captured, not referenced (#1049 T0.3):
  *  the par/index/tee facts are fetched once at selection and frozen into
@@ -291,16 +316,93 @@ export function migrateQuickGameState(raw: unknown): QuickGameState | null {
   return { ...common, format: "stroke", strokes: strokesOf(r.strokes) };
 }
 
-/** Client-only. Returns null on no saved game, corrupt JSON, an unrecognized
- *  shape, or SSR. */
-export function readQuickGameState(): QuickGameState | null {
-  if (typeof window === "undefined") return null;
+/**
+ * One-time move of the legacy single key into its matching per-format key.
+ * Idempotent and safe to call from every mount site (dashboard, rail, the page
+ * itself) with no ordering dependency: JS is single-threaded within a tab, so
+ * "read legacy → if present, write it under `format`, delete legacy" either
+ * runs once and does the move, or finds nothing and no-ops — there is no
+ * window where two callers both see the legacy key and double-write.
+ *
+ * Never overwrites an existing per-format round. If that format's own key is
+ * already occupied (this build made no promise about how that could happen,
+ * but a defensive check costs nothing here and losing an in-progress round to
+ * a migration bug is exactly the failure mode this function exists to avoid),
+ * the legacy payload is left in place rather than discarded — better a
+ * duplicate to notice than data silently dropped.
+ */
+function ensureLegacyMigrated(): void {
+  if (typeof window === "undefined") return;
   try {
-    const raw = localStorage.getItem(QUICK_GAME_STORAGE_KEY);
+    const raw = localStorage.getItem(QUICK_GAME_LEGACY_STORAGE_KEY);
+    if (!raw) return;
+    const migrated = migrateQuickGameState(JSON.parse(raw));
+    if (!migrated) {
+      // Unreadable even by the tolerant migrator — nothing to carry forward.
+      localStorage.removeItem(QUICK_GAME_LEGACY_STORAGE_KEY);
+      return;
+    }
+    const targetKey = quickGameStorageKey(migrated.format);
+    if (localStorage.getItem(targetKey) != null) return; // don't clobber — see doc above
+    localStorage.setItem(targetKey, JSON.stringify(migrated));
+    localStorage.removeItem(QUICK_GAME_LEGACY_STORAGE_KEY);
+  } catch {
+    /* ignore corrupt storage — leaves the legacy key in place to retry later */
+  }
+}
+
+/** Client-only. Returns null on no saved round for this FORMAT, corrupt JSON,
+ *  an unrecognized shape, or SSR. Migrates the legacy single key first (a
+ *  no-op after the first call in any tab), so a round saved before #1051
+ *  resumes under its own format's key without the caller doing anything. */
+export function readQuickGameState(format: QuickGameFormat): QuickGameState | null {
+  if (typeof window === "undefined") return null;
+  ensureLegacyMigrated();
+  try {
+    const raw = localStorage.getItem(quickGameStorageKey(format));
     if (!raw) return null;
-    return migrateQuickGameState(JSON.parse(raw));
+    const migrated = migrateQuickGameState(JSON.parse(raw));
+    // A format's own key holding a DIFFERENT format's state would mean a
+    // write went to the wrong key — never trust the key over the payload.
+    return migrated && migrated.format === format ? migrated : null;
   } catch {
     return null;
+  }
+}
+
+/** Every format with an in-progress or finished round saved, keyed by format —
+ *  what the dashboard's tiles and the rail's list both render from, so neither
+ *  can enumerate "what's in progress" a second, driftable way. Only checks
+ *  `QUICK_GAME_TILE_FORMATS` — a saved rack round (from earlier #1050 testing)
+ *  exists on disk but isn't surfaced here, matching it having no tile. */
+export function readAllQuickGames(): Partial<Record<QuickGameFormat, QuickGameState>> {
+  const out: Partial<Record<QuickGameFormat, QuickGameState>> = {};
+  for (const format of QUICK_GAME_TILE_FORMATS) {
+    const s = readQuickGameState(format);
+    if (s) out[format] = s;
+  }
+  return out;
+}
+
+/** Write this round to ITS OWN format's key. The one place `page.tsx`'s
+ *  persist effect writes, so a caller can never accidentally write a match
+ *  under the stroke key by passing the wrong constant. */
+export function writeQuickGameState(state: QuickGameState): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(quickGameStorageKey(state.format), JSON.stringify(state));
+  } catch {
+    /* ignore (e.g. storage quota) — the in-memory round is unaffected */
+  }
+}
+
+/** Clear this format's saved round (Discard, Play Again, or Reset-to-null). */
+export function clearQuickGameState(format: QuickGameFormat): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(quickGameStorageKey(format));
+  } catch {
+    /* ignore */
   }
 }
 

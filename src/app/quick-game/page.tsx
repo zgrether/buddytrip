@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, X, RotateCcw, Users, ChevronRight, Table2, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
-  QUICK_GAME_STORAGE_KEY,
+  readQuickGameState,
+  writeQuickGameState,
+  clearQuickGameState,
   QUICK_GAME_STATE_VERSION,
-  migrateQuickGameState,
   quickGameUnits,
   quickGamePips,
   quickGameStandings,
@@ -544,8 +545,38 @@ function RosterFields({
   );
 }
 
+const VALID_FORMATS: readonly QuickGameFormat[] = ["stroke", "match", "rack"];
+
+/**
+ * `?format=` is the tile that sent you here — `useSearchParams()` opts the
+ * page out of static prerender, so it must sit under a `Suspense` boundary
+ * (the same shape `/courses/new` already uses for its own `?trip=&game=`
+ * return-target params). Missing/unrecognized `format` falls back to
+ * `"stroke"`, matching a bare `/quick-game` (an old bookmark, or the legacy
+ * link before tiles existed) at exactly the round it already used to open.
+ *
+ * `rack` is a valid value even though no TILE links to one — its state,
+ * migration, and setup fields already work (#1050); what's missing is the
+ * board, not the round. Accepting the param rather than special-casing it out
+ * is what "a third tile, whenever" (the handoff's own framing) means in code.
+ */
 export default function QuickGamePage() {
+  return (
+    <Suspense fallback={<div className="fixed inset-0" style={{ background: "var(--color-bt-base)" }} />}>
+      <QuickGamePageInner />
+    </Suspense>
+  );
+}
+
+function QuickGamePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const formatParam = searchParams.get("format");
+  const format: QuickGameFormat = (
+    VALID_FORMATS as readonly string[]
+  ).includes(formatParam ?? "")
+    ? (formatParam as QuickGameFormat)
+    : "stroke";
   const utils = trpc.useUtils();
   const [state, setState] = useState<QuickGameState | null>(null);
   const [view, setView] = useState<"entry" | "grid" | "roster">("entry");
@@ -568,10 +599,11 @@ export default function QuickGamePage() {
   const [courseError, setCourseError] = useState<string | null>(null);
 
   // ── Format-specific setup draft ────────────────────────────────────────────
-  // Which game is being set up, plus the few extra answers match and rack need.
-  // All of it lives here (not in `state`) because none of it means anything
-  // until Start — the round doesn't exist yet.
-  const [draftFormat, setDraftFormat] = useState<QuickGameFormat>("stroke");
+  // The FEW extra answers match and rack need beyond the shared roster. `format`
+  // itself is no longer chosen here — it's fixed by which tile sent you here
+  // (the URL `?format=`, resolved above), not an in-page picker. All of it lives
+  // in local state (not `state`) because none of it means anything until Start
+  // — the round doesn't exist yet.
   const [draftEntryMode, setDraftEntryMode] = useState<"score" | "outcome">("score");
   /** Which of the other three is with player one (2v2 only). One tap, no matrix. */
   const [draftPartnerId, setDraftPartnerId] = useState<string | null>(null);
@@ -588,37 +620,37 @@ export default function QuickGamePage() {
   const [confirmReplace, setConfirmReplace] = useState(false);
 
   const namedDraftPlayers = draftPlayers.filter((r) => r.name.trim().length > 0);
-  const playerCountError = quickFormatPlayerCountError(draftFormat, namedDraftPlayers.length);
+  const playerCountError = quickFormatPlayerCountError(format, namedDraftPlayers.length);
   const gloriousAvailable = quickMatchGloriousAvailable({ entryMode: draftEntryMode, course: draftCourse });
 
-  // Resume any in-progress game from local storage. Must be in an effect (not a
-  // useState initializer) so it stays client-only — localStorage is undefined
-  // during SSR. The set-state-in-effect rule over-flags this legitimate case.
-  // Reads through `migrateQuickGameState` — a saved game from before course/
-  // handicaps existed must resume as a scratch, no-course round, not fail.
+  // Resume this FORMAT's round from its own key. Depends on `format`, not just
+  // `[]`: Next.js reuses this component across a `?format=` change (same
+  // pathname, different search param) rather than remounting it, so switching
+  // tiles via client navigation must re-read here or the page would keep
+  // showing the PREVIOUS tile's round under the new one's chrome. `null` is set
+  // explicitly (not left alone) for the same reason — a format with no saved
+  // round must clear whatever the last format's `state` was, not inherit it.
+  // `readQuickGameState` already migrates the legacy key + validates shape, so
+  // a round from before formats existed, or before course/handicaps existed,
+  // resumes rather than fails.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(QUICK_GAME_STORAGE_KEY);
-      const migrated = raw ? migrateQuickGameState(JSON.parse(raw)) : null;
-      if (migrated) setState(migrated);
-    } catch {
-      /* ignore corrupt storage */
-    }
+    setState(readQuickGameState(format));
     setHydrated(true);
-  }, []);
+  }, [format]);
 
   // Persist on change — gated on `hydrated` STATE (not a ref) so the mount pass,
-  // where `state` is still null before the load's setState applies, can't
-  // removeItem and wipe a saved game.
+  // where `state` is still null before the load's setState applies, can't clear
+  // a saved game. Writes go to `state.format`'s OWN key (via
+  // `writeQuickGameState`) rather than the page's `format`, so a stray render
+  // between a format switch and the load effect catching up can only re-write
+  // a round to its own correct key, never cross-write one format's round under
+  // another's — the clear branch is the one place that needs the URL's
+  // `format`, since a null `state` names no format of its own.
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      if (state) localStorage.setItem(QUICK_GAME_STORAGE_KEY, JSON.stringify(state));
-      else localStorage.removeItem(QUICK_GAME_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, [state, hydrated]);
+    if (state) writeQuickGameState(state);
+    else clearQuickGameState(format);
+  }, [state, hydrated, format]);
 
   // ── Draft roster editing (shared by setup + roster editor) ────────────────
   function setDraftName(id: string, name: string) {
@@ -675,10 +707,15 @@ export default function QuickGamePage() {
   }
 
   /**
-   * Start a DIFFERENT game while one is in progress. ONE storage key holds ONE
-   * round (the dashboard card and the rail each have a single slot), so this
-   * genuinely destroys what's saved — and without it a crew member part-way
-   * through a stroke round would have no way to start a match at all.
+   * Start completely over — blank roster, no course, this SAME format
+   * (revised: storage is now per-format, one key per tile, so this can no
+   * longer "switch games" the way it used to; a stroke round and a match round
+   * live at their own keys and starting one never touches the other. Reaching
+   * a DIFFERENT format now means going back to its own tile, not an in-page
+   * action). What this still does that `resetGame` doesn't: wipe the roster
+   * and course too, not just the scores — for when you want a genuinely blank
+   * setup screen rather than the same players/course staged as a starting
+   * point.
    *
    * Confirmed when there is anything to lose, silent when there isn't: an
    * unscored round is just a setup someone changed their mind about, and making
@@ -720,7 +757,7 @@ export default function QuickGamePage() {
       currentHole: 1,
     };
 
-    if (draftFormat === "match") {
+    if (format === "match") {
       const sides = buildQuickMatchSides(roster.players.map((p) => p.id), draftPartnerId);
       if (!sides) return; // unreachable — playerCountError already gates 2-or-4
       // The signed relative value resolves to strokes on exactly ONE side.
@@ -740,7 +777,7 @@ export default function QuickGamePage() {
         modifiers:
           draftGlorious && gloriousAvailable ? { glorious_holes: { holes: draftGloriousHoles } } : {},
       });
-    } else if (draftFormat === "rack") {
+    } else if (format === "rack") {
       const teams: Record<string, Team> = {};
       for (const p of roster.players) teams[p.id] = draftTeams[p.id] ?? "A";
       setState({ ...common, format: "rack", strokes: roster.strokes, teams });
@@ -895,24 +932,10 @@ export default function QuickGamePage() {
     return (
       <div className="mx-auto max-w-md px-4 py-6" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
         <div className="flex items-center justify-between">
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>⚡ {QUICK_GAME_LABEL[draftFormat]}</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>⚡ {QUICK_GAME_LABEL[format]}</h1>
           <button onClick={() => router.push("/dashboard")} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full" style={{ color: "var(--color-bt-text-dim)" }}>
             <X size={18} />
           </button>
-        </div>
-
-        <div className="mt-4">
-          <FieldLabel>Game</FieldLabel>
-          <Segmented
-            options={[
-              { value: "stroke", label: "Stroke" },
-              { value: "match", label: "Match" },
-              { value: "rack", label: "Rack" },
-            ]}
-            value={draftFormat}
-            onChange={(v) => setDraftFormat(v as QuickGameFormat)}
-            testId="quick-game-format"
-          />
         </div>
 
         {/* No separate instructional line — the "Players"/"Handicaps" column
@@ -928,10 +951,10 @@ export default function QuickGamePage() {
             onChangeStrokes={setDraftStrokes}
             onAdd={addDraftRow}
             onRemove={removeDraftRow}
-            showHandicaps={draftFormat !== "match"}
-            teams={draftFormat === "rack" ? draftTeams : undefined}
+            showHandicaps={format !== "match"}
+            teams={format === "rack" ? draftTeams : undefined}
             onToggleTeam={
-              draftFormat === "rack"
+              format === "rack"
                 ? (id) => setDraftTeams((t) => ({ ...t, [id]: (t[id] ?? "A") === "A" ? "B" : "A" }))
                 : undefined
             }
@@ -943,7 +966,7 @@ export default function QuickGamePage() {
           />
         </div>
 
-        {draftFormat === "match" && (
+        {format === "match" && (
           <MatchSetupFields
             players={namedDraftPlayers}
             entryMode={draftEntryMode}
@@ -1154,16 +1177,17 @@ export default function QuickGamePage() {
                 testId="quick-game-reset-btn"
               />
             </div>
-            {/* The ONLY route back to setup while a round is live — and the only
-                way to switch format mid-round. One key holds one game, so this
-                really does end the current round; the confirm below is what
-                keeps that from being a surprise. */}
+            {/* The blank-slate reset: wipes players/course too, not just
+                scores (Reset above keeps them staged). No longer "switches
+                games" — storage is per-format now, so a stroke round and a
+                match round each live at their own key and never compete for
+                room; this only ever touches THIS tile's round. */}
             <div className="mt-2">
               <DangerRow
                 icon={<Zap size={16} />}
                 tone="danger"
-                label="New game"
-                blurb="Ends this round and starts a different one."
+                label="Start over"
+                blurb="Clears players, course, and scores. Back to a blank setup screen."
                 onClick={newGame}
                 testId="quick-game-new-btn"
               />
@@ -1180,7 +1204,7 @@ export default function QuickGamePage() {
               tone="warning"
               icon={<RotateCcw size={18} />}
               title="Reset this game?"
-              body="Clears every score and returns to hole 1. Your players stay — it's ready to score again."
+              body="Clears every score and takes you back to setup. Your players, handicaps, and course stay filled in — review or change them, then start again."
               confirmLabel="Reset game"
               pendingLabel="Resetting…"
               isPending={false}
@@ -1194,9 +1218,9 @@ export default function QuickGamePage() {
             <DangerConfirmModal
               tone="danger"
               icon={<Zap size={18} />}
-              title="Start a new game?"
-              body={`This round is in progress — ${quickGameSubtitle(state)}. Starting a new game ends it and clears its scores. There's only room for one at a time.`}
-              confirmLabel="End it and start over"
+              title="Start over?"
+              body={`This round is in progress — ${quickGameSubtitle(state)}. Starting over clears the players, course, and every score.`}
+              confirmLabel="Start over"
               pendingLabel="Starting…"
               isPending={false}
               testId="quick-game-new-confirm"
