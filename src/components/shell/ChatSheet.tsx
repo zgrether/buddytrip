@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 
 /**
  * ChatSheet — chat's container below the chat-column breakpoint (<1280,
@@ -211,7 +212,29 @@ export function ChatSheet({
   if (!open) return null;
 
   return (
-    <>
+    /**
+     * ── Body scroll lock, the same primitive every other overlay uses ───────
+     *
+     * This sheet was the ONE overlay in the app not wrapped in `ScrollLock`
+     * (26 others are). `overscroll-behavior: contain` — added for the scroll
+     * CHAINING report — only governs a scroll CONTAINER, so it did nothing for
+     * a swipe that starts anywhere else: the grip, the segment bar, the
+     * composer, the padding between them, or the scrim. Those aren't
+     * scrollable, so the gesture goes to the nearest scrollable ancestor, which
+     * is the page behind. That is the "it still scrolls whatever window is
+     * behind it if you swipe in that space" report.
+     *
+     * `react-remove-scroll` blocks scroll OUTSIDE its subtree while allowing it
+     * inside, so the message list still scrolls and the page no longer moves.
+     * It does not block pointer events, so the tab bar underneath stays
+     * tappable — which the module comment above says is the whole point of chat
+     * not being a destination.
+     *
+     * Mounted conditionally (after the `!open` return), which is what the
+     * primitive's own usage note asks for and what makes stacked overlays
+     * release the lock only when the last one unmounts.
+     */
+    <ScrollLock>
       <div
         className="fixed inset-0 z-30"
         style={{ background: "var(--color-bt-overlay)" }}
@@ -283,6 +306,6 @@ export function ChatSheet({
         </div>
         {children}
       </div>
-    </>
+    </ScrollLock>
   );
 }
