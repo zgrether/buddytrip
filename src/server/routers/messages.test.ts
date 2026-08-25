@@ -176,6 +176,29 @@ describe("messages router", () => {
     ).rejects.toThrow(/owner\/organizer only/i);
   });
 
+  /**
+   * `markViewing` carries the SAME role gate as `markRead`, and it has to be
+   * asserted separately rather than assumed from the shape of the code: a
+   * non-organizer who could write a viewing mark for the Organizers channel
+   * would be writing state for a room they cannot see — and the effect is
+   * silent, since nothing renders `viewing_at`. The only symptom would be
+   * organizers quietly missing pushes.
+   */
+  it("markViewing — member cannot mark the Organizers channel viewed", async () => {
+    const trip = await ctx.createTrip("Mark Viewing Guard");
+    await ctx.addTripMember(trip, "member", "Member");
+    await expect(
+      ctx.callerAs("member").messages.markViewing({ tripId: trip, visibility: "planning" })
+    ).rejects.toThrow(/owner\/organizer only/i);
+  });
+
+  it("markViewing — a non-member cannot mark anything viewed", async () => {
+    const trip = await ctx.createTrip("Mark Viewing Member Guard");
+    await expect(
+      ctx.callerAs("outsider").messages.markViewing({ tripId: trip, visibility: "crew" })
+    ).rejects.toThrow();
+  });
+
   it("readState — read marks are per-user, not shared", async () => {
     const trip = await ctx.createTrip("Read State Per User");
     await ctx.addTripMember(trip, "member", "Member");

@@ -1,0 +1,62 @@
+-- 145 — chat_reads.viewing_at: was this person's chat panel open just now.
+--
+-- ── What this reverses ──────────────────────────────────────────────────────
+-- Migration 144 added `last_notified_at` for a 30-minute re-arm on top of a
+-- read-state gate (#1054/#1057/#1058). That whole design is withdrawn here, and
+-- 144's comment deserves a reply because it was RIGHT about its own problem and
+-- wrong about the frame.
+--
+-- 144 observed "of 14 chat sends over one morning, 3 delivered and 11 were
+-- gate-suppressed" and treated a too-strict re-arm as the defect. It measured
+-- the right thing and drew the wrong conclusion: the re-arm was not too strict,
+-- COALESCING WAS THE WRONG GOAL. With 144 shipped, a full day of real use on the
+-- BBMI trip produced 26 crew messages and TWO notification events in four hours.
+-- An app that tells you twice in an afternoon that a conversation happened is
+-- not being restrained; it is failing to do the one thing a message
+-- notification is for.
+--
+-- The rule is now: notify on every message, except you sent it or you are
+-- looking at the chat. `last_notified_at` has no reader under that rule and is
+-- dropped in a follow-up migration — code stops writing it first, per
+-- CLAUDE.md's removal ordering (3b).
+--
+-- ── Why a NEW column and not a re-use of `last_read_at` ─────────────────────
+-- THIS IS THE POINT OF THE MIGRATION, not a detail of it.
+--
+-- The surviving clause — "you are looking at the chat" — needs a
+-- recency-of-looking signal, and until now that was `last_read_at`, which is
+-- ALSO the read position for the unread badge and the new-messages divider. One
+-- column, two meanings, and every bug this subsystem has produced came from the
+-- two diverging:
+--
+--   * a glance-and-close bought five minutes of silence, because reading and
+--     watching were the same write
+--   * the viewing heartbeat marked messages READ that the device had never
+--     received, clearing a badge for something nobody saw
+--   * the notify stamp had to create rows carrying a read position it had to
+--     invent, for a message it was in the act of announcing
+--
+-- Splitting the meanings does not make those bugs less likely — it makes two of
+-- them UNREPRESENTABLE. A heartbeat that writes `viewing_at` cannot mark
+-- anything read, and a push that writes nothing to `last_read_at` cannot clear
+-- a badge. They stop being things a gate prevents and become things the schema
+-- does not permit.
+--
+-- ── Grain ───────────────────────────────────────────────────────────────────
+-- Same as 144's, and for the same reason: (trip_id, user_id, visibility) is
+-- already exactly "this person, this trip, this channel", which is the grain of
+-- "was their panel open". Crew and Organizers are separate panels and must be
+-- separately answerable.
+--
+-- ── Nullable, and null means not-viewing ────────────────────────────────────
+-- No backfill and no default. A null reads as "not watching", which is the
+-- PERMISSIVE value here — it produces a notification. That is the safe
+-- direction for this rule: the cost of being wrong is one extra buzz, where the
+-- old gate's fail-closed default cost a message nobody heard about. Every
+-- existing row is therefore immediately correct without being touched.
+
+ALTER TABLE public.chat_reads
+  ADD COLUMN IF NOT EXISTS viewing_at timestamptz;
+
+COMMENT ON COLUMN public.chat_reads.viewing_at IS
+  'When this user''s chat panel for this channel was last confirmed open and visible (heartbeat, ~15s). The push gate suppresses a recipient whose viewing_at is within CHAT_ACTIVE_VIEWING_WINDOW_MS. NOT a read position — last_read_at owns that, and neither column may be written to imply the other.';

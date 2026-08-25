@@ -363,13 +363,30 @@ function FloatingChatPanelInner({
       utils.messages.unreadCountByChannel.invalidate({ tripId });
     },
   });
+  /**
+   * The viewing heartbeat's write. Separate from `markRead` on purpose: it
+   * touches `viewing_at` and nothing else, so a beat can never advance the read
+   * position (migration 145).
+   *
+   * NO `onSuccess`, and that absence is the reason a 15s beat is affordable.
+   * `markRead` invalidates three queries on success, so the old 60s beat cost one
+   * write and three refetches. Nothing renders `viewing_at`, so there is nothing
+   * to invalidate — a beat is one write.
+   *
+   * Failures are swallowed: missing a beat costs at most one notification the
+   * person did not need, and surfacing it would put a toast on screen for a
+   * background timer.
+   */
+  const { mutate: markViewingMutate } = trpc.messages.markViewing.useMutation({
+    onError: () => {},
+  });
   const lastMarkedRef = useRef<Record<Visibility, string | null>>({
     crew: null,
     planning: null,
   });
-  /** Last time EITHER path stamped the read mark — one clock shared by the
-   *  message-arrival effect and the heartbeat, so they don't each write on
-   *  their own schedule and double the traffic. */
+  /** When the heartbeat last stamped `viewing_at`. Its own clock — the
+   *  message-arrival mark writes a different column now and no longer stands in
+   *  for a beat. */
   const heartbeatAtRef = useRef(0);
   useEffect(() => {
     /**
@@ -380,20 +397,24 @@ function FloatingChatPanelInner({
      * stale, that is simply false — it would clear the unread badge and the
      * new-messages divider for messages still in flight.
      *
-     * It also protects #1058. `chat_reads.last_read_at` does DOUBLE DUTY: it is
-     * the read position AND the recency-of-looking signal the push gate's
-     * viewing window reads to decide whether someone is watching. Stamping on a
-     * cached render would put a glance-and-close into the viewing window and
-     * suppress their pushes for the next 2.5 minutes, having shown them nothing
-     * new — the same bug #1058 fixed, arriving from the other side.
+     * ── The push half of this reasoning is GONE, and that is the good news ───
+     * This used to say `last_read_at` does DOUBLE DUTY — read position AND the
+     * recency-of-looking signal the push gate reads — so a stamp on a cached
+     * render would suppress someone's pushes for minutes having shown them
+     * nothing new. That was true and is no longer: migration 145 moved the
+     * viewing signal to its own column, written only by the heartbeat. Marking
+     * read cannot silence a notification any more, in any circumstance.
      *
-     * Deferring costs nothing visible: the MESSAGES still paint instantly from
-     * cache. Only the stamp waits.
+     * The parenthetical that used to close this comment predicted the fix —
+     * "if offline read-marking is ever wanted, it needs its own column rather
+     * than overloading this one" — and the overloading is what got removed.
      *
-     * (The two roles agree today only because you always open onto the newest
-     * messages. If offline read-marking is ever wanted, it needs its own column
-     * rather than overloading this one — the overloading is what makes this
-     * fragile.)
+     * What survives is the ORIGINAL reason, which never depended on push: a
+     * stamp from a stale cache asserts "I have seen everything up to now" when
+     * the device may be minutes behind, clearing the unread badge and the
+     * new-messages divider for messages still in flight. Deferring costs nothing
+     * visible — the MESSAGES still paint instantly from cache; only the stamp
+     * waits.
      */
     if (!confirmed) return;
     if (displayed.length === 0) return;
@@ -402,25 +423,27 @@ function FloatingChatPanelInner({
     if (!ts) return;
     if (lastMarkedRef.current[activeChannel] === ts) return; // already marked
     lastMarkedRef.current[activeChannel] = ts;
-    heartbeatAtRef.current = Date.now();
     markReadMutate({ tripId, visibility: activeChannel });
   }, [tripId, activeChannel, confirmed, displayed, markReadMutate]);
 
-  // ── Viewing heartbeat — what makes "no push while you're looking" true ────
+  // ── Viewing heartbeat — the ONLY suppression chat push has left ──────────
   //
-  // The push gate (src/server/lib/chatNotify.ts) suppresses a recipient whose
-  // read mark moved within CHAT_ACTIVE_VIEWING_WINDOW_MS, because that is the
-  // ONLY server-visible evidence that someone is watching a channel. The effect
-  // above advances that mark when a MESSAGE ARRIVES — which covers an active
-  // conversation and misses a panel left open through a lull. Without this, a
-  // message landing after ten quiet minutes would buzz at someone staring
-  // straight at it.
+  // The rule is now: notify on every message, unless you sent it or your panel
+  // is open. There is no read-state gate and no re-arm — so this heartbeat is no
+  // longer one input to a coalescing formula, it is the entire remaining logic.
+  // A beat that fails to land is a notification someone gets while looking at
+  // the screen; a beat that lands when it shouldn't is a message they never hear
+  // about.
   //
-  // So an open panel re-stamps on an interval comfortably shorter than the
-  // window (see chatViewHeartbeat.ts — the two constants are a pair, pinned by
-  // a test). Deliberately cheap: it only does anything during QUIET periods,
-  // since a live conversation already fires the effect above far more often,
-  // and the guard below skips a beat that a real message already covered.
+  // It stamps `chat_reads.viewing_at` (migration 145) — NOT the read mark. The
+  // heartbeat used to call `markRead`, which is how a panel open on a flaky
+  // connection could mark messages read that the device had never received. It
+  // cannot do that any more, because it no longer writes that column.
+  //
+  // Interval is comfortably shorter than the window (chatViewHeartbeat.ts — the
+  // two constants are a pair, pinned by a test). Unlike the old one this does NOT
+  // skip beats covered by a message arrival: those write a different column now
+  // and prove nothing about `viewing_at`.
   //
   // GATED ON TAB VISIBILITY, not merely on the panel being mounted: a chat left
   // open in a background tab is not being viewed, and treating it as viewed
@@ -455,15 +478,19 @@ function FloatingChatPanelInner({
        */
       if (!viewIsCurrent) return;
       const now = Date.now();
-      // A real message-arrival mark within this interval already refreshed the
-      // window, so don't spend a write re-proving it.
       if (now - heartbeatAtRef.current < CHAT_VIEW_HEARTBEAT_MS) return;
       heartbeatAtRef.current = now;
-      markReadMutate({ tripId, visibility: activeChannel });
+      markViewingMutate({ tripId, visibility: activeChannel });
     };
+    // Beat IMMEDIATELY on mount as well as on the interval. `setInterval` alone
+    // means the first stamp lands a full interval after the panel opens, so
+    // someone who opens chat and a message that arrives in the next 15 seconds
+    // would find them notified for a panel they are looking at. Cheap to fix and
+    // invisible if it is missing, which is why it is called out.
+    beat();
     const id = setInterval(beat, CHAT_VIEW_HEARTBEAT_MS);
     return () => clearInterval(id);
-  }, [tripId, activeChannel, viewIsCurrent, markReadMutate]);
+  }, [tripId, activeChannel, viewIsCurrent, markViewingMutate]);
 
   /**
    * Callbacks live in `postMessage` below, not here.

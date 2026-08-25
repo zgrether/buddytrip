@@ -375,6 +375,73 @@ export const messagesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // markViewing — "my chat panel for this channel is open right now"
+  // -----------------------------------------------------------------------
+  /**
+   * The viewing heartbeat's write, and the ONLY writer of `chat_reads.viewing_at`.
+   *
+   * ── Why this is not just `markRead` ─────────────────────────────────────────
+   * It used to be. The heartbeat called `markRead`, which made one column mean
+   * both "how far have they read" and "were they just looking" — and every bug
+   * this subsystem produced came from those two meanings diverging (a
+   * glance-and-close buying minutes of silence; a heartbeat marking messages
+   * READ that the device had never received). Migration 145 split them, and this
+   * procedure is the read-position-free half.
+   *
+   * ── It deliberately returns nothing and invalidates nothing ────────────────
+   * No UI renders `viewing_at`. It exists for one server-side comparison in
+   * `chatNotify`. That is what makes a 15-second heartbeat affordable: the old
+   * one went through `markRead`, whose success handler invalidates three queries,
+   * so a beat cost one write and three refetches. A beat is now one write.
+   *
+   * ── The one place the two columns still touch, and it is a DEFAULT ─────────
+   * `chat_reads.last_read_at` is NOT NULL DEFAULT now(), so a row CREATED by this
+   * upsert takes a read position nobody asked for. That is reachable only when no
+   * row exists yet — i.e. the person has never read this channel — and in
+   * practice only on an EMPTY channel, because `markRead` fires on the first
+   * confirmed render with messages and always beats a 15s timer to it. On an
+   * empty channel there are no messages for `now()` to falsely mark read, so the
+   * default is harmless there.
+   *
+   * On CONFLICT (the overwhelmingly common path) PostgREST updates only the
+   * columns named here, so an existing `last_read_at` is untouched. That is the
+   * property worth guarding, and `messages.chatReadsColumns.test.ts` pins it.
+   */
+  markViewing: authedProcedure
+    .input(z.object({ tripId: z.string(), visibility: Visibility }))
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      // Same role gate as `markRead`: Organizers is Owner/Organizer only, and a
+      // non-organizer must not be able to write a viewing mark for a channel
+      // they cannot see.
+      if (input.visibility === "planning") {
+        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Organizers chat is owner/organizer only.",
+          });
+        }
+      }
+
+      const { error } = await ctx.supabase.from("chat_reads").upsert(
+        {
+          trip_id: ctx.tripId!,
+          user_id: ctx.user!.id,
+          visibility: input.visibility,
+          viewing_at: new Date().toISOString(),
+        },
+        { onConflict: "trip_id,user_id,visibility" }
+      );
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to mark chat viewing: ${error.message}`,
+        });
+      }
+      return { ok: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // send — Crew chat: any member. Organizers chat: Owner/Organizer only.
   // -----------------------------------------------------------------------
   send: authedProcedure
