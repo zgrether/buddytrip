@@ -220,6 +220,10 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
         <FloatingChatPanel
           tripId={tripId}
           isOpen
+          // `hidden` on the wrapper is CSS; the panel is still mounted and its
+          // effects still run. `active` is what tells it whether anyone is
+          // actually looking — see the prop's note.
+          active={activeSegment === "crew"}
           channel="crew"
           memberNames={memberNames}
         />
@@ -229,6 +233,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           <FloatingChatPanel
             tripId={tripId}
             isOpen
+            active={activeSegment === "planning"}
             channel="planning"
             memberNames={memberNames}
           />
