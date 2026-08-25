@@ -1,74 +1,57 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { CHAT_ACTIVE_VIEWING_WINDOW_MS, CHAT_REARM_AFTER_MS } from "@/lib/chatViewHeartbeat";
+import { CHAT_ACTIVE_VIEWING_WINDOW_MS } from "@/lib/chatViewHeartbeat";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
 
 /**
  * The `chat` category's ONE wire point — `messages.send`.
  *
- * This is the FIRST **BATCH**-marked trigger to be wired, and BATCH is the
- * marking that says "genuine, but bursty: never 1:1 per write". Chat is the
- * highest-volume candidate in the app (hundreds/day on a live trip day), so the
- * coalescing rule below is not a refinement of this feature — it IS the feature.
- * Wiring `messages.send` straight to a send helper would put ~30 phones through
- * a hundred buzzes in an afternoon, and the people who then disable
- * notifications at the OS level never come back.
+ * ── THE RULE ────────────────────────────────────────────────────────────────
  *
- * ── The coalescing rule: READ-STATE-GATED ───────────────────────────────────
- * A recipient is notified only when they were **caught up before this message
- * arrived** — `previousMessage.created_at <= their chat_reads.last_read_at`.
+ *     Notify every recipient, except: you sent it, or your chat panel is open.
  *
- *   R is caught up  →  a message lands   →  ONE push
- *   more messages, R still hasn't looked →  R is no longer caught up → SILENCE
- *   R opens chat    →  markRead advances →  RE-ARMED for the next lull
- *   R never opens it, 30 min pass        →  RE-ARMED anyway → ONE push
+ * That is the whole rule. If a suppression cannot be stated in one sentence, it
+ * does not belong here.
  *
- * So the ceiling is **one push per recipient per read-session, or per 30-minute
- * window if they never read** — a burst of ten messages to sixteen people is
- * sixteen pushes, not a hundred and sixty.
+ * ── This REVERSES #1054/#1057/#1058, deliberately ──────────────────────────
+ * What was here before: a read-state gate (notify only someone who was CAUGHT UP
+ * before the message landed) plus a 30-minute time-based re-arm, built because
+ * `NOTIFICATIONS.md` marked chat BATCH — "hundreds/day; coalesce hard" — and the
+ * fear was notification fatigue.
  *
- * ── The second re-arm was added because the first one alone went silent ─────
- * Reading was originally the ONLY way back, which assumes people open the chat
- * between bursts. Most will not: on a four-day trip that means one push on day
- * one and nothing afterwards. Production said so within a morning — of 14 chat
- * sends, 3 delivered and 11 were gate-suppressed, and the survivors were all
- * inside the first 35 minutes, before everyone had fallen behind. So being
- * behind now EXPIRES, and someone who never opens chat still hears about the
- * dinner plan.
+ * That was the wrong problem, and the measurement is what settles it. With the
+ * full design shipped, a real day on the BBMI trip produced **26 crew messages
+ * and TWO notification events in four hours**. An app that tells you twice in an
+ * afternoon that a conversation is happening is not being restrained; it has
+ * failed at the one thing a message notification is for. Meanwhile the cost of
+ * being wrong the other way is bounded and already solved by other people: every
+ * OS mutes an app, and every recipient has a `chat` switch in the notifications
+ * modal (#1056). A person who finds it noisy has a control. A person who gets
+ * two notifications a day has nothing to fix.
  *
- * This is a per-RECIPIENT silence gate rather than a per-CONVERSATION one, and
- * the difference is the whole reason it was chosen. A conversation-level gate
- * ("notify on the first message after N minutes of quiet") fires at the START
- * of a conversation and then goes quiet through the middle — which is when you
- * would actually want to know. Per-recipient fires when *you* fell behind,
- * which is the question the notification is answering.
+ * The trade, stated honestly so nobody re-derives "coalesce hard" from first
+ * principles later: the same day under this rule is 26 crew messages × ~14
+ * recipients ≈ **360 pushes**, against the 2 it actually produced.
  *
- * ── State: one column, and still no scheduler ──────────────────────────────
- * The read half is free — `chat_reads` (migration 010) already stores
- * `last_read_at` per (trip, user, visibility), maintained by `messages.markRead`
- * for the unread badge and the new-messages divider.
+ * ── What is gone, and it is gone rather than tuned ─────────────────────────
+ *   * the 30-minute re-arm (`CHAT_REARM_AFTER_MS`) — deleted
+ *   * the caught-up / behind read-state gate — deleted
+ *   * `chat_reads.last_notified_at` — no longer written; dropped in a follow-up
+ *     migration, per CLAUDE.md's removal ordering (code stops writing first)
+ *   * the predecessor-message lookup that fed "caught up", and the read-position
+ *     fallback chain (`resolveLastSeen`) that existed only to answer it
  *
- * The time-based re-arm needs one thing the app was not already keeping: WHEN
- * this recipient was last pushed. That is `chat_reads.last_notified_at`
- * (migration 144) — same row, same grain, written by the send path on the
- * service-role client and never by `markRead`. Being notified is not having
- * read, so the two columns stay separate: folding them together would mark
- * messages read that nobody has seen.
+ * ── What the split bought ───────────────────────────────────────────────────
+ * The surviving clause still needs a recency-of-looking signal, and it now has
+ * its OWN column: `chat_reads.viewing_at` (migration 145), written only by the
+ * client heartbeat. `last_read_at` goes back to meaning one thing — the read
+ * position for the unread badge and the new-messages divider.
  *
- * There is still NO SCHEDULER anywhere in this codebase — no Vercel cron, no
- * pg_cron, no scheduled send — and this does not add the first one. The re-arm
- * is evaluated when a message arrives, not on a timer, so a trip where nobody
- * talks costs nothing.
- *
- * ── DO NOT GENERALISE THIS ──────────────────────────────────────────────────
- * It is chat-specific ON PURPOSE. It is free only because `chat_reads` happens
- * to exist; the other BATCH rows in NOTIFICATIONS.md (`games.openCorrection`,
- * the itinerary/logistics batch) have no equivalent read-state, so lifting this
- * into a generic coalescer would mean inventing per-recipient state and a
- * scheduler for them anyway. Generalising a mechanism that works by coincidence
- * of one table's existence produces an abstraction the next caller cannot use.
- * The next BATCH trigger pays for its own mechanism.
+ * Two of this subsystem's three historical bugs stop being possible rather than
+ * merely prevented: the heartbeat can no longer mark an undelivered message read
+ * (it does not touch that column), and this module can no longer clear a badge
+ * for the message it is announcing (it writes nothing at all now).
  *
  * ── Failure isolation ───────────────────────────────────────────────────────
  * Everything here swallows its own errors: a push failure must never fail
@@ -81,120 +64,63 @@ import { recordPushAttempt } from "./recordPushAttempt";
 // ── The gate ────────────────────────────────────────────────────────────────
 
 /**
- * How recently `last_read_at` must have moved for us to treat the recipient as
- * WATCHING the channel right now, and skip them.
+ * How recently `viewing_at` must have moved for a recipient to count as
+ * WATCHING the channel right now.
  *
- * This clause is not optional and not a refinement of the caught-up test — it
- * is what implements "don't notify someone with the chat open". The caught-up
- * test ALONE would push them: the send runs server-side immediately after the
- * INSERT, before their client has even received the realtime event, so at
- * decision time a viewer looks exactly like someone who is up to date and away.
- *
- * Defined in `@/lib/chatViewHeartbeat` alongside the client heartbeat that
- * keeps an open-but-silent panel inside it — the two are a pair and the
- * relationship between them is the actual mechanism. Re-exported here so the
- * gate's own callers and tests read it from the module they're testing.
+ * Defined in `@/lib/chatViewHeartbeat` alongside the client heartbeat that keeps
+ * an open panel inside it — the two are a pair and the relationship between them
+ * is the actual mechanism. Re-exported here so the gate's callers and tests read
+ * it from the module they're testing.
  */
-export { CHAT_ACTIVE_VIEWING_WINDOW_MS, CHAT_REARM_AFTER_MS };
+export { CHAT_ACTIVE_VIEWING_WINDOW_MS };
 
 /** Why a recipient did or didn't get this one. */
 export type ChatGateVerdict =
-  /** Caught up and not watching — send. */
+  /** Their panel is not open — send. */
   | "notify"
-  /** `last_read_at` moved within the window — they're looking at it. */
-  | "active"
-  /** Already behind, so they were notified earlier this read-session. */
-  | "behind";
+  /** `viewing_at` moved within the window — they're looking at it. */
+  | "active";
 
 /**
- * The gate, as a pure function of three timestamps — no DB, no clock.
+ * The gate, as a pure function of two timestamps — no DB, no clock.
+ *
+ * ── There is one clause, and that is the design ─────────────────────────────
+ * It previously had five, and four of them existed to answer "have they already
+ * been told about this conversation" — a question this rule no longer asks. What
+ * is left is the only thing a person cannot judge for themselves from the
+ * outside: whether they are already looking at the screen the message lands on.
  *
  * Deliberately reads `messageAt` rather than `Date.now()` as "now". The send
  * runs microseconds after the insert so they are the same instant in practice,
- * and using the message's own timestamp makes every case below deterministic
- * and directly assertable instead of racing a wall clock in tests.
- *
- * Clause order is load-bearing: `active` is checked FIRST, because a watcher is
- * caught up by definition and would otherwise fall straight through to
- * `notify`.
+ * and using the message's own timestamp makes every case deterministic and
+ * directly assertable instead of racing a wall clock in tests.
  */
 export function chatGateVerdict(args: {
   /**
-   * How far this recipient has SEEN the channel — already resolved by the
-   * caller, and null only if even the fallbacks were missing.
+   * `chat_reads.viewing_at` (migration 145) — when this recipient's panel for
+   * this channel was last confirmed open and visible, or null if never.
    *
-   * Not the raw `chat_reads.last_read_at`: see `resolveLastSeen`. Someone who
-   * has never opened this channel has no read row, and treating that absence as
-   * "caught up" is a trap — with nothing to compare against they are caught up
-   * FOREVER, so they get notified for every message in the trip. That is the
-   * firehose this whole module exists to prevent, arriving through the one case
-   * nobody pictures. The read mark falls back to the member's chat visibility
-   * floor, then to `joined_at`, which is a real answer to the same question:
-   * you are up to date as of the moment you joined, because nothing before that
-   * was yours to read.
+   * NOT `last_read_at`. Reading a message and looking at a panel are different
+   * facts, they now live in different columns, and the whole history of bugs
+   * here is what happened when one column tried to mean both.
+   *
+   * Null is the PERMISSIVE value — a recipient nobody has ever seen viewing is
+   * notified. That is the safe direction: being wrong costs one extra buzz,
+   * where the old gate's fail-closed default cost a message nobody heard about.
    */
-  lastSeenAt: string | null;
-  /** The newest non-system message in this channel BEFORE this one, or null if
-   *  this is the channel's first. */
-  prevMessageAt: string | null;
+  viewingAt: string | null;
   /** The message that just landed. */
   messageAt: string;
-  /**
-   * `chat_reads.last_notified_at` (migration 144) — when a chat push was last
-   * SENT to this recipient for this channel, or null if never.
-   *
-   * Feeds the TIME-BASED RE-ARM. Null is deliberately the permissive value: a
-   * recipient nobody has ever pushed is eligible on the time rule, which is
-   * what makes the rule take effect for existing rows without a backfill.
-   */
-  lastNotifiedAt: string | null;
 }): ChatGateVerdict {
-  const { lastSeenAt: lastReadAt, prevMessageAt, messageAt, lastNotifiedAt } = args;
-  const messageMs = Date.parse(messageAt);
+  const { viewingAt, messageAt } = args;
+  if (viewingAt === null) return "notify";
 
-  // 1 · Watching right now? A read mark inside the window means their panel is
-  //     open. Note the ABSOLUTE value: `last_read_at` can legitimately land
-  //     AFTER `messageAt` when their client received the realtime insert and
-  //     marked read before this server-side read ran — which is the strongest
-  //     possible evidence they are watching, so it must not read as a negative
-  //     age and fall through.
-  if (lastReadAt !== null) {
-    const age = Math.abs(messageMs - Date.parse(lastReadAt));
-    if (age < CHAT_ACTIVE_VIEWING_WINDOW_MS) return "active";
-  }
-
-  // 2 · First message in the channel — nobody can be behind on nothing.
-  if (prevMessageAt === null) return "notify";
-
-  // 3 · No position at all, even after the fallbacks — a member row with no
-  //     read mark, no visibility floor and no join time, which should not be
-  //     reachable. FAIL CLOSED. The two possible defaults are not symmetric:
-  //     defaulting to silence costs one missed notification, defaulting to
-  //     "caught up" costs a push on EVERY message forever, to someone whose
-  //     state we could not read. Silence is the recoverable mistake.
-  if (lastReadAt === null) return "behind";
-
-  // 4 · Caught up before this message → notify.
-  if (Date.parse(lastReadAt) >= Date.parse(prevMessageAt)) return "notify";
-
-  // 5 · Behind — but not necessarily silent.
-  //
-  //     THE SECOND RE-ARM, and the reason it exists: rule 4 assumes people open
-  //     the chat between bursts. Most will not. Reading as the ONLY way back
-  //     means one push on the first day of a trip and silence for the rest of
-  //     the week — measured, not feared: 11 of 14 sends in one production
-  //     morning were suppressed here, and the three that got through were all
-  //     inside the first 35 minutes, before everyone had fallen behind.
-  //
-  //     So being behind expires. If nothing has been SENT to this person for
-  //     `CHAT_REARM_AFTER_MS`, they hear the next message even though they never
-  //     caught up. Someone who never opens chat still learns about dinner.
-  //
-  //     Null (never notified) is PERMISSIVE, deliberately — it is what makes
-  //     this rule reach every existing row without a backfill, and a backfill
-  //     would have silenced everyone for the first window after deploy.
-  if (lastNotifiedAt === null) return "notify";
-  return messageMs - Date.parse(lastNotifiedAt) >= CHAT_REARM_AFTER_MS ? "notify" : "behind";
+  // ABSOLUTE difference: `viewing_at` can legitimately land AFTER `messageAt`
+  // when the recipient's heartbeat fires between the insert and this read —
+  // which is the strongest possible evidence they are watching, so it must not
+  // read as a negative age and fall through to `notify`.
+  const age = Math.abs(Date.parse(messageAt) - Date.parse(viewingAt));
+  return age < CHAT_ACTIVE_VIEWING_WINDOW_MS ? "active" : "notify";
 }
 
 // ── Copy ────────────────────────────────────────────────────────────────────
@@ -273,10 +199,8 @@ export interface ChatNotifyResult {
   audience: number;
   /** Who passed the gate. */
   eligible: string[];
-  /** Skipped: read mark inside the viewing window — they're looking at it. */
+  /** Skipped: `viewing_at` inside the window — they're looking at it. */
   suppressedActive: number;
-  /** Skipped: already behind, so already notified earlier this read-session. */
-  suppressedBehind: number;
   /** Null when the gate emptied the audience — nothing was handed to the sender. */
   send: SendPushToUsersResult | null;
 }
@@ -285,7 +209,6 @@ const EMPTY: ChatNotifyResult = {
   audience: 0,
   eligible: [],
   suppressedActive: 0,
-  suppressedBehind: 0,
   send: null,
 };
 
@@ -306,42 +229,19 @@ export async function notifyChatMessage(
   const result: ChatNotifyResult = { ...EMPTY, eligible: [] };
 
   try {
-    // 1 · The predecessor — the newest non-system message in this channel
-    //     before this one. `message_type='system'` is excluded to match
-    //     `countUnreadByChannel`, which does not count system rows as unread:
-    //     if a system line cannot make you unread, it must not be able to make
-    //     you "behind" either, or a member-joined notice would silence the next
-    //     real message for everyone.
-    const { data: prevRows, error: prevErr } = await admin
-      .from("messages")
-      .select("created_at")
-      .eq("trip_id", input.tripId)
-      .eq("channel", "trip")
-      .eq("visibility", input.visibility)
-      .neq("message_type", "system")
-      .neq("id", input.messageId)
-      .lt("created_at", input.messageCreatedAt)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    // Checked, not swallowed. #16's landmine was a read whose error went
-    // unexamined, so a missing relation folded a silent `[]` into the result
-    // for six weeks. Here an unchecked error would look like "first message in
-    // the channel" and notify EVERYONE on every message — the exact failure
-    // this module exists to prevent, arriving silently.
-    if (prevErr) throw new Error(`prev-message read failed: ${prevErr.message}`);
-    const prevMessageAt = (prevRows ?? [])[0]?.created_at ?? null;
-
-    // 2 · The channel's membership. Crew is every member; Organizers is
+    // 1 · The channel's membership. Crew is every member; Organizers is
     //     Owner + Organizer, mirroring `is_trip_planner()` (migration 029) and
     //     the role gate `messages.send` already enforces on the write.
     //     `nickname` rides along so the sender's display name costs no extra
     //     query — it is the same row set.
-    //     `joined_at` and the visibility floors ride along because they are the
-    //     FALLBACK read position for a member who has never opened this channel
-    //     (see `resolveLastSeen`) — same row set, no extra query.
+    //
+    //     `joined_at` and the visibility floors are NO LONGER selected. They
+    //     existed to reconstruct a read position for someone who had never
+    //     opened the channel, which the caught-up test needed and this rule does
+    //     not ask. A member who has never opened chat is simply not viewing it.
     const { data: memberRows, error: memberErr } = await admin
       .from("trip_members")
-      .select("user_id, role, nickname, joined_at, chat_visible_from, planning_visible_from")
+      .select("user_id, role, nickname")
       .eq("trip_id", input.tripId);
     if (memberErr) throw new Error(`member read failed: ${memberErr.message}`);
 
@@ -349,9 +249,6 @@ export async function notifyChatMessage(
       user_id: string;
       role: string;
       nickname: string | null;
-      joined_at: string | null;
-      chat_visible_from: string | null;
-      planning_visible_from: string | null;
     };
     const members = (memberRows ?? []) as MemberRow[];
 
@@ -371,82 +268,47 @@ export async function notifyChatMessage(
     result.audience = audience.length;
     if (audience.length === 0) return result;
 
-    // 3 · Read marks for this channel. One query for the whole audience.
-    //     A missing row is a real state (never opened this channel) and stays
-    //     null — see clause 3 of the gate.
-    const { data: readRows, error: readErr } = await admin
+    // 2 · Viewing state for this channel. One query for the whole audience.
+    //     A missing row means nobody has ever had this panel open here, which
+    //     is a real state and reads as "not viewing" — the permissive value.
+    //
+    //     `last_read_at` is NOT selected. This module no longer has any business
+    //     with the read position: it does not read it, and it does not write it.
+    const { data: viewRows, error: viewErr } = await admin
       .from("chat_reads")
-      .select("user_id, last_read_at, last_notified_at")
+      .select("user_id, viewing_at")
       .eq("trip_id", input.tripId)
       .eq("visibility", input.visibility)
       .in("user_id", audience);
-    if (readErr) throw new Error(`read-state read failed: ${readErr.message}`);
+    // Checked, not swallowed — #16's landmine was a read whose error went
+    // unexamined for six weeks. An unchecked error here would read as "nobody is
+    // viewing" and notify everyone including the people staring at the panel.
+    if (viewErr) throw new Error(`viewing-state read failed: ${viewErr.message}`);
 
-    type ReadRow = {
-      user_id: string;
-      last_read_at: string;
-      last_notified_at: string | null;
-    };
-    const lastReadById = new Map<string, string>(
-      (readRows ?? []).map((r: ReadRow) => [r.user_id, r.last_read_at])
-    );
-    const lastNotifiedById = new Map<string, string | null>(
-      (readRows ?? []).map((r: ReadRow) => [r.user_id, r.last_notified_at])
+    type ViewRow = { user_id: string; viewing_at: string | null };
+    const viewingById = new Map<string, string | null>(
+      (viewRows ?? []).map((r: ViewRow) => [r.user_id, r.viewing_at])
     );
 
-    // 4 · The gate.
-    const memberById = new Map(inChannel.map((m) => [m.user_id, m]));
-    /** Resolved read position per recipient — reused by the stamp below, so a
-     *  row the stamp CREATES records the truth instead of inventing one. */
-    const seenById = new Map<string, string | null>();
+    // 3 · The gate. One clause.
     for (const userId of audience) {
-      const lastSeenAt = resolveLastSeen(
-        lastReadById.get(userId) ?? null,
-        memberById.get(userId),
-        input.visibility
-      );
-      seenById.set(userId, lastSeenAt);
       const verdict = chatGateVerdict({
-        lastSeenAt,
-        prevMessageAt,
+        viewingAt: viewingById.get(userId) ?? null,
         messageAt: input.messageCreatedAt,
-        // Absent row -> null -> permissive on the time rule, matching the
-        // migration's no-backfill decision.
-        lastNotifiedAt: lastNotifiedById.get(userId) ?? null,
       });
       if (verdict === "notify") result.eligible.push(userId);
-      else if (verdict === "active") result.suppressedActive += 1;
-      else result.suppressedBehind += 1;
+      else result.suppressedActive += 1;
     }
 
-    // 5 · Gate emptied the audience — the COMMON case during a burst, which is
-    //     the point. Recorded with its own outcome rather than returning
-    //     silently: migration 106 exists because three pre-send exits produced
-    //     no row at all and were indistinguishable from each other and from a
-    //     failure. "The gate suppressed everyone" and "nobody is in this
-    //     channel" must not look the same afterwards.
+    // 4 · Everyone in the channel is looking at it. Recorded with its own
+    //     outcome rather than returning silently: migration 106 exists because
+    //     pre-send exits produced no row at all and were indistinguishable from
+    //     a failure.
     //
-    //     Note this returns BEFORE reading `push_subscriptions`, so the gate is
-    //     cheapest exactly when volume is highest: mid-burst almost everyone is
-    //     already behind, the audience empties here, and the expensive half
-    //     never runs.
+    //     `gate_mixed` and `gate_behind` are gone with the clauses that produced
+    //     them. There is one way to be suppressed now, so there is one outcome,
+    //     and `recipients` carries the audience that was turned away.
     if (result.eligible.length === 0) {
-      // `recipients` is the AUDIENCE, not zero. It was zero here, and that was
-      // simply wrong by the column's own definition ("post-dedup and
-      // post-actor-exclusion"): the audience was not empty, the gate turned it
-      // away. It cost a real diagnosis — a production investigation into "no
-      // notifications" could not tell "nobody is in this channel" from "the gate
-      // suppressed fifteen people", and had to reconstruct the answer from
-      // `chat_reads` by hand.
-      //
-      // The outcome now names WHICH clause did it, for the same reason
-      // migration 106 split `no_clincher` from `already_claimed`: they are
-      // indistinguishable by any arithmetic over the counters, so the intent has
-      // to be the thing that is stored. `gate_active` (everyone was watching)
-      // and `gate_behind` (everyone had fallen behind) have completely
-      // different fixes, and `gate_mixed` says both were in play.
-      const onlyActive = result.suppressedBehind === 0;
-      const onlyBehind = result.suppressedActive === 0;
       await recordPushAttempt(
         admin,
         {
@@ -463,13 +325,13 @@ export async function notifyChatMessage(
           failed: 0,
           removedDead: 0,
           notConfigured: false,
-          outcome: onlyActive ? "gate_active" : onlyBehind ? "gate_behind" : "gate_mixed",
+          outcome: "gate_active",
         }
       );
       return result;
     }
 
-    // 6 · Send. Preference gating (`chat`, ON by default) happens inside the
+    // 5 · Send. Preference gating (`chat`, ON by default) happens inside the
     //     helper, per recipient — this module never reads `notification_prefs`
     //     itself, so there is one preference gate in the codebase rather than
     //     two that must agree.
@@ -500,69 +362,22 @@ export async function notifyChatMessage(
       }
     );
 
-    // Stamp the re-arm clock for everyone we just notified.
+    // NOTHING IS WRITTEN HERE, and that absence is load-bearing.
     //
-    // AFTER the send, and deliberately not gated on its result. A push handed to
-    // the push service is "sent" as far as this rule is concerned — waiting for
-    // per-device delivery would mean a single dead endpoint keeps someone
-    // permanently re-armed, which is the firehose direction. And this must not
-    // throw: the notification has already gone out, so failing here would only
-    // cost a duplicate 30 minutes later, whereas throwing would surface a push
-    // problem into `messages.send`.
+    // This module used to stamp `chat_reads` after sending — the re-arm clock,
+    // plus a `last_read_at` for any row it had to CREATE. That second write is
+    // the one that mattered: it meant the code announcing a message also had to
+    // decide what read position to invent for the person it was announcing to,
+    // and getting it wrong cleared their unread badge for a message they had not
+    // seen. The fix was a careful derivation reused from the gate.
     //
-    // `upsert`, because a recipient may have no `chat_reads` row at all — they
-    // are reachable via `resolveLastSeen`'s join/floor fallback without ever
-    // having opened the channel. `last_read_at` is deliberately NOT written:
-    // notifying someone is not them reading, and writing it here would clear
-    // their unread badge for a message they have not seen.
-    try {
-      // ONE CLOCK. Stamped with the MESSAGE's own `created_at`, not wall-clock
-      // now, because that is the clock the gate measures against: it asks "has
-      // `CHAT_REARM_AFTER_MS` passed between the message in hand and the last
-      // one we told you about", and both sides of that subtraction have to come
-      // from the same source to mean anything.
-      //
-      // In production the two are the same instant to within milliseconds — the
-      // message timestamp is the database's `now()` and the stamp would be the
-      // app's, microseconds later — so this looks like a distinction without a
-      // difference. It is not: mixing them makes the rule depend on two clocks
-      // agreeing, and the first thing that noticed was a test whose timeline
-      // was not wall-clock. A comparison that is only correct when two clocks
-      // happen to agree is a comparison waiting to be wrong.
-      const stampedAt = input.messageCreatedAt;
-      const { error: stampErr } = await admin.from("chat_reads").upsert(
-        result.eligible.map((userId) => ({
-          trip_id: input.tripId,
-          user_id: userId,
-          visibility: input.visibility,
-          // The recipient's ALREADY-RESOLVED read position — not the message
-          // time, and not now(). This value only lands when the row is being
-          // CREATED (PostgREST leaves existing columns alone on conflict), and
-          // it has to be the truth: writing the message time here would mark a
-          // message READ for the very person being notified that it exists,
-          // clearing their unread badge and new-messages divider for something
-          // they have not seen. It is not a new fact either — `resolveLastSeen`
-          // already derives exactly this from their visibility floor or join
-          // time, so the row merely materialises what the gate was computing.
-          //
-          // Epoch covers the one case where that resolution is null: a recipient
-          // with no member row, reachable only on a channel's FIRST message
-          // (clause 2 notifies before the read position is consulted). "Has read
-          // nothing" is then precisely correct.
-          last_read_at: seenById.get(userId) ?? new Date(0).toISOString(),
-          last_notified_at: stampedAt,
-        })),
-        { onConflict: "trip_id,user_id,visibility", ignoreDuplicates: false }
-      );
-      if (stampErr) {
-        console.error("[notifyChatMessage] re-arm stamp failed", {
-          tripId: input.tripId,
-          err: stampErr.message,
-        });
-      }
-    } catch (err) {
-      console.error("[notifyChatMessage] re-arm stamp threw", { err });
-    }
+    // Now there is no derivation to get wrong. The re-arm is gone, so there is
+    // no clock to stamp; `viewing_at` is written only by the recipient's own
+    // heartbeat; and `last_read_at` is written only by `markRead`. A push cannot
+    // clear a badge because the push path no longer touches the badge's column.
+    //
+    // If a future change needs this module to write to `chat_reads`, that is the
+    // moment to ask whether it is re-creating the coupling migration 145 removed.
 
     return result;
   } catch (err) {
@@ -601,50 +416,6 @@ export async function notifyChatMessage(
   }
 }
 
-/**
- * How far a recipient has SEEN this channel, with fallbacks.
- *
- * ── Why a plain `last_read_at` is not enough ────────────────────────────────
- * `chat_reads` only has a row once someone has OPENED the channel. Feeding that
- * null straight into the gate as "caught up" reads as harmless — it looks like
- * "give them one, then let the normal rule take over" — but there is no normal
- * rule to take over: with no read mark, nothing ever moves them into `behind`,
- * so they are caught up on message 1 and on message 400. A member who never
- * opens chat would be notified for every message in the trip, which is precisely
- * the outcome the whole read-state gate exists to prevent, reached through the
- * one recipient nobody pictures when reasoning about it.
- *
- * ── The fallbacks, and why they mean something ──────────────────────────────
- * 1. `chat_reads.last_read_at` — they have opened this channel; use it.
- * 2. The per-member visibility FLOOR for this channel (`chat_visible_from` /
- *    `planning_visible_from`, migration 008). This is already the line before
- *    which `messages.list` refuses to show them anything, so it is the exact
- *    point from which they could have been reading.
- * 3. `joined_at`. You are up to date the moment you join, because nothing older
- *    than that was ever yours to read.
- *
- * Each is a real answer to "how far have you seen", not a stand-in, which is why
- * the chain converges on the intended behaviour instead of approximating it: the
- * first message after you arrive notifies you, and then you are behind like
- * everybody else until you read.
- */
-function resolveLastSeen(
-  lastReadAt: string | null,
-  member:
-    | {
-        joined_at: string | null;
-        chat_visible_from: string | null;
-        planning_visible_from: string | null;
-      }
-    | undefined,
-  visibility: "crew" | "planning"
-): string | null {
-  if (lastReadAt) return lastReadAt;
-  if (!member) return null;
-  const floor =
-    visibility === "planning" ? member.planning_visible_from : member.chat_visible_from;
-  return floor ?? member.joined_at ?? null;
-}
 
 /**
  * Trip title + the sender's display name.

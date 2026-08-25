@@ -6,8 +6,10 @@ for which **write sites** may fan out to them, and how.
 
 **Status: `game_results` and `chat` are WIRED.** `games.finish` (all four
 formats) produces "a game is final" and, when it becomes true, "the cup is
-clinched". `messages.send` produces a **read-state-gated** chat notification —
-the first BATCH row to be wired, and the only one whose coalescing is designed.
+clinched". `messages.send` produces a chat notification on
+**every message**, suppressed only for the sender and for anyone whose chat
+panel is open — see the chat section, and note that this REVERSES the
+coalescing design this doc originally prescribed.
 `planning` and `invites` remain untouched (issue #854), the remaining BATCH rows
 remain untouched, and every **NEVER** row is untouched and must stay that way.
 
@@ -56,7 +58,7 @@ import that slips through.
 | `game_results` | Competition & game alerts | **ON** | **yes** | game/round finalized (any format) · **cup clinched** | per-hole entry, pairing setup, any per-write mechanical event |
 | `planning` | Trip planning | **ON** | no | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | no | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
-| `chat` | Chat messages | **ON** | **yes** | new messages, any trip channel (read-state-gated) | per-channel prefs — one global switch; team chat (no read state, no UI) |
+| `chat` | Chat messages | **ON** | **yes** | new messages, any trip channel (1:1, not coalesced) | per-channel prefs — one global switch; team chat (no viewing state, no UI) |
 
 ### `game_results` was called `scores`, and the rename was a bug fix
 
@@ -106,6 +108,10 @@ Every candidate write site is one of:
 
 - **ELIGIBLE** — a real milestone; safe to wire in Phase 3.
 - **BATCH** — genuine but bursty; must be debounced/coalesced, never 1:1 per write.
+  **A marking is a hypothesis, not a verdict.** `chat` carried BATCH from this
+  doc's first draft and it was wrong; the cost of finding out was three shipped
+  designs. Before building coalescing for a new row, check whether the volume it
+  predicts is real, and whether the OS and a category switch already solve it.
 - **NEVER** — high-frequency mechanical write. A permanent property of the event,
   not a Phase 3 judgment call. Wiring one of these is how you nuke your delivery
   reputation across 30 phones in an afternoon.
@@ -142,8 +148,8 @@ disappearance of that row raises the volume budget.
 | `teamAssignments.assign` | Added to a team | `invites` | BATCH | ~30/trip setup burst; coalesce per recipient |
 | `tripMembers.updateTravel` / `updateMemberTravel` | RSVP / travel change | `invites` | **NEVER** (or heavily BATCH) | ~30–60 over trip life; low signal |
 | `tripMembers.updateRole` | Role changed | `invites` | **ELIGIBLE** | rare; notify the affected user |
-| `messages.send` (trip channel: Crew + Organizers) | New chat message | `chat` | **BATCH — WIRED** | hundreds/day live, coalesced to **one per recipient per read-session**. See the chat section below. |
-| `messages.send` (team channel) | New team-chat message | `chat` | BATCH — **not wired, structurally** | `chat_reads` has no team dimension, so there is no read state to gate on; team chat also has no UI. Needs read tracking first. |
+| `messages.send` (trip channel: Crew + Organizers) | New chat message | `chat` | **~~BATCH~~ 1:1 — WIRED** | **NOT coalesced.** One push per message per recipient, minus the sender and anyone viewing that channel. The BATCH marking was wrong and is struck rather than deleted — see "The reversal" below for what it cost. |
+| `messages.send` (team channel) | New team-chat message | `chat` | **not wired, structurally** | `chat_reads` has no team dimension, so there is nowhere to record whether a team panel is open; team chat also has no UI. Needs that dimension first. |
 | `news.create` | News posted | **its own category** (NOT `chat`, NOT `planning`) | **ELIGIBLE** | ~1–5/trip. See the News note above — folding it into `chat` mutes it for anyone who mutes the firehose. |
 
 ## Open questions for Phase 3 (not blocking Phase 2)
@@ -230,7 +236,7 @@ the board pill and `GamePageHeader` use. Only the *announcement* is recorded, so
 an un-clinch needs no migration: the same team re-clinching sends nothing, a
 different team clinching does.
 
-## What the `chat` wiring actually does (the first BATCH row)
+## What the `chat` wiring actually does (and why it is NOT a BATCH row)
 
 One call site — `messages.send`, trip channel only.
 `src/server/lib/chatNotify.ts` owns it.
@@ -238,100 +244,111 @@ One call site — `messages.send`, trip channel only.
 | | |
 |---|---|
 | **Audience** | the CHANNEL's membership, not the trip's — Crew is every member, Organizers is Owner + Organizer (mirroring `is_trip_planner()`), minus the sender |
-| **Coalescing** | read-state-gated; ceiling is **one push per recipient per read-session** |
+| **Coalescing** | **none** — one push per message per recipient |
+| **Suppressed** | the sender; anyone whose panel for that channel is open (`viewing_at` within 40s) |
 | **Payload** | trip title, channel, sender name. **Never the message text** |
 | **Link** | `/trips/{id}` — the trip, not a chat deep link |
 
 ### The gate
 
-A recipient is notified only when they were **caught up before this message
-arrived**:
+**Notify every recipient, except: they sent it, or their chat panel is open.**
 
-```
-R is caught up  ->  a message lands   ->  ONE push
-more messages, R still hasn't looked  ->  R is now behind -> SILENCE
-R opens chat    ->  markRead advances ->  RE-ARMED for the next lull
-R never opens it, 30 min pass         ->  RE-ARMED anyway -> ONE push
-```
+That is the whole rule. Two suppressions, each statable in one sentence. If a
+third ever seems necessary, it needs the same test.
 
-A burst of ten messages to sixteen people is sixteen pushes, not a hundred and
-sixty.
+- **Actor exclusion** — `sendPushToUsers` takes `excludeUserId` as a first-class
+  parameter rather than leaving each call site to filter, because eventually one
+  wouldn't.
+- **Viewing suppression** — a recipient whose `chat_reads.viewing_at` moved
+  within `CHAT_ACTIVE_VIEWING_WINDOW_MS` (40s) is skipped. An open, visible panel
+  re-stamps it every `CHAT_VIEW_HEARTBEAT_MS` (15s). The two constants are a pair
+  and live in one file (`src/lib/chatViewHeartbeat.ts`); the window must stay
+  comfortably wider than the beat so a dropped beat doesn't buzz someone who is
+  looking at the screen.
 
-### Reading alone was too strict, and production said so within a morning
+**Chat-in-focus, not app-in-focus.** Someone on the leaderboard with chat closed
+gets notified. Only the panel being open suppresses.
 
-The gate originally had ONE re-arm: reading. That assumes people open the chat
-between bursts, and most will not — on a four-day trip it means one push on day
-one and silence for the rest of the week.
+### The reversal — what was here before, and what it measured
 
-Measured, not feared. From `push_send_log`, the first morning it was live: **of
-14 chat sends, 3 delivered and 11 were gate-suppressed**, and the three that got
-through all landed in the first 35 minutes, before everyone had fallen behind.
-Zero delivery failures, zero dead endpoints, zero preference skips — the push
-machinery was fine and the gate was turning everyone away.
+This section used to describe a **read-state gate** (notify only someone who was
+caught up before the message landed) plus a **30-minute time-based re-arm**. It
+was built because this doc marked `chat` as BATCH — *"hundreds/day; coalesce
+hard"* — and the fear was notification fatigue.
 
-So **being behind now EXPIRES**: if nothing has been SENT to a recipient for
-`CHAT_REARM_AFTER_MS` (30 min), the next message reaches them even though they
-never caught up. Someone who never opens chat still hears about the dinner plan.
+**The fear was the wrong problem, and the measurement is what settles it.**
 
-The ceiling is still low, and the honest way to state it is the worst case: a
-person who never opens chat, in a trip where conversation never stops, gets at
-most one push per window — about 32 across a 16-hour day, against the ~500 an
-ungated wiring would send. The realistic case is far lower, because a push that
-gets read re-arms via the READ rule and the next message is a single push.
+With the full design shipped, one real day on the BBMI trip produced:
 
-This needed the one piece of state the app was not already keeping —
-`chat_reads.last_notified_at` (migration 144). Same row, same grain, written by
-the send path and never by `markRead`: **being notified is not having read**, and
-folding them together would mark messages read that nobody has seen.
+| measured, 2026-08-25 | |
+|---|---|
+| crew messages sent | **26** |
+| notification events, four hours | **2** |
+| what 1:1 would have produced | 26 × ~14 recipients ≈ **360 pushes** |
 
-**Per-RECIPIENT, not per-conversation, and that is the whole choice.** A
-conversation-level silence gate ("first message after N minutes of quiet") fires
-at the START of a conversation and goes quiet through the middle — which is when
-you would actually want to know. Per-recipient fires when *you* fell behind.
+An app that tells you twice in an afternoon that a conversation is happening has
+not been restrained; it has failed at the one thing a message notification is
+for. **The 360 number is recorded here precisely so nobody re-derives "coalesce
+hard" from first principles later** — that trade was seen and rejected
+deliberately.
 
-**No migration, no scheduler, no new state.** `chat_reads` (migration 010)
-already stores `last_read_at` per (trip, user, visibility) for the unread badge
-and the new-messages divider. The gate is a comparison between two timestamps
-the app was already keeping. There is still no scheduler anywhere in this
-codebase, and this did not add the first one.
+The asymmetry is what decides it: a person who finds chat noisy has a control —
+the OS mutes any app, and the `chat` switch in the notifications modal is one
+tap. **A person who gets two notifications a day has nothing to fix.**
 
-### Two clauses that are not optional
+### What went, and why it went rather than being tuned
 
-**The viewing window** (`CHAT_ACTIVE_VIEWING_WINDOW_MS`, 2.5 min) is what
-implements "don't notify someone with the chat open" — the caught-up test alone
-would push them, because the send runs server-side before their client has even
-received the realtime insert, so at decision time a viewer looks exactly like
-someone up to date and away. It is paired with a **client heartbeat**
-(`CHAT_VIEW_HEARTBEAT_MS`, 1 min, in `FloatingChatPanel`, gated on tab
-visibility): `markRead` normally only advances when a message arrives, so
-without the heartbeat an open panel left through a lull would buzz at a message
-appearing on screen in front of the person. Both constants live together in
-`src/lib/chatViewHeartbeat.ts` and their relationship is pinned by a test.
+- **The 30-minute re-arm** (`CHAT_REARM_AFTER_MS`) — deleted. Not made smaller: a
+  re-arm at any value is a rule that a message may go unannounced, and the rule
+  itself was the defect.
+- **The caught-up / behind read-state gate** — deleted, along with the
+  predecessor-message lookup and the `resolveLastSeen` fallback chain that
+  existed only to answer it.
+- **`chat_reads.last_notified_at`** (migration 144) — no longer written. Dropped
+  in a follow-up migration; code stops writing before schema drops, per
+  CLAUDE.md's removal ordering.
 
-The window was **5 minutes and that was too wide**. It only has to be wide
-enough that an open panel is always inside it; every second beyond that is a
-second in which someone who CLOSED the app is mistaken for someone staring at
-the screen. Production showed the cost directly — a message 17 seconds after a
-recipient closed the chat was suppressed as "watching", so reading bought five
-minutes of silence afterwards. Now sized off the heartbeat: two beats plus
-grace.
+### The column split, which is the durable part
 
-**The read-position fallback** (`resolveLastSeen`) is
-`chat_reads.last_read_at` -> the member's channel visibility floor
-(`chat_visible_from` / `planning_visible_from`) -> `joined_at`.
+The surviving clause still needs a recency-of-looking signal, and it now has its
+own column: **`chat_reads.viewing_at`** (migration 145), written only by the
+client heartbeat.
 
-> This one was a real bug, caught by the burst test rather than by review.
-> The first version treated a missing `chat_reads` row as "caught up", which
-> reads as harmless — give them one, then let the normal rule take over. **There
-> is no normal rule to take over.** With no read position, nothing ever moves
-> them into `behind`, so they are caught up on message 1 and on message 400
-> alike: a member who never opens chat would be notified for **every message in
-> the trip**. The burst test read 10 of 10 notified. Each fallback is a real
-> answer to "how far have you seen" rather than a stand-in, which is why the
-> chain converges on the intended behaviour instead of approximating it. The
-> gate's own null branch is now a fail-closed backstop, because the two defaults
-> are not symmetric: silence costs one missed notification, "caught up" costs a
-> push per message forever.
+`last_read_at` goes back to meaning exactly one thing — the read position behind
+the unread badge and the new-messages divider.
+
+**This is not tidiness. It makes two of this subsystem's three historical bugs
+unrepresentable rather than merely prevented:**
+
+| bug | why it can no longer happen |
+|---|---|
+| the heartbeat marked messages READ that the device never received | the heartbeat does not write that column |
+| the notify stamp cleared the badge for the message it was announcing | the push path writes nothing to `chat_reads` at all |
+
+The third — a glance-and-close buying minutes of silence — is now bounded by the
+40s window instead of 150s, and is the only one still governed by a value rather
+than by the schema.
+
+### Realtime Presence was evaluated and rejected
+
+The obvious way to know whether a panel is open is to ask Realtime who is
+subscribed. Three reasons it is not used, in increasing order of weight:
+
+1. **Not queryable server-side.** Presence reaches clients only as
+   `presence_state`/`presence_diff` on a *joined* channel; there is no REST read.
+   `messages.send` would open a websocket, join, await sync and leave — per
+   message, inside a mutation the caller awaits. (#1013 is corroboration: CI
+   skips the broadcast contract tests because Realtime never answers the join.)
+2. **Subscription is not viewing.** `useRealtimeChat` is mounted in `AppShell`
+   for the whole trip page, so raw subscription means *app*-in-focus — the thing
+   §4 of this design explicitly rejects. It would need explicit `track()`/
+   `untrack()`, which swaps a heartbeat for presence plumbing rather than
+   removing machinery.
+3. **It tracks socket liveness, not attention.** A pocketed phone stays
+   "present" until Phoenix's reaper notices — a false present is a *silently
+   dropped notification*, on a schedule we do not control. That is the failure
+   being eliminated, reintroduced with a less predictable duration than the
+   window it would replace.
 
 ### No message content, structurally
 

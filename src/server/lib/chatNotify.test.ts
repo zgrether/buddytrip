@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import {
   CHAT_ACTIVE_VIEWING_WINDOW_MS,
-  CHAT_REARM_AFTER_MS,
   buildChatPayload,
   chatGateVerdict,
   notifyChatMessage,
@@ -10,290 +9,133 @@ import {
 import { CHAT_VIEW_HEARTBEAT_MS } from "@/lib/chatViewHeartbeat";
 
 /**
- * The chat push gate.
+ * The chat push gate, AFTER the reversal.
  *
- * ── What is actually being asserted, and why not the obvious thing ──────────
- * The claim this feature makes is "a burst of ten messages does not produce ten
- * notifications". The tempting test is to run a burst and assert the count is
- * small — which passes if the gate is broken and something ELSE happens to be
- * suppressing (no devices, no VAPID, an empty audience, a thrown error swallowed
- * by design). Every one of those is reachable here: this module never throws,
- * and VAPID is absent locally, so "nothing was sent" is the DEFAULT state of the
- * world and proves nothing at all.
+ * ── What changed, and why the old assertions had to go rather than be edited ─
+ * This file used to prove "a burst of ten messages does not produce ten
+ * notifications". That is now the BUG. The rule is: notify on every message
+ * unless you sent it or your panel is open — so the headline assertion is
+ * inverted, and it is written out explicitly below rather than left implied,
+ * because a suite that merely stops asserting coalescing looks identical to a
+ * suite whose coalescing quietly broke.
  *
- * So every assertion below is on `eligible` — WHO PASSED THE GATE — and on the
- * per-clause counters (`suppressedActive` / `suppressedBehind`) that say WHY the
- * others didn't. "Sixteen in the channel, four watching, eleven behind, one
- * notified" is a claim several different bugs cannot produce; "zero sent" is a
- * claim almost any bug produces.
+ * ── The trap that survives the rewrite ─────────────────────────────────────
+ * Asserting on "how many were sent" is worthless here: this module never throws,
+ * VAPID is absent locally, and there are no devices — so "nothing was sent" is
+ * the DEFAULT state of the world and is produced by almost any bug. Every
+ * assertion is therefore on `eligible` (WHO PASSED THE GATE) and on
+ * `suppressedActive` (WHY the rest didn't).
  *
  * The timeline is built from EXPLICIT past timestamps rather than wall-clock
- * `now()`, so the active-viewing clause can never fire by accident and silently
- * turn a "behind" assertion into a "watching" one that happens to have the same
- * total.
+ * `now()`, so the viewing clause can never fire by accident.
  */
 
-// A fixed, long-past timeline. Fixtures space messages well outside the
-// viewing window unless a test is specifically about it, so nothing reads as
-// `active` by accident.
+// A fixed, long-past timeline. Fixtures sit well outside the viewing window
+// unless a test is specifically about it, so nothing reads as `active` by
+// accident.
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const MIN = 60_000;
 const at = (minutes: number) => new Date(T0 + minutes * MIN).toISOString();
+/** Seconds, for the cases that live inside a 40-second window. */
+const atSec = (seconds: number) => new Date(T0 + seconds * 1000).toISOString();
 
-/**
- * `notifiedAt` defaults to "just now" in these cases, which keeps every
- * pre-existing assertion meaning what it meant before the time-based re-arm
- * existed. That default is load-bearing: null is PERMISSIVE on the time rule,
- * so leaving it out would silently turn the `behind` cases into `notify` and
- * the suite would still be green while asserting the opposite of its own names.
- */
-function verdict(args: {
-  lastSeenAt: string | null;
-  prevMessageAt: string | null;
-  messageAt: string;
-  lastNotifiedAt?: string | null;
-}) {
-  return chatGateVerdict({
-    lastSeenAt: args.lastSeenAt,
-    prevMessageAt: args.prevMessageAt,
-    messageAt: args.messageAt,
-    lastNotifiedAt: args.lastNotifiedAt === undefined ? args.messageAt : args.lastNotifiedAt,
-  });
-}
-
-describe("chatGateVerdict — the gate, in isolation", () => {
-  it("notifies someone who was caught up and is not watching", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(0), // read the predecessor
-        prevMessageAt: at(0),
-        messageAt: at(60), // an hour later — well outside the viewing window
-      })
-    ).toBe("notify");
-  });
-
-  it("stays silent for someone behind who was notified recently", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(0),
-        prevMessageAt: at(30), // a message arrived after their last read
-        messageAt: at(60),
-        lastNotifiedAt: at(59), // told a minute ago
-      })
-    ).toBe("behind");
-  });
-
+describe("chatGateVerdict — one clause, and it is the whole rule", () => {
   /**
-   * FAIL CLOSED when the read position is unknown.
+   * THE REVERSAL, asserted at the unit level.
    *
-   * This clause returned `notify` in the first version of this module, on the
-   * reasoning that an absent read row means "nothing to be behind on, so give
-   * them one and let the normal rule take over from there". There is no normal
-   * rule to take over: with no position, nothing ever moves them into `behind`,
-   * so they are caught up on message 1 and on message 400 alike, and a member
-   * who never opens chat gets notified for every message in the trip.
-   *
-   * The real fix is `resolveLastSeen`, which means the caller should never hand
-   * this a null at all. This clause is the backstop, and the two defaults are
-   * not symmetric: silence costs one missed notification, "caught up" costs a
-   * push per message forever to someone whose state could not be read.
+   * Nothing about having been notified before, having fallen behind, or how long
+   * ago the last push went out may enter this decision. Those inputs no longer
+   * exist as parameters — which is the strongest form of the guarantee, since a
+   * regression would have to re-add them rather than merely mis-compare them.
    */
-  it("falls silent — not open — when the read position is unknown", () => {
-    expect(
-      verdict({
-        lastSeenAt: null,
-        prevMessageAt: at(30),
-        messageAt: at(60),
-        lastNotifiedAt: at(59),
-      })
-    ).toBe("behind");
+  it("notifies someone who is not viewing, regardless of anything else", () => {
+    expect(chatGateVerdict({ viewingAt: null, messageAt: at(60) })).toBe("notify");
   });
 
-  it("notifies on the channel's first message, with no predecessor to be behind on", () => {
-    // Clause 2 precedes the unknown-position backstop: nobody can be behind on
-    // a channel that has never had a message, whatever their read state.
+  it("suppresses someone whose panel is open", () => {
     expect(
-      verdict({ lastSeenAt: null, prevMessageAt: null, messageAt: at(60) })
-    ).toBe("notify");
-  });
-
-  it("suppresses someone whose read mark moved inside the viewing window", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(60 - 1), // one minute ago
-        prevMessageAt: at(0),
-        messageAt: at(60),
-      })
+      chatGateVerdict({ viewingAt: atSec(600), messageAt: atSec(601) })
     ).toBe("active");
   });
 
   /**
-   * The race the window exists for: the recipient's client received the realtime
-   * INSERT and marked read before this server-side read ran, so their read mark
-   * is NEWER than the message. That is the strongest possible evidence they are
-   * looking at it — it must not come out as a negative age and fall through to
-   * `notify`.
+   * Null is PERMISSIVE, and it is the case that matters most in production:
+   * nobody has a `viewing_at` until they open a panel, so on the day this ships
+   * every recipient's column is null. If null failed closed, the change would
+   * ship as total silence — the exact failure it exists to fix.
    */
-  it("suppresses a read mark stamped AFTER the message (client won the race)", () => {
-    expect(
-      verdict({ lastSeenAt: at(60.5), prevMessageAt: at(0), messageAt: at(60) })
-    ).toBe("active");
+  it("treats a never-viewed channel as notifiable", () => {
+    expect(chatGateVerdict({ viewingAt: null, messageAt: at(0) })).toBe("notify");
+  });
+
+  describe("the window boundary", () => {
+    const W = CHAT_ACTIVE_VIEWING_WINDOW_MS;
+
+    it("suppresses just inside it", () => {
+      const messageAt = new Date(T0 + W).toISOString();
+      const viewingAt = new Date(T0 + 1).toISOString(); // W-1 ms of age
+      expect(chatGateVerdict({ viewingAt, messageAt })).toBe("active");
+    });
+
+    it("notifies exactly ON it — the window is exclusive", () => {
+      const messageAt = new Date(T0 + W).toISOString();
+      const viewingAt = new Date(T0).toISOString(); // exactly W of age
+      expect(chatGateVerdict({ viewingAt, messageAt })).toBe("notify");
+    });
+
+    /**
+     * `viewing_at` can land AFTER the message: the recipient's heartbeat fires
+     * between the INSERT and this read. That is the strongest evidence they are
+     * watching, so it must not read as a negative age and fall through to
+     * notify. Guarded by `Math.abs`, and this is the test that would catch its
+     * removal — a plain subtraction passes every other case in this file.
+     */
+    it("suppresses when the beat lands after the message", () => {
+      const messageAt = atSec(600);
+      const viewingAt = atSec(602);
+      expect(chatGateVerdict({ viewingAt, messageAt })).toBe("active");
+    });
   });
 
   /**
-   * Clause ORDER, asserted directly. The mistake that matters is `active`
-   * losing to `notify` for a caught-up viewer — that is the bug that buzzes
-   * someone staring at the screen.
+   * The pair invariant, pinned so the two constants cannot drift apart. The
+   * window has to survive a dropped beat, or a viewer becomes notifiable while
+   * still looking at the panel.
    */
-  it("checks 'watching' BEFORE 'caught up', so a viewer is never notified", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(59), // inside the window
-        prevMessageAt: at(59), // and caught up on it
-        messageAt: at(60),
-      })
-    ).toBe("active");
-  });
-
-  /**
-   * ...and 'watching' also outranks the TIME-BASED RE-ARM. Someone with the
-   * panel open has by definition not been waiting 30 minutes to hear anything,
-   * and the re-arm must not reach past the one clause that protects a person
-   * looking at the screen.
-   */
-  it("checks 'watching' BEFORE the time re-arm too", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(59), // watching
-        prevMessageAt: at(30), // but behind
-        lastNotifiedAt: at(0), // and long overdue on the time rule
-        messageAt: at(60),
-      })
-    ).toBe("active");
-  });
-
-  it("stops suppressing exactly at the window edge, not one tick early", () => {
-    const edgeMs = CHAT_ACTIVE_VIEWING_WINDOW_MS;
-    const msgMs = T0 + 60 * MIN;
-    // Exactly at the boundary: `age < WINDOW` is false, so they are notifiable.
-    expect(
-      verdict({
-        lastSeenAt: new Date(msgMs - edgeMs).toISOString(),
-        prevMessageAt: at(0),
-        messageAt: at(60),
-      })
-    ).toBe("notify");
-    // A hair inside it: still watching.
-    expect(
-      verdict({
-        lastSeenAt: new Date(msgMs - edgeMs + 1).toISOString(),
-        prevMessageAt: at(0),
-        messageAt: at(60),
-      })
-    ).toBe("active");
-  });
-
-  /**
-   * The heartbeat and the window are a pair (see chatViewHeartbeat.ts): an open
-   * panel re-stamps on the heartbeat, and the gate forgives a mark younger than
-   * the window. If the heartbeat ever grew past the window, an open-but-silent
-   * panel would fall outside it between beats and buzz at a message on screen —
-   * the exact hole the heartbeat was added to close.
-   *
-   * The window was TIGHTENED to 2.5 minutes after production showed the cost of
-   * a loose one: a message 17 seconds after someone closed the chat was
-   * suppressed as "watching", so reading bought five minutes of silence
-   * afterwards. It can only shrink as far as the heartbeat allows, which is why
-   * this pins the relationship rather than either number.
-   */
-  it("keeps the heartbeat comfortably inside the viewing window", () => {
-    expect(CHAT_VIEW_HEARTBEAT_MS).toBeLessThan(CHAT_ACTIVE_VIEWING_WINDOW_MS);
-    // Room for a dropped beat plus the gap between the last beat and the message.
-    expect(CHAT_VIEW_HEARTBEAT_MS * 2).toBeLessThan(CHAT_ACTIVE_VIEWING_WINDOW_MS);
+  it("keeps the window comfortably wider than the heartbeat", () => {
+    expect(CHAT_ACTIVE_VIEWING_WINDOW_MS).toBeGreaterThan(CHAT_VIEW_HEARTBEAT_MS * 2);
   });
 });
 
-/**
- * THE SECOND RE-ARM.
- *
- * Reading alone was too strict, and this is the measured version of that claim:
- * of 14 chat sends in one production morning, 3 delivered and 11 were suppressed
- * as `behind`. Being behind now expires.
- */
-describe("chatGateVerdict — behind expires", () => {
-  const REARM_MIN = CHAT_REARM_AFTER_MS / MIN;
-
-  it("notifies someone behind who has heard nothing for the re-arm window", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(0),
-        prevMessageAt: at(30), // still behind — they never caught up
-        lastNotifiedAt: at(60 - REARM_MIN), // last told exactly a window ago
-        messageAt: at(60),
-      })
-    ).toBe("notify");
-  });
-
-  it("keeps them silent one tick before the window is up", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(0),
-        prevMessageAt: at(30),
-        lastNotifiedAt: new Date(T0 + 60 * MIN - CHAT_REARM_AFTER_MS + 1000).toISOString(),
-        messageAt: at(60),
-      })
-    ).toBe("behind");
+describe("chatGateVerdict — ten messages are ten notifications", () => {
+  /**
+   * THE ASSERTION THIS REWRITE EXISTS FOR, stated as the opposite of what the
+   * previous suite proved.
+   *
+   * The old design notified on the first message of a burst and went silent for
+   * the rest — measured in production as 26 crew messages producing TWO
+   * notification events in four hours. Anyone re-deriving "coalesce hard" from
+   * first principles has to delete this test to do it, which is the point.
+   */
+  it("notifies on every message of a burst to someone who is not looking", () => {
+    const verdicts = Array.from({ length: 10 }, (_, i) =>
+      chatGateVerdict({ viewingAt: null, messageAt: at(60 + i) })
+    );
+    expect(verdicts).toEqual(Array(10).fill("notify"));
   });
 
   /**
-   * Never-notified is PERMISSIVE, and that is what lets migration 144 ship with
-   * no backfill. Every existing `chat_reads` row has a null here; if null meant
-   * "notified just now" instead, the deploy would silence everyone who was
-   * already behind for a full window — reintroducing the exact bug this rule
-   * fixes, via its own migration.
+   * And the same burst, to someone who IS looking, is silent throughout — the
+   * clause still does its job at volume. Beats land every heartbeat interval, so
+   * the fixture advances `viewing_at` the way a real open panel would.
    */
-  it("treats never-notified as eligible, so no backfill is needed", () => {
-    expect(
-      verdict({
-        lastSeenAt: at(0),
-        prevMessageAt: at(30),
-        lastNotifiedAt: null,
-        messageAt: at(60),
-      })
-    ).toBe("notify");
-  });
-
-  /**
-   * The rate limit is what bounds the cost of this rule, so it is asserted as a
-   * SEQUENCE rather than as a single verdict: a stream of messages to someone
-   * who never reads must produce one push per window, not one per message. A
-   * single-verdict test cannot distinguish those.
-   */
-  it("rate-limits a never-read stream to one push per window", () => {
-    let lastNotifiedAt: string | null = null;
-    let notified = 0;
-    // 3 hours of messages, one per minute, to someone who never opens chat.
-    for (let minute = 1; minute <= 180; minute++) {
-      const v = verdict({
-        lastSeenAt: at(0), // read once at the start, never again
-        prevMessageAt: at(minute - 1),
-        lastNotifiedAt,
-        messageAt: at(minute),
-      });
-      if (v === "notify") {
-        notified += 1;
-        lastNotifiedAt = at(minute);
-      }
-    }
-    // Enumerated rather than computed, because the formula is exactly the kind
-    // of thing that can be wrong in the same direction as the code: minute 1
-    // (never notified), then 31, 61, 91, 121, 151. Minute 181 is past the end.
-    expect(notified).toBe(6);
-    // The headline claim, stated separately: 180 messages, single-digit pushes.
-    expect(notified).toBeLessThan(10);
+  it("stays silent through the same burst for someone whose panel is open", () => {
+    const verdicts = Array.from({ length: 10 }, (_, i) =>
+      chatGateVerdict({ viewingAt: atSec(600 + i * 5), messageAt: atSec(601 + i * 5) })
+    );
+    expect(verdicts).toEqual(Array(10).fill("active"));
   });
 });
-
 
 describe("buildChatPayload — what reaches the lock screen", () => {
   const base = {
@@ -384,31 +226,25 @@ async function seedMessage(args: {
 }
 
 /**
- * Seeds BOTH clocks on the row.
+ * Put this user's panel in the "open just now" state for a given message time,
+ * or leave it absent to mean "not looking".
  *
- * `last_notified_at` defaults to the same instant as the read mark, which is
- * what keeps every "behind" fixture meaning what its name says. Null is
- * PERMISSIVE on the time-based re-arm, so a fixture that left it unset would
- * quietly become a notify and the assertion would be testing the opposite of
- * its own description.
+ * Writes `viewing_at` and NOTHING ELSE. The predecessor of this helper seeded
+ * `last_read_at` and `last_notified_at` because the gate read both; the gate now
+ * reads neither, and a fixture that still wrote them would be describing a
+ * mechanism the code no longer has.
  */
-async function setRead(
-  userId: string,
-  visibility: "crew" | "planning",
-  minutes: number,
-  notifiedMinutes: number = minutes
-) {
+async function setViewing(userId: string, visibility: "crew" | "planning", iso: string) {
   const { error } = await ctx.admin.from("chat_reads").upsert(
     {
       trip_id: tripId,
       user_id: userId,
       visibility,
-      last_read_at: at(minutes),
-      last_notified_at: at(notifiedMinutes),
+      viewing_at: iso,
     },
     { onConflict: "trip_id,user_id,visibility" }
   );
-  if (error) throw new Error(`set read: ${error.message}`);
+  if (error) throw new Error(`set viewing: ${error.message}`);
 }
 
 async function clearMessages() {
@@ -486,13 +322,10 @@ describe("notifyChatMessage — audience", () => {
 
   it("never notifies the sender, even on a message everyone else is notified for", async () => {
     await clearMessages();
-    // Everyone else is CAUGHT UP, so the gate lets them through and the sender's
-    // absence from `eligible` means something. With them all behind, `eligible`
-    // would be empty and this test would pass without exercising actor exclusion
-    // at all — a vacuous pass is the failure mode to design against here.
-    await seedMessage({ visibility: "crew", senderId: memberId, minutes: 0 });
-    await setRead(organizerId, "crew", 0);
-    await setRead(memberId, "crew", 0);
+    // Nobody is viewing, so the gate lets everyone else through and the sender's
+    // absence from `eligible` MEANS something. If the others were suppressed,
+    // `eligible` would be empty and this would pass without exercising actor
+    // exclusion at all — a vacuous pass is the failure mode to design against.
     const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
 
     const r = await notifyChatMessage(
@@ -512,27 +345,17 @@ describe("notifyChatMessage — audience", () => {
   });
 
   /**
-   * The fallback chain, exercised end to end rather than only as a unit.
+   * A member with NO `chat_reads` row is now simply notifiable, and this is the
+   * case that most needs pinning: on the day this ships, NOBODY has a
+   * `viewing_at`, so if an absent row failed closed the change would deploy as
+   * total silence — the exact failure it exists to fix.
    *
-   * A member with NO `chat_reads` row is the case that broke the first version
-   * of this module: absent-as-caught-up made them permanently notifiable. Here
-   * they have never opened the channel, and a predecessor exists that postdates
-   * their join — so `resolveLastSeen` lands on `joined_at`, they read as behind,
-   * and they are silent. Asserted through the real DB because the whole point is
-   * which COLUMN gets read when the obvious one is missing.
+   * The predecessor here is deliberate. Under the old gate this same fixture
+   * turned on `joined_at` and a caught-up comparison; now the presence of an
+   * earlier message must make no difference at all.
    */
-  it("falls back to the member's join time when they have never opened the channel", async () => {
+  it("notifies a member who has never opened the channel", async () => {
     await clearMessages();
-    // No chat_reads rows at all, and a PREDECESSOR that predates their join
-    // (the timeline is Jan 2026; these members joined just now, in beforeAll).
-    // They could never have read those messages — they arrived after them — so
-    // they are up to date, and this one notifies.
-    //
-    // This fixture is chosen because it is the case where the fallback and the
-    // unknown-position backstop DISAGREE: `joined_at` says notify, `null` says
-    // behind. A fixture where both said "behind" would pass with the fallback
-    // deleted, which would make this test decorative — it would be asserting
-    // clause 3 while claiming to assert `resolveLastSeen`.
     await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 0 });
     const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
 
@@ -549,49 +372,29 @@ describe("notifyChatMessage — audience", () => {
 
     expect(r.audience).toBe(2);
     expect(r.eligible.sort()).toEqual([organizerId, memberId].sort());
-    expect(r.suppressedBehind).toBe(0);
+    expect(r.suppressedActive).toBe(0);
   });
 });
 
-describe("notifyChatMessage — coalescing", () => {
+describe("notifyChatMessage — no coalescing, against the real DB", () => {
   /**
-   * THE CLAIM: a burst produces one notification per recipient, not one per
-   * message.
+   * THE REVERSAL, end to end.
    *
-   * Counted by how many times each recipient PASSES THE GATE across the ten
-   * sends, and cross-checked against the per-clause counters so a zero caused by
-   * an empty audience or a swallowed error cannot masquerade as coalescing.
+   * The describe this replaces was called "coalescing" and asserted that a burst
+   * of four messages produced ONE notification per recipient. That behaviour is
+   * what shipped, and what production measured as 26 crew messages producing two
+   * notification events in four hours.
+   *
+   * Run through the real audience resolution and the real DB, because the unit
+   * test above cannot catch a gate that reads the wrong COLUMN — and reading
+   * `last_read_at` instead of `viewing_at` would reintroduce exactly the old
+   * behaviour while every unit assertion stayed green.
    */
-  it("turns a 10-message burst into ONE notification per recipient", async () => {
+  it("notifies every recipient on every message of a burst", async () => {
     await clearMessages();
-    // Both recipients start CAUGHT UP, pinned explicitly rather than left to a
-    // fallback: 30 minutes before the first message, so they are outside the
-    // viewing window and the only thing that can suppress them is the gate.
-    // Notified at minute 0 — i.e. the burst's own first message is what tells
-    // them. Without this they start never-notified, the time rule fires on every
-    // message, and the burst produces 10 pushes: the exact regression this test
-    // exists to catch, which it DID catch when the re-arm first landed.
-    await setRead(organizerId, "crew", -30, 0);
-    await setRead(memberId, "crew", -30, 0);
-    const notifiedCount = new Map<string, number>([
-      [organizerId, 0],
-      [memberId, 0],
-    ]);
-    let behindTotal = 0;
-
-    for (let i = 0; i < 10; i++) {
-      // A MINUTE apart: ten messages inside nine minutes, which is what a burst
-      // actually looks like and comfortably inside one re-arm window. (This was
-      // ten minutes apart, spanning 90 — three re-arm windows, so the correct
-      // answer became 4 and the test was measuring a slow conversation while
-      // claiming to measure a burst.) Still outside the viewing window, since
-      // nobody's read mark moves: the suppression under test is the read-state
-      // gate, not looking active.
-      const m = await seedMessage({
-        visibility: "crew",
-        senderId: ownerId,
-        minutes: i,
-      });
+    const verdicts: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 + i });
       const r = await notifyChatMessage(
         {
           tripId,
@@ -602,74 +405,56 @@ describe("notifyChatMessage — coalescing", () => {
         },
         { admin: ctx.admin }
       );
-      for (const id of r.eligible) notifiedCount.set(id, (notifiedCount.get(id) ?? 0) + 1);
-      behindTotal += r.suppressedBehind;
-      // Nothing here should ever read as "watching" — if it does, this test is
-      // measuring the wrong suppression and its headline number is a coincidence.
-      expect(r.suppressedActive).toBe(0);
-      expect(r.audience).toBe(2);
+      verdicts.push(r.eligible.length);
     }
-
-    expect(notifiedCount.get(organizerId)).toBe(1);
-    expect(notifiedCount.get(memberId)).toBe(1);
-    // 2 recipients x 9 subsequent messages, all suppressed by the gate itself.
-    expect(behindTotal).toBe(18);
+    // Four messages, two recipients, every time. The old design produced
+    // [2, 0, 0, 0].
+    expect(verdicts).toEqual([2, 2, 2, 2]);
   });
 
-  it("re-arms after the recipient reads, and only for the one who read", async () => {
+  /**
+   * READING THE CHAT MUST NOT SILENCE YOU any more.
+   *
+   * `last_read_at` is advanced to the instant before the message — which under
+   * the old gate was the difference between "caught up" and "behind" and drove
+   * the whole decision. It must now be inert. This is the assertion that fails
+   * if someone repoints the gate back at the read column.
+   */
+  it("ignores last_read_at entirely", async () => {
     await clearMessages();
-    await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 0 });
-    // Both fell behind on that one, and both were notified RECENTLY (minute 55,
-    // just before the minute-60 message below). That isolates the READ re-arm
-    // from the TIME one: with an old notified-clock the member would be re-armed
-    // by elapsed time and this test could not tell the two rules apart.
-    await setRead(organizerId, "crew", -10, 55);
-    await setRead(memberId, "crew", -10, 55);
+    await ctx.admin.from("chat_reads").upsert(
+      [organizerId, memberId].map((user_id) => ({
+        trip_id: tripId,
+        user_id,
+        visibility: "crew",
+        last_read_at: at(29),
+        viewing_at: null,
+      })),
+      { onConflict: "trip_id,user_id,visibility" }
+    );
+    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
 
-    const behind = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 10 });
-    const r1 = await notifyChatMessage(
+    const r = await notifyChatMessage(
       {
         tripId,
         visibility: "crew",
-        messageId: behind.id,
-        messageCreatedAt: behind.createdAt,
+        messageId: m.id,
+        messageCreatedAt: m.createdAt,
         senderId: ownerId,
       },
       { admin: ctx.admin }
     );
-    expect(r1.eligible).toEqual([]);
-    expect(r1.suppressedBehind).toBe(2);
-
-    // The organizer opens chat and catches up — long enough ago that they no
-    // longer read as actively watching, and still recently notified so the READ
-    // rule is the only thing that can re-arm them.
-    await setRead(organizerId, "crew", 20, 55);
-
-    const next = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 60 });
-    const r2 = await notifyChatMessage(
-      {
-        tripId,
-        visibility: "crew",
-        messageId: next.id,
-        messageCreatedAt: next.createdAt,
-        senderId: ownerId,
-      },
-      { admin: ctx.admin }
-    );
-
-    expect(r2.eligible).toEqual([organizerId]);
-    expect(r2.suppressedBehind).toBe(1); // the member, still behind
+    expect(r.eligible.sort()).toEqual([organizerId, memberId].sort());
+    expect(r.suppressedActive).toBe(0);
   });
 
-  it("suppresses whoever is watching, without suppressing whoever is not", async () => {
+  /** The one clause that remains, through the real column. */
+  it("suppresses only the recipient whose panel is open", async () => {
     await clearMessages();
-    await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 0 });
-    // Organizer's panel is open: read mark one minute before the message.
-    await setRead(organizerId, "crew", 59);
-    // Member is caught up but away — last read at the predecessor, an hour ago.
-    await setRead(memberId, "crew", 0);
+    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
+    // One second before the message — unambiguously inside a 40s window.
+    await setViewing(organizerId, "crew", new Date(Date.parse(m.createdAt) - 1000).toISOString());
 
-    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 60 });
     const r = await notifyChatMessage(
       {
         tripId,
@@ -681,28 +466,25 @@ describe("notifyChatMessage — coalescing", () => {
       { admin: ctx.admin }
     );
 
+    expect(r.audience).toBe(2);
     expect(r.eligible).toEqual([memberId]);
     expect(r.suppressedActive).toBe(1);
-    expect(r.suppressedBehind).toBe(0);
   });
 
   /**
-   * A system line ("X joined the trip") must not make anyone "behind".
-   *
-   * Unread counts already exclude system rows (`messages.countUnreadByChannel`),
-   * so if one could serve as a predecessor here, a member joining would silence
-   * the next real message for the whole channel — a divergence between two
-   * places that answer the same question about the same table.
+   * A viewing mark that has gone STALE stops suppressing. This is the pocket
+   * case — panel closed, beats stopped — and the window is what bounds how long
+   * they stay silent afterwards.
    */
-  it("does not let a system message count as the predecessor", async () => {
+  it("notifies once the viewing mark ages past the window", async () => {
     await clearMessages();
-    await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 0 });
-    await setRead(organizerId, "crew", 0); // caught up on the real message
-    await setRead(memberId, "crew", 0);
-    // A join notice lands after their last read.
-    await seedMessage({ visibility: "crew", senderId: null, minutes: 10, system: true });
+    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
+    await setViewing(
+      organizerId,
+      "crew",
+      new Date(Date.parse(m.createdAt) - CHAT_ACTIVE_VIEWING_WINDOW_MS - 1000).toISOString()
+    );
 
-    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 60 });
     const r = await notifyChatMessage(
       {
         tripId,
@@ -715,7 +497,31 @@ describe("notifyChatMessage — coalescing", () => {
     );
 
     expect(r.eligible.sort()).toEqual([organizerId, memberId].sort());
-    expect(r.suppressedBehind).toBe(0);
+    expect(r.suppressedActive).toBe(0);
+  });
+
+  /**
+   * Channels are separate panels. Viewing Crew must not silence Organizers —
+   * they are different rooms and the column is keyed per visibility.
+   */
+  it("does not let viewing one channel suppress the other", async () => {
+    await clearMessages();
+    const m = await seedMessage({ visibility: "planning", senderId: ownerId, minutes: 30 });
+    await setViewing(organizerId, "crew", m.createdAt); // watching CREW, not planning
+
+    const r = await notifyChatMessage(
+      {
+        tripId,
+        visibility: "planning",
+        messageId: m.id,
+        messageCreatedAt: m.createdAt,
+        senderId: ownerId,
+      },
+      { admin: ctx.admin }
+    );
+
+    expect(r.eligible).toEqual([organizerId]);
+    expect(r.suppressedActive).toBe(0);
   });
 });
 
@@ -768,14 +574,12 @@ describe("notifyChatMessage — the record", () => {
    */
   it("records a gate-suppressed send with its own outcome", async () => {
     await clearMessages();
-    await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 0 });
-    // Behind AND recently notified, so neither re-arm fires and the gate is the
-    // only thing that can produce the empty audience this asserts.
-    await setRead(organizerId, "crew", -10, 29);
-    await setRead(memberId, "crew", -10, 29);
-
     const before = new Date().toISOString();
     const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
+    // BOTH recipients viewing, which is now the only way to empty the audience —
+    // so the gate is the only thing that can produce the result this asserts.
+    await setViewing(organizerId, "crew", m.createdAt);
+    await setViewing(memberId, "crew", m.createdAt);
     const r = await notifyChatMessage(
       {
         tripId,
@@ -800,10 +604,11 @@ describe("notifyChatMessage — the record", () => {
     expect(data?.[0]).toMatchObject({
       trigger: "chat_message",
       type_key: "chat",
-      // Names the CLAUSE, not just "suppressed" — `gate_behind` and
-      // `gate_active` have completely different fixes, and telling them apart
-      // from the log is what a production investigation needed and could not do.
-      outcome: "gate_behind",
+      // One suppression reason means one outcome. `gate_mixed` and
+      // `gate_behind` are gone with the clauses that produced them — the
+      // migration-106 lesson survives (a pre-send exit must be recorded), but
+      // there is nothing left to disambiguate.
+      outcome: "gate_active",
       sent: 0,
       // The AUDIENCE, not zero. It was zero, which was wrong by the column's own
       // definition and made "nobody is in this channel" indistinguishable from
@@ -844,21 +649,37 @@ describe("notifyChatMessage — the record", () => {
   });
 });
 
-describe("notifyChatMessage — the re-arm clock", () => {
-  async function readRow(userId: string) {
+describe("notifyChatMessage — writes nothing to chat_reads", () => {
+  /**
+   * The describe this replaces asserted that the module stamped a re-arm clock
+   * and, when it had to CREATE a row, invented a defensible `last_read_at` to go
+   * with it. Both writes are gone.
+   *
+   * That second one is why this is worth a test rather than a comment: the code
+   * announcing a message also decided what read position to record for the
+   * person it was announcing to, and getting it wrong cleared their unread badge
+   * for a message they had not seen. The class of bug ends by the write ending.
+   */
+  async function rowsFor(userId: string) {
     const { data } = await ctx.admin
       .from("chat_reads")
-      .select("last_read_at, last_notified_at")
+      .select("last_read_at, viewing_at, last_notified_at")
       .eq("trip_id", tripId)
       .eq("user_id", userId)
       .eq("visibility", "crew")
       .maybeSingle();
-    return data as { last_read_at: string; last_notified_at: string | null } | null;
+    return data as {
+      last_read_at: string;
+      viewing_at: string | null;
+      last_notified_at: string | null;
+    } | null;
   }
 
-  async function notifyAt(minutes: number) {
-    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes });
-    return notifyChatMessage(
+  it("creates no row for a recipient it notifies", async () => {
+    await clearMessages();
+    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
+
+    const r = await notifyChatMessage(
       {
         tripId,
         visibility: "crew",
@@ -868,119 +689,46 @@ describe("notifyChatMessage — the re-arm clock", () => {
       },
       { admin: ctx.admin }
     );
-  }
+    expect(r.eligible).toContain(organizerId);
 
-  /**
-   * The stamp is the input to the whole time-based rule, and it is written on a
-   * best-effort path that swallows its own errors — so if it silently stopped
-   * happening, every recipient would look never-notified and the rule would
-   * degrade into "notify on every message". That is the firehose direction, so
-   * it is asserted against the ROW rather than against the return value.
-   */
-  it("stamps last_notified_at for everyone it notified", async () => {
-    await clearMessages();
-    await setRead(organizerId, "crew", 0, 0);
-    await setRead(memberId, "crew", 0, 0);
-
-    const r = await notifyAt(60);
-    expect(r.eligible.sort()).toEqual([organizerId, memberId].sort());
-
-    for (const id of [organizerId, memberId]) {
-      const row = await readRow(id);
-      expect(row?.last_notified_at, `no stamp for ${id}`).not.toBeNull();
-      // Stamped with the MESSAGE's timestamp, not wall-clock now: the gate
-      // measures elapsed time between message timestamps, so the stamp has to
-      // come off the same clock or the subtraction compares two unrelated ones.
-      expect(new Date(row!.last_notified_at!).toISOString()).toBe(at(60));
-    }
+    // A push must not conjure read state for someone who has read nothing.
+    expect(await rowsFor(organizerId)).toBeNull();
   });
 
-  /**
-   * BEING NOTIFIED IS NOT HAVING READ.
-   *
-   * The stamp upserts the same row `markRead` owns, so the danger is that it
-   * advances `last_read_at` on the way past — which would clear the unread badge
-   * and the new-messages divider for the very message it is telling someone
-   * about. An earlier draft of this code did exactly that.
-   */
-  it("does not advance last_read_at while stamping", async () => {
+  it("leaves an existing row completely untouched", async () => {
     await clearMessages();
-    await setRead(organizerId, "crew", 0, 0);
-    await setRead(memberId, "crew", 0, 0);
-    const before = await readRow(organizerId);
+    const READ_AT = at(5);
+    await ctx.admin.from("chat_reads").upsert(
+      {
+        trip_id: tripId,
+        user_id: organizerId,
+        visibility: "crew",
+        last_read_at: READ_AT,
+        viewing_at: null,
+      },
+      { onConflict: "trip_id,user_id,visibility" }
+    );
 
-    await notifyAt(60);
+    const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
+    const r = await notifyChatMessage(
+      {
+        tripId,
+        visibility: "crew",
+        messageId: m.id,
+        messageCreatedAt: m.createdAt,
+        senderId: ownerId,
+      },
+      { admin: ctx.admin }
+    );
+    expect(r.eligible).toContain(organizerId);
 
-    const after = await readRow(organizerId);
-    expect(
-      after?.last_read_at,
-      "the notifier marked a message read for the person it was notifying about it"
-    ).toBe(before?.last_read_at);
-  });
-
-  /**
-   * A recipient who has NEVER opened the channel has no `chat_reads` row, so the
-   * stamp has to CREATE one — and the row it creates must not claim they have
-   * read anything. Without the row the time rule could never bind them (null is
-   * permissive), and they would be notified on every single message: the exact
-   * per-message firehose the gate exists to prevent, reachable through the one
-   * recipient who never engages.
-   */
-  it("creates a row for a never-read recipient without claiming they read", async () => {
-    await clearMessages();
-    // No chat_reads rows at all. `resolveLastSeen` falls back to joined_at,
-    // which predates this 2026-01 timeline, so they are caught up and notified.
-    await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 0 });
-    const r = await notifyAt(30);
-    expect(r.eligible.length).toBeGreaterThan(0);
-
-    const row = await readRow(r.eligible[0]);
-    expect(row, "no row created — the time rule could never bind them").not.toBeNull();
-    expect(row?.last_notified_at).not.toBeNull();
-    // The read mark is their RESOLVED position — join time, here — and NOT the
-    // message they were just told about. Asserted as "not the message" rather
-    // than as an ordering: these test users joined today while the fixture
-    // timeline is January, so join time is LATER than the message and an
-    // ordering assertion would encode the fixture instead of the rule.
-    const readMark = new Date(row!.last_read_at).toISOString();
-    expect(readMark).not.toBe(at(30));
-    expect(readMark).not.toBe(at(0));
-  });
-
-  /**
-   * END TO END: behind, silent, then re-armed by elapsed time alone.
-   *
-   * The unit tests pin the predicate; this pins that the stamp and the read are
-   * wired to each other. A gate that never stamped would pass every unit test in
-   * this file and notify on every message in production.
-   */
-  it("goes silent while behind, then re-arms on elapsed time", async () => {
-    await clearMessages();
-    await setRead(organizerId, "crew", 0, 0);
-    await setRead(memberId, "crew", 0, 0);
-
-    // First message an hour on: both caught up -> notified, and stamped NOW.
-    const first = await notifyAt(60);
-    expect(first.eligible.length).toBe(2);
-
-    // Second message right after: both behind, and freshly stamped, so silent.
-    const second = await notifyAt(70);
-    expect(second.eligible).toEqual([]);
-    expect(second.suppressedBehind).toBe(2);
-
-    // Wind the stamp back past the re-arm window, leaving them still behind.
-    // On the fixture's own clock, since that is the clock the gate uses.
-    const stale = new Date(T0 + 80 * MIN - CHAT_REARM_AFTER_MS - 60_000).toISOString();
-    await ctx.admin
-      .from("chat_reads")
-      .update({ last_notified_at: stale })
-      .eq("trip_id", tripId)
-      .eq("visibility", "crew");
-
-    const third = await notifyAt(80);
-    expect(
-      third.eligible.sort(),
-      "still behind and never re-read, but overdue — the time rule should re-arm them"
-    ).toEqual([organizerId, memberId].sort());
+    const after = await rowsFor(organizerId);
+    // The read position is the badge's input. If announcing a message can move
+    // it, the badge clears for something nobody saw.
+    expect(new Date(after!.last_read_at).toISOString()).toBe(READ_AT);
+    expect(after!.viewing_at).toBeNull();
+    // Dead as of migration 145's follow-up; asserted null so a resurrected
+    // stamp is caught before the column is dropped rather than after.
+    expect(after!.last_notified_at).toBeNull();
   });
 });
