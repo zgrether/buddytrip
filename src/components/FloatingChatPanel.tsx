@@ -47,6 +47,24 @@ interface ChatMessage {
 interface FloatingChatPanelProps {
   tripId: string;
   isOpen: boolean;
+  /**
+   * Is this the segment actually on screen?
+   *
+   * MOUNTED IS NOT VISIBLE. `ChatView` mounts the Crew and Organizers panels at
+   * the same time and hides one with the `hidden` attribute, so each keeps its
+   * own scroll position and composer. Both are therefore live components running
+   * live effects, and two of those effects assert something about a person's
+   * ATTENTION — "they have read this" and "they are looking at this" — which is
+   * false for the hidden one.
+   *
+   * Observed in production: both channels' `viewing_at` written 2ms apart, which
+   * no human can do. Opening Crew was marking Organizers as viewed, suppressing
+   * its notifications, and marking it read.
+   *
+   * Defaults true so a caller that mounts exactly one panel needs to know
+   * nothing about this.
+   */
+  active?: boolean;
   /** IDEA stage: everyone on the trip is an Owner/Organizer, so the Crew
    *  channel is redundant — collapse to a single Organizers channel. */
   ideaStage?: boolean;
@@ -77,11 +95,19 @@ interface FloatingChatPanelProps {
  *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, ideaStage, channel, memberNames }: FloatingChatPanelProps) {
+export function FloatingChatPanel({
+  tripId,
+  isOpen,
+  active = true,
+  ideaStage,
+  channel,
+  memberNames,
+}: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
     <FloatingChatPanelInner
       tripId={tripId}
+      active={active}
       ideaStage={ideaStage}
       channel={channel}
       memberNames={memberNames}
@@ -91,11 +117,13 @@ export function FloatingChatPanel({ tripId, isOpen, ideaStage, channel, memberNa
 
 function FloatingChatPanelInner({
   tripId,
+  active,
   ideaStage = false,
   channel,
   memberNames,
 }: {
   tripId: string;
+  active: boolean;
   ideaStage?: boolean;
   channel?: Visibility;
   memberNames: Record<string, string>;
@@ -430,6 +458,13 @@ function FloatingChatPanelInner({
      * visible — the MESSAGES still paint instantly from cache; only the stamp
      * waits.
      */
+    // A HIDDEN SEGMENT HAS NOT BEEN READ. Both panels are mounted at once
+    // (see `active`), and without this the Organizers panel marks itself read
+    // whenever its messages load — while the person is looking at Crew. Its
+    // unread badge would clear for messages nobody ever saw, which is the same
+    // false claim this effect's `confirmed` guard exists to prevent, arriving
+    // from a different direction.
+    if (!active) return;
     if (!confirmed) return;
     if (displayed.length === 0) return;
     const latest = displayed[displayed.length - 1];
@@ -438,7 +473,7 @@ function FloatingChatPanelInner({
     if (lastMarkedRef.current[activeChannel] === ts) return; // already marked
     lastMarkedRef.current[activeChannel] = ts;
     markReadMutate({ tripId, visibility: activeChannel });
-  }, [tripId, activeChannel, confirmed, displayed, markReadMutate]);
+  }, [tripId, active, activeChannel, confirmed, displayed, markReadMutate]);
 
   // ── Viewing heartbeat — the ONLY suppression chat push has left ──────────
   //
@@ -466,6 +501,9 @@ function FloatingChatPanelInner({
   // later — no teardown bookkeeping needed.
   useEffect(() => {
     if (!tripId) return;
+    // Not the segment on screen -> not being viewed. `document.visibilityState`
+    // answers "is this TAB in front", which both mounted panels answer yes to.
+    if (!active) return;
     const beat = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       /**
@@ -504,7 +542,7 @@ function FloatingChatPanelInner({
     beat();
     const id = setInterval(beat, CHAT_VIEW_HEARTBEAT_MS);
     return () => clearInterval(id);
-  }, [tripId, activeChannel, viewIsCurrent, markViewingMutate]);
+  }, [tripId, active, activeChannel, viewIsCurrent, markViewingMutate]);
 
   /**
    * Callbacks live in `postMessage` below, not here.
