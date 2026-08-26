@@ -1475,9 +1475,15 @@ function ChatBody({
         )}
       </div>
 
-      {/* Input */}
+      {/* Input.
+          Padding bumped from py-2 (reported: the send button sat too close to
+          the bottom tab bar's own chat toggle — on mobile, `ChatSheet` pins its
+          `bottom` to the top of that bar (`--bt-bottomnav-height`), so this
+          row's own padding is the ONLY separation between the two chat
+          controls. py-3 gives that gap room without touching the sheet's own
+          positioning. */}
       <div
-        className="flex items-end gap-2 px-3 py-2"
+        className="flex items-end gap-2 px-3 py-3"
         style={{ borderTop: "1px solid var(--color-bt-border)" }}
       >
         <textarea
@@ -1510,11 +1516,21 @@ function ChatBody({
         <button
           onClick={onSend}
           disabled={sending || !text.trim()}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
+          // 28px (h-7) was BOTH a hit-target complaint and the cause of the
+          // "offset down" one: the row is `items-end`, so a button shorter
+          // than the textarea's own 2.25rem min-height bottom-aligns with a
+          // gap left ABOVE it, reading as sitting low relative to the field's
+          // text. Matching the textarea's `minHeight: "2.25rem"` EXACTLY (h-9
+          // = 2.25rem) makes the two identical in height at the single-line
+          // rest state, so there is no gap to misread as an offset — and it
+          // is bigger to tap. `items-end` stays: once the textarea grows past
+          // one line, the button pins to the bottom-most line rather than
+          // floating at the vertical center of a multi-line box.
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
           style={{ background: accentVar, color: "var(--color-bt-base)" }}
           aria-label="Send message"
         >
-          <Send size={13} />
+          <Send size={15} />
         </button>
       </div>
     </>
