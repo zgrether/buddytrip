@@ -16,6 +16,7 @@ import {
   resolveActiveChatSegment,
   type ChatSegment,
 } from "@/lib/chatSegments";
+import { readChatTextSize, writeChatTextSize, type ChatTextSize } from "@/lib/chatTextSize";
 
 /**
  * ChatView — the Crew/Organizers/News segmented content (Phase 6: the
@@ -105,6 +106,20 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   // channel anyway, so without this the segment bar would highlight a tab
   // showing someone else's content.
   const activeSegment = resolveActiveChatSegment(selected, canSeePlanning);
+
+  // The reading text-size preference (S/M/L, `chatTextSize.ts`) — LIFTED here
+  // rather than owned by each `FloatingChatPanel`, because this component
+  // mounts BOTH Crew and Organizers panels simultaneously (one hidden via
+  // CSS below, not unmounted — same reason `selected`/`activeSegment` exist
+  // instead of two independent panel-local states). If each panel read its
+  // own localStorage copy, changing the size while looking at one channel
+  // wouldn't reach the other until it remounted. One value, passed to both,
+  // means a change is instant and never has to wait for a remount.
+  const [textSize, setTextSizeState] = useState<ChatTextSize>(() => readChatTextSize());
+  const setTextSize = (size: ChatTextSize) => {
+    setTextSizeState(size);
+    writeChatTextSize(size);
+  };
 
   // Per-segment unread — Crew/Planning from one server-computed breakdown
   // (messages.unreadCountByChannel; `planning` comes back 0 for a caller who
@@ -250,6 +265,8 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           active={activeSegment === "crew"}
           channel="crew"
           memberNames={memberNames}
+          textSize={textSize}
+          onChangeTextSize={setTextSize}
         />
       </div>
       {canSeePlanning && (
@@ -260,6 +277,8 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
             active={activeSegment === "planning"}
             channel="planning"
             memberNames={memberNames}
+            textSize={textSize}
+            onChangeTextSize={setTextSize}
           />
         </div>
       )}
