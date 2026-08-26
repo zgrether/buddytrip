@@ -108,8 +108,19 @@ export function gameLockState({
  * Same predicate, opposite polarity, no shared home — so a fifth format would
  * have written a third copy, and a change to what "started" means would have had
  * to find all of them. `scoringEnabled` is part of it because arming a game is
- * what ends setup, before any score exists (CLAUDE.md #25: the three go-live
- * signals move together, and this reads the one that moves first).
+ * what ends setup, before any score exists.
+ *
+ * This used to cite CLAUDE.md #25 as "the three go-live signals move together,
+ * and this reads the one that moves first". That claim was wrong, and #25 now
+ * says so itself: `games.finish` moves `status` alone (18 of 23 prod games sit in
+ * the state it leaves), and `scores.upsertEntry` flips pending->active alone. The
+ * three columns are only loosely coupled, so "the one that moves first" was never
+ * a property of the set.
+ *
+ * The predicate is still sound, for a narrower reason. Migration 135's CHECK
+ * forbids `scoring_enabled AND pairings_published_at IS NULL AND status =
+ * 'pending'`, so a game that is `pending` with scoring on has necessarily been
+ * published — genuinely armed. There is no half-armed state for this to misread.
  */
 export function isPreScoring({
   status,
