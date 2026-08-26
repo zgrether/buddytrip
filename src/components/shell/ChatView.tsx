@@ -157,8 +157,32 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           with the page background per STYLE_GUIDE §1. Notify toggle sits
           inline at the end of this row (a real per-account preference, not a
           dismiss affordance, so it stays regardless of which segment is
-          active) rather than in its own separate row. */}
-      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-3 pb-3" role="tablist">
+          active) rather than in its own separate row.
+
+          `pt-3` was `pt-1` before the reported "~60px of nothing between the
+          grabber and the tabs" — the breakdown, measured against the actual
+          markup rather than guessed:
+
+            44px  ChatSheet's grip box (`h-11`) — the 44px TOUCH TARGET a
+                  platform guideline requires and #1046 already fixed once;
+                  the visual pill is 4px, the rest of the 44 is intentional
+                  hit-area padding, not slack. NOT reduced here.
+            12px  this row's own `pt-3`, on TOP of the grip
+             4px  the tab button's own `pt-1`, before its content starts
+            ----
+            60px  total before a tab's content begins — the number reported
+
+          Of that, only the middle 12px had no functional backing (the grip's
+          44 is protected; the button's own 4px is its own tap-cushion, left
+          alone). Cut to `pt-1` (4px), recovering 8px. This wrapper is shared
+          with the ≥1280 `<aside>` layout, which has NO grip and therefore no
+          equivalent complaint — trimming its top padding too is a deliberate
+          side effect, not a miss: `AppShell`'s aside adds no padding of its
+          own around `ChatView` (`{chat}` fills it directly), so this is
+          already the ONLY top gap there, and forking it per-container would
+          mean two implementations of one tab row for a few pixels neither
+          side asked to keep. */}
+      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-1 pb-3" role="tablist">
         {segments.map((id) => {
           const { label, Icon, unread } = SEGMENT_META[id];
           const selectedTab = activeSegment === id;
