@@ -37,8 +37,10 @@ import type { Team } from "@/lib/rackNStack";
 import { GLORIOUS_HOLES_DEFAULT, GLORIOUS_HOLES_MIN, GLORIOUS_HOLES_MAX } from "@/lib/modifiers";
 import {
   buildDoubleBet,
+  computeSideBets,
   formatMoney,
   type SideBet,
+  type SideBetsState,
   EMPTY_SIDE_BETS,
 } from "@/lib/sideBets";
 import {
@@ -58,7 +60,7 @@ import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
 import { SideBetSettlementBar } from "@/components/games/bets/SideBetSettlementBar";
 import { LastHoleDoublePrompt } from "@/components/games/bets/LastHoleDoublePrompt";
 import { MAX_STROKES } from "@/lib/handicap";
-import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, unitsFromSchema } from "@/lib/strokePlayConfig";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
@@ -662,6 +664,15 @@ function QuickGamePageInner() {
   const [confirmReset, setConfirmReset] = useState(false);
   /** The side-bet breakdown (§6) — behind a tap, never expanded by default. */
   const [betsOpen, setBetsOpen] = useState(false);
+  /**
+   * Bets staged BEFORE the round exists (§8). Side bets are agreed on the first
+   * tee, not found in a settings panel after two holes — so the landing page
+   * carries them, and `buildAndStart` hands them to the round it creates.
+   *
+   * A draft, in the same sense as the roster and the course beside it: nothing
+   * is written until Start, so abandoning the setup screen leaves nothing.
+   */
+  const [draftBets, setDraftBets] = useState<SideBetsState>(EMPTY_SIDE_BETS);
 
   // Draft roster — shared by the pre-start setup screen (blank) and the
   // post-start roster editor (pre-populated from `state` in openRosterEditor).
@@ -817,6 +828,7 @@ function QuickGamePageInner() {
     setState(null);
     setDraftPlayers(blankDraftPlayers(format));
     setDraftCourse(null);
+    setDraftBets(EMPTY_SIDE_BETS);
     setDraftRelStrokes(0);
     setDraftGlorious(false);
     setDraftTeams({});
@@ -838,7 +850,7 @@ function QuickGamePageInner() {
       // A new round is unbetted. The strip, the settings row's summary and the
       // tracker all read this, so "nobody bet" is one empty object rather than
       // a null every reader has to remember to check.
-      bets: { ...EMPTY_SIDE_BETS, perspectivePlayerId: roster.players[0]?.id ?? null },
+      bets: { ...draftBets, perspectivePlayerId: draftBets.perspectivePlayerId ?? roster.players[0]?.id ?? null },
     };
 
     if (format === "match") {
@@ -945,6 +957,7 @@ function QuickGamePageInner() {
     setState(null);
     setDraftPlayers(blankDraftPlayers(format));
     setDraftCourse(null);
+    setDraftBets(EMPTY_SIDE_BETS);
     setView("entry");
   }
   function discard() {
@@ -1042,6 +1055,27 @@ function QuickGamePageInner() {
 
   const units = quickGameUnits(state);
   const pips = state ? quickGamePips(state) : undefined;
+
+  /**
+   * The setup screen's own bet context (§8) — the same sheet, fed from drafts
+   * instead of a saved round. No scores exist yet, so the tally is all zeros
+   * and every bet reads as "starts hole 1": exactly right for a bet being
+   * agreed before anyone has hit.
+   */
+  const setupBetPlayers = namedDraftPlayers.slice(0, 4).map((r, i) => ({
+    id: r.id,
+    name: r.name.trim(),
+    color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+  }));
+  const setupHoleCount = unitsFromSchema(draftCourse?.schema).length;
+  const setupBetResult = computeSideBets({
+    holes: Array.from({ length: setupHoleCount }, (_, i) => i + 1),
+    bets: draftBets.bets,
+    scoring: { mode: "net", net: {} },
+  });
+  /** §10 — betting is hidden entirely below two players. One person has nobody
+   *  to bet with, and an empty bet screen is worse than no entry point. */
+  const setupBetsAvailable = setupBetPlayers.length >= 2;
 
   // ── Side bets, derived ────────────────────────────────────────────────────
   // Recomputed on every render from the recorded bets + the scores. There is no
@@ -1227,6 +1261,25 @@ function QuickGamePageInner() {
             courseBusy={courseBusy}
             courseError={courseError}
           />
+
+          {/* §8 — set up before the round, on the landing page, not buried in
+              settings after the game has started: this is where you are when
+              someone suggests a bet. Hidden below two players (§10). */}
+          {setupBetsAvailable && (
+            <div className="mt-4">
+              <SettingsNavRow
+                icon={<Coins size={16} />}
+                label="Side bets"
+                blurb={
+                  draftBets.bets.length > 0
+                    ? `${draftBets.bets.length} set up · ${formatMoney(setupBetResult.exposure.perHole)}/hole.`
+                    : "Skins, head to head, presses — the scorecard keeps the tally."
+                }
+                onClick={() => setBetsOpen(true)}
+                testId="quick-game-setup-side-bets-btn"
+              />
+            </div>
+          )}
         </div>
 
         {format === "match" && (
@@ -1262,6 +1315,32 @@ function QuickGamePageInner() {
 
         {coursePickerOpen && (
           <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourseToDraft} />
+        )}
+
+        {/* The SAME sheet the in-round tracker opens — fed from drafts rather
+            than a saved round, so there is one bet UI rather than a setup copy
+            and an in-round copy that drift. */}
+        {betsOpen && (
+          <SideBetSheet
+            players={setupBetPlayers}
+            result={setupBetResult}
+            recordedBetIds={draftBets.bets.map((b) => b.id)}
+            sidesLocked={false}
+            lockedSides={[]}
+            holeCount={setupHoleCount}
+            currentHole={1}
+            nassauAvailable={setupHoleCount >= 18}
+            perspectivePlayerId={draftBets.perspectivePlayerId ?? setupBetPlayers[0]?.id ?? null}
+            sideName={(side) =>
+              side.playerIds
+                .map((id) => setupBetPlayers.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player")
+                .join(" & ")
+            }
+            onSetPerspective={(playerId) => setDraftBets((b) => ({ ...b, perspectivePlayerId: playerId }))}
+            onAdd={(added) => setDraftBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
+            onRemove={(betId) => setDraftBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
+            onClose={() => setBetsOpen(false)}
+          />
         )}
       </div>
     );
@@ -1438,6 +1517,8 @@ function QuickGamePageInner() {
                 from the screen you're on when someone suggests it. A round
                 nobody bet on shows nothing anywhere else; this row is the way
                 in, and the way back out is deleting the bets. */}
+            {/* §10 — hidden entirely with one player, in-round as at setup. */}
+            {state.players.length >= 2 && (
             <SettingsNavRow
               icon={<Coins size={16} />}
               label="Side bets"
@@ -1452,6 +1533,7 @@ function QuickGamePageInner() {
               }}
               testId="quick-game-side-bets-btn"
             />
+            )}
           </div>
 
           <div className="mt-5">
