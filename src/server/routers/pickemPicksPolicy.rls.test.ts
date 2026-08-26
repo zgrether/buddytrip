@@ -560,6 +560,58 @@ describe("pick'em picks — the owner-of-the-row-only policy (migration 146)", (
     });
   });
 
+  // ══ The lifecycle predicates are directly callable — so they must ask ═══
+
+  describe("pickem_picks_open / pickem_picks_revealed via direct rpc (migration 147)", () => {
+    // Both are SECURITY DEFINER and both live in the exposed API schema, so
+    // `authenticated` can POST to /rest/v1/rpc/... without going near a policy.
+    // Before 147 neither established who was asking, and a signed-in non-member
+    // got `true` from `pickem_picks_open` for a trip they had nothing to do with
+    // — while the same account reading `pickem_games` directly got `[]`. A
+    // definer helper wider than the policy it fronts is the RLS audit's
+    // recurring shape, and this is the guard against it returning.
+
+    it("a NON-MEMBER gets false from both, for a game whose picks really are open", async () => {
+      await statePicksOpen();
+
+      // Control first: the state is genuinely open, as a member sees it. Without
+      // this the assertions below would pass against a game that was simply shut.
+      const asMember = await ctx.authedClient("member").rpc("pickem_picks_open", { p_game_id: gameId });
+      expect(asMember.error).toBeNull();
+      expect(asMember.data).toBe(true);
+
+      const open = await ctx.authedClient("outsider").rpc("pickem_picks_open", { p_game_id: gameId });
+      expect(open.error).toBeNull();
+      expect(open.data).toBe(false);
+
+      await stateHandLocked();
+      const revealedToMember = await ctx
+        .authedClient("member").rpc("pickem_picks_revealed", { p_game_id: gameId });
+      expect(revealedToMember.data).toBe(true);
+
+      const revealed = await ctx
+        .authedClient("outsider").rpc("pickem_picks_revealed", { p_game_id: gameId });
+      expect(revealed.error).toBeNull();
+      expect(revealed.data).toBe(false);
+    });
+
+    it("the same non-member cannot read the row the functions read", async () => {
+      // The comparison that made this a finding rather than a hunch: the table
+      // policy already refused this person. Only the function did not.
+      const { data, error } = await ctx
+        .authedClient("outsider").from("pickem_games").select("game_id").eq("game_id", gameId);
+      expect(error).toBeNull();
+      expect(data ?? []).toEqual([]);
+    });
+
+    it("an unauthenticated caller cannot execute either function at all", async () => {
+      // A different mechanism from the membership check — 146 revoked EXECUTE
+      // from PUBLIC and anon, so this fails at the grant, not in the body.
+      const { error } = await anonClient().rpc("pickem_picks_open", { p_game_id: gameId });
+      expect(error).not.toBeNull();
+    });
+  });
+
   // ══ Referential integrity ═══════════════════════════════════════════════
 
   it("a pick cannot claim a slate game that belongs to a different game", async () => {
