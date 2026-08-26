@@ -47,7 +47,13 @@ export function HelperCards() {
         {HELPER_FEATURES.map(({ icon: Icon, iconBg, iconColor, title, body }) => (
           <div
             key={title}
-            className="h-[143px] rounded-2xl p-4 text-left"
+            /* min-h, not h (§1). A fixed 143px fitted the body text at the
+               widths this was designed at and nowhere narrower: at 320px each
+               card is ~140px wide, the body wraps to more lines than fit, and
+               with no overflow set it ran out of the bottom of the tile.
+               Grid items stretch by default, so the pair in a row still match
+               each other's height — the floor only stops them being too short. */
+            className="min-h-[143px] rounded-2xl p-4 text-left"
             style={{ background: "var(--color-bt-card)" }}
           >
             <div

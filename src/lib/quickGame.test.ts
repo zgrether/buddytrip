@@ -383,25 +383,33 @@ describe("migrateQuickGameState", () => {
 
 // ── Match play ───────────────────────────────────────────────────────────────
 
-describe("quickFormatPlayerCountError — 2 or 4, never 3", () => {
+describe("quickFormatPlayerCountError — any split, since §6", () => {
+  /**
+   * REVERSES the earlier "match play needs 2 or 4 players" refusal, which this
+   * suite used to pin to its exact wording. 1v2 is a real thing people play,
+   * and a side has always been a slot holding one or more players — the
+   * scorecard already concatenates names on one. The refusal was enforcing a
+   * limitation of the partner-picker, not a fact about match play.
+   */
   it("2 players → a 1v1 is legal", () => {
     expect(quickFormatPlayerCountError("match", 2)).toBeNull();
   });
-  it("4 players → a 2v2 is legal", () => {
+  it("3 players → now LEGAL, as a 1v2", () => {
+    expect(quickFormatPlayerCountError("match", 3)).toBeNull();
+  });
+  it("4 players → legal", () => {
     expect(quickFormatPlayerCountError("match", 4)).toBeNull();
   });
-  it("3 players → REFUSED, with a sentence naming both ways out", () => {
-    const err = quickFormatPlayerCountError("match", 3);
-    expect(err).toBeTruthy();
-    // Not a bare "invalid": it must say what to do. Asserting the exact copy so
-    // a future reword cannot silently degrade it to a shrug.
-    expect(err).toBe("Match play needs 2 or 4 players. Add one or drop one.");
-  });
-  it("1 player → also refused (there is no solo match)", () => {
+  it("1 player → still refused; a match needs an opponent", () => {
     expect(quickFormatPlayerCountError("match", 1)).toBeTruthy();
   });
   it("stroke still allows a solo round — the #954/#955 floor is not touched", () => {
     expect(quickFormatPlayerCountError("stroke", 1)).toBeNull();
+  });
+  it("stroke no longer nags when the form is empty (§4)", () => {
+    // One field on screen and Start disabled until it has a name — the message
+    // told the user what the form already showed them.
+    expect(quickFormatPlayerCountError("stroke", 0)).toBeNull();
   });
   it("rack needs two to rack against", () => {
     expect(quickFormatPlayerCountError("rack", 1)).toBeTruthy();
@@ -409,30 +417,51 @@ describe("quickFormatPlayerCountError — 2 or 4, never 3", () => {
   });
 });
 
-describe("buildQuickMatchSides", () => {
-  it("2 players → a 1v1, one player per side", () => {
-    const sides = buildQuickMatchSides(["p1", "p2"], null)!;
+
+describe("buildQuickMatchSides — the rows carry their own side (§6)", () => {
+  const row = (id: string, side?: "A" | "B") => ({ id, side });
+
+  it("1v1", () => {
+    const sides = buildQuickMatchSides([row("p1", "A"), row("p2", "B")])!;
     expect(sides.sideA.playerIds).toEqual(["p1"]);
     expect(sides.sideB.playerIds).toEqual(["p2"]);
   });
-  it("4 players → a 2v2 partnered on the chosen player, the rest opposing", () => {
-    const sides = buildQuickMatchSides(["p1", "p2", "p3", "p4"], "p3")!;
+
+  it("2v2", () => {
+    const sides = buildQuickMatchSides([row("p1", "A"), row("p3", "A"), row("p2", "B"), row("p4", "B")])!;
     expect(sides.sideA.playerIds).toEqual(["p1", "p3"]);
     expect(sides.sideB.playerIds).toEqual(["p2", "p4"]);
   });
-  it("4 players with no partner chosen → defaults to the next player", () => {
-    const sides = buildQuickMatchSides(["p1", "p2", "p3", "p4"], null)!;
-    expect(sides.sideA.playerIds).toEqual(["p1", "p2"]);
-    expect(sides.sideB.playerIds).toEqual(["p3", "p4"]);
+
+  it("1v2 — the split the old model could not express at all", () => {
+    const sides = buildQuickMatchSides([row("p1", "A"), row("p2", "B"), row("p3", "B")])!;
+    expect(sides.sideA.playerIds).toEqual(["p1"]);
+    expect(sides.sideB.playerIds).toEqual(["p2", "p3"]);
   });
+
+  it("2v1 — and the other way round", () => {
+    const sides = buildQuickMatchSides([row("p1", "A"), row("p2", "A"), row("p3", "B")])!;
+    expect(sides.sideA.playerIds).toEqual(["p1", "p2"]);
+    expect(sides.sideB.playerIds).toEqual(["p3"]);
+  });
+
   it("sides get distinct ids — they are separate score columns", () => {
-    const sides = buildQuickMatchSides(["p1", "p2"], null)!;
+    const sides = buildQuickMatchSides([row("p1", "A"), row("p2", "B")])!;
     expect(sides.sideA.id).not.toBe(sides.sideB.id);
   });
-  it("3 players → null (no 3-way match exists)", () => {
-    expect(buildQuickMatchSides(["p1", "p2", "p3"], null)).toBeNull();
+
+  it("null when a side is empty — a match needs an opponent", () => {
+    expect(buildQuickMatchSides([row("p1", "A"), row("p2", "A")])).toBeNull();
+    expect(buildQuickMatchSides([row("p1", "B"), row("p2", "B")])).toBeNull();
+    expect(buildQuickMatchSides([])).toBeNull();
+  });
+
+  it("an unmarked row defaults to side A, so a partly-filled form still builds", () => {
+    const sides = buildQuickMatchSides([row("p1"), row("p2", "B")])!;
+    expect(sides.sideA.playerIds).toEqual(["p1"]);
   });
 });
+
 
 describe("quickMatchState — score mode, against an independent control", () => {
   it("net match state matches what the trip-side path produces for identical inputs", () => {

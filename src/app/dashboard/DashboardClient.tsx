@@ -227,10 +227,24 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
             existing "dashboard has painted" marker keeps working — it only
             ever used this element's PRESENCE as a settle signal, never its
             content. */}
+        {/* Welcome line, above everything (§1). Split from the "My Trips"
+            header it used to sit on: it greets the PERSON, so it belongs at
+            the top of their page rather than introducing one section of it.
+            Still gated on having trips — the empty state has its own centered
+            CTA and does not want a second greeting above it. */}
+        {hasAnyTrips && (
+          <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+            Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
+          </p>
+        )}
+
         <div className="mb-6" data-testid="quick-game-strip">
-          <div className="mb-2 px-0.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Quick Golf Games
-          </div>
+          {/* Same treatment as "My Trips" (§1) — these are two peer sections of
+              one page, and a small-caps eyebrow over one of them read as a
+              subheading of whatever came before it. */}
+          <h2 className="mb-2 text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+            Quick Games
+          </h2>
           <div className="grid grid-cols-2 gap-3">
             {QUICK_GAME_TILE_FORMATS.map((format) => {
               const Icon = format === "match" ? Swords : Zap;
@@ -240,7 +254,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
                   key={format}
                   onClick={() => router.push(`/quick-game?format=${format}`)}
                   data-testid={`quick-game-tile-${format}`}
-                  className="flex flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left transition-opacity hover:opacity-90"
+                  className="flex flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left transition-all duration-100 hover:opacity-90 active:scale-[0.98] active:opacity-80"
                   style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
                 >
                   <span
@@ -279,14 +293,9 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
             line + header button would just be redundant chrome. */}
         {hasAnyTrips && (
           <div className="mb-6 flex items-end justify-between">
-            <div>
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
-              </p>
-              <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-                My Trips
-              </h1>
-            </div>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+              My Trips
+            </h1>
             <button
               onClick={() => setCreating(true)}
               className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
