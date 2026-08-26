@@ -29,6 +29,7 @@ import {
   type QuickGameCourse,
   type DraftPlayerRow,
 } from "./quickGame";
+import { EMPTY_SIDE_BETS } from "./sideBets";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "./courseSnapshot";
 import { netStrokeEntries, computeStrokePlayStandings, type RawStrokeEntry } from "./strokePlay";
 import { strokeHoles, buildDecided, matchState } from "./matchPlay";
@@ -47,6 +48,7 @@ function state(overrides: Partial<QuickStrokeState> = {}): QuickStrokeState {
     currentHole: 1,
     course: null,
     strokes: {},
+    bets: EMPTY_SIDE_BETS,
     ...overrides,
   };
 }
@@ -72,6 +74,7 @@ function matchGame(overrides: Partial<QuickMatchState> = {}): QuickMatchState {
     sideB: { id: "sB", playerIds: ["p2"], strokes: 0 },
     outcomes: {},
     modifiers: {},
+    bets: EMPTY_SIDE_BETS,
     ...overrides,
   };
 }
@@ -87,6 +90,7 @@ function rackGame(overrides: Partial<QuickRackState> = {}): QuickRackState {
     course: null,
     strokes: {},
     teams: { p1: "A", p2: "A", p3: "B", p4: "B" },
+    bets: EMPTY_SIDE_BETS,
     ...overrides,
   };
 }

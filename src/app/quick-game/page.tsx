@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, X, RotateCcw, Users, ChevronRight, Table2, Zap } from "lucide-react";
+import { Plus, X, RotateCcw, Users, ChevronRight, Table2, Zap, Coins } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
   readQuickGameState,
@@ -33,6 +33,28 @@ import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
 import type { HoleOutcomeResult } from "@/lib/matchPlay";
 import type { Team } from "@/lib/rackNStack";
 import { GLORIOUS_HOLES_DEFAULT, GLORIOUS_HOLES_MIN, GLORIOUS_HOLES_MAX } from "@/lib/modifiers";
+import {
+  buildDoubleBet,
+  formatMoney,
+  type SideBet,
+  EMPTY_SIDE_BETS,
+} from "@/lib/sideBets";
+import {
+  quickSideBets,
+  quickHasBets,
+  quickBetStrip,
+  quickBetPerspective,
+  quickBetSidesLocked,
+  quickBetDefaultSides,
+  quickBetSideName,
+  quickBetHoles,
+  quickNassauAvailable,
+  quickDoubleOffers,
+} from "@/lib/quickGameBets";
+import { SideBetStrip } from "@/components/games/bets/SideBetStrip";
+import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
+import { SideBetSettlementBar } from "@/components/games/bets/SideBetSettlementBar";
+import { LastHoleDoublePrompt } from "@/components/games/bets/LastHoleDoublePrompt";
 import { MAX_STROKES } from "@/lib/handicap";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
@@ -43,6 +65,7 @@ import { FinalStandings } from "@/components/games/FinalStandings";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
 import { Stepper } from "@/components/games/Stepper";
+import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
 
 /**
@@ -342,51 +365,6 @@ function QuickResultCard({
   );
 }
 
-/** The shared small-caps field label (STYLE_GUIDE §2b eyebrow recipe). */
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-      {children}
-    </label>
-  );
-}
-
-/** A segmented selector in the app's established treatment (vocabulary §1/§8):
- *  the selected segment is a teal fill, unselected are recessed card-raised
- *  chips. Same look `RelHandicapControl` uses for its `[A│Even│B]` row. */
-function Segmented<T extends string>({
-  options, value, onChange, testId,
-}: {
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-  testId?: string;
-}) {
-  return (
-    <div className="flex gap-1.5" data-testid={testId}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            aria-pressed={on}
-            className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-colors"
-            style={{
-              background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-              border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-              color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-            }}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 /**
  * The editable roster form — player rows (name + optional handicap stepper +
  * optional rack team toggle, add/remove) plus the course-select row. Shared
@@ -589,6 +567,8 @@ function QuickGamePageInner() {
   // "Players & handicaps" (below) and Reset Game (danger zone).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  /** The side-bet breakdown (§6) — behind a tap, never expanded by default. */
+  const [betsOpen, setBetsOpen] = useState(false);
 
   // Draft roster — shared by the pre-start setup screen (blank) and the
   // post-start roster editor (pre-populated from `state` in openRosterEditor).
@@ -755,6 +735,10 @@ function QuickGamePageInner() {
       values: {},
       finished: false,
       currentHole: 1,
+      // A new round is unbetted. The strip, the settings row's summary and the
+      // tracker all read this, so "nobody bet" is one empty object rather than
+      // a null every reader has to remember to check.
+      bets: { ...EMPTY_SIDE_BETS, perspectivePlayerId: roster.players[0]?.id ?? null },
     };
 
     if (format === "match") {
@@ -815,6 +799,44 @@ function QuickGamePageInner() {
   }
   function finish() {
     setState((s) => (s ? { ...s, finished: true } : s));
+  }
+
+  // ── Side bets ───────────────────────────────────────────────────────────
+  // These write the RECORDED half only — the bets. Every figure the tracker
+  // shows is re-derived from them on each render (`quickSideBets`), which is
+  // what makes correcting an earlier score rewrite the whole tally, presses
+  // included, with nothing to reconcile (handoff §4).
+  function addBets(added: SideBet[]) {
+    setState((s) => (s ? { ...s, bets: { ...s.bets, bets: [...s.bets.bets, ...added] } } : s));
+  }
+  function removeBet(betId: string) {
+    setState((s) =>
+      s
+        ? {
+            ...s,
+            bets: {
+              ...s.bets,
+              bets: s.bets.bets.filter((b) => b.id !== betId),
+              // A double recorded against a removed bet has nothing left to
+              // double, and its decline no longer means anything either.
+              declinedDoubles: s.bets.declinedDoubles.filter((id) => id !== betId),
+            },
+          }
+        : s
+    );
+  }
+  function setBetPerspective(playerId: string) {
+    setState((s) => (s ? { ...s, bets: { ...s.bets, perspectivePlayerId: playerId } } : s));
+  }
+  function declineDouble(parentBetId: string) {
+    setState((s) =>
+      s
+        ? {
+            ...s,
+            bets: { ...s.bets, declinedDoubles: [...s.bets.declinedDoubles, parentBetId] },
+          }
+        : s
+    );
   }
   function playAgain() {
     setState(null);
@@ -916,6 +938,100 @@ function QuickGamePageInner() {
 
   const units = quickGameUnits(state);
   const pips = state ? quickGamePips(state) : undefined;
+
+  // ── Side bets, derived ────────────────────────────────────────────────────
+  // Recomputed on every render from the recorded bets + the scores. There is no
+  // cached tally to invalidate and no press written down anywhere, which is the
+  // whole design (§4): edit a score and the next render simply says something
+  // different, including about presses that should or should not have fired.
+  const betResult = state ? quickSideBets(state) : null;
+  const betsOn = quickHasBets(state);
+  const betStrip = state && betResult ? quickBetStrip(state, betResult) : null;
+  const betHoles = state ? quickBetHoles(state) : [];
+  // The hole line follows the hole being VIEWED — a different question from the
+  // banner's total, which is always live (§6). Both come off the same result.
+  const viewedHoleLine = betResult?.holeLines.find((l) => l.hole === (state?.currentHole ?? 1)) ?? null;
+  const betPlayerName = (id: string) => state?.players.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player";
+  const doubleOffers = state && betResult ? quickDoubleOffers(state, betResult) : [];
+  const doubleOffer = doubleOffers[0] ?? null;
+
+  const betStripNode =
+    betsOn && betStrip && betResult ? (
+      <SideBetStrip
+        perspectiveName={betStrip.perspectiveName}
+        total={betStrip.total}
+        exposure={betStrip.exposure}
+        hole={
+          viewedHoleLine && viewedHoleLine.perBet.length > 0
+            ? {
+                label: String(viewedHoleLine.hole),
+                atStake: viewedHoleLine.atStake,
+                decided: viewedHoleLine.decided,
+                delta: betStrip.perspectivePlayerId
+                  ? (viewedHoleLine.delta[betStrip.perspectivePlayerId] ?? 0)
+                  : 0,
+              }
+            : null
+        }
+        presses={viewedHoleLine?.presses.map((pr) => ({ level: pr.level, exposureAfter: pr.exposureAfter })) ?? []}
+        onOpen={() => setBetsOpen(true)}
+      />
+    ) : null;
+
+  // The breakdown + the last-hole prompt. Rendered by BOTH the playing screen
+  // and the final screen, so they are built once here rather than twice below.
+  const betOverlays =
+    state && betResult ? (
+      <>
+        {betsOpen && (
+          <SideBetSheet
+            players={state.players}
+            result={betResult}
+            recordedBetIds={state.bets.bets.map((b) => b.id)}
+            sidesLocked={quickBetSidesLocked(state)}
+            lockedSides={quickBetDefaultSides(state, () => crypto.randomUUID())}
+            holeCount={betHoles.length}
+            currentHole={state.currentHole}
+            nassauAvailable={quickNassauAvailable(state)}
+            perspectivePlayerId={quickBetPerspective(state)}
+            sideName={(side) => quickBetSideName(state, side)}
+            onSetPerspective={setBetPerspective}
+            onAdd={addBets}
+            onRemove={removeBet}
+            onClose={() => setBetsOpen(false)}
+          />
+        )}
+        {/* The last-hole double is a PROMPT, never applied for you (§9), and it
+            asks once — declining is recorded so the round stops offering. */}
+        {!betsOpen && doubleOffer && (
+          <LastHoleDoublePrompt
+            offer={doubleOffer}
+            trailingName={quickBetSideName(
+              state,
+              doubleOffer.bet.sides.find((sd) => sd.id === doubleOffer.trailingSideId) ?? doubleOffer.bet.sides[0]
+            )}
+            leadingName={quickBetSideName(
+              state,
+              doubleOffer.bet.sides.find((sd) => sd.id === doubleOffer.leadingSideId) ?? doubleOffer.bet.sides[1]
+            )}
+            lastHole={betHoles[betHoles.length - 1] ?? 18}
+            onAccept={() => {
+              addBets([
+                buildDoubleBet({
+                  mkId: () => crypto.randomUUID(),
+                  offer: doubleOffer,
+                  lastHole: betHoles[betHoles.length - 1] ?? 18,
+                }),
+              ]);
+              // Recorded either way: taking it must not leave the prompt open
+              // to be taken a second time on the next render.
+              declineDouble(doubleOffer.bet.id);
+            }}
+            onDecline={() => declineDouble(doubleOffer.bet.id)}
+          />
+        )}
+      </>
+    ) : null;
   /** The scorecard grid's row entities. Stroke/rack rows are PLAYERS; a match's
    *  rows are SIDES, because a side is one score column (a 2v2 enters one ball,
    *  not two) — the same split `values` and `quickGamePips` are keyed on. */
@@ -1042,7 +1158,18 @@ function QuickGamePageInner() {
   // uses), not a separate route that replaces it.
   if (state.finished) {
     return (
-      <div className="fixed inset-0 z-50">
+      <div className="fixed inset-0 z-50 flex flex-col">
+        {/* One line: who owes whom, how much (§6). That IS the settlement —
+            there is no settle action to perform, and a ceremony nobody performs
+            is worse than none (§3.3). */}
+        {betsOn && betResult && (
+          <SideBetSettlementBar
+            settlement={betResult.settlement}
+            nameOf={betPlayerName}
+            onOpen={() => setBetsOpen(true)}
+          />
+        )}
+        <div className="min-h-0 flex-1">
         {isMatchGame(state) ? (
           // A match has no stroke standings to show — its result IS the margin
           // ("3&2"), which `quickGameSubtitle` already renders from the shared
@@ -1075,11 +1202,13 @@ function QuickGamePageInner() {
             onDiscard={discard}
           />
         )}
+        </div>
         {view === "grid" && (
           <ScorecardSheet subtitle={state.course?.name} onClose={() => setView("entry")}>
             <StandardGrid units={units} participants={gridParticipants} values={state.values} pips={pips} direction="low_wins" />
           </ScorecardSheet>
         )}
+        {betOverlays}
       </div>
     );
   }
@@ -1102,6 +1231,7 @@ function QuickGamePageInner() {
           onBack={() => router.push("/dashboard")}
           onOpenGrid={() => setView("grid")}
           onConfig={() => setSettingsOpen(true)}
+          banner={betStripNode}
         />
       ) : (
         <ScoreEntryView
@@ -1119,8 +1249,11 @@ function QuickGamePageInner() {
           onOpenGrid={() => setView("grid")}
           onFinish={finish}
           onConfig={() => setSettingsOpen(true)}
+          banner={betStripNode}
         />
       )}
+
+      {betOverlays}
 
       {/* Scorecard — a sibling `ScorecardSheet` overlay on top of the (still
           mounted) entry screen, the SAME pattern every trip-side golf format
@@ -1155,13 +1288,31 @@ function QuickGamePageInner() {
           testId="quick-game-settings-panel"
         >
           <SectionLabel>Game</SectionLabel>
-          <div className="mt-2">
+          <div className="mt-2 flex flex-col gap-2">
             <SettingsNavRow
               icon={<Users size={16} />}
               label="Players & handicaps"
               blurb="Add, remove, or rename players · set handicaps."
               onClick={openRosterEditor}
               testId="quick-game-edit-roster-btn"
+            />
+            {/* Betting is not a setup step (§7) — it's reachable at any point,
+                from the screen you're on when someone suggests it. A round
+                nobody bet on shows nothing anywhere else; this row is the way
+                in, and the way back out is deleting the bets. */}
+            <SettingsNavRow
+              icon={<Coins size={16} />}
+              label="Side bets"
+              blurb={
+                betsOn && betStrip
+                  ? `${betStrip.exposure.liveBetCount} live · ${formatMoney(betStrip.exposure.perHole)}/hole.`
+                  : "Nassau, skins, presses — the scorecard keeps the tally."
+              }
+              onClick={() => {
+                setSettingsOpen(false);
+                setBetsOpen(true);
+              }}
+              testId="quick-game-side-bets-btn"
             />
           </div>
 

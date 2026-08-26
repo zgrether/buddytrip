@@ -66,6 +66,13 @@ interface ScoreEntryViewProps {
    *  back/title (+ the config gear). The scorecard affordance relocates to the
    *  right of the "Scores" strip (mirrors match's card-header placement). */
   hideHeader?: boolean;
+  /**
+   * A strip rendered directly under the app bar, above the hole navigator —
+   * the slot Quick Play's side-bet tracker occupies. A NODE, not data: this
+   * view knows nothing about money, and a round with no bets passes nothing,
+   * so the surface is byte-identical to what it was before side bets existed.
+   */
+  banner?: React.ReactNode;
   /** Bottom-CTA subtext once every hole is filled (mirrors MatchEntryView's
    *  `finishSubtext`). Defaults to the stroke-play copy ("Finish" here calls
    *  games.finish, which really does save results). Rack passes "" — its
@@ -91,6 +98,7 @@ export function ScoreEntryView({
   saveStatus = {},
   onRetryCell,
   pips,
+  banner,
   hideHeader = false,
   finishSubtext = "Saves results · shows final standings",
 }: ScoreEntryViewProps) {
@@ -252,6 +260,7 @@ export function ScoreEntryView({
 
       {/* ── Unsaved-scores safety net (Connectivity Layer 1) ── */}
       <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
+      {banner}
 
       {/* ── Hole navigation ── (Wave 2: the redundant SCORES summary strip was
           removed — each player's running total now shows on their own row — and

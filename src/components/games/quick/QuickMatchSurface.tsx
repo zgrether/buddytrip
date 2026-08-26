@@ -39,6 +39,7 @@ export function QuickMatchSurface({
   onBack,
   onOpenGrid,
   onConfig,
+  banner,
 }: {
   state: QuickMatchState;
   onScore: (sideId: string, unitLabel: string, value: number) => void;
@@ -50,6 +51,9 @@ export function QuickMatchSurface({
   onBack: () => void;
   onOpenGrid: () => void;
   onConfig: () => void;
+  /** The side-bet strip, passed straight through to whichever entry view this
+   *  round's mode uses — so the tracker sits in the same place in both. */
+  banner?: React.ReactNode;
 }) {
   const units = quickGameUnits(state);
   const match = quickMatchGroupData(state);
@@ -76,6 +80,7 @@ export function QuickMatchSurface({
         onConfig={onConfig}
         glorious={glorious}
         finishSubtext=""
+        banner={banner}
       />
     );
   }
@@ -96,6 +101,7 @@ export function QuickMatchSurface({
       onConfig={onConfig}
       glorious={glorious}
       finishSubtext=""
+      banner={banner}
     />
   );
 }

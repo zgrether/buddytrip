@@ -54,6 +54,13 @@ interface MatchOutcomeEntryViewProps {
    *  publishes the gear to the app bar); supplied by a standalone caller that
    *  owns its own header. */
   onConfig?: () => void;
+  /**
+   * A strip rendered directly under the app bar, above the match board — the
+   * slot Quick Play's side-bet tracker occupies. A NODE, not data: this view
+   * knows nothing about money, and a round with no bets passes nothing, so the
+   * surface is byte-identical to what it was before side bets existed.
+   */
+  banner?: React.ReactNode;
   hideHeader?: boolean;
   glorious?: GloriousConfig;
 }
@@ -76,6 +83,7 @@ export function MatchOutcomeEntryView({
   meId,
   saveStatus = {},
   onRetryCell,
+  banner,
   onConfig,
   hideHeader = false,
   glorious = NO_GLORIOUS,
@@ -207,6 +215,7 @@ export function MatchOutcomeEntryView({
       )}
 
       <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
+      {banner}
 
       {/* Match board — the SAME MatchCard score entry uses, fed from outcome-
           derived DecidedHole[] instead of gross-derived. */}

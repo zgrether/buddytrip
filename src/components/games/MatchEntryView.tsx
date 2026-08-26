@@ -96,6 +96,13 @@ interface MatchEntryViewProps {
   /** #550: hide the view's own header — as a panel the app bar carries
    *  back/title + the scorecard action, so this second header is dropped. */
   hideHeader?: boolean;
+  /**
+   * A strip rendered directly under the app bar, above the match board — the
+   * slot Quick Play's side-bet tracker occupies. A NODE, not data: this view
+   * knows nothing about money, and a round with no bets passes nothing, so the
+   * surface is byte-identical to what it was before side bets existed.
+   */
+  banner?: React.ReactNode;
   /** Glorious Finishing Holes weight (2× the last N) for the live match state.
    *  Omit for standard match play. */
   glorious?: GloriousConfig;
@@ -120,6 +127,7 @@ export function MatchEntryView({
   saveStatus = {},
   onRetryCell,
   onConfig,
+  banner,
   hideHeader = false,
   glorious = NO_GLORIOUS,
 }: MatchEntryViewProps) {
@@ -294,6 +302,7 @@ export function MatchEntryView({
 
       {/* Unsaved-scores safety net (Connectivity Layer 1) */}
       <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
+      {banner}
 
       {/* Match board(s) — pinned at the top, above the hole selector */}
       <div className="shrink-0" style={{ padding: "12px 12px 0" }}>
