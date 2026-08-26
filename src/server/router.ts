@@ -26,6 +26,7 @@ import { matchesRouter } from "./routers/matches";
 import { matchOutcomesRouter } from "./routers/matchOutcomes";
 import { playGroupsRouter } from "./routers/playGroups";
 import { notificationsRouter } from "./routers/notifications";
+import { pickemRouter } from "./routers/pickem";
 
 export const appRouter = router({
   users: usersRouter,
@@ -50,6 +51,7 @@ export const appRouter = router({
   feedback: feedbackRouter,
   news: newsRouter,
   games: gamesRouter,
+  pickem: pickemRouter,
   scores: scoresRouter,
   matches: matchesRouter,
   matchOutcomes: matchOutcomesRouter,

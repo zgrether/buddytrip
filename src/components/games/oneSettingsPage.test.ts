@@ -52,6 +52,7 @@ const CALLERS: Record<GameSurfaceId, string> = {
   rack: "RackGameView.tsx",
   stroke: "StrokeGameView.tsx",
   nongolf: "NonGolfGameView.tsx",
+  pickem: "PickemGameView.tsx",
 };
 
 const SURFACES = Object.keys(FORMAT_SURFACE) as GameSurfaceId[];

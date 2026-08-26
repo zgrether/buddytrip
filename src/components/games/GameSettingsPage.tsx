@@ -171,15 +171,20 @@ export function GameSettingsPage({
         <ZoneHeader>Game Management</ZoneHeader>
         {competitionId && totalPointsRow}
         {courseRow}
-        <GameManagementPanel
-          mode={management.scoringEnabled ? "scoring" : "setup"}
-          ready={management.ready}
-          blockedReason={management.blockedReason}
-          onEnable={management.onEnable}
-          onDisable={management.onDisable}
-          pending={management.pending}
-          staged={management.staged}
-        />
+        {/* A format whose go-live is not `scoring_enabled` does not get a
+            `scoring_enabled` control — rendering it anyway states something
+            false about the game (see `FormatSurface.gameState`). */}
+        {FORMAT_SURFACE[surface].gameState && (
+          <GameManagementPanel
+            mode={management.scoringEnabled ? "scoring" : "setup"}
+            ready={management.ready}
+            blockedReason={management.blockedReason}
+            onEnable={management.onEnable}
+            onDisable={management.onDisable}
+            pending={management.pending}
+            staged={management.staged}
+          />
+        )}
         {!competitionId && standaloneRows}
 
         {/* SETTINGS — the format's spine, under its own label. */}
