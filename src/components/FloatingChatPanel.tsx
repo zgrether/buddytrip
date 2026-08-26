@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
-import { Send, ChevronDown, MessageCircle } from "lucide-react";
+import { Send, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
@@ -19,6 +19,16 @@ import {
   formatChatDaySeparator,
   chatDayChanged,
 } from "@/lib/chatTimestamp";
+import { hasSeenChatBanner, markChatBannerSeen } from "@/lib/chatBannerCollapse";
+import { SegmentedToggle } from "@/components/games/SegmentedToggle";
+import {
+  readChatTextSize,
+  writeChatTextSize,
+  chatPx,
+  CHAT_BASE_PX,
+  CHAT_TEXT_SIZES,
+  type ChatTextSize,
+} from "@/lib/chatTextSize";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -85,6 +95,24 @@ interface FloatingChatPanelProps {
    */
   channel?: Visibility;
   memberNames: Record<string, string>;
+  /**
+   * The reading text size for the transcript (S/M/L, `chatTextSize.ts`) and
+   * its setter — LIFTED to `ChatView`, the common ancestor of both mounted
+   * panel instances (see `active` above: Crew and Organizers are both mounted
+   * at once). Passed down rather than each instance reading its own
+   * `localStorage` copy, because two independently-read copies would only
+   * agree until the FIRST change: flip the size while looking at Crew, and an
+   * Organizers instance that read its own copy on mount would keep showing
+   * the old size until its next remount. One shared value means both panels
+   * change together, instantly, which is what "one reading preference" means.
+   *
+   * Both optional with an internal fallback (see the inner component) so a
+   * hypothetical future standalone caller — there is only one real caller
+   * today, `ChatView` — still works, just without the cross-instance sync
+   * guarantee above.
+   */
+  textSize?: ChatTextSize;
+  onChangeTextSize?: (size: ChatTextSize) => void;
 }
 
 /**
@@ -107,6 +135,8 @@ export function FloatingChatPanel({
   ideaStage,
   channel,
   memberNames,
+  textSize,
+  onChangeTextSize,
 }: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
@@ -116,6 +146,8 @@ export function FloatingChatPanel({
       ideaStage={ideaStage}
       channel={channel}
       memberNames={memberNames}
+      textSize={textSize}
+      onChangeTextSize={onChangeTextSize}
     />
   );
 }
@@ -126,16 +158,33 @@ function FloatingChatPanelInner({
   ideaStage = false,
   channel,
   memberNames,
+  textSize: textSizeProp,
+  onChangeTextSize: onChangeTextSizeProp,
 }: {
   tripId: string;
   active: boolean;
   ideaStage?: boolean;
   channel?: Visibility;
   memberNames: Record<string, string>;
+  textSize?: ChatTextSize;
+  onChangeTextSize?: (size: ChatTextSize) => void;
 }) {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
   const canSeeOrganizers = role === "Owner" || role === "Organizer";
+  // Internal fallback for the (today hypothetical) standalone caller — see the
+  // prop's doc comment on `FloatingChatPanelProps`. `ChatView`, the one real
+  // caller, always supplies both, so this branch is dead in practice; it
+  // exists so the component degrades to "works, just unsynced" rather than
+  // crashing if that ever stops being true.
+  const [localTextSize, setLocalTextSize] = useState<ChatTextSize>(() => readChatTextSize());
+  const textSize = textSizeProp ?? localTextSize;
+  const setTextSize =
+    onChangeTextSizeProp ??
+    ((size: ChatTextSize) => {
+      setLocalTextSize(size);
+      writeChatTextSize(size);
+    });
   // IDEA stage collapses to a single Organizers channel: every member is an
   // Owner/Organizer, so the Crew channel would just duplicate it. The tab
   // toggle is hidden and the channel is pinned to 'planning'.
@@ -696,6 +745,41 @@ function FloatingChatPanelInner({
     ? "var(--color-bt-accent-border)"
     : "var(--color-bt-planning-border)";
 
+  /**
+   * The channel explainer banner: collapsed to one tappable line after first
+   * view (`chatBannerCollapse.ts`).
+   *
+   * ── Today this only applies to Organizers ───────────────────────────────
+   * Crew has NO explainer banner in this codebase — grep confirms it; the
+   * handoff describing "Crew has an equivalent banner, same treatment" does
+   * not match what is actually here. Rather than invent Crew copy that has
+   * never existed to satisfy that description, this is built channel-generic
+   * (keyed by `activeChannel`, gated on `isPlanningChannel` only at the RENDER
+   * site) — so the day a real Crew banner is written, collapsing it needs a
+   * render-site change, not a change to this state or to `chatBannerCollapse`.
+   *
+   * ── Read fresh each render, not lazily ──────────────────────────────────
+   * `isPlanningChannel` itself is computed fresh every render (see above), and
+   * `activeChannel` can — rarely — change within one mounted instance (a
+   * demotion mid-session falls an Organizers-channel instance back to "crew").
+   * A lazy initializer would go stale exactly then; a plain read does not,
+   * and the cost is one `localStorage.getItem` per render, which is cheap.
+   *
+   * `manualBannerToggle` is the EPHEMERAL per-mount override a tap sets — it
+   * is not persisted (see `chatBannerCollapse.ts`'s header: only "has this
+   * been shown once" is remembered, never "did they leave it open"). null
+   * means "no override yet, use the default".
+   */
+  const [manualBannerToggle, setManualBannerToggle] = useState<boolean | null>(null);
+  const bannerSeen = hasSeenChatBanner(tripId, activeChannel);
+  const bannerExpanded = manualBannerToggle ?? !bannerSeen;
+  useEffect(() => {
+    if (isPlanningChannel && !bannerSeen) markChatBannerSeen(tripId, activeChannel);
+    // Deliberately NOT resetting `manualBannerToggle` here: a channel switch
+    // within one instance is the rare demotion case above, and there is no
+    // wrong answer for what a stale manual toggle should mean across it.
+  }, [tripId, activeChannel, isPlanningChannel, bannerSeen]);
+
   // Panel body — shared content between desktop + mobile wrappers. It MUST be
   // its own component (not inline JSX rendered twice) so each of the two
   // simultaneously-mounted wrappers gets independent scroll/textarea refs.
@@ -727,6 +811,10 @@ function FloatingChatPanelInner({
       // conflating them is what would put a spinner over a readable conversation.
       refreshing={!activeQuery.isLoading && activeQuery.isFetching && !activeQuery.isFetchingNextPage}
       olderFailed={activeQuery.isFetchNextPageError}
+      bannerExpanded={bannerExpanded}
+      onToggleBanner={() => setManualBannerToggle(!bannerExpanded)}
+      textSize={textSize}
+      onChangeTextSize={setTextSize}
     />
   );
 
@@ -853,6 +941,16 @@ interface ChatBodyProps {
    *  history", which is the exact empty-versus-unknown collapse this surface is
    *  careful about. */
   olderFailed: boolean;
+  /** Is the channel explainer banner currently showing its full form? Owned
+   *  by the parent (see `FloatingChatPanelInner`'s banner-state block) —
+   *  `ChatBody` only renders what it is told. */
+  bannerExpanded: boolean;
+  /** Tap the collapsed line, or the expanded block's own collapse control. */
+  onToggleBanner: () => void;
+  /** S/M/L — see `chatTextSize.ts`. Scales message text, timestamps, sender
+   *  names and day-separator labels; leaves the composer untouched. */
+  textSize: ChatTextSize;
+  onChangeTextSize: (size: ChatTextSize) => void;
 }
 
 function ChatBody({
@@ -878,6 +976,10 @@ function ChatBody({
   loading,
   refreshing,
   olderFailed,
+  bannerExpanded,
+  onToggleBanner,
+  textSize,
+  onChangeTextSize,
 }: ChatBodyProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
@@ -1098,9 +1200,89 @@ function ChatBody({
 
   return (
     <>
-      {/* Pinned explainer — stays put while messages scroll beneath it. */}
-      {isPlanningChannel && (
-        <div className="flex-shrink-0 px-3 pt-2">
+      {/*
+        HEADER STRIP — replaces what used to be ~90px of always-expanded
+        explainer with a one-line summary plus the text-size control, both of
+        which are cheap to render EVERY TIME (unlike the description below).
+
+        Rendered for BOTH channels, deliberately, even though only Organizers
+        has anything to summarize — see the comment on `bannerExpanded`'s
+        `useState` above for why Crew has no equivalent line here despite an
+        earlier description of this feature saying it does. The text-size
+        control needs ONE home reachable from either channel, and giving Crew
+        an empty left side (rather than omitting the strip on Crew and only
+        having the control float on Organizers) keeps its position consistent
+        regardless of which tab you're on.
+
+        Neither side of this row scales with `textSize` — this is CHROME, and
+        the whole reason §1 exists is that chrome doesn't scale while the
+        setting it's about to gate grows, so scaling this row would eat back
+        exactly the reading area it exists to free.
+      */}
+      <div
+        className="flex flex-shrink-0 items-center gap-2 px-3 pb-1.5 pt-2"
+        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+      >
+        {isPlanningChannel ? (
+          <button
+            type="button"
+            onClick={onToggleBanner}
+            aria-expanded={bannerExpanded}
+            data-testid="chat-banner-toggle"
+            className="flex min-w-0 flex-1 items-center gap-1 text-left"
+          >
+            <span
+              className="truncate text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Organizers only
+            </span>
+            {/* The count survives into the collapsed line; the description
+                does not — "In this chat: Brad, Rob, Zach" answers a question
+                people actually have on repeat visits, where the description
+                answers one they asked once. Hidden once expanded: the full
+                membership list below already says the same thing at more
+                length. */}
+            {!bannerExpanded && organizers.length > 0 && (
+              <span
+                className="whitespace-nowrap text-[10px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                &middot; {organizers.length} in this chat
+              </span>
+            )}
+            <ChevronRight
+              size={12}
+              style={{
+                color: "var(--color-bt-text-dim)",
+                flexShrink: 0,
+                transform: bannerExpanded ? "rotate(90deg)" : "none",
+                transition: "transform 120ms ease",
+              }}
+            />
+          </button>
+        ) : (
+          // Crew: nothing to summarize (see above) — an empty flexible
+          // spacer keeps the size control right-aligned exactly as it is on
+          // Organizers, rather than the row visibly rearranging between tabs.
+          <span className="min-w-0 flex-1" aria-hidden="true" />
+        )}
+        <SegmentedToggle<ChatTextSize>
+          value={textSize}
+          onChange={onChangeTextSize}
+          options={CHAT_TEXT_SIZES.map((s) => ({ value: s, label: s }))}
+          testId="chat-text-size"
+        />
+      </div>
+
+      {/* The description + membership list — the part that's "useful once".
+          Collapsed by default after first view (`chatBannerCollapse.ts`);
+          the header strip above is what's ALWAYS there so collapsing this
+          never loses "which channel am I in" — the tab row already answers
+          that, and the collapsed line repeats it for anyone scrolled past
+          the tabs. */}
+      {isPlanningChannel && bannerExpanded && (
+        <div className="flex-shrink-0 px-3 pt-2" data-testid="chat-banner-expanded">
           <div
             className="rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
             style={{
@@ -1109,12 +1291,6 @@ function ChatBody({
               color: "var(--color-bt-text-dim)",
             }}
           >
-            <p
-              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              Organizers only
-            </p>
             <p>
               A private channel for the trip&rsquo;s owner and organizers to
               sort out planning away from the full crew.
@@ -1215,6 +1391,15 @@ function ChatBody({
           {!loading && displayed.length > 0 && (
             <div className="space-y-1.5 px-3 py-2">
               {displayed.map((msg, msgIndex) => {
+              // Scaled pixel values for this size, computed once per row
+              // rather than per scaled element — see `chatTextSize.ts`: ONE
+              // ratio applied to every role, so a day separator and the
+              // stamp beneath it can never visually disagree about the size
+              // in effect.
+              const messagePx = chatPx(CHAT_BASE_PX.message, textSize);
+              const metaPx = chatPx(CHAT_BASE_PX.meta, textSize);
+              const labelPx = chatPx(CHAT_BASE_PX.label, textSize);
+
               // DAY SEPARATOR — sits above the first message of a new calendar
               // day, compared against the PREVIOUS message in the transcript
               // (not against "now": a five-day-old transcript read today still
@@ -1230,8 +1415,8 @@ function ChatBody({
                 <div className="flex items-center gap-2 py-1.5" data-testid="chat-day-separator">
                   <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
                   <span
-                    className="text-[10px] font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--color-bt-text-dim)" }}
+                    className="font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)", fontSize: labelPx }}
                   >
                     {formatChatDaySeparator(msg.created_at)}
                   </span>
@@ -1250,8 +1435,8 @@ function ChatBody({
                   <div className="flex items-center gap-2 py-1.5">
                     <div className="h-px flex-1" style={{ background: accentBorder }} />
                     <span
-                      className="text-[10px] font-semibold uppercase tracking-wider"
-                      style={{ color: accentVar }}
+                      className="font-semibold uppercase tracking-wider"
+                      style={{ color: accentVar, fontSize: labelPx }}
                     >
                       New
                     </span>
@@ -1280,8 +1465,8 @@ function ChatBody({
                     {divider}
                     <div className="flex justify-center py-1">
                       <span
-                        className="text-[10px] italic px-2 text-center"
-                        style={{ color: "var(--color-bt-text-dim)" }}
+                        className="italic px-2 text-center"
+                        style={{ color: "var(--color-bt-text-dim)", fontSize: metaPx }}
                       >
                         {line}
                       </span>
@@ -1302,17 +1487,20 @@ function ChatBody({
                   {divider}
                   <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                     <div className="flex items-center gap-1.5 px-1 mb-0.5">
-                      <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      <span style={{ color: "var(--color-bt-text-dim)", fontSize: metaPx }}>
                         {time}
                       </span>
                       {!isMe && (
-                        <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                        <span
+                          className="font-medium"
+                          style={{ color: "var(--color-bt-text-dim)", fontSize: metaPx }}
+                        >
                           {msg.user_id ? memberNames[msg.user_id] ?? "Unknown" : "Unknown"}
                         </span>
                       )}
                     </div>
                     <div
-                      className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words"
+                      className="max-w-[85%] rounded-2xl px-3 py-1.5 whitespace-pre-wrap break-words"
                       style={{
                         background: isMe ? accentFaint : "var(--color-bt-card-raised)",
                         /* A failed message is BORDERED in danger rather than
@@ -1331,6 +1519,11 @@ function ChatBody({
                            in flight and must not fade into the backdrop — it is
                            the one bubble here that needs to be noticed. */
                         opacity: msg._optimistic && !msg._failed ? 0.6 : 1,
+                        // Scales with the reading-size control (chatTextSize.ts)
+                        // — the whole reason this bubble's own text-sm class
+                        // was removed. S resolves to exactly 14px, same as
+                        // the class it replaced.
+                        fontSize: messagePx,
                       }}
                     >
                       {msg.text}
@@ -1353,24 +1546,24 @@ function ChatBody({
                         data-testid="chat-failed-actions"
                       >
                         <span
-                          className="text-[10px] font-medium"
-                          style={{ color: "var(--color-bt-danger)" }}
+                          className="font-medium"
+                          style={{ color: "var(--color-bt-danger)", fontSize: metaPx }}
                         >
                           Not sent
                         </span>
                         <button
                           type="button"
                           onClick={() => onRetryMessage(msg)}
-                          className="text-[10px] font-medium underline underline-offset-2"
-                          style={{ color: "var(--color-bt-text)" }}
+                          className="font-medium underline underline-offset-2"
+                          style={{ color: "var(--color-bt-text)", fontSize: metaPx }}
                         >
                           Retry
                         </button>
                         <button
                           type="button"
                           onClick={() => onDiscardMessage(msg)}
-                          className="text-[10px] underline underline-offset-2"
-                          style={{ color: "var(--color-bt-text-dim)" }}
+                          className="underline underline-offset-2"
+                          style={{ color: "var(--color-bt-text-dim)", fontSize: metaPx }}
                         >
                           Discard
                         </button>
