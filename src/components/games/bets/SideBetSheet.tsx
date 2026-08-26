@@ -16,15 +16,17 @@ import {
   type SideBetsResult,
 } from "@/lib/sideBets";
 import {
-  MAX_BET_SIDES,
   MIN_STAKE,
   STAKE_PRESETS,
   betDraftError,
   buildBetsFromDraft,
+  canBeHeadToHead,
   emptyBetDraft,
   pressOnPressBlurb,
+  setBetKind,
   setPressRules,
-  sidesFromAssignment,
+  sidesFromWhoIsIn,
+  toggleWhoIsIn,
   type BetDraft,
 } from "@/lib/betDraft";
 import type { Participant } from "@/components/games/types";
@@ -307,10 +309,10 @@ function HoleHistory({
               </span>
               <span className="min-w-0 flex-1" style={{ fontSize: 13, color: "var(--color-bt-text)" }}>
                 {!l.decided
-                  ? `${formatMoney(l.atStake)} at stake`
+                  ? `worth ${formatMoney(l.pot)}`
                   : Math.abs(mine) < 0.005
-                    ? `${formatMoney(l.atStake)} · halved`
-                    : `${formatMoney(l.atStake)} played`}
+                    ? `${formatMoney(l.pot)} carried over`
+                    : `${formatMoney(l.pot)} played`}
                 {l.presses.length > 0 && (
                   <span style={{ color: "var(--color-bt-warning)", fontWeight: 600 }}>
                     {" · "}
@@ -374,9 +376,9 @@ function BetForm({
 }) {
   const sides = sidesLocked
     ? lockedSides
-    : sidesFromAssignment(
+    : sidesFromWhoIsIn(
         players.map((p) => p.id),
-        draft.assignment,
+        draft.whoIsIn,
         // A PREVIEW list, rebuilt on every keystroke and never recorded — the
         // ids that last are minted in `commit`. Numbered anyway so no two
         // sides in this list ever share one.
@@ -384,22 +386,13 @@ function BetForm({
       );
   const error = betDraftError(draft, sides, { holeCount });
 
-  const cycleSide = (playerId: string) => {
-    const cur = draft.assignment[playerId];
-    const next = cur == null ? 0 : cur + 1;
-    const assignment = { ...draft.assignment };
-    if (next >= MAX_BET_SIDES) delete assignment[playerId];
-    else assignment[playerId] = next;
-    setDraft({ ...draft, assignment });
-  };
-
   const commit = () => {
     if (error) return;
     let n = 0;
     const mkId = () => `bet-${Date.now().toString(36)}-${++n}`;
     const built = sidesLocked
       ? sides
-      : sidesFromAssignment(players.map((p) => p.id), draft.assignment, () => `side-${Date.now().toString(36)}-${++n}`);
+      : sidesFromWhoIsIn(players.map((p) => p.id), draft.whoIsIn, () => `side-${Date.now().toString(36)}-${++n}`);
     onCommit(buildBetsFromDraft(draft, built, { holeCount, mkId }));
   };
 
@@ -409,48 +402,75 @@ function BetForm({
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       data-testid="side-bet-form"
     >
-      {/* Sides */}
-      <FieldLabel>Sides</FieldLabel>
+      {/* Who's in — a checkbox each (§10). No instructions: with the right
+          header and control there is nothing to explain, and a control that
+          needs a sentence is usually the wrong control. */}
+      <FieldLabel>Who&rsquo;s in</FieldLabel>
       {sidesLocked ? (
         <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }} data-testid="side-bet-sides-locked">
           {sides.map(sideName).join(" v ")} — a match is scored side against side, so the bet is too.
         </div>
       ) : (
-        <>
-          <div className="flex flex-wrap gap-1.5">
-            {players.map((p) => {
-              const idx = draft.assignment[p.id];
-              const inBet = idx != null;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => cycleSide(p.id)}
-                  data-testid="side-bet-player-chip"
-                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
-                  style={{
-                    background: inBet ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                    border: `1px solid ${inBet ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                    color: inBet ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  {p.name.split(/\s+/)[0]}
-                  <span style={{ fontSize: 11, fontWeight: 700 }}>{inBet ? `SIDE ${idx + 1}` : "OUT"}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-col gap-1">
+          {players.map((p) => {
+            const on = draft.whoIsIn.includes(p.id);
+            return (
+              <label
+                key={p.id}
+                data-testid="side-bet-player-check"
+                className="flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2"
+                style={{
+                  background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+                  border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => setDraft(toggleWhoIsIn(draft, p.id))}
+                  style={{ width: 18, height: 18, accentColor: "var(--color-bt-accent)" }}
+                />
+                <span style={{ fontSize: 14, fontWeight: 600, color: on ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
+                  {p.name}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The kind. Head-to-head is only coherent at two — above that "who pays
+          whom" has no answer, so the pot is the only option and the choice
+          disappears rather than being shown disabled. */}
+      {!sidesLocked && draft.whoIsIn.length >= 2 && (
+        <div className="mt-3">
+          <FieldLabel>Type</FieldLabel>
+          {canBeHeadToHead(draft) ? (
+            <Segmented
+              options={[
+                { value: "head_to_head", label: "Head to head" },
+                { value: "skins", label: "Skins" },
+              ]}
+              value={draft.kind}
+              onChange={(k) => setDraft(setBetKind(draft, k))}
+              testId="side-bet-kind"
+            />
+          ) : (
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)" }} data-testid="side-bet-kind-forced">
+              Skins
+            </div>
+          )}
           <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-            Tap to move a player between sides, or out. A side of two shares its winnings.
+            {draft.kind === "skins"
+              ? `Everyone in, low score takes the pot. ${formatMoney(draft.amount)} each makes the first skin ${formatMoney(draft.amount * Math.max(draft.whoIsIn.length, 2))} — a tie carries it to the next hole.`
+              : "One against one. The loser can press to get back in."}
           </div>
-        </>
+        </div>
       )}
 
       {/* Stakes */}
       <div className="mt-3">
-        <FieldLabel>Stakes per hole</FieldLabel>
+        <FieldLabel>{draft.kind === "skins" ? "Each player puts in, per hole" : "Stakes per hole"}</FieldLabel>
         <div className="flex items-center gap-2">
           {STAKE_PRESETS.map((v) => (
             <button
@@ -499,7 +519,7 @@ function BetForm({
       </div>
 
       {/* Nassau — one action, three bets. Hidden where there is no back nine. */}
-      {nassauAvailable && (
+      {nassauAvailable && draft.kind === "head_to_head" && (
         <div className="mt-3">
           <FieldLabel>Shape</FieldLabel>
           <Segmented
@@ -507,11 +527,11 @@ function BetForm({
               { value: "single", label: "One bet" },
               { value: "nassau", label: "Nassau (3)" },
             ]}
-            value={draft.kind}
-            onChange={(kind) => setDraft({ ...draft, kind })}
-            testId="side-bet-kind"
+            value={draft.shape}
+            onChange={(shape) => setDraft({ ...draft, shape })}
+            testId="side-bet-shape"
           />
-          {draft.kind === "nassau" && (
+          {draft.shape === "nassau" && (
             <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
               Front nine, back nine, and overall — three bets at {formatMoney(draft.amount)} a hole each.
             </div>
@@ -519,51 +539,50 @@ function BetForm({
         </div>
       )}
 
-      {/* Rules */}
-      <div className="mt-3">
-        <FieldLabel>Rules</FieldLabel>
-        <ToggleRow
-          label="Carry over halved holes"
-          blurb={`A halved hole rolls into the next one — halve a ${formatMoney(draft.amount)} hole and the next is worth ${formatMoney(draft.amount * 2)}.`}
-          on={draft.carryover}
-          onToggle={() => setDraft({ ...draft, carryover: !draft.carryover })}
-          testId="side-bet-carryover"
-        />
-        <ToggleRow
-          label="Automatic press"
-          blurb={
-            draft.autoPressAt == null
-              ? "Go a set number of holes down and a second bet starts, from the next hole to the end of the round."
-              : `Going ${draft.autoPressAt} down starts a second bet at ${formatMoney(draft.amount)} a hole — ${formatMoney(draft.amount * 2)}/hole while both run.`
-          }
-          on={draft.autoPressAt != null}
-          onToggle={() => setDraft(setPressRules(draft, { autoPressAt: draft.autoPressAt == null ? 2 : null }))}
-          testId="side-bet-autopress"
-        />
-        {draft.autoPressAt != null && (
-          <div className="mt-2 flex items-center justify-between pl-1">
-            <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Press when this far down</span>
-            <Stepper
-              value={draft.autoPressAt}
-              min={1}
-              max={9}
-              onChange={(n) => setDraft(setPressRules(draft, { autoPressAt: n }))}
-              size="compact"
-            />
-          </div>
-        )}
-        {/* ☠️ Only reachable with automatic press on, and off by default (§5/§9). */}
-        {draft.autoPressAt != null && (
+      {/* Rules. Carryover is no longer a setting (§12) — it is inherent to
+          skins and absent from head-to-head, so the type IS the choice. It was
+          quietly turning one game into the other. Presses are head-to-head
+          only (§13): in a pot there is no "down two to someone", there are
+          three other people and a running total. */}
+      {draft.kind === "head_to_head" && (
+        <div className="mt-3" data-testid="side-bet-rules">
+          <FieldLabel>Rules</FieldLabel>
           <ToggleRow
-            label="☠️ Presses on presses"
-            blurb={pressOnPressBlurb(draft.amount, draft.autoPressAt)}
-            on={draft.pressOnPress}
-            onToggle={() => setDraft(setPressRules(draft, { pressOnPress: !draft.pressOnPress }))}
-            tone="warning"
-            testId="side-bet-pressonpress"
+            label="Automatic press"
+            blurb={
+              draft.autoPressAt == null
+                ? "Go a set number of holes down and a second bet starts, from the next hole to the end of the round."
+                : `Going ${draft.autoPressAt} down starts a second bet at ${formatMoney(draft.amount)} a hole — ${formatMoney(draft.amount * 2)}/hole while both run.`
+            }
+            on={draft.autoPressAt != null}
+            onToggle={() => setDraft(setPressRules(draft, { autoPressAt: draft.autoPressAt == null ? 2 : null }))}
+            testId="side-bet-autopress"
           />
-        )}
-      </div>
+          {draft.autoPressAt != null && (
+            <div className="mt-2 flex items-center justify-between pl-1">
+              <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Press when this far down</span>
+              <Stepper
+                value={draft.autoPressAt}
+                min={1}
+                max={9}
+                onChange={(n) => setDraft(setPressRules(draft, { autoPressAt: n }))}
+                size="compact"
+              />
+            </div>
+          )}
+          {/* ☠️ Only reachable with automatic press on, and off by default. */}
+          {draft.autoPressAt != null && (
+            <ToggleRow
+              label="☠️ Presses on presses"
+              blurb={pressOnPressBlurb(draft.amount, draft.autoPressAt)}
+              on={draft.pressOnPress}
+              onToggle={() => setDraft(setPressRules(draft, { pressOnPress: !draft.pressOnPress }))}
+              tone="warning"
+              testId="side-bet-pressonpress"
+            />
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mt-3" style={{ fontSize: 12, color: "var(--color-bt-warning)" }} data-testid="side-bet-error">
@@ -599,7 +618,7 @@ function BetForm({
             fontWeight: 700,
           }}
         >
-          {draft.kind === "nassau" ? "Start Nassau" : "Start bet"}
+          {draft.shape === "nassau" ? "Start Nassau" : "Start bet"}
         </button>
       </div>
     </div>

@@ -2,7 +2,8 @@ import {
   buildManualBet,
   buildNassauBets,
   nassauAvailable,
-  pressRules,
+  rulesForKind,
+  type BetKind,
   type BetSide,
   type SideBet,
 } from "@/lib/sideBets";
@@ -25,18 +26,26 @@ import {
 export type BetDraftKind = "single" | "nassau";
 
 export interface BetDraft {
-  kind: BetDraftKind;
-  /** Stakes per hole, per side. */
+  shape: BetDraftKind;
+  /** Head-to-head or a pot (§11/§12). Forced to `skins` above two players —
+   *  there is no three-way head-to-head, since "who pays whom" has no coherent
+   *  answer with three sides. */
+  kind: BetKind;
+  /** Stakes per hole. Head-to-head: what changes hands. Skins: what each
+   *  player puts IN — the skin itself is `stake × players`, derived. */
   amount: number;
   /** Where it begins — defaults to the hole you are standing on. */
   startHole: number;
-  carryover: boolean;
   autoPressAt: number | null;
   pressOnPress: boolean;
-  /** `{ [playerId]: sideIndex }`. A player not in the map is not in the bet —
-   *  two people betting inside a foursome is normal, so "out" is the default
-   *  rather than a state you have to select. */
-  assignment: Record<string, number>;
+  /**
+   * Who is in, by player id (§10). A SET, not a side assignment: the old
+   * per-player button cycling `OUT → SIDE 1 → SIDE 2 …` needed a sentence of
+   * instructions to explain, and a control needing a sentence is usually the
+   * wrong control. Everyone in is their own side; at exactly two that is the
+   * head-to-head pairing, above two it is the pot.
+   */
+  whoIsIn: string[];
 }
 
 /** The stake chips. Whole dollars, the amounts people actually say out loud. */
@@ -48,14 +57,37 @@ export const MAX_BET_SIDES = 4;
 
 export function emptyBetDraft(startHole: number): BetDraft {
   return {
-    kind: "single",
+    shape: "single",
+    kind: "head_to_head",
     amount: 10,
     startHole: Math.max(1, startHole),
-    carryover: false,
     autoPressAt: null,
     pressOnPress: false,
-    assignment: {},
+    whoIsIn: [],
   };
+}
+
+/** Toggle a player in or out, keeping the kind coherent: above two players
+ *  head-to-head cannot apply, so the draft becomes a pot rather than offering
+ *  a choice that has no meaning (§11). Dropping back to two leaves the kind
+ *  alone — skins at two is legitimate and identical. */
+export function toggleWhoIsIn(draft: BetDraft, playerId: string): BetDraft {
+  const inNow = draft.whoIsIn.includes(playerId);
+  const whoIsIn = inNow
+    ? draft.whoIsIn.filter((id) => id !== playerId)
+    : [...draft.whoIsIn, playerId];
+  const kind: BetKind = whoIsIn.length > 2 ? "skins" : draft.kind;
+  return { ...draft, whoIsIn, kind, ...rulesForKind(kind, draft) };
+}
+
+/** Set the bet kind, dropping any rule the new kind does not carry. */
+export function setBetKind(draft: BetDraft, kind: BetKind): BetDraft {
+  return { ...draft, kind, ...rulesForKind(kind, draft) };
+}
+
+/** Head-to-head is only offered at exactly two players (§11). */
+export function canBeHeadToHead(draft: BetDraft): boolean {
+  return draft.whoIsIn.length <= 2;
 }
 
 /**
@@ -65,20 +97,13 @@ export function emptyBetDraft(startHole: number): BetDraft {
  * sides rather than re-deriving them, so the id only has to be stable within
  * the bet it belongs to.
  */
-export function sidesFromAssignment(
+export function sidesFromWhoIsIn(
   playerIds: string[],
-  assignment: Record<string, number>,
+  whoIsIn: string[],
   mkId: () => string
 ): BetSide[] {
-  const byIndex = new Map<number, string[]>();
-  for (const pid of playerIds) {
-    const idx = assignment[pid];
-    if (idx == null) continue;
-    byIndex.set(idx, [...(byIndex.get(idx) ?? []), pid]);
-  }
-  return [...byIndex.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, playerIds]) => ({ id: mkId(), playerIds }));
+  // Roster order, not tap order — the bet reads the way the card does.
+  return playerIds.filter((p) => whoIsIn.includes(p)).map((pid) => ({ id: mkId(), playerIds: [pid] }));
 }
 
 /**
@@ -92,14 +117,17 @@ export function betDraftError(
   sides: BetSide[],
   ctx: { holeCount: number }
 ): string | null {
-  if (sides.length < 2) return "A bet needs at least two sides. Tap a player to put them in.";
+  if (sides.length < 2) return "Pick at least two players.";
   if (!(draft.amount >= MIN_STAKE)) return `The stake has to be at least $${MIN_STAKE} a hole.`;
   if (draft.amount > MAX_STAKE) return `Keep the stake under $${MAX_STAKE} a hole.`;
   if (draft.startHole < 1 || draft.startHole > ctx.holeCount) {
     return `This round is ${ctx.holeCount} holes — pick a start hole inside it.`;
   }
-  if (draft.kind === "nassau" && !nassauAvailable(ctx.holeCount)) {
+  if (draft.shape === "nassau" && !nassauAvailable(ctx.holeCount)) {
     return "Nassau needs a front and a back nine.";
+  }
+  if (draft.shape === "nassau" && draft.kind === "skins") {
+    return "Nassau is a head-to-head bet — it needs exactly two players.";
   }
   // Automatic press is a two-sided idea: there is no "down" to press from in a
   // four-way skin, so the rule is refused rather than quietly doing nothing.
@@ -116,26 +144,26 @@ export function buildBetsFromDraft(
   sides: BetSide[],
   ctx: { holeCount: number; mkId: () => string }
 ): SideBet[] {
-  const rules = pressRules(draft.autoPressAt, draft.pressOnPress);
-  if (draft.kind === "nassau") {
+  if (draft.shape === "nassau") {
     return buildNassauBets({
       mkId: ctx.mkId,
       sides,
       amount: draft.amount,
       startHole: draft.startHole,
       holeCount: ctx.holeCount,
-      carryover: draft.carryover,
-      ...rules,
+      autoPressAt: draft.autoPressAt,
+      pressOnPress: draft.pressOnPress,
     });
   }
   return [
     buildManualBet({
       mkId: ctx.mkId,
+      kind: draft.kind,
       sides,
       amount: draft.amount,
       startHole: draft.startHole,
-      carryover: draft.carryover,
-      ...rules,
+      autoPressAt: draft.autoPressAt,
+      pressOnPress: draft.pressOnPress,
     }),
   ];
 }
@@ -154,7 +182,9 @@ export function setPressRules(
 ): BetDraft {
   const autoPressAt = next.autoPressAt !== undefined ? next.autoPressAt : draft.autoPressAt;
   const pressOnPress = next.pressOnPress !== undefined ? next.pressOnPress : draft.pressOnPress;
-  return { ...draft, ...pressRules(autoPressAt, pressOnPress) };
+  // Routed through `rulesForKind` so a press cannot be set on a pot even by a
+  // caller that forgot to check — the gating is the data's, not the form's.
+  return { ...draft, ...rulesForKind(draft.kind, { autoPressAt, pressOnPress }) };
 }
 
 /**

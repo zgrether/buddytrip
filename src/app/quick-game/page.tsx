@@ -965,7 +965,7 @@ function QuickGamePageInner() {
           viewedHoleLine && viewedHoleLine.perBet.length > 0
             ? {
                 label: String(viewedHoleLine.hole),
-                atStake: viewedHoleLine.atStake,
+                pot: viewedHoleLine.pot,
                 decided: viewedHoleLine.decided,
                 delta: betStrip.perspectivePlayerId
                   ? (viewedHoleLine.delta[betStrip.perspectivePlayerId] ?? 0)

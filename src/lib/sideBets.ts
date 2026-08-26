@@ -36,6 +36,27 @@ export interface BetSide {
   playerIds: string[];
 }
 
+/**
+ * What KIND of bet this is — the choice that used to be a carryover toggle.
+ *
+ * `head_to_head` — two sides, a winner and a loser exchanging. Presses live
+ * here: a press is the losing side buying back in against a specific opponent.
+ * No carryover; a carried hole in a two-way is just a bigger hole, and nobody
+ * asks for it by name.
+ *
+ * `skins` — a pot. Everyone in contributes the stake, low net takes the whole
+ * thing, and a tie carries it to the next hole. Carryover is not a setting
+ * here, it is the entire point. Presses are meaningless: in a pot there is no
+ * "down two to someone", there are three other people and a running total.
+ *
+ * **The arithmetic is the same either way** and always was — the winner
+ * collects the stake from every other side, which for four players at $10 is
+ * +$30 and three × −$10, i.e. a $40 pot taken by one person. What differs is
+ * what is OFFERED (presses, carryover) and what is DISPLAYED (`holeValue`).
+ * At two players the two kinds are identical, which needs no special case.
+ */
+export type BetKind = "head_to_head" | "skins";
+
 /** What created a bet. Manual / Nassau / last-hole double are RECORDED
  *  decisions; `press` is only ever minted by `computeSideBets` (automatic
  *  presses derive — see the module doc). */
@@ -57,6 +78,7 @@ export type BetOrigin =
  */
 export interface SideBet {
   id: string;
+  kind: BetKind;
   sides: BetSide[];
   /** Stakes per hole, in whole currency units, per SIDE. */
   amount: number;
@@ -162,8 +184,18 @@ export interface PressEvent {
  *  after it. */
 export interface HoleMoneyLine {
   hole: number;
-  /** Everything riding on this hole, carryovers included. */
+  /** What each side has AT RISK on this hole, carryovers included — the
+   *  head-to-head figure, and what exposure is about. */
   atStake: number;
+  /**
+   * What the hole is WORTH to whoever takes it: the pot (§11's second name).
+   *
+   * Equal to `atStake` in a head-to-head — the stake is what changes hands —
+   * and `stake × players` in skins, so four at $10 reads "$40" and three
+   * carries reads "$160". The tracker shows THIS; the setup asks for the
+   * stake. Two numbers, two names, and neither is stored.
+   */
+  pot: number;
   /** Every bet live on this hole has a result. */
   decided: boolean;
   perBet: {
@@ -240,6 +272,9 @@ export function makePressBet(parent: SideBet, triggerHole: number): SideBet {
   const level = parent.origin.kind === "press" ? parent.origin.level + 1 : 1;
   return {
     id: pressBetId(parent.id, level),
+    // A press is always head-to-head — it is only ever minted from one, since
+    // `rulesForKind` refuses skins an `autoPressAt` to fire from.
+    kind: "head_to_head",
     sides: parent.sides,
     amount: parent.amount,
     startHole: triggerHole + 1,
@@ -249,6 +284,40 @@ export function makePressBet(parent: SideBet, triggerHole: number): SideBet {
     pressOnPress: parent.pressOnPress,
     origin: { kind: "press", parentId: parent.id, level },
   };
+}
+
+/**
+ * The rules a bet of this KIND is allowed to carry (§12/§13).
+ *
+ * One place, so "skins has no presses" and "head-to-head has no carryover" are
+ * properties of the data rather than conditions remembered at each render. A
+ * form that draws the wrong control, or a stored payload from before the kinds
+ * existed, still cannot produce a bet that behaves as the other one.
+ */
+export function rulesForKind(
+  kind: BetKind,
+  opts: { autoPressAt?: number | null; pressOnPress?: boolean } = {}
+): { carryover: boolean; autoPressAt: number | null; pressOnPress: boolean } {
+  if (kind === "skins") {
+    // Carryover is inherent, presses are incoherent. Neither is a choice.
+    return { carryover: true, autoPressAt: null, pressOnPress: false };
+  }
+  return { carryover: false, ...pressRules(opts.autoPressAt ?? null, opts.pressOnPress ?? false) };
+}
+
+/**
+ * What a hole is WORTH, as the tracker says it — distinct from `pot`, which is
+ * what each side has at risk (§11's "two numbers, two names").
+ *
+ * Head-to-head: the stake, because that is what changes hands.
+ * Skins: the stake times everyone in, because that is the pot — four at $10 is
+ * a $40 skin, and three carries makes it $160.
+ *
+ * Derived, never set: the setup asks what you are each putting in, and this is
+ * the only place that turns it into what the hole is worth.
+ */
+export function holeValue(bet: SideBet, pot: number): number {
+  return bet.kind === "skins" ? pot * bet.sides.length : pot;
 }
 
 /**
@@ -276,7 +345,7 @@ export function betLabel(bet: SideBet): string {
     case "double":
       return "Last hole";
     default:
-      return "Bet";
+      return bet.kind === "skins" ? "Skins" : "Bet";
   }
 }
 
@@ -505,6 +574,7 @@ export function computeSideBets(input: SideBetsInput): SideBetsResult {
     const perBet: HoleMoneyLine["perBet"] = [];
     const delta: Record<string, number> = {};
     let atStake = 0;
+    let pot = 0;
     let decided = true;
     let any = false;
     for (const t of tallies) {
@@ -512,6 +582,7 @@ export function computeSideBets(input: SideBetsInput): SideBetsResult {
       if (!line) continue;
       any = true;
       atStake += line.pot;
+      pot += holeValue(t.bet, line.pot);
       if (line.status === "undecided") decided = false;
       perBet.push({
         betId: t.bet.id,
@@ -531,6 +602,7 @@ export function computeSideBets(input: SideBetsInput): SideBetsResult {
     return {
       hole,
       atStake,
+      pot,
       decided: any && decided,
       perBet,
       delta,
@@ -661,11 +733,12 @@ export function buildNassauBets(args: {
   amount: number;
   startHole: number;
   holeCount: number;
-  carryover: boolean;
   autoPressAt: number | null;
   pressOnPress: boolean;
 }): SideBet[] {
-  const rules = pressRules(args.autoPressAt, args.pressOnPress);
+  // Nassau is three head-to-heads. A "skins Nassau" is not a thing anyone
+  // plays, and the front/back/overall split is about a match, not a pot.
+  const rules = rulesForKind("head_to_head", args);
   const start = Math.max(1, args.startHole);
   const legs: { leg: "front" | "back" | "overall"; from: number; to: number }[] = [
     { leg: "front", from: start, to: 9 },
@@ -678,12 +751,12 @@ export function buildNassauBets(args: {
       id: args.mkId(),
       sides: args.sides,
       amount: args.amount,
+      kind: "head_to_head" as const,
       startHole: l.from,
       // A leg that reaches the end of the round carries no end hole, exactly
       // like an ordinary bet — only the front nine, which genuinely stops
       // early, is the reason `endHole` exists at all.
       endHole: l.to >= args.holeCount ? null : l.to,
-      carryover: args.carryover,
       ...rules,
       origin: { kind: "nassau" as const, leg: l.leg },
     }));
@@ -750,13 +823,12 @@ export function lastHoleDoubleOffers(
 export function buildDoubleBet(args: { mkId: () => string; offer: DoubleOffer; lastHole: number }): SideBet {
   return {
     id: args.mkId(),
+    kind: "head_to_head",
     sides: args.offer.bet.sides,
     amount: args.offer.amount,
     startHole: args.lastHole,
     endHole: args.lastHole,
-    carryover: false,
-    autoPressAt: null,
-    pressOnPress: false,
+    ...rulesForKind("head_to_head"),
     origin: { kind: "double", parentId: args.offer.bet.id },
   };
 }
@@ -788,7 +860,7 @@ export function betTotalForPlayer(tally: BetTally, playerId: string | null): num
  *  which is the standing rate. */
 export function nextHoleValue(result: SideBetsResult): number {
   const line = result.holeLines.find((l) => l.hole === result.playedThrough + 1);
-  return line?.atStake ?? 0;
+  return line?.pot ?? 0;
 }
 
 // ── The recorded half ───────────────────────────────────────────────────────
@@ -821,21 +893,21 @@ export const EMPTY_SIDE_BETS: SideBetsState = {
  *  end of the round" is the only answer the create form has to that question. */
 export function buildManualBet(args: {
   mkId: () => string;
+  kind: BetKind;
   sides: BetSide[];
   amount: number;
   startHole: number;
-  carryover: boolean;
-  autoPressAt: number | null;
-  pressOnPress: boolean;
+  autoPressAt?: number | null;
+  pressOnPress?: boolean;
 }): SideBet {
   return {
     id: args.mkId(),
+    kind: args.kind,
     sides: args.sides,
     amount: args.amount,
     startHole: Math.max(1, Math.round(args.startHole)),
     endHole: null,
-    carryover: args.carryover,
-    ...pressRules(args.autoPressAt, args.pressOnPress),
+    ...rulesForKind(args.kind, args),
     origin: { kind: "manual" },
   };
 }
@@ -881,17 +953,33 @@ function migrateBet(raw: unknown): SideBet | null {
   const origin = migrateOrigin(b.origin);
   const startHole = typeof b.startHole === "number" && b.startHole >= 1 ? Math.round(b.startHole) : 1;
   const endHole = typeof b.endHole === "number" && b.endHole >= startHole ? Math.round(b.endHole) : null;
+  /**
+   * A bet saved before `kind` existed carries `sides` and a `carryover` flag,
+   * and the pair says which kind it always was: more than two sides is a pot,
+   * and carryover ON in a two-way is the setting that "was quietly turning one
+   * game into another" (§12) — so it becomes the game it was already being.
+   *
+   * Read, not guessed: both readings preserve the tally exactly. A carried
+   * two-side bet reopens as skins, which keeps carrying, and at two players
+   * skins and head-to-head are arithmetically identical anyway.
+   */
+  const kind: BetKind =
+    b.kind === "skins" || b.kind === "head_to_head"
+      ? b.kind
+      : sides.length > 2 || b.carryover === true
+        ? "skins"
+        : "head_to_head";
   return {
     id: b.id,
+    kind,
     sides,
     amount: b.amount,
     startHole,
     endHole,
-    carryover: b.carryover === true,
-    ...pressRules(
-      typeof b.autoPressAt === "number" ? b.autoPressAt : null,
-      b.pressOnPress === true
-    ),
+    ...rulesForKind(kind, {
+      autoPressAt: typeof b.autoPressAt === "number" ? b.autoPressAt : null,
+      pressOnPress: b.pressOnPress === true,
+    }),
     origin,
   };
 }
