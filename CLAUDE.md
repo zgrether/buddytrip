@@ -62,6 +62,31 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
   reporting it. Recovery is: branch fresh from `origin/main`, cherry-pick the
   stranded commit, verify the tree matches (`git diff --stat <stranded> HEAD`
   must be empty), open a new PR.
+- **Never re-run a workflow during a declared Actions incident — the re-run is
+  what wedges it.** A re-run requested while GitHub Actions is degraded can
+  leave the run in a state with no way out from either direction:
+
+      rerun  -> 403 "This workflow is already running"
+      cancel -> 409 "Cannot cancel a workflow re-run that has not yet queued"
+
+  Simultaneously too-running to re-run and too-not-queued to cancel. Nothing on
+  our side moves it; only a NEW run on the same ref clears it, via this
+  workflow's own `concurrency: cancel-in-progress` (group `ci-${{ github.ref }}`),
+  which supersedes the stuck one. So a push is the unblock, and re-running is
+  the thing that made one necessary. Wait the incident out instead.
+
+  **Distinguishing "CI never ran" from "CI ran and failed"** — they look alike on
+  the PR page, and only the second is yours to fix. When Actions is the problem:
+  job records may exist but sit `queued` with no logs, `get_check_run` returns
+  empty `output`, and the PR's check-runs list shows only THIRD-PARTY checks.
+  Vercel going green while no Actions check exists at all is the signature, not a
+  contradiction — Vercel is a GitHub App and never touches Actions compute.
+  Verify against `main`: the same workflow file green on the base commit means
+  the definition is fine and the failure is not the branch's.
+
+  Lived 2026-08-26 (PR #1081): incident opened 15:11, the PR's run was created
+  15:21 and never got a runner, a 15:29 re-run wedged it, and it was still
+  immovable three hours later with the incident long since mitigated.
 - **"Unconfirmed" is a valid, preferred answer.** If you can't point to the code
   proving a claim, write "unconfirmed" and list it as an open question — in
   reports, PR descriptions, and commit messages alike.
