@@ -76,7 +76,7 @@ R1's shape has changed under it — see §2. What remains:
 - **Money / gambling** — killer feature *only if* UI/UX nailed. **The "no vision yet" half is spent:** the
   side-bets handoff is the vision, and it is BUILT on Quick Play — bets as objects with a start hole
   (`src/lib/sideBets.ts`), presses derived rather than recorded, Nassau in one action, carryovers, the ☠️
-  compounding option, and a live tracker that shows per-hole exposure without a tap. Deliberately Quick-Play
+  presses-on-presses option (linear — every press is another bet at the SAME stake, never a bigger one), and a live tracker that shows per-hole exposure without a tap. Deliberately Quick-Play
   only: a foursome, one card, one phone, nothing that rolls up to a cup — and the safe place to get presses
   and carryovers wrong, because finding the edge cases in a scratchpad costs nothing. What stays parked is
   the TRIP-side version (a bet that other people can see, that survives the round, that touches a

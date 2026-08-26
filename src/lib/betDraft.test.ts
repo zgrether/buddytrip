@@ -104,10 +104,21 @@ describe("the ☠️ option's dependency", () => {
     expect(setPressRules(off, { autoPressAt: 2 }).pressOnPress).toBe(false);
   });
 
-  it("says what it does to the money, in money", () => {
-    const blurb = pressOnPressBlurb(10, 2);
-    expect(blurb).toContain("$20");
-    expect(blurb).toContain("$40");
-    expect(blurb).not.toMatch(/recursive/i);
+  it("states the real escalation — linear, and never described as doubling", () => {
+    // The whole point of this label is being accurate about money, so assert
+    // the ORDERED progression rather than that some plausible figures appear:
+    // a doubling blurb ("$10, then $20, then $40, then $80") would satisfy a
+    // `toContain("$20")` / `toContain("$40")` pair, which is exactly the wrong
+    // sentence this test exists to refuse.
+    expect(pressOnPressBlurb(10, 2)).toContain("$10, then $20, then $30, then $40");
+    // $15 is the discriminating value: linear from $5 produces it, doubling
+    // ($5 → $10 → $20 → $40) cannot.
+    expect(pressOnPressBlurb(5, 3)).toContain("$5, then $10, then $15, then $20");
+    expect(pressOnPressBlurb(5, 3)).toContain("goes 3 down");
+    // Names what climbs — the count of bets, not the stake.
+    expect(pressOnPressBlurb(10, 2)).toMatch(/never a bigger one/);
+    // Money language, and no claim of doubling anywhere in it.
+    expect(pressOnPressBlurb(10, 2)).not.toMatch(/doubl/i);
+    expect(pressOnPressBlurb(10, 2)).not.toMatch(/recursive/i);
   });
 });
