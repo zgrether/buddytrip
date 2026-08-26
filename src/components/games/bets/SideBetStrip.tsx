@@ -41,7 +41,9 @@ export function SideBetStrip({
   /** The hole currently being viewed — its own money line. */
   hole: {
     label: string;
-    atStake: number;
+    /** What the hole is WORTH — the pot in skins, the stake head-to-head.
+     *  Never the per-side stake: "This hole: $80", never "$10/hole" (§11). */
+    pot: number;
     decided: boolean;
     /** What this hole moved for the perspective player (0 if nothing). */
     delta: number;
@@ -52,6 +54,7 @@ export function SideBetStrip({
   presses: { level: number; exposureAfter: number }[];
   onOpen: () => void;
 }) {
+  const multiple = exposure.liveBetCount > 1;
   const tone =
     total > 0.004 ? "var(--color-bt-place-1-text)" : total < -0.004 ? "var(--color-bt-danger)" : "var(--color-bt-text-dim)";
 
@@ -72,7 +75,16 @@ export function SideBetStrip({
           <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-bt-text-dim)" }}>{perspectiveName}</span>
           <span
             data-testid="side-bet-total"
-            style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", color: tone, fontVariantNumeric: "tabular-nums" }}
+            style={{
+              // With several bets running, a personal net does not say against
+              // whom — exposure is the more useful headline, so the two swap
+              // weight rather than the total simply shouting louder (§14).
+              fontSize: multiple ? 16 : 22,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              color: tone,
+              fontVariantNumeric: "tabular-nums",
+            }}
           >
             {formatSignedMoney(total)}
           </span>
@@ -83,9 +95,13 @@ export function SideBetStrip({
           data-testid="side-bet-exposure"
           className="mt-0.5 flex items-center gap-1"
           style={{
-            fontSize: 13,
-            fontWeight: exposure.warn ? 700 : 500,
-            color: exposure.warn ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+            fontSize: multiple ? 19 : 13,
+            fontWeight: exposure.warn || multiple ? 700 : 500,
+            color: exposure.warn
+              ? "var(--color-bt-warning)"
+              : multiple
+                ? "var(--color-bt-text)"
+                : "var(--color-bt-text-dim)",
             fontVariantNumeric: "tabular-nums",
           }}
         >
@@ -103,9 +119,9 @@ export function SideBetStrip({
             Hole {hole.label} ·{" "}
             {hole.decided
               ? Math.abs(hole.delta) < 0.005
-                ? `${formatMoney(hole.atStake)} halved`
+                ? `${formatMoney(hole.pot)} carried over`
                 : `${formatSignedMoney(hole.delta)} to ${perspectiveName}`
-              : `${formatMoney(hole.atStake)} at stake`}
+              : `worth ${formatMoney(hole.pot)}`}
           </span>
         )}
 

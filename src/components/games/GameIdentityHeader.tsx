@@ -82,6 +82,11 @@ export function GameIdentityHeader({
           maxLength={200}
           className="w-full rounded-lg px-2 py-1 outline-none"
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-accent-border)", fontSize: 22, fontWeight: 800 }}
+          /* Opts out of the global 16px mobile input rule (globals.css): this is
+             a 22px title field, and the rule's `!important` would otherwise
+             shrink it. Legitimate precisely because 22 ≥ 16 and so cannot zoom
+             — `inputZoom.test.ts` enforces that bound on every carrier. */
+          data-font-size-ok
           data-testid="game-name-input"
         />
       ) : (

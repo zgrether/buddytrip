@@ -70,13 +70,13 @@ function tenner(over: Partial<SideBet> = {}): SideBet {
   return {
     ...buildManualBet({
       mkId: () => `bet-${++n}`,
+      kind: "head_to_head",
       sides: [
         { id: "s1", playerIds: ["p1"] },
         { id: "s2", playerIds: ["p2"] },
       ],
       amount: 10,
       startHole: 1,
-      carryover: false,
       autoPressAt: null,
       pressOnPress: false,
     }),

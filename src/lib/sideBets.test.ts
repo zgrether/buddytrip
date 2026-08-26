@@ -12,6 +12,8 @@ import {
   formatSignedMoney,
   betLabel,
   betTotalForPlayer,
+  rulesForKind,
+  holeValue,
   EXPOSURE_WARN_MULTIPLE,
   type BetScoring,
   type SideBet,
@@ -56,8 +58,14 @@ function duel(results: Record<number, "W" | "L" | "H">, a = P.zach, b = P.brad):
   return net(rows);
 }
 
+/**
+ * A bet fixture. `kind` is DERIVED from carryover unless given: carrying is
+ * what skins does and head-to-head does not (§12), so a fixture asking for a
+ * carryover is asking for a pot. Keeps every pre-existing case expressing a
+ * configuration the app can actually build.
+ */
 function bet(over: Partial<SideBet> = {}): SideBet {
-  return {
+  const merged = {
     id: "bet-1",
     sides: [SIDE_A, SIDE_B],
     amount: 10,
@@ -66,9 +74,10 @@ function bet(over: Partial<SideBet> = {}): SideBet {
     carryover: false,
     autoPressAt: null,
     pressOnPress: false,
-    origin: { kind: "manual" },
+    origin: { kind: "manual" as const },
     ...over,
   };
+  return { ...merged, kind: over.kind ?? (merged.carryover ? "skins" : "head_to_head") };
 }
 
 function run(over: Partial<SideBetsInput> = {}): ReturnType<typeof computeSideBets> {
@@ -363,14 +372,19 @@ describe("the per-hole line", () => {
     expect(playerTotal(again, P.zach)).toBe(80);
   });
 
-  it("prices the next hole with its carryovers, separately from the standing rate", () => {
+  it("names the stake and the pot separately — two numbers, two names (§11)", () => {
     const mid = computeSideBets({
       holes: holes18,
-      bets: [bet({ carryover: true })],
+      bets: [bet({ carryover: true })], // carryover ⇒ skins, per the fixture
       scoring: duel({ 1: "H", 2: "H" }),
     });
-    expect(mid.exposure.perHole).toBe(10); // the rate is still $10 a hole
-    expect(nextHoleValue(mid)).toBe(30); // but the 3rd is worth $30
+    // The standing rate — what each player is putting in per hole.
+    expect(mid.exposure.perHole).toBe(10);
+    // What each side has at risk on the 3rd, two halves carried in.
+    expect(mid.holeLines[2].atStake).toBe(30);
+    // And what the 3rd is WORTH: the pot, which is what the tracker shows.
+    expect(mid.holeLines[2].pot).toBe(60);
+    expect(nextHoleValue(mid)).toBe(60);
   });
 });
 
@@ -574,7 +588,6 @@ describe("Nassau", () => {
       amount: 10,
       startHole: 1,
       holeCount: 18,
-      carryover: false,
       autoPressAt: null,
       pressOnPress: false,
     });
@@ -592,7 +605,6 @@ describe("Nassau", () => {
       amount: 10,
       startHole: 1,
       holeCount: 18,
-      carryover: false,
       autoPressAt: null,
       pressOnPress: false,
     });
@@ -613,7 +625,6 @@ describe("Nassau", () => {
       amount: 10,
       startHole: 12,
       holeCount: 18,
-      carryover: false,
       autoPressAt: null,
       pressOnPress: false,
     });
@@ -763,5 +774,189 @@ describe("the breakdown's per-bet lines", () => {
     expect(betTotalForPlayer(r.bets[0], P.zach)).toBe(5);
     expect(betTotalForPlayer(r.bets[0], P.cal)).toBe(-5);
     expect(betTotalForPlayer(r.bets[0], null)).toBe(0);
+  });
+});
+
+describe("skins — the pot (§11)", () => {
+  const four = ["p-zach", "p-brad", "p-cal", "p-dave"].map((id) => ({ id: `s-${id}`, playerIds: [id] }));
+  const skins = (over: Partial<SideBet> = {}) =>
+    bet({ kind: "skins", sides: four, carryover: true, amount: 10, ...over });
+
+  /** Everyone's net for one hole, from four gross scores. */
+  const hole = (h: number, scores: [number, number, number, number]) => ({
+    [P.zach]: { [h]: scores[0] },
+    [P.brad]: { [h]: scores[1] },
+    [P.cal]: { [h]: scores[2] },
+    [P.dave]: { [h]: scores[3] },
+  });
+  const merge = (...rows: Record<string, Record<number, number>>[]) => {
+    const out: Record<string, Record<number, number>> = {};
+    for (const r of rows) for (const [pid, byHole] of Object.entries(r)) out[pid] = { ...out[pid], ...byHole };
+    return net(out);
+  };
+
+  it("four at $10 makes the first skin $40 — winner +$30, everyone else −$10", () => {
+    const r = computeSideBets({
+      holes: holes18,
+      bets: [skins()],
+      scoring: merge(hole(1, [4, 5, 5, 5])),
+    });
+    // The stake is what each puts in; the skin is what the hole is worth.
+    expect(r.holeLines[0].pot).toBe(40);
+    expect(r.exposure.perHole).toBe(10);
+    expect(r.totalsByPlayer[P.zach]).toBe(30);
+    expect(r.totalsByPlayer[P.brad]).toBe(-10);
+    expect(r.totalsByPlayer[P.cal]).toBe(-10);
+    expect(r.totalsByPlayer[P.dave]).toBe(-10);
+  });
+
+  it("second gets nothing, same as fourth", () => {
+    const r = computeSideBets({
+      holes: holes18,
+      bets: [skins()],
+      scoring: merge(hole(1, [4, 5, 9, 9])),
+    });
+    expect(r.totalsByPlayer[P.brad]).toBe(r.totalsByPlayer[P.dave]);
+  });
+
+  it("a tie for low pays nobody and carries — $80 next, and $160 after three", () => {
+    const tied = computeSideBets({
+      holes: holes18,
+      bets: [skins()],
+      scoring: merge(hole(1, [4, 4, 5, 5])),
+    });
+    expect(tied.holeLines[0].delta).toEqual({});
+    expect(Object.values(tied.totalsByPlayer).every((v) => v === 0)).toBe(true);
+    expect(tied.holeLines[1].pot).toBe(80);
+
+    const thrice = computeSideBets({
+      holes: holes18,
+      bets: [skins()],
+      scoring: merge(hole(1, [4, 4, 5, 5]), hole(2, [4, 4, 5, 5]), hole(3, [4, 4, 5, 5])),
+    });
+    // Three carries on a $40 skin makes the fourth hole worth $160.
+    expect(thrice.holeLines[3].pot).toBe(160);
+  });
+
+  it("is arithmetically identical to head-to-head at two players", () => {
+    const two = [
+      { id: "s1", playerIds: [P.zach] },
+      { id: "s2", playerIds: [P.brad] },
+    ];
+    const scoring = duel({ 1: "W", 2: "L", 3: "W" });
+    const asSkins = computeSideBets({ holes: holes18, bets: [bet({ kind: "skins", sides: two, carryover: false })], scoring });
+    const asH2H = computeSideBets({ holes: holes18, bets: [bet({ kind: "head_to_head", sides: two })], scoring });
+    expect(asSkins.totalsByPlayer).toEqual(asH2H.totalsByPlayer);
+    expect(asSkins.settlement).toEqual(asH2H.settlement);
+  });
+});
+
+describe("the kinds carry different rules (§12/§13)", () => {
+  it("skins gets carryover and no presses; head-to-head the reverse", () => {
+    expect(rulesForKind("skins", { autoPressAt: 2, pressOnPress: true })).toEqual({
+      carryover: true,
+      autoPressAt: null,
+      pressOnPress: false,
+    });
+    expect(rulesForKind("head_to_head", { autoPressAt: 2, pressOnPress: true })).toEqual({
+      carryover: false,
+      autoPressAt: 2,
+      pressOnPress: true,
+    });
+    expect(rulesForKind("head_to_head")).toEqual({
+      carryover: false,
+      autoPressAt: null,
+      pressOnPress: false,
+    });
+  });
+
+  it("shows the stake in a head-to-head and the pot in skins", () => {
+    const two = [
+      { id: "a", playerIds: [P.zach] },
+      { id: "b", playerIds: [P.brad] },
+    ];
+    expect(holeValue(bet({ kind: "head_to_head", sides: two }), 10)).toBe(10);
+    expect(holeValue(bet({ kind: "skins", sides: two, carryover: true }), 10)).toBe(20);
+  });
+
+  it("a press minted from a head-to-head is itself head-to-head", () => {
+    const r = computeSideBets({
+      holes: holes18,
+      bets: [bet({ autoPressAt: 2 })],
+      scoring: duel({ 1: "L", 2: "L" }),
+    });
+    const press = r.bets.find((t) => t.bet.origin.kind === "press")!;
+    expect(press.bet.kind).toBe("head_to_head");
+    expect(press.bet.carryover).toBe(false);
+  });
+});
+
+describe("several bets at once (§14)", () => {
+  it("a foursome carries two head-to-heads and a pot simultaneously", () => {
+    const zachSteve = bet({
+      id: "hh-1",
+      amount: 20,
+      sides: [{ id: "z1", playerIds: [P.zach] }, { id: "s1", playerIds: [P.brad] }],
+    });
+    const zachMike = bet({
+      id: "hh-2",
+      amount: 2,
+      sides: [{ id: "z2", playerIds: [P.zach] }, { id: "m2", playerIds: [P.cal] }],
+    });
+    const pot = bet({
+      id: "sk-1",
+      kind: "skins",
+      carryover: true,
+      amount: 10,
+      sides: [
+        { id: "z3", playerIds: [P.zach] },
+        { id: "m3", playerIds: [P.cal] },
+        { id: "d3", playerIds: [P.dave] },
+      ],
+    });
+    const r = computeSideBets({
+      holes: holes18,
+      bets: [zachSteve, zachMike, pot],
+      // Zach wins the hole outright against everyone.
+      scoring: net({
+        [P.zach]: { 1: 3 },
+        [P.brad]: { 1: 5 },
+        [P.cal]: { 1: 5 },
+        [P.dave]: { 1: 5 },
+      }),
+    });
+    expect(r.bets).toHaveLength(3);
+    // $20 from Steve, $2 from Mike, and a $30 pot of which he keeps $20 over his own stake.
+    expect(r.totalsByPlayer[P.zach]).toBe(20 + 2 + 20);
+    expect(r.totalsByPlayer[P.brad]).toBe(-20);
+    expect(r.totalsByPlayer[P.cal]).toBe(-2 - 10);
+    expect(r.totalsByPlayer[P.dave]).toBe(-10);
+    // Steve and Mike never bet each other, and neither settles with the other.
+    expect(r.settlement.some((s) => s.fromPlayerId === P.brad && s.toPlayerId === P.cal)).toBe(false);
+    // Exposure is the headline that still means something with three bets live.
+    expect(r.exposure.perHole).toBe(32);
+    expect(r.exposure.liveBetCount).toBe(3);
+  });
+});
+
+describe("head-to-head is unchanged by all of this (regression guard)", () => {
+  it("still presses, still announces, still recomputes when a score is fixed", () => {
+    const withPress = bet({ autoPressAt: 2 });
+    const fired = computeSideBets({
+      holes: holes18,
+      bets: [withPress],
+      scoring: duel({ 1: "L", 2: "L", 3: "W" }),
+    });
+    expect(fired.presses.map((p) => [p.triggerHole, p.startHole, p.exposureAfter])).toEqual([[2, 3, 20]]);
+    expect(fired.holeLines[1].presses).toHaveLength(1);
+
+    // Correct the 2nd to a halve — the press never happened.
+    const fixed = computeSideBets({
+      holes: holes18,
+      bets: [withPress],
+      scoring: duel({ 1: "L", 2: "H", 3: "W" }),
+    });
+    expect(fixed.presses).toEqual([]);
+    expect(fixed.exposure.perHole).toBe(10);
   });
 });

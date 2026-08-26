@@ -206,6 +206,11 @@ export interface DraftPlayerRow {
   id: string;
   name: string;
   strokes: number;
+  /** Which side this row plays for — MATCH only, and the reason the Partners
+   *  section is gone (§6). The row's own side makes partnering structural: two
+   *  lists with a `vs` between them say who is with whom without a second
+   *  control to explain it. Absent for stroke/rack, which have no sides. */
+  side?: "A" | "B";
 }
 
 /** Draft rows for the roster editor, format-aware. Stroke/rack carry each
@@ -213,10 +218,13 @@ export interface DraftPlayerRow {
  *  owned by the relative control rather than the per-player rows, so its rows
  *  read 0 — the one place that asymmetry is expressed. */
 export function draftRowsFrom(state: QuickGameState): DraftPlayerRow[] {
+  const sideOf = (id: string): "A" | "B" | undefined =>
+    isMatchGame(state) ? (state.sideA.playerIds.includes(id) ? "A" : "B") : undefined;
   return state.players.map((p) => ({
     id: p.id,
     name: p.name,
     strokes: isMatchGame(state) ? 0 : state.strokes[p.id] ?? 0,
+    side: sideOf(p.id),
   }));
 }
 
@@ -536,13 +544,19 @@ export function quickGameStandings(state: QuickGameState): StrokeStanding[] {
  */
 export function quickFormatPlayerCountError(format: QuickGameFormat, count: number): string | null {
   if (format === "match") {
-    if (count === 2 || count === 4) return null;
-    return "Match play needs 2 or 4 players. Add one or drop one.";
+    // §6 REVERSES the earlier refusal ("match play needs 2 or 4"). 1v2 is a
+    // real thing people play, and the scorecard concatenates names on a side,
+    // so an uneven split needs nothing the even one did not already have. Two
+    // players is the floor because a match needs an opponent.
+    return count >= 2 ? null : "Match play needs someone to play against.";
   }
   if (format === "rack") {
     return count >= 2 ? null : "Rack n Stack needs at least 2 players.";
   }
-  return count >= 1 ? null : "Add at least one player.";
+  // No message (§4). With one field on screen and Start disabled until it has
+  // a name, "add at least one player" told the user what the form already
+  // showed them — a warning for a state they cannot help being in on arrival.
+  return null;
 }
 
 /** A quick match is a 2v2 exactly when four people are playing. NOT a setting —
@@ -554,21 +568,32 @@ export const isDoubles = (playerCount: number) => playerCount === 4;
  * by the caller's `partnerOf` choice — which of the other three is with player
  * one — and the remaining two become the opposing side. One tap, no matrix.
  */
+/**
+ * Build the two sides from rows that already CARRY their side (§6).
+ *
+ * Replaces the partner-picker model, which could only express 1v1 and 2v2 —
+ * the same limitation the "match play needs 2 or 4 players" refusal was
+ * enforcing. Any split works now, 1v2 included: a side is a slot holding one
+ * or more players, which is what the glossary always said, and the scorecard
+ * already concatenates names on a side.
+ *
+ * Null when either side is empty — a match needs an opponent, and that is the
+ * only count rule left.
+ */
 export function buildQuickMatchSides(
-  playerIds: string[],
-  partnerId: string | null
+  rows: { id: string; side?: "A" | "B" }[]
 ): { sideA: QuickMatchSide; sideB: QuickMatchSide } | null {
   const mk = (ids: string[]): QuickMatchSide => ({ id: crypto.randomUUID(), playerIds: ids, strokes: 0 });
-  if (playerIds.length === 2) return { sideA: mk([playerIds[0]]), sideB: mk([playerIds[1]]) };
-  if (playerIds.length === 4) {
-    const first = playerIds[0];
-    const partner = partnerId && partnerId !== first && playerIds.includes(partnerId) ? partnerId : playerIds[1];
-    const rest = playerIds.filter((id) => id !== first && id !== partner);
-    if (rest.length !== 2) return null;
-    return { sideA: mk([first, partner]), sideB: mk(rest) };
-  }
-  return null;
+  const a = rows.filter((r) => r.side !== "B").map((r) => r.id);
+  const b = rows.filter((r) => r.side === "B").map((r) => r.id);
+  if (a.length === 0 || b.length === 0) return null;
+  return { sideA: mk(a), sideB: mk(b) };
 }
+
+/** A match is a doubles game when either side holds more than one player.
+ *  Derived from the sides, never a setting — the count IS the shape. */
+export const isDoublesSides = (sideA: QuickMatchSide, sideB: QuickMatchSide) =>
+  sideA.playerIds.length > 1 || sideB.playerIds.length > 1;
 
 // ── Match play ───────────────────────────────────────────────────────────────
 

@@ -279,12 +279,44 @@ summary,
  * The sizes are set PER SURFACE, but the fix does not have to be. Tailwind v4
  * puts its utilities in `@layer utilities`, and an UNLAYERED rule beats every
  * layered one regardless of specificity — so this overrides `text-sm` and
- * `text-xs` with no `!important` and no `:not()` gymnastics.
+ * `text-xs` on specificity grounds alone.
+ *
+ * ── Why `!important`, which this rule once boasted of not needing ──────────
+ * Being unlayered beats a CLASS. It does not beat an inline `style` attribute,
+ * which is a different cascade ORIGIN and outranks every normal author
+ * declaration no matter how it is written. This codebase styles inline
+ * constantly, so that is not a corner: 13 text-entry elements carried an
+ * inline sub-16px size and every one of them zoomed — the Quick Play name
+ * field, the feedback textarea, and eleven news-composer inputs, six of them
+ * inheriting it from a shared `inputStyle` object that no per-element search
+ * would have found.
+ *
+ * An important author declaration DOES outrank a normal inline one. That is
+ * the whole reason it is here, and it is the only mechanism that reaches this
+ * case — so removing it does not tidy the rule, it un-fixes it for every
+ * inline-styled input at once. `inputZoom.test.ts` asserts it stays.
+ *
+ * The alternative was editing all 13 sites to move their size into a class.
+ * That fixes today and nothing else: the next inline `fontSize: 14` — the
+ * house style — walks straight back into the bug, which is precisely how this
+ * regressed after being "fixed" once already.
+ *
+ * ── `data-font-size-ok`, and why an opt-out does not reopen the hole ───────
+ * `!important` overrides in BOTH directions: it would also shrink a
+ * deliberately LARGE input, and there is one — the 22px tap-to-edit game name
+ * (`GameIdentityHeader`). Forcing that to 16 would be trading one visual bug
+ * for another, so it opts out by attribute.
+ *
+ * The opt-out cannot be used to bring the zoom back, and that is a property
+ * rather than a promise: sizes at or above 16px do not zoom, so an element is
+ * only entitled to the attribute when it sets one — and `inputZoom.test.ts`
+ * checks every carrier of it does. An opt-out with a sub-16px size fails the
+ * suite, which is the difference between an escape hatch and a hole.
  *
  * It also makes new inputs correct BY DEFAULT rather than policed. A source
  * guard forbidding sub-16px input sizes would be the wrong guard under this
  * rule: it would fail surfaces that behave perfectly. The guard that belongs
- * here is that THIS RULE EXISTS — see `inputZoom.test.ts`.
+ * here is that THIS RULE EXISTS AND STILL WINS — see `inputZoom.test.ts`.
  *
  * ── Why `pointer: coarse` as well as a width ───────────────────────────────
  * A width query alone misses iPad, which is 768px+ in portrait and zooms
@@ -307,10 +339,10 @@ summary,
  * including them would only invite the belief that it does.
  */
 @media (max-width: 767px), (pointer: coarse) {
-  input:not([type="checkbox"]):not([type="radio"]),
-  textarea,
-  select {
-    font-size: 16px;
+  input:not([type="checkbox"]):not([type="radio"]):not([data-font-size-ok]),
+  textarea:not([data-font-size-ok]),
+  select:not([data-font-size-ok]) {
+    font-size: 16px !important;
   }
 }
 
