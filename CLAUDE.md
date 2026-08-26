@@ -810,6 +810,59 @@ These patterns have been established through prior work. Follow them exactly —
     grows *more permissive* the more the trip is used. Existence questions take
     `head: true` counts, which return a count and no rows and cannot be capped.
 
+28. **A `SECURITY DEFINER` helper is safe to expose only if its answer depends
+    on WHO IS ASKING. "Consistent with the other 35" is not the test.**
+
+    Every RLS helper in this schema is `SECURITY DEFINER`, in the exposed API
+    schema, and `EXECUTE`-able by `authenticated` — because a policy expression
+    is evaluated as the caller, so the caller must hold the grant. Supabase's
+    security advisor flags all of them (35 under
+    `authenticated_security_definer_function_executable`). That flag is
+    therefore useless as a filter, and the obvious reading — *"mine is the same
+    shape as `is_trip_member`, so it's fine"* — is the wrong question.
+
+    **The right question: change the caller, keep the argument. Does the answer
+    move?**
+
+    - `is_trip_member(trip)`, `has_trip_role(trip, roles)`,
+      `is_game_delegate(game)` answer **about the caller**. Pass someone else's
+      container id and you learn a fact about *yourself*. Nothing leaks, however
+      widely they are granted.
+    - `pickem_picks_open(game)` / `pickem_picks_revealed(game)` (migration 146)
+      answered **about a game**. Same answer for everyone, so `authenticated`
+      became a read of container state that the container's own SELECT policy
+      refused. First pair of that kind here — which makes the existing helpers a
+      precedent for the *opposite* conclusion, not for leaving it open.
+
+    Proven rather than argued, which is the part to copy. As a signed-in
+    NON-member of the game's trip:
+
+    ```
+    pickem_picks_open(game)      -> true
+    pickem_picks_revealed(game)  -> false
+    SELECT … FROM pickem_games   -> []      ← same account, same row
+    ```
+
+    The last line is the finding: **the table policy already refused this
+    person and the function in front of it did not** — a definer helper wider
+    than the policy it serves, the RLS audit's recurring shape arriving through
+    a new door. Migration 147 moved `is_trip_member` inside both bodies. No
+    behaviour change through the policies (both call sites already AND with
+    membership, so it is redundant there); it only narrows the direct-`rpc`
+    path, which is the one that was wide.
+
+    **Severity is not the point and should still be stated honestly.** What
+    leaked was a lifecycle boolean about a game whose id the caller already
+    held; `pickem_picks_select` was untouched and no sheet was reachable. Low.
+    Fixed because a container-fact helper is a category that should not exist
+    ungated, not because this instance was dangerous.
+
+    **The tell:** a new definer helper whose parameter is a CONTAINER id
+    (`game_id`, `trip_id`, `competition_id`) and whose body does not mention
+    `auth.uid()` — directly or through another helper. That function answers for
+    anyone who can name the container. Either gate it inside the body, or keep
+    it out of the exposed schema.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
