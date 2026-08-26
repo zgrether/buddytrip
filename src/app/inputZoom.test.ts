@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import path from "path";
 
 /**
@@ -18,6 +18,18 @@ import path from "path";
  * "`font-size: 16px` appears in globals.css" would pass with the rule inside an
  * `@layer`, behind the wrong media query, or applied to `div`. Each of those
  * ships the bug with the guard green, so each is checked directly.
+ *
+ * ── And "mechanism" means the one that DECIDES, which this file got wrong ───
+ * This guard was green while the bug was live on a real iPhone. Every check it
+ * made was about winning against a class — unlayered, outranks `text-sm` — and
+ * an inline `style` attribute never enters that contest at all; it is a higher
+ * cascade origin. So the file asserted a true thing ADJACENT to the one that
+ * mattered, which is worse than asserting nothing: it reported coverage of a
+ * case it did not test. The `!important` assertion below is the repair.
+ *
+ * The general form, worth carrying to any guard: ask what would have to be
+ * true for this to pass while the bug ships. Here the answer was "an inline
+ * style anywhere", and that is the house style.
  */
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -48,6 +60,31 @@ describe("input zoom — the rule exists and can actually win", () => {
     const sizes = [...block.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => Number(m[1]));
     expect(sizes.length).toBeGreaterThan(0);
     for (const px of sizes) expect(px).toBeGreaterThanOrEqual(16);
+  });
+
+  /**
+   * THE ONE THIS GUARD USED TO MISS, and the reason the bug came back green.
+   *
+   * Every other assertion here is about beating a CLASS — being unlayered,
+   * outranking `text-sm`. All true, all irrelevant to an inline `style`
+   * attribute, which is a different cascade ORIGIN and outranks every normal
+   * author declaration however it is written. The rule was intact, the guard
+   * was green, and 13 text-entry elements carrying an inline sub-16px size
+   * zoomed anyway — Quick Play's name field among them.
+   *
+   * Only an important author declaration reaches that case. So the guard has
+   * to assert the mechanism that decides the outcome, not the one that decides
+   * the argument with Tailwind.
+   */
+  it("is !important, the only thing that outranks an inline style", () => {
+    const decls = [...block.matchAll(/font-size:\s*[\d.]+px\s*(!important)?/g)];
+    expect(decls.length).toBeGreaterThan(0);
+    for (const d of decls) {
+      expect(
+        d[1],
+        "font-size here is not !important — every inline `style={{ fontSize }}` beats it and zooms"
+      ).toBe("!important");
+    }
   });
 
   it("covers all three text-entry elements", () => {
@@ -102,6 +139,59 @@ describe("input zoom — the rule exists and can actually win", () => {
     const selectors = block.slice(block.indexOf("{") + 1, block.lastIndexOf("}"));
     const head = selectors.slice(0, selectors.indexOf("{"));
     expect(head).not.toMatch(/(^|[\s,>])(div|span|p|body|html|\*)\b/);
+  });
+});
+
+describe("input zoom — the opt-out cannot reopen the hole", () => {
+  /**
+   * `data-font-size-ok` exempts an element from the global rule, which exists
+   * for exactly one reason: `!important` overrides downward too, and would
+   * shrink the 22px game-name field.
+   *
+   * An exemption is only safe while every user of it is already at or above
+   * 16px — the threshold below which iOS zooms. That is checkable, so it is
+   * checked: an opt-out carrying `fontSize: 14` would be indistinguishable
+   * from the original bug, and this is what stops it being written.
+   */
+  const files: string[] = [];
+  (function walk(dir: string) {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (full.endsWith(".tsx")) files.push(full);
+    }
+  })(path.join(ROOT, "src"));
+
+  it("is used only by elements already at 16px or larger", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      for (const m of [...src.matchAll(/<(input|textarea|select)\b/gi)]) {
+        // Walk to the end of the opening tag, tracking braces so nested {} are fine.
+        let i = m.index! + m[0].length;
+        let depth = 0;
+        while (i < src.length) {
+          const c = src[i];
+          if (c === "{") depth++;
+          else if (c === "}") depth--;
+          else if (c === ">" && depth === 0) break;
+          i++;
+        }
+        const tag = src.slice(m.index!, i);
+        if (!/data-font-size-ok/.test(tag)) continue;
+        const sizes = [
+          ...[...tag.matchAll(/fontSize:\s*([\d.]+)/g)].map((x) => Number(x[1])),
+          ...[...tag.matchAll(/text-\[(\d+)px\]/g)].map((x) => Number(x[1])),
+        ];
+        const line = src.slice(0, m.index!).split("\n").length;
+        if (sizes.length === 0) {
+          offenders.push(`${path.relative(ROOT, file)}:${line} opts out but sets no size`);
+        } else if (Math.min(...sizes) < 16) {
+          offenders.push(`${path.relative(ROOT, file)}:${line} opts out at ${Math.min(...sizes)}px`);
+        }
+      }
+    }
+    expect(offenders, `data-font-size-ok on sub-16px input(s) — these will zoom on iOS:\n${offenders.join("\n")}`).toEqual([]);
   });
 });
 
