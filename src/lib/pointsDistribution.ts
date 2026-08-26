@@ -94,3 +94,83 @@ export function effectiveDistribution(
   const total = Number(pointsTotal ?? 0);
   return total > 0 ? [total] : [];
 }
+
+/**
+ * #1031 — the LIVE per-match award value (A2b match play), recomputed from the
+ * game's CURRENT assigned matches. Every caller that needs a match's fallback
+ * award (no override) MUST go through this — never read `points_distribution.value`
+ * directly, which is a Save-time SNAPSHOT (`configDraftToPayload`) that only
+ * refreshes when someone opens settings and hits Save.
+ *
+ * ── The bug this exists for ────────────────────────────────────────────────
+ * A seat vacate (`vacateTripGameSeats`) nulls a match's `side_a`/`side_b` — no
+ * settings Save involved — dropping it out of the divisor immediately. Before
+ * this helper, `computeMatchPlayResults` read the stale snapshot straight off
+ * `games.points_distribution.value` and wrote the WRONG number into
+ * `game_results`: 2 matches → 3 total → 1.5 each, persisted; one match vacated →
+ * the surviving match is still worth 3, but the award write kept paying 1.5.
+ *
+ * "Assigned" = both sides paired — the SAME predicate `matchCountByGame`
+ * (`competitionLeaderboard.ts`, "a match = assigned, everywhere"), the award
+ * loop's own `if (!a?.id || !b?.id) continue`, and `isDraftMatchFilled` (the
+ * Save-time snapshot this supersedes) all already agree on. NOT total
+ * `game_matches` rows (would still count an invalidated match) and NOT matches
+ * with a decided result (the whole point of the total-points model is a FIXED
+ * split across assigned matches, decided or not — an in-progress match still
+ * counts toward the divisor).
+ *
+ * Call from every fallback-award site: the settings preview (`MatchPointsRow`),
+ * the game-page card + projection (`MatchGameView`), the board's live "if today
+ * holds" pill (`liveProjection.ts`), and the award write itself
+ * (`computeMatchPlayResults`) — so none of them can disagree again.
+ *
+ * `legacyValue` — a PRE-A2b game (no owner-set `points_total`, a bare
+ * `points_distribution.value` authored some other way) has no total to derive an
+ * even share FROM, so there is nothing live to compute; this is the one case
+ * that still reads the persisted snapshot, on purpose, matching the identical
+ * carve-out `competitionLeaderboard.ts` already makes for points-in-play
+ * (`points_total ?? rawDist.value * mc`). Only consulted when `pointsTotal` is
+ * null/undefined — a game with a total ALWAYS derives live, however the game
+ * came to have a `per_match` distribution in the first place.
+ */
+export function liveMatchPointsPerMatch(
+  pointsTotal: number | null | undefined,
+  matches: { sideAId: string | null; sideBId: string | null; pointValue: number | null }[],
+  legacyValue?: number | null
+): number {
+  if (pointsTotal == null) return legacyValue ?? 0;
+  const assigned = matches.filter((m) => m.sideAId != null && m.sideBId != null);
+  const overrides = assigned.map((m) => m.pointValue).filter((v): v is number => v != null);
+  return evenShare(pointsTotal, overrides, assigned.length);
+}
+
+/**
+ * #1031 — the LIVE per-slot award value (A2b rack-n-stack), recomputed from the
+ * game's CURRENT slot count. Rack shares match play's shape (a Save-time
+ * snapshot in `points_distribution.value`, going stale the instant the grouped
+ * roster changes outside a Save — the same seat-vacate path affects rack's
+ * `game_participants` rows too) but has no per-match overrides, so this is a
+ * bare `total ÷ slotCount`.
+ *
+ * `slotCount` (rank-paired 1v1s = min(team-A roster, team-B roster)) is
+ * computed by the CALLER from `game_participants` × team assignment — the
+ * client and server start from different fetched shapes, so there's no one
+ * shared tally to factor out; this owns only the total÷slots arithmetic so it
+ * can't drift from `evenShare`'s no-overrides, no-rounding contract. Mirrors
+ * `RackGameView`'s `draftSlotCount` (settings-preview, DRAFT-based) and
+ * `rackDraftToPayload` (the Save-time snapshot this supersedes for every
+ * downstream reader except the legacy points_distribution.value column itself).
+ *
+ * `legacyValue` — same carve-out as `liveMatchPointsPerMatch`: a pre-migration
+ * rack with no owner-set `points_total` has no total to derive from, so this
+ * reads the persisted snapshot instead. Only consulted when `pointsTotal` is
+ * null/undefined.
+ */
+export function liveRackPointsPerSlot(
+  pointsTotal: number | null | undefined,
+  slotCount: number,
+  legacyValue?: number | null
+): number {
+  if (pointsTotal == null) return legacyValue ?? 0;
+  return evenShare(pointsTotal, [], slotCount);
+}

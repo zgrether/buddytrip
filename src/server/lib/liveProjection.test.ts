@@ -16,7 +16,8 @@ const part = (user_id: string) => ({ user_id, play_group_id: null, handicap_stro
 
 describe("projectGame — match play", () => {
   it("sums each match's current standing to per-team COMPETITION points (leader full, all-square halved)", () => {
-    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
+    // #1031: pointsTotal 4 ÷ 2 assigned matches, no overrides → even share 2/match.
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } }, // 2-hole round, no course index → sequential fallback
       modifiers: null,
@@ -40,7 +41,9 @@ describe("projectGame — match play", () => {
   });
 
   it("A2b — a match's point_value OVERRIDES the even-share pointsPerMatch in the projection", () => {
-    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
+    // #1031: pointsTotal 6, one match overridden at 4 → the other's even share =
+    // (6 − 4) ÷ (2 − 1) = 2, same as the old hardcoded pointsPerMatch.
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 6, isPerMatch: true };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
       modifiers: null,
@@ -66,7 +69,7 @@ describe("projectGame — match play", () => {
   });
 
   it("B3 — outcome-mode games project from match_hole_outcomes, not gross scores (same result as the score-mode sweep/halve test)", () => {
-    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2, outcomeMode: true };
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true, outcomeMode: true };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
       modifiers: null,
@@ -88,7 +91,7 @@ describe("projectGame — match play", () => {
   });
 
   it("an unpaired match (a side missing) contributes nothing", () => {
-    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsPerMatch: 2 };
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
       modifiers: null,
@@ -105,7 +108,8 @@ describe("projectGame — match play", () => {
 
 describe("projectGame — rack", () => {
   it("returns per-team COMPETITION points = projected slots × per-slot value (per_match)", () => {
-    const input: LiveProjectionInput = { id: "g2", gameTypeId: "gtt_rack_n_stack", pointsPerMatch: 3 };
+    // #1031: pointsTotal 6 ÷ slotCount 2 (min(2 t1, 2 t2)) → per-slot value 3.
+    const input: LiveProjectionInput = { id: "g2", gameTypeId: "gtt_rack_n_stack", pointsTotal: 6, isPerMatch: true };
     const data: GameProjectionData = {
       schema: { units: { metadata: { par: [4, 4], handicap_index: [1, 2] } } },
       modifiers: null,
@@ -127,7 +131,7 @@ describe("projectGame — rack", () => {
   });
 
   it("a legacy rack with no per_match value (0) falls back to ×1 (raw slots)", () => {
-    const input: LiveProjectionInput = { id: "g2", gameTypeId: "gtt_rack_n_stack", pointsPerMatch: 0 };
+    const input: LiveProjectionInput = { id: "g2", gameTypeId: "gtt_rack_n_stack", pointsTotal: null, isPerMatch: false };
     const data: GameProjectionData = {
       schema: { units: { metadata: { par: [4, 4], handicap_index: [1, 2] } } },
       modifiers: null,
@@ -149,7 +153,7 @@ describe("projectGame — rack", () => {
 
 describe("projectGame — no projection", () => {
   it("returns null for a format without a live projection (stroke play)", () => {
-    const input: LiveProjectionInput = { id: "g3", gameTypeId: "gtt_stroke_play", pointsPerMatch: 0 };
+    const input: LiveProjectionInput = { id: "g3", gameTypeId: "gtt_stroke_play", pointsTotal: null, isPerMatch: false };
     const data: GameProjectionData = {
       schema: null,
       modifiers: null,

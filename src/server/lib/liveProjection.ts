@@ -6,6 +6,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { playerStats, rackProjectedTeamPoints, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { liveMatchPointsPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 
 /**
@@ -44,9 +45,20 @@ interface SchemaShape {
 export interface LiveProjectionInput {
   id: string;
   gameTypeId: string | null;
-  /** per_match value from `points_distribution` — match play's pointsPerMatch.
-   *  Unused by rack (which returns raw slot points to match its game page). */
-  pointsPerMatch: number;
+  /** The owner-set total this game is worth. #1031: the per-match/per-slot
+   *  value is derived from this LIVE (from the current assigned matches / grouped
+   *  roster in `GameProjectionData`), never read from a persisted
+   *  `points_distribution.value` snapshot — see `liveMatchPointsPerMatch` /
+   *  `liveRackPointsPerSlot`. */
+  pointsTotal: number | null;
+  /** Is this game's `points_distribution` shaped `per_match`? Gates the derive
+   *  above (a placement/null distribution awards nothing per match/slot here). */
+  isPerMatch: boolean;
+  /** The persisted `points_distribution.value` — consulted ONLY as the legacy
+   *  fallback when `pointsTotal` is null (a pre-A2b game with no owner-set
+   *  total has no total to derive an even share from). Ignored whenever
+   *  `pointsTotal` is set. */
+  legacyValue?: number | null;
   /** Refactor B3: an outcome-mode match projects from recorded hole outcomes,
    *  not gross scores (it has none). Unused by rack. */
   outcomeMode?: boolean;
@@ -267,7 +279,18 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Record<
       points: m.point_value ?? null,
     });
   }
-  return rollupMatchPlay(projMatches, g.pointsPerMatch);
+  // #1031: the even-share fallback is derived LIVE from `matches` (the CURRENT
+  // assigned matches this bulk read just fetched) — never from a persisted
+  // `points_distribution.value` snapshot, so the board's "if today holds" pill
+  // can't lag a match invalidated outside a settings Save (a seat vacate).
+  const pointsPerMatch = g.isPerMatch
+    ? liveMatchPointsPerMatch(
+        g.pointsTotal,
+        matches.map((m) => ({ sideAId: m.side_a?.id ?? null, sideBId: m.side_b?.id ?? null, pointValue: m.point_value ?? null })),
+        g.legacyValue
+      )
+    : 0;
+  return rollupMatchPlay(projMatches, pointsPerMatch);
 }
 
 /** Rack → the same read-model `computeRackNStackResults` builds, but in
@@ -307,11 +330,23 @@ function projectRack(g: LiveProjectionInput, data: GameProjectionData): Record<s
       stats: playerStats(gross.get(p.user_id) ?? {}, effectiveStrokes(p), par, strokeIndex),
     });
   }
+  // #1031: the live SLOT count — rank-paired 1v1s = min(team-A roster, team-B
+  // roster) — SAME predicate the `players` loop above uses to decide who
+  // actually scores, recomputed from `parts` (this bulk read's CURRENT roster),
+  // never from a persisted `points_distribution.value` snapshot.
+  let teamACount = 0;
+  let teamBCount = 0;
+  for (const p of parts) {
+    const tid = teamOf.get(p.user_id);
+    if (tid === teamIds[0]) teamACount += 1;
+    else if (tid === teamIds[1]) teamBCount += 1;
+  }
   // Rack's `per_match` = points PER SLOT; a legacy/placement rack has none → 1
-  // (mirrors the decided path's `value = perMatch ? dist.value : 1`). × slots →
-  // competition points, so the board rack pill reads in the same currency as a
-  // match pill.
-  const perSlotValue = g.pointsPerMatch || 1;
+  // (mirrors the decided path's `value = perMatch ? liveRackPointsPerSlot(...) : 1`).
+  // × slots → competition points, so the board rack pill reads in the same
+  // currency as a match pill.
+  const perSlotValue =
+    (g.isPerMatch ? liveRackPointsPerSlot(g.pointsTotal, Math.min(teamACount, teamBCount), g.legacyValue) : 0) || 1;
   const points = rackProjectedTeamPoints(players, coursePar, perSlotValue);
   return { [teamIds[0]]: points.A, [teamIds[1]]: points.B };
 }

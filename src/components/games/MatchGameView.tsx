@@ -66,6 +66,7 @@ import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
+import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
@@ -690,8 +691,34 @@ export function MatchGameView() {
   // each match) is built above the projection block that used to own this — a
   // `const` read before its declaration is a temporal-dead-zone throw, not a type
   // error, so `tsc` would not have caught it.
-  const pointsPerMatch =
-    gameQ.data?.points_distribution?.type === "per_match" ? gameQ.data.points_distribution.value : 0;
+  //
+  // #1031: recomputed LIVE from `serverMatches` + `points_total` via the shared
+  // `liveMatchPointsPerMatch` — NEVER read from the persisted
+  // `points_distribution.value` snapshot, which only refreshes on a settings Save.
+  // A seat vacate (or any other match-count change outside Save) invalidates a
+  // match instantly; this fallback must follow in the same render, not lag until
+  // someone next opens settings. Same divisor the award write uses
+  // (`computeMatchPlayResults`) and the settings row previews (`MatchPointsRow`),
+  // so all three can't disagree.
+  const pointsPerMatch = useMemo(() => {
+    const dist = gameQ.data?.points_distribution;
+    if (dist?.type !== "per_match") return 0;
+    return liveMatchPointsPerMatch(
+      (gameQ.data?.points_total as number | null) ?? null,
+      serverMatches.map((mm) => {
+        const a = (mm as { side_a: SideRef }).side_a;
+        const b = (mm as { side_b: SideRef }).side_b;
+        return {
+          sideAId: a?.id ?? null,
+          sideBId: b?.id ?? null,
+          pointValue: (mm as { point_value: number | null }).point_value ?? null,
+        };
+      }),
+      // Legacy fallback: a pre-A2b game with no owner-set total has no total to
+      // derive from — read the persisted snapshot for that case only.
+      dist.value
+    );
+  }, [gameQ.data?.points_distribution, gameQ.data?.points_total, serverMatches]);
 
   // This game's delegates (per-game organizers) — a REAL slice of the composite
   // draft, not a placeholder. `save_game_config` replaces the delegate list from
