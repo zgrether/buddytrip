@@ -3,7 +3,7 @@ import { buildDecided, buildDecidedFromOutcomes, matchState, type HoleOutcomeRow
 import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
-import { isPerMatch, type PerMatchDistribution } from "@/lib/pointsDistribution";
+import { isPerMatch, liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import {
   writeGameResults,
   type MatchResultUpdate,
@@ -255,17 +255,37 @@ export async function computeMatchPlayResults(
   // Runs AFTER user rows so the full picture is current before a leaderboard read.
   const { data: gameInfo } = await supabase
     .from("games")
-    .select("competition_id, points_distribution")
+    .select("competition_id, points_distribution, points_total")
     .eq("id", gameId)
     .maybeSingle();
   if (gameInfo?.competition_id && isPerMatch(gameInfo.points_distribution)) {
+    // #1031: the even share is recomputed LIVE from the CURRENT assigned matches
+    // (`matches`, already fetched above), never read from the persisted
+    // `points_distribution.value` snapshot — that only refreshes on a settings
+    // Save, so a match invalidated outside Save (a seat vacate nulling a side)
+    // left the award write paying the STALE, pre-vacate share. Each match awards
+    // its own `point_value` when set, else this live fallback. A pre-A2b game
+    // with no owner-set `points_total` has no total to derive from — the
+    // persisted `.value` is passed as the legacy fallback for that case only
+    // (`liveMatchPointsPerMatch` ignores it whenever `points_total` is set).
+    const evenShareFallback = liveMatchPointsPerMatch(
+      gameInfo.points_total as number | null,
+      (matches ?? []).map((m) => {
+        const a = m.side_a as SideRef | null;
+        const b = m.side_b as SideRef | null;
+        return {
+          sideAId: a?.id ?? null,
+          sideBId: b?.id ?? null,
+          pointValue: (m.point_value as number | null) ?? null,
+        };
+      }),
+      gameInfo.points_distribution.value
+    );
     await writeTeamMatchPoints(
       supabase,
       gameId,
       gameInfo.competition_id as string,
-      // A2b: the even share = points_distribution.value, used as the per-match
-      // FALLBACK. Each match awards its own `point_value` when set, else this.
-      (gameInfo.points_distribution as PerMatchDistribution).value,
+      evenShareFallback,
       matches ?? [],
       outcomes,
       onFailure
@@ -317,8 +337,10 @@ function mkResult(
  *  with freshly-computed outcomes so the team total is always complete.
  *
  *  A2b: each match is worth `point_value ?? evenShareFallback` — the per-match
- *  override when set, else the game's derived even share (points_distribution.value,
- *  passed as `evenShareFallback`). So a "counts double" match awards its own value. */
+ *  override when set, else the game's LIVE derived even share (#1031:
+ *  `liveMatchPointsPerMatch`, recomputed from the current assigned matches — NOT
+ *  a persisted `points_distribution.value` snapshot). So a "counts double" match
+ *  awards its own value. */
 async function writeTeamMatchPoints(
   supabase: SupabaseClient,
   gameId: string,

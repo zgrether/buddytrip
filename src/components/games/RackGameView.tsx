@@ -44,6 +44,7 @@ import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRo
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, rackProjectedTeamPoints, type RackPlayer, type RackMode } from "@/lib/rackNStack";
+import { liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { pointsReady } from "@/lib/matchDraft";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -357,13 +358,37 @@ export function RackGameView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participants, teamOf, handicapOf, scUnits, scIndex, coursePar, loadedValues, values]);
   const rack = useMemo(() => computeRack(rackPlayers, mode, coursePar), [rackPlayers, mode, coursePar]);
+  // #1031: rack SLOT count over the PERSISTED roster = rank-paired 1v1s =
+  // min(team-A roster, team-B roster) — the SAME predicate `computeRackNStackResults`
+  // uses at award time (and `rackPlayers` above uses to decide who scores), so
+  // this page's own projection can't disagree with what gets written.
+  // Deliberately NOT `draftSlotCount` (below): that tracks the settings DRAFT as
+  // the owner edits carts mid-Save, which is right for the settings preview but
+  // would make this live "if it ended now" row jump ahead of what is actually
+  // saved and scoring.
+  const serverSlotCount = useMemo(() => {
+    let a = 0, b = 0;
+    for (const p of participants) {
+      const t = teamOf.get(p.user_id as string);
+      if (t === "A") a += 1;
+      else if (t === "B") b += 1;
+    }
+    return Math.min(a, b);
+  }, [participants, teamOf]);
   // Rack's `per_match` = points PER SLOT (the "Points per Slot" field); a legacy
   // rack with no per_match distribution → 1, mirroring the decided path
-  // (`computeRackNStackResults`: `value = perMatch ? dist.value : 1`).
+  // (`computeRackNStackResults`). The value itself is recomputed LIVE from
+  // `serverSlotCount` (#1031: `liveRackPointsPerSlot`) — never read from the
+  // persisted `points_distribution.value` snapshot, which only refreshes on a
+  // settings Save and goes stale the instant the grouped roster changes outside
+  // one (a seat vacate deleting a `game_participants` row).
   const perSlotValue = useMemo(() => {
     const dist = gameQ.data?.points_distribution;
-    return dist?.type === "per_match" ? dist.value : 1;
-  }, [gameQ.data]);
+    if (dist?.type !== "per_match") return 1;
+    // Legacy fallback: a pre-migration rack with no owner-set total has no total
+    // to derive from — read the persisted snapshot for that case only.
+    return liveRackPointsPerSlot((gameQ.data?.points_total as number | null) ?? null, serverSlotCount, dist.value);
+  }, [gameQ.data, serverSlotCount]);
   // #533 projection (rack) — "if it ended now" projected slots × the per-slot
   // value = COMPETITION points (the SAME shared helper the board's liveProjection
   // uses, so the two can't diverge; and the same currency as a match pill). Map

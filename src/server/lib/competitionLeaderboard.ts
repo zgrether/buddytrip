@@ -507,7 +507,15 @@ export async function computeCompetitionLeaderboard(
       return {
         id: g.id as string,
         gameTypeId: (g.game_type_id as string | null) ?? null,
-        pointsPerMatch: isPerMatch(dist) ? dist.value : 0,
+        // #1031: pass the raw total + the distribution TYPE, not a precomputed
+        // per-match/per-slot value — `computeLiveProjections` derives that LIVE
+        // from the bulk-fetched matches/roster it already has, so the board's
+        // pill can't lag the persisted `points_distribution.value` snapshot.
+        pointsTotal: (g.points_total as number | null) ?? null,
+        isPerMatch: isPerMatch(dist),
+        // Legacy fallback: a pre-A2b game with no owner-set total has no total to
+        // derive from — consulted only when pointsTotal above is null.
+        legacyValue: isPerMatch(dist) ? dist.value : null,
         // Refactor B3: an outcome-mode match projects from recorded outcomes,
         // not gross scores (it has none).
         outcomeMode: (g.entry_mode as string | null) === "outcome",

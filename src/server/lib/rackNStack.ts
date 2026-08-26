@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { effectiveStrokes } from "@/lib/handicap";
-import { isPerMatch } from "@/lib/pointsDistribution";
+import { isPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
 
@@ -15,11 +15,15 @@ import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
  *
  * Rack is a set of rank-paired mini-matches, so it scores PER-MATCH (each slot
  * won = the game's per-match value; a halve = ½). When the game is configured
- * per_match (`{type:'per_match', value}`), we write the realized team points ×
- * value as `raw_score` with `position=null` — the shape the competition
- * leaderboard's per_match branch reads (value × matchCount available, awarded
- * from raw_score). A legacy/unconfigured rack (no per_match distribution) keeps
- * the placement shape (`position` = rank), so nothing already on a board breaks.
+ * per_match (`{type:'per_match', ...}`), the per-slot value is recomputed LIVE
+ * from the CURRENT grouped roster (#1031: `liveRackPointsPerSlot`) — never read
+ * from the persisted `points_distribution.value` snapshot, which only refreshes
+ * on a settings Save and goes stale the instant a roster change (a seat vacate)
+ * moves the slot count outside one. We write the realized team points × value as
+ * `raw_score` with `position=null` — the shape the competition leaderboard's
+ * per_match branch reads (value × matchCount available, awarded from raw_score).
+ * A legacy/unconfigured rack (no per_match distribution) keeps the placement
+ * shape (`position` = rank), so nothing already on a board breaks.
  *
  * `competition_points_earned` stays null. Computed in 'current' mode (the
  * canonical result; both display modes converge at 18 holes).
@@ -44,7 +48,7 @@ export async function computeRackNStackResults(
 ): Promise<RackTeamOutcome[]> {
   const { data: game } = await supabase
     .from("games")
-    .select("scorecard_schema, game_type_id, competition_id, points_distribution")
+    .select("scorecard_schema, game_type_id, competition_id, points_distribution, points_total")
     .eq("id", gameId)
     .maybeSingle();
   if (!game?.competition_id) return []; // rack needs a competition (2 teams)
@@ -52,7 +56,6 @@ export async function computeRackNStackResults(
   // Per-match scoring (each slot = `value` pts) when configured so; else the
   // legacy placement shape (rank). value defaults to 1 (one point per slot won).
   const perMatch = isPerMatch(game.points_distribution);
-  const value = perMatch ? (game.points_distribution as { value: number }).value : 1;
 
   // Effective par/index: the game's course snapshot, else its format's default
   // schema — from the code definitions now (W-PERF-01), not a DB template fetch.
@@ -82,6 +85,32 @@ export async function computeRackNStackResults(
     .eq("game_id", gameId);
   const hcap = new Map<string, number>();
   for (const p of parts ?? []) hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
+
+  // #1031: rack's live slot count — rank-paired 1v1s = min(team-A roster, team-B
+  // roster), recomputed from the CURRENT `game_participants` roster, never from a
+  // persisted `points_distribution.value` snapshot. SAME predicate the `players`
+  // loop below uses to decide who actually scores (resolved to one of the two
+  // competing teams) — deliberately NOT filtered on `play_group_id`: a rack
+  // participant row only ever exists because it was written from a cart's
+  // membership (`rackDraftToPayload`), so "has a game_participants row" and "is
+  // grouped" are the same set in practice, and mirroring the scoring loop's own
+  // predicate here means the divisor can never disagree with who gets scored.
+  let teamACount = 0;
+  let teamBCount = 0;
+  for (const p of parts ?? []) {
+    const teamId = teamOf.get(p.user_id as string);
+    if (teamId === teamIds[0]) teamACount += 1;
+    else if (teamId === teamIds[1]) teamBCount += 1;
+  }
+  // Legacy fallback: a pre-migration rack with no owner-set `points_total` has
+  // no total to derive from — read the persisted snapshot for that case only.
+  const value = perMatch
+    ? liveRackPointsPerSlot(
+        game.points_total as number | null,
+        Math.min(teamACount, teamBCount),
+        (game.points_distribution as { value: number }).value
+      )
+    : 1;
 
   const { data: entries } = await supabase
     .from("score_entries")
