@@ -19,6 +19,7 @@ import { gloriousConfig } from "@/lib/gloriousHoles";
 import { type ModifiersMap } from "@/lib/modifiers";
 import { unitsFromSchema, strokeIndexOf, PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import type { ScorecardSchema } from "@/lib/courseIndex";
+import { migrateSideBetsState, type SideBetsState } from "@/lib/sideBets";
 import type { Participant, ScoreUnit, ScoreValues } from "@/components/games/types";
 
 /**
@@ -49,10 +50,11 @@ const QUICK_GAME_LEGACY_STORAGE_KEY = "bt-quick-game";
  * `JSON.parse(raw) as QuickGameState` is not safe once the shape grows.
  *
  * v2 added `course`/`strokes`/`version` (#1049). v3 added `format` (#1050).
- * v4 is the same STATE shape — only where it's STORED changed (per-format
- * keys, below); nothing here needed a bump for that.
+ * The per-format storage keys were the same STATE shape and needed no bump.
+ * v4 added `bets` — side bets, which every round saved before them lacks
+ * entirely, so the migrator supplies the empty state rather than failing.
  */
-export const QUICK_GAME_STATE_VERSION = 3;
+export const QUICK_GAME_STATE_VERSION = 4;
 
 /** Which game a saved round is. Each format gets its OWN storage key
  *  (`quickGameStorageKey`) — the dashboard's two tiles and the rail's list can
@@ -99,6 +101,15 @@ interface QuickGameCommon {
   currentHole: number;
   /** null = no course selected — the default 18-hole par-72 layout. */
   course: QuickGameCourse | null;
+  /**
+   * Side bets — the RECORDED half only (the bets, and the tracker's two
+   * preferences). Every figure the tracker shows derives from these plus the
+   * scores, per `sideBets.ts`; nothing about the tally is stored.
+   *
+   * Empty for a round nobody bet on, which is the case that must change
+   * nothing: no strip, no tracker, the scorecard identical to before (§7).
+   */
+  bets: SideBetsState;
 }
 
 /** Quick Stroke Play — per-player ABSOLUTE handicaps (0–18 each). */
@@ -270,6 +281,10 @@ export function migrateQuickGameState(raw: unknown): QuickGameState | null {
     finished: r.finished === true,
     currentHole,
     course,
+    // Absent on every round saved before v4 — `migrateSideBetsState` returns
+    // the empty state for that, so a pre-bets round resumes unbetted rather
+    // than failing shape validation.
+    bets: migrateSideBetsState(r.bets),
   };
   const strokesOf = (v: unknown): Record<string, number> =>
     v && typeof v === "object" ? (v as Record<string, number>) : {};

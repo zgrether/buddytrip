@@ -73,7 +73,15 @@ R1's shape has changed under it — see §2. What remains:
 
 ### PARKED behind launch (per the ranking)
 
-- **Money / gambling** — killer feature *only if* UI/UX nailed; no vision yet → backburner (Nassau-with-stakes rides here).
+- **Money / gambling** — killer feature *only if* UI/UX nailed. **The "no vision yet" half is spent:** the
+  side-bets handoff is the vision, and it is BUILT on Quick Play — bets as objects with a start hole
+  (`src/lib/sideBets.ts`), presses derived rather than recorded, Nassau in one action, carryovers, the ☠️
+  compounding option, and a live tracker that shows per-hole exposure without a tap. Deliberately Quick-Play
+  only: a foursome, one card, one phone, nothing that rolls up to a cup — and the safe place to get presses
+  and carryovers wrong, because finding the edge cases in a scratchpad costs nothing. What stays parked is
+  the TRIP-side version (a bet that other people can see, that survives the round, that touches a
+  competition) — and it stays parked until the rules have been played with, not until they have been
+  specced further.
 - **Quick Game / Games-tab taxonomy** — the surface moved to the dashboard strip (#559) and `/quick-game`
   exists; the format→game picker still needs trip-less game creation (#558). The SHAPE decision (throwaway
   shortcut vs Circle-era generic scorekeeper) is still owed, and still gates R1's registry.
