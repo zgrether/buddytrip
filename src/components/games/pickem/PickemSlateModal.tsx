@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ArrowUpDown, Plus, X } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { ReorderableList } from "@/components/ReorderableList";
-import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { Stepper } from "@/components/games/Stepper";
+import { ZoneHeader } from "@/components/games/ZoneHeader";
+import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
  * The slate — the contests being predicted.
@@ -16,19 +18,40 @@ import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
  * from the outside — there is no "runner view" whose presence or shape leaks
  * whether a slate exists.
  *
+ * ── The list is DISPLAY rows. One form, two entry points. ───────────────────
+ * The first build made every row a live form: five inputs and their padding,
+ * times sixteen games. It worked and it read as a spreadsheet — the "96 fields"
+ * problem the Cadence look named.
+ *
+ * So a row is one line of text plus its note, and nothing else. Adding happens
+ * in ONE form at the bottom; EDITING opens that same form, populated. Two entry
+ * points, one form, one set of validation rules — rather than an add form plus
+ * sixteen inline editors that have to agree with it.
+ *
+ * ── Reorder is a MODE, not a permanent affordance ───────────────────────────
+ * Same shape as the leaderboard's game reordering: a Reorder button that puts
+ * the list into drag mode. Grips are clutter the rest of the time, and they are
+ * the second thing (after inputs) that makes a row look like a control panel.
+ * Drag mode is `ReorderableList` — Phase 1's primitive, and this is its first
+ * real consumer.
+ *
+ * ── The multiplier is the row, not a control in it ──────────────────────────
+ * A weighted game wears the Glorious tokens; the number rides along inside that
+ * treatment ("2×") rather than sitting in a field of its own. The colour says
+ * "this one is worth more", the number says how much. It is SET in the form,
+ * with a stepper — the realistic range is 2–4 and a free numeric field invites
+ * someone to type 25.
+ *
  * ── Draft-then-save, one atomic commit ──────────────────────────────────────
- * Nothing here self-persists. Adding, editing, removing and reordering all
- * mutate a local draft; Save sends the whole slate plus both settings through
- * ONE `save_pickem_config` (CLAUDE.md #18). The spec's own lock sentence is the
- * reason the settings live in this modal rather than on the settings page
- * behind it: picks opening freezes the slate, its order, spreads, times,
- * multipliers, `roll_up` AND `use_confidence`, all at the same instant and for
- * the same reason. Things that share a lock point share a surface.
+ * Nothing here self-persists. Save sends the whole slate plus both settings
+ * through ONE `save_pickem_config` (CLAUDE.md #18). The settings live in this
+ * modal rather than on the settings page behind it because spec §4 freezes them
+ * at the same instant as the slate and for the same reason — things that share a
+ * lock point share a surface.
  *
  * ── Presentation-only ───────────────────────────────────────────────────────
- * No tRPC in here (CLAUDE.md #7). Every value arrives as a prop; the draft
- * leaves through `onSave`. The parent owns persistence, the mutation and the
- * toast.
+ * No tRPC (CLAUDE.md #7). Every value arrives as a prop; the draft leaves
+ * through `onSave`.
  */
 
 export interface SlateDraftGame {
@@ -46,12 +69,17 @@ export interface PickemSettingsDraft {
   useConfidence: boolean;
 }
 
+/** 1 is a normal game. The ceiling is judgement, not arithmetic: 2× and 3× are
+ *  what a runner actually wants and a free field invites 25, which would let one
+ *  contest outweigh the rest of the slate combined. */
+export const MULTIPLIER_MIN = 1;
+export const MULTIPLIER_MAX = 4;
+
 /** Client-minted id. STABLE across edits by design: it is what lets the RPC
  *  upsert instead of clean-replace, and therefore what keeps a participant's
  *  picks alive through a Reopen (migration 148). */
 function newSlateId(): string {
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `psg_${Date.now().toString(36)}_${rand}`;
+  return `psg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 const blank = (): SlateDraftGame => ({
@@ -99,6 +127,11 @@ export function PickemSlateModal({
   const [draft, setDraft] = useState<SlateDraftGame[]>(slate);
   const [draftSettings, setDraftSettings] = useState<PickemSettingsDraft>(settings);
   const [touched, setTouched] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
+  /** The form's working values. Always present; `editingId` says whether
+   *  submitting it adds or updates. */
+  const [form, setForm] = useState<SlateDraftGame>(blank);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Re-seed when the modal is (re)opened against different server data. Keyed on
   // the closed→open transition rather than on every prop change, so a background
@@ -110,6 +143,9 @@ export function PickemSlateModal({
       setDraft(slate);
       setDraftSettings(settings);
       setTouched(false);
+      setReorderMode(false);
+      setForm(blank());
+      setEditingId(null);
     }
   }
 
@@ -120,22 +156,60 @@ export function PickemSlateModal({
     setTouched(true);
     setDraft(fn);
   };
-  const patch = (id: string, p: Partial<SlateDraftGame>) =>
-    mutate((prev) => prev.map((g) => (g.id === id ? { ...g, ...p } : g)));
 
-  /** A row is only worth sending once it names both sides. An unfinished add is
-   *  not a game, and the server would reject a null team anyway — better to say
-   *  so here, next to the empty field, than as a failed save. */
-  const incomplete = draft.filter((g) => !g.awayTeam.trim() || !g.homeTeam.trim());
-  const canSave = editable && touched && incomplete.length === 0 && !saving;
+  const formValid = form.awayTeam.trim().length > 0 && form.homeTeam.trim().length > 0;
+
+  function submitForm() {
+    if (!formValid) return;
+    const clean: SlateDraftGame = {
+      ...form,
+      awayTeam: form.awayTeam.trim(),
+      homeTeam: form.homeTeam.trim(),
+      spread: form.spread?.trim() || null,
+      kickoff: form.kickoff?.trim() || null,
+      note: form.note?.trim() || null,
+    };
+    mutate((prev) =>
+      editingId ? prev.map((g) => (g.id === editingId ? clean : g)) : [...prev, clean]
+    );
+    setForm(blank());
+    setEditingId(null);
+  }
+
+  function editRow(id: string) {
+    const g = byId.get(id);
+    if (!g) return;
+    setForm({ ...g });
+    setEditingId(id);
+  }
+
+  const canSave = editable && touched && !saving;
 
   // `Sheet` renders when mounted — it has no `open` prop — so the gate is here,
   // AFTER the hooks above so their order never changes between renders.
   if (!open) return null;
 
+  const rows = draft.map((g, i) => (
+    <SlateRow
+      key={g.id}
+      index={i}
+      game={g}
+      editable={editable && !reorderMode}
+      beingEdited={editingId === g.id}
+      onEdit={() => editRow(g.id)}
+      onRemove={() => {
+        if (editingId === g.id) {
+          setForm(blank());
+          setEditingId(null);
+        }
+        mutate((prev) => prev.filter((x) => x.id !== g.id));
+      }}
+    />
+  ));
+
   return (
     <Sheet onClose={onClose} title="The slate" testId="pickem-slate-sheet">
-      <div className="flex flex-col gap-4 pb-4">
+      <div className="flex flex-col gap-3 pb-4">
         {!editable && (
           <div
             className="rounded-xl px-3 py-2.5"
@@ -153,13 +227,36 @@ export function PickemSlateModal({
 
         {/* ── the games ───────────────────────────────────────────────── */}
         <section>
-          <div className="mb-2 flex items-baseline justify-between">
-            <span style={EYEBROW}>Games</span>
-            <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
+          <ZoneHeader>Games</ZoneHeader>
+          <div className="mb-2 mt-1 flex items-center gap-2">
+            <span
+              className="flex-1"
+              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+            >
               {draft.length === 0
-                ? "none yet"
-                : `${draft.length} · confidence 1–${draft.length}`}
+                ? "The order you add them in sets the confidence range."
+                : `${draft.length} game${draft.length === 1 ? "" : "s"} · confidence 1–${draft.length}`}
             </span>
+            {editable && draft.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setReorderMode((v) => !v)}
+                data-testid="pickem-reorder-toggle"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5"
+                style={{
+                  background: reorderMode
+                    ? "var(--color-bt-accent-faint)"
+                    : "var(--color-bt-card-raised)",
+                  border: `1px ${reorderMode ? "solid var(--color-bt-accent-border)" : "dashed var(--color-bt-border)"}`,
+                  color: reorderMode ? "var(--color-bt-accent)" : "var(--color-bt-text)",
+                  fontSize: TYPE_SCALE.bodyDense,
+                  fontWeight: 600,
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <ArrowUpDown size={14} /> {reorderMode ? "Done" : "Reorder"}
+              </button>
+            )}
           </div>
 
           {draft.length === 0 ? (
@@ -171,55 +268,45 @@ export function PickemSlateModal({
                 border: "1px dashed var(--color-bt-border)",
               }}
             >
-              Add the games people will pick. The order you put them in sets the
-              confidence range.
+              No games yet. Add the first one below.
             </p>
-          ) : (
+          ) : reorderMode ? (
+            // Phase 1's primitive — the ONLY drag implementation here. Grips and
+            // arrows exist in this mode and nowhere else.
             <ReorderableList
               ids={ids}
-              enabled={editable}
               controlsSide="trailing"
-              listClassName="flex flex-col gap-2"
+              listClassName="flex flex-col gap-1.5"
               labelOf={(id) => label(byId.get(id)!)}
-              onReorder={(next) =>
-                mutate(() => next.map((id) => byId.get(id)!).filter(Boolean))
-              }
+              onReorder={(next) => mutate(() => next.map((id) => byId.get(id)!).filter(Boolean))}
               renderRow={(id, i) => (
-                <SlateRow
-                  index={i}
-                  game={byId.get(id)!}
-                  editable={editable}
-                  onPatch={(p) => patch(id, p)}
-                  onRemove={() => mutate((prev) => prev.filter((g) => g.id !== id))}
-                />
+                <SlateRow index={i} game={byId.get(id)!} editable={false} beingEdited={false} />
               )}
             />
-          )}
-
-          {editable && (
-            <button
-              type="button"
-              onClick={() => mutate((prev) => [...prev, blank()])}
-              data-testid="pickem-add-game"
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5"
-              style={{
-                border: "1px dashed var(--color-bt-border)",
-                color: "var(--color-bt-accent)",
-                fontSize: TYPE_SCALE.bodyDense,
-                fontWeight: 600,
-              }}
-            >
-              <Plus size={15} /> Add a game
-            </button>
+          ) : (
+            <div className="flex flex-col gap-1.5">{rows}</div>
           )}
         </section>
 
+        {/* ── the one form ────────────────────────────────────────────── */}
+        {editable && !reorderMode && (
+          <SlateForm
+            form={form}
+            editing={editingId != null}
+            valid={formValid}
+            onChange={(p) => setForm((f) => ({ ...f, ...p }))}
+            onSubmit={submitForm}
+            onCancel={() => {
+              setForm(blank());
+              setEditingId(null);
+            }}
+          />
+        )}
+
         {/* ── what a pick is worth ────────────────────────────────────── */}
         <section>
-          <div className="mb-2" style={EYEBROW}>
-            What a pick is worth
-          </div>
-          <div className="flex flex-col gap-2">
+          <ZoneHeader>What a pick is worth</ZoneHeader>
+          <div className="mt-2 flex flex-col gap-2">
             <ToggleRow
               title="Confidence ranking"
               detail={
@@ -246,7 +333,8 @@ export function PickemSlateModal({
                   {
                     value: "individual_matches",
                     label: "Individual matches",
-                    detail: "Each person plays one person on the other side. Points split across the matches.",
+                    detail:
+                      "Each person plays one person on the other side. Points split across the matches.",
                   },
                 ]}
                 value={draftSettings.rollUp}
@@ -262,13 +350,11 @@ export function PickemSlateModal({
 
         {/* ── save ────────────────────────────────────────────────────── */}
         {editable && (
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}>
-              {incomplete.length > 0
-                ? `${incomplete.length} game${incomplete.length === 1 ? "" : "s"} still need both teams`
-                : touched
-                  ? "Unsaved changes"
-                  : "Everything saved"}
+          <div className="flex items-center gap-3 pt-1">
+            <span
+              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}
+            >
+              {touched ? "Unsaved changes" : "Everything saved"}
             </span>
             <button
               type="button"
@@ -292,152 +378,297 @@ export function PickemSlateModal({
   );
 }
 
-/** One contest. Inputs are `font-size: 16px` deliberately — anything smaller and
- *  iOS Safari zooms the page on focus, which on a sixteen-row modal is
- *  disorienting (the same fix #1062 made for the chat composer). */
+/**
+ * One contest, as a line of text.
+ *
+ * NO INPUTS. A weighted game wears the Glorious tokens — the same
+ * `{color, faint, border}` + "fill + ring" grammar the scorecard uses, minus its
+ * diamond, which is an 18px backdrop with a hole number on it and has nowhere to
+ * put a value (#1075's addendum).
+ */
 function SlateRow({
   index,
   game,
   editable,
-  onPatch,
+  beingEdited,
+  onEdit,
   onRemove,
 }: {
   index: number;
   game: SlateDraftGame;
   editable: boolean;
-  onPatch: (p: Partial<SlateDraftGame>) => void;
-  onRemove: () => void;
+  beingEdited: boolean;
+  onEdit?: () => void;
+  onRemove?: () => void;
 }) {
+  const weighted = game.multiplier > 1;
+  const meta = [game.kickoff, game.note].filter(Boolean).join(" · ");
+
+  const body = (
+    <div className="flex min-w-0 flex-1 items-start gap-2.5">
+      <span
+        style={{
+          fontSize: TYPE_SCALE.caption,
+          fontWeight: 700,
+          color: "var(--color-bt-text-dim)",
+          fontVariantNumeric: "tabular-nums",
+          minWidth: 16,
+          paddingTop: 1,
+        }}
+      >
+        {index + 1}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
+            {game.awayTeam} <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 500 }}>at</span>{" "}
+            {game.homeTeam}
+          </span>
+          {game.spread && (
+            <span
+              className="rounded px-1.5"
+              style={{
+                fontSize: TYPE_SCALE.caption,
+                fontWeight: 700,
+                background: "var(--color-bt-planning-faint)",
+                color: "var(--color-bt-planning)",
+              }}
+            >
+              {game.spread}
+            </span>
+          )}
+          {weighted && (
+            <span
+              data-testid="pickem-multiplier-badge"
+              className="rounded px-1.5"
+              style={{
+                fontSize: TYPE_SCALE.caption,
+                fontWeight: 700,
+                color: "var(--color-bt-glorious)",
+                background: "color-mix(in srgb, var(--color-bt-glorious) 22%, transparent)",
+                border: "1px solid var(--color-bt-glorious-border)",
+              }}
+            >
+              {game.multiplier}×
+            </span>
+          )}
+        </span>
+        {meta && (
+          <span
+            className="mt-0.5 block truncate"
+            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+          >
+            {meta}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+
+  const surface: React.CSSProperties = {
+    background: weighted
+      ? "var(--color-bt-glorious-faint)"
+      : beingEdited
+        ? "var(--color-bt-accent-faint)"
+        : "var(--color-bt-card)",
+    border: `1px solid ${
+      weighted
+        ? "var(--color-bt-glorious-border)"
+        : beingEdited
+          ? "var(--color-bt-accent-border)"
+          : "var(--color-bt-border)"
+    }`,
+  };
+
+  if (!editable) {
+    return (
+      <div className="flex items-start rounded-xl px-2.5 py-2" style={surface}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start rounded-xl px-2.5 py-2" style={surface}>
+      <button
+        type="button"
+        onClick={onEdit}
+        data-testid="pickem-slate-row"
+        aria-label={`Edit ${label(game)}`}
+        className="flex min-w-0 flex-1 items-start text-left"
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        {body}
+      </button>
+      <button
+        type="button"
+        aria-label={`Remove ${label(game)}`}
+        onClick={onRemove}
+        className="-mr-0.5 shrink-0 rounded p-1"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
+/** The ONE form. Adding and editing are the same fields, the same validation and
+ *  the same code — only the verb on the button changes. */
+function SlateForm({
+  form,
+  editing,
+  valid,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  form: SlateDraftGame;
+  editing: boolean;
+  valid: boolean;
+  onChange: (patch: Partial<SlateDraftGame>) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  // 16px deliberately — anything smaller and iOS Safari zooms the page on focus
+  // (the fix #1062 made for the chat composer).
   const field: React.CSSProperties = {
     background: "var(--color-bt-card-raised)",
     border: "1px solid var(--color-bt-border)",
     borderRadius: 8,
     color: "var(--color-bt-text)",
     fontSize: 16,
-    padding: "7px 9px",
+    padding: "8px 10px",
     width: "100%",
     minWidth: 0,
   };
 
-  if (!editable) {
-    return (
-      <div
-        className="rounded-xl px-3 py-2"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        <div className="flex items-center gap-2">
-          <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", minWidth: 18 }}>
-            {index + 1}
-          </span>
-          <span style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-            {game.awayTeam} <span style={{ color: "var(--color-bt-text-dim)" }}>at</span>{" "}
-            {game.homeTeam}
-          </span>
-          {game.multiplier !== 1 && <MultiplierBadge value={game.multiplier} />}
-        </div>
-        {(game.kickoff || game.spread || game.note) && (
-          <div style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 3 }}>
-            {[game.spread, game.kickoff, game.note].filter(Boolean).join(" · ")}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div
-      className="rounded-xl p-2.5"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      className="rounded-xl p-3"
+      data-testid="pickem-slate-form"
+      style={{ border: "1px dashed var(--color-bt-border)" }}
     >
-      <div className="mb-1.5 flex items-center gap-2">
-        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", minWidth: 18 }}>
-          {index + 1}
-        </span>
+      <div
+        className="mb-2"
+        style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}
+      >
+        {editing ? "Edit game" : "Add a game"}
+      </div>
+
+      <div className="mb-2 flex items-center gap-2">
         <input
           aria-label="Away team"
-          value={game.awayTeam}
+          value={form.awayTeam}
           placeholder="Away"
-          onChange={(e) => onPatch({ awayTeam: e.target.value })}
+          onChange={(e) => onChange({ awayTeam: e.target.value })}
           style={field}
         />
         <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>at</span>
         <input
           aria-label="Home team"
-          value={game.homeTeam}
+          value={form.homeTeam}
           placeholder="Home"
-          onChange={(e) => onPatch({ homeTeam: e.target.value })}
+          onChange={(e) => onChange({ homeTeam: e.target.value })}
           style={field}
         />
-        <button
-          type="button"
-          aria-label={`Remove ${label(game)}`}
-          onClick={onRemove}
-          className="shrink-0 rounded p-1"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <X size={15} />
-        </button>
       </div>
-      <div className="flex gap-2">
+
+      <div className="mb-2 flex gap-2">
         <input
           aria-label="Game time"
-          value={game.kickoff ?? ""}
+          value={form.kickoff ?? ""}
           placeholder="Sat 3:30p"
-          onChange={(e) => onPatch({ kickoff: e.target.value || null })}
-          style={{ ...field, flex: "0 0 110px" }}
+          onChange={(e) => onChange({ kickoff: e.target.value || null })}
+          style={{ ...field, flex: "1 1 0" }}
         />
         <input
           aria-label="Spread"
-          value={game.spread ?? ""}
+          value={form.spread ?? ""}
           placeholder="Spread"
-          onChange={(e) => onPatch({ spread: e.target.value || null })}
-          style={{ ...field, flex: "0 0 84px" }}
-        />
-        <input
-          aria-label="Multiplier"
-          inputMode="numeric"
-          value={String(game.multiplier)}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            // An unparseable or non-positive entry falls back to 1 rather than
-            // to NaN — spec §2.3, an unset multiplier is a normal game.
-            onPatch({ multiplier: Number.isFinite(n) && n > 0 ? n : 1 });
-          }}
-          style={{ ...field, flex: "0 0 62px", textAlign: "center" }}
+          onChange={(e) => onChange({ spread: e.target.value || null })}
+          style={{ ...field, flex: "0 0 96px" }}
         />
       </div>
+
       <input
         aria-label="Note"
-        value={game.note ?? ""}
+        value={form.note ?? ""}
         placeholder="Note (optional)"
-        onChange={(e) => onPatch({ note: e.target.value || null })}
-        style={{ ...field, marginTop: 8 }}
+        onChange={(e) => onChange({ note: e.target.value || null })}
+        style={field}
       />
+
+      {/* The multiplier lives HERE, as a stepper — never in the row. */}
+      <div className="mt-3 flex items-center justify-between">
+        <span className="min-w-0 pr-3">
+          <span className="block" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
+            Worth extra
+          </span>
+          <span
+            className="block"
+            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            {form.multiplier > 1
+              ? `Every pick on this game scores ${form.multiplier}×`
+              : "A normal game"}
+          </span>
+        </span>
+        <Stepper
+          size="compact"
+          value={form.multiplier}
+          min={MULTIPLIER_MIN}
+          max={MULTIPLIER_MAX}
+          onChange={(n) => onChange({ multiplier: n })}
+          // Always the number, never a dash. At the default the decrement is
+          // already disabled, and "—" beside a greyed minus read as two dashes
+          // rather than as a value — noticed on the rendered page, not in review.
+          formatValue={(n) => `${n}×`}
+          dimValue={form.multiplier === 1}
+          testId="pickem-multiplier-stepper"
+        />
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        {editing && (
+          <button
+            type="button"
+            onClick={onCancel}
+            data-testid="pickem-form-cancel"
+            className="rounded-lg px-3 py-2"
+            style={{
+              fontSize: TYPE_SCALE.bodyDense,
+              fontWeight: 600,
+              color: "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={!valid}
+          data-testid="pickem-add-game"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 disabled:opacity-40"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
+            fontSize: TYPE_SCALE.bodyDense,
+            fontWeight: 700,
+          }}
+        >
+          {editing ? "Save changes" : (<><Plus size={15} /> Add game</>)}
+        </button>
+      </div>
     </div>
   );
 }
 
-/** The multiplier mark. Borrows Glorious Finishing Holes' TOKENS and its
- *  "fill + ring" grammar — not its diamond, which is an 18px backdrop with a
- *  hole number on top of it and has no room for a value (#1075's addendum). */
-function MultiplierBadge({ value }: { value: number }) {
-  return (
-    <span
-      data-testid="pickem-multiplier-badge"
-      className="rounded px-1.5"
-      style={{
-        fontSize: TYPE_SCALE.caption,
-        fontWeight: 700,
-        color: "var(--color-bt-glorious)",
-        background: "color-mix(in srgb, var(--color-bt-glorious) 22%, transparent)",
-        border: "1px solid var(--color-bt-glorious-border)",
-      }}
-    >
-      {value}× · Worth {value === 2 ? "double" : `${value}×`}
-    </span>
-  );
-}
-
+/** A settings row. Same type as the settings rows beside it on the game settings
+ *  page — Total Points, Game State — because this IS a scoring setting and the
+ *  smaller type read it as a footnote. */
 function ToggleRow({
   title,
   detail,
@@ -457,8 +688,10 @@ function ToggleRow({
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
       <div className="min-w-0 flex-1">
-        <div style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>{title}</div>
-        <div style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
+        <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>{title}</div>
+        <div
+          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 2 }}
+        >
           {detail}
         </div>
       </div>
@@ -511,7 +744,7 @@ function ChoiceRow({
       className="rounded-xl px-3 py-2.5"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
-      <div style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600, marginBottom: 6 }}>{title}</div>
       <div className="flex flex-col gap-1.5">
         {options.map((o) => {
           const on = o.value === value;
@@ -537,7 +770,13 @@ function ChoiceRow({
               >
                 {o.label}
               </div>
-              <div style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
+              <div
+                style={{
+                  fontSize: TYPE_SCALE.caption,
+                  color: "var(--color-bt-text-dim)",
+                  marginTop: 1,
+                }}
+              >
                 {o.detail}
               </div>
             </button>
