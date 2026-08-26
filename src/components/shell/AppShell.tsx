@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { GameChromeProvider, useGameChrome } from "@/components/games/GameChrome";
 import { useAppView, type AppView } from "./useAppView";
 import { AppTabBar } from "./AppTabBar";
@@ -13,6 +13,7 @@ import { useIsChatColumn } from "./breakpoints";
 import { CONTENT_INSET, CONTENT_INSET_AT_GAME_DEPTH } from "./contentArea";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
+import { CHAT_SEGMENT_KEY } from "@/lib/chatSegments";
 
 /**
  * AppShell — the persistent frame for the tab navigation (Phase 3), and,
@@ -111,6 +112,8 @@ export function AppShell({
   tripHasCompetition?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { view, setView } = useAppView(defaultView);
   const [peeking, setPeeking] = useState<LockedExplainerView | null>(null);
   const scoped = !!tripId;
@@ -196,6 +199,77 @@ export function AppShell({
     }
     setChatOpen(true);
   }, [scoped, remoteTripId, router]);
+
+  /**
+   * `?chat=1[&channel=crew|planning]` — a notification's one-shot instruction
+   * to open chat, consumed here and nowhere else.
+   *
+   * ── Why AppShell, and not the trip page ─────────────────────────────────
+   * `chatOpen` and `openChat` are THIS component's state; nothing else can
+   * open chat without going through them. Reading the param anywhere else
+   * would mean threading a callback back out to wherever did the reading,
+   * for no benefit — the shell already owns the router and the pathname.
+   *
+   * ── Why the segment goes through sessionStorage, not a new prop ─────────
+   * `ChatView` already remembers the last-picked segment for the session via
+   * `CHAT_SEGMENT_KEY` (`chatSegments.ts`) — the exact "which channel was I
+   * on" question a notification is also answering. Writing that key here
+   * reuses the mechanism `ChatView` already reads in its own mount-time
+   * initializer, rather than inventing a second way to say the same thing.
+   * The write happens BEFORE `openChat()` in the same synchronous effect body,
+   * so it lands before `ChatView` mounts on the next render — after which its
+   * initializer never re-reads the key, which is also this fix's one known
+   * gap: retargeting chat via a SECOND notification for the other channel,
+   * fired while chat is already open, opens the right room but does not
+   * re-select the tab. Not handled here — it would need `ChatView` to accept
+   * a live override rather than a mount-time seed, which is a larger change
+   * than a query param deserves.
+   *
+   * ── Why this is a NEW shape (consume-then-strip) rather than the existing
+   *    `?tab=`/`?view=` idiom ───────────────────────────────────────────────
+   * Those are ADDRESSES — they belong in the URL for as long as you're on that
+   * tab, so back/forward and sharing both work. `?chat=1` is an INSTRUCTION for
+   * the next paint, not a place; leaving it in the URL would force chat open on
+   * every reload and hand it to anyone the link is shared with. So it is
+   * stripped via `router.replace` in the same tick rather than accumulated as
+   * a sentinel — no history entry is created for it at all, which is also what
+   * makes "reload doesn't reopen it" and "sharing after the tap doesn't carry
+   * it" both true for free.
+   *
+   * ── `?tab=`/`?view=` survive the strip ──────────────────────────────────
+   * Rebuilt from the CURRENT params with only `chat`/`channel` deleted — the
+   * same shape `useAppView`'s `urlFor` uses — so a notification landing on
+   * `?tab=comp&chat=1` still leaves `?tab=comp` in place afterwards.
+   *
+   * Guarded on `!!chat`: the context-free `/dashboard` host is never given a
+   * `chat` prop (see its type doc), so a stray `?chat=1` there is inert rather
+   * than opening a sheet with nothing inside it.
+   */
+  useEffect(() => {
+    if (!chat) return;
+    const requestedChannel = searchParams.get("channel");
+    if (searchParams.get("chat") !== "1") return;
+
+    if (requestedChannel === "crew" || requestedChannel === "planning") {
+      try {
+        window.sessionStorage.setItem(CHAT_SEGMENT_KEY, requestedChannel);
+      } catch {
+        // Private mode / storage disabled — chat still opens, just to
+        // whichever segment was last remembered (or the default).
+      }
+    }
+    openChat();
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("chat");
+    params.delete("channel");
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+    // `searchParams`/`pathname` are the only reactive inputs; `chat`/`openChat`
+    // are stable across the render this fires in and re-including them would
+    // not change when this can run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, pathname]);
   const toggleChat = useCallback(() => {
     if (!scoped && remoteTripId) {
       router.push(`/trips/${remoteTripId}`);

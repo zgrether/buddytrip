@@ -157,12 +157,23 @@ describe("buildChatPayload — what reaches the lock screen", () => {
     );
   });
 
-  it("deep-links to the trip, NOT to an invented chat URL param", () => {
-    // AppShell keeps chat open/closed out of the URL deliberately. A notification
-    // is not a reason to override that, so the link lands on the trip.
+  /**
+   * THE REVERSAL. This used to assert the opposite — "NOT to an invented chat
+   * URL param" — on the grounds that `AppShell` keeps chat out of the URL
+   * deliberately. That protected the principle at the cost of the thing a chat
+   * notification exists for: tapping "Rob sent a message" and not landing on
+   * the message is broken in the one interaction where the destination is
+   * unambiguous. See the reversed comment on `buildChatPayload` itself.
+   */
+  it("deep-links to the trip WITH a one-shot instruction to open chat", () => {
     const p = buildChatPayload(base);
-    expect(p.url).toBe("/trips/trip-1");
-    expect(p.url).not.toContain("chat=");
+    expect(p.url).toBe("/trips/trip-1?chat=1&channel=crew");
+  });
+
+  it("carries the CHANNEL the message was actually in, not always crew", () => {
+    expect(buildChatPayload({ ...base, visibility: "planning" }).url).toBe(
+      "/trips/trip-1?chat=1&channel=planning"
+    );
   });
 
   it("tags per channel so a later push replaces rather than stacks", () => {
@@ -184,6 +195,8 @@ describe("buildChatPayload — what reaches the lock screen", () => {
    */
   it("puts nothing in the payload but the trip, the channel and the sender", () => {
     const p = buildChatPayload(base);
+    // `url` now carries `chat`/`channel` as well as the trip id — still no
+    // fifth field, and still nothing beyond ids and a fixed instruction.
     expect(Object.keys(p).sort()).toEqual(["body", "tag", "title", "url"]);
     const serialized = JSON.stringify(p);
     for (const fragment of ["password", "Meet at the 9th", "secret"]) {
