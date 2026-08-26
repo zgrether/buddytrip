@@ -14,6 +14,11 @@ import {
   clearFailedMessage,
 } from "@/lib/chatFailedOutbox";
 import { systemLineForViewer } from "@/lib/joinMessage";
+import {
+  formatChatMessageTimestamp,
+  formatChatDaySeparator,
+  chatDayChanged,
+} from "@/lib/chatTimestamp";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -1209,10 +1214,37 @@ function ChatBody({
           {loading && <ChatMessagesPlaceholder />}
           {!loading && displayed.length > 0 && (
             <div className="space-y-1.5 px-3 py-2">
-              {displayed.map((msg) => {
+              {displayed.map((msg, msgIndex) => {
+              // DAY SEPARATOR — sits above the first message of a new calendar
+              // day, compared against the PREVIOUS message in the transcript
+              // (not against "now": a five-day-old transcript read today still
+              // needs its own internal boundaries). System lines participate in
+              // this comparison like any other message — a join notice at
+              // 11:58 PM and the next real message at 12:02 AM are still a day
+              // apart, and skipping system rows here would silently swallow
+              // that boundary.
+              const daySeparator = chatDayChanged(
+                msg.created_at,
+                msgIndex === 0 ? null : displayed[msgIndex - 1].created_at
+              ) ? (
+                <div className="flex items-center gap-2 py-1.5" data-testid="chat-day-separator">
+                  <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+                  <span
+                    className="text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    {formatChatDaySeparator(msg.created_at)}
+                  </span>
+                  <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+                </div>
+              ) : null;
+
               // "New" divider — sits just above the first message that arrived
               // since you last read this channel. accent-colored hairline so it
-              // reads as a soft boundary, not an alarm.
+              // reads as a soft boundary, not an alarm. Rendered BELOW the day
+              // separator when both land on the same message: the day is the
+              // bigger-picture landmark, "New" is the more immediate one, and
+              // that order reads top-down as "which day, then which message".
               const divider =
                 msg.id === firstUnreadId ? (
                   <div className="flex items-center gap-2 py-1.5">
@@ -1244,6 +1276,7 @@ function ChatBody({
                 });
                 return (
                   <Fragment key={msg.id}>
+                    {daySeparator}
                     {divider}
                     <div className="flex justify-center py-1">
                       <span
@@ -1258,12 +1291,14 @@ function ChatBody({
               }
 
               const isMe = msg.user_id === currentUserId;
-              const time = new Date(msg.created_at).toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit",
-              });
+              // Day-aware: time-only for today, "Yesterday 3:42 PM" / "Tue
+              // 3:42 PM" / "Aug 19 3:42 PM" once it isn't (chatTimestamp.ts).
+              // Same rule the day separator above uses, so the two can never
+              // disagree about what day a message falls on.
+              const time = formatChatMessageTimestamp(msg.created_at);
               return (
                 <Fragment key={msg.id}>
+                  {daySeparator}
                   {divider}
                   <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                     <div className="flex items-center gap-1.5 px-1 mb-0.5">
@@ -1440,9 +1475,15 @@ function ChatBody({
         )}
       </div>
 
-      {/* Input */}
+      {/* Input.
+          Padding bumped from py-2 (reported: the send button sat too close to
+          the bottom tab bar's own chat toggle — on mobile, `ChatSheet` pins its
+          `bottom` to the top of that bar (`--bt-bottomnav-height`), so this
+          row's own padding is the ONLY separation between the two chat
+          controls. py-3 gives that gap room without touching the sheet's own
+          positioning. */}
       <div
-        className="flex items-end gap-2 px-3 py-2"
+        className="flex items-end gap-2 px-3 py-3"
         style={{ borderTop: "1px solid var(--color-bt-border)" }}
       >
         <textarea
@@ -1475,11 +1516,21 @@ function ChatBody({
         <button
           onClick={onSend}
           disabled={sending || !text.trim()}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
+          // 28px (h-7) was BOTH a hit-target complaint and the cause of the
+          // "offset down" one: the row is `items-end`, so a button shorter
+          // than the textarea's own 2.25rem min-height bottom-aligns with a
+          // gap left ABOVE it, reading as sitting low relative to the field's
+          // text. Matching the textarea's `minHeight: "2.25rem"` EXACTLY (h-9
+          // = 2.25rem) makes the two identical in height at the single-line
+          // rest state, so there is no gap to misread as an offset — and it
+          // is bigger to tap. `items-end` stays: once the textarea grows past
+          // one line, the button pins to the bottom-most line rather than
+          // floating at the vertical center of a multi-line box.
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
           style={{ background: accentVar, color: "var(--color-bt-base)" }}
           aria-label="Send message"
         >
-          <Send size={13} />
+          <Send size={15} />
         </button>
       </div>
     </>

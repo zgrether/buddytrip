@@ -386,10 +386,16 @@ function ToolButton({
             data-testid={`${testId}-dot`}
             className="absolute rounded-full"
             style={{
-              top: -2,
-              right: -2,
-              width: 7,
-              height: 7,
+              // 7px read as barely-there against the 16px icon it sits on —
+              // reported from a device as "not entirely clear when there's a
+              // message". 9px (+ a hair more inset so it stays clear of the
+              // icon glyph) is the smallest bump that reads as an unmistakable
+              // dot rather than a smudge, without crowding the label beside it
+              // at the collapsed (icon-only, <600px container) width.
+              top: -3,
+              right: -3,
+              width: 9,
+              height: 9,
               background: badgeBg ?? "var(--color-bt-owner)",
               border: "1.5px solid var(--color-bt-nav-bg)",
             }}

@@ -160,13 +160,31 @@ export function buildChatPayload(args: {
     title: visibility === "planning" ? `${tripTitle} · Organizers` : tripTitle,
     body: `${senderName} sent a message`,
     /**
-     * The trip, NOT the chat. Chat open/closed is deliberately not a URL param
-     * (`AppShell`: "not a view and not a URL param... chat is orthogonal to
-     * which tab is selected"), and inventing `?chat=1` to save one tap would
-     * override a deliberate design decision for a notification's convenience.
-     * If deep-linking to chat is wanted generally, that is its own decision.
+     * The trip, WITH a one-shot instruction to open chat on this channel.
+     *
+     * ── This reverses the comment that used to be here ─────────────────────
+     * It read: "Chat open/closed is deliberately not a URL param... inventing
+     * `?chat=1` to save one tap would override a deliberate design decision."
+     * That was protecting the principle at the cost of the thing a chat
+     * notification exists for — tapping "Rob sent a message" and NOT landing on
+     * the message is broken in the one interaction where the destination is
+     * unambiguous.
+     *
+     * The principle survives anyway: "orthogonal to which tab is selected"
+     * means chat is not itself a tab, not that nothing may ever open it. A link
+     * that opens chat and lands on whichever tab is selected (`?view=`,
+     * untouched) uses that property rather than contradicting it — chat open,
+     * Trip tab, both true at once, same as tapping the toggle by hand.
+     *
+     * `?chat=1` is consumed and stripped on mount (`AppShell`), so a shared or
+     * bookmarked copy of this URL does not force chat open forever — it is an
+     * instruction for the NEXT paint, not a state.
+     *
+     * `channel` rides along because the payload already knows which room lit
+     * up, and an Organizers notification landing in Crew would be the same
+     * "wrong destination" bug this exists to fix, just one tap further in.
      */
-    url: `/trips/${tripId}`,
+    url: `/trips/${tripId}?chat=1&channel=${visibility}`,
     /**
      * Replaces rather than stacks, per channel. Largely belt-and-braces given
      * the gate already caps this at one per read-session — but the two mechanisms
