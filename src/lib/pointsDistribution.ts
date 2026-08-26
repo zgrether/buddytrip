@@ -165,6 +165,25 @@ export function liveMatchPointsPerMatch(
  * rack with no owner-set `points_total` has no total to derive from, so this
  * reads the persisted snapshot instead. Only consulted when `pointsTotal` is
  * null/undefined.
+ *
+ * ── A roster edit AFTER finalize is not a second instance of this bug ──────
+ * This is only ever consulted at an ACTIVE read: the award write at
+ * `games.finish`, or a live game-page/board projection. A `complete` rack game
+ * has no post-complete recompute trigger — nothing re-runs
+ * `computeRackNStackResults` for it unless it is explicitly re-finalized — so a
+ * roster change after finalize (a seat vacate is the ordinary way) moves what
+ * THIS function would derive today without touching the frozen
+ * `game_results.raw_score` already written. The persisted
+ * `points_distribution.value` display column and the already-awarded score then
+ * tell different stories — that is intentional (frozen history, the "leave
+ * finalized history alone" choice, not a bug), but it is a real, unarticulated
+ * behavior: confirmed in #1069's audit against a real prod row (a finalized 2v2
+ * rack whose roster later shrank to 2v1; `raw_score` stayed the 2-slot award
+ * from finalize time, `points_distribution.value` still showed the old per-slot
+ * figure, and this function derives a third, current number from today's
+ * roster). If a display surface ever reads this function for a COMPLETE game's
+ * "current" value, that mismatch will look like a bug — it isn't one; the fix
+ * is to stop reading it there, not to make the frozen row move.
  */
 export function liveRackPointsPerSlot(
   pointsTotal: number | null | undefined,
