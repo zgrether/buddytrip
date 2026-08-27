@@ -197,15 +197,48 @@ export function PickemSlateModal({
   // AFTER the hooks above so their order never changes between renders.
   if (!open) return null;
 
-  const rows = draft.map((g, i) => (
-    <SlateRow
-      key={g.id}
-      index={i}
-      game={g}
-      editable={editable && !reorderMode}
-      beingEdited={editingId === g.id}
-      onEdit={() => editRow(g.id)}
+  /**
+   * The form appears WHERE THE WORK IS.
+   *
+   * It used to live only at the bottom, which is fine for adding and wrong for
+   * editing: tap game 1 of sixteen and the form opens off-screen, with nothing
+   * to suggest scrolling. So an edit renders the form immediately beneath its
+   * own row, and only the ADD form sits at the end of the list.
+   *
+   * Still exactly one form either way — same component, same validation, same
+   * state. What moves is where it is drawn.
+   */
+  const formNode = editable && !reorderMode && (
+    <SlateForm
+      form={form}
+      editing={editingId != null}
+      valid={formValid}
+      onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+      onSubmit={submitForm}
+      onCancel={() => {
+        setForm(blank());
+        setEditingId(null);
+      }}
+      onDelete={() => {
+        const id = editingId;
+        setForm(blank());
+        setEditingId(null);
+        if (id) mutate((prev) => prev.filter((g) => g.id !== id));
+      }}
     />
+  );
+
+  const rows = draft.map((g, i) => (
+    <div key={g.id} className="flex flex-col gap-1.5">
+      <SlateRow
+        index={i}
+        game={g}
+        editable={editable && !reorderMode}
+        beingEdited={editingId === g.id}
+        onEdit={() => editRow(g.id)}
+      />
+      {editingId === g.id && formNode}
+    </div>
   ));
 
   return (
@@ -230,13 +263,18 @@ export function PickemSlateModal({
         <section>
           <ZoneHeader>Games</ZoneHeader>
           <div className="mb-2 mt-1 flex items-center gap-2">
+            {/* Just the count. "confidence 1–16" used to ride along here and
+                said nothing useful in setup — it showed whether or not
+                confidence ranking was even switched on, and the range is a
+                property of the finished slate rather than a thing the runner
+                is deciding while building it. */}
             <span
               className="flex-1"
               style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
             >
               {draft.length === 0
-                ? "The order you add them in sets the confidence range."
-                : `${draft.length} game${draft.length === 1 ? "" : "s"} · confidence 1–${draft.length}`}
+                ? "Add the games people will pick."
+                : `${draft.length} game${draft.length === 1 ? "" : "s"}`}
             </span>
             {editable && draft.length > 1 && (
               <button
@@ -289,37 +327,20 @@ export function PickemSlateModal({
           )}
         </section>
 
-        {/* ── the one form ────────────────────────────────────────────── */}
-        {editable && !reorderMode && (
-          <SlateForm
-            form={form}
-            editing={editingId != null}
-            valid={formValid}
-            onChange={(p) => setForm((f) => ({ ...f, ...p }))}
-            onSubmit={submitForm}
-            onCancel={() => {
-              setForm(blank());
-              setEditingId(null);
-            }}
-            onDelete={() => {
-              const id = editingId;
-              setForm(blank());
-              setEditingId(null);
-              if (id) mutate((prev) => prev.filter((g) => g.id !== id));
-            }}
-          />
-        )}
+        {/* The ADD form, at the end of the list — where a new game goes. An
+            EDIT form is rendered inline against its own row instead. */}
+        {editingId == null && formNode}
 
         {/* ── what a pick is worth ────────────────────────────────────── */}
         <section>
-          <ZoneHeader>What a pick is worth</ZoneHeader>
+          <ZoneHeader>How scoring works</ZoneHeader>
           <div className="mt-2 flex flex-col gap-2">
             <ToggleRow
-              title="Confidence ranking"
+              title="Use confidence points"
               detail={
                 draftSettings.useConfidence
-                  ? "Everyone ranks the games 1–N. A correct pick scores what they ranked it."
-                  : "Every correct pick is worth 1. There is no ranking step at all."
+                  ? "Every correct pick is worth the confidence rank it is given."
+                  : "Correct picks are worth 1 point."
               }
               on={draftSettings.useConfidence}
               disabled={!editable}
@@ -330,7 +351,7 @@ export function PickemSlateModal({
             />
             {showRollUp && (
               <ChoiceRow
-                title="How it's scored"
+                title="How points are awarded"
                 options={[
                   {
                     value: "team_totals",
@@ -482,12 +503,29 @@ function SlateRow({
    * The badge stays and carries the value. Colour says "this one is worth more",
    * number says how much.
    */
+  const edge = beingEdited ? "var(--color-bt-accent-border)" : "var(--color-bt-border)";
+  /**
+   * Per-side LONGHANDS, never the `border` shorthand plus a `borderLeft`
+   * override.
+   *
+   * React warns on that combination — "updating a style property during
+   * rerender (border) when a conflicting property is set (borderLeft) can lead
+   * to styling bugs" — and it is right: which one wins depends on property
+   * order across a re-render, so the stripe could be silently clobbered when a
+   * row toggles into or out of `beingEdited`. Caught in the dev console, not in
+   * review.
+   */
   const surface: React.CSSProperties = {
     background: beingEdited ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-    border: `1px solid ${
-      beingEdited ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"
-    }`,
-    ...(weighted ? { borderLeft: "3px solid var(--color-bt-glorious)" } : null),
+    borderStyle: "solid",
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: weighted ? 3 : 1,
+    borderTopColor: edge,
+    borderRightColor: edge,
+    borderBottomColor: edge,
+    borderLeftColor: weighted ? "var(--color-bt-glorious)" : edge,
   };
 
   if (!editable) {

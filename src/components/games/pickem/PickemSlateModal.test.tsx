@@ -79,6 +79,28 @@ describe("the slate list is display rows, not edit rows", () => {
     expect(html.match(/data-testid="pickem-slate-form"/g)).toHaveLength(1);
   });
 
+  it("the setup header does NOT advertise a confidence range", () => {
+    // It showed "confidence 1–16" whether or not confidence ranking was even
+    // switched on, and the range is a property of the finished slate rather
+    // than something the runner is deciding while building it.
+    const html = render();
+    expect(html).toContain("3 games");
+    expect(html).not.toContain("confidence 1–");
+  });
+
+  it("with no games, the ADD form is the last thing in the list", () => {
+    // The default position. An EDIT renders the form against its own row
+    // instead — see the browser verification; `editingId` is internal state and
+    // this environment cannot click.
+    const html = render();
+    expect(html.indexOf('data-testid="pickem-slate-row"')).toBeLessThan(
+      html.indexOf('data-testid="pickem-slate-form"')
+    );
+    expect(html.lastIndexOf('data-testid="pickem-slate-row"')).toBeLessThan(
+      html.indexOf('data-testid="pickem-slate-form"')
+    );
+  });
+
   it("the form carries the fields, so they exist exactly once", () => {
     const html = render();
     for (const field of ["Away team", "Home team", "Game time", "Spread", "Note"]) {
@@ -116,7 +138,7 @@ describe("the multiplier is the row's treatment, not a control in it", () => {
     // vertical eye movement down the left edge, so the mark belongs on that
     // edge, solid.
     const html = render();
-    expect(html).toContain("border-left:3px solid var(--color-bt-glorious)");
+    expect(html).toContain("border-left-color:var(--color-bt-glorious)");
     expect(html).not.toContain("var(--color-bt-glorious-faint)");
     // The badge stays and carries the value.
     expect(html).toContain("2×");
@@ -127,7 +149,9 @@ describe("the multiplier is the row's treatment, not a control in it", () => {
     // no information at all, and a "contains glorious" check would still pass.
     const html = render();
     expect(html.match(/data-testid="pickem-multiplier-badge"/g)).toHaveLength(1);
-    expect(html.match(/border-left:3px solid var\(--color-bt-glorious\)/g)).toHaveLength(1);
+    expect(html.match(/border-left-color:var\(--color-bt-glorious\)/g)).toHaveLength(1);
+    // The stripe is a WIDTH as well as a colour — one row at 3px, the rest at 1.
+    expect(html.match(/border-left-width:3px/g)).toHaveLength(1);
   });
 
   it("no multiplier CONTROL appears in the list — only in the form", () => {
@@ -180,15 +204,25 @@ describe("what a pick is worth", () => {
     // now matches the rows beside it on the settings page (Total Points, Game
     // State), which are 13.
     const html = render();
-    const title = html.indexOf("Confidence ranking");
+    const title = html.indexOf("Use confidence points");
     expect(title).toBeGreaterThan(-1);
     // The row's own title style sits just before the text.
     expect(html.slice(Math.max(0, title - 120), title)).toContain("font-size:13px");
   });
 
   it("hides the roll-up when the competition makes it unreachable", () => {
-    expect(render()).toContain("How it&#x27;s scored");
-    expect(render({ showRollUp: false })).not.toContain("How it&#x27;s scored");
+    expect(render()).toContain("How points are awarded");
+    expect(render({ showRollUp: false })).not.toContain("How points are awarded");
+  });
+
+  it("says HOW SCORING WORKS, and says what a pick is worth in plain terms", () => {
+    const html = render();
+    expect(html).toContain("How scoring works");
+    expect(html).toContain("Every correct pick is worth the confidence rank it is given.");
+    // The old copy explained the mechanism ("there is no ranking step at all")
+    // where the setting's own name already carries it.
+    expect(html).not.toContain("What a pick is worth");
+    expect(html).not.toContain("There is no ranking step");
   });
 });
 
