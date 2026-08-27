@@ -78,14 +78,14 @@ export function PickemDeadlineRow({
   /** `pickem_games.picks_deadline`, or null for "lock by hand". */
   deadline: string | null;
   /**
-   * Only while picks are OPEN.
+   * Any phase, for anyone who can edit the game.
    *
-   * Not before: the deadline is written by `set_pickem_phase('open')`, which
-   * would also OPEN picks — setting a time while still building would publish
-   * the game. Not after: the same call clears `picks_locked_at`, so editing a
-   * deadline on a locked game would silently UNLOCK it. Both are real hazards
-   * of reusing one action, and the narrow window is the honest fix until the
-   * action is split.
+   * This was once "only while picks are open", because the deadline was written
+   * by `set_pickem_phase('open')` — which also coalesces `picks_opened_at` and
+   * clears `picks_locked_at`, so using it here would have published a building
+   * game or silently unlocked a locked one. That restriction was a defence
+   * standing in for a fix. Migration 153 split `set_pickem_deadline` out to
+   * write ONE column, and the question disappeared rather than being guarded.
    */
   editable: boolean;
   busy: boolean;

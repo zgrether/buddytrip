@@ -130,6 +130,13 @@ export function PickemGameView() {
     onError: (e) => showToast(e.message, "error"),
   });
 
+  const setDeadline = trpc.pickem.setDeadline.useMutation({
+    onSuccess: async () => {
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => showToast(e.message, "error"),
+  });
+
   const setPhase = trpc.pickem.setPhase.useMutation({
     onSuccess: async () => {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
@@ -291,14 +298,13 @@ export function PickemGameView() {
               deadlineRow={
                 <PickemDeadlineRow
                   deadline={clock.picksDeadline}
-                  // Open only. `set_pickem_phase('open')` is what writes the
-                  // deadline, and it also COALESCEs opened_at and CLEARS
-                  // locked_at — so offering this while building would publish
-                  // the game, and while locked would silently unlock it.
-                  editable={canEdit && phase === "picks_open"}
-                  busy={setPhase.isPending}
+                  // ANY phase now. `set_pickem_deadline` (migration 153) writes
+                  // one column, so there is nothing left for it to disturb —
+                  // the restriction that used to stand in for that fix is gone.
+                  editable={canEdit}
+                  busy={setDeadline.isPending}
                   onChange={(deadline) =>
-                    setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline })
+                    setDeadline.mutate({ tripId: tripId!, gameId, deadline })
                   }
                 />
               }
@@ -538,8 +544,10 @@ export function SlateSettingsRows({
       </div>
 
       {/* The deadline sits with the lifecycle it belongs to, above the buttons
-          that change it — it IS a lock, just a scheduled one. */}
-      {phase !== "building" && deadlineRow}
+          that change it — it IS a lock, just a scheduled one. Rendered in EVERY
+          phase since migration 153: scheduling one while building is a real
+          thing to do, and it no longer risks publishing the game. */}
+      {deadlineRow}
 
       {/* ── The lifecycle, as ONE control ─────────────────────────────────
           Reopen used to live here alone, so settings held the way BACK out of

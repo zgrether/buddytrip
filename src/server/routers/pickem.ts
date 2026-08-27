@@ -258,6 +258,32 @@ export const pickemRouter = router({
       return { ok: true };
     }),
 
+  // ── the deadline, on its own ────────────────────────────────────────────
+  /**
+   * Split out of `setPhase('open')` (migration 153), which also coalesces
+   * `picks_opened_at` and clears `picks_locked_at` — so editing a deadline
+   * through it would publish a building game or silently unlock a locked one.
+   * This writes one column and is therefore safe in any phase.
+   */
+  setDeadline: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        /** Null clears it — "no deadline, I lock by hand", a supported choice. */
+        deadline: z.string().datetime().nullable(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("set_pickem_deadline", {
+        p_game_id: input.gameId,
+        p_deadline: input.deadline,
+      });
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
+
   // ── open / lock / reopen ────────────────────────────────────────────────
   setPhase: authedProcedure
     .input(

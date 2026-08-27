@@ -79,9 +79,10 @@ describe("the row", () => {
   });
 
   it("READ-ONLY when not editable — the state is still shown, the control is not", () => {
-    // Absent rather than disabled: the deadline is meaningful information to a
-    // runner looking at a locked game, but `open` is the only write and it
-    // would clear the lock.
+    // `editable` is now purely "can this person edit the game", not a phase
+    // restriction: migration 153 gave the deadline its own single-column write,
+    // so a member sees the state and no control, and a runner sees both in
+    // every phase.
     const html = render({ editable: false, deadline: new Date(2026, 10, 8, 11, 0).toISOString() });
     expect(html).toContain("Sheets lock automatically");
     expect(html).not.toContain('data-testid="pickem-deadline-input"');
