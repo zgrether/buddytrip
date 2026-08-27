@@ -17,6 +17,19 @@ import {
   type SheetSettings,
 } from "@/lib/pickemSheet";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
+import type { PickemClosure } from "@/lib/pickemLifecycle";
+
+/** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
+ *  told about is spoken that way. No year: a sheet is read within days of it. */
+export function formatClosedAt(ms: number): string {
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 /**
  * The sheet — sixteen people, once, under time pressure, on a phone.
@@ -71,6 +84,7 @@ export function PickemSheet({
   saving,
   saveError,
   deadlineMs,
+  closure,
   onSave,
 }: {
   gameId: string;
@@ -83,6 +97,8 @@ export function PickemSheet({
   saving: boolean;
   saveError: string | null;
   deadlineMs: number | null;
+  /** Why and when picks closed, for §8.4's message. Null while open. */
+  closure: PickemClosure | null;
   onSave: (picks: SheetPick[]) => void;
 }) {
   const server = useMemo(
@@ -217,10 +233,23 @@ export function PickemSheet({
       className="flex flex-col gap-3 px-4 lg:px-0"
       style={{ overscrollBehaviorX: "contain" }}
     >
+      {/* §8.4 — a control that stopped working with no explanation is the
+          falsehood pattern. A silently read-only sheet reads as a broken app;
+          naming the moment reads as a rule. */}
       {!editable && (
         <Banner tone="info" testId="pickem-sheet-locked">
-          <b>Picks are closed.</b> This is the sheet you submitted — nobody can change
-          one now, including whoever is running it.
+          <b>
+            {closure?.reason === "deadline"
+              ? `Picks closed at ${formatClosedAt(closure.at)}.`
+              : closure?.reason === "locked"
+                ? "Picks are closed — they were ended early."
+                : "Picks are closed."}
+          </b>{" "}
+          {/* The "not even the runner" clause appears ONCE. The first draft put
+              it in both sentences, which read as "whoever's running it closed
+              them early. Nobody can change one now, including whoever's running
+              it" — visible only once rendered. */}
+          Nobody can change a sheet now, not even whoever&rsquo;s running it.
         </Banner>
       )}
 

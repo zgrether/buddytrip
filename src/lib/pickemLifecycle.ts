@@ -105,6 +105,51 @@ export function picksRevealed(clock: PickemClock, now: number = Date.now()): boo
   return deadline != null && now > deadline;
 }
 
+/**
+ * WHY picks are closed, and WHEN — for the one sentence §8.4 requires.
+ *
+ * "A control that stopped working with no explanation is the falsehood
+ * pattern", same as the "Not live — scoring disabled" line Phase 2's look
+ * removed. A sheet that silently goes read-only tells someone their app is
+ * broken; "Picks closed at 11:00 AM" tells them what happened.
+ *
+ * ── Both can be true, so it reports whichever happened FIRST ───────────────
+ *
+ * A runner can hand-lock a game that also has a deadline, and a deadline can
+ * pass on a game already hand-locked. Reporting the LATER one would name a
+ * cause that arrived after the thing it supposedly caused — telling someone
+ * picks closed at 11:00 when the runner had already closed them at 10:30, so
+ * the half hour they remember being locked out is unexplained.
+ *
+ * Returns null while picks are still open, and while the game has never
+ * opened: neither is "closed", and a caller rendering this must not invent a
+ * closure for a game that has not started.
+ */
+export type PickemClosure = { at: number; reason: "deadline" | "locked" };
+
+export function pickemClosure(
+  clock: PickemClock,
+  now: number = Date.now()
+): PickemClosure | null {
+  if (!picksEverOpened(clock)) return null;
+  if (picksOpen(clock, now)) return null;
+
+  const locked = at(clock.picksLockedAt);
+  const deadline = at(clock.picksDeadline);
+  const deadlinePassed = deadline != null && now > deadline;
+
+  if (locked != null && deadlinePassed) {
+    // Whichever actually ended it.
+    return locked <= (deadline as number)
+      ? { at: locked, reason: "locked" }
+      : { at: deadline as number, reason: "deadline" };
+  }
+  if (locked != null) return { at: locked, reason: "locked" };
+  if (deadlinePassed) return { at: deadline as number, reason: "deadline" };
+  // Closed for a reason this function does not model — do not guess at one.
+  return null;
+}
+
 /** The clock phase — what every surface should branch on. */
 export function pickemPhase(clock: PickemClock, now: number = Date.now()): PickemPhase {
   if (!picksEverOpened(clock)) return "building";

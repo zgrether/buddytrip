@@ -27,6 +27,7 @@ import {
   msUntilDeadline,
   picksOpen,
   picksRevealed,
+  pickemClosure,
   pickemPhase,
   scoringSettingsEditable,
   slateEditable,
@@ -301,6 +302,7 @@ export function PickemGameView() {
               saving={false}
               saveError={null}
               deadlineMs={null}
+              closure={pickemClosure(clock)}
               onSave={() => {}}
             />
           )}
@@ -322,6 +324,7 @@ export function PickemGameView() {
             saving={savePicks.isPending}
             saveError={saveError}
             deadlineMs={msUntilDeadline(clock)}
+            closure={pickemClosure(clock)}
             onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
           />
           {phase === "locked" && <Placeholder>The board lands in Phase 6.</Placeholder>}
