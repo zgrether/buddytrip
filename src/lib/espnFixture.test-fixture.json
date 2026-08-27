@@ -1,0 +1,162 @@
+{
+  "teams": {
+    "sports": [
+      {
+        "leagues": [
+          {
+            "teams": [
+              {
+                "team": {
+                  "id": "66",
+                  "displayName": "Iowa State Cyclones",
+                  "shortDisplayName": "Iowa State",
+                  "abbreviation": "ISU"
+                }
+              },
+              {
+                "team": {
+                  "id": "127",
+                  "displayName": "Michigan State Spartans",
+                  "shortDisplayName": "Michigan St",
+                  "abbreviation": "MSU"
+                }
+              },
+              {
+                "team": {
+                  "id": "130",
+                  "displayName": "Michigan Wolverines",
+                  "shortDisplayName": "Michigan",
+                  "abbreviation": "MICH"
+                }
+              },
+              {
+                "team": {
+                  "id": "195",
+                  "displayName": "Ohio Bobcats",
+                  "shortDisplayName": "Ohio",
+                  "abbreviation": "OHIO"
+                }
+              },
+              {
+                "team": {
+                  "id": "194",
+                  "displayName": "Ohio State Buckeyes",
+                  "shortDisplayName": "Ohio State",
+                  "abbreviation": "OSU"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "schedule": {
+    "events": [
+      {
+        "id": "401858432",
+        "date": "2026-09-05T16:30Z",
+        "timeValid": true,
+        "competitions": [
+          {
+            "neutralSite": false,
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "displayName": "Ohio State Buckeyes",
+                  "shortDisplayName": "Ohio State"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "displayName": "Ball State Cardinals",
+                  "shortDisplayName": "Ball State"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "401856682",
+        "date": "2026-09-12T23:30Z",
+        "timeValid": true,
+        "competitions": [
+          {
+            "neutralSite": false,
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "displayName": "Texas Longhorns",
+                  "shortDisplayName": "Texas"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "displayName": "Ohio State Buckeyes",
+                  "shortDisplayName": "Ohio State"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "401858454",
+        "date": "2026-09-19T16:00Z",
+        "timeValid": true,
+        "competitions": [
+          {
+            "neutralSite": false,
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "displayName": "Ohio State Buckeyes",
+                  "shortDisplayName": "Ohio State"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "displayName": "Kent State Golden Flashes",
+                  "shortDisplayName": "Kent State"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "401858465",
+        "date": "2026-09-26T04:00Z",
+        "timeValid": false,
+        "competitions": [
+          {
+            "neutralSite": false,
+            "competitors": [
+              {
+                "homeAway": "home",
+                "team": {
+                  "displayName": "Ohio State Buckeyes",
+                  "shortDisplayName": "Ohio State"
+                }
+              },
+              {
+                "homeAway": "away",
+                "team": {
+                  "displayName": "Illinois Fighting Illini",
+                  "shortDisplayName": "Illinois"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

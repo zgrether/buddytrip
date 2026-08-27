@@ -1,11 +1,12 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { isMatchPlayFormat, isRackFormat, isStrokeFormat } from "@/lib/gameRoutes";
+import { isMatchPlayFormat, isRackFormat, isStrokeFormat, isPickemFormat } from "@/lib/gameRoutes";
 import { MatchGameView } from "@/components/games/MatchGameView";
 import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
+import { PickemGameView } from "@/components/games/PickemGameView";
 
 /**
  * gamePanelView — picks the format's view for the board's game panel, **keyed by
@@ -68,6 +69,7 @@ export function gamePanelView(openType: string | null, openGameId: string): Reac
   if (isMatchPlayFormat(openType)) return <MatchGameView key={openGameId} />;
   if (isRackFormat(openType)) return <RackGameView key={openGameId} />;
   if (isStrokeFormat(openType)) return <StrokeGameView key={openGameId} />;
+  if (isPickemFormat(openType)) return <PickemGameView key={openGameId} />;
   // Non-golf is the deliberate fall-through, and only ever reached after
   // `opensAsPanel` has already vetted the type (CompetitionFace gates on it).
   return <NonGolfGameView key={openGameId} />;

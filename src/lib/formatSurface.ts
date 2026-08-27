@@ -37,7 +37,7 @@ import { isGolfFormat } from "@/lib/gameRoutes";
  */
 
 /** The four game surfaces. Adding a member here is what forces the questions. */
-export type GameSurfaceId = "match" | "rack" | "stroke" | "nongolf";
+export type GameSurfaceId = "match" | "rack" | "stroke" | "nongolf" | "pickem";
 
 export type FormatSurface = {
   /**
@@ -76,6 +76,22 @@ export type FormatSurface = {
    * Golf-only, and pinned to `isGolfFormat` so the two cannot drift.
    */
   scorecard: boolean;
+  /**
+   * Renders the **Setup | Scoring** Game State control in GAME MANAGEMENT.
+   *
+   * True for every format whose go-live IS `games.scoring_enabled`. Pick'em's is
+   * not: its lifecycle is `picks_opened_at` / `picks_locked_at` (migration 146),
+   * deliberately, because migration 135's CHECK refuses the very state
+   * picks-open occupies — scoring on, unpublished, still pending.
+   *
+   * Added because rendering it anyway printed a FALSEHOOD. A pick'em game with
+   * picks open showed "Not live — scoring disabled", which is true of the column
+   * and false of the game, with an explanatory note underneath that the eye
+   * reaches second. A control that names a state the format does not have does
+   * not become honest by being disabled — the same reasoning `course` and
+   * `modifiers` already encode, and found the same way: by looking at it.
+   */
+  gameState: boolean;
 };
 
 export const FORMAT_SURFACE = {
@@ -85,6 +101,7 @@ export const FORMAT_SURFACE = {
     course: true,
     modifiers: true,
     scorecard: true,
+    gameState: true,
   },
   rack: {
     gameTypes: ["gtt_rack_n_stack"],
@@ -92,6 +109,7 @@ export const FORMAT_SURFACE = {
     course: true,
     modifiers: false,
     scorecard: true,
+    gameState: true,
   },
   stroke: {
     gameTypes: ["gtt_stroke_play"],
@@ -101,6 +119,7 @@ export const FORMAT_SURFACE = {
     course: true,
     modifiers: false,
     scorecard: true,
+    gameState: true,
   },
   nongolf: {
     gameTypes: "manual",
@@ -110,6 +129,27 @@ export const FORMAT_SURFACE = {
     course: false,
     modifiers: false,
     scorecard: false,
+    gameState: true,
+  },
+  pickem: {
+    gameTypes: ["gtt_pickem"],
+    // The slate is not "settings" in the golf sense — it is the CONTENT being
+    // predicted, and it lives behind its own modal so the game page stays
+    // identical for everyone (spec §5.1). What this zone holds is the pair of
+    // settings that change what a pick is WORTH.
+    settingsZoneLabel: "Pick'em Settings",
+    // No course: no holes, no stroke index, nothing to allocate against.
+    course: false,
+    // No modifiers: pick'em's weighting is the per-slate-game MULTIPLIER, which
+    // is a property of one contest on the slate rather than a `games.modifiers`
+    // flag — so `compatibleModifiers` is [] and this is false, which the
+    // registry test pins to each other.
+    modifiers: false,
+    // No scorecard. A sheet is not a scorecard: it is private until the
+    // deadline, which is the opposite of a thing you print and pass around.
+    scorecard: false,
+    // The ONLY surface that answers false — see `gameState` on FormatSurface.
+    gameState: false,
   },
 } satisfies Record<GameSurfaceId, FormatSurface>;
 

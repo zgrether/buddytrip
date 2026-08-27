@@ -407,7 +407,7 @@ function cupUrl(tripId: string): string {
  * `strategy === "stroke_total"`, which is this table, spelled twice, one of them
  * in another file.
  */
-type NotifyFormatKey = "stroke_total" | "match_play" | "rack_n_stack" | "bracket" | "manual";
+type NotifyFormatKey = "stroke_total" | "match_play" | "rack_n_stack" | "bracket" | "manual" | "pickem";
 
 interface NotifySurface {
   /**
@@ -439,6 +439,15 @@ const NOTIFY_SURFACE = {
   rack_n_stack: { audience: "participants", competitor: "team", summary: "placement" },
   manual: { audience: "competition", competitor: "team", summary: "placement" },
   bracket: { audience: "competition", competitor: "entrant", summary: "bracket" },
+  // Pick'em. Declared because the registry demands an answer from every
+  // strategy, and NOT YET EXERCISED: `games.finish` refuses "pickem" through
+  // its exhaustive else until the engine lands (Phase 6), so nothing reaches
+  // this row today. The answers mirror match play, which is the closest
+  // analogue — a real roster of people who played it (`participants`), team
+  // rows as the competitors so an eight-match game does not report sixteen of
+  // them, and a placement-shaped summary. Revisit when the engine writes its
+  // first `game_results`, rather than assuming this was validated by shipping.
+  pickem: { audience: "participants", competitor: "team", summary: "placement" },
 } as const satisfies Record<NotifyFormatKey, NotifySurface>;
 
 /** The registry key for a resolved strategy. `null` is a real answer (manual,

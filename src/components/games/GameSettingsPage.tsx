@@ -48,6 +48,43 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
  * proven dead before removal rather than assumed dead. See the PR for the third
  * (match's extra `pb-4`), which was a real 16px and is the one visible delta.
  */
+/**
+ * Does GAME MANAGEMENT have anything in it?
+ *
+ * An empty section header is a promise of content — the same class of falsehood
+ * as the "Not live — scoring disabled" line that used to sit under it. Pick'em
+ * passes no points row, no course and no Game State control, so the zone
+ * rendered as a lone header over nothing.
+ *
+ * Exported and pure so it can be tested directly: the page itself cannot be
+ * rendered in this repo's `node` test environment (its danger zone reaches for
+ * tRPC), so a predicate left inline would have been asserted only by a source
+ * scan — which proves the text is present, not that the zone disappears.
+ *
+ * Reads the same four inputs the zone renders, in the same order, so a row
+ * added there cannot be forgotten here.
+ */
+export function hasManagementContent({
+  surface,
+  competitionId,
+  hasTotalPointsRow,
+  hasCourseRow,
+  hasStandaloneRows,
+}: {
+  surface: GameSurfaceId;
+  competitionId: string | null;
+  hasTotalPointsRow: boolean;
+  hasCourseRow: boolean;
+  hasStandaloneRows: boolean;
+}): boolean {
+  return (
+    (competitionId != null && hasTotalPointsRow) ||
+    hasCourseRow ||
+    FORMAT_SURFACE[surface].gameState ||
+    (competitionId == null && hasStandaloneRows)
+  );
+}
+
 export function GameSettingsPage({
   surface,
   onClose,
@@ -140,6 +177,14 @@ export function GameSettingsPage({
 }) {
   const { settingsZoneLabel } = FORMAT_SURFACE[surface];
 
+  const hasManagementZone = hasManagementContent({
+    surface,
+    competitionId,
+    hasTotalPointsRow: totalPointsRow != null,
+    hasCourseRow: courseRow != null,
+    hasStandaloneRows: standaloneRows != null,
+  });
+
   return (
     <SettingsSlideOver
       title={nameValue || "Game settings"}
@@ -168,19 +213,28 @@ export function GameSettingsPage({
             (3rd). Points and Course sit here rather than in SETTINGS because
             neither depends on the format's spine: a total is settable before a
             single match exists, and a course is an independent lookup. */}
-        <ZoneHeader>Game Management</ZoneHeader>
-        {competitionId && totalPointsRow}
-        {courseRow}
-        <GameManagementPanel
-          mode={management.scoringEnabled ? "scoring" : "setup"}
-          ready={management.ready}
-          blockedReason={management.blockedReason}
-          onEnable={management.onEnable}
-          onDisable={management.onDisable}
-          pending={management.pending}
-          staged={management.staged}
-        />
-        {!competitionId && standaloneRows}
+        {/* A format whose go-live is not `scoring_enabled` does not get a
+            `scoring_enabled` control — rendering it anyway states something
+            false about the game (see `FormatSurface.gameState`). */}
+        {hasManagementZone && (
+          <>
+            <ZoneHeader>Game Management</ZoneHeader>
+            {competitionId && totalPointsRow}
+            {courseRow}
+            {FORMAT_SURFACE[surface].gameState && (
+              <GameManagementPanel
+                mode={management.scoringEnabled ? "scoring" : "setup"}
+                ready={management.ready}
+                blockedReason={management.blockedReason}
+                onEnable={management.onEnable}
+                onDisable={management.onDisable}
+                pending={management.pending}
+                staged={management.staged}
+              />
+            )}
+            {!competitionId && standaloneRows}
+          </>
+        )}
 
         {/* SETTINGS — the format's spine, under its own label. */}
         {settingsRows && (

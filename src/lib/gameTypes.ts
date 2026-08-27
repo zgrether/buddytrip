@@ -34,7 +34,7 @@ import type { ScorecardSchema } from "@/lib/courseIndex";
 
 /** The scoring engines a format can dispatch to. `null` = manual / non-engine
  *  (finishing order entered by hand — cornhole, trivia, generic games). */
-export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack";
+export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack" | "pickem";
 
 /** Creation Type tier the dialog groups formats under. */
 export type GameCategory = "golf" | "card" | "yard" | "bar" | "other";
@@ -251,6 +251,44 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: null,
     maxPlayersPerSide: null,
     compatibleScoringModels: null,
+  },
+  gtt_pickem: {
+    id: "gtt_pickem",
+    key: "pickem",
+    name: "Pick'em",
+    // The "how you compete" copy the catalog carries for every format. The
+    // load-bearing sentence is the last one: being right is not enough.
+    description:
+      "Everyone picks winners from a slate of real-world games, then ranks how sure they are. A correct pick scores what you ranked it; a wrong one scores nothing. So you have to be right where the other guy is wrong, or more certain than he is.",
+    sortOrder: 95,
+    // "other", not a golf/card/yard/bar category: pick'em is a PREDICTION
+    // structure and the category drives the shared `categoryIcon` map, which is
+    // keyed by category and never by scoring format.
+    category: "other",
+    // Picks are not scores. They live in `pickem_picks` behind their own
+    // owner-only policy (migration 146), never in `score_entries`, so there is
+    // no hole-shaped entry schema and no scorecard to carry.
+    entrySchema: null,
+    // An ENGINE, not a manual format — the server computes from picks and
+    // results rather than accepting an entered finishing order. The engine
+    // itself lands in Phase 6; until then `games.finish` refuses this strategy
+    // through its exhaustive else, which is the loud failure rather than the
+    // silent one.
+    resultStrategy: "pickem",
+    scorecardSchema: null,
+    // Pick'em's weighting is the per-slate-game MULTIPLIER, a property of one
+    // contest on the slate — not a `games.modifiers` flag. Hence [], which the
+    // format-surface registry's `modifiers: false` is pinned to.
+    compatibleModifiers: [],
+    supportsFreeForAll: null,
+    supportsSides: null,
+    requiresSides: null,
+    maxPlayersPerSide: null,
+    // Both models: match_play rolls up as team totals or individual matches
+    // (`pickem_games.roll_up`), points rolls up as an ordering of N teams.
+    // Phase 2 builds the match_play path; the points path is Phase 7 and is
+    // the same sheet with different copy.
+    compatibleScoringModels: ["match_play", "points"],
   },
   gtt_generic_bar: {
     id: "gtt_generic_bar",

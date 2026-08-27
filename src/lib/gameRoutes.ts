@@ -20,6 +20,9 @@ const GAME_ROUTES: Record<string, string> = {
  *  twin of golf's per-format pages. */
 export const MANUAL_ROUTE = "manual";
 
+/** Pick'em's own route segment — not a `GAME_ROUTES` entry, which is golf-only. */
+export const PICKEM_ROUTE = "pickem";
+
 export function gameHref(
   tripId: string,
   gameTypeId: string | null,
@@ -44,6 +47,11 @@ export function gameHref(
   const suffix = opts?.settings ? "&settings=1" : "";
   const seg = GAME_ROUTES[gameTypeId];
   if (seg) return `/trips/${tripId}/games/${seg}?game=${gameId}${suffix}`;
+  // Pick'em has its own route rather than a `GAME_ROUTES` entry: that map is
+  // GOLF-only (`isGolfFormat` keys off it), and pick'em carries no scorecard, no
+  // course and no holes. Adding it there would make it read as golf everywhere
+  // that predicate is consulted.
+  if (isPickemFormat(gameTypeId)) return `/trips/${tripId}/games/${PICKEM_ROUTE}?game=${gameId}${suffix}`;
   // Non-golf manual games now have a real scoreboard PAGE (promoted from the old
   // post-results modal) — route there instead of opening a modal in place.
   if (isManualGameType(gameTypeId)) return `/trips/${tripId}/games/${MANUAL_ROUTE}?game=${gameId}${suffix}`;
@@ -75,6 +83,13 @@ export function isStrokeFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_stroke_play";
 }
 
+/** Pick'em — a PREDICTION format, and neither golf nor manual. It has an engine
+ *  (`resultStrategy: "pickem"`), so `isManualGameType` is false for it and it needs
+ *  its own predicate rather than riding the manual catch-all. */
+export function isPickemFormat(gameTypeId: string | null): boolean {
+  return gameTypeId === "gtt_pickem";
+}
+
 /** Formats that open as a layered PANEL over the persistent leaderboard (Spec 2)
  *  rather than navigating to their route: match play + rack + non-golf + stroke.
  *  As of Phase 3 that's every known format — but kept as an explicit union (not
@@ -86,6 +101,7 @@ export function opensAsPanel(gameTypeId: string | null): boolean {
     isMatchPlayFormat(gameTypeId) ||
     isRackFormat(gameTypeId) ||
     isStrokeFormat(gameTypeId) ||
-    isManualGameType(gameTypeId)
+    isManualGameType(gameTypeId) ||
+    isPickemFormat(gameTypeId)
   );
 }
