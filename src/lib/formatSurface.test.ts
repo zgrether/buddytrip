@@ -4,6 +4,7 @@ import {
   surfaceForGameType,
   registeredGameTypes,
   surfaceHasScorecard,
+  usesScoringLifecycle,
   type GameSurfaceId,
 } from "@/lib/formatSurface";
 import { isGolfFormat, opensAsPanel, gameHref } from "@/lib/gameRoutes";
@@ -22,6 +23,15 @@ import { GAME_TYPES, isManualGameType } from "@/lib/gameTypes";
  */
 
 const SURFACES = Object.keys(FORMAT_SURFACE) as GameSurfaceId[];
+
+/** The game-type ids a surface owns. Mirrors how the tests above resolve the
+ *  `"manual"` catch-all arm, rather than inventing a second rule for it. */
+const surfaceGameTypes = (id: GameSurfaceId): string[] => {
+  const entry = FORMAT_SURFACE[id];
+  return entry.gameTypes === "manual"
+    ? GAME_TYPES.filter((t) => isManualGameType(t.id)).map((t) => t.id)
+    : [...entry.gameTypes];
+};
 
 describe("format surface registry", () => {
   it("every registered game type resolves back to its own surface", () => {
@@ -106,6 +116,40 @@ describe("format surface registry", () => {
     for (const id of SURFACES) {
       expect(FORMAT_SURFACE[id].course, `${id}`).toBe(FORMAT_SURFACE[id].scorecard);
     }
+  });
+
+
+  describe("usesScoringLifecycle — the board's setup shortcut", () => {
+    it("is TRUE for every format whose go-live really is scoring_enabled", () => {
+      for (const id of ["match", "rack", "stroke", "nongolf"] as GameSurfaceId[]) {
+        for (const t of surfaceGameTypes(id)) {
+          expect(usesScoringLifecycle(t), t).toBe(true);
+        }
+      }
+    });
+
+    it("is FALSE for pick'em, whose go-live is picks_opened_at", () => {
+      // The bug: `isPreScoring` reads status + scoring_enabled, both of which
+      // stay put for pick'em's entire picking phase, so the leaderboard's
+      // "drop the owner into setup" shortcut fired forever and the one person
+      // who most needed their own sheet could never reach it.
+      expect(usesScoringLifecycle("gtt_pickem")).toBe(false);
+    });
+
+    it("defaults an UNREGISTERED type to the golf answer", () => {
+      // Fail-safe direction: a type the registry has not met behaves the way
+      // every caller assumed before the registry existed.
+      expect(usesScoringLifecycle("gtt_not_a_real_type")).toBe(true);
+      expect(usesScoringLifecycle(null)).toBe(true);
+    });
+
+    it("agrees with the registry's own gameState flag, rather than being a second opinion", () => {
+      for (const id of SURFACES) {
+        for (const t of surfaceGameTypes(id)) {
+          expect(usesScoringLifecycle(t), t).toBe(FORMAT_SURFACE[id].gameState);
+        }
+      }
+    });
   });
 
   it("the scan sees the real registry (not passing vacuously)", () => {

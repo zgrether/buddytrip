@@ -189,7 +189,34 @@ export function PickemSheet({
   const needsSave = editable && (!server.submitted || server.rankingReset || dirty);
 
   return (
-    <div className="flex flex-col gap-3 pb-2">
+    /**
+     * ── Horizontal inset, and why it is not only cosmetic ─────────────────
+     *
+     * Below `lg` the game panel is `fixed inset-x-0` with no side padding, so
+     * every row ran edge to edge — measured at 390: row left 0, right 0, width
+     * 390. That looks cramped, and on the RANK pass it is a functional problem:
+     * `controlsSide="trailing"` puts the drag grip against the right edge,
+     * inside the zone where the OS reads a horizontal drag as a back gesture.
+     * Reported as the drag "leaking through to the page behind, or triggering
+     * back". Moving the grip inboard is the fix actually available to a web
+     * page: a system edge-swipe cannot be cancelled from inside one, whatever
+     * `touch-action` says. 16px puts the grip's right edge 16px in — measured —
+     * which is at the boundary of the zone rather than clear of it, so if a
+     * drag started ON the grip still fights the gesture on a real device, the
+     * next move is to widen further or drop the grip and keep the arrows, which
+     * sit 32px further in and have never been part of this problem.
+     *
+     * `lg:px-0` because at `lg+` the panel is a normal-flow child of the shell's
+     * `CONTENT_INSET` and already has padding; adding more would double it.
+     *
+     * `overscrollBehaviorX: contain` stops a horizontal drag that escapes the
+     * list from chaining into the scroll container behind it, which is the other
+     * half of what "leaks through" describes.
+     */
+    <div
+      className="flex flex-col gap-3 px-4 lg:px-0"
+      style={{ overscrollBehaviorX: "contain" }}
+    >
       {!editable && (
         <Banner tone="info" testId="pickem-sheet-locked">
           <b>Picks are closed.</b> This is the sheet you submitted — nobody can change
@@ -247,6 +274,15 @@ export function PickemSheet({
       {!editable && settings.useConfidence && (
         <RankPass order={order} picks={picks} gameById={gameById} editable={false} onReorder={() => {}} />
       )}
+
+      {/* Clearance for the sticky save bar.
+          `position: sticky` pins the bar inside the scroller's padding box and
+          the list scrolls UNDER it, so at the very bottom of a sixteen-game
+          sheet the bar covered the last row — measured at 40px of overlap on the
+          final game, which is the one you scrolled all that way to reach. The
+          bar's own height plus a little air, reserved so nothing can sit
+          beneath it. */}
+      {editable && <div aria-hidden style={{ height: 68 }} />}
 
       {editable && (
         <SaveBar
@@ -599,7 +635,10 @@ function SaveBar({
 
   return (
     <div
-      className="sticky bottom-0 z-10 -mx-1 mt-1 px-1 pb-2 pt-2"
+      // Negative margins cancel the sheet's own side inset so the gradient
+      // reaches the panel edges — the bar should look like it belongs to the
+      // viewport, while the rows it floats over stay inset.
+      className="sticky bottom-0 z-10 -mx-4 -mb-1 mt-1 px-4 pb-3 pt-2 lg:-mx-1 lg:px-1"
       data-testid="pickem-save-bar"
       style={{
         // Anchored to the bottom of the scroller rather than sitting at the end

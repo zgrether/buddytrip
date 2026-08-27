@@ -24,6 +24,11 @@ const game = (over: Partial<SlateDraftGame> = {}): SlateDraftGame => ({
   ...over,
 });
 
+/* The three scoring-settings cases that used to live here moved to
+ * `PickemScoringRows.test.tsx` with the controls themselves — the slate modal is
+ * for adding games now, and a test asserting a section this file no longer
+ * renders would pass only by being deleted. */
+
 const SLATE = [
   game({ awayTeam: "Alabama", homeTeam: "Georgia", note: "Bama hasn't won in Athens since 2015" }),
   game({ awayTeam: "Ohio St", homeTeam: "Michigan", spread: "+1.5", multiplier: 2 }),
@@ -36,9 +41,7 @@ const render = (over: Partial<Parameters<typeof PickemSlateModal>[0]> = {}) =>
       open
       onClose={() => {}}
       slate={SLATE}
-      settings={{ rollUp: "team_totals", useConfidence: true }}
       editable
-      showRollUp
       saving={false}
       onSave={() => {}}
       {...over}
@@ -227,34 +230,6 @@ describe("delete is inside the form, not beside the row", () => {
     const firstRow = html.slice(start, html.indexOf("</button>", start));
     expect(firstRow).not.toContain("<button");
     expect(firstRow).not.toContain("<input");
-  });
-});
-
-describe("what a pick is worth", () => {
-  it("reads at the settings-row size, not as a footnote", () => {
-    // The look's finding: 12px made a scoring setting read like fine print. It
-    // now matches the rows beside it on the settings page (Total Points, Game
-    // State), which are 13.
-    const html = render();
-    const title = html.indexOf("Use confidence points");
-    expect(title).toBeGreaterThan(-1);
-    // The row's own title style sits just before the text.
-    expect(html.slice(Math.max(0, title - 120), title)).toContain("font-size:13px");
-  });
-
-  it("hides the roll-up when the competition makes it unreachable", () => {
-    expect(render()).toContain("How points are awarded");
-    expect(render({ showRollUp: false })).not.toContain("How points are awarded");
-  });
-
-  it("says HOW SCORING WORKS, and says what a pick is worth in plain terms", () => {
-    const html = render();
-    expect(html).toContain("How scoring works");
-    expect(html).toContain("Every correct pick is worth the confidence rank it is given.");
-    // The old copy explained the mechanism ("there is no ranking step at all")
-    // where the setting's own name already carries it.
-    expect(html).not.toContain("What a pick is worth");
-    expect(html).not.toContain("There is no ranking step");
   });
 });
 
