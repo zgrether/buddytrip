@@ -13,6 +13,7 @@ import {
 } from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { HelperCards } from "@/components/HelperCards";
+import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
 import { trpc } from "@/lib/trpc-client";
 import { AppShell } from "@/components/shell/AppShell";
 import { TopNav } from "@/components/TopNav";
@@ -76,6 +77,8 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
    * wants, so they still show the unselected pair.
    */
   const [creating, setCreating] = useState(false);
+  /** Which format's setup sheet is open, if any (§3). Null = none. */
+  const [setupFormat, setSetupFormat] = useState<QuickGameFormat | null>(null);
 
   /**
    * Quick Golf Games — one tile per format (§1 of the per-format-slots
@@ -252,7 +255,12 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
               return (
                 <button
                   key={format}
-                  onClick={() => router.push(`/quick-game?format=${format}`)}
+                  /* §3 — the tile opens the add/edit sheet over the dashboard
+                     rather than navigating to a setup page. Add when this
+                     format has no saved round, edit when it does; the sheet
+                     reads which for itself. Starting or resuming is what
+                     navigates. */
+                  onClick={() => setSetupFormat(format)}
                   data-testid={`quick-game-tile-${format}`}
                   className="flex flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left transition-all duration-100 hover:opacity-90 active:scale-[0.98] active:opacity-80"
                   style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
@@ -420,6 +428,24 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
 
         {/* The create flow, over Home rather than instead of it. */}
         {creating && <CreateTripModal onClose={() => setCreating(false)} />}
+        {/* Quick Game setup — the add/edit sheet the tiles open (§3). Mounted
+            here so the dashboard stays behind it: setting up a round is a task
+            over the page you came from, not a place you navigate to. */}
+        {setupFormat && (
+          <QuickGameSetupSheet
+            format={setupFormat}
+            onClose={() => {
+              setSetupFormat(null);
+              // The sheet may have written a round (an edit that changed the
+              // roster); re-read so the tiles show the truth on dismiss.
+              setQuickGames(readAllQuickGames());
+            }}
+            onStarted={(f) => {
+              setSetupFormat(null);
+              router.push(`/quick-game?format=${f}`);
+            }}
+          />
+        )}
       </main>
       }
     />
