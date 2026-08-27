@@ -18,7 +18,8 @@ import {
   type PickemSettingsDraft,
   type SlateDraftGame,
 } from "@/components/games/pickem/PickemSlateModal";
-import { msUntilDeadline, pickemPhase, slateEditable } from "@/lib/pickemLifecycle";
+import { PickemSheet } from "@/components/games/pickem/PickemSheet";
+import { msUntilDeadline, picksOpen, pickemPhase, slateEditable } from "@/lib/pickemLifecycle";
 
 /**
  * The pick'em game surface.
@@ -70,6 +71,25 @@ export function PickemGameView() {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
     },
     onError: (e) => showToast(e.message, "error"),
+  });
+
+  /**
+   * The participant's own write. No toast on success: the save bar already says
+   * "Saved" and a toast on top of it is the app congratulating someone for
+   * doing the thing they came to do, sixteen taps in.
+   *
+   * The error is held in state rather than thrown at a toast, because it has to
+   * survive next to the sheet it failed to save — a toast that has faded leaves
+   * a person looking at unsaved picks with nothing on screen saying so (§7.4,
+   * CLAUDE.md #15).
+   */
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const savePicks = trpc.pickem.savePicks.useMutation({
+    onSuccess: async () => {
+      setSaveError(null);
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => setSaveError(e.message),
   });
 
   const setPhase = trpc.pickem.setPhase.useMutation({
@@ -136,17 +156,38 @@ export function PickemGameView() {
         />
       )}
 
-      <PhaseBody
-        phase={phase}
-        slateCount={q.data.slate.length}
-        deadlineMs={msUntilDeadline(clock)}
-        canEdit={canEdit}
-        onOpenSlate={() => setSlateOpen(true)}
-        onOpenPicks={() =>
-          setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
-        }
-        opening={setPhase.isPending}
-      />
+      {phase === "building" ? (
+        <PhaseBody
+          slateCount={q.data.slate.length}
+          canEdit={canEdit}
+          onOpenSlate={() => setSlateOpen(true)}
+          onOpenPicks={() =>
+            setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
+          }
+          opening={setPhase.isPending}
+        />
+      ) : (
+        <>
+          {/* ONE component for both states. `editable` comes from the CLOCK —
+              `picksOpen`, the same predicate `pickem_picks_write` calls — so the
+              screen cannot offer an edit the policy will refuse, and cannot
+              refuse one it would allow. The alternative (a separate read-only
+              component) is how the two definitions of "picks open" get created,
+              which is the risk this phase was flagged on. */}
+          <PickemSheet
+            gameId={gameId}
+            slate={q.data.slate}
+            settings={q.data.settings}
+            myPicks={q.data.myPicks}
+            editable={picksOpen(clock)}
+            saving={savePicks.isPending}
+            saveError={saveError}
+            deadlineMs={msUntilDeadline(clock)}
+            onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
+          />
+          {phase === "locked" && <Placeholder>The board lands in Phase 6.</Placeholder>}
+        </>
+      )}
 
       <PickemSlateModal
         open={slateOpen}
@@ -236,31 +277,34 @@ export function PickemGameView() {
   );
 }
 
-/** The body every member sees. Branches on the CLOCK, never on the viewer. */
+/**
+ * The `building` state, and only that one — the other two are the sheet itself
+ * (Phase 3), which is why this no longer takes a `phase`.
+ *
+ * Still branches on the CLOCK and never on the viewer: a member and the runner
+ * read the same words here, because spec §3.1's first fairness rule is that
+ * "nothing added yet" and "a finished slate, unpublished" must be
+ * indistinguishable from outside.
+ */
 function PhaseBody({
-  phase,
   slateCount,
-  deadlineMs,
   canEdit,
   onOpenSlate,
   onOpenPicks,
   opening,
 }: {
-  phase: ReturnType<typeof pickemPhase>;
   slateCount: number;
-  deadlineMs: number | null;
   canEdit: boolean;
   onOpenSlate: () => void;
   onOpenPicks: () => void;
   opening: boolean;
 }) {
-  if (phase === "building") {
-    return (
-      <Empty
-        icon="◷"
-        heading="Picks open soon"
-        body="The slate is still being put together. You'll get a countdown to the deadline once picks are open."
-      >
+  return (
+    <Empty
+      icon="◷"
+      heading="Picks open soon"
+      body="The slate is still being put together. You'll get a countdown to the deadline once picks are open."
+    >
         {/* The runner's controls sit UNDER the same words a member reads, rather
             than replacing them — so what he sees is what they see, plus a door. */}
         {canEdit && (
@@ -286,30 +330,6 @@ function PhaseBody({
           </div>
         )}
       </Empty>
-    );
-  }
-
-  if (phase === "picks_open") {
-    return (
-      <Empty
-        icon="✎"
-        heading="Picks are open"
-        body="Everyone's making their picks — including whoever's running it. Nobody sees anyone else's until the deadline."
-      >
-        {deadlineMs != null && <Countdown ms={deadlineMs} />}
-        <Placeholder>Your sheet lands in Phase 3.</Placeholder>
-      </Empty>
-    );
-  }
-
-  return (
-    <Empty
-      icon="◆"
-      heading="Picks are closed"
-      body="Sheets are locked and everyone can see everyone else's."
-    >
-      <Placeholder>The board lands in Phase 6.</Placeholder>
-    </Empty>
   );
 }
 
