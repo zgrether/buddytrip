@@ -52,6 +52,7 @@ const render = (over: Partial<Props> = {}) =>
       saving={false}
       saveError={null}
       deadlineMs={4 * 3_600_000}
+      closure={null}
       onSave={() => {}}
       {...over}
     />
@@ -241,7 +242,12 @@ describe("submitted, reset and locked", () => {
   it("a locked sheet is read-only, and says who can change it (nobody)", () => {
     const html = render({ editable: false, myPicks: defaultSheet(SLATE) });
     expect(html).toContain('data-testid="pickem-sheet-locked"');
-    expect(html).toContain("including whoever is running it");
+    // Substring stops before the apostrophe: the copy now reads "whoever's
+    // running it" with a curly quote, which renders as an HTML entity.
+    // Says it ONCE — the first draft repeated "whoever's running it" across
+    // two sentences, which only showed up when rendered.
+    expect(html).toContain("not even whoever");
+    expect(html.match(/whoever/g) ?? []).toHaveLength(1);
     expect(tagWith(html, 'data-testid="pickem-side-away"')).toContain("disabled");
     // No save bar at all — not a disabled one.
     expect(html).not.toContain('data-testid="pickem-save-bar"');
@@ -249,6 +255,41 @@ describe("submitted, reset and locked", () => {
     // The ranking is shown inline instead, since there is no second pass to
     // navigate to.
     expect(html).toContain('data-testid="pickem-rank-chip"');
+  });
+
+  it("SAYS WHEN PICKS CLOSED after a deadline — §8.4", () => {
+    // The case the rule is about: someone opens their sheet after the clock ran
+    // out. A silently read-only form reads as a broken app; naming the moment
+    // reads as a rule. Nobody is notified — reminders need a scheduler — so
+    // this sentence is the only explanation that exists.
+    const closedAt = new Date(2026, 10, 8, 11, 0).getTime();
+    const html = render({
+      editable: false,
+      myPicks: defaultSheet(SLATE),
+      closure: { at: closedAt, reason: "deadline" as const },
+    });
+    expect(html).toContain("Picks closed at");
+    expect(html).toContain("11:00");
+    // ...and it does not claim the runner did it.
+    expect(html).not.toContain("ended early");
+  });
+
+  it("distinguishes a HAND LOCK from the deadline", () => {
+    // Different causes, different sentences. Telling someone the clock ran out
+    // when the runner ended it early is a small lie about why they lost the
+    // chance to change something.
+    const html = render({
+      editable: false,
+      myPicks: defaultSheet(SLATE),
+      closure: { at: Date.now(), reason: "locked" as const },
+    });
+    expect(html).toContain("ended early");
+    expect(html).not.toContain("Picks closed at");
+  });
+
+  it("never renders a closed-at time while picks are OPEN", () => {
+    // A closure announced on an editable sheet would be the inverse falsehood.
+    expect(render({ closure: null })).not.toContain("Picks closed at");
   });
 
   it("a locked sheet shows no countdown", () => {

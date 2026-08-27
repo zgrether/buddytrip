@@ -8,6 +8,7 @@ import {
   scoringSettingsEditable,
   slateEditable,
   type PickemClock,
+  pickemClosure,
 } from "./pickemLifecycle";
 
 /**
@@ -144,5 +145,75 @@ describe("a malformed timestamp is ABSENT, never 1970", () => {
     const c = clock({ picksOpenedAt: iso(-HOUR), picksDeadline: "not-a-date" });
     expect(picksOpen(c, NOW)).toBe(true);
     expect(picksRevealed(c, NOW)).toBe(false);
+  });
+});
+
+
+describe("pickemClosure — §8.4's one sentence", () => {
+  const NOW = Date.UTC(2026, 10, 8, 12, 0);
+  const iso = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
+  const HOUR = 3_600_000;
+
+  it("is NULL while picks are open — nothing has closed", () => {
+    expect(pickemClosure(
+      { picksOpenedAt: iso(-HOUR), picksDeadline: iso(HOUR), picksLockedAt: null }, NOW
+    )).toBeNull();
+  });
+
+  it("is NULL for a game that never opened — it is not 'closed', it has not started", () => {
+    // A caller rendering this must not invent a closure for a building game.
+    expect(pickemClosure(
+      { picksOpenedAt: null, picksDeadline: iso(-HOUR), picksLockedAt: null }, NOW
+    )).toBeNull();
+  });
+
+  it("names the DEADLINE when the clock ran out", () => {
+    const c = pickemClosure(
+      { picksOpenedAt: iso(-2 * HOUR), picksDeadline: iso(-HOUR), picksLockedAt: null }, NOW
+    );
+    expect(c).toEqual({ at: NOW - HOUR, reason: "deadline" });
+  });
+
+  it("names the HAND LOCK when the runner ended it early", () => {
+    const c = pickemClosure(
+      { picksOpenedAt: iso(-2 * HOUR), picksDeadline: null, picksLockedAt: iso(-HOUR) }, NOW
+    );
+    expect(c).toEqual({ at: NOW - HOUR, reason: "locked" });
+  });
+
+  it("when BOTH apply, reports whichever happened FIRST", () => {
+    // Reporting the later one would name a cause that arrived after the thing
+    // it supposedly caused — telling someone picks closed at 11:00 when the
+    // runner had already closed them at 10:30, leaving the half hour they
+    // remember being locked out unexplained.
+    const lockedFirst = pickemClosure(
+      { picksOpenedAt: iso(-4 * HOUR), picksDeadline: iso(-HOUR), picksLockedAt: iso(-3 * HOUR) },
+      NOW
+    );
+    expect(lockedFirst).toEqual({ at: NOW - 3 * HOUR, reason: "locked" });
+
+    const deadlineFirst = pickemClosure(
+      { picksOpenedAt: iso(-4 * HOUR), picksDeadline: iso(-3 * HOUR), picksLockedAt: iso(-HOUR) },
+      NOW
+    );
+    expect(deadlineFirst).toEqual({ at: NOW - 3 * HOUR, reason: "deadline" });
+  });
+
+  it("AGREES WITH picksOpen — a closure exists exactly when picks are not open", () => {
+    // The two must never disagree: a sheet that is read-only with no closure
+    // would be the silent-disable §8.4 forbids, and a closure on an open sheet
+    // would announce a closure that has not happened.
+    const clocks = [
+      { picksOpenedAt: iso(-HOUR), picksDeadline: null, picksLockedAt: null },
+      { picksOpenedAt: iso(-HOUR), picksDeadline: iso(HOUR), picksLockedAt: null },
+      { picksOpenedAt: iso(-2 * HOUR), picksDeadline: iso(-HOUR), picksLockedAt: null },
+      { picksOpenedAt: iso(-2 * HOUR), picksDeadline: null, picksLockedAt: iso(-HOUR) },
+      { picksOpenedAt: iso(-4 * HOUR), picksDeadline: iso(-HOUR), picksLockedAt: iso(-3 * HOUR) },
+    ];
+    for (const c of clocks) {
+      const open = picksOpen(c, NOW);
+      const closure = pickemClosure(c, NOW);
+      expect(closure == null, JSON.stringify(c)).toBe(open);
+    }
   });
 });
