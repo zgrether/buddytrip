@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Plus, X, ChevronRight } from "lucide-react";
 import { Stepper } from "@/components/games/Stepper";
 import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
@@ -31,7 +32,7 @@ export function SettingsNavRow({
 }: {
   icon: React.ReactNode;
   label: string;
-  blurb: string;
+  blurb?: string;
   onClick: () => void;
   disabled?: boolean;
   testId?: string;
@@ -42,7 +43,7 @@ export function SettingsNavRow({
       onClick={onClick}
       disabled={disabled}
       className="flex w-full items-center gap-3 rounded-[11px] px-3 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-50 disabled:hover:bg-transparent"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
       data-testid={testId}
     >
       <span
@@ -53,7 +54,9 @@ export function SettingsNavRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{label}</span>
-        <span className="mt-0.5 block text-xs leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{blurb}</span>
+        {blurb && (
+          <span className="mt-0.5 block text-xs leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{blurb}</span>
+        )}
       </span>
       <ChevronRight size={17} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
     </button>
@@ -273,6 +276,26 @@ export function RosterFields({
 }) {
   // Matches Stepper's own "compact" sizing math (STEPPER_SIZES.compact) so the
   // "Handicaps" header centers over the stepper it labels rather than guessing.
+  /**
+   * Focus the first EMPTY name field on mount and whenever a row is added.
+   *
+   * Opening the sheet puts the keyboard up on Player 1 rather than making you
+   * tap it, and tapping Add player lands on the field you are about to type
+   * into. Keyed on the row COUNT, not the names: re-running on every keystroke
+   * would yank the caret back to an earlier blank mid-word.
+   *
+   * It focuses the first blank rather than the newest row on purpose — tap Add
+   * three times and you want the first one you have not filled in, which is
+   * what "add three players then type" actually means.
+   */
+  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const rowCount = draftPlayers.length;
+  useEffect(() => {
+    const firstEmpty = draftPlayers.find((r) => !r.name.trim());
+    if (firstEmpty) inputs.current[firstEmpty.id]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- count only; see above
+  }, [rowCount]);
+
   const STROKES_COL_WIDTH = 112;
   const REMOVE_COL_WIDTH = 32;
 
@@ -290,6 +313,9 @@ export function RosterFields({
         {rows.map((r, i) => (
           <div key={r.id} className="mb-1.5 flex items-center gap-2">
             <input
+              ref={(el) => {
+                inputs.current[r.id] = el;
+              }}
               value={r.name}
               onChange={(e) => onChangeName(r.id, e.target.value)}
               placeholder={`Player ${i + 1}`}
@@ -362,6 +388,9 @@ export function RosterFields({
         {draftPlayers.map((r, i) => (
           <div key={r.id} className="flex items-center gap-2">
             <input
+              ref={(el) => {
+                inputs.current[r.id] = el;
+              }}
               value={r.name}
               onChange={(e) => onChangeName(r.id, e.target.value)}
               placeholder={`Player ${i + 1}`}

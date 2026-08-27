@@ -5,7 +5,6 @@ import { Check, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { Stepper } from "@/components/games/Stepper";
-import { Avatar } from "@/components/Avatar";
 import {
   betLabel,
   betTotalForPlayer,
@@ -22,7 +21,6 @@ import {
   buildBetsFromDraft,
   canBeHeadToHead,
   emptyBetDraft,
-  pressOnPressBlurb,
   setBetKind,
   setPressRules,
   setWhoIsIn,
@@ -57,7 +55,6 @@ export function SideBetSheet({
   nassauAvailable,
   perspectivePlayerId,
   sideName,
-  onSetPerspective,
   onAdd,
   onRemove,
   onClose,
@@ -76,13 +73,19 @@ export function SideBetSheet({
   nassauAvailable: boolean;
   perspectivePlayerId: string | null;
   sideName: (side: BetSide) => string;
-  onSetPerspective: (playerId: string) => void;
   onAdd: (bets: SideBet[]) => void;
   onRemove: (betId: string) => void;
   onClose: () => void;
 }) {
   const [creating, setCreating] = useState(result.bets.length === 0);
-  const [draft, setDraft] = useState<BetDraft>(() => emptyBetDraft(currentHole));
+  /** Everyone is in by default (§4 of the refinements) — the common case is
+   *  the whole group, and the Everyone button that used to do this was a tap
+   *  spent reaching the state you almost always wanted. Deselect to narrow.
+   *  Routed through `setWhoIsIn` so the kind lands correctly: four players
+   *  pre-selected means the bet opens as a pot, not a head-to-head it cannot
+   *  be. */
+  const freshDraft = () => setWhoIsIn(emptyBetDraft(currentHole), players.map((p) => p.id));
+  const [draft, setDraft] = useState<BetDraft>(freshDraft);
 
   const recorded = new Set(recordedBetIds);
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player";
@@ -90,7 +93,7 @@ export function SideBetSheet({
   const commit = (bets: SideBet[]) => {
     onAdd(bets);
     setCreating(false);
-    setDraft(emptyBetDraft(currentHole));
+    setDraft(freshDraft());
   };
 
   return (
@@ -100,38 +103,11 @@ export function SideBetSheet({
       onClose={onClose}
       testId="side-bet-sheet"
     >
-      {/* ── Whose number ── the banner reads from one player's perspective and
-          Quick Play has no signed-in identity to infer it from, so it is a
-          choice rather than a guess. */}
-      {players.length > 1 && (
-        <div className="mb-4">
-          <FieldLabel>Showing</FieldLabel>
-          <div className="flex flex-wrap gap-1.5">
-            {players.map((p) => {
-              const on = p.id === perspectivePlayerId;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onSetPerspective(p.id)}
-                  aria-pressed={on}
-                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
-                  style={{
-                    background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                    border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                    color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={20} />
-                  {p.name.split(/\s+/)[0]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* The per-player "Showing" switcher used to sit here. Removed: it read
+          as unexplained tabs, and at the two players a Quick round usually has
+          it is a choice between one answer and its negative. The banner still
+          reads from a perspective — it just defaults to the first player and
+          is no longer a control (#1083). */}
 
       {/* ── The bets ── */}
       {result.bets.length > 0 && (
@@ -254,7 +230,7 @@ export function SideBetSheet({
         <button
           type="button"
           onClick={() => {
-            setDraft(emptyBetDraft(currentHole));
+            setDraft(freshDraft());
             setCreating(true);
           }}
           data-testid="side-bet-add"
@@ -386,9 +362,6 @@ function BetForm({
         previewIds()
       );
   const error = betDraftError(draft, sides, { holeCount });
-  /** Everyone already in — drives the Everyone/Clear flip, so one control
-   *  covers both directions rather than two that can disagree. */
-  const allIn = players.length > 0 && players.every((p) => draft.whoIsIn.includes(p.id));
 
   const commit = () => {
     if (error) return;
@@ -421,33 +394,7 @@ function BetForm({
         </>
       ) : (
         <>
-          <div className="mb-1.5 flex items-center justify-between">
-            <span
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {draft.whoIsIn.length === 0
-                ? "Who’s in"
-                : `${draft.whoIsIn.length} in the bet`}
-            </span>
-            {players.length > 2 && (
-              <button
-                type="button"
-                onClick={() => setDraft(setWhoIsIn(draft, allIn ? [] : players.map((p) => p.id)))}
-                data-testid="side-bet-everyone"
-                className="rounded-full px-2.5 py-1"
-                style={{
-                  fontSize: 11.5,
-                  fontWeight: 650,
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                {allIn ? "Clear" : "Everyone"}
-              </button>
-            )}
-          </div>
+          <FieldLabel>Who is betting</FieldLabel>
           <div className="flex flex-wrap" style={{ gap: 6 }}>
             {players.map((p) => {
               const on = draft.whoIsIn.includes(p.id);
@@ -478,38 +425,53 @@ function BetForm({
         </>
       )}
 
-      {/* The kind. Head-to-head is only coherent at two — above that "who pays
-          whom" has no answer, so the pot is the only option and the choice
-          disappears rather than being shown disabled. */}
+      {/* The kind. Head to Head is DISABLED rather than removed above two
+          players (§6 of the refinements): a control that disappears leaves no
+          trace of why, while a greyed one says "not for this many people". */}
       {!sidesLocked && draft.whoIsIn.length >= 2 && (
         <div className="mt-3">
-          <FieldLabel>Type</FieldLabel>
-          {canBeHeadToHead(draft) ? (
-            <Segmented
-              options={[
-                { value: "head_to_head", label: "Head to head" },
-                { value: "skins", label: "Skins" },
-              ]}
-              value={draft.kind}
-              onChange={(k) => setDraft(setBetKind(draft, k))}
-              testId="side-bet-kind"
-            />
-          ) : (
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)" }} data-testid="side-bet-kind-forced">
-              Skins
-            </div>
-          )}
+          <Segmented
+            options={[
+              { value: "head_to_head", label: "Head to Head", disabled: !canBeHeadToHead(draft) },
+              { value: "skins", label: "Skins" },
+            ]}
+            value={draft.kind}
+            onChange={(k) => setDraft(setBetKind(draft, k))}
+            testId="side-bet-kind"
+          />
           <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
             {draft.kind === "skins"
-              ? `Everyone in, low score takes the pot. ${formatMoney(draft.amount)} each makes the first skin ${formatMoney(draft.amount * Math.max(draft.whoIsIn.length, 2))} — a tie carries it to the next hole.`
-              : "One against one. The loser can press to get back in."}
+              ? "Low score takes the skin. Ties carryover."
+              : "Low score wins the hole. Ties do not carryover."}
           </div>
+
+          {/* Single vs Nassau sits directly under the type it modifies, with no
+              header of its own — it is a shape OF the bet above, not a separate
+              question. Head-to-head only; a Nassau of pots is not a thing. */}
+          {nassauAvailable && draft.kind === "head_to_head" && (
+            <div className="mt-3">
+              <Segmented
+                options={[
+                  { value: "single", label: "Single Bet" },
+                  { value: "nassau", label: "Nassau" },
+                ]}
+                value={draft.shape}
+                onChange={(shape) => setDraft({ ...draft, shape })}
+                testId="side-bet-shape"
+              />
+              {draft.shape === "nassau" && (
+                <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+                  Three separate bets for Front 9, Back 9, and Overall
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* Stakes */}
       <div className="mt-3">
-        <FieldLabel>{draft.kind === "skins" ? "Each player puts in, per hole" : "Stakes per hole"}</FieldLabel>
+        <FieldLabel>{draft.kind === "skins" ? "Stakes (per skin)" : "Stakes (per hole)"}</FieldLabel>
         <div className="flex items-center gap-2">
           {STAKE_PRESETS.map((v) => (
             <button
@@ -552,68 +514,43 @@ function BetForm({
           onChange={(startHole) => setDraft({ ...draft, startHole })}
           size="compact"
         />
-        <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-          Runs from there to the end of the round.
-        </div>
       </div>
 
       {/* Nassau — one action, three bets. Hidden where there is no back nine. */}
-      {nassauAvailable && draft.kind === "head_to_head" && (
-        <div className="mt-3">
-          <FieldLabel>Shape</FieldLabel>
-          <Segmented
-            options={[
-              { value: "single", label: "One bet" },
-              { value: "nassau", label: "Nassau (3)" },
-            ]}
-            value={draft.shape}
-            onChange={(shape) => setDraft({ ...draft, shape })}
-            testId="side-bet-shape"
-          />
-          {draft.shape === "nassau" && (
-            <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-              Front nine, back nine, and overall — three bets at {formatMoney(draft.amount)} a hole each.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Rules. Carryover is no longer a setting (§12) — it is inherent to
-          skins and absent from head-to-head, so the type IS the choice. It was
-          quietly turning one game into the other. Presses are head-to-head
-          only (§13): in a pot there is no "down two to someone", there are
-          three other people and a running total. */}
+      {/* PRESSES — head-to-head only (§13). Carryover is not here at all: it is
+          inherent to skins and absent from head-to-head, so the type is the
+          choice and there is nothing to toggle. */}
       {draft.kind === "head_to_head" && (
         <div className="mt-3" data-testid="side-bet-rules">
-          <FieldLabel>Rules</FieldLabel>
+          <FieldLabel>Presses</FieldLabel>
           <ToggleRow
-            label="Automatic press"
-            blurb={
-              draft.autoPressAt == null
-                ? "Go a set number of holes down and a second bet starts, from the next hole to the end of the round."
-                : `Going ${draft.autoPressAt} down starts a second bet at ${formatMoney(draft.amount)} a hole — ${formatMoney(draft.amount * 2)}/hole while both run.`
-            }
+            label="Automatic"
+            /* Deliberately the SAME sentence whether or not it is on: once
+               enabled the stepper below states the number, and rewriting the
+               description to repeat it just makes the panel move under you. */
+            blurb="When someone goes down a set number of holes, an additional bet will automatically start."
             on={draft.autoPressAt != null}
             onToggle={() => setDraft(setPressRules(draft, { autoPressAt: draft.autoPressAt == null ? 2 : null }))}
             testId="side-bet-autopress"
-          />
-          {draft.autoPressAt != null && (
-            <div className="mt-2 flex items-center justify-between pl-1">
-              <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Press when this far down</span>
-              <Stepper
-                value={draft.autoPressAt}
-                min={1}
-                max={9}
-                onChange={(n) => setDraft(setPressRules(draft, { autoPressAt: n }))}
-                size="compact"
-              />
-            </div>
-          )}
-          {/* ☠️ Only reachable with automatic press on, and off by default. */}
+          >
+            {draft.autoPressAt != null && (
+              <div className="mt-2 flex items-center justify-between">
+                <span style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)" }}>Holes down</span>
+                <Stepper
+                  value={draft.autoPressAt}
+                  min={1}
+                  max={9}
+                  onChange={(n) => setDraft(setPressRules(draft, { autoPressAt: n }))}
+                  size="compact"
+                />
+              </div>
+            )}
+          </ToggleRow>
+          {/* ☠️ Only reachable with Automatic on, and off by default. */}
           {draft.autoPressAt != null && (
             <ToggleRow
               label="☠️ Presses on presses"
-              blurb={pressOnPressBlurb(draft.amount, draft.autoPressAt)}
+              blurb="Beware of compounding!"
               on={draft.pressOnPress}
               onToggle={() => setDraft(setPressRules(draft, { pressOnPress: !draft.pressOnPress }))}
               tone="warning"
@@ -678,6 +615,7 @@ function ToggleRow({
   onToggle,
   tone = "accent",
   testId,
+  children,
 }: {
   label: string;
   blurb: string;
@@ -685,42 +623,60 @@ function ToggleRow({
   onToggle: () => void;
   tone?: "accent" | "warning";
   testId?: string;
+  /** Rendered INSIDE the panel, under the blurb — for a control that
+   *  configures this toggle rather than sitting beside it. */
+  children?: React.ReactNode;
 }) {
   const color = tone === "warning" ? "var(--color-bt-warning)" : "var(--color-bt-accent)";
   const faint = tone === "warning" ? "var(--color-bt-warning-faint)" : "var(--color-bt-accent-faint)";
   const border = tone === "warning" ? "var(--color-bt-warning-border)" : "var(--color-bt-accent-border)";
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={on}
-      data-testid={testId}
-      className="mt-2 flex w-full items-start gap-3 rounded-[10px] px-2.5 py-2 text-left"
+    <div
+      className="mt-2 rounded-[10px] px-2.5 py-2"
       style={{
         background: on ? faint : "var(--color-bt-card-raised)",
         border: `1px solid ${on ? border : "var(--color-bt-border)"}`,
       }}
+      data-testid={testId}
     >
-      <span className="min-w-0 flex-1">
-        <span className="block" style={{ fontSize: 13, fontWeight: 700, color: on ? color : "var(--color-bt-text)" }}>
-          {label}
-        </span>
-        <span className="mt-0.5 block leading-snug" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-          {blurb}
-        </span>
-      </span>
-      <span
-        className="mt-0.5 flex shrink-0 items-center rounded-full"
-        style={{
-          width: 34,
-          height: 20,
-          padding: 2,
-          background: on ? color : "var(--color-bt-border)",
-          justifyContent: on ? "flex-end" : "flex-start",
+      {/* role=button, not <button>: `children` can carry a Stepper, and a
+          button inside a button is invalid markup (the same reason
+          `ScoreEntryView`'s player rows are role=button). */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={on}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
         }}
+        className="flex w-full cursor-pointer items-start gap-3 text-left"
       >
-        <span className="block rounded-full" style={{ width: 16, height: 16, background: "var(--color-bt-card)" }} />
-      </span>
-    </button>
+        <span className="min-w-0 flex-1">
+          <span className="block" style={{ fontSize: 13, fontWeight: 700, color: on ? color : "var(--color-bt-text)" }}>
+            {label}
+          </span>
+          <span className="mt-0.5 block leading-snug" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+            {blurb}
+          </span>
+        </span>
+        <span
+          className="mt-0.5 flex shrink-0 items-center rounded-full"
+          style={{
+            width: 34,
+            height: 20,
+            padding: 2,
+            background: on ? color : "var(--color-bt-border)",
+            justifyContent: on ? "flex-end" : "flex-start",
+          }}
+        >
+          <span className="block rounded-full" style={{ width: 16, height: 16, background: "var(--color-bt-card)" }} />
+        </span>
+      </div>
+      {children}
+    </div>
   );
 }

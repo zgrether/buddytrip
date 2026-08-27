@@ -22,7 +22,9 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
 export function Segmented<T extends string>({
   options, value, onChange, testId,
 }: {
-  options: { value: T; label: string }[];
+  /** `disabled` renders the segment greyed and inert rather than removing it —
+   *  a choice that vanishes teaches nothing about why it is unavailable. */
+  options: { value: T; label: string; disabled?: boolean }[];
   value: T;
   onChange: (v: T) => void;
   testId?: string;
@@ -35,13 +37,15 @@ export function Segmented<T extends string>({
           <button
             key={o.value}
             type="button"
+            disabled={o.disabled}
             onClick={() => onChange(o.value)}
             aria-pressed={on}
-            className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-colors"
+            className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed"
             style={{
               background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
               border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
               color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              opacity: o.disabled ? 0.4 : 1,
             }}
           >
             {o.label}
