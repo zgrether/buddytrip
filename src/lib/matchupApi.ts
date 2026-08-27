@@ -41,7 +41,7 @@ export interface MatchupLeague {
 
 export const MATCHUP_LEAGUES: MatchupLeague[] = [
   { id: "nfl", label: "NFL", espnPath: "football/nfl" },
-  { id: "cfb", label: "College football", espnPath: "football/college-football" },
+  { id: "cfb", label: "College Football", espnPath: "football/college-football" },
 ];
 
 export function leagueById(id: string | null | undefined): MatchupLeague | undefined {
@@ -238,4 +238,47 @@ export function upcomingFirst(matchups: Matchup[], now: number = Date.now(), lim
   // as "this team doesn't exist".
   const past = withTime.filter((x) => x.t < now).sort((a, b) => b.t - a.t);
   return [...future, ...past].slice(0, limit).map((x) => x.m);
+}
+
+/**
+ * A kickoff, in the reader's own timezone: `Sat Sep 5, 7:30p`.
+ *
+ * ── Why the DATE is in it ───────────────────────────────────────────────────
+ * It used to be weekday plus time, which is exactly right for a one-weekend
+ * slate and wrong for what this actually returns: the next several games,
+ * spread over weeks. Three rows all reading "Sat" name three different
+ * Saturdays and there is nothing to tell them apart.
+ *
+ * ── Why it is SHORT ─────────────────────────────────────────────────────────
+ * This string is dropped straight into the slate's Game time field and then
+ * shown on every row of a sixteen-game list, so it competes for width with the
+ * matchup itself. Weekday is kept because football is thought about in
+ * weekdays ("the Saturday game"), and the am/pm is compressed to a single
+ * letter the way the rest of the slate writes times.
+ *
+ * Client-local by construction — there is no timezone column anywhere in this
+ * schema, so the browser's zone is the only one available and rendering the
+ * instant is the honest thing to do.
+ */
+export function formatKickoff(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+
+  // Built from two calls rather than one: asking for weekday+month+day together
+  // yields "Sat, Sep 5", which then reads "Sat, Sep 5, 12:30p" — two commas for
+  // one date.
+  const weekday = d.toLocaleString(undefined, { weekday: "short" });
+  const date = d.toLocaleString(undefined, { month: "short", day: "numeric" });
+
+  // No regex here on purpose. The meridiem separator is often U+202F (a narrow
+  // no-break space), not U+0020, so a naive `" "` replace misses it — and the
+  // escaped-whitespace version of this got its backslash eaten in transit once
+  // already, producing `/s*PM$/` which silently matched "PM" and left the space
+  // behind. `trim()` handles every Unicode space separator, U+202F included.
+  const raw = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const upper = raw.toUpperCase();
+  const pm = upper.includes("PM");
+  const clock = upper.split("AM").join("").split("PM").join("").trim();
+
+  return `${weekday} ${date}, ${clock}${pm ? "p" : "a"}`;
 }

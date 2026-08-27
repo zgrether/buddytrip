@@ -8,7 +8,7 @@ import { Stepper } from "@/components/games/Stepper";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { MatchupSearch } from "@/components/matchup/MatchupSearch";
-import { formatKickoff } from "@/components/matchup/MatchupSearch";
+import { formatKickoff } from "@/lib/matchupApi";
 
 /**
  * The slate — the contests being predicted.
@@ -143,9 +143,21 @@ export function PickemSlateModal({
   const [draftSettings, setDraftSettings] = useState<PickemSettingsDraft>(settings);
   const [touched, setTouched] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
-  /** The form's working values. Always present; `editingId` says whether
-   *  submitting it adds or updates. */
-  const [form, setForm] = useState<SlateDraftGame>(blank);
+  /**
+   * TWO independent forms, one component.
+   *
+   * Adding and editing used to share a single form instance, which made them
+   * mutually exclusive: start typing a new game, tap a row to fix a typo, and
+   * the half-typed one was gone. Forcing a choice between "adjust" and "add"
+   * is the confusing part, so they are now separate panels that can both be
+   * open at once.
+   *
+   * They remain ONE COMPONENT with one set of validation rules — what is
+   * duplicated is the state, not the behaviour. An add form and sixteen inline
+   * editors that each had their own idea of "valid" is the thing this avoids.
+   */
+  const [addForm, setAddForm] = useState<SlateDraftGame>(blank);
+  const [editForm, setEditForm] = useState<SlateDraftGame | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Re-seed when the modal is (re)opened against different server data. Keyed on
@@ -159,7 +171,8 @@ export function PickemSlateModal({
       setDraftSettings(settings);
       setTouched(false);
       setReorderMode(false);
-      setForm(blank());
+      setAddForm(blank());
+      setEditForm(null);
       setEditingId(null);
     }
   }
@@ -172,7 +185,14 @@ export function PickemSlateModal({
     setDraft(fn);
   };
 
-  const formValid = form.awayTeam.trim().length > 0 && form.homeTeam.trim().length > 0;
+  const isValid = (f: SlateDraftGame) =>
+    f.awayTeam.trim().length > 0 && f.homeTeam.trim().length > 0;
+  /** Has the add form been touched at all? Drives the Clear button — there is
+   *  nothing to abandon on an untouched form. */
+  const addDirty =
+    addForm.awayTeam !== "" || addForm.homeTeam !== "" || addForm.kickoff != null ||
+    addForm.spread != null || addForm.note != null || addForm.multiplier !== 1 ||
+    addForm.espnEventId != null;
 
   /**
    * Event ids already on the slate — so the same real-world contest cannot be
@@ -185,27 +205,40 @@ export function PickemSlateModal({
     [draft]
   );
 
-  function submitForm() {
-    if (!formValid) return;
-    const clean: SlateDraftGame = {
-      ...form,
-      awayTeam: form.awayTeam.trim(),
-      homeTeam: form.homeTeam.trim(),
-      spread: form.spread?.trim() || null,
-      kickoff: form.kickoff?.trim() || null,
-      note: form.note?.trim() || null,
-    };
-    mutate((prev) =>
-      editingId ? prev.map((g) => (g.id === editingId ? clean : g)) : [...prev, clean]
-    );
-    setForm(blank());
+  const clean = (f: SlateDraftGame): SlateDraftGame => ({
+    ...f,
+    awayTeam: f.awayTeam.trim(),
+    homeTeam: f.homeTeam.trim(),
+    spread: f.spread?.trim() || null,
+    kickoff: f.kickoff?.trim() || null,
+    note: f.note?.trim() || null,
+  });
+
+  function submitAdd() {
+    if (!isValid(addForm)) return;
+    mutate((prev) => [...prev, clean(addForm)]);
+    setAddForm(blank());
+  }
+
+  function submitEdit() {
+    if (!editForm || !isValid(editForm) || !editingId) return;
+    const next = clean(editForm);
+    mutate((prev) => prev.map((g) => (g.id === editingId ? next : g)));
+    setEditForm(null);
     setEditingId(null);
   }
 
   function editRow(id: string) {
     const g = byId.get(id);
     if (!g) return;
-    setForm({ ...g });
+    // Tapping the row already being edited closes it — a second tap undoes the
+    // first, rather than doing nothing.
+    if (editingId === id) {
+      setEditForm(null);
+      setEditingId(null);
+      return;
+    }
+    setEditForm({ ...g });
     setEditingId(id);
   }
 
@@ -215,48 +248,40 @@ export function PickemSlateModal({
   // AFTER the hooks above so their order never changes between renders.
   if (!open) return null;
 
-  /**
-   * The form appears WHERE THE WORK IS.
-   *
-   * It used to live only at the bottom, which is fine for adding and wrong for
-   * editing: tap game 1 of sixteen and the form opens off-screen, with nothing
-   * to suggest scrolling. So an edit renders the form immediately beneath its
-   * own row, and only the ADD form sits at the end of the list.
-   *
-   * Still exactly one form either way — same component, same validation, same
-   * state. What moves is where it is drawn.
-   */
-  const formNode = editable && !reorderMode && (
-    <SlateForm
-      form={form}
-      editing={editingId != null}
-      valid={formValid}
-      onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
-      onSubmit={submitForm}
-      onCancel={() => {
-        setForm(blank());
-        setEditingId(null);
-      }}
-      onDelete={() => {
-        const id = editingId;
-        setForm(blank());
-        setEditingId(null);
-        if (id) mutate((prev) => prev.filter((g) => g.id !== id));
-      }}
-      takenEventIds={takenEventIds}
-    />
-  );
+  const formsUsable = editable && !reorderMode;
 
   const rows = draft.map((g, i) => (
     <div key={g.id} className="flex flex-col gap-1.5">
       <SlateRow
         index={i}
         game={g}
-        editable={editable && !reorderMode}
+        editable={formsUsable}
         beingEdited={editingId === g.id}
         onEdit={() => editRow(g.id)}
       />
-      {editingId === g.id && formNode}
+      {/* The EDIT panel drops beneath its own row — tap game 1 of sixteen and
+          the form is right there, rather than off-screen at the bottom with
+          nothing to suggest scrolling. */}
+      {formsUsable && editingId === g.id && editForm && (
+        <SlateForm
+          form={editForm}
+          editing
+          valid={isValid(editForm)}
+          onChange={(patch) => setEditForm((f) => (f ? { ...f, ...patch } : f))}
+          onSubmit={submitEdit}
+          onCancel={() => {
+            setEditForm(null);
+            setEditingId(null);
+          }}
+          onDelete={() => {
+            const id = editingId;
+            setEditForm(null);
+            setEditingId(null);
+            if (id) mutate((prev) => prev.filter((x) => x.id !== id));
+          }}
+          takenEventIds={takenEventIds}
+        />
+      )}
     </div>
   ));
 
@@ -346,9 +371,21 @@ export function PickemSlateModal({
           )}
         </section>
 
-        {/* The ADD form, at the end of the list — where a new game goes. An
-            EDIT form is rendered inline against its own row instead. */}
-        {editingId == null && formNode}
+        {/* The ADD panel, at the end of the list — where a new game goes, and
+            independent of any edit that may be open above it. */}
+        {formsUsable && (
+          <SlateForm
+            form={addForm}
+            editing={false}
+            valid={isValid(addForm)}
+            dirty={addDirty}
+            onChange={(patch) => setAddForm((f) => ({ ...f, ...patch }))}
+            onSubmit={submitAdd}
+            onCancel={() => setAddForm(blank())}
+            onDelete={() => {}}
+            takenEventIds={takenEventIds}
+          />
+        )}
 
         {/* ── what a pick is worth ────────────────────────────────────── */}
         <section>
@@ -584,15 +621,20 @@ function SlateForm({
   onCancel,
   onDelete,
   takenEventIds,
+  dirty = false,
 }: {
   form: SlateDraftGame;
   editing: boolean;
   valid: boolean;
   onChange: (patch: Partial<SlateDraftGame>) => void;
   onSubmit: () => void;
+  /** Editing: discard the edit. Adding: clear the half-filled form. */
   onCancel: () => void;
   onDelete: () => void;
   takenEventIds: string[];
+  /** ADD only — has anything been entered? There is nothing to clear on an
+   *  untouched form, so the control does not appear until there is. */
+  dirty?: boolean;
 }) {
   // 16px deliberately — anything smaller and iOS Safari zooms the page on focus
   // (the fix #1062 made for the chat composer).
@@ -720,6 +762,25 @@ function SlateForm({
       </div>
 
       <div className="mt-3 flex items-center gap-2">
+        {/* Abandoning a half-filled ADD. Without it, a game you started and
+            thought better of can only be got rid of by adding it and deleting
+            it, or by closing the whole modal. */}
+        {!editing && dirty && (
+          <button
+            type="button"
+            onClick={onCancel}
+            data-testid="pickem-form-clear"
+            className="shrink-0 rounded-lg px-3 py-2"
+            style={{
+              fontSize: TYPE_SCALE.bodyDense,
+              fontWeight: 600,
+              color: "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            Clear
+          </button>
+        )}
         {editing && (
           <>
             {/* Destructive, so it lives behind the row tap rather than beside

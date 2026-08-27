@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MATCHUP_LEAGUES,
+  formatKickoff,
   leagueById,
   normalizeSchedule,
   normalizeTeams,
@@ -192,9 +193,46 @@ describe("upcomingFirst", () => {
   });
 });
 
+describe("formatKickoff", () => {
+  // A fixed instant, formatted in a fixed zone, so this does not depend on the
+  // runner's machine or the day the suite runs.
+  const at = (iso: string) => formatKickoff(iso);
+
+  it("carries the DATE, not just a weekday", () => {
+    // The whole reason it changed: this returns the next several games, spread
+    // over WEEKS. Three rows reading "Sat" name three different Saturdays and
+    // nothing tells them apart.
+    const sep = at("2026-09-05T16:30Z");
+    const oct = at("2026-10-03T16:30Z");
+    expect(sep).not.toBe(oct);
+    expect(sep).toMatch(/Sep/);
+    expect(oct).toMatch(/Oct/);
+  });
+
+  it("keeps the weekday — football is thought about in weekdays", () => {
+    expect(at("2026-09-05T16:30Z")).toMatch(/^(Sat|Fri|Sun)/);
+  });
+
+  it("is SHORT — it lands in the slate's Game time field on every row", () => {
+    // It competes for width with the matchup itself on a sixteen-row list.
+    expect(at("2026-09-05T16:30Z").length).toBeLessThanOrEqual(20);
+  });
+
+  it("compresses am/pm to one letter, the way the slate writes times", () => {
+    expect(at("2026-09-05T16:30Z")).toMatch(/\d(a|p)$/);
+    expect(at("2026-09-05T16:30Z")).not.toMatch(/AM|PM/);
+  });
+
+  it("an unparseable instant is empty, not 'Invalid Date'", () => {
+    expect(at("not-a-date")).toBe("");
+    expect(at("")).toBe("");
+  });
+});
+
 describe("leagues are config", () => {
-  it("ships NFL and college football, and both resolve", () => {
+  it("ships NFL and College Football, and both resolve", () => {
     expect(MATCHUP_LEAGUES.map((l) => l.id)).toEqual(["nfl", "cfb"]);
+    expect(MATCHUP_LEAGUES.map((l) => l.label)).toEqual(["NFL", "College Football"]);
     expect(leagueById("cfb")?.espnPath).toBe("football/college-football");
     expect(leagueById("nope")).toBeUndefined();
   });

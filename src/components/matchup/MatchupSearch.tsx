@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import {
   MATCHUP_LEAGUES,
   MIN_QUERY,
+  formatKickoff,
   searchTeams,
   upcomingFirst,
   type Matchup,
@@ -134,7 +135,13 @@ export function MatchupSearch({
               aria-pressed={on}
               onClick={() => {
                 setLeagueId(l.id);
-                reset();
+                // KEEP the query. Typing a team into the wrong league and
+                // having to retype it on the switch is the most likely way to
+                // use this wrong — the correction should cost one tap, not the
+                // words again. The selected TEAM does clear, because it belongs
+                // to the league you just left.
+                setTeam(null);
+                setGames(null);
               }}
               className="rounded-lg px-2.5 py-1"
               style={{
@@ -285,21 +292,4 @@ function Muted({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   );
-}
-
-/**
- * A kickoff, in the reader's own timezone.
- *
- * Client-local by construction — there is no timezone column anywhere in this
- * schema, so the browser's zone is the only one available and rendering the
- * instant is the honest thing to do.
- */
-export function formatKickoff(iso: string): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
