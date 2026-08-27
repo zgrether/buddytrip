@@ -215,7 +215,7 @@ export const pickemRouter = router({
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        action: z.enum(["open", "lock", "reopen"]),
+        action: z.enum(["open", "lock", "unlock", "reopen"]),
         /** Only meaningful with `open`. Null means "no deadline — I will lock by
          *  hand", which is a supported choice rather than a missing value. */
         deadline: z.string().datetime().nullable().optional(),

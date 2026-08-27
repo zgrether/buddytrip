@@ -8,6 +8,7 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
@@ -58,10 +59,32 @@ export function PickemGameView() {
   const { canEdit, isOwner, canManageGame } = useGameEditAccess(tripId, gameId);
   const utils = trpc.useUtils();
 
+  /**
+   * ── Cross-device sync, which pick'em had NONE of ─────────────────────────
+   *
+   * Reported from a run-through: the runner could lock, unlock and reopen and
+   * the player's sheet did not change at all. Cause — match, rack, stroke and
+   * non-golf all mount `useRealtimeGame`; pick'em, the fifth format, mounted
+   * neither realtime nor a poll, so its clock reached other devices only on a
+   * manual reload. CLAUDE.md #24's shape again: a new format skipping a shared
+   * mechanism.
+   *
+   * Realtime is the instant half (`pickem_games` joined the publication in
+   * migration 151). The poll is the reconnect/dead-zone backstop CLAUDE.md #19
+   * insists on and explicitly forbids removing as "redundant" — a golf course
+   * is exactly where a socket dies quietly.
+   *
+   * 60s rather than the golf views' ~20s, deliberately: pick'em's clock changes
+   * a handful of times in a game's whole life, where scores change every few
+   * minutes. Every poll costs an auth round-trip through the middleware
+   * (see #1097), so the cadence is matched to how often the answer can
+   * actually differ.
+   */
   const q = trpc.pickem.get.useQuery(
     { tripId: tripId!, gameId: gameId! },
-    { enabled: !!tripId && !!gameId }
+    { enabled: !!tripId && !!gameId, refetchInterval: 60_000 }
   );
+  useRealtimeGame(tripId, gameId);
 
   const [slateOpen, setSlateOpen] = useState(false);
   const [name, setName] = useState<string | null>(null);
@@ -286,6 +309,7 @@ export function PickemGameView() {
                 setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
               }
               onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
+              onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
               onReopen={() =>
                 setPhase.mutate({ tripId: tripId!, gameId, action: "reopen" })
               }
@@ -386,6 +410,7 @@ export function SlateSettingsRows({
   onOpenSlate,
   onOpenPicks,
   onLock,
+  onUnlock,
   onReopen,
   busy,
 }: {
@@ -401,6 +426,7 @@ export function SlateSettingsRows({
   onOpenSlate: () => void;
   onOpenPicks: () => void;
   onLock: () => void;
+  onUnlock: () => void;
   onReopen: () => void;
   busy: boolean;
 }) {
@@ -416,6 +442,12 @@ export function SlateSettingsRows({
   if (phase === "picks_open") {
     transitions.push({ label: "Lock picks", onClick: onLock, testId: "pickem-lock-picks", tone: "go" });
   }
+  if (phase === "locked") {
+    // The narrow inverse of Lock, available whenever picks are locked —
+    // reversible without touching the slate or anyone's ranking, which is what
+    // separates it from Reopen sitting beside it.
+    transitions.push({ label: "Unlock picks", onClick: onUnlock, testId: "pickem-unlock-picks", tone: "go" });
+  }
   if (phase !== "building") {
     transitions.push({ label: "Reopen the slate", onClick: onReopen, testId: "pickem-reopen-slate", tone: "undo" });
   }
@@ -428,6 +460,8 @@ export function SlateSettingsRows({
       "Open picks — everyone can start filling in their sheet, and the slate freezes.",
     "pickem-lock-picks":
       "Lock picks — closes every sheet immediately and reveals them to the trip.",
+    "pickem-unlock-picks":
+      "Unlock picks — reopens every sheet for editing and hides them again. Slate and rankings are untouched.",
     "pickem-reopen-slate": useConfidence
       ? "Reopen the slate — back to not-open so you can change the games. Everyone keeps their winners and re-ranks them."
       : "Reopen the slate — back to not-open so you can change the games. Everyone keeps their picks.",

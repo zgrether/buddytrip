@@ -9,7 +9,9 @@ import { trpc } from "@/lib/trpc-client";
  * useRealtimeMembers). The instant half of cross-device game-state reconcile;
  * useConfigSync's ~20s hash poll stays as the reconnect/dead-zone backstop.
  *
- * Subscribes to the five tables readGameConfigHash fans out over — `games` (name /
+ * Subscribes to the five tables readGameConfigHash fans out over, PLUS pick'em's
+ * lifecycle clock (`pickem_games`, migration 151) — which is not part of any
+ * config hash, because pick'em has none, but is the same class of change — `games` (name /
  * status / course / modifiers / points / entry_mode / scoring_enabled), `game_matches`
  * (matchups), `game_participants` + `play_groups` (rosters / handicaps), and
  * `game_delegates` — so it fires on exactly the rows the config fingerprint is built

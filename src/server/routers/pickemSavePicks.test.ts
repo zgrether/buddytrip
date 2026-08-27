@@ -309,6 +309,78 @@ describe("save_pickem_picks (migration 150)", () => {
     expect((data ?? []).every((r) => r.confidence === null)).toBe(true);
   });
 
+  // ── unlock: the narrow inverse of lock (migration 151) ──────────────────
+
+  it("UNLOCK reopens picks WITHOUT touching the slate or anyone's ranking", async () => {
+    // The gap it fills: before 151, undoing a lock meant `reopen`, which clears
+    // every ranking. So "I locked a minute early" and "I need to change the
+    // games" shared one answer, and it was the destructive one.
+    await save(sheet({ 0: { pick: "away" } }));
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock", p_deadline: null });
+
+    const locked = await ctx.admin
+      .from("pickem_games").select("picks_locked_at").eq("game_id", gameId).single();
+    expect(locked.data!.picks_locked_at).not.toBeNull();
+
+    const { error } = await ctx.authedClient("owner")
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    expect(error).toBeNull();
+
+    const after = await ctx.admin
+      .from("pickem_games").select("picks_opened_at, picks_locked_at").eq("game_id", gameId).single();
+    expect(after.data!.picks_locked_at).toBeNull();
+    // Still OPEN — unlock is not reopen, so the game did not fall back to building.
+    expect(after.data!.picks_opened_at).not.toBeNull();
+
+    // ...and the sheet survived intact, rankings included. This is the whole
+    // difference from reopen, which nulls every confidence.
+    const rows = await readSheet();
+    expect(rows.map((r) => r!.pick)).toEqual(["away", "home", "home", "home"]);
+    expect(rows.map((r) => r!.confidence)).toEqual([4, 3, 2, 1]);
+  });
+
+  it("unlock makes the sheet WRITABLE again — the point of it", async () => {
+    // Asserting the state columns alone would pass against an unlock that
+    // cleared the stamp but left the policy refusing writes. The write is what
+    // the runner is actually restoring.
+    await save(sheet());
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock", p_deadline: null });
+    expect((await save(sheet({ 1: { pick: "away" } }))).error?.message).toContain("PICKS_CLOSED");
+
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    expect((await save(sheet({ 1: { pick: "away" } }))).error).toBeNull();
+    expect((await readSheet())[1]!.pick).toBe("away");
+  });
+
+  it("unlocking past a DEADLINE is a no-op, because the deadline still binds", async () => {
+    // The subtle arm. `picks_open` is opened AND not-hand-locked AND within the
+    // deadline, so clearing the hand lock cannot outrank a promise already made
+    // to sixteen people. Extending the deadline is `open`'s job, not unlock's.
+    await ctx.admin
+      .from("pickem_games")
+      .update({ picks_deadline: new Date(Date.now() - 60_000).toISOString() })
+      .eq("game_id", gameId);
+
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    expect((await save(sheet())).error?.message).toContain("PICKS_CLOSED");
+  });
+
+  it("unlock on a game that never OPENED does nothing", async () => {
+    await ctx.admin.from("pickem_games").update({ picks_opened_at: null }).eq("game_id", gameId);
+    const { error } = await ctx.authedClient("owner")
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    expect(error).toBeNull();
+    const after = await ctx.admin
+      .from("pickem_games").select("picks_opened_at").eq("game_id", gameId).single();
+    expect(after.data!.picks_opened_at).toBeNull();
+  });
+
+  it("a plain member cannot unlock", async () => {
+    const { error } = await ctx.authedClient("member")
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    expect(error?.message).toContain("NOT_AUTHORIZED");
+  });
+
   it("reopen on a confidence-OFF game is a harmless no-op", async () => {
     await ctx.admin.from("pickem_games").update({ use_confidence: false }).eq("game_id", gameId);
     await save(slateIds.map((id) => ({ slateGameId: id, pick: "away", confidence: null })));
