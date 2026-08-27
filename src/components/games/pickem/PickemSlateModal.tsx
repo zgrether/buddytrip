@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowUpDown, Plus, X } from "lucide-react";
+import { ArrowUpDown, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { ReorderableList } from "@/components/ReorderableList";
 import { Stepper } from "@/components/games/Stepper";
@@ -91,6 +91,14 @@ const blank = (): SlateDraftGame => ({
   note: null,
   multiplier: 1,
 });
+
+/** The helper under the Multiplier stepper. The LABEL stays neutral; this is the
+ *  thing that changes, so the two never contradict each other. */
+function multiplierHelper(n: number): string {
+  if (n <= 1) return "Normal game";
+  if (n === 2) return "Worth double";
+  return `Worth ${n}×`;
+}
 
 const label = (g: SlateDraftGame) =>
   g.awayTeam || g.homeTeam ? `${g.awayTeam || "Away"} at ${g.homeTeam || "Home"}` : "this game";
@@ -197,13 +205,6 @@ export function PickemSlateModal({
       editable={editable && !reorderMode}
       beingEdited={editingId === g.id}
       onEdit={() => editRow(g.id)}
-      onRemove={() => {
-        if (editingId === g.id) {
-          setForm(blank());
-          setEditingId(null);
-        }
-        mutate((prev) => prev.filter((x) => x.id !== g.id));
-      }}
     />
   ));
 
@@ -300,6 +301,12 @@ export function PickemSlateModal({
               setForm(blank());
               setEditingId(null);
             }}
+            onDelete={() => {
+              const id = editingId;
+              setForm(blank());
+              setEditingId(null);
+              if (id) mutate((prev) => prev.filter((g) => g.id !== id));
+            }}
           />
         )}
 
@@ -392,14 +399,12 @@ function SlateRow({
   editable,
   beingEdited,
   onEdit,
-  onRemove,
 }: {
   index: number;
   game: SlateDraftGame;
   editable: boolean;
   beingEdited: boolean;
   onEdit?: () => void;
-  onRemove?: () => void;
 }) {
   const weighted = game.multiplier > 1;
   const meta = [game.kickoff, game.note].filter(Boolean).join(" · ");
@@ -465,19 +470,24 @@ function SlateRow({
     </div>
   );
 
+  /**
+   * A weighted game is marked by a SOLID LEFT STRIPE, not a background fill.
+   *
+   * The fill was a 12% tint over a card surface and it never read — which was
+   * the whole job, since the point of the treatment is to make weighted games
+   * findable WITHOUT reading them. Scanning a sixteen-row list is a vertical eye
+   * movement down the left edge, so that edge is where the mark belongs; a solid
+   * 3px rule survives the glance that a wash does not.
+   *
+   * The badge stays and carries the value. Colour says "this one is worth more",
+   * number says how much.
+   */
   const surface: React.CSSProperties = {
-    background: weighted
-      ? "var(--color-bt-glorious-faint)"
-      : beingEdited
-        ? "var(--color-bt-accent-faint)"
-        : "var(--color-bt-card)",
+    background: beingEdited ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
     border: `1px solid ${
-      weighted
-        ? "var(--color-bt-glorious-border)"
-        : beingEdited
-          ? "var(--color-bt-accent-border)"
-          : "var(--color-bt-border)"
+      beingEdited ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"
     }`,
+    ...(weighted ? { borderLeft: "3px solid var(--color-bt-glorious)" } : null),
   };
 
   if (!editable) {
@@ -488,28 +498,21 @@ function SlateRow({
     );
   }
 
+  // The whole row is the edit target and there is NOTHING else in it. Delete
+  // used to sit a few pixels from that target, on a sixteen-row list, on a
+  // phone, with no confirmation — so it moved inside the form, where reaching it
+  // costs a deliberate second tap.
   return (
-    <div className="flex items-start rounded-xl px-2.5 py-2" style={surface}>
-      <button
-        type="button"
-        onClick={onEdit}
-        data-testid="pickem-slate-row"
-        aria-label={`Edit ${label(game)}`}
-        className="flex min-w-0 flex-1 items-start text-left"
-        style={{ WebkitTapHighlightColor: "transparent" }}
-      >
-        {body}
-      </button>
-      <button
-        type="button"
-        aria-label={`Remove ${label(game)}`}
-        onClick={onRemove}
-        className="-mr-0.5 shrink-0 rounded p-1"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        <X size={14} />
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onEdit}
+      data-testid="pickem-slate-row"
+      aria-label={`Edit ${label(game)}`}
+      className="flex w-full items-start rounded-xl px-2.5 py-2 text-left"
+      style={{ ...surface, WebkitTapHighlightColor: "transparent" }}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -522,6 +525,7 @@ function SlateForm({
   onChange,
   onSubmit,
   onCancel,
+  onDelete,
 }: {
   form: SlateDraftGame;
   editing: boolean;
@@ -529,6 +533,7 @@ function SlateForm({
   onChange: (patch: Partial<SlateDraftGame>) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  onDelete: () => void;
 }) {
   // 16px deliberately — anything smaller and iOS Safari zooms the page on focus
   // (the fix #1062 made for the chat composer).
@@ -599,19 +604,20 @@ function SlateForm({
         style={field}
       />
 
-      {/* The multiplier lives HERE, as a stepper — never in the row. */}
+      {/* The multiplier lives HERE, as a stepper — never in the row.
+          The LABEL is neutral and the HELPER carries the state. "Worth extra"
+          above "A normal game" had the label asserting something the helper
+          immediately denied. */}
       <div className="mt-3 flex items-center justify-between">
         <span className="min-w-0 pr-3">
           <span className="block" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-            Worth extra
+            Multiplier
           </span>
           <span
             className="block"
             style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 1 }}
           >
-            {form.multiplier > 1
-              ? `Every pick on this game scores ${form.multiplier}×`
-              : "A normal game"}
+            {multiplierHelper(form.multiplier)}
           </span>
         </span>
         <Stepper
@@ -631,20 +637,37 @@ function SlateForm({
 
       <div className="mt-3 flex items-center gap-2">
         {editing && (
-          <button
-            type="button"
-            onClick={onCancel}
-            data-testid="pickem-form-cancel"
-            className="rounded-lg px-3 py-2"
-            style={{
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 600,
-              color: "var(--color-bt-text-dim)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            Cancel
-          </button>
+          <>
+            {/* Destructive, so it lives behind the row tap rather than beside
+                it — two deliberate taps, and never adjacent to the edit target. */}
+            <button
+              type="button"
+              onClick={onDelete}
+              data-testid="pickem-form-delete"
+              aria-label="Remove this game"
+              className="flex shrink-0 items-center justify-center rounded-lg px-3 py-2"
+              style={{
+                color: "var(--color-bt-danger)",
+                border: "1px solid var(--color-bt-danger)",
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              data-testid="pickem-form-cancel"
+              className="rounded-lg px-3 py-2"
+              style={{
+                fontSize: TYPE_SCALE.bodyDense,
+                fontWeight: 600,
+                color: "var(--color-bt-text-dim)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              Cancel
+            </button>
+          </>
         )}
         <button
           type="button"

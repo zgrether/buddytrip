@@ -110,20 +110,24 @@ describe("reorder is a mode", () => {
 });
 
 describe("the multiplier is the row's treatment, not a control in it", () => {
-  it("a weighted game wears the glorious tokens and states the value", () => {
+  it("a weighted game gets a SOLID LEFT STRIPE, not a background wash", () => {
+    // The wash was a 12% tint over a card surface and never read at a glance —
+    // which was the treatment's whole job. Scanning a sixteen-row list is a
+    // vertical eye movement down the left edge, so the mark belongs on that
+    // edge, solid.
     const html = render();
-    expect(html).toContain("var(--color-bt-glorious-faint)");
-    expect(html).toContain("var(--color-bt-glorious-border)");
+    expect(html).toContain("border-left:3px solid var(--color-bt-glorious)");
+    expect(html).not.toContain("var(--color-bt-glorious-faint)");
+    // The badge stays and carries the value.
     expect(html).toContain("2×");
   });
 
   it("an unweighted game renders plain — the treatment MEANS something", () => {
-    // Asserted as an exact count, not as presence: if every row wore the
-    // treatment it would carry no information, and "contains glorious" would
-    // still pass.
+    // Exact counts, not presence: if every row wore the stripe it would carry
+    // no information at all, and a "contains glorious" check would still pass.
     const html = render();
     expect(html.match(/data-testid="pickem-multiplier-badge"/g)).toHaveLength(1);
-    expect(html.match(/var\(--color-bt-glorious-faint\)/g)).toHaveLength(1);
+    expect(html.match(/border-left:3px solid var\(--color-bt-glorious\)/g)).toHaveLength(1);
   });
 
   it("no multiplier CONTROL appears in the list — only in the form", () => {
@@ -136,7 +140,37 @@ describe("the multiplier is the row's treatment, not a control in it", () => {
     // The Stepper renders its bounds as disabled arrows at the ends; at the
     // default of 1 the decrement is already at `min`.
     expect(html).toContain("pickem-multiplier-stepper");
-    expect(html).toContain("A normal game");
+  });
+
+  it("the label is NEUTRAL and the helper carries the state", () => {
+    // "Worth extra" over "A normal game" had the label asserting something the
+    // helper immediately denied. The label is now the noun; the helper is the
+    // thing that changes.
+    const html = render();
+    expect(html).toContain("Multiplier");
+    expect(html).toContain("Normal game");
+    expect(html).not.toContain("Worth extra");
+  });
+});
+
+describe("delete is inside the form, not beside the row", () => {
+  it("no row carries a remove control", () => {
+    // It used to sit a few pixels from the edit target, on a sixteen-row list,
+    // on a phone, with no confirmation. Two deliberate taps now.
+    const html = render();
+    expect(html).not.toContain("Remove Alabama at Georgia");
+    expect(html).not.toContain("pickem-form-delete"); // not while ADDING, either
+  });
+
+  it("the row is a single tap target with nothing nested inside it", () => {
+    // A button inside a button is both invalid and the shape that produced the
+    // mis-tap. Asserted on the row's own markup rather than the region, because
+    // the region necessarily contains the NEXT row's opening tag.
+    const html = render();
+    const start = html.indexOf('data-testid="pickem-slate-row"');
+    const firstRow = html.slice(start, html.indexOf("</button>", start));
+    expect(firstRow).not.toContain("<button");
+    expect(firstRow).not.toContain("<input");
   });
 });
 
