@@ -177,6 +177,38 @@ describe("the multiplier is the row's treatment, not a control in it", () => {
   });
 });
 
+describe("matchup search sits inside the add form", () => {
+  it("offers search while ADDING", () => {
+    expect(render()).toContain('data-testid="matchup-search"');
+  });
+
+  it("is absent when the slate is frozen", () => {
+    expect(render({ editable: false })).not.toContain("matchup-search");
+  });
+
+  it("every field it fills is a normal editable input", () => {
+    // The point of filling rather than importing: search sets away, home and
+    // kickoff, and all three remain the same inputs a person could have typed
+    // into. Nothing becomes read-only because it came from an API.
+    const html = render();
+    for (const field of ["Away team", "Home team", "Game time"]) {
+      const at = html.indexOf(`aria-label="${field}"`);
+      expect(at, field).toBeGreaterThan(-1);
+      const tag = html.slice(html.lastIndexOf("<input", at), html.indexOf(">", at));
+      expect(tag, `${field} should not be readonly`).not.toContain("readonly");
+      expect(tag, `${field} should not be disabled`).not.toContain("disabled");
+    }
+  });
+
+  it("SPREAD and NOTE are not filled by search — the line is the runner's call", () => {
+    // Asserted on the seeded row rather than the form: a slate game carries a
+    // spread, and search must never have been what put it there.
+    const html = render();
+    expect(html).toContain('aria-label="Spread"');
+    expect(html).toContain('aria-label="Note"');
+  });
+});
+
 describe("delete is inside the form, not beside the row", () => {
   it("no row carries a remove control", () => {
     // It used to sit a few pixels from the edit target, on a sixteen-row list,

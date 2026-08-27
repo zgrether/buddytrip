@@ -7,6 +7,8 @@ import { ReorderableList } from "@/components/ReorderableList";
 import { Stepper } from "@/components/games/Stepper";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { TYPE_SCALE } from "@/lib/typeScale";
+import { MatchupSearch } from "@/components/matchup/MatchupSearch";
+import { formatKickoff } from "@/components/matchup/MatchupSearch";
 
 /**
  * The slate — the contests being predicted.
@@ -62,6 +64,10 @@ export interface SlateDraftGame {
   kickoff: string | null;
   note: string | null;
   multiplier: number;
+  /** Set when the row was filled from the matchup search. Carried so the same
+   *  contest cannot be added twice from two different teams' schedules — and so
+   *  that survives a reload, which a client-side set would not. */
+  espnEventId?: string | null;
 }
 
 export interface PickemSettingsDraft {
@@ -90,6 +96,7 @@ const blank = (): SlateDraftGame => ({
   kickoff: null,
   note: null,
   multiplier: 1,
+  espnEventId: null,
 });
 
 /** The helper under the Multiplier stepper. The LABEL stays neutral; this is the
@@ -167,6 +174,17 @@ export function PickemSlateModal({
 
   const formValid = form.awayTeam.trim().length > 0 && form.homeTeam.trim().length > 0;
 
+  /**
+   * Event ids already on the slate — so the same real-world contest cannot be
+   * added twice from two different teams' schedules. Read from the DRAFT, not
+   * the server: a game added a moment ago and not yet saved counts too, which
+   * is exactly the window a runner adds sixteen games in.
+   */
+  const takenEventIds = useMemo(
+    () => draft.map((g) => g.espnEventId).filter((id): id is string => !!id),
+    [draft]
+  );
+
   function submitForm() {
     if (!formValid) return;
     const clean: SlateDraftGame = {
@@ -225,6 +243,7 @@ export function PickemSlateModal({
         setEditingId(null);
         if (id) mutate((prev) => prev.filter((g) => g.id !== id));
       }}
+      takenEventIds={takenEventIds}
     />
   );
 
@@ -564,6 +583,7 @@ function SlateForm({
   onSubmit,
   onCancel,
   onDelete,
+  takenEventIds,
 }: {
   form: SlateDraftGame;
   editing: boolean;
@@ -572,6 +592,7 @@ function SlateForm({
   onSubmit: () => void;
   onCancel: () => void;
   onDelete: () => void;
+  takenEventIds: string[];
 }) {
   // 16px deliberately — anything smaller and iOS Safari zooms the page on focus
   // (the fix #1062 made for the chat composer).
@@ -598,6 +619,31 @@ function SlateForm({
       >
         {editing ? "Edit game" : "Add a game"}
       </div>
+
+      {/* Search FILLS the fields below; it does not replace them. Manual entry
+          stays the base case — Div 3 field hockey is in no API, and an
+          unofficial one can go away without notice. Only shown while ADDING:
+          re-pointing an existing row at a different real-world contest is a
+          different act from fixing its spelling, and quietly swapping the
+          teams under a row that may already carry picks is not something a
+          typo-fix flow should be able to do. */}
+      {!editing && (
+        <div className="mb-3">
+          <MatchupSearch
+            takenEventIds={takenEventIds}
+            onPick={(m) =>
+              onChange({
+                awayTeam: m.away,
+                homeTeam: m.home,
+                kickoff: formatKickoff(m.startsAt),
+                espnEventId: m.espnEventId,
+                // spread and note stay untouched — the line is the runner's
+                // editorial call, and setting it is part of the game.
+              })
+            }
+          />
+        </div>
+      )}
 
       <div className="mb-2 flex items-center gap-2">
         <input

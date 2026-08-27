@@ -41,6 +41,11 @@ const slateGameSchema = z.object({
   note: z.string().max(200).nullable().optional(),
   /** Default 1 — setting nothing must produce a normal game (spec §2.3). */
   multiplier: z.number().positive().max(100).default(1),
+  /** Provenance when the row was filled from the matchup search; null when the
+   *  runner typed it. Opaque — deliberately not validated against an ESPN id
+   *  shape, since ESPN is undocumented and a format assertion would make their
+   *  change our outage (migration 149). */
+  espnEventId: z.string().max(64).nullable().optional(),
 });
 
 export const pickemRouter = router({
@@ -65,7 +70,7 @@ export const pickemRouter = router({
           .maybeSingle(),
         ctx.supabase
           .from("pickem_slate_games")
-          .select("id, display_order, away_team, home_team, spread, kickoff, note, multiplier")
+          .select("id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id")
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
       ]);
@@ -93,6 +98,7 @@ export const pickemRouter = router({
           spread: (r.spread as string | null) ?? null,
           kickoff: (r.kickoff as string | null) ?? null,
           note: (r.note as string | null) ?? null,
+          espnEventId: (r.espn_event_id as string | null) ?? null,
           // `numeric` arrives as a string over PostgREST; the whole app treats a
           // multiplier as a number, so it is coerced ONCE, here, rather than at
           // every call site that would otherwise get `"2"` and concatenate.
