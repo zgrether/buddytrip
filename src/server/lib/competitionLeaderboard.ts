@@ -9,6 +9,7 @@ import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
 import { isConfigured, isNew, MATCH_PLAY_TYPES, RACK_TYPE, ROSTER_TYPES } from "@/server/lib/gameReadiness";
+import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
 /** Head-to-head sizing for the team-size-derived per_match formats (rack-n-stack,
@@ -398,7 +399,12 @@ export async function computeCompetitionLeaderboard(
 
     if (isPerMatch(rawDist)) {
       const typeId = g.game_type_id as string | null;
-      const isMatchPlayType = typeId != null && MATCH_PLAY_TYPES.has(typeId);
+      // NOT "is this gtt_match_play" — that is a different question that
+      // happened to share an answer while match play was the only format
+      // writing match rows. Pick'em writes them too, and took the roster-derived
+      // arm: a plausible non-zero pool sized by min(teamA, teamB), with
+      // points_total ignored (#1101).
+      const dividesByMatchRows = pointsDivideByMatchRows(typeId);
       const isRackType = typeId === RACK_TYPE;
       // Match play (singles/doubles): available = value × the game's ASSIGNED
       // match count (game_matches rows with both sides paired) — an unfilled slot
@@ -407,7 +413,7 @@ export async function computeCompetitionLeaderboard(
       // DOESN'T use game_matches; its legacy `mc` fallback is the team-size-derived
       // head-to-head sizing (unchanged stable model) — so counting rows there would
       // zero them out.
-      const mc = isMatchPlayType
+      const mc = dividesByMatchRows
         ? matchCountByGame.get(g.id as string) ?? 0
         : deriveMatchCount(teamSizes, matchFormat(typeId)) ?? 0;
       // A2b (match play) + the rack total-points migration: once an owner sets
@@ -418,7 +424,7 @@ export async function computeCompetitionLeaderboard(
       // sidesteps that pre-existing divisor mismatch for any game with an owner-set
       // total. A legacy game (pre-migration, null total) falls back to `value × mc`,
       // its old behavior — unchanged for both formats.
-      const pointsTotal = isMatchPlayType || isRackType
+      const pointsTotal = dividesByMatchRows || isRackType
         ? (g.points_total as number | null) ?? rawDist.value * mc
         : rawDist.value * mc;
       if (standings.length === 0) {

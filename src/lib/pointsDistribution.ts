@@ -133,6 +133,55 @@ export function effectiveDistribution(
  * null/undefined — a game with a total ALWAYS derives live, however the game
  * came to have a `per_match` distribution in the first place.
  */
+/**
+ * Does this format's per-match points pool divide by its REAL `game_matches`
+ * rows, or by a team-size derivation?
+ *
+ * ── Why this is a named predicate and not `MATCH_PLAY_TYPES.has(t)` ────────
+ *
+ * The leaderboard asked it as "is this gtt_match_play", which is a different
+ * question that happened to have the same answer while match play was the only
+ * format writing match rows. Pick'em writes them too (Phase 4), and the two
+ * questions come apart the moment it does:
+ *
+ *   const mc = isMatchPlayType
+ *     ? matchCountByGame.get(id) ?? 0                      // the real rows
+ *     : deriveMatchCount(teamSizes, matchFormat(t)) ?? 0;  // a roster guess
+ *
+ * A pick'em game took the second arm, so its points pool would have been sized
+ * by `min(teamA, teamB)` — a plausible NON-ZERO number computed from rosters
+ * that have nothing to do with who was actually paired — and `points_total`
+ * would have been ignored entirely. A wrong number rather than no number,
+ * which is the worse failure and the one that looks fine on a board (#1101).
+ *
+ * ── Rack answers NO, and that is not an oversight ──────────────────────────
+ *
+ * Rack has no `game_matches` rows at all. Its head-to-head sizing is derived
+ * from team sizes by design, so counting rows there would zero it out. The
+ * else-arm is rack's CORRECT answer, not a fallback it happens to land in.
+ *
+ * ── What pick'em's answer depends on, and why it is still just `true` ──────
+ *
+ * Under `roll_up = individual_matches` pick'em divides by real matches, so:
+ * true. Under `team_totals` it divides by nothing — the whole total goes to
+ * the higher-summing side — but that shape is not a `per_match` distribution
+ * at all, so `isPerMatch` gates it out before this predicate is consulted.
+ * One answer covers both, and the roll-up never needs to reach here.
+ *
+ * ── Deliberately NOT folded in with the other MATCH_PLAY_TYPES sites ───────
+ *
+ * There are four others, and they ask two DIFFERENT questions: "is readiness
+ * measured in paired matches" (`gameReadiness`) and "which projection engine"
+ * (`liveProjection`, and the leaderboard's projection filter). Pick'em is
+ * correctly excluded from both — it has neither an enable-scoring gate nor a
+ * projection engine yet. Merging three questions behind one name because they
+ * currently share an answer is the mistake this predicate exists to undo, one
+ * level up.
+ */
+export function pointsDivideByMatchRows(gameTypeId: string | null | undefined): boolean {
+  return gameTypeId === "gtt_match_play" || gameTypeId === "gtt_pickem";
+}
+
 export function liveMatchPointsPerMatch(
   pointsTotal: number | null | undefined,
   matches: { sideAId: string | null; sideBId: string | null; pointValue: number | null }[],

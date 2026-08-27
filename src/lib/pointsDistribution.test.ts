@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { evenShare, isPerMatch, isPlacement, liveMatchPointsPerMatch, liveRackPointsPerSlot } from "./pointsDistribution";
+import {
+  evenShare,
+  isPerMatch,
+  isPlacement,
+  liveMatchPointsPerMatch,
+  liveRackPointsPerSlot,
+  pointsDivideByMatchRows,
+} from "./pointsDistribution";
 
 // A2b — the derived even share for non-overridden matches:
 //   (total − Σ overrides) ÷ (matchCount − overrideCount).
@@ -133,5 +140,47 @@ describe("liveRackPointsPerSlot (#1031 — recomputed from the CURRENT slot coun
 
   it("a total IS set → the legacy value is ignored even if present", () => {
     expect(liveRackPointsPerSlot(10, 2, 999)).toBe(5); // 10/2, not 999
+  });
+});
+
+
+describe("pointsDivideByMatchRows — #1101", () => {
+  it("MATCH PLAY and PICK'EM divide by their real match rows", () => {
+    // Both write `game_matches`. The leaderboard asked "is this gtt_match_play",
+    // which is a different question that shared an answer only while match play
+    // was the only format writing them.
+    expect(pointsDivideByMatchRows("gtt_match_play")).toBe(true);
+    expect(pointsDivideByMatchRows("gtt_pickem")).toBe(true);
+  });
+
+  it("RACK does not — and that is its correct answer, not a fallback", () => {
+    // Rack has no game_matches rows at all; its sizing is team-size-derived by
+    // design, so counting rows would zero it out.
+    expect(pointsDivideByMatchRows("gtt_rack_n_stack")).toBe(false);
+  });
+
+  it("stroke, non-golf and unknown types do not", () => {
+    for (const t of ["gtt_stroke_play", "gtt_generic_card", "gtt_generic_bar", "nope", null, undefined]) {
+      expect(pointsDivideByMatchRows(t), String(t)).toBe(false);
+    }
+  });
+
+  it("PRESERVES every pre-existing answer — this refactor changed one format", () => {
+    // The safety property. #1101 was fixed BEFORE Phase 6 precisely so that any
+    // behaviour change here is visible on its own; the only id whose answer
+    // differs from the old `MATCH_PLAY_TYPES.has(t)` is pick'em, and pick'em is
+    // dormant (every game has a null points_distribution, so `isPerMatch` gates
+    // the branch out entirely).
+    const OLD_MATCH_PLAY_TYPES = new Set(["gtt_match_play"]);
+    const ids = [
+      "gtt_match_play", "gtt_rack_n_stack", "gtt_stroke_play",
+      "gtt_generic_card", "gtt_generic_bar", "gtt_generic_yard", "nope",
+    ];
+    for (const t of ids) {
+      expect(pointsDivideByMatchRows(t), t).toBe(OLD_MATCH_PLAY_TYPES.has(t));
+    }
+    // ...and pick'em is the one deliberate difference.
+    expect(pointsDivideByMatchRows("gtt_pickem")).toBe(true);
+    expect(OLD_MATCH_PLAY_TYPES.has("gtt_pickem")).toBe(false);
   });
 });
