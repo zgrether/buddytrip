@@ -135,8 +135,16 @@ describe("save_pickem_config / set_pickem_phase", () => {
 
     const { data: picks } = await ctx.admin
       .from("pickem_picks").select("slate_game_id, pick, confidence").eq("game_id", gameId);
-    // The surviving game's pick is INTACT — same winner, same rank.
-    expect(picks).toEqual([{ slate_game_id: keep.id, pick: "away", confidence: 2 }]);
+    // The surviving game's pick is INTACT — same winner.
+    //
+    // The RANK is deliberately gone: migration 150 clears every confidence on
+    // reopen, because 1..N no longer covers this slate once a game is added or
+    // removed (HANDOFF §7.2). This assertion read `confidence: 2` when it was
+    // written, which was correct then and is an assertion of the OLD behaviour
+    // now — the exact thing CLAUDE.md's "grep tests for the old behaviour before
+    // pushing" rule is about. It was caught by running the suite rather than by
+    // that grep, which is the slower of the two ways to find it.
+    expect(picks).toEqual([{ slate_game_id: keep.id, pick: "away", confidence: null }]);
     // ...and the removed game took its own pick with it, which is the only
     // deletion that should have happened.
     expect((picks ?? []).some((p) => p.slate_game_id === drop.id)).toBe(false);

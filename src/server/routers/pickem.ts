@@ -18,8 +18,12 @@ import { requireTripMember, requireGameEdit } from "../middleware";
  * ── `get` is deliberately readable by any trip member ───────────────────────
  * It returns the clock, the settings and the slate. None of that is secret — a
  * member needs the deadline to render a countdown and the slate to pick against.
- * What IS secret is other people's picks, and those are not in this payload at
- * all: they are read separately, through a policy with no staff branch.
+ * What IS secret is other people's picks. `myPicks` carries the caller's OWN
+ * sheet and nobody else's: it is filtered to `ctx.user!.id` on the way out *as
+ * well as* being held to it by `pickem_picks_select`, which is belt and braces
+ * in the one place where a widening would be invisible from the client. After
+ * the reveal the same query would return the whole field — that is Phase 6's
+ * read, through a different procedure, deliberately not this one.
  *
  * The slate comes back EMPTY for a plain member before picks open, and that is
  * the RLS policy doing its job rather than a bug — spec §3.1's first fairness
@@ -62,7 +66,7 @@ export const pickemRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const [configRes, slateRes] = await Promise.all([
+      const [configRes, slateRes, picksRes] = await Promise.all([
         ctx.supabase
           .from("pickem_games")
           .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
@@ -73,6 +77,11 @@ export const pickemRouter = router({
           .select("id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id")
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
+        ctx.supabase
+          .from("pickem_picks")
+          .select("slate_game_id, pick, confidence")
+          .eq("game_id", input.gameId)
+          .eq("user_id", ctx.user!.id),
       ]);
 
       const cfg = configRes.data;
@@ -104,6 +113,23 @@ export const pickemRouter = router({
           // every call site that would otherwise get `"2"` and concatenate.
           multiplier: Number(r.multiplier ?? 1),
         })),
+        /**
+         * The caller's own sheet, RAW — not reconciled against the slate.
+         *
+         * `reconcileSheet` is the one place that folds these onto the current
+         * slate, fills the gaps and decides whether the ranking survived a
+         * reopen. It is client-safe so the sheet screen and (Phase 6) the
+         * scoring engine call the SAME function; doing half of it here would be
+         * the second definition.
+         *
+         * EMPTY means never saved, which is what spec §4 calls "not submitted"
+         * — derived, so there is no column that can disagree with the rows.
+         */
+        myPicks: (picksRes.data ?? []).map((r) => ({
+          slateGameId: r.slate_game_id as string,
+          pick: r.pick as "away" | "home",
+          confidence: (r.confidence as number | null) ?? null,
+        })),
       };
     }),
 
@@ -134,6 +160,50 @@ export const pickemRouter = router({
       const { error } = await ctx.supabase.rpc("save_pickem_config", {
         p_game_id: input.gameId,
         p_payload: payload,
+      });
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
+
+  // ── the sheet's one write ───────────────────────────────────────────────
+  /**
+   * A participant saving their own sheet.
+   *
+   * `requireTripMember`, NOT `requireGameEdit` — this is the one pick'em write
+   * a plain member makes, and the only thing that decides whether they may make
+   * it is `pickem_picks_write`: their own rows, while picks are open, for
+   * EVERYONE including the Owner. Nothing here re-implements that.
+   *
+   * The whole sheet goes every time. A per-game PATCH would be smaller and
+   * would also make a ranking swap two writes, which is a window in which the
+   * sheet is not a legal 1..N — precisely what the partial unique index refuses
+   * (see migration 150). The sheet is small and the atomic write is the point.
+   */
+  savePicks: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        picks: z
+          .array(
+            z.object({
+              slateGameId: z.string().min(1),
+              pick: z.enum(["away", "home"]),
+              /** Null on a confidence-off game. The RPC forces it to null there
+               *  regardless, so a client that sends one is corrected rather than
+               *  refused — the value is meaningless, not hostile. */
+              confidence: z.number().int().min(1).nullable(),
+            })
+          )
+          .min(1)
+          .max(200),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("save_pickem_picks", {
+        p_game_id: input.gameId,
+        p_picks: input.picks,
       });
       if (error) throw pickemError(error.message);
       return { ok: true };
@@ -183,6 +253,26 @@ function pickemError(message: string): TRPCError {
     return new TRPCError({
       code: "BAD_REQUEST",
       message: "Add at least one game to the slate before opening picks.",
+    });
+  }
+  if (message.includes("PICKS_CLOSED")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      // Names the two ways it can be true, because the participant cannot tell
+      // them apart and the difference decides whether waiting helps.
+      message: "Picks are closed — the deadline passed or the runner locked them.",
+    });
+  }
+  if (message.includes("INCOMPLETE_SHEET") || message.includes("UNKNOWN_SLATE_GAME")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      message: "The slate changed while you were picking. Reload and check your sheet before saving.",
+    });
+  }
+  if (message.includes("BAD_CONFIDENCE")) {
+    return new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Every game needs its own rank, with no repeats.",
     });
   }
   if (message.includes("BAD_MULTIPLIER")) {
