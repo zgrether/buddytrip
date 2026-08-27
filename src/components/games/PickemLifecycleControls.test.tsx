@@ -39,8 +39,10 @@ const settingsRows = (over: Partial<Parameters<typeof SlateSettingsRows>[0]> = {
   renderToStaticMarkup(
     <SlateSettingsRows
       slateCount={2}
+      useConfidence
       phase="building"
       canEdit
+      scoringRows={<div data-testid="scoring-rows-slot" />}
       onOpenSlate={noop}
       onOpenPicks={noop}
       onLock={noop}
@@ -138,11 +140,36 @@ describe("settings carries the whole lifecycle, not just the way back", () => {
 
   it("every transition says what it does to everyone else", () => {
     // Two-word labels are not enough for actions that change what sixteen
-    // people can see. Each row carries its consequence.
-    expect(settingsRows({ phase: "picks_open" })).toContain("Closes every sheet immediately");
+    // people can see, so each available transition carries its consequence.
+    expect(settingsRows({ phase: "picks_open" })).toContain("closes every sheet immediately");
     expect(settingsRows({ phase: "building", slateCount: 2 })).toContain(
-      "Everyone can start filling in their sheet"
+      "everyone can start filling in their sheet"
     );
+  });
+
+  it("names the state above the buttons that change it", () => {
+    expect(settingsRows({ phase: "building", slateCount: 2 })).toContain("Picks are not open yet");
+    expect(settingsRows({ phase: "picks_open" })).toContain("Picks are open");
+    expect(settingsRows({ phase: "locked" })).toContain("Picks are locked");
+  });
+
+  it("REOPEN's copy drops the ranking sentence when confidence is off", () => {
+    // The falsehood rule again, on the settings side: a confidence-off game has
+    // no ranking to redo, and "confidence 1–N" is not what its slate is.
+    const on = settingsRows({ phase: "picks_open", useConfidence: true });
+    const off = settingsRows({ phase: "picks_open", useConfidence: false });
+    expect(on).toContain("re-ranks them");
+    expect(off).not.toContain("re-ranks");
+    expect(on).toContain("confidence 1–2");
+    expect(off).not.toContain("confidence");
+  });
+
+  it("puts the scoring settings on this page, not behind the slate", () => {
+    // The slot is filled by `PickemScoringRows`; what matters here is that the
+    // settings page is where it renders.
+    const html = settingsRows();
+    expect(html).toContain("How scoring works");
+    expect(html).toContain('data-testid="scoring-rows-slot"');
   });
 
   it("a plain member gets no settings rows at all", () => {

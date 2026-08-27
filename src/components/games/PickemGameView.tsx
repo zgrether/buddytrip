@@ -13,13 +13,20 @@ import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { showToast } from "@/lib/toast";
+import { PickemSlateModal, type SlateDraftGame } from "@/components/games/pickem/PickemSlateModal";
 import {
-  PickemSlateModal,
+  PickemScoringRows,
   type PickemSettingsDraft,
-  type SlateDraftGame,
-} from "@/components/games/pickem/PickemSlateModal";
+} from "@/components/games/pickem/PickemScoringRows";
 import { PickemSheet } from "@/components/games/pickem/PickemSheet";
-import { msUntilDeadline, picksOpen, pickemPhase, slateEditable } from "@/lib/pickemLifecycle";
+import { ZoneHeader } from "@/components/games/ZoneHeader";
+import {
+  msUntilDeadline,
+  picksOpen,
+  pickemPhase,
+  scoringSettingsEditable,
+  slateEditable,
+} from "@/lib/pickemLifecycle";
 
 /**
  * The pick'em game surface.
@@ -193,18 +200,12 @@ export function PickemGameView() {
         open={slateOpen}
         onClose={() => setSlateOpen(false)}
         slate={slateDraft}
-        settings={settingsDraft}
         editable={canEditSlate}
-        showRollUp={q.data.game.competition_id != null}
         saving={saveConfig.isPending}
-        onSave={(next) =>
-          saveConfig.mutate({
-            tripId: tripId!,
-            gameId,
-            slate: next.slate,
-            settings: next.settings,
-          })
-        }
+        // Slate only. The scoring settings moved to the settings page and save
+        // through the same RPC with the other half absent, which
+        // `save_pickem_config` already supports.
+        onSave={(next) => saveConfig.mutate({ tripId: tripId!, gameId, slate: next.slate })}
       />
 
       {settings.open && (
@@ -253,8 +254,20 @@ export function PickemGameView() {
           settingsRows={
             <SlateSettingsRows
               slateCount={q.data.slate.length}
+              useConfidence={q.data.settings.useConfidence}
               phase={phase}
               canEdit={canEdit}
+              scoringRows={
+                <PickemScoringRows
+                  settings={settingsDraft}
+                  editable={canEdit && scoringSettingsEditable(clock)}
+                  showRollUp={q.data.game.competition_id != null}
+                  saving={saveConfig.isPending}
+                  onSave={(next) =>
+                    saveConfig.mutate({ tripId: tripId!, gameId, settings: next })
+                  }
+                />
+              }
               // Opens the slate ON TOP of settings rather than closing settings
               // first. Closing first looked tidier and was broken: on the
               // `?settings=1` DEEP-LINK path the overlay's open-ness is derived
@@ -366,8 +379,10 @@ export function PhaseBody({
 /** Settings-zone rows: the door to the slate, and Reopen. */
 export function SlateSettingsRows({
   slateCount,
+  useConfidence,
   phase,
   canEdit,
+  scoringRows,
   onOpenSlate,
   onOpenPicks,
   onLock,
@@ -375,8 +390,14 @@ export function SlateSettingsRows({
   busy,
 }: {
   slateCount: number;
+  /** Drives the COPY, not just the sheet. A confidence-off game has no ranking,
+   *  so "confidence 1–N" and "has to rank them again" are falsehoods on it. */
+  useConfidence: boolean;
   phase: ReturnType<typeof pickemPhase>;
   canEdit: boolean;
+  /** The two scoring settings, rendered by `PickemScoringRows`. Passed in
+   *  rather than built here so this component stays free of tRPC. */
+  scoringRows: React.ReactNode;
   onOpenSlate: () => void;
   onOpenPicks: () => void;
   onLock: () => void;
@@ -384,139 +405,126 @@ export function SlateSettingsRows({
   busy: boolean;
 }) {
   if (!canEdit) return null;
+
+  /** The transitions available RIGHT NOW. One row of buttons, not three stacked
+   *  cards — they are alternatives on one axis, and stacking them made the
+   *  settings page read as a list of unrelated features. */
+  const transitions: { label: string; onClick: () => void; testId: string; tone: "go" | "undo" }[] = [];
+  if (phase === "building" && slateCount > 0) {
+    transitions.push({ label: "Open picks", onClick: onOpenPicks, testId: "pickem-open-picks-settings", tone: "go" });
+  }
+  if (phase === "picks_open") {
+    transitions.push({ label: "Lock picks", onClick: onLock, testId: "pickem-lock-picks", tone: "go" });
+  }
+  if (phase !== "building") {
+    transitions.push({ label: "Reopen the slate", onClick: onReopen, testId: "pickem-reopen-slate", tone: "undo" });
+  }
+
+  /** What each visible transition will DO. Two-word labels are not enough for
+   *  actions that change what sixteen other people can see, so the row carries
+   *  one line per available action rather than a single generic caption. */
+  const consequence: Record<string, string> = {
+    "pickem-open-picks-settings":
+      "Open picks — everyone can start filling in their sheet, and the slate freezes.",
+    "pickem-lock-picks":
+      "Lock picks — closes every sheet immediately and reveals them to the trip.",
+    "pickem-reopen-slate": useConfidence
+      ? "Reopen the slate — back to not-open so you can change the games. Everyone keeps their winners and re-ranks them."
+      : "Reopen the slate — back to not-open so you can change the games. Everyone keeps their picks.",
+  };
+
   return (
-    <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={onOpenSlate}
-        data-testid="pickem-open-slate"
-        className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        <span>
-          <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>The slate</span>
-          <span
-            className="block"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 2 }}
-          >
-            {slateCount === 0
-              ? "No games yet — this is what people pick from"
-              : `${slateCount} games · confidence 1–${slateCount}`}
-          </span>
-        </span>
-        <span style={{ color: "var(--color-bt-text-dim)" }}>›</span>
-      </button>
-
-      {/* ── The lifecycle, in the place people look for it ──────────────────
-          Reopen lived here on its own, which meant settings held the way BACK
-          out of every state and none of the ways forward. Open and Lock are the
-          other two transitions on the same axis, so they belong beside it. The
-          game page keeps its own Open button — that is the one a runner reaches
-          first, and this is where he looks when he has already dismissed it. */}
-      {phase === "building" && slateCount > 0 && (
-        <LifecycleRow
-          title="Open picks"
-          body="Everyone can start filling in their sheet. The slate freezes until you reopen it."
-          action="Open picks"
-          onClick={onOpenPicks}
-          busy={busy}
-          testId="pickem-open-picks-settings"
-        />
-      )}
-
-      {phase === "picks_open" && (
-        <LifecycleRow
-          title="Lock picks now"
-          body="Closes every sheet immediately and reveals them to the trip. Use this when there is no deadline set, or to close early."
-          action="Lock picks"
-          onClick={onLock}
-          busy={busy}
-          testId="pickem-lock-picks"
-        />
-      )}
-
-      {phase !== "building" && (
-        <div
-          className="rounded-xl px-3 py-2.5"
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onOpenSlate}
+          data-testid="pickem-open-slate"
+          className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left"
           style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
-          <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>Reopen the slate</div>
+          <span>
+            <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>The slate</span>
+            <span
+              className="block"
+              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 2 }}
+            >
+              {slateCount === 0
+                ? "No games yet — this is what people pick from"
+                : useConfidence
+                  ? `${slateCount} games · confidence 1–${slateCount}`
+                  : `${slateCount} games`}
+            </span>
+          </span>
+          <span style={{ color: "var(--color-bt-text-dim)" }}>›</span>
+        </button>
+      </div>
+
+      {/* ── Scoring, one level up ─────────────────────────────────────────
+          These were buried inside the slate modal behind sixteen rows of games
+          and that modal's Save. They are settings; they live with settings. */}
+      <div className="flex flex-col gap-2">
+        <ZoneHeader>How scoring works</ZoneHeader>
+        {scoringRows}
+      </div>
+
+      {/* ── The lifecycle, as ONE control ─────────────────────────────────
+          Reopen used to live here alone, so settings held the way BACK out of
+          every state and none of the ways in. Open and Lock are the other two
+          transitions on the same axis — they belong in one row, showing only
+          what is reachable from where the game actually is. */}
+      {transitions.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <ZoneHeader>Picks</ZoneHeader>
           <div
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", margin: "2px 0 8px" }}
+            className="rounded-xl px-3 py-3"
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            Picks go back to not-open so you can change the games. Everyone keeps their
-            winners but has to rank them again.
+            <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>{PHASE_LABEL[phase]}</div>
+            <div
+              className="mt-1 flex flex-col gap-0.5"
+              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}
+            >
+              {transitions.map((t) => (
+                <span key={t.testId}>{consequence[t.testId]}</span>
+              ))}
+            </div>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {transitions.map((t) => (
+                <button
+                  key={t.testId}
+                  type="button"
+                  onClick={t.onClick}
+                  disabled={busy}
+                  data-testid={t.testId}
+                  className="rounded-lg px-3 disabled:opacity-40"
+                  style={{
+                    minHeight: 40,
+                    fontSize: TYPE_SCALE.bodyDense,
+                    fontWeight: 700,
+                    background: t.tone === "go" ? "var(--color-bt-accent)" : "transparent",
+                    color: t.tone === "go" ? "var(--color-bt-base)" : "var(--color-bt-danger)",
+                    border: t.tone === "go" ? "none" : "1px solid var(--color-bt-danger)",
+                  }}
+                >
+                  {busy ? "Working…" : t.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={onReopen}
-            disabled={busy}
-            data-testid="pickem-reopen-slate"
-            className="rounded-lg px-3 py-1.5"
-            style={{
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 600,
-              color: "var(--color-bt-danger)",
-              background: "var(--color-bt-danger-faint, transparent)",
-              border: "1px solid var(--color-bt-danger)",
-            }}
-          >
-            Reopen
-          </button>
         </div>
       )}
     </div>
   );
 }
 
-/** One lifecycle transition: what it is, what it does, and the button. The body
- *  copy is not decoration — each of these changes what sixteen other people can
- *  see or do, and none of them is guessable from a two-word label. */
-function LifecycleRow({
-  title,
-  body,
-  action,
-  onClick,
-  busy,
-  testId,
-}: {
-  title: string;
-  body: string;
-  action: string;
-  onClick: () => void;
-  busy: boolean;
-  testId: string;
-}) {
-  return (
-    <div
-      className="rounded-xl px-3 py-2.5"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>{title}</div>
-      <div
-        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", margin: "2px 0 8px", lineHeight: 1.5 }}
-      >
-        {body}
-      </div>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        data-testid={testId}
-        className="rounded-lg px-3 py-1.5 disabled:opacity-40"
-        style={{
-          fontSize: TYPE_SCALE.bodyDense,
-          fontWeight: 700,
-          background: "var(--color-bt-accent)",
-          color: "var(--color-bt-base)",
-          minHeight: 36,
-        }}
-      >
-        {busy ? "Working…" : action}
-      </button>
-    </div>
-  );
-}
+/** What state the game is in, said plainly above the buttons that change it. */
+const PHASE_LABEL: Record<ReturnType<typeof pickemPhase>, string> = {
+  building: "Picks are not open yet",
+  picks_open: "Picks are open",
+  locked: "Picks are locked",
+};
+
 
 function Empty({
   icon,

@@ -46,11 +46,19 @@ import { MatchupLine, RowOrdinal, pickemRowSurface } from "./slateRowVisual";
  * someone to type 25.
  *
  * ── Draft-then-save, one atomic commit ──────────────────────────────────────
- * Nothing here self-persists. Save sends the whole slate plus both settings
- * through ONE `save_pickem_config` (CLAUDE.md #18). The settings live in this
- * modal rather than on the settings page behind it because spec §4 freezes them
- * at the same instant as the slate and for the same reason — things that share a
- * lock point share a surface.
+ * Nothing here self-persists. Save sends the whole slate through ONE
+ * `save_pickem_config` (CLAUDE.md #18), with no `settings` key — the RPC
+ * already treats an absent half as "leave it alone".
+ *
+ * ── The scoring settings USED to live here, and no longer do ────────────────
+ * They were placed here because spec §4 freezes them at the same instant as the
+ * slate, so "things that share a lock point share a surface". That reasoning was
+ * about the FREEZE and wrong about the JOB: the slate is a list you build and
+ * reorder, the settings are two switches deciding what the game is. Stacking
+ * them behind one door meant scrolling past sixteen rows to answer a question
+ * about none of them — and put the switches behind THIS modal's Save, so
+ * toggling confidence and closing discarded it silently. They now sit on the
+ * settings page (`PickemScoringRows`), still frozen by the same predicate.
  *
  * ── Presentation-only ───────────────────────────────────────────────────────
  * No tRPC (CLAUDE.md #7). Every value arrives as a prop; the draft leaves
@@ -115,16 +123,13 @@ export function PickemSlateModal({
   open,
   onClose,
   slate,
-  settings,
   editable,
-  showRollUp,
   saving,
   onSave,
 }: {
   open: boolean;
   onClose: () => void;
   slate: SlateDraftGame[];
-  settings: PickemSettingsDraft;
   /**
    * False once picks are open. The modal still OPENS — the runner needs to read
    * the slate he published — but every control is gone rather than disabled,
@@ -133,15 +138,10 @@ export function PickemSlateModal({
    * attached teaches nobody why.
    */
   editable: boolean;
-  /** `roll_up` is match-play only — a points competition always rolls up as
-   *  team totals across N teams, so the setting is HIDDEN rather than shown
-   *  inert (spec §2: hide what the format makes unreachable). */
-  showRollUp: boolean;
   saving: boolean;
-  onSave: (next: { slate: SlateDraftGame[]; settings: PickemSettingsDraft }) => void;
+  onSave: (next: { slate: SlateDraftGame[] }) => void;
 }) {
   const [draft, setDraft] = useState<SlateDraftGame[]>(slate);
-  const [draftSettings, setDraftSettings] = useState<PickemSettingsDraft>(settings);
   const [touched, setTouched] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
   /**
@@ -169,7 +169,6 @@ export function PickemSlateModal({
     setSeedKey(open);
     if (open) {
       setDraft(slate);
-      setDraftSettings(settings);
       setTouched(false);
       setReorderMode(false);
       setAddForm(blank());
@@ -388,51 +387,6 @@ export function PickemSlateModal({
           />
         )}
 
-        {/* ── what a pick is worth ────────────────────────────────────── */}
-        <section>
-          <ZoneHeader>How scoring works</ZoneHeader>
-          <div className="mt-2 flex flex-col gap-2">
-            <ToggleRow
-              title="Use confidence points"
-              detail={
-                draftSettings.useConfidence
-                  ? "Every correct pick is worth the confidence rank it is given."
-                  : "Correct picks are worth 1 point."
-              }
-              on={draftSettings.useConfidence}
-              disabled={!editable}
-              onToggle={() => {
-                setTouched(true);
-                setDraftSettings((s) => ({ ...s, useConfidence: !s.useConfidence }));
-              }}
-            />
-            {showRollUp && (
-              <ChoiceRow
-                title="How points are awarded"
-                options={[
-                  {
-                    value: "team_totals",
-                    label: "Team totals",
-                    detail: "Every sheet sums into its side's number. Higher total takes the points.",
-                  },
-                  {
-                    value: "individual_matches",
-                    label: "Individual matches",
-                    detail:
-                      "Each person plays one person on the other side. Points split across the matches.",
-                  },
-                ]}
-                value={draftSettings.rollUp}
-                disabled={!editable}
-                onChange={(v) => {
-                  setTouched(true);
-                  setDraftSettings((s) => ({ ...s, rollUp: v as PickemSettingsDraft["rollUp"] }));
-                }}
-              />
-            )}
-          </div>
-        </section>
-
         {/* ── save ────────────────────────────────────────────────────── */}
         {editable && (
           <div className="flex items-center gap-3 pt-1">
@@ -443,7 +397,7 @@ export function PickemSlateModal({
             </span>
             <button
               type="button"
-              onClick={() => onSave({ slate: draft, settings: draftSettings })}
+              onClick={() => onSave({ slate: draft })}
               disabled={!canSave}
               data-testid="pickem-save-slate"
               className="rounded-xl px-4 py-2 disabled:opacity-40"
@@ -735,127 +689,6 @@ function SlateForm({
         >
           {editing ? "Save changes" : (<><Plus size={15} /> Add game</>)}
         </button>
-      </div>
-    </div>
-  );
-}
-
-/** A settings row. Same type as the settings rows beside it on the game settings
- *  page — Total Points, Game State — because this IS a scoring setting and the
- *  smaller type read it as a footnote. */
-function ToggleRow({
-  title,
-  detail,
-  on,
-  disabled,
-  onToggle,
-}: {
-  title: string;
-  detail: string;
-  on: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="min-w-0 flex-1">
-        <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>{title}</div>
-        <div
-          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 2 }}
-        >
-          {detail}
-        </div>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label={title}
-        disabled={disabled}
-        onClick={onToggle}
-        className="relative shrink-0 rounded-full disabled:opacity-40"
-        style={{
-          width: 42,
-          height: 24,
-          background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-          border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-        }}
-      >
-        <span
-          className="absolute rounded-full"
-          style={{
-            top: 2,
-            left: on ? 20 : 2,
-            width: 18,
-            height: 18,
-            background: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-            transition: "left .14s",
-          }}
-        />
-      </button>
-    </div>
-  );
-}
-
-function ChoiceRow({
-  title,
-  options,
-  value,
-  disabled,
-  onChange,
-}: {
-  title: string;
-  options: { value: string; label: string; detail: string }[];
-  value: string;
-  disabled: boolean;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div
-      className="rounded-xl px-3 py-2.5"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600, marginBottom: 6 }}>{title}</div>
-      <div className="flex flex-col gap-1.5">
-        {options.map((o) => {
-          const on = o.value === value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(o.value)}
-              aria-pressed={on}
-              className="rounded-lg px-2.5 py-2 text-left disabled:opacity-40"
-              style={{
-                background: on ? "var(--color-bt-accent-faint)" : "transparent",
-                border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: TYPE_SCALE.bodyDense,
-                  fontWeight: 600,
-                  color: on ? "var(--color-bt-accent)" : "var(--color-bt-text)",
-                }}
-              >
-                {o.label}
-              </div>
-              <div
-                style={{
-                  fontSize: TYPE_SCALE.caption,
-                  color: "var(--color-bt-text-dim)",
-                  marginTop: 1,
-                }}
-              >
-                {o.detail}
-              </div>
-            </button>
-          );
-        })}
       </div>
     </div>
   );
