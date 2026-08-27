@@ -122,6 +122,13 @@ export function PickemGameView() {
     onError: (e) => setSaveError(e.message),
   });
 
+  const setPointsTotal = trpc.pickem.setPointsTotal.useMutation({
+    onSuccess: async () => {
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => showToast(e.message, "error"),
+  });
+
   const setPhase = trpc.pickem.setPhase.useMutation({
     onSuccess: async () => {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
@@ -286,6 +293,15 @@ export function PickemGameView() {
                   editable={canEdit && scoringSettingsEditable(clock)}
                   showRollUp={q.data.game.competition_id != null}
                   saving={saveConfig.isPending}
+                  pointsTotal={(q.data.game as { points_total?: number | null }).points_total ?? null}
+                  // Points are NOT frozen with the slate (migration 152): the
+                  // total decides what the game is worth, not anything a
+                  // participant already chose.
+                  canEditPoints={canEdit}
+                  matches={q.data.matches}
+                  onPointsChange={(total) =>
+                    setPointsTotal.mutate({ tripId: tripId!, gameId, total })
+                  }
                   onSave={(next) =>
                     saveConfig.mutate({ tripId: tripId!, gameId, settings: next })
                   }

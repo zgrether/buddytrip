@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { TYPE_SCALE } from "@/lib/typeScale";
+import { TotalPoolRow } from "@/components/games/NonGolfSettingsRows";
+import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 
 /**
  * The two scoring settings — confidence on/off, and how points roll up.
@@ -44,6 +46,10 @@ export function PickemScoringRows({
   editable,
   showRollUp,
   saving,
+  pointsTotal,
+  canEditPoints,
+  matches,
+  onPointsChange,
   onSave,
 }: {
   settings: PickemSettingsDraft;
@@ -53,6 +59,15 @@ export function PickemScoringRows({
    *  game has no sides to total, so the row is ABSENT rather than disabled. */
   showRollUp: boolean;
   saving: boolean;
+  /** `games.points_total`. Null or 0 means every match is worth nothing. */
+  pointsTotal: number | null;
+  /** Points are NOT frozen with the slate — a runner can set them after picks
+   *  open, which is the common case since nothing forces it earlier. */
+  canEditPoints: boolean;
+  /** The game's matches, for the divisor. Shape matches
+   *  `liveMatchPointsPerMatch` exactly so nothing here re-derives "valid". */
+  matches: { sideAId: string | null; sideBId: string | null; pointValue: number | null }[];
+  onPointsChange: (total: number | null) => void;
   onSave: (next: PickemSettingsDraft) => void;
 }) {
   const [draft, setDraft] = useState<PickemSettingsDraft>(settings);
@@ -61,8 +76,48 @@ export function PickemScoringRows({
   // nothing and an "unsaved changes" warning nobody caused.
   const dirty = draft.rollUp !== settings.rollUp || draft.useConfidence !== settings.useConfidence;
 
+  /**
+   * The per-match award, from the ONE shared divisor (#1068) — never
+   * re-derived. It filters both-sides-filled and divides by that count, which
+   * is exactly spec §4's "seven matches means X/7 each".
+   */
+  const perMatch = liveMatchPointsPerMatch(pointsTotal, matches);
+  const validMatches = matches.filter((m) => m.sideAId != null && m.sideBId != null).length;
+  const individual = settings.rollUp === "individual_matches";
+  /** Matches are set up and the total still says nothing is at stake. The
+   *  runner may legitimately set the total later — so this is SURFACED, never
+   *  blocking (spec §2). */
+  const worthNothing = validMatches > 0 && !pointsTotal;
+
   return (
     <div className="flex flex-col gap-2">
+      {/* FIRST, because it is the setting that decides whether any of the rest
+          matters. Nothing set it before Phase 4, so every pick'em game was
+          quietly worth 0.00 a match. */}
+      <TotalPoolRow value={pointsTotal} canEdit={canEditPoints} onChange={onPointsChange} />
+
+      {/* The "each worth" line renders ONLY under individual matches: team
+          totals awards the whole total to one side and points mode splits it
+          across places, so a per-match figure would be a number about a
+          mechanic neither of them has. */}
+      {individual && (
+        <p
+          data-testid="pickem-per-match"
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            color: worthNothing ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+            fontWeight: worthNothing ? 600 : 400,
+            lineHeight: 1.5,
+            margin: "-2px 2px 2px",
+          }}
+        >
+          {validMatches === 0
+            ? "Set the matches and each one's share appears here."
+            : `Each of the ${validMatches} match${validMatches === 1 ? "" : "es"} is worth ${perMatch.toFixed(2)} pts.`}
+          {worthNothing && " Set a total above, or the game decides nothing."}
+        </p>
+      )}
+
       {!editable && (
         <p
           style={{

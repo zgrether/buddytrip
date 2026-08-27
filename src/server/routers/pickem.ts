@@ -60,13 +60,13 @@ export const pickemRouter = router({
     .query(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id, name, game_type_id, competition_id, status")
+        .select("id, name, game_type_id, competition_id, status, points_total")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const [configRes, slateRes, picksRes] = await Promise.all([
+      const [configRes, slateRes, picksRes, matchRes] = await Promise.all([
         ctx.supabase
           .from("pickem_games")
           .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
@@ -82,6 +82,14 @@ export const pickemRouter = router({
           .select("slate_game_id, pick, confidence")
           .eq("game_id", input.gameId)
           .eq("user_id", ctx.user!.id),
+        // Pick'em reuses `game_matches` rather than a private table: the shared
+        // divisor (`liveMatchPointsPerMatch`), the guest merge's JSONB handling
+        // and the realtime publication all already speak it.
+        ctx.supabase
+          .from("game_matches")
+          .select("id, display_order, side_a, side_b, point_value")
+          .eq("game_id", input.gameId)
+          .order("display_order", { ascending: true }),
       ]);
 
       const cfg = configRes.data;
@@ -125,6 +133,19 @@ export const pickemRouter = router({
          * EMPTY means never saved, which is what spec §4 calls "not submitted"
          * — derived, so there is no column that can disagree with the rows.
          */
+        /**
+         * The matches, in the exact shape `liveMatchPointsPerMatch` takes, so
+         * nothing downstream re-derives what "valid" means. A side is `{type,
+         * id}` JSONB (CLAUDE.md #27) — null id means an empty slot, which is
+         * what makes a match invalid for the divisor.
+         */
+        matches: (matchRes.data ?? []).map((r) => ({
+          id: r.id as string,
+          displayOrder: r.display_order as number,
+          sideAId: ((r.side_a as { id?: string } | null)?.id ?? null) as string | null,
+          sideBId: ((r.side_b as { id?: string } | null)?.id ?? null) as string | null,
+          pointValue: r.point_value == null ? null : Number(r.point_value),
+        })),
         myPicks: (picksRes.data ?? []).map((r) => ({
           slateGameId: r.slate_game_id as string,
           pick: r.pick as "away" | "home",
@@ -209,6 +230,34 @@ export const pickemRouter = router({
       return { ok: true };
     }),
 
+  // ── the points total ────────────────────────────────────────────────────
+  /**
+   * Deliberately NOT part of `saveConfig`: that write is frozen once picks open
+   * (spec §4), and the total is the one setting that legitimately changes after
+   * — it decides what the game is WORTH, not anything a participant already
+   * decided. See migration 152.
+   */
+  setPointsTotal: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        /** Null means "not decided yet", which is a different state from 0
+         *  ("decided, worth nothing"). Both are legal; the UI warns on either
+         *  once matches exist. */
+        total: z.number().min(0).max(1000).nullable(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("set_pickem_points_total", {
+        p_game_id: input.gameId,
+        p_total: input.total,
+      });
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
+
   // ── open / lock / reopen ────────────────────────────────────────────────
   setPhase: authedProcedure
     .input(
@@ -274,6 +323,9 @@ function pickemError(message: string): TRPCError {
       code: "BAD_REQUEST",
       message: "Every game needs its own rank, with no repeats.",
     });
+  }
+  if (message.includes("BAD_TOTAL")) {
+    return new TRPCError({ code: "BAD_REQUEST", message: "Points can't be negative." });
   }
   if (message.includes("BAD_MULTIPLIER")) {
     return new TRPCError({ code: "BAD_REQUEST", message: "A multiplier has to be greater than zero." });
