@@ -2,6 +2,12 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isObviouslyBogusPath } from "@/lib/botPaths";
 import { safeNextPath } from "@/lib/nextPath";
+import {
+  resolveWithTimeout,
+  authProbeLine,
+  AUTH_TIMEOUT_MS,
+  AUTH_SLOW_MS,
+} from "@/lib/middlewareAuthTimeout";
 
 export async function middleware(request: NextRequest) {
   // Credential scanners, 404'd at the edge BEFORE anything else. They were being
@@ -51,9 +57,56 @@ export async function middleware(request: NextRequest) {
   // locally — so an orphaned/expired auth cookie read as "logged in" and
   // bounced users off /login into a redirect dead-end. Supabase also flags
   // server-side getSession() as insecure for exactly this reason.
+  //
+  // ── RACED AGAINST THE CLOCK ────────────────────────────────────────────
+  // Un-timed, this call is the whole function's failure mode: production hit
+  // bursts of 25s MIDDLEWARE_INVOCATION_TIMEOUT while Supabase was answering
+  // every /user request in milliseconds. See `middlewareAuthTimeout.ts` for the
+  // measurements and for why the timeout branch decides NOTHING.
+  const resolved = await resolveWithTimeout(
+    () => supabase.auth.getUser(),
+    AUTH_TIMEOUT_MS
+  );
+
+  if (resolved.timedOut) {
+    // PASS THROUGH. No redirect, no 401, whatever the route — a timeout must
+    // never sign anyone out, because on bad signal it could be routine. Safe
+    // because middleware is a redirect layer, not the security boundary:
+    // `authedProcedure` and RLS re-check this request regardless.
+    //
+    // Returned BEFORE the redirect logic below rather than threaded through it
+    // as a condition, so no future edit to that logic can accidentally start
+    // redirecting on a timeout. `middlewareAuthTimeout.test.ts` pins the rule.
+    console.warn(
+      authProbeLine({
+        cookieNames: request.cookies.getAll().map((c) => c.name),
+        pathname: request.nextUrl.pathname,
+        method: request.method,
+        elapsedMs: resolved.elapsedMs,
+        outcome: "timeout",
+      })
+    );
+    return supabaseResponse;
+  }
+
+  // A slow-but-successful call is logged too: the latency DISTRIBUTION is what
+  // would have shortened the investigation that produced this code, where every
+  // failure left a 25s hole and no near-misses to reason from.
+  if (resolved.elapsedMs > AUTH_SLOW_MS) {
+    console.warn(
+      authProbeLine({
+        cookieNames: request.cookies.getAll().map((c) => c.name),
+        pathname: request.nextUrl.pathname,
+        method: request.method,
+        elapsedMs: resolved.elapsedMs,
+        outcome: "slow",
+      })
+    );
+  }
+
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = resolved.value;
 
   // Redirect unauthenticated users to /login (except for public routes).
   // The root route `/` serves the marketing page for unauthenticated visitors
