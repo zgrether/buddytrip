@@ -8,7 +8,6 @@ import {
   setBetKind,
   toggleWhoIsIn,
   canBeHeadToHead,
-  pressOnPressBlurb,
   type BetDraft,
 } from "./betDraft";
 import { betLabel } from "./sideBets";
@@ -164,13 +163,4 @@ describe("the ☠️ option's dependency", () => {
     expect(setPressRules(off, { autoPressAt: 2 }).pressOnPress).toBe(false);
   });
 
-  it("states the real escalation — linear, and never described as doubling", () => {
-    expect(pressOnPressBlurb(10, 2)).toContain("$10, then $20, then $30, then $40");
-    // $15 is the discriminating value: linear from $5 produces it, doubling
-    // ($5 → $10 → $20 → $40) cannot.
-    expect(pressOnPressBlurb(5, 3)).toContain("$5, then $10, then $15, then $20");
-    expect(pressOnPressBlurb(5, 3)).toContain("goes 3 down");
-    expect(pressOnPressBlurb(10, 2)).toMatch(/never a bigger one/);
-    expect(pressOnPressBlurb(10, 2)).not.toMatch(/doubl/i);
-  });
 });

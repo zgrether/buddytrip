@@ -200,30 +200,3 @@ export function setPressRules(
   return { ...draft, ...rulesForKind(draft.kind, { autoPressAt, pressOnPress }) };
 }
 
-/**
- * The money-language description of what presses-on-presses does (§5/§9: label
- * it in money, not in rules). One string, so the toggle's blurb and any confirm
- * can't describe the same switch two ways.
- *
- * Two things it has to get right, and the earlier version got neither:
- *
- * 1. **The progression is LINEAR, not doubling.** A press is a bet of the SAME
- *    size (§3.1), so a $10 round with three of them is four live bets at $40 a
- *    hole — the arithmetic §6's own worked example uses. The handoff's
- *    "exposure can double repeatedly" describes a different and much more
- *    brutal game than the one that was approved, and a warning that overstates
- *    the number is still a warning that is wrong.
- * 2. **It says WHAT climbs.** "$10 a hole becomes $20" reads as the stake
- *    growing. It doesn't — a second bet joins it at the same stake. Being
- *    accurate about money means naming that, because "my stake doubled" and
- *    "I now have two bets" are different things to be afraid of, and only one
- *    of them is true.
- */
-export function pressOnPressBlurb(amount: number, threshold: number | null): string {
-  const n = threshold ?? 2;
-  return (
-    `Every press can start another once it goes ${n} down — each one a fresh $${amount} bet ` +
-    `alongside the last, never a bigger one. A hole costs $${amount}, then $${amount * 2}, ` +
-    `then $${amount * 3}, then $${amount * 4}, and nobody decides on any of it after the first.`
-  );
-}

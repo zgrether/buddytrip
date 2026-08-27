@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { X, RotateCcw, Users, Table2, Zap, Coins } from "lucide-react";
+import { RotateCcw, Users, Table2, Zap, Banknote } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
   readQuickGameState,
@@ -12,11 +12,7 @@ import {
   quickGamePips,
   quickGameStandings,
   buildRosterFromDrafts,
-  buildQuickGameFromDrafts,
   draftRowsFrom,
-  buildQuickMatchSides,
-  quickFormatPlayerCountError,
-  quickMatchGloriousAvailable,
   quickGameTitle,
   quickGameSubtitle,
   hasAnyScore,
@@ -32,17 +28,9 @@ import {
   type DraftPlayerRow,
 } from "@/lib/quickGame";
 import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
+import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
 import type { HoleOutcomeResult } from "@/lib/matchPlay";
-import type { Team } from "@/lib/rackNStack";
-import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
-import {
-  buildDoubleBet,
-  computeSideBets,
-  formatMoney,
-  type SideBet,
-  type SideBetsState,
-  EMPTY_SIDE_BETS,
-} from "@/lib/sideBets";
+import { buildDoubleBet, type SideBet } from "@/lib/sideBets";
 import {
   quickSideBets,
   quickHasBets,
@@ -59,7 +47,7 @@ import { SideBetStrip } from "@/components/games/bets/SideBetStrip";
 import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
 import { SideBetSettlementBar } from "@/components/games/bets/SideBetSettlementBar";
 import { LastHoleDoublePrompt } from "@/components/games/bets/LastHoleDoublePrompt";
-import { PLAYER_COLORS, unitsFromSchema } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
@@ -68,11 +56,7 @@ import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
-import {
-  SettingsNavRow,
-  MatchSetupFields,
-  RosterFields,
-} from "@/components/games/quick/setupFields";
+import { SettingsNavRow, RosterFields } from "@/components/games/quick/setupFields";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
 
 /**
@@ -244,6 +228,9 @@ function QuickGamePageInner() {
   const [confirmReset, setConfirmReset] = useState(false);
   /** The side-bet breakdown (§6) — behind a tap, never expanded by default. */
   const [betsOpen, setBetsOpen] = useState(false);
+  /** The setup sheet, on the landing state. Opens on arrival: reaching this
+   *  route with no round means setting one up is the only thing to do here. */
+  const [setupOpen, setSetupOpen] = useState(true);
   /**
    * Bets staged BEFORE the round exists (§8). Side bets are agreed on the first
    * tee, not found in a settings panel after two holes — so the landing page
@@ -252,7 +239,6 @@ function QuickGamePageInner() {
    * A draft, in the same sense as the roster and the course beside it: nothing
    * is written until Start, so abandoning the setup screen leaves nothing.
    */
-  const [draftBets, setDraftBets] = useState<SideBetsState>(EMPTY_SIDE_BETS);
 
   // Draft roster — shared by the pre-start setup screen (blank) and the
   // post-start roster editor (pre-populated from `state` in openRosterEditor).
@@ -268,29 +254,16 @@ function QuickGamePageInner() {
   // (the URL `?format=`, resolved above), not an in-page picker. All of it lives
   // in local state (not `state`) because none of it means anything until Start
   // — the round doesn't exist yet.
-  const [draftEntryMode, setDraftEntryMode] = useState<"score" | "outcome">("score");
   /** Signed relative handicap: <0 → side A receives |n|, >0 → side B receives n,
    *  0 → even. The trip-side model (`RelHandicapControl`) — strokes go to
    *  exactly ONE side, never split. */
-  const [draftRelStrokes, setDraftRelStrokes] = useState(0);
-  const [draftGlorious, setDraftGlorious] = useState(false);
-  const [draftGloriousHoles, setDraftGloriousHoles] = useState(GLORIOUS_HOLES_DEFAULT);
   /** { [playerId]: "A" | "B" } for rack. Unassigned players default to A at build. */
-  const [draftTeams, setDraftTeams] = useState<Record<string, Team>>({});
   /** Set when Start is pressed while a round is already saved — one key holds one
    *  game, so starting a new one REPLACES it. That must never be silent. */
   const [confirmReplace, setConfirmReplace] = useState(false);
 
-  const namedDraftPlayers = draftPlayers.filter((r) => r.name.trim().length > 0);
   /** §6 — for a match the question is not how MANY but whether both sides have
    *  someone, which the rows themselves answer. Any split is legal. */
-  const playerCountError =
-    format === "match"
-      ? buildQuickMatchSides(namedDraftPlayers)
-        ? null
-        : "Match play needs a player on each side."
-      : quickFormatPlayerCountError(format, namedDraftPlayers.length);
-  const gloriousAvailable = quickMatchGloriousAvailable({ entryMode: draftEntryMode, course: draftCourse });
 
   // Resume this FORMAT's round from its own key. Depends on `format`, not just
   // `[]`: Next.js reuses this component across a `?format=` change (same
@@ -367,16 +340,6 @@ function QuickGamePageInner() {
     })();
   }
 
-  /**
-   * Start the round. The setup screen only renders when nothing is saved, so
-   * this never destroys a round on its own — the REPLACE path is
-   * `newGame`/`confirmReplace` below, which is the only way to reach setup while
-   * a round is in progress and is confirmed before it clears anything.
-   */
-  function start() {
-    if (playerCountError) return;
-    buildAndStart();
-  }
 
   /**
    * Start completely over — blank roster, no course, this SAME format
@@ -404,41 +367,19 @@ function QuickGamePageInner() {
     resetGame();
   }
 
+  /** Reset game (§5) — everything goes: players, course, scores, bets. Lands
+   *  on the landing state, where the setup sheet opens blank, which is what
+   *  "back to a blank setup" now means. */
   function resetGame() {
     setState(null);
     setDraftPlayers(blankDraftPlayers(format));
     setDraftCourse(null);
-    setDraftBets(EMPTY_SIDE_BETS);
-    setDraftRelStrokes(0);
-    setDraftGlorious(false);
-    setDraftTeams({});
+    setSetupOpen(true);
     setConfirmReplace(false);
     setSettingsOpen(false);
     setView("entry");
   }
 
-  function buildAndStart() {
-    // The build itself is pure and shared (`buildQuickGameFromDrafts`) — the
-    // dashboard's add sheet starts a round from the same drafts, and two
-    // copies of this is how one of them forgets the bets or defaults a
-    // modifier the other refuses.
-    const next = buildQuickGameFromDrafts({
-      format,
-      players: draftPlayers,
-      course: draftCourse,
-      bets: draftBets,
-      entryMode: draftEntryMode,
-      relStrokes: draftRelStrokes,
-      glorious: draftGlorious,
-      gloriousHoles: draftGloriousHoles,
-      gloriousAvailable,
-      teams: draftTeams,
-    });
-    if (!next) return;
-    setState(next);
-    setConfirmReplace(false);
-    setView("entry");
-  }
 
 
   function onChange(pid: string, label: string, value: number) {
@@ -494,9 +435,6 @@ function QuickGamePageInner() {
         : s
     );
   }
-  function setBetPerspective(playerId: string) {
-    setState((s) => (s ? { ...s, bets: { ...s.bets, perspectivePlayerId: playerId } } : s));
-  }
   function declineDouble(parentBetId: string) {
     setState((s) =>
       s
@@ -511,7 +449,6 @@ function QuickGamePageInner() {
     setState(null);
     setDraftPlayers(blankDraftPlayers(format));
     setDraftCourse(null);
-    setDraftBets(EMPTY_SIDE_BETS);
     setView("entry");
   }
   function discard() {
@@ -553,10 +490,32 @@ function QuickGamePageInner() {
    * Play's whole state is one local object with no other writer, so replacing
    * it is atomic and there is nothing this can race against.
    */
+  /**
+   * Clear scores (§5) — the round STAYS, only what was played goes.
+   *
+   * This used to stage the roster into drafts and null the state, landing you
+   * back on the setup screen with the players filled in. That stopped working
+   * the moment setup became a sheet reading SAVED state (§3): a null round
+   * opens a blank sheet, so "players stay" would have lost the players — the
+   * label contradicting itself, silently.
+   *
+   * Emptying in place is what the label said all along, and it keeps you where
+   * you are instead of bouncing through setup to get back. The bets are kept
+   * deliberately: they derive their tally from scores, so with the scores gone
+   * every figure is zero, which IS "bets will start over".
+   */
   function clearScores() {
-    if (!state) return;
-    prefillDrafts(state);
-    setState(null);
+    setState((s) =>
+      s
+        ? {
+            ...s,
+            values: {},
+            currentHole: 1,
+            finished: false,
+            ...(s.format === "match" ? { outcomes: {} } : {}),
+          }
+        : s
+    );
     setView("entry");
     setConfirmReset(false);
     setSettingsOpen(false);
@@ -616,21 +575,6 @@ function QuickGamePageInner() {
    * and every bet reads as "starts hole 1": exactly right for a bet being
    * agreed before anyone has hit.
    */
-  const setupBetPlayers = namedDraftPlayers.slice(0, 4).map((r, i) => ({
-    id: r.id,
-    name: r.name.trim(),
-    color: PLAYER_COLORS[i % PLAYER_COLORS.length],
-  }));
-  const setupHoleCount = unitsFromSchema(draftCourse?.schema).length;
-  const setupBetResult = computeSideBets({
-    holes: Array.from({ length: setupHoleCount }, (_, i) => i + 1),
-    bets: draftBets.bets,
-    scoring: { mode: "net", net: {} },
-  });
-  /** §10 — betting is hidden entirely below two players. One person has nobody
-   *  to bet with, and an empty bet screen is worse than no entry point. */
-  const setupBetsAvailable = setupBetPlayers.length >= 2;
-
   // ── Side bets, derived ────────────────────────────────────────────────────
   // Recomputed on every render from the recorded bets + the scores. There is no
   // cached tally to invalidate and no press written down anywhere, which is the
@@ -687,7 +631,6 @@ function QuickGamePageInner() {
             nassauAvailable={quickNassauAvailable(state)}
             perspectivePlayerId={quickBetPerspective(state)}
             sideName={(side) => quickBetSideName(state, side)}
-            onSetPerspective={setBetPerspective}
             onAdd={addBets}
             onRemove={removeBet}
             onClose={() => setBetsOpen(false)}
@@ -777,123 +720,48 @@ function QuickGamePageInner() {
     );
   }
 
-  // ── Setup ──
+  /**
+   * ── Landing ── no saved round for this format.
+   *
+   * The route keeps working for a direct link or a refresh, and it presents
+   * the SAME setup sheet the dashboard tile opens (§3) rather than a second
+   * setup screen. The 123-line form that used to live here is gone: two
+   * implementations of "start a round" is how one of them stops carrying the
+   * bets, or defaults a modifier the other refuses.
+   *
+   * The landing itself is deliberately thin. It exists because a sheet needs
+   * something behind it and there is no hole to show yet — not as a screen in
+   * its own right.
+   */
   if (!state) {
     return (
       <div className="mx-auto max-w-md px-4 py-6" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
-        <div className="flex items-center justify-between">
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>⚡ {QUICK_GAME_LABEL[format]}</h1>
-          <button onClick={() => router.push("/dashboard")} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full" style={{ color: "var(--color-bt-text-dim)" }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* No separate instructional line — the "Players"/"Handicaps" column
-            headers inside RosterFields communicate the same thing (feedback:
-            the prose subtitle was redundant with them). Match hides the
-            per-player handicap column entirely: its strokes are RELATIVE (one
-            side gets them), so a per-player 0–18 control there would be a
-            second, contradictory handicap model on one screen. */}
-        <div className="mt-4">
-          <RosterFields
-            draftPlayers={draftPlayers}
-            onChangeName={setDraftName}
-            onChangeStrokes={setDraftStrokes}
-            onAdd={addDraftRow}
-            onRemove={removeDraftRow}
-            sided={format === "match"}
-            showHandicaps={format !== "match"}
-            teams={format === "rack" ? draftTeams : undefined}
-            onToggleTeam={
-              format === "rack"
-                ? (id) => setDraftTeams((t) => ({ ...t, [id]: (t[id] ?? "A") === "A" ? "B" : "A" }))
-                : undefined
-            }
-            draftCourse={draftCourse}
-            onOpenCoursePicker={() => setCoursePickerOpen(true)}
-            onClearCourse={() => setDraftCourse(null)}
-            courseBusy={courseBusy}
-            courseError={courseError}
-          />
-
-          {/* §8 — set up before the round, on the landing page, not buried in
-              settings after the game has started: this is where you are when
-              someone suggests a bet. Hidden below two players (§10). */}
-          {setupBetsAvailable && (
-            <div className="mt-4">
-              <SettingsNavRow
-                icon={<Coins size={16} />}
-                label="Side bets"
-                blurb={
-                  draftBets.bets.length > 0
-                    ? `${draftBets.bets.length} set up · ${formatMoney(setupBetResult.exposure.perHole)}/hole.`
-                    : "Skins, head to head, presses — the scorecard keeps the tally."
-                }
-                onClick={() => setBetsOpen(true)}
-                testId="quick-game-setup-side-bets-btn"
-              />
-            </div>
-          )}
-        </div>
-
-        {format === "match" && (
-          <MatchSetupFields
-            players={namedDraftPlayers}
-            entryMode={draftEntryMode}
-            onEntryMode={setDraftEntryMode}
-            relStrokes={draftRelStrokes}
-            onRelStrokes={setDraftRelStrokes}
-            gloriousAvailable={gloriousAvailable}
-            glorious={draftGlorious}
-            onGlorious={setDraftGlorious}
-            gloriousHoles={draftGloriousHoles}
-            onGloriousHoles={setDraftGloriousHoles}
-          />
-        )}
-
-        {playerCountError && (
-          <p className="mt-4" style={{ fontSize: 13, color: "var(--color-bt-warning)" }} data-testid="quick-game-count-error">
-            {playerCountError}
-          </p>
-        )}
-
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>
+          ⚡ {QUICK_GAME_LABEL[format]}
+        </h1>
+        <p className="mt-1" style={{ fontSize: 13.5, color: "var(--color-bt-text-dim)" }}>
+          Nothing in progress. Set one up to start scoring.
+        </p>
         <button
-          onClick={start}
-          disabled={!canSubmitRoster || !!playerCountError}
-          className="mt-5 w-full disabled:opacity-40"
-          style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
-          data-testid="quick-game-start"
+          type="button"
+          onClick={() => setSetupOpen(true)}
+          data-testid="quick-game-landing-setup"
+          className="mt-4 w-full rounded-xl py-3"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)", fontSize: 15, fontWeight: 700 }}
         >
-          Start game
+          Set up a round
         </button>
 
-        {coursePickerOpen && (
-          <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourseToDraft} />
-        )}
-
-        {/* The SAME sheet the in-round tracker opens — fed from drafts rather
-            than a saved round, so there is one bet UI rather than a setup copy
-            and an in-round copy that drift. */}
-        {betsOpen && (
-          <SideBetSheet
-            players={setupBetPlayers}
-            result={setupBetResult}
-            recordedBetIds={draftBets.bets.map((b) => b.id)}
-            sidesLocked={false}
-            lockedSides={[]}
-            holeCount={setupHoleCount}
-            currentHole={1}
-            nassauAvailable={setupHoleCount >= 18}
-            perspectivePlayerId={draftBets.perspectivePlayerId ?? setupBetPlayers[0]?.id ?? null}
-            sideName={(side) =>
-              side.playerIds
-                .map((id) => setupBetPlayers.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player")
-                .join(" & ")
-            }
-            onSetPerspective={(playerId) => setDraftBets((b) => ({ ...b, perspectivePlayerId: playerId }))}
-            onAdd={(added) => setDraftBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
-            onRemove={(betId) => setDraftBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
-            onClose={() => setBetsOpen(false)}
+        {setupOpen && (
+          <QuickGameSetupSheet
+            format={format}
+            onClose={() => setSetupOpen(false)}
+            onStarted={() => {
+              // Written by the sheet — pick it up and drop straight into scoring.
+              setState(readQuickGameState(format));
+              setSetupOpen(false);
+              setView("entry");
+            }}
           />
         )}
       </div>
@@ -1074,13 +942,8 @@ function QuickGamePageInner() {
             {/* §10 — hidden entirely with one player, in-round as at setup. */}
             {state.players.length >= 2 && (
             <SettingsNavRow
-              icon={<Coins size={16} />}
-              label="Side bets"
-              blurb={
-                betsOn && betStrip
-                  ? `${betStrip.exposure.liveBetCount} live · ${formatMoney(betStrip.exposure.perHole)}/hole.`
-                  : "Nassau, skins, presses — the scorecard keeps the tally."
-              }
+              icon={<Banknote size={16} />}
+              label="Side Bets"
               onClick={() => {
                 setSettingsOpen(false);
                 setBetsOpen(true);
