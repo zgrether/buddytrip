@@ -43,6 +43,7 @@ const settingsRows = (over: Partial<Parameters<typeof SlateSettingsRows>[0]> = {
       phase="building"
       canEdit
       scoringRows={<div data-testid="scoring-rows-slot" />}
+      deadlineRow={<div data-testid="deadline-row-slot" />}
       onOpenSlate={noop}
       onOpenPicks={noop}
       onLock={noop}

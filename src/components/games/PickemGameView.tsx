@@ -20,6 +20,7 @@ import {
   type PickemSettingsDraft,
 } from "@/components/games/pickem/PickemScoringRows";
 import { PickemSheet } from "@/components/games/pickem/PickemSheet";
+import { PickemDeadlineRow } from "@/components/games/pickem/PickemDeadlineRow";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   msUntilDeadline,
@@ -287,6 +288,20 @@ export function PickemGameView() {
               useConfidence={q.data.settings.useConfidence}
               phase={phase}
               canEdit={canEdit}
+              deadlineRow={
+                <PickemDeadlineRow
+                  deadline={clock.picksDeadline}
+                  // Open only. `set_pickem_phase('open')` is what writes the
+                  // deadline, and it also COALESCEs opened_at and CLEARS
+                  // locked_at — so offering this while building would publish
+                  // the game, and while locked would silently unlock it.
+                  editable={canEdit && phase === "picks_open"}
+                  busy={setPhase.isPending}
+                  onChange={(deadline) =>
+                    setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline })
+                  }
+                />
+              }
               scoringRows={
                 <PickemScoringRows
                   settings={settingsDraft}
@@ -423,6 +438,7 @@ export function SlateSettingsRows({
   phase,
   canEdit,
   scoringRows,
+  deadlineRow,
   onOpenSlate,
   onOpenPicks,
   onLock,
@@ -439,6 +455,9 @@ export function SlateSettingsRows({
   /** The two scoring settings, rendered by `PickemScoringRows`. Passed in
    *  rather than built here so this component stays free of tRPC. */
   scoringRows: React.ReactNode;
+  /** The deadline control, passed in for the same reason as `scoringRows` —
+   *  this component stays free of tRPC. */
+  deadlineRow: React.ReactNode;
   onOpenSlate: () => void;
   onOpenPicks: () => void;
   onLock: () => void;
@@ -517,6 +536,10 @@ export function SlateSettingsRows({
         <ZoneHeader>How scoring works</ZoneHeader>
         {scoringRows}
       </div>
+
+      {/* The deadline sits with the lifecycle it belongs to, above the buttons
+          that change it — it IS a lock, just a scheduled one. */}
+      {phase !== "building" && deadlineRow}
 
       {/* ── The lifecycle, as ONE control ─────────────────────────────────
           Reopen used to live here alone, so settings held the way BACK out of
