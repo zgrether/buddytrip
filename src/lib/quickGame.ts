@@ -559,10 +559,6 @@ export function quickFormatPlayerCountError(format: QuickGameFormat, count: numb
   return null;
 }
 
-/** A quick match is a 2v2 exactly when four people are playing. NOT a setting —
- *  the count IS the shape (handoff: "it's how many names you enter"). */
-export const isDoubles = (playerCount: number) => playerCount === 4;
-
 /**
  * Build the two sides from the roster order. 1v1 pairs [0] vs [1]; a 2v2 pairs
  * by the caller's `partnerOf` choice — which of the other three is with player
@@ -590,10 +586,80 @@ export function buildQuickMatchSides(
   return { sideA: mk(a), sideB: mk(b) };
 }
 
-/** A match is a doubles game when either side holds more than one player.
- *  Derived from the sides, never a setting — the count IS the shape. */
-export const isDoublesSides = (sideA: QuickMatchSide, sideB: QuickMatchSide) =>
-  sideA.playerIds.length > 1 || sideB.playerIds.length > 1;
+/** Everything the setup screen collects, in one object — the input to
+ *  `buildQuickGameFromDrafts`. */
+export interface QuickGameDrafts {
+  format: QuickGameFormat;
+  players: DraftPlayerRow[];
+  course: QuickGameCourse | null;
+  bets: SideBetsState;
+  /** Match only. */
+  entryMode: "score" | "outcome";
+  /** Signed relative handicap: <0 → side A receives, >0 → side B. */
+  relStrokes: number;
+  glorious: boolean;
+  gloriousHoles: number;
+  gloriousAvailable: boolean;
+  /** Rack only. */
+  teams: Record<string, Team>;
+}
+
+/**
+ * Build a playable round from the setup drafts, or null if they do not make
+ * one (no named players; a match with an empty side).
+ *
+ * PURE, and extracted from `buildAndStart` because two surfaces now start a
+ * round — the quick-game page and the add sheet the dashboard tile opens
+ * (device pass §3). The alternative was the same twenty lines in both, which
+ * is how one of them ends up not carrying the bets, or defaulting a modifier
+ * the other refuses. Being pure, it is also the half that can be tested
+ * without rendering anything.
+ */
+export function buildQuickGameFromDrafts(d: QuickGameDrafts): QuickGameState | null {
+  const roster = buildRosterFromDrafts(d.players);
+  if (!roster) return null;
+  const common = {
+    version: QUICK_GAME_STATE_VERSION,
+    players: roster.players,
+    course: d.course,
+    values: {},
+    finished: false,
+    currentHole: 1,
+    // Bets staged before the round begins come through as-is; the perspective
+    // defaults to the first player entered when nothing chose one.
+    bets: { ...d.bets, perspectivePlayerId: d.bets.perspectivePlayerId ?? roster.players[0]?.id ?? null },
+  };
+
+  if (d.format === "match") {
+    // Rows carry their side; `buildRosterFromDrafts` preserves row ids, so the
+    // named rows and the built players line up one to one.
+    const named = d.players.filter((r) => r.name.trim().length > 0).slice(0, 4);
+    const sides = buildQuickMatchSides(named);
+    if (!sides) return null;
+    // The signed relative value resolves to strokes on exactly ONE side.
+    const n = Math.abs(d.relStrokes);
+    sides.sideA.strokes = d.relStrokes < 0 ? n : 0;
+    sides.sideB.strokes = d.relStrokes > 0 ? n : 0;
+    return {
+      ...common,
+      format: "match",
+      entryMode: d.entryMode,
+      sideA: sides.sideA,
+      sideB: sides.sideB,
+      outcomes: {},
+      // Only persist the modifier when it can actually apply — `gloriousConfig`
+      // would ignore it otherwise, and a stored-but-inert key is the kind of
+      // "on but does nothing" state this build is trying not to create.
+      modifiers: d.glorious && d.gloriousAvailable ? { glorious_holes: { holes: d.gloriousHoles } } : {},
+    };
+  }
+  if (d.format === "rack") {
+    const teams: Record<string, Team> = {};
+    for (const p of roster.players) teams[p.id] = d.teams[p.id] ?? "A";
+    return { ...common, format: "rack", strokes: roster.strokes, teams };
+  }
+  return { ...common, format: "stroke", strokes: roster.strokes };
+}
 
 // ── Match play ───────────────────────────────────────────────────────────────
 
