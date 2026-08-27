@@ -258,6 +258,42 @@ export const pickemRouter = router({
       return { ok: true };
     }),
 
+  // ── the matches ─────────────────────────────────────────────────────────
+  /**
+   * Writes into `game_matches`, not a private table — the divisor, MatchSides,
+   * the guest merge and the realtime publication all already speak it.
+   *
+   * NOT gated on the lock (spec §1, correcting the original spec's fairness
+   * rule): there is no strategic reason to pick differently against one
+   * opponent than another, and with confidence off the idea is meaningless.
+   * What survives is a REVEAL rule — participants do not SEE matches until
+   * picks lock — and that is enforced by the read, not by refusing the write.
+   */
+  saveMatches: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        pairs: z
+          .array(
+            z.object({
+              a: z.string().nullable(),
+              b: z.string().nullable(),
+            })
+          )
+          .max(100),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("save_pickem_matches", {
+        p_game_id: input.gameId,
+        p_pairs: input.pairs,
+      });
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
+
   // ── the deadline, on its own ────────────────────────────────────────────
   /**
    * Split out of `setPhase('open')` (migration 153), which also coalesces
@@ -348,6 +384,18 @@ function pickemError(message: string): TRPCError {
     return new TRPCError({
       code: "BAD_REQUEST",
       message: "Every game needs its own rank, with no repeats.",
+    });
+  }
+  if (message.includes("MATCH_DECIDED")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      message: "A match already has a result. Clear it before changing the pairings.",
+    });
+  }
+  if (message.includes("DUPLICATE_PLAYER")) {
+    return new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Someone is in more than one match — a person plays once.",
     });
   }
   if (message.includes("BAD_TOTAL")) {
