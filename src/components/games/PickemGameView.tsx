@@ -263,7 +263,16 @@ export function PickemGameView() {
               // closed, the slate never appeared, and nothing errored.
               // (Related to the known deep-link gap in `useGameSettingsOverlay`:
               // the gear path and the deep-link path do not close the same way.)
+              //
+              // The Sheet it opens now portals to body (#1091) — rendered inline
+              // it was capped inside the game panel's `z-30` stacking context and
+              // opened UNDERNEATH this very overlay, which is what made "The
+              // slate" look like a dead button.
               onOpenSlate={() => setSlateOpen(true)}
+              onOpenPicks={() =>
+                setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
+              }
+              onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
               onReopen={() =>
                 setPhase.mutate({ tripId: tripId!, gameId, action: "reopen" })
               }
@@ -286,7 +295,7 @@ export function PickemGameView() {
  * "nothing added yet" and "a finished slate, unpublished" must be
  * indistinguishable from outside.
  */
-function PhaseBody({
+export function PhaseBody({
   slateCount,
   canEdit,
   onOpenSlate,
@@ -306,26 +315,47 @@ function PhaseBody({
       body="The slate is still being put together. You'll get a countdown to the deadline once picks are open."
     >
         {/* The runner's controls sit UNDER the same words a member reads, rather
-            than replacing them — so what he sees is what they see, plus a door. */}
+            than replacing them — so what he sees is what they see, plus a door.
+
+            THE PRIMARY ACTION FOLLOWS THE STATE, and getting that backwards is
+            what made this screen look like it had no way forward. With no slate
+            there is one job: build it. With a slate, the job is to OPEN PICKS —
+            that is the transition sixteen people are waiting on, and editing the
+            slate again is the lesser action.
+
+            It was the other way round: "Edit the slate · N games" took the
+            filled primary and "Open picks" was bare accent text under it, at
+            12px with no background, border or padding. It read as a caption, and
+            was reported as the switch not existing. It existed and had been
+            styled as a label. */}
         {canEdit && (
-          <div className="mt-3 flex flex-col items-center gap-2">
-            <Primary onClick={onOpenSlate}>
-              {slateCount === 0 ? "Build the slate" : `Edit the slate · ${slateCount} games`}
-            </Primary>
-            {slateCount > 0 && (
-              <button
-                type="button"
-                onClick={onOpenPicks}
-                disabled={opening}
-                data-testid="pickem-open-picks"
-                style={{
-                  fontSize: TYPE_SCALE.bodyDense,
-                  fontWeight: 600,
-                  color: "var(--color-bt-accent)",
-                }}
-              >
-                {opening ? "Opening…" : "Open picks"}
-              </button>
+          <div className="mt-4 flex flex-col items-center gap-2">
+            {slateCount === 0 ? (
+              <Primary onClick={onOpenSlate}>Build the slate</Primary>
+            ) : (
+              <>
+                <Primary onClick={onOpenPicks} disabled={opening} testId="pickem-open-picks">
+                  {opening ? "Opening…" : `Open picks · ${slateCount} games`}
+                </Primary>
+                {/* Says what the button DOES before it is pressed. Opening picks
+                    is reversible (Reopen the slate), but it is the moment the
+                    game becomes visible to everyone, so it should not be a
+                    surprise. */}
+                <p
+                  style={{
+                    fontSize: TYPE_SCALE.caption,
+                    color: "var(--color-bt-text-dim)",
+                    maxWidth: 260,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Everyone can start filling in their sheet. The slate freezes —
+                  you can still reopen it from settings.
+                </p>
+                <Secondary onClick={onOpenSlate} testId="pickem-edit-slate">
+                  Edit the slate
+                </Secondary>
+              </>
             )}
           </div>
         )}
@@ -334,11 +364,13 @@ function PhaseBody({
 }
 
 /** Settings-zone rows: the door to the slate, and Reopen. */
-function SlateSettingsRows({
+export function SlateSettingsRows({
   slateCount,
   phase,
   canEdit,
   onOpenSlate,
+  onOpenPicks,
+  onLock,
   onReopen,
   busy,
 }: {
@@ -346,6 +378,8 @@ function SlateSettingsRows({
   phase: ReturnType<typeof pickemPhase>;
   canEdit: boolean;
   onOpenSlate: () => void;
+  onOpenPicks: () => void;
+  onLock: () => void;
   onReopen: () => void;
   busy: boolean;
 }) {
@@ -372,6 +406,34 @@ function SlateSettingsRows({
         </span>
         <span style={{ color: "var(--color-bt-text-dim)" }}>›</span>
       </button>
+
+      {/* ── The lifecycle, in the place people look for it ──────────────────
+          Reopen lived here on its own, which meant settings held the way BACK
+          out of every state and none of the ways forward. Open and Lock are the
+          other two transitions on the same axis, so they belong beside it. The
+          game page keeps its own Open button — that is the one a runner reaches
+          first, and this is where he looks when he has already dismissed it. */}
+      {phase === "building" && slateCount > 0 && (
+        <LifecycleRow
+          title="Open picks"
+          body="Everyone can start filling in their sheet. The slate freezes until you reopen it."
+          action="Open picks"
+          onClick={onOpenPicks}
+          busy={busy}
+          testId="pickem-open-picks-settings"
+        />
+      )}
+
+      {phase === "picks_open" && (
+        <LifecycleRow
+          title="Lock picks now"
+          body="Closes every sheet immediately and reveals them to the trip. Use this when there is no deadline set, or to close early."
+          action="Lock picks"
+          onClick={onLock}
+          busy={busy}
+          testId="pickem-lock-picks"
+        />
+      )}
 
       {phase !== "building" && (
         <div
@@ -403,6 +465,55 @@ function SlateSettingsRows({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** One lifecycle transition: what it is, what it does, and the button. The body
+ *  copy is not decoration — each of these changes what sixteen other people can
+ *  see or do, and none of them is guessable from a two-word label. */
+function LifecycleRow({
+  title,
+  body,
+  action,
+  onClick,
+  busy,
+  testId,
+}: {
+  title: string;
+  body: string;
+  action: string;
+  onClick: () => void;
+  busy: boolean;
+  testId: string;
+}) {
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>{title}</div>
+      <div
+        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", margin: "2px 0 8px", lineHeight: 1.5 }}
+      >
+        {body}
+      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={busy}
+        data-testid={testId}
+        className="rounded-lg px-3 py-1.5 disabled:opacity-40"
+        style={{
+          fontSize: TYPE_SCALE.bodyDense,
+          fontWeight: 700,
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-base)",
+          minHeight: 36,
+        }}
+      >
+        {busy ? "Working…" : action}
+      </button>
     </div>
   );
 }
@@ -456,18 +567,64 @@ function Placeholder({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Primary({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function Primary({
+  onClick,
+  children,
+  disabled = false,
+  testId = "pickem-build-slate",
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+  /** The primary slot changes job with the state (build → open), so the id
+   *  travels with the ACTION rather than being fixed to the slot. */
+  testId?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      data-testid="pickem-build-slate"
-      className="rounded-xl px-4 py-2"
+      disabled={disabled}
+      data-testid={testId}
+      className="rounded-xl px-4 py-2.5 disabled:opacity-40"
       style={{
         background: "var(--color-bt-accent)",
         color: "var(--color-bt-base)",
         fontSize: TYPE_SCALE.bodyDense,
         fontWeight: 700,
+        minHeight: 44,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The lesser action beside a Primary — outlined, never a bare text link. A
+ *  bordered control reads as a control at a glance; that distinction is the
+ *  whole reason this pair exists. */
+function Secondary({
+  onClick,
+  children,
+  testId,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className="rounded-xl px-4 py-2"
+      style={{
+        background: "transparent",
+        color: "var(--color-bt-text-dim)",
+        border: "1px solid var(--color-bt-border)",
+        fontSize: TYPE_SCALE.bodyDense,
+        fontWeight: 600,
+        minHeight: 40,
       }}
     >
       {children}
