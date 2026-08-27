@@ -677,7 +677,7 @@ function SlateForm({
               onChange({
                 awayTeam: m.away,
                 homeTeam: m.home,
-                kickoff: formatKickoff(m.startsAt),
+                kickoff: formatKickoff(m.startsAt, m.startTimeKnown),
                 espnEventId: m.espnEventId,
                 // spread and note stay untouched — the line is the runner's
                 // editorial call, and setting it is part of the game.

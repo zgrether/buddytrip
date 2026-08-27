@@ -175,6 +175,7 @@ describe("upcomingFirst", () => {
       "401858432",
       "401856682",
       "401858454",
+      "401858465", // the TBD one still sorts by its date, which is real
     ]);
   });
 
@@ -183,13 +184,73 @@ describe("upcomingFirst", () => {
     // than "here is what they last played".
     const after = new Date("2027-01-01T00:00Z").getTime();
     const out = upcomingFirst(games, after);
-    expect(out).toHaveLength(3);
-    expect(out[0].espnEventId).toBe("401858454"); // most recent first
+    expect(out).toHaveLength(4);
+    expect(out[0].espnEventId).toBe("401858465"); // most recent first
   });
 
   it("drops an unparseable date rather than sorting NaN", () => {
-    const withJunk = [...games, { espnEventId: "x", away: "A", home: "B", startsAt: "soon", neutralSite: false }];
+    const withJunk = [
+      ...games,
+      { espnEventId: "x", away: "A", home: "B", startsAt: "soon", neutralSite: false, startTimeKnown: true },
+    ];
     expect(upcomingFirst(withJunk, 0).map((g) => g.espnEventId)).not.toContain("x");
+  });
+});
+
+describe("a to-be-scheduled kickoff", () => {
+  const games = normalizeSchedule(fixture.schedule);
+  const tbd = games.find((g) => g.espnEventId === "401858465")!;
+  const known = games.find((g) => g.espnEventId === "401858432")!;
+
+  it("is read from ESPN's timeValid flag, not guessed from the clock", () => {
+    expect(known.startTimeKnown).toBe(true);
+    expect(tbd.startTimeKnown).toBe(false);
+  });
+
+  it("does NOT arrive as midnight UTC — which is why a heuristic was wrong", () => {
+    // The real fixture: a TBD game is midnight US EASTERN expressed in UTC.
+    // 04:00Z in September, and 05:00Z once the DST change lands in November.
+    // A "is it local midnight?" test would have fired only for viewers in
+    // Eastern and shown everyone else a confident, wrong evening time.
+    expect(tbd.startsAt).toBe("2026-09-26T04:00Z");
+    expect(tbd.startsAt.endsWith("00:00Z")).toBe(false);
+  });
+
+  it("renders as TBD, keeping the DATE — that part is real", () => {
+    const out = formatKickoff(tbd.startsAt, tbd.startTimeKnown);
+    expect(out).toContain("Sep 26");
+    expect(out).toContain("TBD");
+    // ...and specifically not a time.
+    expect(out).not.toMatch(/\d:\d\d/);
+  });
+
+  it("a known kickoff still shows its time", () => {
+    const out = formatKickoff(known.startsAt, known.startTimeKnown);
+    expect(out).not.toContain("TBD");
+    expect(out).toMatch(/\d:\d\d/);
+  });
+
+  it("a MISSING flag means known, not TBD", () => {
+    // The flag marks the exception. Defaulting to TBD when a field goes missing
+    // would hide every real kickoff behind a shape change — failing loud in the
+    // wrong direction.
+    const raw = {
+      events: [
+        {
+          id: "1",
+          date: "2026-09-05T16:30Z",
+          competitions: [
+            {
+              competitors: [
+                { homeAway: "away", team: { displayName: "A" } },
+                { homeAway: "home", team: { displayName: "B" } },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(normalizeSchedule(raw)[0].startTimeKnown).toBe(true);
   });
 });
 

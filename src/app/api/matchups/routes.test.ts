@@ -128,6 +128,7 @@ describe("GET /api/matchups/schedule", () => {
         home: "Ohio State Buckeyes",
         startsAt: "2026-09-05T16:30Z",
         neutralSite: false,
+        startTimeKnown: true,
       },
     ]);
   });

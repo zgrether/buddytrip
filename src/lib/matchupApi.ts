@@ -87,6 +87,19 @@ export interface Matchup {
   startsAt: string;
   /** Neutral-site games have no real home team; the caller may want to say so. */
   neutralSite: boolean;
+  /**
+   * Is the KICKOFF TIME real, or is the game only scheduled to a date?
+   *
+   * ESPN says so explicitly (`timeValid`), which is worth knowing because the
+   * obvious heuristic is wrong in two directions. A to-be-scheduled game does
+   * NOT arrive as midnight UTC — it arrives as midnight US EASTERN expressed in
+   * UTC, so `04:00Z` in September and `05:00Z` after the DST change in
+   * November. Checking for a local midnight would therefore have fired only for
+   * viewers in Eastern and shown everyone else a confident, wrong evening time.
+   *
+   * The flag removes the guess entirely.
+   */
+  startTimeKnown: boolean;
 }
 
 // ── normalizers (raw ESPN → the above) ─────────────────────────────────────
@@ -156,7 +169,19 @@ export function normalizeSchedule(raw: unknown): Matchup[] {
     // pick a winner in, so it is dropped rather than half-filled.
     if (!away || !home) continue;
 
-    out.push({ espnEventId, away, home, startsAt, neutralSite: comp.neutralSite === true });
+    // Absent `timeValid` is treated as KNOWN: the flag is what marks the
+    // exception, and defaulting an ordinary game to "TBD" because a field went
+    // missing would hide real kickoffs behind a shape change.
+    const startTimeKnown = ev.timeValid !== false && comp.timeValid !== false;
+
+    out.push({
+      espnEventId,
+      away,
+      home,
+      startsAt,
+      neutralSite: comp.neutralSite === true,
+      startTimeKnown,
+    });
   }
   return out;
 }
@@ -260,7 +285,7 @@ export function upcomingFirst(matchups: Matchup[], now: number = Date.now(), lim
  * schema, so the browser's zone is the only one available and rendering the
  * instant is the honest thing to do.
  */
-export function formatKickoff(iso: string): string {
+export function formatKickoff(iso: string, startTimeKnown = true): string {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "";
 
@@ -275,6 +300,11 @@ export function formatKickoff(iso: string): string {
   // escaped-whitespace version of this got its backslash eaten in transit once
   // already, producing `/s*PM$/` which silently matched "PM" and left the space
   // behind. `trim()` handles every Unicode space separator, U+202F included.
+  // The DATE is real even when the time is not — a to-be-scheduled game is
+  // scheduled to a day. Showing the placeholder instant instead would put a
+  // confident wrong time in front of someone.
+  if (!startTimeKnown) return `${weekday} ${date}, TBD`;
+
   const raw = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const upper = raw.toUpperCase();
   const pm = upper.includes("PM");

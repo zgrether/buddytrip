@@ -270,7 +270,7 @@ export function MatchupSearch({
                     {g.home}
                   </div>
                   <div style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
-                    {formatKickoff(g.startsAt)}
+                    {formatKickoff(g.startsAt, g.startTimeKnown)}
                     {isTaken && " · already added"}
                   </div>
                 </button>
