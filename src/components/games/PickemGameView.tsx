@@ -21,10 +21,12 @@ import {
 } from "@/components/games/pickem/PickemScoringRows";
 import { PickemSheet } from "@/components/games/pickem/PickemSheet";
 import { PickemDeadlineRow } from "@/components/games/pickem/PickemDeadlineRow";
+import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   msUntilDeadline,
   picksOpen,
+  picksRevealed,
   pickemPhase,
   scoringSettingsEditable,
   slateEditable,
@@ -114,6 +116,7 @@ export function PickemGameView() {
    * a person looking at unsaved picks with nothing on screen saying so (§7.4,
    * CLAUDE.md #15).
    */
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savePicks = trpc.pickem.savePicks.useMutation({
     onSuccess: async () => {
@@ -143,6 +146,37 @@ export function PickemGameView() {
     },
     onError: (e) => showToast(e.message, "error"),
   });
+
+  const saveMatches = trpc.pickem.saveMatches.useMutation({
+    onSuccess: async () => {
+      showToast("Matches saved", "info");
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => showToast(e.message, "error"),
+  });
+
+  /** §4: the matches surface exists ONLY under individual matches. Team totals
+   *  has no matches at all, so it is ABSENT rather than rendered empty. */
+  const individualMatches = q.data?.settings.rollUp === "individual_matches";
+  const revealed = picksRevealed(clock);
+  const pointsTotal =
+    (q.data?.game as { points_total?: number | null } | undefined)?.points_total ?? null;
+  const matchPairs = useMemo(
+    () => (q.data?.matches ?? []).map((m) => ({ a: m.sideAId, b: m.sideBId })),
+    [q.data?.matches]
+  );
+  /**
+   * Names for the grid. `listMembers` already computes `displayName` with the
+   * right priority — trip nickname → account name → email → short id — so this
+   * reuses that rather than re-deriving a fourth version of "what do we call
+   * this person".
+   */
+  const membersQ = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const nameByUser = useMemo(() => {
+    const rows = (membersQ.data ?? []) as { memberId?: string; displayName?: string }[];
+    return new Map(rows.map((m) => [m.memberId ?? "", m.displayName ?? "Unknown"]));
+  }, [membersQ.data]);
+  const nameOf = (userId: string) => nameByUser.get(userId) ?? "Unknown";
 
   const gameName = name ?? q.data?.game.name ?? "Pick'em";
 
@@ -211,6 +245,66 @@ export function PickemGameView() {
           }
           opening={setPhase.isPending}
         />
+      ) : revealed && individualMatches ? (
+        /**
+         * §5/§6 — ONE PAGE, TWO STATES. Not a restructure: the sheet does not
+         * become a sub-view, the PAGE changes what it renders at the lock,
+         * keyed on `picksRevealed` — the same predicate the policy uses, so the
+         * screen cannot reveal something the API would refuse.
+         *
+         * Matches when set; the coming-soon note when not. Never an empty grid:
+         * §12 forbids it, and a runner is under no pressure to pair before the
+         * deadline (§5), so "locked, unpaired" is a normal state that must read
+         * as waiting rather than broken.
+         */
+        <>
+          {matchPairs.length > 0 ? (
+            <PickemMatchesPanel
+              teams={q.data.teams}
+              nameOf={nameOf}
+              pairs={matchPairs}
+              pointsTotal={pointsTotal}
+              canEdit={canEdit}
+              saving={saveMatches.isPending}
+              onSave={(pairs) => saveMatches.mutate({ tripId: tripId!, gameId, pairs })}
+            />
+          ) : (
+            <Empty
+              icon="◷"
+              heading="Matches coming soon"
+              body="Picks are locked. Whoever's running it hasn't set the matchups yet — they'll appear here."
+            />
+          )}
+          {/* Their own sheet, read-only and one tap away. They spent time on it
+              and should not have to hunt for what they submitted (§5). */}
+          <button
+            type="button"
+            onClick={() => setSheetOpen((v) => !v)}
+            data-testid="pickem-view-my-sheet"
+            className="mx-1 rounded-xl px-3 py-2.5 text-left"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+              fontSize: TYPE_SCALE.body,
+              fontWeight: 600,
+            }}
+          >
+            {sheetOpen ? "Hide my picks" : "See my picks"}
+          </button>
+          {sheetOpen && (
+            <PickemSheet
+              gameId={gameId}
+              slate={q.data.slate}
+              settings={q.data.settings}
+              myPicks={q.data.myPicks}
+              editable={false}
+              saving={false}
+              saveError={null}
+              deadlineMs={null}
+              onSave={() => {}}
+            />
+          )}
+        </>
       ) : (
         <>
           {/* ONE component for both states. `editable` comes from the CLOCK —
@@ -231,6 +325,22 @@ export function PickemGameView() {
             onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
           />
           {phase === "locked" && <Placeholder>The board lands in Phase 6.</Placeholder>}
+          {/* The runner pairs whenever they like — §1 deletes the
+              pairing-after-lock rule. Participants still see nothing until the
+              lock; that is the reveal above, not a gate on this. */}
+          {canEdit && individualMatches && (
+            <div className="mt-2">
+              <PickemMatchesPanel
+                teams={q.data.teams}
+                nameOf={nameOf}
+                pairs={matchPairs}
+                pointsTotal={pointsTotal}
+                canEdit={canEdit}
+                saving={saveMatches.isPending}
+                onSave={(pairs) => saveMatches.mutate({ tripId: tripId!, gameId, pairs })}
+              />
+            </div>
+          )}
         </>
       )}
 
