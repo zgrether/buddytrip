@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
 /**
@@ -16,6 +17,31 @@ import { ScrollLock } from "@/hooks/useScrollLock";
  * sheet on mobile, centered card on desktop; `useScrollLock` (react-remove-scroll)
  * locks the body and stacks correctly when sheets nest. Dismiss = tap the scrim,
  * the ✕, or whatever the body calls `onClose` from.
+ *
+ * ── PORTALS TO BODY, and this is load-bearing ───────────────────────────────
+ *
+ * `z-50` is only worth anything at the TOP LEVEL. Rendered inline, a Sheet
+ * inherits whatever stacking context its ancestors set — and every game surface
+ * lives inside `CompetitionFace`'s game panel, which is `fixed … z-30`. A
+ * `position:fixed` element carrying a z-index creates a stacking context, so the
+ * Sheet's `z-50` was capped *inside* z-30: correct relative to its siblings, and
+ * underneath anything genuinely at z-40 or z-50.
+ *
+ * What that produced: the pick'em slate opened UNDERNEATH the settings
+ * slide-over, which portals to body and therefore holds a real z-50. The Sheet
+ * was in the DOM, `visible`, non-zero opacity, correct size — and completely
+ * covered. So "The slate" read as a dead button, nothing errored, and a check
+ * that the modal had RENDERED passed, because it had. `elementFromPoint` at the
+ * modal's own centre is what actually caught it.
+ *
+ * `SettingsSlideOver` already portals for exactly this reason, and its own
+ * comment names the trap: "`position:fixed; z-30` (`CompetitionFace`), which
+ * caps every descendant's [stacking]". The shared primitive had not learned it —
+ * which made the line above, "stacks correctly when sheets nest", true only for
+ * sheets that happened not to nest under a stacking context.
+ *
+ * A portal moves the DOM node, not the React tree: context, state and event
+ * bubbling through React are unchanged.
  */
 export function Sheet({
   title,
@@ -41,7 +67,7 @@ export function Sheet({
    *  passes `p-0`. Always keeps `flex-1 overflow-y-auto`. */
   bodyClassName?: string;
 }) {
-  return (
+  const tree = (
     <ScrollLock>
       <div
         className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
@@ -93,4 +119,21 @@ export function Sheet({
       </div>
     </ScrollLock>
   );
+
+  /**
+   * Portal only where there IS a document.
+   *
+   * NOT `if (typeof document === "undefined") return null` — the guard
+   * `SettingsSlideOver` uses. That is correct for a component nothing renders
+   * off-browser, and wrong here: `Sheet`'s consumers are covered by
+   * `renderToStaticMarkup` tests in a `node` environment (no jsdom), so
+   * returning null would have silently emptied every one of them. It did —
+   * 25 assertions in `PickemSlateModal.test.tsx` went red in one go, which is
+   * the good version of that mistake.
+   *
+   * Rendering the tree inline off-browser cannot produce a hydration mismatch,
+   * because a Sheet is never open during a real server render: `open` starts
+   * false in every consumer and is only ever set by an interaction.
+   */
+  return typeof document === "undefined" ? tree : createPortal(tree, document.body);
 }
