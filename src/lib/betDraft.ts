@@ -80,6 +80,19 @@ export function toggleWhoIsIn(draft: BetDraft, playerId: string): BetDraft {
   return { ...draft, whoIsIn, kind, ...rulesForKind(kind, draft) };
 }
 
+/**
+ * Replace who is in outright — the Everyone / Clear control.
+ *
+ * Routed through the same kind rule as `toggleWhoIsIn` rather than assigning
+ * `whoIsIn` directly: tapping Everyone in a foursome has to make the bet a pot
+ * for exactly the reason tapping the fourth chip does, and two paths to the
+ * same state is how one of them forgets.
+ */
+export function setWhoIsIn(draft: BetDraft, playerIds: string[]): BetDraft {
+  const kind: BetKind = playerIds.length > 2 ? "skins" : draft.kind;
+  return { ...draft, whoIsIn: playerIds, kind, ...rulesForKind(kind, draft) };
+}
+
 /** Set the bet kind, dropping any rule the new kind does not carry. */
 export function setBetKind(draft: BetDraft, kind: BetKind): BetDraft {
   return { ...draft, kind, ...rulesForKind(kind, draft) };

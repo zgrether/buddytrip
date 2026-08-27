@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { Stepper } from "@/components/games/Stepper";
@@ -25,6 +25,7 @@ import {
   pressOnPressBlurb,
   setBetKind,
   setPressRules,
+  setWhoIsIn,
   sidesFromWhoIsIn,
   toggleWhoIsIn,
   type BetDraft,
@@ -385,6 +386,9 @@ function BetForm({
         previewIds()
       );
   const error = betDraftError(draft, sides, { holeCount });
+  /** Everyone already in — drives the Everyone/Clear flip, so one control
+   *  covers both directions rather than two that can disagree. */
+  const allIn = players.length > 0 && players.every((p) => draft.whoIsIn.includes(p.id));
 
   const commit = () => {
     if (error) return;
@@ -402,41 +406,76 @@ function BetForm({
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       data-testid="side-bet-form"
     >
-      {/* Who's in — a checkbox each (§10). No instructions: with the right
-          header and control there is nothing to explain, and a control that
-          needs a sentence is usually the wrong control. */}
-      <FieldLabel>Who&rsquo;s in</FieldLabel>
+      {/* Who's in — the chip treatment `BracketFieldPicker` uses for picking a
+          field (§10, revised). Full-width checkbox rows made four players look
+          like a form to fill in; a wrap of chips reads as a roster you tap,
+          and it is the selection idiom this app already has. No team grouping
+          here — Quick Play has no teams, so the sections that picker draws
+          would be one unnamed group. */}
       {sidesLocked ? (
-        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }} data-testid="side-bet-sides-locked">
-          {sides.map(sideName).join(" v ")} — a match is scored side against side, so the bet is too.
-        </div>
+        <>
+          <FieldLabel>Who&rsquo;s in</FieldLabel>
+          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }} data-testid="side-bet-sides-locked">
+            {sides.map(sideName).join(" v ")} — a match is scored side against side, so the bet is too.
+          </div>
+        </>
       ) : (
-        <div className="flex flex-col gap-1">
-          {players.map((p) => {
-            const on = draft.whoIsIn.includes(p.id);
-            return (
-              <label
-                key={p.id}
-                data-testid="side-bet-player-check"
-                className="flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2"
+        <>
+          <div className="mb-1.5 flex items-center justify-between">
+            <span
+              className="text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {draft.whoIsIn.length === 0
+                ? "Who’s in"
+                : `${draft.whoIsIn.length} in the bet`}
+            </span>
+            {players.length > 2 && (
+              <button
+                type="button"
+                onClick={() => setDraft(setWhoIsIn(draft, allIn ? [] : players.map((p) => p.id)))}
+                data-testid="side-bet-everyone"
+                className="rounded-full px-2.5 py-1"
                 style={{
-                  background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                  border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                  fontSize: 11.5,
+                  fontWeight: 650,
+                  background: "var(--color-bt-card-raised)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() => setDraft(toggleWhoIsIn(draft, p.id))}
-                  style={{ width: 18, height: 18, accentColor: "var(--color-bt-accent)" }}
-                />
-                <span style={{ fontSize: 14, fontWeight: 600, color: on ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
+                {allIn ? "Clear" : "Everyone"}
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap" style={{ gap: 6 }}>
+            {players.map((p) => {
+              const on = draft.whoIsIn.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setDraft(toggleWhoIsIn(draft, p.id))}
+                  aria-pressed={on}
+                  data-testid="side-bet-player-chip"
+                  className="flex items-center rounded-full"
+                  style={{
+                    gap: 5,
+                    padding: "6px 11px",
+                    fontSize: 12.5,
+                    fontWeight: on ? 650 : 500,
+                    background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+                    border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+                    color: "var(--color-bt-text)",
+                  }}
+                >
+                  {on && <Check size={11} strokeWidth={3} style={{ color: "var(--color-bt-accent)" }} />}
                   {p.name}
-                </span>
-              </label>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* The kind. Head-to-head is only coherent at two — above that "who pays
