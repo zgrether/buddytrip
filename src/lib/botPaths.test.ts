@@ -183,7 +183,12 @@ describe("middleware auth path is unchanged", () => {
   });
 
   it("getUser() — not getSession() — is still what validates the session", () => {
-    expect(MIDDLEWARE_SRC).toContain("await supabase.auth.getUser()");
+    // The call is now RACED against a timeout rather than awaited bare
+    // (`middlewareAuthTimeout.ts`), so the old literal `await supabase.auth
+    // .getUser()` is gone. The invariant it protected is not: getUser()
+    // re-verifies against the auth server, getSession() only decodes a cookie
+    // locally and Supabase flags it insecure server-side.
+    expect(MIDDLEWARE_SRC).toContain("supabase.auth.getUser()");
     expect(MIDDLEWARE_SRC).not.toContain("auth.getSession()");
   });
 
@@ -220,9 +225,22 @@ describe("middleware auth path is unchanged", () => {
   });
 
   it("the bogus 404 runs BEFORE the auth check, not after", () => {
+    // Anchored on the auth call itself rather than the `await` that used to
+    // precede it — a scanner path must still cost one edge invocation and no
+    // auth round-trip, whether or not that call is raced.
     const bogusAt = MIDDLEWARE_SRC.indexOf("isObviouslyBogusPath(request.nextUrl.pathname)");
-    const authAt = MIDDLEWARE_SRC.indexOf("await supabase.auth.getUser()");
+    const authAt = MIDDLEWARE_SRC.indexOf("supabase.auth.getUser()");
     expect(bogusAt).toBeGreaterThan(-1);
+    expect(authAt).toBeGreaterThan(-1);
     expect(bogusAt).toBeLessThan(authAt);
+  });
+
+  it("the auth call is RACED, and a timeout never signs anyone out", () => {
+    // Added with the timeout guard. The redirect/401 arms above must stay
+    // unreachable from a timeout — the rule is pinned in detail by
+    // `middlewareAuthTimeout.test.ts`; this is the reminder at the site the
+    // other auth guards live at.
+    expect(MIDDLEWARE_SRC).toContain("resolveWithTimeout");
+    expect(MIDDLEWARE_SRC).not.toMatch(/awaits+supabase.auth.getUser()/);
   });
 });
