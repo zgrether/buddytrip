@@ -11,7 +11,7 @@ import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
-import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { TYPE_SCALE } from "@/lib/typeScale";
 import { showToast } from "@/lib/toast";
 import {
   PickemSlateModal,
@@ -434,19 +434,6 @@ function Empty({
         {body}
       </p>
       {children}
-    </div>
-  );
-}
-
-function Countdown({ ms }: { ms: number }) {
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  return (
-    <div className="mt-3">
-      <div style={EYEBROW}>Picks close in</div>
-      <div style={{ fontSize: 24, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-        {h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`}
-      </div>
     </div>
   );
 }
