@@ -559,10 +559,6 @@ export function quickFormatPlayerCountError(format: QuickGameFormat, count: numb
   return null;
 }
 
-/** A quick match is a 2v2 exactly when four people are playing. NOT a setting —
- *  the count IS the shape (handoff: "it's how many names you enter"). */
-export const isDoubles = (playerCount: number) => playerCount === 4;
-
 /**
  * Build the two sides from the roster order. 1v1 pairs [0] vs [1]; a 2v2 pairs
  * by the caller's `partnerOf` choice — which of the other three is with player
@@ -589,11 +585,6 @@ export function buildQuickMatchSides(
   if (a.length === 0 || b.length === 0) return null;
   return { sideA: mk(a), sideB: mk(b) };
 }
-
-/** A match is a doubles game when either side holds more than one player.
- *  Derived from the sides, never a setting — the count IS the shape. */
-export const isDoublesSides = (sideA: QuickMatchSide, sideB: QuickMatchSide) =>
-  sideA.playerIds.length > 1 || sideB.playerIds.length > 1;
 
 /** Everything the setup screen collects, in one object — the input to
  *  `buildQuickGameFromDrafts`. */
