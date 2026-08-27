@@ -309,6 +309,67 @@ describe("save_pickem_picks (migration 150)", () => {
     expect((data ?? []).every((r) => r.confidence === null)).toBe(true);
   });
 
+  // ── set_deadline: one column, any phase (migration 153) ─────────────────
+
+  const setDeadline = (iso: string | null, role: "owner" | "member" = "owner") =>
+    ctx.authedClient(role).rpc("set_pickem_deadline", { p_game_id: gameId, p_deadline: iso });
+
+  it("SETTING A DEADLINE DOES NOT PUBLISH A BUILDING GAME", () => {
+    // The reason this function exists. `set_pickem_phase('open')` was the only
+    // way to write a deadline, and it also coalesces picks_opened_at — so
+    // scheduling one while still building would have handed sixteen people a
+    // slate the runner was not finished with.
+    return (async () => {
+      await ctx.admin.from("pickem_games").update({ picks_opened_at: null }).eq("game_id", gameId);
+      const when = new Date(Date.now() + 3_600_000).toISOString();
+      expect((await setDeadline(when)).error).toBeNull();
+
+      const { data } = await ctx.admin
+        .from("pickem_games").select("picks_opened_at, picks_deadline").eq("game_id", gameId).single();
+      expect(data!.picks_opened_at).toBeNull();            // still building
+      expect(new Date(data!.picks_deadline as string).getTime()).toBe(new Date(when).getTime());
+    })();
+  });
+
+  it("SETTING A DEADLINE DOES NOT UNLOCK A LOCKED GAME", async () => {
+    // The other half. `open` clears picks_locked_at, so editing a deadline on a
+    // locked game would have reopened every sheet and un-revealed the matches.
+    await ctx.authedClient("owner")
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock", p_deadline: null });
+    const before = await ctx.admin
+      .from("pickem_games").select("picks_locked_at").eq("game_id", gameId).single();
+    expect(before.data!.picks_locked_at).not.toBeNull();
+
+    expect((await setDeadline(new Date(Date.now() + 7_200_000).toISOString())).error).toBeNull();
+
+    const after = await ctx.admin
+      .from("pickem_games").select("picks_locked_at").eq("game_id", gameId).single();
+    // Same stamp, not merely non-null — a re-lock would also be non-null.
+    expect(after.data!.picks_locked_at).toBe(before.data!.picks_locked_at);
+  });
+
+  it("clears the deadline when given null", async () => {
+    await setDeadline(new Date(Date.now() + 3_600_000).toISOString());
+    expect((await setDeadline(null)).error).toBeNull();
+    const { data } = await ctx.admin
+      .from("pickem_games").select("picks_deadline").eq("game_id", gameId).single();
+    expect(data!.picks_deadline).toBeNull();
+  });
+
+  it("ACCEPTS a past deadline — that is how a runner records when picks closed", async () => {
+    // Not a missing guard. The lazy predicate reads a past deadline as closed,
+    // which is a legitimate way to end picks; refusing it would forbid typing
+    // the time they actually closed.
+    const past = new Date(Date.now() - 60_000).toISOString();
+    expect((await setDeadline(past)).error).toBeNull();
+    expect((await save(sheet())).error?.message).toContain("PICKS_CLOSED");
+  });
+
+  it("a plain member cannot set the deadline", async () => {
+    expect((await setDeadline(new Date().toISOString(), "member")).error?.message)
+      .toContain("NOT_AUTHORIZED");
+  });
+
   // ── unlock: the narrow inverse of lock (migration 151) ──────────────────
 
   it("UNLOCK reopens picks WITHOUT touching the slate or anyone's ranking", async () => {

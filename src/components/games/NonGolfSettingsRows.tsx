@@ -296,7 +296,20 @@ function MatchValueRow({
 /** Total Points — the owner-set pool (points scoring model). Standard ChecklistRow +
  *  inline stepper (P4); the placement split is its own Point Distribution row in SETTINGS.
  *  CONTROLLED — reports `games.points_total` to the parent draft; Save persists. */
-function TotalPoolRow({
+/**
+ * The bare "Total Points" row: a number the whole game is worth.
+ *
+ * EXPORTED for pick'em (Phase 4), which always wants a total whatever its
+ * roll-up — individual matches divide it, team totals award it whole, points
+ * mode splits it across places. It deliberately does NOT route through
+ * `NonGolfTotalPointsRow`, whose `usesPointsPool` branch would hand a match-play
+ * pick'em game `MatchValueRow` — a per-match VALUE, which is the one shape
+ * pick'em never has.
+ *
+ * Same component, same stepper, same empty/resolved state; the caller decides
+ * what dividing the total means.
+ */
+export function TotalPoolRow({
   value: total, canEdit, onChange,
 }: {
   value: number | null;

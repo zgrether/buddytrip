@@ -20,6 +20,7 @@ import {
   type PickemSettingsDraft,
 } from "@/components/games/pickem/PickemScoringRows";
 import { PickemSheet } from "@/components/games/pickem/PickemSheet";
+import { PickemDeadlineRow } from "@/components/games/pickem/PickemDeadlineRow";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   msUntilDeadline,
@@ -120,6 +121,20 @@ export function PickemGameView() {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
     },
     onError: (e) => setSaveError(e.message),
+  });
+
+  const setPointsTotal = trpc.pickem.setPointsTotal.useMutation({
+    onSuccess: async () => {
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => showToast(e.message, "error"),
+  });
+
+  const setDeadline = trpc.pickem.setDeadline.useMutation({
+    onSuccess: async () => {
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => showToast(e.message, "error"),
   });
 
   const setPhase = trpc.pickem.setPhase.useMutation({
@@ -280,12 +295,34 @@ export function PickemGameView() {
               useConfidence={q.data.settings.useConfidence}
               phase={phase}
               canEdit={canEdit}
+              deadlineRow={
+                <PickemDeadlineRow
+                  deadline={clock.picksDeadline}
+                  // ANY phase now. `set_pickem_deadline` (migration 153) writes
+                  // one column, so there is nothing left for it to disturb —
+                  // the restriction that used to stand in for that fix is gone.
+                  editable={canEdit}
+                  busy={setDeadline.isPending}
+                  onChange={(deadline) =>
+                    setDeadline.mutate({ tripId: tripId!, gameId, deadline })
+                  }
+                />
+              }
               scoringRows={
                 <PickemScoringRows
                   settings={settingsDraft}
                   editable={canEdit && scoringSettingsEditable(clock)}
                   showRollUp={q.data.game.competition_id != null}
                   saving={saveConfig.isPending}
+                  pointsTotal={(q.data.game as { points_total?: number | null }).points_total ?? null}
+                  // Points are NOT frozen with the slate (migration 152): the
+                  // total decides what the game is worth, not anything a
+                  // participant already chose.
+                  canEditPoints={canEdit}
+                  matches={q.data.matches}
+                  onPointsChange={(total) =>
+                    setPointsTotal.mutate({ tripId: tripId!, gameId, total })
+                  }
                   onSave={(next) =>
                     saveConfig.mutate({ tripId: tripId!, gameId, settings: next })
                   }
@@ -407,6 +444,7 @@ export function SlateSettingsRows({
   phase,
   canEdit,
   scoringRows,
+  deadlineRow,
   onOpenSlate,
   onOpenPicks,
   onLock,
@@ -423,6 +461,9 @@ export function SlateSettingsRows({
   /** The two scoring settings, rendered by `PickemScoringRows`. Passed in
    *  rather than built here so this component stays free of tRPC. */
   scoringRows: React.ReactNode;
+  /** The deadline control, passed in for the same reason as `scoringRows` —
+   *  this component stays free of tRPC. */
+  deadlineRow: React.ReactNode;
   onOpenSlate: () => void;
   onOpenPicks: () => void;
   onLock: () => void;
@@ -501,6 +542,12 @@ export function SlateSettingsRows({
         <ZoneHeader>How scoring works</ZoneHeader>
         {scoringRows}
       </div>
+
+      {/* The deadline sits with the lifecycle it belongs to, above the buttons
+          that change it — it IS a lock, just a scheduled one. Rendered in EVERY
+          phase since migration 153: scheduling one while building is a real
+          thing to do, and it no longer risks publishing the game. */}
+      {deadlineRow}
 
       {/* ── The lifecycle, as ONE control ─────────────────────────────────
           Reopen used to live here alone, so settings held the way BACK out of
