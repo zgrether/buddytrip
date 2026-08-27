@@ -66,7 +66,7 @@ export const pickemRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const [configRes, slateRes, picksRes, matchRes] = await Promise.all([
+      const [configRes, slateRes, picksRes, matchRes, teamRes, assignRes] = await Promise.all([
         ctx.supabase
           .from("pickem_games")
           .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
@@ -90,6 +90,24 @@ export const pickemRouter = router({
           .select("id, display_order, side_a, side_b, point_value")
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
+        // The two sides of the cup, for the pairing grid. Pick'em pairs ACROSS
+        // teams — one person from each — so the grid needs both rosters, not
+        // the game's own participant list (which the pairing produces rather
+        // than consumes).
+        game.competition_id
+          ? ctx.supabase
+              .from("teams")
+              .select("id, name, short_name, color")
+              .eq("competition_id", game.competition_id)
+              .order("created_at", { ascending: true })
+          : Promise.resolve({ data: [] as { id: string; name: string; short_name: string; color: string }[] }),
+        game.competition_id
+          ? ctx.supabase
+              .from("team_assignments")
+              .select("user_id, team_id, sort_order")
+              .eq("competition_id", game.competition_id)
+              .order("sort_order", { ascending: true })
+          : Promise.resolve({ data: [] as { user_id: string; team_id: string; sort_order: number }[] }),
       ]);
 
       const cfg = configRes.data;
@@ -133,6 +151,19 @@ export const pickemRouter = router({
          * EMPTY means never saved, which is what spec §4 calls "not submitted"
          * — derived, so there is no column that can disagree with the rows.
          */
+        /**
+         * The cup's two sides, each with its roster in assignment order.
+         * Empty for a standalone game, which correctly has no matches surface.
+         */
+        teams: (teamRes.data ?? []).map((t) => ({
+          id: t.id as string,
+          name: t.name as string,
+          shortName: t.short_name as string,
+          color: t.color as string,
+          memberIds: (assignRes.data ?? [])
+            .filter((a) => a.team_id === t.id)
+            .map((a) => a.user_id as string),
+        })),
         /**
          * The matches, in the exact shape `liveMatchPointsPerMatch` takes, so
          * nothing downstream re-derives what "valid" means. A side is `{type,

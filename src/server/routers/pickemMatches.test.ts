@@ -180,6 +180,77 @@ describe("save_pickem_matches", () => {
 
   // ── authorisation, and the lock ──────────────────────────────────────────
 
+  // ── the reveal, as a POLICY not a component (migration 155) ─────────────
+
+  const memberSeesMatches = async () => {
+    const { data } = await ctx.authedClient("member")
+      .from("game_matches").select("id").eq("game_id", gameId);
+    return (data ?? []).length;
+  };
+
+  it("A MEMBER SEES NOTHING BEFORE THE LOCK, and the matches AFTER it", async () => {
+    // The bug this policy fixes ran the OTHER way and would have shipped:
+    // `game_matches_select` gated on `scoring_enabled`, which pick'em never sets
+    // (migration 135 refuses that state), so a member could never read its
+    // matches AT ALL — the reveal would have rendered an empty panel with
+    // nothing erroring. Caught by reading the policy, not by testing as an
+    // owner, which is the account every other check here uses.
+    await ctx.admin.from("pickem_games").upsert({ game_id: gameId });
+    await save([{ a: owner, b: member }]);
+
+    // picks open, not locked → nothing
+    await ctx.admin.from("pickem_games")
+      .update({ picks_opened_at: new Date().toISOString(), picks_locked_at: null, picks_deadline: null })
+      .eq("game_id", gameId);
+    expect(await memberSeesMatches()).toBe(0);
+
+    // locked → the reveal
+    await ctx.admin.from("pickem_games")
+      .update({ picks_locked_at: new Date().toISOString() }).eq("game_id", gameId);
+    expect(await memberSeesMatches()).toBe(1);
+
+    await ctx.admin.from("pickem_games").delete().eq("game_id", gameId);
+  });
+
+  it("a PASSED DEADLINE reveals them too — the lazy lock, no scheduler", async () => {
+    await ctx.admin.from("pickem_games").upsert({
+      game_id: gameId,
+      picks_opened_at: new Date(Date.now() - 7_200_000).toISOString(),
+      picks_deadline: new Date(Date.now() - 60_000).toISOString(),
+      picks_locked_at: null,
+    });
+    await save([{ a: owner, b: member }]);
+    expect(await memberSeesMatches()).toBe(1);
+    await ctx.admin.from("pickem_games").delete().eq("game_id", gameId);
+  });
+
+  it("UNLOCKING re-hides them — 'the matches vanished' is correct behaviour", async () => {
+    // #1098 made the lock reversible; §3 says unlocking must re-hide the
+    // matches, and it falls out of `pickem_picks_revealed` rather than needing
+    // its own code. Asserted so nobody 'fixes' it later.
+    await ctx.admin.from("pickem_games").upsert({
+      game_id: gameId,
+      picks_opened_at: new Date(Date.now() - 3_600_000).toISOString(),
+      picks_locked_at: new Date().toISOString(),
+      picks_deadline: null,
+    });
+    await save([{ a: owner, b: member }]);
+    expect(await memberSeesMatches()).toBe(1);
+
+    await ctx.admin.from("pickem_games").update({ picks_locked_at: null }).eq("game_id", gameId);
+    expect(await memberSeesMatches()).toBe(0);
+    await ctx.admin.from("pickem_games").delete().eq("game_id", gameId);
+  });
+
+  it("the RUNNER sees them at every phase — he is building the pairing", async () => {
+    await ctx.admin.from("pickem_games").upsert({ game_id: gameId, picks_opened_at: null });
+    await save([{ a: owner, b: member }]);
+    const { data } = await ctx.authedClient("owner")
+      .from("game_matches").select("id").eq("game_id", gameId);
+    expect((data ?? []).length).toBe(1);
+    await ctx.admin.from("pickem_games").delete().eq("game_id", gameId);
+  });
+
   it("a plain member cannot set the matches", async () => {
     expect((await save([{ a: owner, b: member }], "member")).error?.message)
       .toContain("NOT_AUTHORIZED");
