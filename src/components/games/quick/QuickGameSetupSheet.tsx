@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Coins } from "lucide-react";
+import { Banknote } from "lucide-react";
 import { AddEditSheet } from "@/components/AddEditSheet";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
@@ -10,7 +10,7 @@ import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnaps
 import { trpc } from "@/lib/trpc-client";
 import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
 import { PLAYER_COLORS, unitsFromSchema } from "@/lib/strokePlayConfig";
-import { computeSideBets, formatMoney, EMPTY_SIDE_BETS, type SideBetsState } from "@/lib/sideBets";
+import { computeSideBets, EMPTY_SIDE_BETS, type SideBetsState } from "@/lib/sideBets";
 import type { Team } from "@/lib/rackNStack";
 import {
   buildQuickGameFromDrafts,
@@ -229,13 +229,8 @@ export function QuickGameSetupSheet({
         {betPlayers.length >= 2 && (
           <div className="mt-4">
             <SettingsNavRow
-              icon={<Coins size={16} />}
-              label="Side bets"
-              blurb={
-                bets.bets.length > 0
-                  ? `${bets.bets.length} set up · ${formatMoney(betResult.exposure.perHole)}/hole.`
-                  : "Skins, head to head, presses — the scorecard keeps the tally."
-              }
+              icon={<Banknote size={16} />}
+              label="Side Bets"
               onClick={() => setBetsOpen(true)}
               testId="quick-game-sheet-side-bets-btn"
             />
@@ -265,7 +260,6 @@ export function QuickGameSetupSheet({
           sideName={(side) =>
             side.playerIds.map((id) => betPlayers.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player").join(" & ")
           }
-          onSetPerspective={(playerId) => setBets((b) => ({ ...b, perspectivePlayerId: playerId }))}
           onAdd={(added) => setBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
           onRemove={(betId) => setBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
           onClose={() => setBetsOpen(false)}

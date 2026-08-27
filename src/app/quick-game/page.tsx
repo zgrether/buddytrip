@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw, Users, Table2, Zap, Coins } from "lucide-react";
+import { RotateCcw, Users, Table2, Zap, Banknote } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
   readQuickGameState,
@@ -30,7 +30,7 @@ import {
 import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
 import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
 import type { HoleOutcomeResult } from "@/lib/matchPlay";
-import { buildDoubleBet, formatMoney, type SideBet } from "@/lib/sideBets";
+import { buildDoubleBet, type SideBet } from "@/lib/sideBets";
 import {
   quickSideBets,
   quickHasBets,
@@ -435,9 +435,6 @@ function QuickGamePageInner() {
         : s
     );
   }
-  function setBetPerspective(playerId: string) {
-    setState((s) => (s ? { ...s, bets: { ...s.bets, perspectivePlayerId: playerId } } : s));
-  }
   function declineDouble(parentBetId: string) {
     setState((s) =>
       s
@@ -634,7 +631,6 @@ function QuickGamePageInner() {
             nassauAvailable={quickNassauAvailable(state)}
             perspectivePlayerId={quickBetPerspective(state)}
             sideName={(side) => quickBetSideName(state, side)}
-            onSetPerspective={setBetPerspective}
             onAdd={addBets}
             onRemove={removeBet}
             onClose={() => setBetsOpen(false)}
@@ -946,13 +942,8 @@ function QuickGamePageInner() {
             {/* §10 — hidden entirely with one player, in-round as at setup. */}
             {state.players.length >= 2 && (
             <SettingsNavRow
-              icon={<Coins size={16} />}
-              label="Side bets"
-              blurb={
-                betsOn && betStrip
-                  ? `${betStrip.exposure.liveBetCount} live · ${formatMoney(betStrip.exposure.perHole)}/hole.`
-                  : "Nassau, skins, presses — the scorecard keeps the tally."
-              }
+              icon={<Banknote size={16} />}
+              label="Side Bets"
               onClick={() => {
                 setSettingsOpen(false);
                 setBetsOpen(true);
