@@ -50,11 +50,23 @@ export function QuickGameSetupSheet({
   format,
   onClose,
   onStarted,
+  navigatesOnCommit = false,
 }: {
   format: QuickGameFormat;
   onClose: () => void;
   /** The round exists and is written — take the user to it. */
   onStarted: (format: QuickGameFormat) => void;
+  /**
+   * `onStarted` ROUTES somewhere rather than just revealing the round in place.
+   *
+   * It cannot be inferred, because the two callers genuinely differ: the
+   * dashboard tile navigates to `/quick-game`, while the quick-game page's own
+   * landing state is already there and only swaps its view. The sheet's history
+   * entry has to be handed to the destination in the first case and popped in
+   * the second, so the caller that knows says so. A navigating caller MUST use
+   * `router.replace` — see `consumeMarker` in `useModalBackButton`.
+   */
+  navigatesOnCommit?: boolean;
 }) {
   const utils = trpc.useUtils();
   // Read ONCE on mount: re-reading would fight the user's own edits.
@@ -180,6 +192,7 @@ export function QuickGameSetupSheet({
           label: isEdit ? "Resume round" : "Start round",
           onClick: commit,
           disabled: countError != null,
+          navigatesAway: navigatesOnCommit,
         }}
       >
         <RosterFields

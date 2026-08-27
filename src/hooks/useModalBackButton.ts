@@ -42,8 +42,33 @@ import { pushMarker, isOwnPop } from "@/lib/historyMarker";
 const modalStack: symbol[] = [];
 let suppressNextPop = false;
 
+/**
+ * Should unmount pop the phantom history entry?
+ *
+ * Extracted from the cleanup so the branch is reachable without a DOM — this
+ * suite is `environment: "node"`, so the hook can never be mounted, and the one
+ * condition with a real failure mode was therefore untestable. It is not a
+ * description of the cleanup; the cleanup CALLS it.
+ *
+ * Three ways the phantom is already gone, and popping again would eat an entry
+ * that belongs to something else:
+ *  - `closedByBack` — the back-press that closed us popped it.
+ *  - `consumed` — the caller navigated over it (see `consumeMarker`).
+ *  - the current entry isn't ours — `state.modal` is how we know it still is.
+ */
+export function shouldPopPhantom(o: {
+  closedByBack: boolean;
+  consumed: boolean;
+  historyState: unknown;
+}): boolean {
+  if (o.closedByBack || o.consumed) return false;
+  return (o.historyState as { modal?: boolean } | null | undefined)?.modal === true;
+}
+
 export function useModalBackButton(onClose: () => void, enabled: boolean = true) {
   const onCloseRef = useRef(onClose);
+  // Set by `consumeMarker` — see the return value below.
+  const consumedRef = useRef(false);
 
   // Keep the ref current without touching it during render.
   useEffect(() => {
@@ -55,6 +80,7 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
 
     const id = Symbol("modal");
     modalStack.push(id);
+    consumedRef.current = false;
 
     // Push a phantom entry so back has something to pop. `myDepth` is what makes
     // the pop testable for ownership (historyMarker.ts) — the modal STACK alone
@@ -149,10 +175,40 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
       // Closed by X / scrim (not the back button): the phantom entry is still
       // in history, so pop it. If another modal is still open underneath, flag
       // the resulting popstate as programmatic so it doesn't close that one.
-      if (!closedByBack && window.history.state?.modal) {
+      //
+      // `consumedRef` opts out: the caller navigated over the phantom instead of
+      // dismissing it, so there is nothing left to pop — see `consumeMarker`.
+      if (shouldPopPhantom({ closedByBack, consumed: consumedRef.current, historyState: window.history.state })) {
         if (modalStack.length > 0) suppressNextPop = true;
         window.history.back();
       }
     };
   }, [enabled]); // re-run when the modal toggles open/closed
+
+  return {
+    /**
+     * Hand the phantom entry over to a navigation, so cleanup does NOT pop it.
+     *
+     * A modal whose action LEAVES the page is not the same as one that closes.
+     * Closing pops the phantom to get back where you were; navigating wants the
+     * destination to take the phantom's slot. Doing both is the bug this exists
+     * to prevent — unmounting the modal runs this cleanup, whose
+     * `history.back()` races the router and can undo the navigation before it
+     * commits, so the button reads as doing nothing at all.
+     *
+     * The `window.history.state?.modal` guard alone is NOT enough: it is only
+     * false once the router has actually written its own history entry, and in
+     * the App Router that happens asynchronously, after the RSC payload for the
+     * destination resolves. React unmounts the modal in the same commit as the
+     * state update that hid it — long before.
+     *
+     * **The caller must REPLACE, not push.** `consumeMarker()` leaves the
+     * phantom in place; `router.replace` then overwrites it, so back from the
+     * destination lands where the modal was opened from. A push would strand
+     * the phantom as a dead entry costing an extra back-press.
+     */
+    consumeMarker: () => {
+      consumedRef.current = true;
+    },
+  };
 }

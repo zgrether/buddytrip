@@ -209,9 +209,6 @@ export function SideBetSheet({
         </div>
       )}
 
-      {/* ── Hole by hole — free, because the arithmetic already exists. ── */}
-      <HoleHistory result={result} perspectivePlayerId={perspectivePlayerId} />
-
       {/* ── Add a bet ── */}
       {creating ? (
         <BetForm
@@ -247,76 +244,6 @@ export function SideBetSheet({
         </button>
       )}
     </Sheet>
-  );
-}
-
-/**
- * The hole-by-hole money history. Rendered from `result.holeLines`, which is
- * DERIVED on every read — fixing an earlier score rewrites the hole it was on
- * and every hole after it, and this list simply shows the new answer (§6/§9:
- * never cache a hole's money line).
- */
-function HoleHistory({
-  result,
-  perspectivePlayerId,
-}: {
-  result: SideBetsResult;
-  perspectivePlayerId: string | null;
-}) {
-  const rows = result.holeLines.filter((l) => l.perBet.length > 0);
-  if (rows.length === 0) return null;
-  return (
-    <div className="mb-4">
-      <FieldLabel>Hole by hole</FieldLabel>
-      <div
-        className="overflow-hidden rounded-[11px]"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        {rows.map((l, i) => {
-          const mine = perspectivePlayerId ? (l.delta[perspectivePlayerId] ?? 0) : 0;
-          return (
-            <div
-              key={l.hole}
-              data-testid="side-bet-hole-row"
-              className="flex items-center gap-3 px-3 py-2"
-              style={{ borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 600, width: 52, color: "var(--color-bt-text-dim)" }}>
-                Hole {l.hole}
-              </span>
-              <span className="min-w-0 flex-1" style={{ fontSize: 13, color: "var(--color-bt-text)" }}>
-                {!l.decided
-                  ? `worth ${formatMoney(l.pot)}`
-                  : Math.abs(mine) < 0.005
-                    ? `${formatMoney(l.pot)} carried over`
-                    : `${formatMoney(l.pot)} played`}
-                {l.presses.length > 0 && (
-                  <span style={{ color: "var(--color-bt-warning)", fontWeight: 600 }}>
-                    {" · "}
-                    press {l.presses.map((p) => p.level).join(", ")} → {formatMoney(l.presses[0].exposureAfter)}/hole
-                  </span>
-                )}
-              </span>
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
-                  color:
-                    mine > 0.004
-                      ? "var(--color-bt-place-1-text)"
-                      : mine < -0.004
-                        ? "var(--color-bt-danger)"
-                        : "var(--color-bt-text-dim)",
-                }}
-              >
-                {l.decided ? formatSignedMoney(mine) : "—"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
