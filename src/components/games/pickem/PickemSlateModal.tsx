@@ -9,6 +9,7 @@ import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { MatchupSearch } from "@/components/matchup/MatchupSearch";
 import { formatKickoff } from "@/lib/matchupApi";
+import { MatchupLine, RowOrdinal, pickemRowSurface } from "./slateRowVisual";
 
 /**
  * The slate — the contests being predicted.
@@ -483,106 +484,11 @@ function SlateRow({
   beingEdited: boolean;
   onEdit?: () => void;
 }) {
-  const weighted = game.multiplier > 1;
-  const meta = [game.kickoff, game.note].filter(Boolean).join(" · ");
-
-  const body = (
-    <div className="flex min-w-0 flex-1 items-start gap-2.5">
-      <span
-        style={{
-          fontSize: TYPE_SCALE.caption,
-          fontWeight: 700,
-          color: "var(--color-bt-text-dim)",
-          fontVariantNumeric: "tabular-nums",
-          minWidth: 16,
-          paddingTop: 1,
-        }}
-      >
-        {index + 1}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-          <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
-            {game.awayTeam} <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 500 }}>at</span>{" "}
-            {game.homeTeam}
-          </span>
-          {game.spread && (
-            <span
-              className="rounded px-1.5"
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                fontWeight: 700,
-                background: "var(--color-bt-planning-faint)",
-                color: "var(--color-bt-planning)",
-              }}
-            >
-              {game.spread}
-            </span>
-          )}
-          {weighted && (
-            <span
-              data-testid="pickem-multiplier-badge"
-              className="rounded px-1.5"
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                fontWeight: 700,
-                color: "var(--color-bt-glorious)",
-                background: "color-mix(in srgb, var(--color-bt-glorious) 22%, transparent)",
-                border: "1px solid var(--color-bt-glorious-border)",
-              }}
-            >
-              {game.multiplier}×
-            </span>
-          )}
-        </span>
-        {meta && (
-          <span
-            className="mt-0.5 block truncate"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-          >
-            {meta}
-          </span>
-        )}
-      </span>
-    </div>
-  );
-
-  /**
-   * A weighted game is marked by a SOLID LEFT STRIPE, not a background fill.
-   *
-   * The fill was a 12% tint over a card surface and it never read — which was
-   * the whole job, since the point of the treatment is to make weighted games
-   * findable WITHOUT reading them. Scanning a sixteen-row list is a vertical eye
-   * movement down the left edge, so that edge is where the mark belongs; a solid
-   * 3px rule survives the glance that a wash does not.
-   *
-   * The badge stays and carries the value. Colour says "this one is worth more",
-   * number says how much.
-   */
-  const edge = beingEdited ? "var(--color-bt-accent-border)" : "var(--color-bt-border)";
-  /**
-   * Per-side LONGHANDS, never the `border` shorthand plus a `borderLeft`
-   * override.
-   *
-   * React warns on that combination — "updating a style property during
-   * rerender (border) when a conflicting property is set (borderLeft) can lead
-   * to styling bugs" — and it is right: which one wins depends on property
-   * order across a re-render, so the stripe could be silently clobbered when a
-   * row toggles into or out of `beingEdited`. Caught in the dev console, not in
-   * review.
-   */
-  const surface: React.CSSProperties = {
-    background: beingEdited ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-    borderStyle: "solid",
-    borderTopWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: weighted ? 3 : 1,
-    borderTopColor: edge,
-    borderRightColor: edge,
-    borderBottomColor: edge,
-    borderLeftColor: weighted ? "var(--color-bt-glorious)" : edge,
-  };
+  // The stripe, the badges and the matchup text all live in `slateRowVisual`
+  // now — the SHEET renders the same sixteen contests and must not re-parse
+  // them (HANDOFF §3). This markup is the original; the module is where it went.
+  const body = <MatchupLine game={game} leading={<RowOrdinal>{index + 1}</RowOrdinal>} />;
+  const surface = pickemRowSurface({ weighted: game.multiplier > 1, active: beingEdited });
 
   if (!editable) {
     return (
