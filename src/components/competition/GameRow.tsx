@@ -10,6 +10,7 @@ import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
 import { pushMarker } from "@/lib/historyMarker";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
 import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
+import { usesScoringLifecycle } from "@/lib/formatSurface";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
@@ -217,7 +218,16 @@ export function GameRow({
   // get the settings link — they hit the server-walled placeholder.
   const canEditThisGame = !!canEdit || mine;
   const pathname = usePathname();
-  const setupMode = isPreScoring({ status: game.status, scoringEnabled: game.scoringEnabled === true });
+  // `isPreScoring` reads `status` + `scoring_enabled`, which only answer "is
+  // setup finished" for formats whose lifecycle those columns describe. Pick'em's
+  // does not: `scoring_enabled` stays false for the whole picking phase and
+  // `status` stays `pending`, so this was permanently true and the board sent an
+  // owner into SETTINGS every single time they tapped the game — the one person
+  // who most needs their own sheet, unable to reach it. `usesScoringLifecycle`
+  // is the registry answering for the format instead of this line assuming.
+  const setupMode =
+    usesScoringLifecycle(game.gameTypeId) &&
+    isPreScoring({ status: game.status, scoringEnabled: game.scoringEnabled === true });
   const href = gameHref(tripId, game.gameTypeId, game.id, {
     settings: canEditThisGame && setupMode,
   });

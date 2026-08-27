@@ -181,3 +181,33 @@ export function surfaceHasScorecard(gameTypeId: string | null | undefined): bool
   const id = surfaceForGameType(gameTypeId);
   return id ? FORMAT_SURFACE[id].scorecard : isGolfFormat(gameTypeId ?? null);
 }
+
+/**
+ * True when this format's "has setup finished?" question is answered by
+ * `games.scoring_enabled` / `games.status`.
+ *
+ * ── Why anyone outside a settings panel needs to ask ───────────────────────
+ *
+ * `isPreScoring` reads exactly those two columns, and every caller of it is
+ * really asking "is this game still being set up". For the four golf-and-manual
+ * formats that is true. For pick'em it is permanently WRONG: its go-live is
+ * `pickem_games.picks_opened_at`, `scoring_enabled` stays false for the whole
+ * picking phase (migration 135's CHECK refuses the state it would occupy), and
+ * `status` sits at `pending` until a result lands. So `isPreScoring` answers
+ * "yes, still in setup" for a pick'em game that sixteen people are actively
+ * filling in sheets for.
+ *
+ * That produced the leaderboard sending an owner into SETTINGS every time they
+ * tapped the game — the board's setup-mode shortcut firing forever — so the one
+ * person who most needed their own sheet was the one who could never reach it.
+ *
+ * `gameState` already means "this format's lifecycle is the scoring flag", and
+ * it is already false for pick'em; this exposes that same fact to callers
+ * outside the settings panel rather than inventing a second predicate. The
+ * conservative default for an unregistered type is `true` — the golf behaviour,
+ * which is what every pre-registry caller assumed.
+ */
+export function usesScoringLifecycle(gameTypeId: string | null | undefined): boolean {
+  const id = surfaceForGameType(gameTypeId);
+  return id ? FORMAT_SURFACE[id].gameState : true;
+}
