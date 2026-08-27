@@ -46,6 +46,7 @@ const settingsRows = (over: Partial<Parameters<typeof SlateSettingsRows>[0]> = {
       onOpenSlate={noop}
       onOpenPicks={noop}
       onLock={noop}
+      onUnlock={noop}
       onReopen={noop}
       busy={false}
       {...over}
@@ -132,10 +133,32 @@ describe("settings carries the whole lifecycle, not just the way back", () => {
     expect(html).not.toContain('data-testid="pickem-open-picks-settings"');
   });
 
-  it("locked offers only REOPEN — there is nothing left to lock", () => {
+  it("locked offers UNLOCK and REOPEN — lock has an inverse now", () => {
+    // Before migration 151 the only way out of a lock was Reopen, which clears
+    // every ranking. "I locked a minute early" and "I need to change the games"
+    // shared one answer and it was the destructive one.
     const html = settingsRows({ phase: "locked" });
-    expect(html).not.toContain('data-testid="pickem-lock-picks"');
+    expect(html).toContain('data-testid="pickem-unlock-picks"');
     expect(html).toContain('data-testid="pickem-reopen-slate"');
+    // ...and no second Lock, because it is already locked.
+    expect(html).not.toContain('data-testid="pickem-lock-picks"');
+  });
+
+  it("lock and unlock are never offered at the same time", () => {
+    // They are one toggle presented as whichever half applies. Offering both
+    // would ask the runner which state the game is in — which the row above
+    // them already states.
+    for (const phase of ["building", "picks_open", "locked"] as const) {
+      const html = settingsRows({ phase, slateCount: 2 });
+      const hasLock = html.includes('data-testid="pickem-lock-picks"');
+      const hasUnlock = html.includes('data-testid="pickem-unlock-picks"');
+      expect(hasLock && hasUnlock, phase).toBe(false);
+    }
+  });
+
+  it("unlock says it keeps the rankings — the difference from Reopen beside it", () => {
+    const html = settingsRows({ phase: "locked" });
+    expect(html).toContain("Slate and rankings are untouched");
   });
 
   it("every transition says what it does to everyone else", () => {
