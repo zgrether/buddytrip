@@ -53,14 +53,26 @@ export function AddEditSheet({
   mode?: "add" | "edit";
   onClose: () => void;
   children: React.ReactNode;
-  primary?: { label: string; onClick: () => void; disabled?: boolean; pendingLabel?: string; pending?: boolean };
+  primary?: {
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+    pendingLabel?: string;
+    pending?: boolean;
+    /**
+     * This action navigates away instead of closing the sheet, so the sheet's
+     * phantom history entry is handed to the destination rather than popped.
+     * The action MUST use `router.replace` — see `consumeMarker`.
+     */
+    navigatesAway?: boolean;
+  };
   secondary?: React.ReactNode;
   cancelLabel?: string;
   testId?: string;
 }) {
   // Android back / browser back closes the sheet rather than leaving the page
   // — the same hook every hand-rolled copy of this already uses.
-  useModalBackButton(onClose);
+  const { consumeMarker } = useModalBackButton(onClose);
 
   return (
     <ScrollLock>
@@ -142,7 +154,10 @@ export function AddEditSheet({
           </button>
           {primary && (
             <button
-              onClick={primary.onClick}
+              onClick={() => {
+                if (primary.navigatesAway) consumeMarker();
+                primary.onClick();
+              }}
               disabled={primary.disabled || primary.pending}
               data-testid={testId ? `${testId}-primary` : undefined}
               className="flex-1 rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"

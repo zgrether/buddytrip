@@ -440,9 +440,19 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
               // roster); re-read so the tiles show the truth on dismiss.
               setQuickGames(readAllQuickGames());
             }}
+            navigatesOnCommit
             onStarted={(f) => {
-              setSetupFormat(null);
-              router.push(`/quick-game?format=${f}`);
+              // REPLACE, and do NOT unmount the sheet first.
+              //
+              // Both halves matter. The sheet holds a phantom history entry so
+              // Android back closes it; unmounting it runs a cleanup whose
+              // `history.back()` raced this navigation and undid it, so Start /
+              // Resume round read as doing nothing at all. `navigatesOnCommit`
+              // hands that entry over instead of popping it, and `replace`
+              // spends it on the round — so back from the round returns here
+              // rather than to a dead entry. The route change is what unmounts
+              // the sheet; nothing needs to close it by hand.
+              router.replace(`/quick-game?format=${f}`);
             }}
           />
         )}
