@@ -764,6 +764,10 @@ export function PickemGameView() {
           their picker copy and still has to be there. */}
       {canEdit && (
         <PickemPhaseStrip
+          // Migration 165 refuses unlock once anything is scored; this is why
+          // the move is not offered. Same predicate the server uses, mirrored
+          // in TypeScript the way `pickemLifecycle` mirrors the clock.
+          hasResults={q.data.hasResults}
           phase={phase}
           slateCount={q.data.slate.length}
           deadline={clock.picksDeadline ?? null}

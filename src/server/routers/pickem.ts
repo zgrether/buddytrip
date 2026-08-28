@@ -212,10 +212,32 @@ export const pickemRouter = router({
        * would otherwise show up as a settings row the screen offers and the
        * server then refuses.
        *
-       * Conservative in the same direction as the SQL: a `game_results` row, a
-       * decided match, or a finished game each count.
+       * Conservative in the same direction as the SQL: a RESOLVED SLATE GAME, a
+       * `game_results` row, a decided match, or a finished game each count.
+       *
+       * ── The slate arm was MISSING, and the parity test could not see it ────
+       *
+       * `_pickem_has_results` gained a fourth arm in migration 159 —
+       * `pickem_slate_games.result IS NOT NULL` — and its own comment calls that
+       * "THE PRIMARY SOURCE during Run", because everything else here was
+       * written before pick'em could record an outcome at all. This mirror was
+       * never extended, so the two disagreed on the single most common state: a
+       * game with results being entered and nothing else scored.
+       *
+       * That is precisely the failure the comment above promises this mirror
+       * prevents — "a settings row the screen offers and the server then
+       * refuses" — and it was live: `scoringSettingsEditable(hasResults)` said
+       * the three scoring settings were editable while `save_pickem_config`
+       * refused them.
+       *
+       * The parity suite stayed green because it had no case that resolved a
+       * slate game; it covered the three arms that existed BEFORE 159 and was
+       * not grown when the fourth arrived. Cases added in the same change.
+       *
+       * No extra read: the slate query already selects `result` for the board.
        */
       const hasResults =
+        (slateRes.data ?? []).some((g) => (g.result as string | null) != null) ||
         (resultCountRes.count ?? 0) > 0 ||
         (matchRes.data ?? []).some(
           (m) => (m.result as string | null) != null || (m.status as string | null) === "complete"
