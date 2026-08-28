@@ -75,6 +75,27 @@ describe("PickemTwoUp", () => {
     expect(html).toContain("0 of 16 in");
   });
 
+  it("says it is a control, and says which way it opens", () => {
+    /**
+     * The first look read these as stat cards — reasonably, since a number
+     * under a heading is what a stat card is. The fix is a chevron rather than
+     * quieter numbers, because the numbers are the reason the row is worth its
+     * space.
+     *
+     * DOWN when open, not a navigation arrow: these expand in place. Asserted
+     * as the flip between two renders, since "has a chevron" is true of a
+     * build that never changes it.
+     */
+    const closed = render({ open: null });
+    expect(closed).toContain("lucide-chevron-right");
+    expect(closed).not.toContain("lucide-chevron-down");
+
+    const opened = render({ open: "picks" });
+    expect(opened).toContain("lucide-chevron-down");
+    // ...and only the open half flips; the other still offers to open.
+    expect(opened).toContain("lucide-chevron-right");
+  });
+
   it("marks the open half, so the panel below is attached to what opened it", () => {
     const html = render({ open: "results" });
     const at = html.indexOf('data-testid="pickem-two-up-results"');

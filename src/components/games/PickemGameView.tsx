@@ -904,7 +904,6 @@ export function PickemGameView() {
               teams={q.data.teams}
               teamOf={teamOf}
               pointsMode={pointsMode}
-              pointsTotal={pointsTotal}
               /* The SHARED accessor, not a fourth hand-rolled
                  `isPlacement(d) ? d.values : []` — its own comment records that
                  three call sites had already written that line before it

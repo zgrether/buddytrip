@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { PickemMatchCard } from "./PickemMatchCard";
 import { placementPointsByTeam } from "@/lib/placementGroups";
-import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import { fmtPoints } from "@/lib/rackNStack";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
 import {
@@ -15,7 +14,7 @@ import {
   leaderClinched,
   orderByTotal,
   tiedWithPrevious,
-  matchPointsByTeam,
+  matchesWonByTeam,
   type BoardRow,
   type ZeroKind,
 } from "@/lib/pickemBoard";
@@ -230,7 +229,6 @@ export function PickemBoard({
   teamOf,
   pointsMode = false,
   distribution,
-  pointsTotal,
 }: {
   slate: BoardSlateGame[];
   /** Every sheet the caller may see, keyed by user. RLS-gated upstream. */
@@ -258,15 +256,6 @@ export function PickemBoard({
    * payouts rather than inventing one.
    */
   distribution?: number[];
-  /**
-   * What the GAME is worth to the cup — `games.points_total`. Divided across the
-   * paired matches by the shared divisor, which is what makes the tally agree
-   * with the "7 matches · 0.86 pts each" line on the pairing surface.
-   *
-   * Null on a game nobody has priced, and the tally is then absent rather than
-   * zero: a game worth nothing yet has no standings to report.
-   */
-  pointsTotal?: number | null;
 }) {
   /**
    * POINTS OVERRIDES ROLL-UP, in ONE place.
@@ -296,22 +285,6 @@ export function PickemBoard({
     return Object.keys(sheets).filter((uid) => !paired.has(uid)).map(nameOf).sort();
   }, [matches, sheets, nameOf]);
 
-  /**
-   * The cup tally — what each team has BANKED from settled matches.
-   *
-   * Only under `individual_matches`, which is the only shape where a match pays
-   * anything. `team_totals` shares one pool between two sides and the standings
-   * below already say who is winning it.
-   */
-  const perMatch = useMemo(
-    () =>
-      liveMatchPointsPerMatch(
-        pointsTotal ?? null,
-        matches.map((m) => ({ sideAId: m.sideAId, sideBId: m.sideBId, pointValue: null }))
-      ),
-    [pointsTotal, matches]
-  );
-
   const matchRows = useMemo(() => {
     const out = new Map<string, BoardRow[]>();
     for (const m of matches) {
@@ -331,8 +304,8 @@ export function PickemBoard({
    * game with no points on it.
    */
   const tally =
-    rollUp === "individual_matches" && teams.length === 2 && perMatch > 0
-      ? matchPointsByTeam(
+    rollUp === "individual_matches" && teams.length === 2
+      ? matchesWonByTeam(
           matches.flatMap((m) => {
             const rows = matchRows.get(m.id);
             if (!rows || !m.sideAId || !m.sideBId) return [];
@@ -346,8 +319,7 @@ export function PickemBoard({
                 clinched: st.clinched,
               },
             ];
-          }),
-          perMatch
+          })
         )
       : null;
 
@@ -383,7 +355,7 @@ export function PickemBoard({
             <span style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
               {fmtPoints(tally.get(teams[0].id) ?? 0)} – {fmtPoints(tally.get(teams[1].id) ?? 0)}
             </span>
-            <span style={{ fontSize: TYPE_SCALE.caption, fontWeight: 400 }}>match points</span>
+            <span style={{ fontSize: TYPE_SCALE.caption, fontWeight: 400 }}>matches won</span>
           </span>
         )}
       </div>

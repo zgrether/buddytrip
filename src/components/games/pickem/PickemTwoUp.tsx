@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
@@ -17,6 +18,14 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * is a place; "Your picks · 34 pts · 3 of 16" is an answer, and often the only
  * one somebody wanted — which is the point of putting it on the button rather
  * than behind it.
+ *
+ * ── ...which is also what made them read as a readout ──────────────────────
+ *
+ * A stat under a heading is a stat card, and the first look said so. The fix is
+ * a chevron rather than quieter numbers, because the numbers are the reason the
+ * row is worth its space — and it points DOWN when the panel is open, which is
+ * more honest than a navigation arrow: these expand in place, they do not take
+ * you anywhere.
  *
  * ── The runner's half is amber, and only when there is something to do ─────
  *
@@ -123,7 +132,7 @@ function Half({
       onClick={onClick}
       data-testid={testId}
       data-selected={selected ? "true" : "false"}
-      className="flex flex-1 flex-col justify-center px-3 text-left active:scale-[0.98]"
+      className="flex flex-1 items-center gap-1.5 px-3 text-left active:scale-[0.98]"
       style={{
         minHeight: 46,
         borderRadius: 12,
@@ -133,22 +142,38 @@ function Half({
         border: `1px solid ${border}`,
       }}
     >
-      <span
-        className="truncate"
-        style={{
-          fontSize: TYPE_SCALE.body,
-          fontWeight: 600,
-          color: warn ? "var(--color-bt-owner)" : "var(--color-bt-text)",
-        }}
-      >
-        {title}
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate"
+          style={{
+            fontSize: TYPE_SCALE.body,
+            fontWeight: 600,
+            color: warn ? "var(--color-bt-owner)" : "var(--color-bt-text)",
+          }}
+        >
+          {title}
+        </span>
+        <span
+          className="block truncate"
+          style={{ fontSize: 10.5, color: "var(--color-bt-text-dim)" }}
+        >
+          {sub}
+        </span>
       </span>
-      <span
-        className="truncate"
-        style={{ fontSize: 10.5, color: "var(--color-bt-text-dim)" }}
-      >
-        {sub}
-      </span>
+      {/* Down when open, right when closed — the shape of the interaction, not
+          a decoration. Accent while open so the button and the panel it
+          revealed read as one thing. */}
+      {selected ? (
+        <ChevronDown
+          size={14}
+          style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+        />
+      ) : (
+        <ChevronRight
+          size={14}
+          style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
+        />
+      )}
     </button>
   );
 }

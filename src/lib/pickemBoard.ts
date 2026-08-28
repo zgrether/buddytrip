@@ -372,7 +372,7 @@ export interface MatchTallyRow {
 }
 
 /**
- * The running cup tally under `individual_matches`: what each team has BANKED.
+ * The running tally under `individual_matches`: matches each team has WON.
  *
  * ── Settled, not finished ──────────────────────────────────────────────────
  *
@@ -387,25 +387,27 @@ export interface MatchTallyRow {
  * is for. Counting UNFINISHED ones would be a projection, and projections do
  * not belong in a figure labelled as points earned.
  *
- * ── Nothing here is stored ─────────────────────────────────────────────────
+ * ── Matches, not points — and that is the second version of this ──────────
  *
- * `perMatch` is `liveMatchPointsPerMatch` — the same divisor the pairing surface
- * states — so the tally cannot disagree with "7 matches · 0.86 pts each" sitting
- * next to it. A halved match splits it, which is match play's own rule and the
- * reason the return is fractional rather than a count of wins.
+ * It first returned CUP POINTS, multiplying each settled match by the shared
+ * divisor. With a 6-point game over 7 matches that renders "0 – 2.57", which is
+ * 18/7: an artifact of the divisor rather than a number anybody thinks in, and
+ * two decimal places of precision nobody uses.
  *
- * ── Why it lives here rather than in the board component ───────────────────
+ * Counting MATCHES fixes it at the source rather than by rounding. It is exact,
+ * it is the unit match play is actually scored in, and a halved match makes it
+ * "3½ – 2½" — a scoreline a golfer reads without translating.
  *
- * No server-side pick'em finalize exists yet: nothing writes `game_results` for
- * this format, so this is currently the ONLY implementation of "what did this
- * game pay". When the finalize lands it must call this, not derive its own —
- * the split between a live figure and a persisted one is exactly how the two
- * come to disagree (CLAUDE.md #8).
+ * It also removes a derivation rather than relocating one. The cup points are
+ * this × `liveMatchPointsPerMatch`, which is the divisor the pairing surface
+ * already states; so "what did this game pay" is now two existing shared
+ * functions composed, and there is no bespoke payment maths here for a future
+ * server-side finalize to disagree with.
+ *
+ * A halved match gives each side ½, which is why the return is fractional
+ * despite being a count.
  */
-export function matchPointsByTeam(
-  rows: readonly MatchTallyRow[],
-  perMatch: number
-): Map<string, number> {
+export function matchesWonByTeam(rows: readonly MatchTallyRow[]): Map<string, number> {
   const out = new Map<string, number>();
   const add = (teamId: string | null, amount: number) => {
     if (teamId == null) return;
@@ -415,15 +417,15 @@ export function matchPointsByTeam(
   for (const r of rows) {
     const settled = r.remaining === 0 || r.clinched;
     if (!settled) continue;
-    // A side off both rosters pays nobody, and its opponent still banks the
-    // match — the points come from the game, not from the loser.
+    // A side off both rosters banks nothing, and its opponent still wins the
+    // match — the win comes from the game, not from the loser's roster.
     if (r.margin === 0) {
-      add(r.aTeamId, perMatch / 2);
-      add(r.bTeamId, perMatch / 2);
+      add(r.aTeamId, 0.5);
+      add(r.bTeamId, 0.5);
     } else if (r.margin > 0) {
-      add(r.aTeamId, perMatch);
+      add(r.aTeamId, 1);
     } else {
-      add(r.bTeamId, perMatch);
+      add(r.bTeamId, 1);
     }
   }
   return out;
