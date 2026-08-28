@@ -8,7 +8,6 @@ import {
   buildBoardRows,
   matchStanding,
   sideStanding,
-  sideClinched,
   leaderId,
   leaderClinched,
   orderByTotal,
