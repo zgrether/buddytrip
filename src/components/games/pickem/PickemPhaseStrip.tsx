@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { TYPE_SCALE } from "@/lib/typeScale";
 import { toLocalInputValue, fromLocalInputValue, formatDeadline } from "./PickemDeadlineRow";
 import type { PickemPhase } from "@/lib/pickemLifecycle";
 
@@ -134,12 +134,13 @@ export function PickemPhaseStrip({
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
       <div className="flex items-start justify-between gap-3">
+        {/* No "You're running this" eyebrow. The strip only renders for people
+            who ARE running it (`canEdit`), so it told them something they
+            already knew — in the tightest space on the screen. The phase and
+            the action are the content. */}
         <span className="min-w-0 flex-1">
-          <span className="block" style={EYEBROW}>
-            You’re running this
-          </span>
           <span
-            className="mt-0.5 block"
+            className="block"
             style={{ fontSize: TYPE_SCALE.body, fontWeight: 700 }}
             data-testid="pickem-strip-phase"
           >
