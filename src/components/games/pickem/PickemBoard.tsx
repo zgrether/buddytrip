@@ -340,6 +340,11 @@ export function PickemBoard({
                 // Separates "level" from "nothing played" — two states that both
                 // show 0-0 and mean opposite things about what is left.
                 resolvedCount={resolved}
+                // A sheet is all-or-nothing, so presence in `sheets` IS "picked".
+                picked={{
+                  a: (sheets[m.sideAId] ?? []).length > 0,
+                  b: (sheets[m.sideBId] ?? []).length > 0,
+                }}
                 mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
                 youSide={
                   meId == null ? null : m.sideAId === meId ? "a" : m.sideBId === meId ? "b" : null

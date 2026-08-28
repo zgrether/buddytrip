@@ -27,12 +27,45 @@ import type { MatchStanding } from "@/lib/pickemBoard";
  * implementation.
  */
 
-export type MatchPill = "not-started" | "live" | "clinched" | "final";
+export type MatchPill = "not-started" | "live" | "clinched" | "final" | "no-picks";
 
-/** Which pill this standing earns. Exported so the copy and the pill cannot
- *  disagree about the same match — they are decided together, once. */
-export function matchPill(s: MatchStanding, resolvedCount: number): MatchPill {
+/**
+ * Whether each side actually submitted. Not a count — a sheet is all-or-nothing
+ * (`_pickem_write_sheet` refuses an incomplete one), so "has picks" is the whole
+ * question.
+ */
+export interface SidesPicked {
+  a: boolean;
+  b: boolean;
+}
+
+/**
+ * Which pill this standing earns.
+ *
+ * ── NO PICKS is not a clinch, and calling it one was wrong ─────────────────
+ *
+ * Someone with no sheet has zero upside, so `matchStanding` correctly reports
+ * the opponent's lead as beyond reach from the first result. The maths is
+ * right; CLINCHED was the wrong WORD for it.
+ *
+ * A clinch is a contest won. Beating an empty sheet is not a contest, and the
+ * difference is not pedantry: a clinched match is DECIDED, while this one is
+ * decided only because nobody entered — and it can be undecided by the person
+ * picking, or by a captain proxying for them, any time before the lock.
+ *
+ * Reading "CLINCHED · only 0 in play" with nine games left, a person concludes
+ * the app is broken rather than that their opponent never picked.
+ *
+ * Ranked above clinch and below final: once nothing is left it stops being
+ * reversible and is simply the result.
+ */
+export function matchPill(
+  s: MatchStanding,
+  resolvedCount: number,
+  picked: SidesPicked
+): MatchPill {
   if (s.remaining === 0) return "final";
+  if (!picked.a || !picked.b) return "no-picks";
   if (resolvedCount === 0) return "not-started";
   return s.clinched ? "clinched" : "live";
 }
@@ -42,6 +75,7 @@ const PILL_LABEL: Record<MatchPill, string> = {
   live: "Live",
   clinched: "Clinched",
   final: "Final",
+  "no-picks": "No picks",
 };
 
 /**
@@ -54,7 +88,9 @@ const PILL_LABEL: Record<MatchPill, string> = {
 export function matchNote(
   s: MatchStanding,
   resolvedCount: number,
-  leaderName: string
+  leaderName: string,
+  picked: SidesPicked,
+  names: { a: string; b: string }
 ): string {
   const lead = Math.abs(s.margin);
 
@@ -63,6 +99,17 @@ export function matchNote(
       ? "Dead even — half a point each"
       : `${leaderName} takes it by ${lead}`;
   }
+
+  // Said BEFORE anything about margins, because a missing sheet explains the
+  // numbers rather than being explained by them — and it is the one state here
+  // that somebody can still act on.
+  if (!picked.a || !picked.b) {
+    if (!picked.a && !picked.b) return "Neither has picked yet";
+    const missing = picked.a ? names.b : names.a;
+    const other = picked.a ? names.a : names.b;
+    return `${missing} hasn't picked — ${other} takes it unless that changes`;
+  }
+
   if (resolvedCount === 0) return "No games in yet";
   if (s.margin === 0) return `Level with ${s.remaining} to play`;
   if (s.clinched) {
@@ -72,6 +119,8 @@ export function matchNote(
 }
 
 function Pill({ kind }: { kind: MatchPill }) {
+  // "No picks" is not good news for anyone, so it does not take the accent that
+  // Live and Clinched use to mean "something is happening here".
   const accent = kind === "live" || kind === "clinched";
   return (
     <span
@@ -147,6 +196,7 @@ export function PickemMatchCard({
   bName,
   standing,
   resolvedCount,
+  picked,
   mine,
   youSide,
   note,
@@ -158,6 +208,12 @@ export function PickemMatchCard({
   standing: MatchStanding;
   /** Slate games with a result — separates "level" from "nothing played". */
   resolvedCount: number;
+  /**
+   * Whether each side submitted at all. Zero-because-nobody-picked and
+   * zero-because-they-were-beaten look identical in the totals and mean
+   * opposite things about whether anything can still change.
+   */
+  picked: SidesPicked;
   mine: boolean;
   /** Which side the viewer is on, for the YOU tag. Null when neither. */
   youSide: "a" | "b" | null;
@@ -169,7 +225,7 @@ export function PickemMatchCard({
   const s = standing;
   const aLead = s.margin > 0;
   const leaderName = aLead ? aName : bName;
-  const pill = matchPill(s, resolvedCount);
+  const pill = matchPill(s, resolvedCount, picked);
   const live = pill === "live" || pill === "clinched";
 
   return (
@@ -234,7 +290,7 @@ export function PickemMatchCard({
           data-testid="pickem-match-note"
           style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
         >
-          {matchNote(s, resolvedCount, leaderName)}
+          {matchNote(s, resolvedCount, leaderName, picked, { a: aName, b: bName })}
           {note ? ` · ${note}` : ""}
         </span>
       </span>
