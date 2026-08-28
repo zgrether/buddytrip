@@ -137,11 +137,30 @@ describe("scoringFrozenReason — copy derived from the phase, not assumed", () 
     expect(open).toContain("Picks are open");
   });
 
+  it("says reopening keeps the PICKS and clears only the ranking", () => {
+    // Checked against `set_pickem_phase(reopen)`, which runs
+    // `UPDATE pickem_picks SET confidence = NULL` and nothing else to that
+    // table. An earlier draft of this sentence said reopening "clears the
+    // picks", which would scare a runner off a safe action.
+    const locked = scoringFrozenReason(lockedClock, T0, true) as string;
+    expect(locked).toContain("everyone keeps their picks");
+    expect(locked).toContain("ranking is cleared");
+    expect(locked).not.toContain("clears the picks");
+  });
+
+  it("with confidence OFF, reopening costs nothing and says so", () => {
+    // There is no ranking to clear, so the warning would be a lie in the
+    // cautious direction.
+    const off = scoringFrozenReason(lockedClock, T0, false) as string;
+    expect(off).toContain("Everyone keeps their picks");
+    expect(off).not.toContain("ranking");
+  });
+
   it("every phase names the way out, since the freeze is reversible", () => {
     // Finding 3's other half: hiding the control would hide an available
     // action. Whatever the phase, the reason has to point at the reopen.
     for (const c of [openClock, lockedClock]) {
-      expect(scoringFrozenReason(c, T0) as string).toContain("Reopen the slate");
+      expect(scoringFrozenReason(c, T0) as string).toContain("Reopening the slate");
     }
   });
 });

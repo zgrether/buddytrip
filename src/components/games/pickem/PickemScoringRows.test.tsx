@@ -161,13 +161,13 @@ describe("the scoring settings", () => {
     // `pickemCountdown.test.ts`. What this file still owns is that the reason
     // reaches the screen — so it asserts the caller's text is rendered verbatim,
     // which a component that dropped the prop or kept its own copy would fail.
-    const reason = "Picks are locked, so scoring is frozen — SENTINEL. Reopen the slate below.";
+    const reason = "Picks are locked, so scoring is frozen — SENTINEL. Reopening the slate below.";
     const html = render({ editable: false, frozenReason: reason });
     const toggle = html.slice(html.indexOf('data-testid="pickem-confidence-toggle"') - 400);
     expect(toggle).toContain("disabled");
     // A disabled control with no reason attached teaches nobody why (finding 3).
     expect(html).toContain(reason);
-    expect(html).toContain("Reopen the slate");
+    expect(html).toContain("Reopening the slate");
     // ...and no Save, because nothing here can be changed.
     expect(html).not.toContain('data-testid="pickem-save-scoring"');
   });

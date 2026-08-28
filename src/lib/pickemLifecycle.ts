@@ -254,14 +254,30 @@ export function formatCountdown(ms: number): string {
  */
 export function scoringFrozenReason(
   clock: PickemClock,
-  now: number = Date.now()
+  now: number = Date.now(),
+  useConfidence = true
 ): string | null {
+  // What reopening ACTUALLY costs, checked against `set_pickem_phase('reopen')`
+  // rather than assumed. It runs `UPDATE pickem_picks SET confidence = NULL` and
+  // touches nothing else in that table — so the WINNERS survive and only the
+  // ranking is destroyed. With confidence off there is no ranking, so reopening
+  // costs a participant nothing at all.
+  //
+  // The first version of this sentence said reopening "clears the picks". That
+  // was written in the fix for the copy-describes-the-wrong-state bug, and was
+  // an instance of it: a consequence asserted from memory instead of read off
+  // the function. It would have scared a runner out of a safe action — and in
+  // the confidence-off case out of a completely free one.
+  const cost = useConfidence
+    ? "Reopening the slate below unfreezes them — everyone keeps their picks, but their ranking is cleared."
+    : "Reopening the slate below unfreezes them. Everyone keeps their picks.";
+
   switch (pickemPhase(clock, now)) {
     case "building":
       return null;
     case "picks_open":
-      return "Picks are open, so scoring is frozen — people are filling in sheets under these rules. Reopen the slate below to change them.";
+      return `Picks are open, so scoring is frozen — people are filling in sheets under these rules. ${cost}`;
     case "locked":
-      return "Picks are locked, so scoring is frozen — every sheet was filled in under these rules. Reopen the slate below to change them, which clears the picks.";
+      return `Picks are locked, so scoring is frozen — every sheet was filled in under these rules. ${cost}`;
   }
 }
