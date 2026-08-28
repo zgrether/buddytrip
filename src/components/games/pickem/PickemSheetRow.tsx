@@ -138,7 +138,11 @@ function TeamTarget({
         display: "inline-block",
         padding: "10px 6px",
         borderRadius: 8,
-        fontSize: TYPE_SCALE.bodyDense,
+        // `emphasis` (14) — the rung for "emphasis inside a row", and what the
+        // design specifies. It was `bodyDense` (12), which is the SUBTITLE rung:
+        // the team names are the primary content of this row and the thing you
+        // tap, so they were a step too small for both jobs.
+        fontSize: TYPE_SCALE.emphasis,
         fontWeight: picked ? 600 : state === "other" ? 500 : 600,
         color: picked
           ? "var(--color-bt-accent)"
@@ -190,7 +194,7 @@ export function PickemSheetRow({
       {points != null && <RankChip points={points} picked={pick !== null} />}
 
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-x-0.5 gap-y-1">
+        <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
           <TeamTarget
             name={game.awayTeam}
             side="away"
@@ -207,10 +211,16 @@ export function PickemSheetRow({
             editable={editable}
             onPick={() => onPick("home")}
           />
-          {/* The line is the HOME team's, which is why it sits with the home
-              team rather than in a column of its own. */}
-          {game.spread && <SpreadBadge spread={game.spread} />}
-          {weighted && <MultiplierBadge multiplier={game.multiplier as number} />}
+          {/* The line is the HOME team's, which is why it sits WITH the home
+              team rather than in a column of its own — but it is a badge beside
+              a name, not part of it, so it needs air the tap target's own
+              padding does not provide. */}
+          {(game.spread || weighted) && (
+            <span className="ml-0.5 flex items-center gap-1.5">
+              {game.spread && <SpreadBadge spread={game.spread} />}
+              {weighted && <MultiplierBadge multiplier={game.multiplier as number} />}
+            </span>
+          )}
         </span>
         {game.note && (
           <span
