@@ -161,9 +161,25 @@ export function pickemPhase(clock: PickemClock, now: number = Date.now()): Picke
  * multipliers?
  *
  * Spec §4 lock point 1: picks opening freezes the slate, because adding a
- * seventeenth game would invalidate every 1–16 ranking already submitted. The
- * runner's escape hatch is Reopen the slate, which returns the game to
- * `building` and makes everyone re-rank.
+ * seventeenth game would invalidate every 1–16 ranking already submitted.
+ *
+ * ── Editable whenever picks are NOT OPEN — including `locked` ──────────────
+ *
+ * This used to be `phase === "building"`, which froze the slate from the first
+ * open onwards forever. The only way back was `reopen`, and `reopen` nulled
+ * every participant's `confidence` — irreversibly, with no audit table — as a
+ * side effect of an action whose stated purpose was making the slate editable.
+ * Reopen and change nothing, and sixteen rankings were destroyed for nothing.
+ *
+ * The consequence belongs to the EDIT, not to the mode. Adding or removing a
+ * game is what invalidates a ranking; opening the door is not. So `reopen` is
+ * gone (migration 156), the slate is editable in `building` AND `locked`, and
+ * the clear happens inside `save_pickem_config` when the slate's id SET
+ * actually changes.
+ *
+ * The runner's route back into a live game is therefore `unlock`, which now
+ * costs nothing on its own — and `picks_opened_at` and each pick's
+ * `updated_at` survive, since neither was ever reopen's business.
  *
  * Lock point 2 — the first RESULT freezing the slate against the runner — is a
  * separate trigger on a separate axis and is NOT expressible here: results do
@@ -171,7 +187,7 @@ export function pickemPhase(clock: PickemClock, now: number = Date.now()): Picke
  * them. When it lands it ANDs with this; it does not replace it.
  */
 export function slateEditable(clock: PickemClock, now: number = Date.now()): boolean {
-  return pickemPhase(clock, now) === "building";
+  return !picksOpen(clock, now);
 }
 
 /**
@@ -254,30 +270,20 @@ export function formatCountdown(ms: number): string {
  */
 export function scoringFrozenReason(
   clock: PickemClock,
-  now: number = Date.now(),
-  useConfidence = true
+  now: number = Date.now()
 ): string | null {
-  // What reopening ACTUALLY costs, checked against `set_pickem_phase('reopen')`
-  // rather than assumed. It runs `UPDATE pickem_picks SET confidence = NULL` and
-  // touches nothing else in that table — so the WINNERS survive and only the
-  // ranking is destroyed. With confidence off there is no ranking, so reopening
-  // costs a participant nothing at all.
+  // ONE frozen phase now, not two. Migration 156 made the slate editable
+  // whenever picks are not open, which includes `locked` — so a locked game's
+  // settings are no longer frozen and there is nothing to explain there.
   //
-  // The first version of this sentence said reopening "clears the picks". That
-  // was written in the fix for the copy-describes-the-wrong-state bug, and was
-  // an instance of it: a consequence asserted from memory instead of read off
-  // the function. It would have scared a runner out of a safe action — and in
-  // the confidence-off case out of a completely free one.
-  const cost = useConfidence
-    ? "Reopening the slate below unfreezes them — everyone keeps their picks, but their ranking is cleared."
-    : "Reopening the slate below unfreezes them. Everyone keeps their picks.";
-
-  switch (pickemPhase(clock, now)) {
-    case "building":
-      return null;
-    case "picks_open":
-      return `Picks are open, so scoring is frozen — people are filling in sheets under these rules. ${cost}`;
-    case "locked":
-      return `Picks are locked, so scoring is frozen — every sheet was filled in under these rules. ${cost}`;
+  // The way out is `unlock`, and it is worth saying that it costs nothing:
+  // clearing rankings moved to the slate save, where it fires only if the slate
+  // actually changes. The previous version of this sentence warned about losing
+  // work for merely getting back in, which was true of `reopen` and is the
+  // behaviour that was removed.
+  if (picksOpen(clock, now)) {
+    return "Picks are open, so scoring is frozen — people are filling in sheets under these rules. Lock picks to change them; nobody loses anything unless the slate itself changes.";
   }
+  return null;
 }
+

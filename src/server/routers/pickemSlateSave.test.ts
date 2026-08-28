@@ -55,10 +55,10 @@ describe("save_pickem_config / set_pickem_phase", () => {
   const save = (payload: Record<string, unknown>, role: "owner" | "member" = "owner") =>
     ctx.authedClient(role).rpc("save_pickem_config", { p_game_id: gameId, p_payload: payload });
 
-  const phase = (action: string, deadline: string | null = null, role: "owner" | "member" = "owner") =>
+  const phase = (action: string, role: "owner" | "member" = "owner") =>
     ctx
       .authedClient(role)
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: action, p_deadline: deadline });
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: action });
 
   const readSlate = async () => {
     const { data } = await ctx.admin
@@ -127,7 +127,9 @@ describe("save_pickem_config / set_pickem_phase", () => {
       { id: genId("p"), game_id: gameId, slate_game_id: drop.id, user_id: ctx.getUser("member").id, pick: "home", confidence: 1 },
     ]);
 
-    await phase("reopen");
+    // Locking is now the whole of "let me edit this": the slate is frozen only
+    // while picks are OPEN, and locking on its own destroys nothing.
+    await phase("lock");
     // The runner edits the slate: keeps one game, drops the other, adds a third.
     const added = slateItem({ awayTeam: "Added" });
     const { error } = await save({ slate: [keep, added] });
@@ -161,7 +163,7 @@ describe("save_pickem_config / set_pickem_phase", () => {
       id: genId("p"), game_id: gameId, slate_game_id: g.id,
       user_id: ctx.getUser("member").id, pick: "away", confidence: 1,
     });
-    await phase("reopen");
+    await phase("lock");
 
     await save({ slate: [{ ...g, awayTeam: "Alabama", spread: "-4.5", multiplier: 2 }] });
 
@@ -187,7 +189,7 @@ describe("save_pickem_config / set_pickem_phase", () => {
     const lockedSettings = await save({ settings: { useConfidence: false } });
     expect(lockedSettings.error?.message).toContain("SLATE_LOCKED");
 
-    await phase("reopen");
+    await phase("lock");
     expect((await save({ settings: { useConfidence: false } })).error).toBeNull();
   });
 
@@ -217,30 +219,45 @@ describe("save_pickem_config / set_pickem_phase", () => {
     expect(error?.message).toContain("EMPTY_SLATE");
   });
 
-  it("open sets the clock, lock stamps it, reopen clears both", async () => {
-    await save({ slate: [slateItem()] });
-    const deadline = new Date(Date.now() + 3_600_000).toISOString();
-    expect((await phase("open", deadline)).error).toBeNull();
+  it("open stamps ONE column, lock stamps another, unlock clears only that", async () => {
+    // Migration 156. Each action writes exactly the column it is named after.
+    const clock = async () => {
+      const { data } = await ctx.admin
+        .from("pickem_games")
+        .select("picks_opened_at, picks_deadline, picks_locked_at")
+        .eq("game_id", gameId)
+        .single();
+      return data!;
+    };
 
-    let { data } = await ctx.admin
-      .from("pickem_games").select("picks_opened_at, picks_deadline, picks_locked_at")
-      .eq("game_id", gameId).single();
-    expect(data!.picks_opened_at).not.toBeNull();
-    expect(new Date(data!.picks_deadline as string).getTime()).toBe(new Date(deadline).getTime());
-    expect(data!.picks_locked_at).toBeNull();
+    await save({ slate: [slateItem()] });
+
+    // A deadline set BEFORE picks open, through the function that owns it.
+    const deadline = new Date(Date.now() + 3_600_000).toISOString();
+    await ctx
+      .authedClient("owner")
+      .rpc("set_pickem_deadline", { p_game_id: gameId, p_deadline: deadline });
+
+    expect((await phase("open")).error).toBeNull();
+    let c = await clock();
+    expect(c.picks_opened_at).not.toBeNull();
+    expect(c.picks_locked_at).toBeNull();
+    // THE REGRESSION THIS TEST NOW CARRIES: `open` used to write
+    // `picks_deadline = p_deadline` with no COALESCE, and every caller passed
+    // null — so opening silently wiped the deadline it was supposed to honour.
+    expect(new Date(c.picks_deadline as string).getTime()).toBe(new Date(deadline).getTime());
 
     await phase("lock");
-    ({ data } = await ctx.admin
-      .from("pickem_games").select("picks_opened_at, picks_deadline, picks_locked_at")
-      .eq("game_id", gameId).single());
-    expect(data!.picks_locked_at).not.toBeNull();
+    c = await clock();
+    expect(c.picks_locked_at).not.toBeNull();
 
-    await phase("reopen");
-    ({ data } = await ctx.admin
-      .from("pickem_games").select("picks_opened_at, picks_deadline, picks_locked_at")
-      .eq("game_id", gameId).single());
-    expect(data!.picks_opened_at).toBeNull();
-    expect(data!.picks_locked_at).toBeNull();
+    await phase("unlock");
+    c = await clock();
+    expect(c.picks_locked_at).toBeNull();
+    // `picks_opened_at` SURVIVES. Under `reopen` it was nulled, so re-opening
+    // re-stamped a fresh now() and the original publish time was lost.
+    expect(c.picks_opened_at).not.toBeNull();
+    expect(new Date(c.picks_deadline as string).getTime()).toBe(new Date(deadline).getTime());
   });
 
   it("rejects an unknown action rather than silently doing nothing", async () => {
@@ -257,7 +274,7 @@ describe("save_pickem_config / set_pickem_phase", () => {
     expect(saved.error?.message).toContain("NOT_AUTHORIZED");
 
     await save({ slate: [slateItem()] });
-    const moved = await phase("open", null, "member");
+    const moved = await phase("open", "member");
     expect(moved.error?.message).toContain("NOT_AUTHORIZED");
   });
 });

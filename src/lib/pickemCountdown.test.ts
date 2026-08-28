@@ -116,20 +116,21 @@ describe("scoringFrozenReason — copy derived from the phase, not assumed", () 
     expect(scoringFrozenReason(buildingClock, T0)).toBeNull();
   });
 
-  it("explains the freeze in BOTH frozen phases — never mute", () => {
-    // Finding 3: a disabled control with no reason. Both phases disable it.
+  it("explains the freeze while picks are open — a disabled control is never mute", () => {
+    // Finding 3: a disabled control with no reason teaches nobody why.
     expect(scoringFrozenReason(openClock, T0 - 60_000)).toBeTruthy();
-    expect(scoringFrozenReason(lockedClock, T0)).toBeTruthy();
   });
 
-  it("does NOT claim picks are open on a LOCKED game", () => {
-    // The reported bug, as the assertion that fails against the old static
-    // string. Matching the literal sentence rather than a loose substring: the
-    // locked copy legitimately contains the word "picks", so a `/picks/` probe
-    // would pass against the broken build and prove nothing.
-    const locked = scoringFrozenReason(lockedClock, T0) as string;
-    expect(locked).not.toContain("Picks are open");
-    expect(locked).toContain("Picks are locked");
+  it("says NOTHING on a locked game, because nothing is frozen there any more", () => {
+    // The originally-reported bug was this sentence claiming "Picks are open"
+    // on a locked game. Migration 156 removed the second frozen phase outright
+    // — the slate and its settings are editable whenever picks are not open —
+    // so the false sentence is now unreachable rather than merely corrected.
+    //
+    // Asserting null is the STRONGER version of the old assertion: any build
+    // that renders a frozen-reason here at all fails, including one that
+    // renders the correct wording for a state that is not frozen.
+    expect(scoringFrozenReason(lockedClock, T0)).toBeNull();
   });
 
   it("DOES say picks are open while they are", () => {
@@ -137,30 +138,14 @@ describe("scoringFrozenReason — copy derived from the phase, not assumed", () 
     expect(open).toContain("Picks are open");
   });
 
-  it("says reopening keeps the PICKS and clears only the ranking", () => {
-    // Checked against `set_pickem_phase(reopen)`, which runs
-    // `UPDATE pickem_picks SET confidence = NULL` and nothing else to that
-    // table. An earlier draft of this sentence said reopening "clears the
-    // picks", which would scare a runner off a safe action.
-    const locked = scoringFrozenReason(lockedClock, T0, true) as string;
-    expect(locked).toContain("everyone keeps their picks");
-    expect(locked).toContain("ranking is cleared");
-    expect(locked).not.toContain("clears the picks");
-  });
-
-  it("with confidence OFF, reopening costs nothing and says so", () => {
-    // There is no ranking to clear, so the warning would be a lie in the
-    // cautious direction.
-    const off = scoringFrozenReason(lockedClock, T0, false) as string;
-    expect(off).toContain("Everyone keeps their picks");
-    expect(off).not.toContain("ranking");
-  });
-
-  it("every phase names the way out, since the freeze is reversible", () => {
+  it("names the way out, and it is the one that costs nothing", () => {
     // Finding 3's other half: hiding the control would hide an available
-    // action. Whatever the phase, the reason has to point at the reopen.
-    for (const c of [openClock, lockedClock]) {
-      expect(scoringFrozenReason(c, T0) as string).toContain("Reopening the slate");
-    }
+    // action, so the reason has to point at the exit. It must point at LOCK,
+    // not at the deleted reopen — and must not warn about losing work, because
+    // locking does not clear anything. Only a slate change does.
+    const open = scoringFrozenReason(openClock, T0 - 60_000) as string;
+    expect(open).toContain("Lock picks");
+    expect(open).toContain("nobody loses anything");
+    expect(open).not.toContain("Reopen");
   });
 });

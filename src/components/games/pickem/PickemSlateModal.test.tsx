@@ -42,6 +42,7 @@ const render = (over: Partial<Parameters<typeof PickemSlateModal>[0]> = {}) =>
       onClose={() => {}}
       slate={SLATE}
       editable
+      rankedSheetsExist={false}
       saving={false}
       onSave={() => {}}
       {...over}
@@ -244,5 +245,46 @@ describe("frozen", () => {
     // ...and the games are still readable, which is why the modal still opens.
     expect(html).toContain("Alabama");
     expect(html).toContain("Ohio St");
+  });
+});
+
+describe("the ranking warning sits with the edit that causes it (migration 156)", () => {
+  /**
+   * It used to hang off "Reopen the slate" — a mode change that cleared every
+   * ranking whether or not the runner went on to change anything. So the
+   * warning fired for people about to lose nothing, and the edit that actually
+   * destroyed the rankings carried no warning at all. Both halves were wrong,
+   * in opposite directions.
+   *
+   * What a STATIC render can show is the quiet cases, because the draft is
+   * seeded from the `slate` prop and therefore always equals it on first
+   * paint. The interesting half — a draft that has diverged — is the
+   * `slateSetChanged` predicate, tested directly in `pickemSheet.test.ts`
+   * against the same cases the server's own test drives. Splitting it that way
+   * rather than writing a render test that cannot reach the state is the point:
+   * a test named for a path it does not take is worse than no test.
+   */
+
+  it("stays quiet when nothing is at stake", () => {
+    // Nothing ranked yet — the runner is still building.
+    expect(render({ rankedSheetsExist: false })).not.toContain(
+      'data-testid="pickem-slate-clears-rankings"'
+    );
+  });
+
+  it("stays quiet when ranked sheets exist and the slate is UNCHANGED", () => {
+    // The case the old design could not express: opening the editor and
+    // changing nothing must cost nothing, and must not threaten that it will.
+    expect(render({ rankedSheetsExist: true })).not.toContain(
+      'data-testid="pickem-slate-clears-rankings"'
+    );
+  });
+
+  it("shows no stale reopen affordance anywhere in the modal", () => {
+    // The action is gone from the server (BAD_ACTION) — a button still offering
+    // it here would be an error the runner can only discover by tapping it.
+    const html = render({ rankedSheetsExist: true });
+    expect(html).not.toContain("Reopen the slate");
+    expect(html).not.toContain('data-testid="pickem-reopen-slate"');
   });
 });

@@ -351,16 +351,20 @@ export const pickemRouter = router({
       return { ok: true };
     }),
 
-  // ── open / lock / reopen ────────────────────────────────────────────────
+  // ── open / lock / unlock ────────────────────────────────────────────────
+  //
+  // `reopen` was removed in migration 156. It destroyed every ranking as a
+  // side effect of making the slate editable; the slate is now editable
+  // whenever picks are not open, and the clear happens in `saveConfig` when
+  // the slate actually changes. The deadline left with it — `setDeadline`
+  // owns that column, and `open` writing it wiped the deadline of every
+  // re-opened game.
   setPhase: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        action: z.enum(["open", "lock", "unlock", "reopen"]),
-        /** Only meaningful with `open`. Null means "no deadline — I will lock by
-         *  hand", which is a supported choice rather than a missing value. */
-        deadline: z.string().datetime().nullable().optional(),
+        action: z.enum(["open", "lock", "unlock"]),
       })
     )
     .use(requireGameEdit())
@@ -368,7 +372,6 @@ export const pickemRouter = router({
       const { error } = await ctx.supabase.rpc("set_pickem_phase", {
         p_game_id: input.gameId,
         p_action: input.action,
-        p_deadline: input.deadline ?? null,
       });
       if (error) throw pickemError(error.message);
       return { ok: true };

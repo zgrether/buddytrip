@@ -27,6 +27,7 @@ import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   msUntilDeadline,
+  picksEverOpened,
   picksOpen,
   picksRevealed,
   pickemClosure,
@@ -261,7 +262,7 @@ export function PickemGameView() {
           canEdit={canEdit}
           onOpenSlate={() => setSlateOpen(true)}
           onOpenPicks={() =>
-            setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
+            setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
           }
           opening={setPhase.isPending}
         />
@@ -382,6 +383,9 @@ export function PickemGameView() {
         // Slate only. The scoring settings moved to the settings page and save
         // through the same RPC with the other half absent, which
         // `save_pickem_config` already supports.
+        // Warn only if there is something to lose: rankings exist once picks
+        // have been opened, and only when confidence is on.
+        rankedSheetsExist={picksEverOpened(clock) && q.data.settings.useConfidence}
         onSave={(next) => saveConfig.mutate({ tripId: tripId!, gameId, slate: next.slate })}
       />
 
@@ -460,7 +464,7 @@ export function PickemGameView() {
                   editable={canEdit && scoringSettingsEditable(clock, now)}
                   frozenReason={
                     canEdit
-                      ? scoringFrozenReason(clock, now, q.data.settings.useConfidence)
+                      ? scoringFrozenReason(clock, now)
                       : null
                   }
                   showRollUp={q.data.game.competition_id != null}
@@ -494,13 +498,10 @@ export function PickemGameView() {
               // slate" look like a dead button.
               onOpenSlate={() => setSlateOpen(true)}
               onOpenPicks={() =>
-                setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
+                setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
               }
               onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
               onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
-              onReopen={() =>
-                setPhase.mutate({ tripId: tripId!, gameId, action: "reopen" })
-              }
               busy={setPhase.isPending}
             />
           }
@@ -600,7 +601,6 @@ export function SlateSettingsRows({
   onOpenPicks,
   onLock,
   onUnlock,
-  onReopen,
   busy,
 }: {
   slateCount: number;
@@ -619,7 +619,6 @@ export function SlateSettingsRows({
   onOpenPicks: () => void;
   onLock: () => void;
   onUnlock: () => void;
-  onReopen: () => void;
   busy: boolean;
 }) {
   if (!canEdit) return null;
@@ -635,13 +634,11 @@ export function SlateSettingsRows({
     transitions.push({ label: "Lock picks", onClick: onLock, testId: "pickem-lock-picks", tone: "go" });
   }
   if (phase === "locked") {
-    // The narrow inverse of Lock, available whenever picks are locked —
-    // reversible without touching the slate or anyone's ranking, which is what
-    // separates it from Reopen sitting beside it.
+    // The WHOLE way back into a live game now that Reopen is gone (migration
+    // 156). It used to sit beside a destructive twin whose only advantage was
+    // making the slate editable — which this already does, because the slate is
+    // frozen only while picks are OPEN.
     transitions.push({ label: "Unlock picks", onClick: onUnlock, testId: "pickem-unlock-picks", tone: "go" });
-  }
-  if (phase !== "building") {
-    transitions.push({ label: "Reopen the slate", onClick: onReopen, testId: "pickem-reopen-slate", tone: "undo" });
   }
 
   /** What each visible transition will DO. Two-word labels are not enough for
@@ -653,10 +650,7 @@ export function SlateSettingsRows({
     "pickem-lock-picks":
       "Lock picks — closes every sheet immediately and reveals them to the trip.",
     "pickem-unlock-picks":
-      "Unlock picks — reopens every sheet for editing and hides them again. Slate and rankings are untouched.",
-    "pickem-reopen-slate": useConfidence
-      ? "Reopen the slate — back to not-open so you can change the games. Everyone keeps their winners and re-ranks them."
-      : "Reopen the slate — back to not-open so you can change the games. Everyone keeps their picks.",
+      "Unlock picks — reopens every sheet for editing and hides them again. Nothing is lost.",
   };
 
   return (

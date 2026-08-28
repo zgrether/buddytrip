@@ -6,6 +6,7 @@ import {
   rankedOrder,
   applyOrder,
   setPick,
+  slateSetChanged,
   sheetsEqual,
   explanationCopy,
   type SheetPick,
@@ -241,5 +242,64 @@ describe("explanationCopy", () => {
     const withBoth = slate(3, [{ multiplier: 2 }, { spread: "-3.5" }]);
     expect(ids(ON, withBoth)).toContain("multipliers");
     expect(ids(ON, withBoth)).toContain("spreads");
+  });
+});
+
+describe("slateSetChanged — what invalidates a ranking (migration 156)", () => {
+  /**
+   * The client half of the test `save_pickem_config` runs as
+   * `v_prior IS DISTINCT FROM v_keep`. That one decides whether rankings are
+   * DELETED; this one decides whether the runner is warned first. They have to
+   * answer the same, which is why the cases below are the same cases the
+   * server-side test drives.
+   */
+  const g = (id: string) => ({ id });
+  const SLATE = [g("a"), g("b"), g("c")];
+
+  it("an identical slate has not changed", () => {
+    expect(slateSetChanged(SLATE, [g("a"), g("b"), g("c")])).toBe(false);
+  });
+
+  it("REORDERING is not a change — a ranking survives it intact", () => {
+    // The distinction that keeps this from over-destroying: 1..N is still a
+    // permutation of the same N games however they are displayed.
+    expect(slateSetChanged(SLATE, [g("c"), g("a"), g("b")])).toBe(false);
+  });
+
+  it("editing a game's CONTENT is not a change either", () => {
+    // Same ids, different teams/spread/multiplier. Fixing a typo must not cost
+    // sixteen people their ranking.
+    const edited = [
+      { id: "a", awayTeam: "Alabama", multiplier: 3 },
+      { id: "b", spread: "-7.5" },
+      { id: "c" },
+    ];
+    expect(slateSetChanged(SLATE, edited)).toBe(false);
+  });
+
+  it("REMOVING a game is a change", () => {
+    expect(slateSetChanged(SLATE, [g("a"), g("b")])).toBe(true);
+  });
+
+  it("ADDING a game is a change", () => {
+    expect(slateSetChanged(SLATE, [...SLATE, g("d")])).toBe(true);
+  });
+
+  it("SWAPPING one for another is a change, though the count is identical", () => {
+    // The case a count-based test would miss, and the reason this compares sets
+    // rather than lengths.
+    expect(slateSetChanged(SLATE, [g("a"), g("b"), g("d")])).toBe(true);
+  });
+
+  it("emptying the slate is a change", () => {
+    expect(slateSetChanged(SLATE, [])).toBe(true);
+  });
+
+  it("a first slate, from nothing, is a change", () => {
+    expect(slateSetChanged([], SLATE)).toBe(true);
+  });
+
+  it("two empties have not changed", () => {
+    expect(slateSetChanged([], [])).toBe(false);
   });
 });

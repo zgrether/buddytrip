@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowUpDown, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
+import { slateSetChanged } from "@/lib/pickemSheet";
 import { ReorderableList } from "@/components/ReorderableList";
 import { Stepper } from "@/components/games/Stepper";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
@@ -124,6 +125,7 @@ export function PickemSlateModal({
   onClose,
   slate,
   editable,
+  rankedSheetsExist,
   saving,
   onSave,
 }: {
@@ -138,12 +140,38 @@ export function PickemSlateModal({
    * attached teaches nobody why.
    */
   editable: boolean;
+  /**
+   * True when ranked sheets may exist — picks have been opened at least once
+   * and confidence is on.
+   *
+   * Only used to decide whether to WARN. The clear itself is server-side, in
+   * `save_pickem_config`, keyed on the id set actually changing (migration
+   * 156). This flag deliberately cannot suppress it: a screen that decides
+   * whether data is destroyed is how the two get out of step.
+   */
+  rankedSheetsExist: boolean;
   saving: boolean;
   onSave: (next: { slate: SlateDraftGame[] }) => void;
 }) {
   const [draft, setDraft] = useState<SlateDraftGame[]>(slate);
   const [touched, setTouched] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
+
+  /**
+   * Will saving this draft clear everyone's ranking?
+   *
+   * The SAME test the server applies — the id SET, not the count and not the
+   * content. A ranking is a permutation of 1..N over the slate, so gaining or
+   * losing a game invalidates it while reordering, re-spreading or re-weighting
+   * one does not.
+   *
+   * Stated here because this is where the cause is. It used to be attached to
+   * "Reopen the slate", a mode change that destroyed every ranking whether or
+   * not the runner went on to change anything — so the warning appeared for
+   * people who were about to lose nothing, and the actual edit that did the
+   * damage carried no warning at all.
+   */
+  const clearsRankings = rankedSheetsExist && slateSetChanged(slate, draft);
   /**
    * TWO independent forms, one component.
    *
@@ -388,6 +416,23 @@ export function PickemSlateModal({
         )}
 
         {/* ── save ────────────────────────────────────────────────────── */}
+        {editable && clearsRankings && (
+          <p
+            data-testid="pickem-slate-clears-rankings"
+            style={{
+              fontSize: TYPE_SCALE.caption,
+              color: "var(--color-bt-warning)",
+              fontWeight: 600,
+              lineHeight: 1.5,
+              margin: "2px 2px 0",
+            }}
+          >
+            This changes which games are on the slate, so everyone&rsquo;s ranking is
+            cleared when you save. Their picks are kept — they will need to put them
+            back in order.
+          </p>
+        )}
+
         {editable && (
           <div className="flex items-center gap-3 pt-1">
             <span

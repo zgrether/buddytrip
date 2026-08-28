@@ -48,7 +48,6 @@ const settingsRows = (over: Partial<Parameters<typeof SlateSettingsRows>[0]> = {
       onOpenPicks={noop}
       onLock={noop}
       onUnlock={noop}
-      onReopen={noop}
       busy={false}
       {...over}
     />
@@ -112,7 +111,8 @@ describe("the game page's primary action follows the state", () => {
 
 describe("settings carries the whole lifecycle, not just the way back", () => {
   // Reopen used to live here alone, which meant settings held the exit from
-  // every state and none of the entrances.
+  // every state and none of the entrances. It is now GONE (migration 156) —
+  // see the block at the bottom of this file for what replaced it.
   it("building with a slate offers OPEN, and neither of the others", () => {
     const html = settingsRows({ phase: "building", slateCount: 2 });
     expect(html).toContain('data-testid="pickem-open-picks-settings"');
@@ -127,20 +127,20 @@ describe("settings carries the whole lifecycle, not just the way back", () => {
     expect(html).not.toContain('data-testid="pickem-open-picks-settings"');
   });
 
-  it("picks open offers LOCK and REOPEN, and not a second Open", () => {
+  it("picks open offers LOCK alone — the only phase with anything frozen", () => {
     const html = settingsRows({ phase: "picks_open" });
     expect(html).toContain('data-testid="pickem-lock-picks"');
-    expect(html).toContain('data-testid="pickem-reopen-slate"');
     expect(html).not.toContain('data-testid="pickem-open-picks-settings"');
   });
 
-  it("locked offers UNLOCK and REOPEN — lock has an inverse now", () => {
-    // Before migration 151 the only way out of a lock was Reopen, which clears
+  it("locked offers UNLOCK, and that is the whole way back", () => {
+    // Before migration 151 the only way out of a lock was Reopen, which cleared
     // every ranking. "I locked a minute early" and "I need to change the games"
-    // shared one answer and it was the destructive one.
+    // shared one answer and it was the destructive one. 151 added Unlock; 156
+    // removed Reopen entirely, because unlocking already makes the slate
+    // editable — it is frozen only while picks are OPEN.
     const html = settingsRows({ phase: "locked" });
     expect(html).toContain('data-testid="pickem-unlock-picks"');
-    expect(html).toContain('data-testid="pickem-reopen-slate"');
     // ...and no second Lock, because it is already locked.
     expect(html).not.toContain('data-testid="pickem-lock-picks"');
   });
@@ -157,9 +157,21 @@ describe("settings carries the whole lifecycle, not just the way back", () => {
     }
   });
 
-  it("unlock says it keeps the rankings — the difference from Reopen beside it", () => {
+  it("unlock says it costs nothing", () => {
     const html = settingsRows({ phase: "locked" });
-    expect(html).toContain("Slate and rankings are untouched");
+    expect(html).toContain("Nothing is lost");
+  });
+
+  it("NO phase offers a destructive reopen — it was deleted, not hidden", () => {
+    // The guard on migration 156. Reopen nulled every participant's confidence
+    // as a side effect of making the slate editable, with no audit table and no
+    // way back. A future change that re-adds a control by that id fails here
+    // rather than quietly restoring the destruction.
+    for (const phase of ["building", "picks_open", "locked"] as const) {
+      const html = settingsRows({ phase, slateCount: 2 });
+      expect(html, phase).not.toContain('data-testid="pickem-reopen-slate"');
+      expect(html, phase).not.toContain("Reopen the slate");
+    }
   });
 
   it("every transition says what it does to everyone else", () => {
@@ -177,13 +189,16 @@ describe("settings carries the whole lifecycle, not just the way back", () => {
     expect(settingsRows({ phase: "locked" })).toContain("Picks are locked");
   });
 
-  it("REOPEN's copy drops the ranking sentence when confidence is off", () => {
+  it("the slate summary drops the ranking phrase when confidence is off", () => {
     // The falsehood rule again, on the settings side: a confidence-off game has
-    // no ranking to redo, and "confidence 1–N" is not what its slate is.
+    // no ranking, and "confidence 1–N" is not what its slate is.
+    //
+    // This used to also cover Reopen's consequence copy, which said everyone
+    // "re-ranks them". Reopen is gone (migration 156) and so is that sentence —
+    // the destruction it described now happens only on a real slate change, and
+    // is warned about there.
     const on = settingsRows({ phase: "picks_open", useConfidence: true });
     const off = settingsRows({ phase: "picks_open", useConfidence: false });
-    expect(on).toContain("re-ranks them");
-    expect(off).not.toContain("re-ranks");
     expect(on).toContain("confidence 1–2");
     expect(off).not.toContain("confidence");
   });
