@@ -83,8 +83,8 @@ export function StrokeGameView() {
 
   const utils = trpc.useUtils();
   // #501 Part 1: delegate-aware — a game-delegate (even a plain Member) edits this
-  // game, mirroring the server's `canEditGame`. `isOwner` stays trip-Owner-only.
-  const { canEdit, isOwner, canManageGame } = useGameEditAccess(tripId, urlGameId);
+  // game, mirroring the server's `canEditGame`.
+  const { canEdit, canManageGame } = useGameEditAccess(tripId, urlGameId);
   const me = useCurrentUser();
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
@@ -1078,7 +1078,7 @@ export function StrokeGameView() {
           competitionId={gameCompetitionId}
           game={draftGameRow}
           canEdit={canEdit}
-          isOwner={isOwner}
+          canDelegate={canManageGame}
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}

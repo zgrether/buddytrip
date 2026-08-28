@@ -92,8 +92,8 @@ export function RackGameView() {
   }, [gamesList.data]);
   const gid = gameId ?? resumeId;
   // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
-  // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
-  const { canEdit, isOwner, canManageGame, loading: roleLoading } = useGameEditAccess(tripId, gid);
+  // centralized in useGameEditAccess.
+  const { canEdit, canManageGame, loading: roleLoading } = useGameEditAccess(tripId, gid);
   const [mode, setMode] = useState<RackMode>("current");
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   // Carries the CoursePicker's selected TEE too (A2-tee) — dropping it left a
@@ -1048,7 +1048,7 @@ export function RackGameView() {
           competitionId={competitionId ?? null}
           game={draftGameRow}
           canEdit={canEdit}
-          isOwner={isOwner}
+          canDelegate={canManageGame}
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}

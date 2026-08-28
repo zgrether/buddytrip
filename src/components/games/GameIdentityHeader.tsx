@@ -31,7 +31,7 @@ import { DelegatePicker } from "@/components/games/DelegatePicker";
  * `removeOrganizer` path is gone — every render site is draft-then-save.)
  */
 export function GameIdentityHeader({
-  tripId, competitionId, canEdit, isOwner, children,
+  tripId, competitionId, canEdit, canDelegate, children,
   nameValue, onNameChange, delegateValue, onDelegateChange,
 }: {
   tripId: string;
@@ -40,8 +40,17 @@ export function GameIdentityHeader({
   competitionId?: string | null;
   /** Can edit the NAME (owner or delegate). */
   canEdit: boolean;
-  /** Can change the ASSIGNMENT (owner-only — matches the server gate). */
-  isOwner: boolean;
+  /**
+   * Can change the ASSIGNMENT — trip Owner OR Organizer, delegates excluded.
+   *
+   * This said "owner-only — matches the server gate", and the server gate is
+   * `games.addOrganizer` / `removeOrganizer`, both
+   * `requireTripRole("Organizer")`. So the comment asserted a match that did
+   * not exist and the client was STRICTER than the policy: an Organizer could
+   * not see a control the server would have accepted. Renamed off `isOwner`
+   * so the next reader cannot make the same inference from the name.
+   */
+  canDelegate: boolean;
   /** Mode-controls slot (A2-precursor) — the Game Management panel/toggle mounts
    *  here in A2-ux. Rendered below the assigned-to frame; omitted → nothing renders. */
   children?: React.ReactNode;
@@ -111,7 +120,7 @@ export function GameIdentityHeader({
         <DelegatePicker
           tripId={tripId}
           competitionId={competitionId}
-          canAssign={isOwner}
+          canAssign={canDelegate}
           value={delegateValue}
           onChange={onDelegateChange}
         />

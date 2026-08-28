@@ -584,25 +584,66 @@ describe("saveConfig — delegates (the flip's silent-revoke bug)", () => {
     expect((await ctx.caller().games.listOrganizers({ tripId, gameId })) as unknown[]).toHaveLength(0);
   });
 
-  it("a DELEGATE's own save leaves the delegate list untouched (no sub-delegation)", async () => {
+  it("a DELEGATE claiming a different delegate is REFUSED (migration 158)", async () => {
+    // ── This assertion was inverted deliberately ─────────────────────────────
+    //
+    // It used to require the save to SUCCEED with the delegates key silently
+    // ignored — "the non-Organizer branch must not apply it". The list was
+    // indeed protected, but the caller was told nothing: a save that reports
+    // success while discarding part of what it was handed.
+    //
+    // That is the same shape that hid the `points_total` gate for three months
+    // (both columns were gated on `v_is_org` INSIDE a function the delegate is
+    // admitted to), and it is why 158 makes the refusal explicit. What is
+    // protected has not changed — a delegate still cannot sub-delegate, because
+    // that changes who is trusted. Only the honesty of the failure has.
     const gameId = await newGame("Delegate saves");
     await ctx.caller().games.addOrganizer({ tripId, gameId, userId: member });
 
     const asDelegate = ctx.callerAs("member");
     const game = await asDelegate.games.getById({ tripId, gameId });
     const draft = configToDraft(game as Parameters<typeof configToDraft>[0], [], []);
-    // Even claiming a different delegate, the non-Organizer branch must not apply it.
+
+    await expect(
+      asDelegate.games.saveConfig({
+        tripId,
+        gameId,
+        baseHash: (await asDelegate.games.configHash({ tripId, gameId })).hash,
+        payload: configDraftToPayload({ ...draft, name: "Delegate Edited", delegates: [outsider] }, draft),
+      })
+    ).rejects.toThrow();
+
+    // The whole save is refused, so the NAME does not land either — it is one
+    // transaction, and a partial apply is the thing being removed.
+    expect((await ctx.caller().games.getById({ tripId, gameId })).name).toBe("Delegate saves");
+    expect(
+      ((await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[]).map((d) => d.user_id)
+    ).toEqual([member]); // unchanged — never `outsider`
+  });
+
+  it("a DELEGATE's ordinary save is unaffected — the key is simply absent", async () => {
+    // The path a real client takes, and the reason the refusal above is safe:
+    // `delegatesChanged` only puts the key in the payload when it differs from
+    // the baseline, and a delegate never touches the picker (it is not rendered
+    // for them). So their normal save carries no delegates key at all.
+    const gameId = await newGame("Delegate ordinary save");
+    await ctx.caller().games.addOrganizer({ tripId, gameId, userId: member });
+
+    const asDelegate = ctx.callerAs("member");
+    const game = await asDelegate.games.getById({ tripId, gameId });
+    const draft = configToDraft(game as Parameters<typeof configToDraft>[0], [], []);
+
     await asDelegate.games.saveConfig({
       tripId,
       gameId,
       baseHash: (await asDelegate.games.configHash({ tripId, gameId })).hash,
-      payload: configDraftToPayload({ ...draft, name: "Delegate Edited", delegates: [outsider] }, draft),
+      payload: configDraftToPayload({ ...draft, name: "Delegate Edited" }, draft),
     });
 
     expect((await ctx.caller().games.getById({ tripId, gameId })).name).toBe("Delegate Edited");
     expect(
       ((await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[]).map((d) => d.user_id)
-    ).toEqual([member]); // unchanged — never `outsider`
+    ).toEqual([member]);
   });
 
   it("a plain member with no grant cannot save at all", async () => {

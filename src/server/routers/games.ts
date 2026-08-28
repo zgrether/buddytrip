@@ -1907,9 +1907,13 @@ export const gamesRouter = router({
   // change it. requireTripRole("Organizer") blocks a Member-level delegate
   // outright (a delegate has only a game_delegates grant, not Organizer role).
   // NULL clears the total (match games, whose total is derived).
+  // `requireGameEdit`, not `requireTripRole("Organizer")` — migration 158
+  // moved `points_total` into the delegate tier, and this setter shares that
+  // column. Leaving it staff-only would put the same value behind two
+  // different answers depending on which door you came through.
   setPointsTotal: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string(), total: z.number().min(0).nullable() }))
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
