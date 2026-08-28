@@ -58,8 +58,16 @@ export function PickemScoringRows({
    *  Derived by the caller from the phase rather than written here, because the
    *  static version of this sentence said "picks are open" on a LOCKED game. */
   frozenReason: string | null;
-  /** Roll-up only means something inside a competition. A standalone pick'em
-   *  game has no sides to total, so the row is ABSENT rather than disabled. */
+  /**
+   * Roll-up only means something in a MATCH-PLAY competition. A standalone
+   * pick'em game has no sides to total, and a POINTS cup overrides the setting
+   * entirely — its teams are ordered and placement pays, whatever this column
+   * happens to say.
+   *
+   * ABSENT rather than disabled in both cases. A disabled control still claims
+   * the setting exists and is merely unavailable; these are settings that do
+   * not apply at all.
+   */
   showRollUp: boolean;
   /** The page's draft setter. This component owns NO state: it used to keep a
    *  private draft with its own Save button, which made it a third write model

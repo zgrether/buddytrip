@@ -207,7 +207,8 @@ export interface ExplanationParagraph {
     | "multipliers"
     | "head-to-head"
     | "edge"
-    | "team-totals";
+    | "team-totals"
+    | "points-placement";
   text: string;
 }
 
@@ -239,11 +240,28 @@ export const PARA_BREAK = "\n\n";
 
 export function explanationCopy(
   settings: SheetSettings,
-  slate: SheetSlateGame[]
+  slate: SheetSlateGame[],
+  /**
+   * The COMPETITION's scoring model (Phase 7). Points makes this an ordering of
+   * N teams paid by placement, and makes `roll_up` inert — so it is read before
+   * the roll-up rather than beside it.
+   */
+  opts: { pointsMode?: boolean } = {}
 ): ExplanationParagraph[] {
   const n = slate.length;
   const conf = settings.useConfidence;
-  const h2h = settings.rollUp === "individual_matches";
+  const pointsMode = opts.pointsMode === true;
+  /**
+   * Head-to-head is a MATCH-PLAY concept. In a points cup you are contributing
+   * to a total, so "you have to be right where they're wrong" is false — there
+   * is nobody whose wrongness helps you.
+   *
+   * This is the tenth instance in this feature of copy naming a mechanic that
+   * is not in play, which is why it is a condition on the roll-up rather than
+   * another edit: the roll-up is inert in a points cup, so anything derived
+   * from it has to be too.
+   */
+  const h2h = !pointsMode && settings.rollUp === "individual_matches";
   const hasMultipliers = slate.some((g) => (g.multiplier ?? 1) > 1);
   const hasSpreads = slate.some((g) => !!g.spread);
 
@@ -289,6 +307,13 @@ export function explanationCopy(
       text: conf
         ? "So being right isn't enough — you have to be right where they're wrong, or more certain than they are. You both took the same team? Whoever ranked it higher takes the points."
         : "So being right isn't enough — you have to be right where they're wrong. Games you both call the same way cancel out.",
+    });
+  } else if (pointsMode) {
+    out.push({
+      id: "points-placement",
+      // No "the higher total", which is two-team language and the same trap one
+      // level down: with four teams the payout is a POSITION, not a winner.
+      text: "Every sheet on your team adds into one team total. The teams finish in order, and each place pays out.",
     });
   } else {
     out.push({

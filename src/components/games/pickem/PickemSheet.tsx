@@ -135,6 +135,7 @@ export function PickemSheet({
   settings,
   picks: serverPicks,
   subject,
+  pointsMode = false,
   editable,
   saving,
   saveError,
@@ -156,6 +157,16 @@ export function PickemSheet({
   picks: SheetPick[];
   /** Whose sheet this is. Defaults to the viewer at every existing call site. */
   subject: SheetSubject;
+  /**
+   * The competition is a points cup (Phase 7). Changes the EXPLAINER only —
+   * head-to-head is a match-play mechanic and saying "you have to be right
+   * where they're wrong" is false when you are contributing to a total.
+   *
+   * Nothing else about this component differs by model, deliberately: a
+   * participant cannot tell which competition format they are in from the
+   * picking experience, and should not need to.
+   */
+  pointsMode?: boolean;
   /** False once picks lock. The whole surface goes read-only; nothing is hidden. */
   editable: boolean;
   saving: boolean;
@@ -279,7 +290,10 @@ export function PickemSheet({
 
   const gameById = useMemo(() => new Map(slate.map((g) => [g.id, g])), [slate]);
   const order = useMemo(() => rankedOrder(picks), [picks]);
-  const copy = useMemo(() => explanationCopy(settings, slate), [settings, slate]);
+  const copy = useMemo(
+    () => explanationCopy(settings, slate, { pointsMode }),
+    [settings, slate, pointsMode]
+  );
 
   const twoPass = settings.useConfidence && editable;
   const needsSave = editable && (!server.submitted || server.rankingReset || dirty);

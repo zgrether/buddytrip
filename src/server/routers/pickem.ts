@@ -71,11 +71,49 @@ export const pickemRouter = router({
     .query(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id, name, game_type_id, competition_id, status, points_total")
+        .select(
+          "id, name, game_type_id, competition_id, status, points_total, points_distribution"
+        )
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+
+      /**
+       * THE SCORING MODEL, read from the COMPETITION (Phase 7).
+       *
+       * Pick'em did not read this at all before now: the router used
+       * `competition_id` for teams and assignments and never asked what kind of
+       * cup it was. So the game could not tell a points competition from a
+       * match-play one, and `roll_up` — a pick'em-owned column constrained to
+       * `team_totals | individual_matches` — was the only axis it had.
+       *
+       * Points OVERRIDES roll_up rather than being a third value of it. A third
+       * CHECK value would let a points cup carry `individual_matches` and mean
+       * nothing: a state that reads as configured and is not. The competition
+       * decides; the column is inert in a points cup.
+       *
+       * `gameTypes.ts` has said this since Phase 2 — "match_play rolls up as
+       * team totals or individual matches, points rolls up as an ordering of N
+       * teams" — so this read makes the code agree with the description rather
+       * than introducing a new idea.
+       *
+       * Null for a standalone game, which has no competition and therefore no
+       * model. That falls through to match_play's shape, which is correct: a
+       * standalone pick'em has no teams either, so nothing orders.
+       */
+      const compRes = game.competition_id
+        ? await ctx.supabase
+            .from("competitions")
+            .select("scoring_model")
+            .eq("id", game.competition_id)
+            .maybeSingle()
+        : null;
+      const scoringModel =
+        ((compRes?.data as { scoring_model?: string } | null)?.scoring_model as
+          | "match_play"
+          | "points"
+          | undefined) ?? null;
 
       // An EXISTENCE question, so `head: true` — it returns a count and no
       // rows and therefore cannot be truncated by PostgREST's 1000-row cap.
@@ -254,8 +292,20 @@ export const pickemRouter = router({
          * — derived, so there is no column that can disagree with the rows.
          */
         /**
-         * The cup's two sides, each with its roster in assignment order.
-         * Empty for a standalone game, which correctly has no matches surface.
+         * The competition's scoring model, or null when standalone.
+         *
+         * `points` makes the game an ordering of N teams paid by placement, and
+         * makes `roll_up` inert. Everything else about the game — the sheet, the
+         * slate, Run, the scoring formula, the lock points, proxy entry — is
+         * identical between the two, deliberately: a participant cannot tell
+         * which competition format they are in from the picking experience, and
+         * should not need to.
+         */
+        scoringModel,
+        /**
+         * The cup's sides, each with its roster in assignment order. TWO in a
+         * match-play cup; N in a points cup. Empty for a standalone game, which
+         * correctly has no matches surface.
          */
         teams: (teamRes.data ?? []).map((t) => ({
           id: t.id as string,
