@@ -769,6 +769,9 @@ export function PickemGameView() {
           // in TypeScript the way `pickemLifecycle` mirrors the clock.
           hasResults={q.data.hasResults}
           phase={phase}
+          // The SAME ticking clock every other derivation on this page reads,
+          // so the strip's lead time and the countdown under it cannot drift.
+          now={now}
           slateCount={q.data.slate.length}
           deadline={clock.picksDeadline ?? null}
           busy={setPhase.isPending || setDeadline.isPending}

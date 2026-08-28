@@ -254,6 +254,29 @@ export function formatCountdown(ms: number): string {
 }
 
 /**
+ * How far off a deadline is, said coarsely: `2d 4h` · `4h 20m` · `12m`.
+ *
+ * NOT `formatCountdown`, and the difference is the point. That one is a live
+ * clock a person watches tick toward zero, so it counts seconds once inside the
+ * hour. This is a static lead time on a runner's strip — the answer to "is this
+ * happening soon or not", read once and not watched — and at two days away
+ * `52h 05m` is a worse answer than `2d 4h` for that question.
+ *
+ * Floors at `under a minute` rather than showing `0m`, which would read as a
+ * deadline that has already passed.
+ */
+export function formatLeadTime(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return `${m}m`;
+  return "under a minute";
+}
+
+/**
  * Why the scoring settings are frozen — or null while they are editable.
  *
  * ── The bug this replaces ──────────────────────────────────────────────────
