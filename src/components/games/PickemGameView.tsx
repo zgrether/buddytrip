@@ -30,7 +30,7 @@ import {
 } from "@/components/games/pickem/PickemScoringRows";
 import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/PickemSheet";
 import { explanationCopy, PARA_BREAK } from "@/lib/pickemSheet";
-import { PickemDeadlineRow } from "@/components/games/pickem/PickemDeadlineRow";
+import { PickemPhaseStrip } from "@/components/games/pickem/PickemPhaseStrip";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
@@ -415,6 +415,23 @@ export function PickemGameView() {
         />
       )}
 
+      {/* The runner's control, above everything the participant sees. It does
+          NOT replace the countdown below: the runner is a participant too —
+          there is no separate runner's sheet — so "picks close in 4h 59m" is
+          their picker copy and still has to be there. */}
+      {canEdit && (
+        <PickemPhaseStrip
+          phase={phase}
+          slateCount={q.data.slate.length}
+          deadline={clock.picksDeadline ?? null}
+          busy={setPhase.isPending || setDeadline.isPending}
+          onOpenPicks={() => setPhase.mutate({ tripId: tripId!, gameId, action: "open" })}
+          onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
+          onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
+          onDeadlineChange={(deadline) => setDeadline.mutate({ tripId: tripId!, gameId, deadline })}
+        />
+      )}
+
       {phase === "building" ? (
         <PhaseBody
           slateCount={q.data.slate.length}
@@ -613,21 +630,7 @@ export function PickemGameView() {
             <SlateSettingsRows
               slateCount={q.data.slate.length}
               useConfidence={q.data.settings.useConfidence}
-              phase={phase}
               canEdit={canEdit}
-              deadlineRow={
-                <PickemDeadlineRow
-                  deadline={clock.picksDeadline}
-                  // ANY phase now. `set_pickem_deadline` (migration 153) writes
-                  // one column, so there is nothing left for it to disturb —
-                  // the restriction that used to stand in for that fix is gone.
-                  editable={canEdit}
-                  busy={setDeadline.isPending}
-                  onChange={(deadline) =>
-                    setDeadline.mutate({ tripId: tripId!, gameId, deadline })
-                  }
-                />
-              }
               scoringRows={
                 <PickemScoringRows
                   settings={settingsDraft}
@@ -661,12 +664,6 @@ export function PickemGameView() {
               // opened UNDERNEATH this very overlay, which is what made "The
               // slate" look like a dead button.
               onOpenSlate={() => setSlateOpen(true)}
-              onOpenPicks={() =>
-                setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
-              }
-              onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
-              onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
-              busy={setPhase.isPending}
             />
           }
           onChanged={() => utils.pickem.get.invalidate({ tripId: tripId!, gameId })}
@@ -753,69 +750,43 @@ export function PhaseBody({
   );
 }
 
-/** Settings-zone rows: the door to the slate, and Reopen. */
+/**
+ * Settings-zone rows: the door to the slate, and the two scoring settings.
+ *
+ * ── It holds NO commands any more ──────────────────────────────────────────
+ *
+ * Open / Lock / Unlock and the deadline moved to `PickemPhaseStrip` on the game
+ * page. Not for tidiness: once this page grew a Cancel/Save footer, a command
+ * inside that frame made the screen promise two contradictory things. The
+ * footer says nothing here is committed; the button had already committed.
+ * Press "Open picks", then Cancel, and a reasonable person expects the open to
+ * be undone.
+ *
+ * A setting drafts. A command executes. Everything left in here drafts, which
+ * is what makes the footer's promise true.
+ */
 export function SlateSettingsRows({
   slateCount,
   useConfidence,
-  phase,
   canEdit,
   scoringRows,
-  deadlineRow,
   onOpenSlate,
-  onOpenPicks,
-  onLock,
-  onUnlock,
-  busy,
 }: {
   slateCount: number;
   /** Drives the COPY, not just the sheet. A confidence-off game has no ranking,
-   *  so "confidence 1–N" and "has to rank them again" are falsehoods on it. */
+   *  so "confidence 1–N" is a falsehood on it. */
   useConfidence: boolean;
-  phase: ReturnType<typeof pickemPhase>;
   canEdit: boolean;
   /** The two scoring settings, rendered by `PickemScoringRows`. Passed in
    *  rather than built here so this component stays free of tRPC. */
   scoringRows: React.ReactNode;
-  /** The deadline control, passed in for the same reason as `scoringRows` —
-   *  this component stays free of tRPC. */
-  deadlineRow: React.ReactNode;
   onOpenSlate: () => void;
-  onOpenPicks: () => void;
-  onLock: () => void;
-  onUnlock: () => void;
-  busy: boolean;
 }) {
   if (!canEdit) return null;
 
   /** The transitions available RIGHT NOW. One row of buttons, not three stacked
    *  cards — they are alternatives on one axis, and stacking them made the
    *  settings page read as a list of unrelated features. */
-  const transitions: { label: string; onClick: () => void; testId: string; tone: "go" | "undo" }[] = [];
-  if (phase === "building" && slateCount > 0) {
-    transitions.push({ label: "Open picks", onClick: onOpenPicks, testId: "pickem-open-picks-settings", tone: "go" });
-  }
-  if (phase === "picks_open") {
-    transitions.push({ label: "Lock picks", onClick: onLock, testId: "pickem-lock-picks", tone: "go" });
-  }
-  if (phase === "locked") {
-    // The WHOLE way back into a live game now that Reopen is gone (migration
-    // 156). It used to sit beside a destructive twin whose only advantage was
-    // making the slate editable — which this already does, because the slate is
-    // frozen only while picks are OPEN.
-    transitions.push({ label: "Unlock picks", onClick: onUnlock, testId: "pickem-unlock-picks", tone: "go" });
-  }
-
-  /** What each visible transition will DO. Two-word labels are not enough for
-   *  actions that change what sixteen other people can see, so the row carries
-   *  one line per available action rather than a single generic caption. */
-  const consequence: Record<string, string> = {
-    "pickem-open-picks-settings":
-      "Open picks — everyone can start filling in their sheet, and the slate freezes.",
-    "pickem-lock-picks":
-      "Lock picks — closes every sheet immediately and reveals them to the trip.",
-    "pickem-unlock-picks":
-      "Unlock picks — reopens every sheet for editing and hides them again. Nothing is lost.",
-  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -852,68 +823,10 @@ export function SlateSettingsRows({
         {scoringRows}
       </div>
 
-      {/* The deadline sits with the lifecycle it belongs to, above the buttons
-          that change it — it IS a lock, just a scheduled one. Rendered in EVERY
-          phase since migration 153: scheduling one while building is a real
-          thing to do, and it no longer risks publishing the game. */}
-      {deadlineRow}
-
-      {/* ── The lifecycle, as ONE control ─────────────────────────────────
-          Reopen used to live here alone, so settings held the way BACK out of
-          every state and none of the ways in. Open and Lock are the other two
-          transitions on the same axis — they belong in one row, showing only
-          what is reachable from where the game actually is. */}
-      {transitions.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <ZoneHeader>Picks</ZoneHeader>
-          <div
-            className="rounded-xl px-3 py-3"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>{PHASE_LABEL[phase]}</div>
-            <div
-              className="mt-1 flex flex-col gap-0.5"
-              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}
-            >
-              {transitions.map((t) => (
-                <span key={t.testId}>{consequence[t.testId]}</span>
-              ))}
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-2">
-              {transitions.map((t) => (
-                <button
-                  key={t.testId}
-                  type="button"
-                  onClick={t.onClick}
-                  disabled={busy}
-                  data-testid={t.testId}
-                  className="rounded-lg px-3 disabled:opacity-40"
-                  style={{
-                    minHeight: 40,
-                    fontSize: TYPE_SCALE.bodyDense,
-                    fontWeight: 700,
-                    background: t.tone === "go" ? "var(--color-bt-accent)" : "transparent",
-                    color: t.tone === "go" ? "var(--color-bt-base)" : "var(--color-bt-danger)",
-                    border: t.tone === "go" ? "none" : "1px solid var(--color-bt-danger)",
-                  }}
-                >
-                  {busy ? "Working…" : t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-/** What state the game is in, said plainly above the buttons that change it. */
-const PHASE_LABEL: Record<ReturnType<typeof pickemPhase>, string> = {
-  building: "Picks are not open yet",
-  picks_open: "Picks are open",
-  locked: "Picks are locked",
-};
 
 
 function Empty({

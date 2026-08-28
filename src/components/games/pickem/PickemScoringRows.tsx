@@ -83,7 +83,19 @@ export function PickemScoringRows({
    * is exactly spec §4's "seven matches means X/7 each".
    */
   const perMatch = liveMatchPointsPerMatch(pointsTotal, matches);
-  const validMatches = matches.filter((m) => m.sideAId != null && m.sideBId != null).length;
+  const assigned = matches.filter((m) => m.sideAId != null && m.sideBId != null);
+  const validMatches = assigned.length;
+  /**
+   * Does any match carry its OWN point value?
+   *
+   * `liveMatchPointsPerMatch` shares the remainder AFTER overrides, so with
+   * one present "each of the N matches is worth X" is false for the
+   * overridden ones. This is the same helper slot that carried the false
+   * sentence before, told from the other end — it reads true today only
+   * because pick'em never writes an override (`save_pickem_matches` does not
+   * insert `point_value`). True by accident is what the branch removes.
+   */
+  const hasOverrides = assigned.some((m) => m.pointValue != null);
   const individual = settings.rollUp === "individual_matches";
   /** Matches are set up and the total still says nothing is at stake. The
    *  runner may legitimately set the total later — so this is SURFACED, never
@@ -114,7 +126,9 @@ export function PickemScoringRows({
         >
           {validMatches === 0
             ? "Set the matches and each one's share appears here."
-            : `Each of the ${validMatches} match${validMatches === 1 ? "" : "es"} is worth ${perMatch.toFixed(2)} pts.`}
+            : hasOverrides
+              ? `${validMatches} matches. The ones without their own value are worth ${perMatch.toFixed(2)} pts each.`
+              : `Each of the ${validMatches} match${validMatches === 1 ? "" : "es"} is worth ${perMatch.toFixed(2)} pts.`}
           {worthNothing && " Set a total above, or the game decides nothing."}
         </p>
       )}
