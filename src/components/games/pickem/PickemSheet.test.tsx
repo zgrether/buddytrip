@@ -67,29 +67,43 @@ const tagWith = (html: string, marker: string): string => {
 };
 
 describe("the sheet, confidence ON", () => {
-  it("renders two passes", () => {
+  it("renders ONE list — the row IS the control", () => {
+    /**
+     * The two-pass step nav is gone. It split one sheet into two screens over
+     * the same sixteen games — "1 · Pick winners", then "2 · Rank them" — so
+     * the order you were building was invisible while you built it.
+     *
+     * One row per game now, with the rank chip and the tap targets together.
+     */
     const html = render();
-    expect(html).toContain('data-testid="pickem-step-nav"');
-    expect(html).toContain("1 · Pick winners");
-    expect(html).toContain("2 · Rank them");
+    expect(html).not.toContain('data-testid="pickem-step-nav"');
+    expect(html).not.toContain("1 · Pick winners");
+    expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
   });
 
-  it("starts on pass 1 with a COMPLETE sheet — home team everywhere", () => {
-    // Spec §4. Nobody has a partial sheet, ever.
+  it("opens on a COMPLETE sheet — home team everywhere", () => {
+    // Spec §4. Nobody has a partial sheet, ever — the default is derived at
+    // read time, never written, so this is what the FIRST render shows.
     const html = render();
-    const homeTags = html.split('data-testid="pickem-side-home"').length - 1;
-    expect(homeTags).toBe(SLATE.length);
-    // Every home button selected, every away button not.
-    expect(html.split('data-testid="pickem-side-home" data-selected="true"').length - 1).toBe(
-      SLATE.length
-    );
-    expect(html).not.toContain('data-testid="pickem-side-away" data-selected="true"');
+    expect(html.split('data-testid="pickem-team-home"').length - 1).toBe(SLATE.length);
+
+    // Every home target taken, every away target not. Asserted per SIDE rather
+    // than by counting "picked" tags, which cannot tell which side won.
+    const homePicked = html.split('data-testid="pickem-team-home" data-picked="true"').length - 1;
+    const awayPicked = html.split('data-testid="pickem-team-away" data-picked="true"').length - 1;
+    expect(homePicked).toBe(SLATE.length);
+    expect(awayPicked).toBe(0);
   });
 
   it("every row carries spread, kickoff, note and multiplier when present", () => {
     const html = render();
     expect(html).toContain("-3.5");
-    expect(html).toContain("Sat Nov 8, 7:30p");
+    // The kickoff is a two-line stack now — day over the rest — so it fills the
+    // right side the select buttons used to waste. Both halves are asserted
+    // because a split that dropped one would still contain the other.
+    expect(html).toContain('data-testid="pickem-row-kickoff"');
+    expect(html).toContain("Sat");
+    expect(html).toContain("Nov 8, 7:30p");
     expect(html).toContain("Hasn&#x27;t won in Athens since 2015");
     expect(html).toContain("2×");
     expect(html).toContain('data-testid="pickem-multiplier-badge"');
@@ -100,7 +114,7 @@ describe("the sheet, confidence ON", () => {
     // must not invent 12:00a for them. The sheet renders the stored string
     // verbatim — `formatKickoff` already decided, on ESPN's `timeValid` flag.
     const html = render();
-    expect(html).toContain("Sat Nov 8, TBD");
+    expect(html).toContain("Nov 8, TBD");
     expect(html).not.toContain("12:00a");
   });
 
@@ -126,7 +140,7 @@ describe("the sheet, confidence ON", () => {
 describe("the sheet, confidence OFF", () => {
   const OFF: Props["settings"] = { useConfidence: false, rollUp: "individual_matches" };
 
-  it("RENDERS NO STEP NAVIGATION — absent, not disabled (§11)", () => {
+  it("renders NO RANK CHIP and no reordering — absent, not disabled (§11)", () => {
     // ── One of the two §9 tests that must fail against a plausible wrong build.
     // A disabled second tab is the obvious implementation, screenshots fine, and
     // every confidence-ON test passes against it.
@@ -136,8 +150,8 @@ describe("the sheet, confidence OFF", () => {
     expect(html).not.toContain("2 ·");
     // ...and the pass that DOES exist is still there, so this is not passing
     // because the component rendered nothing.
-    expect(html).toContain('data-testid="pickem-pick-pass"');
-    expect(html).toContain('data-testid="pickem-side-home"');
+    expect(html).toContain('data-testid="pickem-sheet-row"');
+    expect(html).toContain('data-testid="pickem-team-home"');
   });
 
   it("the save bar does not claim the sheet is RANKED", () => {
@@ -152,8 +166,8 @@ describe("the sheet, confidence OFF", () => {
 
   it("renders no ranking anywhere — no chips, no scale, no order", () => {
     const html = render({ settings: OFF });
-    expect(html).not.toContain('data-testid="pickem-rank-chip"');
-    expect(html).not.toContain('data-testid="pickem-rank-pass"');
+    expect(html).not.toContain('data-testid="pickem-row-rank"');
+    expect(html).not.toContain('data-testid="pickem-step-nav"');
     expect(html).not.toContain("surest");
   });
 
@@ -194,7 +208,7 @@ describe("the sheet carries NO explanation of its own", () => {
     // Absence assertions are satisfied by an empty component. This is the
     // premise the four above rest on.
     const html = render();
-    expect(html).toContain('data-testid="pickem-pick-pass"');
+    expect(html).toContain('data-testid="pickem-sheet-row"');
   });
 });
 
@@ -202,8 +216,8 @@ describe("submitted, reset and locked", () => {
   it("SUBMITTING DOES NOT LOCK — the pick controls stay live", () => {
     const html = render({ picks: defaultSheet(SLATE) });
     // The attribute on the button's OWN tag, not the `disabled:` Tailwind class.
-    expect(tagWith(html, 'data-testid="pickem-side-away"')).not.toContain("disabled");
-    expect(html).toContain("Saved · change it any time");
+    expect(tagWith(html, 'data-testid="pickem-team-away"')).not.toContain("disabled");
+    expect(html).toContain("Saved · all chalk, nothing off the home teams yet");
   });
 
   it("a reopened slate says so, and asks for the ranking back", () => {
@@ -217,7 +231,7 @@ describe("submitted, reset and locked", () => {
     expect(html).toContain('data-testid="pickem-ranking-reset"');
     expect(html).toContain("your ranking was cleared");
     // ...and the WINNERS survived, which is the half that must not be lost.
-    expect(html.split('data-testid="pickem-side-away" data-selected="true"').length - 1).toBe(
+    expect(html.split('data-testid="pickem-team-away" data-picked="true"').length - 1).toBe(
       SLATE.length
     );
   });
@@ -231,13 +245,13 @@ describe("submitted, reset and locked", () => {
     // two sentences, which only showed up when rendered.
     expect(html).toContain("not even whoever");
     expect(html.match(/whoever/g) ?? []).toHaveLength(1);
-    expect(tagWith(html, 'data-testid="pickem-side-away"')).toContain("disabled");
+    expect(tagWith(html, 'data-testid="pickem-team-away"')).toContain("disabled");
     // No save bar at all — not a disabled one.
     expect(html).not.toContain('data-testid="pickem-save-bar"');
     expect(html).not.toContain('data-testid="pickem-step-nav"');
     // The ranking is shown inline instead, since there is no second pass to
     // navigate to.
-    expect(html).toContain('data-testid="pickem-rank-chip"');
+    expect(html).toContain('data-testid="pickem-row-rank"');
   });
 
   it("SAYS WHEN PICKS CLOSED after a deadline — §8.4", () => {
@@ -289,8 +303,8 @@ describe("a failed save", () => {
     const html = render({ saveError: "Picks are closed — the deadline passed." });
     expect(html).toContain('data-testid="pickem-save-error"');
     expect(html).toContain("Your sheet is still here");
-    expect(html.split('data-testid="pickem-pick-row"').length - 1).toBe(SLATE.length);
-    expect(tagWith(html, 'data-testid="pickem-side-away"')).not.toContain("disabled");
+    expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
+    expect(tagWith(html, 'data-testid="pickem-team-away"')).not.toContain("disabled");
   });
 });
 

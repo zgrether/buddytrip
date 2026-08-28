@@ -295,3 +295,27 @@ export function scoringFrozenReason(hasResults: boolean): string | null {
   return null;
 }
 
+/**
+ * Did the lock just take an unsaved draft?
+ *
+ * The EDGE, not a state: editable going true→false while there were unsaved
+ * changes. Extracted from the sheet so the condition is assertable — an effect
+ * cannot be reached by `renderToStaticMarkup`, and this is the half worth
+ * pinning.
+ *
+ * Why it is reported rather than prevented: the picks genuinely cannot be kept.
+ * `pickem_picks_write` gates on `pickem_picks_open`, so the server refuses them
+ * the instant the clock turns. What was wrong before was that it happened in
+ * SILENCE — the sheet went read-only and the typing vanished with nothing said,
+ * which reads as the app losing your work rather than the deadline arriving.
+ *
+ * That silence, not the Save button, was the actual complaint. Autosave would
+ * have hidden the same moment differently.
+ */
+export function draftLostToLock(opts: {
+  wasEditable: boolean;
+  editable: boolean;
+  dirty: boolean;
+}): boolean {
+  return opts.wasEditable && !opts.editable && opts.dirty;
+}
