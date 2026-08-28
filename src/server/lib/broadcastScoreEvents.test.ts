@@ -545,3 +545,157 @@ describe("118 broadcast trigger — a bracket pick", () => {
     await ctx.admin.from("bracket_entrants").delete().eq("game_id", soloGameId);
   }, 60_000);
 });
+
+describe("160 broadcast trigger — a pick'em result", () => {
+  /**
+   * The gap this closes was live: results land in `pickem_slate_games.result`
+   * (migration 159), and that table was in NEITHER mechanism — not published for
+   * `postgres_changes`, not on this trigger. So the game page never learned and
+   * the board never learned.
+   *
+   * Worse than neither updating: `game_matches` IS published, so the matches
+   * would have moved while the totals sat still — which looks like the board is
+   * working.
+   */
+
+  /** One slate game on the competition game, cleared first so a case that fails
+   *  mid-way does not take the next one down with it (the lesson from the
+   *  bracket block above). */
+  async function seedSlateGame(gameId: string): Promise<string> {
+    await ctx.admin.from("pickem_slate_games").delete().eq("game_id", gameId);
+    await ctx.admin.from("pickem_games").upsert({ game_id: gameId });
+    const id = rid("sg");
+    const e = await ctx.admin.from("pickem_slate_games").insert({
+      id,
+      game_id: gameId,
+      display_order: 0,
+      away_team: "Alabama",
+      home_team: "Georgia",
+      multiplier: 1,
+    });
+    if (e.error) throw new Error(`seed slate game: ${e.error.message}`);
+    return id;
+  }
+
+  it("broadcasts on every one of the four outcomes, and on the clear", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const sgId = await seedSlateGame(compGameId);
+    await settle(1500);
+    received = [];
+
+    // All four, because a build that only handled away/home would broadcast on
+    // two of them and go silent on a push — the board freezing on exactly the
+    // outcome that is hardest to explain.
+    for (const r of ["away", "home", "push", "cancelled", null]) {
+      const u = await ctx.admin.from("pickem_slate_games").update({ result: r }).eq("id", sgId);
+      expect(u.error, `set ${r}`).toBeNull();
+    }
+
+    await waitFor(5);
+    expect(received.length).toBe(5);
+    expect(received.every((p) => p.gameId === compGameId && p.competitionId === competitionId)).toBe(
+      true
+    );
+
+    await ctx.admin.from("pickem_slate_games").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("does NOT broadcast on a slate edit that moves nothing", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // The WHEN guard. Renaming a team or fixing a kickoff changes no total, and
+    // without the guard a trip's worth of slate edits would be noise on a public
+    // topic — the same reason the `games` lifecycle trigger is guarded on its
+    // three columns rather than firing on every settings save.
+    const sgId = await seedSlateGame(compGameId);
+    await settle(1500);
+    received = [];
+
+    const u = await ctx.admin
+      .from("pickem_slate_games")
+      .update({ away_team: "Alabama Crimson Tide", kickoff: "Sat 7:30p", note: "night game" })
+      .eq("id", sgId);
+    expect(u.error).toBeNull();
+
+    await settle(3000);
+    expect(received.length).toBe(0);
+
+    // ...and the trigger is not simply dead: the very next result DOES fire.
+    // Without this half, a trigger that never fired at all would pass.
+    await ctx.admin.from("pickem_slate_games").update({ result: "away" }).eq("id", sgId);
+    await waitFor(1);
+    expect(received.length).toBe(1);
+
+    await ctx.admin.from("pickem_slate_games").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("broadcasts when a SCORED slate game is deleted, and not an unscored one", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // Removing a game that counted changes every total that counted it.
+    // Removing one nobody scored changes nothing.
+    const scored = await seedSlateGame(compGameId);
+    await ctx.admin.from("pickem_slate_games").update({ result: "home" }).eq("id", scored);
+    await settle(2000);
+    received = [];
+
+    await ctx.admin.from("pickem_slate_games").delete().eq("id", scored);
+    await waitFor(1);
+    expect(received.length).toBe(1);
+
+    const unscored = await seedSlateGame(compGameId);
+    await settle(1500);
+    received = [];
+    await ctx.admin.from("pickem_slate_games").delete().eq("id", unscored);
+    await settle(3000);
+    expect(received.length).toBe(0);
+  }, 60_000);
+
+  it("carries a SIGNAL ONLY — the result never reaches an anonymous subscriber", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // Same rule as every other payload on this topic (#20). The topic is public,
+    // so the payload is what an UNAUTHENTICATED listener gets. WHO WON is a fact
+    // about the game that a non-member must not learn, and the tempting
+    // optimisation — "we already have the result, why refetch?" — would break
+    // that and the reconcile path together.
+    const sgId = await seedSlateGame(compGameId);
+    await settle(1500);
+    received = [];
+
+    await ctx.admin.from("pickem_slate_games").update({ result: "away" }).eq("id", sgId);
+    await waitFor(1);
+
+    const payload = received[0] as Record<string, unknown>;
+    // `id` is the message uuid `realtime.send` stamps on when the payload has
+    // none of its own — not a field of ours. Written without it first, which is
+    // the same slip the 118 twin above documents; the note there says so and I
+    // repeated it anyway. Caught only by running the file locally, because the
+    // whole thing SKIPS in CI where no Realtime websocket comes up.
+    //
+    // If this fails because someone ADDED a field, remove the field rather than
+    // widening this.
+    expect(Object.keys(payload).sort()).toEqual(["competitionId", "gameId", "id"]);
+    expect(JSON.stringify(payload)).not.toContain("away");
+    expect(JSON.stringify(payload)).not.toContain("Alabama");
+
+    await ctx.admin.from("pickem_slate_games").delete().eq("game_id", compGameId);
+  }, 60_000);
+
+  it("a STANDALONE pick'em game emits nothing — no board to update", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // ~40% of production games have no competition. The null-competition path is
+    // the common case, not an edge case, and it must stay quiet and cheap.
+    const sgId = await seedSlateGame(soloGameId);
+    await settle(1500);
+    received = [];
+
+    await ctx.admin.from("pickem_slate_games").update({ result: "home" }).eq("id", sgId);
+    await settle(3000);
+    expect(received.length).toBe(0);
+
+    await ctx.admin.from("pickem_slate_games").delete().eq("game_id", soloGameId);
+  }, 60_000);
+});
