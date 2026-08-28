@@ -40,6 +40,7 @@ export function GameRulesSheet({
   gameId,
   gameTypeId,
   rules,
+  starterText,
   canEdit,
 }: {
   open: boolean;
@@ -48,8 +49,24 @@ export function GameRulesSheet({
   gameId: string;
   /** Seeds the starter text when the game has no rules of its own yet. */
   gameTypeId: string | null;
-  /** Current persisted rules (null/empty → the format explanation shows). */
+  /** Current persisted rules (null/empty → the starter below shows). */
   rules: string | null;
+  /**
+   * A starter DERIVED from this game's settings, overriding the static catalog
+   * description.
+   *
+   * `GameSettingsPage` has taken one since it was built; this sheet did not, and
+   * the difference mattered the moment a format's explanation stopped being a
+   * constant. Pick'em's depends on whether confidence is on and how the game
+   * rolls up, so `formatExplanation(gameTypeId)` — the catalog blurb — is not
+   * merely thinner there, it can be WRONG: it would describe ranking on a game
+   * with confidence off.
+   *
+   * Display only, exactly like the catalog starter. `close()` writes nothing
+   * unless the text actually changed, so an unopened or untouched sheet leaves
+   * `rules_for_today` null rather than freezing today's derivation into the row.
+   */
+  starterText?: string;
   /** Owner/delegate → editable; a member reads. */
   canEdit: boolean;
 }) {
@@ -99,7 +116,7 @@ export function GameRulesSheet({
         canEdit={canEdit}
         value={draft}
         onChange={canEdit ? setDraft : undefined}
-        starterText={formatExplanation(gameTypeId) ?? undefined}
+        starterText={starterText ?? formatExplanation(gameTypeId) ?? undefined}
       />
     </Sheet>
   );

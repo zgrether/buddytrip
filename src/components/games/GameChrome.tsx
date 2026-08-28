@@ -74,6 +74,11 @@ export interface GameChromeData {
     gameId: string;
     /** Seeds the starter text (the format explanation). */
     gameTypeId: string | null;
+    /**
+     * A starter derived from the game's own settings, for formats whose
+     * explanation is not a constant. Falls back to the catalog description.
+     */
+    starterText?: string;
     /** Current persisted rules; null/empty → the starter shows. */
     text: string | null;
     /** Owner/delegate edits; a member reads. */

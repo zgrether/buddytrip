@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
 import { ReorderableList } from "@/components/ReorderableList";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
@@ -12,7 +11,6 @@ import {
   rankedOrder,
   setPick,
   sheetsEqual,
-  explanationCopy,
   type SheetPick,
   type SheetSettings,
 } from "@/lib/pickemSheet";
@@ -135,7 +133,6 @@ export function PickemSheet({
   settings,
   picks: serverPicks,
   subject,
-  pointsMode = false,
   editable,
   saving,
   saveError,
@@ -158,15 +155,17 @@ export function PickemSheet({
   /** Whose sheet this is. Defaults to the viewer at every existing call site. */
   subject: SheetSubject;
   /**
-   * The competition is a points cup (Phase 7). Changes the EXPLAINER only —
-   * head-to-head is a match-play mechanic and saying "you have to be right
-   * where they're wrong" is false when you are contributing to a total.
+   * NOTE — there is deliberately no `pointsMode` here any more.
    *
-   * Nothing else about this component differs by model, deliberately: a
+   * It existed for one reason: the explainer, which said head-to-head things
+   * that are false in a points cup. The explainer has moved to the shared rules
+   * sheet, and the derivation with it, so this component no longer knows or
+   * needs to know what kind of competition it is in.
+   *
+   * That is the stronger version of what the prop was documenting: a
    * participant cannot tell which competition format they are in from the
-   * picking experience, and should not need to.
+   * picking experience, and now neither can the picking experience.
    */
-  pointsMode?: boolean;
   /** False once picks lock. The whole surface goes read-only; nothing is hidden. */
   editable: boolean;
   saving: boolean;
@@ -243,11 +242,6 @@ export function PickemSheet({
     }));
 
   const [step, setStep] = useState<"pick" | "rank">("pick");
-  // Open by default for someone who has never submitted — the Cadence question
-  // is "can a person who has never seen this finish it without asking how it
-  // works", and a collapsed explainer is one tap away from failing it. Collapsed
-  // once they have a sheet in, because by then it is in the way.
-  const [howOpen, setHowOpen] = useState(!server.submitted);
 
   const picks = working ?? server.picks;
   const dirty = working != null && !sheetsEqual(working, server.picks);
@@ -290,10 +284,7 @@ export function PickemSheet({
 
   const gameById = useMemo(() => new Map(slate.map((g) => [g.id, g])), [slate]);
   const order = useMemo(() => rankedOrder(picks), [picks]);
-  const copy = useMemo(
-    () => explanationCopy(settings, slate, { pointsMode }),
-    [settings, slate, pointsMode]
-  );
+
 
   const twoPass = settings.useConfidence && editable;
   const needsSave = editable && (!server.submitted || server.rankingReset || dirty);
@@ -345,7 +336,7 @@ export function PickemSheet({
         <Countdown ms={deadlineMs} submitted={server.submitted} subject={subject} />
       )}
 
-      <HowThisWorks open={howOpen} onToggle={() => setHowOpen((v) => !v)} paragraphs={copy} />
+
 
       {/* ABSENT when confidence is off, never a disabled tab (§11). */}
       {twoPass && (
@@ -662,55 +653,6 @@ function RankChip({ rank, of }: { rank: number; of?: number }) {
 }
 
 // ── chrome ─────────────────────────────────────────────────────────────────
-
-function HowThisWorks({
-  open,
-  onToggle,
-  paragraphs,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  paragraphs: { id: string; text: string }[];
-}) {
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        data-testid="pickem-how-toggle"
-        aria-expanded={open}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-        style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}
-      >
-        How this works
-        <ChevronRight
-          size={14}
-          style={{
-            color: "var(--color-bt-text-dim)",
-            transform: open ? "rotate(90deg)" : undefined,
-            transition: "transform .15s",
-          }}
-        />
-      </button>
-      {open && (
-        <div
-          className="flex flex-col gap-2 px-3 pb-3"
-          data-testid="pickem-how-body"
-          style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)", lineHeight: 1.6 }}
-        >
-          {paragraphs.map((p) => (
-            <p key={p.id} data-para={p.id}>
-              {p.text}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function SaveBar({
   subject,

@@ -575,11 +575,52 @@ export function PickemGameView() {
   });
 
 
+  /**
+   * The derived explanation, as the rules sheet's STARTER.
+   *
+   * Same text the settings page already seeds — one derivation, two places that
+   * show it before a runner has written anything of their own. It follows the
+   * settings, so confidence-off drops the ranking paragraphs and a points cup
+   * drops head-to-head; the catalog blurb this overrides could do neither.
+   */
+  const rulesStarter = useMemo(
+    () =>
+      q.data
+        ? explanationCopy(q.data.settings, q.data.slate, { pointsMode })
+            .map((p) => p.text)
+            .join(PARA_BREAK)
+        : undefined,
+    [q.data, pointsMode]
+  );
+
+  /**
+   * Chrome. `rules` is what the other four formats have published all along —
+   * it puts the rules button in the game action row and opens the shared
+   * `GameRulesSheet`, reachable at every depth.
+   *
+   * Pick'em published only title + settings, so it grew its own "How this
+   * works" collapsible on the sheet instead. That left TWO explanations of one
+   * game — a hardcoded panel nobody could correct, and an editable field in
+   * settings nobody could see — free to disagree the moment a runner wrote
+   * their own. The panel is gone; this is the surface.
+   */
   const standaloneHeader = useGameSurfaceChrome(
     q.data
       ? {
           title: gameName,
           onSettings: canEdit ? settings.openConfig : undefined,
+          rules: tripId
+            ? {
+                tripId,
+                gameId: gameId!,
+                gameTypeId: (q.data.game as { game_type_id?: string | null })
+                  .game_type_id ?? null,
+                text: (q.data.game as { rules_for_today?: string | null })
+                  .rules_for_today ?? null,
+                starterText: rulesStarter,
+                canEdit,
+              }
+            : undefined,
         }
       : null
   );
@@ -760,7 +801,6 @@ export function PickemGameView() {
               settings={q.data.settings}
               picks={q.data.myPicks}
               subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
-              pointsMode={pointsMode}
               editable={false}
               saving={false}
               saveError={null}
@@ -810,7 +850,6 @@ export function PickemGameView() {
               proxyTarget ? (q.data.sheets[proxyTarget.userId] ?? []) : q.data.myPicks
             }
             subject={subject}
-            pointsMode={pointsMode}
             editable={picksOpen(clock, now)}
             saving={proxyTarget ? savePicksFor.isPending : savePicks.isPending}
             saveError={saveError}
@@ -821,7 +860,7 @@ export function PickemGameView() {
                 proxyTargetName.current = proxyTarget.name;
                 savePicksFor.mutate({
                   tripId: tripId!,
-                  gameId,
+                  gameId: gameId!,
                   targetUserId: proxyTarget.userId,
                   picks,
                 });

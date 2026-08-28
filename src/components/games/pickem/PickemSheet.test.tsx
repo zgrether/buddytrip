@@ -59,24 +59,6 @@ const render = (over: Partial<Props> = {}) =>
     />
   );
 
-/** The markup of one element's OPENING TAG only.
- *
- *  Written because `toContain("disabled")` matched the Tailwind class
- *  `disabled:opacity-40` during Phase 2 — the assertion passed off a class name
- *  rather than the attribute, on a build where nothing was disabled at all. */
-/** Just the "How this works" body — the `<p data-para>` block and nothing else.
- *
- *  Bounded by the paragraph markers rather than by whatever `data-testid`
- *  happens to come next: the first version bounded it on the step nav, which is
- *  ABSENT in the confidence-off case it was written for, so the slice ran to the
- *  end of the document and matched the save bar's "rank them next". A
- *  "must not contain" over an over-wide slice fails loudly; over a slice that
- *  can come back empty it passes silently, which is the worse direction. */
-const howBody = (html: string): string => {
-  const paras = html.match(/<p data-para="[^"]+">.*?<\/p>/g);
-  return (paras ?? []).join(" ");
-};
-
 const tagWith = (html: string, marker: string): string => {
   const at = html.indexOf(marker);
   if (at < 0) return "";
@@ -175,44 +157,44 @@ describe("the sheet, confidence OFF", () => {
     expect(html).not.toContain("surest");
   });
 
-  it("the explanation drops every ranking sentence", () => {
-    // ── The second §9 must-fail test, in its copy half.
-    const explanation = howBody(render({ settings: OFF }));
-    expect(explanation).not.toMatch(/rank/i);
-    expect(explanation).not.toMatch(/coin flip/i);
-    expect(explanation).not.toMatch(/surest/i);
-    // The premise: the explanation rendered at all. Without it the three
-    // assertions above are satisfied by an empty string — which is exactly what
-    // the first version of this test sliced out of the markup, and it passed.
-    expect(explanation).toContain("Pick a winner in all 3 games");
-  });
 });
 
-describe("the explanation follows the settings", () => {
-  it("head-to-head sentences are absent under team totals", () => {
-    const html = render({ settings: { useConfidence: true, rollUp: "team_totals" } });
-    const body = howBody(html);
-    expect(body).not.toMatch(/head to head/i);
-    expect(body).not.toMatch(/one person on the other team/i);
-    expect(body).toContain("adds into one team total");
+describe("the sheet carries NO explanation of its own", () => {
+  const VARIANTS: Props["settings"][] = [
+    { useConfidence: true, rollUp: "individual_matches" },
+    { useConfidence: false, rollUp: "individual_matches" },
+    { useConfidence: true, rollUp: "team_totals" },
+  ];
+
+  it("renders neither the explainer body nor its toggle", () => {
+    /**
+     * The sheet used to own a "How this works" collapsible, built because
+     * pick'em never published `rules` through `GameChrome` the way the other
+     * four formats do. That left TWO explanations of one game — a hardcoded
+     * panel nobody could correct, and an editable `rules_for_today` in settings
+     * nobody could see — free to disagree the moment a runner wrote their own.
+     *
+     * There is one now, on the shared rules surface, seeded with the same
+     * derivation. This is the guard that the second one does not come back.
+     *
+     * Asserted on BOTH testids, and on the prose as well: a panel rebuilt under
+     * different testids would pass an id-only check while putting the same
+     * sentence back on the screen.
+     */
+    for (const settings of VARIANTS) {
+      const html = render({ settings });
+      expect(html).not.toContain('data-testid="pickem-how-body"');
+      expect(html).not.toContain('data-testid="pickem-how-toggle"');
+      expect(html).not.toContain("How this works");
+      expect(html).not.toMatch(/head to head/i);
+    }
   });
 
-  it("...and present under individual matches, including the load-bearing line", () => {
-    // The premise check for the test above.
+  it("still renders the PICKING surface — not passing because it rendered nothing", () => {
+    // Absence assertions are satisfied by an empty component. This is the
+    // premise the four above rest on.
     const html = render();
-    expect(html).toContain("head to head");
-    expect(html).toContain("more certain than they are");
-  });
-
-  it("is open by default for someone who has never submitted", () => {
-    expect(render()).toContain('data-testid="pickem-how-body"');
-  });
-
-  it("...and collapsed once a sheet is in", () => {
-    const html = render({ picks: defaultSheet(SLATE) });
-    expect(html).not.toContain('data-testid="pickem-how-body"');
-    // The toggle is still there — collapsed, not removed.
-    expect(html).toContain('data-testid="pickem-how-toggle"');
+    expect(html).toContain('data-testid="pickem-pick-pass"');
   });
 });
 

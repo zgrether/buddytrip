@@ -245,6 +245,44 @@ describe("explanationCopy", () => {
   });
 });
 
+describe("the derived explanation PROSE, not just its ids", () => {
+  /**
+   * Moved here from `PickemSheet.test.tsx` when the explainer left the sheet
+   * for the shared rules surface.
+   *
+   * Stronger here. Through the sheet they were read off a SLICE of rendered
+   * markup, and the first version of one of them sliced the wrong region and
+   * passed against an empty string — which is why it carried a positive
+   * control. Against the function there is no markup to mis-slice.
+   */
+  const text = (st: SheetSettings) =>
+    explanationCopy(st, slate(3)).map((x) => x.text).join(" ");
+
+  it("drops every ranking sentence with confidence OFF", () => {
+    const out = text(OFF);
+    expect(out).not.toMatch(/rank/i);
+    expect(out).not.toMatch(/coin flip/i);
+    expect(out).not.toMatch(/surest/i);
+    // The premise: it produced an explanation at all.
+    expect(out).toContain("Pick a winner in all 3 games");
+  });
+
+  it("drops head-to-head under TEAM TOTALS, and says what replaces it", () => {
+    const out = text({ useConfidence: true, rollUp: "team_totals" });
+    expect(out).not.toMatch(/head to head/i);
+    expect(out).not.toMatch(/one person on the other team/i);
+    expect(out).toContain("adds into one team total");
+  });
+
+  it("...and carries the load-bearing line under INDIVIDUAL MATCHES", () => {
+    // The premise check for the case above — without it, a build producing no
+    // head-to-head copy anywhere passes.
+    const out = text(ON);
+    expect(out).toContain("head to head");
+    expect(out).toContain("more certain than they are");
+  });
+});
+
 describe("slateSetChanged — what invalidates a ranking (migration 156)", () => {
   /**
    * The client half of the test `save_pickem_config` runs as
