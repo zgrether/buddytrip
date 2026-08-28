@@ -229,6 +229,69 @@ seam, never on a calendar.
   one value has two paths to the screen, mutate each: the test that covers the other one
   is not redundant, which is exactly what the green run appeared to be saying.
 
+  Second worked instance (Phase 7), the same lesson from the other end. A clinch
+  predicate was generalised from two teams to N. The mutant that checks only the
+  RUNNER-UP — the obvious wrong build — passes every case in the file except the one
+  where THIRD place has the bigger upside from further back. One case out of a dozen
+  separates the two builds, and it is the case that looks redundant next to the others
+  because they all pass either way. Write it anyway; it is the only thing there.
+
+  And the campaign itself is code, so it can be the thing that is wrong: Phase 6's
+  reported all three of its mutants green, including one that could not possibly be,
+  because its parser matched the failure marker followed by whitespace and vitest puts
+  an ANSI colour code there. An invisible character defeating the check that checks the
+  checks. A mutation harness now self-checks against a known failure line before it will
+  believe a green run.
+
+- **A REFUSAL MUST NAME AN ACTION THE READER CAN TAKE.** The worst message is not a
+  vague one — it is a specific instruction for something that is not there. The reader
+  believes it, goes looking, finds nothing, and concludes the app is broken rather than
+  that the message is misaimed. It costs more than silence would.
+
+  Two instances, one feature, both in a refusal:
+  - `set_pickem_result` told a points-cup runner *"set the matches first"*. A points
+    competition has no matches and the surface that would create them correctly does
+    not render, so the instruction named an action that could not be performed at all
+    (migration 164, and `runBlockedReason` was the client half of the same lie).
+  - `save_pickem_matches` refused with *"a match already has a result — clear it before
+    re-pairing"* when what actually held the freeze was a resolved SLATE GAME. Every
+    match the reader checked read 0-0 (migration 162).
+
+  Both were **unfixable from the client**, which is the tell worth generalising: if
+  following your own error message cannot clear the condition, the message is wrong even
+  when the refusal is right. The refusal in 164 was not right either, but 162's was —
+  and it still cost a session, because the message pointed at the wrong object.
+
+  **How to apply:** when writing a refusal, ask *where does this send them, and is it
+  there?* Name the object the condition is actually about, not the object the guard used
+  to be about — a widened condition with an unchanged message is how these are made. And
+  if the fix requires a surface the reader's role or format cannot reach, the refusal
+  itself is the bug.
+
+- **EMPTY IS NOT UNKNOWN, AND JAVASCRIPT WILL NOT HELP YOU.** Four instances in one
+  feature, each a different disguise on one mistake — a value that means "resolved to
+  nothing" rendering identically to one that means "nothing yet":
+  - a **push / cancelled** slate game scores 0 for everyone, so a board reading 0-0 was
+    taken as cleared while two results still held a freeze;
+  - a sheet belonging to **nobody's team** scored nowhere and rendered as absent, so
+    fifteen rows where there were seventeen people read as "there are fifteen people";
+  - `entered_by` **NULL-for-self** was rejected for this reason before it could happen —
+    a NULL meaning "the owner did it" becomes indistinguishable from "written before this
+    column existed", which is what NULL genuinely means for every existing row;
+  - an **empty placement schedule** (`effectiveDistribution` returns `[]` for an
+    unconfigured game) paid everyone "0 pts", because `[]` is truthy — a decided prize of
+    nothing rather than a game nobody has configured.
+
+  The fourth is the one to watch for, because it arrived through the LANGUAGE rather than
+  through a display decision. `if (x)` admits `[]` and `{}`; `if (x.length)` and an
+  explicit `!= null` are the difference between "there is a schedule" and "there is a
+  schedule with something in it".
+
+  **How to apply:** whenever a value can be absent, ask what ELSE renders the same way,
+  and whether those two states should lead the reader to the same action. If they should
+  not, the display has to separate them — and the check has to distinguish empty from
+  missing before the display can.
+
 ## Seed Data Rules
 
 - Mock/test data lives only in `supabase/seed.sql` — never in migration files

@@ -254,7 +254,103 @@ export function sideStanding(
  * brings a clinch forward.
  */
 export function sideClinched(a: SideStanding, b: SideStanding, remaining: number): boolean {
+  // The two-team case of `leaderClinched`, kept as its own name because the
+  // match roll-up genuinely has two sides and reads better saying so. It
+  // DELEGATES rather than duplicating: this function's tests then double as
+  // proof that generalising to N did not change what two teams do.
+  return leaderClinched(
+    [
+      { id: "a", standing: a },
+      { id: "b", standing: b },
+    ],
+    remaining
+  );
+}
+
+/** A team and its standing, for the N-team ordering points mode is. */
+export interface TeamStanding {
+  id: string;
+  standing: SideStanding;
+}
+
+/**
+ * The sole leader, or null when the top is tied.
+ *
+ * Null on a tie rather than picking one arbitrarily: at two teams a tie is
+ * visible in the numbers, but at four an arbitrary highlight is a claim the
+ * board would be making on its own.
+ */
+export function leaderId(standings: readonly TeamStanding[]): string | null {
+  let best: TeamStanding | null = null;
+  let tied = false;
+  for (const s of standings) {
+    if (!best || s.standing.total > best.standing.total) {
+      best = s;
+      tied = false;
+    } else if (s.standing.total === best.standing.total) {
+      tied = true;
+    }
+  }
+  return best && !tied ? best.id : null;
+}
+
+/**
+ * Has the leader put it beyond EVERY other team?
+ *
+ * ── Why this replaces a binary predicate ───────────────────────────────────
+ *
+ * The rule is the same one match play uses — a lead bigger than what the other
+ * side can still score — but "the other side" stops being a single thing at
+ * three teams. Clinching against the second-placed team says nothing about the
+ * third, whose upside may be larger from further back.
+ *
+ * So it is ALL, not the runner-up: the leader has clinched only when no other
+ * team can reach them. Checking only the nearest challenger is the version that
+ * looks right at two teams and is wrong at four, which is exactly the class of
+ * bug `const [x, y] = standings` was.
+ */
+export function leaderClinched(standings: readonly TeamStanding[], remaining: number): boolean {
   if (remaining === 0) return false;
-  if (a.total === b.total) return false;
-  return a.total > b.total ? a.total - b.total > b.upside : b.total - a.total > a.upside;
+  const lead = leaderId(standings);
+  if (lead == null) return false;
+  const leader = standings.find((s) => s.id === lead)!;
+  return standings.every(
+    (s) => s.id === lead || leader.standing.total - s.standing.total > s.standing.upside
+  );
+}
+
+/**
+ * Standings in finishing order — highest total first.
+ *
+ * Points mode PAYS by position, so the order is the result rather than a
+ * presentation choice. Roster order is what the two-team board shows today; it
+ * is invisible there because two cards side by side read as a comparison, and
+ * wrong the moment a third card makes the column a ranking.
+ *
+ * Ties keep their relative input order, which is what makes the payout's own
+ * tie handling (averaged across the tied places) the single place ties are
+ * resolved rather than something the sort quietly pre-empts.
+ */
+export function orderByTotal<T extends { standing: SideStanding }>(
+  standings: readonly T[]
+): T[] {
+  return [...standings].sort((a, b) => b.standing.total - a.standing.total);
+}
+
+/**
+ * Which teams are tied with the one above them, in finishing order.
+ *
+ * The shape `placementPointsByTeam` wants — it takes an order plus the set of
+ * entities that share the previous one's place, and averages the payout across
+ * a tied group. Derived here rather than at the call site so the board and the
+ * payout cannot disagree about what a tie is.
+ */
+export function tiedWithPrevious(ordered: readonly TeamStanding[]): Set<string> {
+  const tied = new Set<string>();
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i].standing.total === ordered[i - 1].standing.total) {
+      tied.add(ordered[i].id);
+    }
+  }
+  return tied;
 }

@@ -35,6 +35,7 @@ import { PickemRunView } from "@/components/games/pickem/PickemRunView";
 import { PickemBoard } from "@/components/games/pickem/PickemBoard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
+import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import {
   PickemProxyPanel,
@@ -293,7 +294,28 @@ export function PickemGameView() {
 
   /** §4: the matches surface exists ONLY under individual matches. Team totals
    *  has no matches at all, so it is ABSENT rather than rendered empty. */
-  const individualMatches = q.data?.settings.rollUp === "individual_matches";
+  /**
+   * POINTS MODE (Phase 7) — the competition is an ordering of N teams.
+   *
+   * It comes from the COMPETITION, not from anything the runner picks on the
+   * game. Standalone games have no competition and so no model, which falls
+   * through to the match-play shape correctly: they have no teams either, so
+   * nothing orders.
+   */
+  const pointsMode = q.data?.scoringModel === "points";
+
+  /**
+   * `roll_up` is INERT in a points cup, so this reads the model first.
+   *
+   * Everything gated on this is the MATCHES surface — the matches list and the
+   * pairing grid — which is what it should have gated all along. Run (Phase 5)
+   * and the board (Phase 6) both once lived inside this branch and both were
+   * invisible because the surface fell through to something else; both were
+   * hoisted above it with a comment, which is why adding a third condition here
+   * cannot swallow a surface a third time.
+   */
+  const individualMatches =
+    !pointsMode && q.data?.settings.rollUp === "individual_matches";
   const revealed = picksRevealed(clock, now);
   const pointsTotal =
     (q.data?.game as { points_total?: number | null } | undefined)?.points_total ?? null;
@@ -471,11 +493,19 @@ export function PickemGameView() {
    * courteous half, not the enforcement.
    *
    * Only under `individual_matches`: team totals has no gate, because every
-   * sheet sums into its side whatever the pairings look like.
+   * sheet sums into its side whatever the pairings look like — and neither does
+   * a POINTS cup, which has no matches at all.
+   *
+   * Reads `individualMatches`, not `settings.rollUp`. That derived value already
+   * carries the points override, and this was the fourth site to branch on the
+   * raw column: it told a points-cup runner to "set the matches before entering
+   * results" on a competition where the matches surface correctly does not
+   * render, so the instruction named something they could not do. Migration 164
+   * is the server half of the same mistake.
    */
   const runBlockedReason = useMemo(() => {
     if (!q.data) return null;
-    if (q.data.settings.rollUp !== "individual_matches") return null;
+    if (!individualMatches) return null;
     const pairs: PickemPair[] = (q.data.matches ?? []).map((m) => ({
       a: m.sideAId ?? null,
       b: m.sideBId ?? null,
@@ -486,7 +516,7 @@ export function PickemGameView() {
     return who
       ? `${who} has no opponent yet — every match needs both sides before a result can be split.`
       : "Set the matches before entering results — points are split across them.";
-  }, [q.data, nameOf]);
+  }, [q.data, nameOf, individualMatches]);
 
   /** Which side a person plays for — the team-totals grouping. Derived from
    *  `teams[].memberIds`, which the payload already carries, rather than a
@@ -619,6 +649,17 @@ export function PickemGameView() {
           nameOf={nameOf}
           teams={q.data.teams}
           teamOf={teamOf}
+          pointsMode={pointsMode}
+          /* The SHARED accessor, not a fourth hand-rolled `isPlacement(d) ? d.values : []`
+             — its own comment records that three call sites had already written
+             that line before it existed. Falls back to the points total as a
+             winner-takes-all schedule, so a points game with no authored split
+             still pays rather than showing nothing. */
+          distribution={effectiveDistribution(
+            (q.data.game as { points_distribution?: PointsDistribution | null })
+              .points_distribution,
+            pointsTotal
+          )}
         />
       )}
 
@@ -719,6 +760,7 @@ export function PickemGameView() {
               settings={q.data.settings}
               picks={q.data.myPicks}
               subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
+              pointsMode={pointsMode}
               editable={false}
               saving={false}
               saveError={null}
@@ -768,6 +810,7 @@ export function PickemGameView() {
               proxyTarget ? (q.data.sheets[proxyTarget.userId] ?? []) : q.data.myPicks
             }
             subject={subject}
+            pointsMode={pointsMode}
             editable={picksOpen(clock, now)}
             saving={proxyTarget ? savePicksFor.isPending : savePicks.isPending}
             saveError={saveError}
@@ -857,7 +900,7 @@ export function PickemGameView() {
           // so with confidence OFF the rules starter described a game nobody was
           // playing. `explanationCopy` is the same derived source the sheet
           // itself reads, so the two cannot disagree about what the rules are.
-          rulesStarterText={explanationCopy(q.data.settings, q.data.slate)
+          rulesStarterText={explanationCopy(q.data.settings, q.data.slate, { pointsMode })
             .map((para) => para.text)
             .join(PARA_BREAK)}
           rulesValue={configDraft.rulesForToday ?? ""}
@@ -907,7 +950,11 @@ export function PickemGameView() {
                   settings={settingsDraft}
                   editable={canEdit && scoringSettingsEditable(q.data.hasResults)}
                   frozenReason={canEdit ? scoringFrozenReason(q.data.hasResults) : null}
-                  showRollUp={q.data.game.competition_id != null}
+                  // Absent in a POINTS cup for the same reason it is absent
+                  // standalone: the setting means nothing there. Offering an
+                  // inert control is the state Phase 7 rejected a third roll_up
+                  // CHECK value for — it reads as configured and is not.
+                  showRollUp={q.data.game.competition_id != null && !pointsMode}
                   pointsTotal={configDraft.pointsTotal}
                   // Points share the ONE freeze point now (migration 157): the
                   // first result, not the slate's lock. 152's carve-out existed
