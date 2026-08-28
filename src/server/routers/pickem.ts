@@ -66,7 +66,12 @@ export const pickemRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const [configRes, slateRes, picksRes, matchRes, teamRes, assignRes] = await Promise.all([
+      // An EXISTENCE question, so `head: true` — it returns a count and no
+      // rows and therefore cannot be truncated by PostgREST's 1000-row cap.
+      // Collecting ids out of a fetched set is how a guard gets more permissive
+      // the more the trip is used (CLAUDE.md #27).
+      const [configRes, slateRes, picksRes, matchRes, teamRes, assignRes, resultCountRes] =
+        await Promise.all([
         ctx.supabase
           .from("pickem_games")
           .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
@@ -86,8 +91,10 @@ export const pickemRouter = router({
         // divisor (`liveMatchPointsPerMatch`), the guest merge's JSONB handling
         // and the realtime publication all already speak it.
         ctx.supabase
+          // `result` and `status` ride along for `hasResults` below — the same
+          // read, no extra round trip.
           .from("game_matches")
-          .select("id, display_order, side_a, side_b, point_value")
+          .select("id, display_order, side_a, side_b, point_value, result, status")
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
         // The two sides of the cup, for the pairing grid. Pick'em pairs ACROSS
@@ -108,11 +115,45 @@ export const pickemRouter = router({
               .eq("competition_id", game.competition_id)
               .order("sort_order", { ascending: true })
           : Promise.resolve({ data: [] as { user_id: string; team_id: string; sort_order: number }[] }),
+        ctx.supabase
+          .from("game_results")
+          .select("id", { count: "exact", head: true })
+          .eq("game_id", input.gameId),
       ]);
 
       const cfg = configRes.data;
+      /**
+       * Has anything been scored yet — the ONE freeze boundary for pick'em's
+       * three scoring settings (migration 157).
+       *
+       * ── The second spelling, and why it is unavoidable ────────────────────
+       *
+       * `_pickem_has_results` is the authority: it is what `save_game_config`
+       * and `save_pickem_config` actually refuse on. It answers about a
+       * CONTAINER rather than its caller, so per CLAUDE.md #28 it is REVOKEd
+       * from `authenticated` and cannot be called from here.
+       *
+       * So this mirrors it in TypeScript, exactly as `pickemLifecycle.ts`
+       * mirrors `pickem_picks_open`, and for the same reason: SQL cannot import
+       * TypeScript. `pickemHasResultsParity.rls.test.ts` drives BOTH over the
+       * same states so they cannot drift into disagreeing — the failure that
+       * would otherwise show up as a settings row the screen offers and the
+       * server then refuses.
+       *
+       * Conservative in the same direction as the SQL: a `game_results` row, a
+       * decided match, or a finished game each count.
+       */
+      const hasResults =
+        (resultCountRes.count ?? 0) > 0 ||
+        (matchRes.data ?? []).some(
+          (m) => (m.result as string | null) != null || (m.status as string | null) === "complete"
+        ) ||
+        game.status === "complete";
+
       return {
         game,
+        /** See `hasResults` above — the settings freeze, not the clock. */
+        hasResults,
         /** Null until the runner first saves — a game switched to pick'em has no
          *  config row yet, and the client must render "nothing built" rather
          *  than inventing defaults that disagree with the column defaults. */

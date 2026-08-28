@@ -193,14 +193,26 @@ export function slateEditable(clock: PickemClock, now: number = Date.now()): boo
 /**
  * Are the settings that change what a pick is WORTH still editable?
  *
- * `roll_up` and `use_confidence` ride the slate's lock for the same reason it
- * has one: both change the meaning of a sheet that has already been filled in.
- * Kept as its own named function rather than a second call to `slateEditable`
- * so that a future divergence is a code change here, visible in a diff, rather
- * than a call site quietly meaning something different from its neighbours.
+ * ── It is the first RESULT, not the clock (migration 157) ──────────────────
+ *
+ * This used to be `slateEditable` — frozen the moment picks opened, on the
+ * reasoning that both settings change the meaning of a sheet already filled in.
+ * True, but too early: until something has been SCORED, changing how scoring
+ * works rewrites nothing. Every sheet is re-read through whatever the rules are.
+ *
+ * That earlier boundary is also what made one atomic save impossible.
+ * `points_total` had been carved out of it (152) precisely so a 0-point game
+ * could be fixed mid-trip, so the settings page had two freeze points and no
+ * single Save could honour both. All three now share this one.
+ *
+ * Takes the ANSWER rather than computing it: `_pickem_has_results` is the
+ * authority (it is what the RPC refuses on) and is REVOKEd from
+ * `authenticated` as a container fact, so `pickem.get` mirrors it server-side
+ * and hands the result down. Do NOT re-derive it from the clock here — that is
+ * the divergence this signature exists to prevent.
  */
-export function scoringSettingsEditable(clock: PickemClock, now: number = Date.now()): boolean {
-  return slateEditable(clock, now);
+export function scoringSettingsEditable(hasResults: boolean): boolean {
+  return !hasResults;
 }
 
 /**
@@ -268,21 +280,17 @@ export function formatCountdown(ms: number): string {
  * hunt for a row that was there yesterday. A disabled control with a reason and
  * a named way out is the honest version.
  */
-export function scoringFrozenReason(
-  clock: PickemClock,
-  now: number = Date.now()
-): string | null {
-  // ONE frozen phase now, not two. Migration 156 made the slate editable
-  // whenever picks are not open, which includes `locked` — so a locked game's
-  // settings are no longer frozen and there is nothing to explain there.
+export function scoringFrozenReason(hasResults: boolean): string | null {
+  // The clock no longer freezes these AT ALL (migration 157) — picks opening,
+  // and even locking, leave them editable. The only thing that closes them is a
+  // recorded result, and at that point there is no way back: the reason names
+  // the cause rather than offering an exit, because there isn't one.
   //
-  // The way out is `unlock`, and it is worth saying that it costs nothing:
-  // clearing rankings moved to the slate save, where it fires only if the slate
-  // actually changes. The previous version of this sentence warned about losing
-  // work for merely getting back in, which was true of `reopen` and is the
-  // behaviour that was removed.
-  if (picksOpen(clock, now)) {
-    return "Picks are open, so scoring is frozen — people are filling in sheets under these rules. Lock picks to change them; nobody loses anything unless the slate itself changes.";
+  // Two earlier versions of this sentence described a state the game was not in
+  // — first claiming picks were open on a locked game, then warning about work
+  // lost to a reopen that no longer exists. Derived from the one input now.
+  if (hasResults) {
+    return "Results are in, so how this game scores is frozen — changing it now would rescore what has already been recorded.";
   }
   return null;
 }

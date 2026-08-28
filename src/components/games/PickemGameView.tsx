@@ -461,12 +461,8 @@ export function PickemGameView() {
               scoringRows={
                 <PickemScoringRows
                   settings={settingsDraft}
-                  editable={canEdit && scoringSettingsEditable(clock, now)}
-                  frozenReason={
-                    canEdit
-                      ? scoringFrozenReason(clock, now)
-                      : null
-                  }
+                  editable={canEdit && scoringSettingsEditable(q.data.hasResults)}
+                  frozenReason={canEdit ? scoringFrozenReason(q.data.hasResults) : null}
                   showRollUp={q.data.game.competition_id != null}
                   saving={saveConfig.isPending}
                   pointsTotal={(q.data.game as { points_total?: number | null }).points_total ?? null}

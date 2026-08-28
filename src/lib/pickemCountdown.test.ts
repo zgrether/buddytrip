@@ -103,49 +103,43 @@ describe("crossing zero — the invariant that makes the tick SAFE", () => {
   });
 });
 
-describe("scoringFrozenReason — copy derived from the phase, not assumed", () => {
-  const openClock = withDeadline(T0);
-  const lockedClock: PickemClock = { ...openClock, picksLockedAt: iso(T0 - 60_000) };
-  const buildingClock: PickemClock = {
-    picksOpenedAt: null,
-    picksDeadline: null,
-    picksLockedAt: null,
-  };
+describe("scoringFrozenReason — one input, because one thing freezes them", () => {
+  /**
+   * It took `(clock, now)` and branched on the phase. Migration 157 removed
+   * every clock-based freeze from these settings: picks opening does not close
+   * them, and neither does locking. Only a recorded result does.
+   *
+   * So the signature is the fix. A function that cannot see the clock cannot
+   * describe a clock state wrongly — which the two previous versions of this
+   * copy both did, first claiming picks were open on a locked game, then
+   * warning about work lost to a reopen that had been deleted.
+   */
 
-  it("says nothing while the settings are editable", () => {
-    expect(scoringFrozenReason(buildingClock, T0)).toBeNull();
+  it("says nothing while nothing has been scored", () => {
+    expect(scoringFrozenReason(false)).toBeNull();
   });
 
-  it("explains the freeze while picks are open — a disabled control is never mute", () => {
-    // Finding 3: a disabled control with no reason teaches nobody why.
-    expect(scoringFrozenReason(openClock, T0 - 60_000)).toBeTruthy();
+  it("explains the freeze once a result exists — a disabled control is never mute", () => {
+    const reason = scoringFrozenReason(true) as string;
+    expect(reason).toBeTruthy();
+    expect(reason).toContain("Results are in");
   });
 
-  it("says NOTHING on a locked game, because nothing is frozen there any more", () => {
-    // The originally-reported bug was this sentence claiming "Picks are open"
-    // on a locked game. Migration 156 removed the second frozen phase outright
-    // — the slate and its settings are editable whenever picks are not open —
-    // so the false sentence is now unreachable rather than merely corrected.
-    //
-    // Asserting null is the STRONGER version of the old assertion: any build
-    // that renders a frozen-reason here at all fails, including one that
-    // renders the correct wording for a state that is not frozen.
-    expect(scoringFrozenReason(lockedClock, T0)).toBeNull();
+  it("names the CAUSE and does not invent an exit", () => {
+    // Earlier versions pointed at a way out ("reopen the slate", "lock picks")
+    // because there was one. There is not, once results exist — offering one
+    // would be the falsehood these rewrites keep removing.
+    const reason = scoringFrozenReason(true) as string;
+    expect(reason).toContain("rescore");
+    expect(reason).not.toContain("Reopen");
+    expect(reason).not.toContain("Lock picks");
   });
 
-  it("DOES say picks are open while they are", () => {
-    const open = scoringFrozenReason(openClock, T0 - 60_000) as string;
-    expect(open).toContain("Picks are open");
-  });
-
-  it("names the way out, and it is the one that costs nothing", () => {
-    // Finding 3's other half: hiding the control would hide an available
-    // action, so the reason has to point at the exit. It must point at LOCK,
-    // not at the deleted reopen — and must not warn about losing work, because
-    // locking does not clear anything. Only a slate change does.
-    const open = scoringFrozenReason(openClock, T0 - 60_000) as string;
-    expect(open).toContain("Lock picks");
-    expect(open).toContain("nobody loses anything");
-    expect(open).not.toContain("Reopen");
+  it("cannot claim a clock state, because it cannot see the clock", () => {
+    // The structural version of the assertion: no phase word can appear,
+    // whatever the game's clock is doing.
+    const reason = scoringFrozenReason(true) as string;
+    expect(reason).not.toContain("Picks are open");
+    expect(reason).not.toContain("Picks are locked");
   });
 });
