@@ -1,11 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
+import { useConfigDraft } from "@/hooks/useConfigDraft";
+import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
+import {
+  configToPickemDraft,
+  pickemDraftToPayload,
+  pickemDraftsEqual,
+  type PickemConfigDraft,
+} from "@/lib/configDraft";
 import { useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
@@ -94,9 +102,45 @@ export function PickemGameView() {
   );
   useRealtimeGame(tripId, gameId);
 
+  // The delegates slice. Deliberately NOT on STRUCTURE_QUERY's staleTime, for
+  // the reason `useGameEditAccess` gives: a revoked grant must stop rendering.
+  const orgQ = trpc.games.listOrganizers.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { enabled: !!tripId && !!gameId }
+  );
+  const serverDelegates = useMemo(
+    () => ((orgQ.data as { user_id: string }[] | undefined) ?? []).map((d) => d.user_id),
+    [orgQ.data]
+  );
+
   const [slateOpen, setSlateOpen] = useState(false);
-  const [name, setName] = useState<string | null>(null);
-  const [rules, setRules] = useState<string | null>(null);
+  /**
+   * ── The settings page is a DRAFT now (#18) ──────────────────────────────
+   *
+   * It used to carry four write models at once: Total Points wrote to the
+   * server on every stepper press; the deadline and the two scoring settings
+   * each had a private draft with its own commit button; and name, rules and
+   * delegates were rendered but wired to NOTHING — typing Rules of the Day and
+   * closing the panel lost it silently.
+   *
+   * That last one is why this landed before the cosmetic half: it destroys
+   * work rather than committing it early.
+   *
+   * What unblocked it was migration 157 giving all three scoring settings ONE
+   * freeze point (the first result). Two boundaries could not be committed by a
+   * single atomic Save — `points_total` had been carved out of the picks-open
+   * freeze precisely so a 0-point game could be fixed mid-trip, so any Save
+   * spanning both would have been refused whole the moment picks opened.
+   *
+   * Null / undefined means UNTOUCHED, so the draft falls through to the server
+   * mirror — the same shape the other four views use.
+   */
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [rulesDraft, setRulesDraft] = useState<string | null>(null);
+  const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
+  const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null | undefined>(undefined);
+  const [rollUpDraft, setRollUpDraft] = useState<PickemSettingsDraft["rollUp"] | undefined>(undefined);
+  const [useConfidenceDraft, setUseConfidenceDraft] = useState<boolean | undefined>(undefined);
 
   const clock = q.data?.clock ?? { picksOpenedAt: null, picksDeadline: null, picksLockedAt: null };
 
@@ -147,13 +191,6 @@ export function PickemGameView() {
     onError: (e) => setSaveError(e.message),
   });
 
-  const setPointsTotal = trpc.pickem.setPointsTotal.useMutation({
-    onSuccess: async () => {
-      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
-    },
-    onError: (e) => showToast(e.message, "error"),
-  });
-
   const setDeadline = trpc.pickem.setDeadline.useMutation({
     onSuccess: async () => {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
@@ -199,23 +236,12 @@ export function PickemGameView() {
   }, [membersQ.data]);
   const nameOf = (userId: string) => nameByUser.get(userId) ?? "Unknown";
 
-  const gameName = name ?? q.data?.game.name ?? "Pick'em";
 
-  const settings = useGameSettingsOverlay({ canEdit, deepLink: settingsDeepLink });
   // NOT `router.back()`. A bare back is only the inverse of a PANEL open; on the
   // standalone route or a cold deep-link there is no entry to pop and it exits
   // the app (#808). `oneFinalizePath.test.ts` enumerates every game surface and
   // fails the build for exactly this — it caught this file.
   const exitToBoard = useExitToBoard(tripId, q.data?.game.competition_id as string | null);
-
-  const standaloneHeader = useGameSurfaceChrome(
-    q.data
-      ? {
-          title: gameName,
-          onSettings: canEdit ? settings.openConfig : undefined,
-        }
-      : null
-  );
 
   const slateDraft: SlateDraftGame[] = useMemo(
     () =>
@@ -231,10 +257,143 @@ export function PickemGameView() {
     [q.data?.slate]
   );
 
+  const serverConfigDraft = useMemo<PickemConfigDraft>(
+    () =>
+      configToPickemDraft(
+        (q.data?.game ?? {}) as Parameters<typeof configToPickemDraft>[0],
+        serverDelegates,
+        {
+          rollUp: q.data?.settings.rollUp ?? "team_totals",
+          useConfidence: q.data?.settings.useConfidence ?? true,
+        }
+      ),
+    [q.data?.game, q.data?.settings, serverDelegates]
+  );
+
+  const anyTouched =
+    nameDraft !== null ||
+    rulesDraft !== null ||
+    delegatesDraft !== null ||
+    pointsTotalDraft !== undefined ||
+    rollUpDraft !== undefined ||
+    useConfidenceDraft !== undefined;
+
+  const configDraft = useMemo<PickemConfigDraft>(
+    () => ({
+      ...serverConfigDraft,
+      name: nameDraft ?? serverConfigDraft.name,
+      rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
+      delegates: delegatesDraft ?? serverConfigDraft.delegates,
+      pointsTotal: pointsTotalDraft !== undefined ? pointsTotalDraft : serverConfigDraft.pointsTotal,
+      rollUp: rollUpDraft !== undefined ? rollUpDraft : serverConfigDraft.rollUp,
+      useConfidence:
+        useConfidenceDraft !== undefined ? useConfidenceDraft : serverConfigDraft.useConfidence,
+    }),
+    [serverConfigDraft, nameDraft, rulesDraft, delegatesDraft, pointsTotalDraft, rollUpDraft, useConfidenceDraft]
+  );
+
+  /** The settings shape the scoring rows speak, read off the DRAFT — so the
+   *  toggle reflects what will be saved, not what the server currently holds.
+   *  Reading the server here while the toggle wrote the draft is the
+   *  "staged-state lie" the match page produced six times over (#18). */
   const settingsDraft: PickemSettingsDraft = {
-    rollUp: q.data?.settings.rollUp ?? "team_totals",
-    useConfidence: q.data?.settings.useConfidence ?? true,
+    rollUp: configDraft.rollUp,
+    useConfidence: configDraft.useConfidence,
   };
+
+  const draftBundle = useMemo(
+    () => ({
+      name: nameDraft,
+      rules: rulesDraft,
+      delegates: delegatesDraft,
+      pointsTotal: pointsTotalDraft,
+      rollUp: rollUpDraft,
+      useConfidence: useConfidenceDraft,
+    }),
+    [nameDraft, rulesDraft, delegatesDraft, pointsTotalDraft, rollUpDraft, useConfidenceDraft]
+  );
+  function resetSlices() {
+    setNameDraft(null);
+    setRulesDraft(null);
+    setDelegatesDraft(null);
+    setPointsTotalDraft(undefined);
+    setRollUpDraft(undefined);
+    setUseConfidenceDraft(undefined);
+  }
+  const applyBundle = useCallback((b: typeof draftBundle) => {
+    if (b.name !== null) setNameDraft(b.name);
+    if (b.rules !== null) setRulesDraft(b.rules);
+    if (b.delegates !== null) setDelegatesDraft(b.delegates);
+    if (b.pointsTotal !== undefined) setPointsTotalDraft(b.pointsTotal);
+    if (b.rollUp !== undefined) setRollUpDraft(b.rollUp);
+    if (b.useConfidence !== undefined) setUseConfidenceDraft(b.useConfidence);
+  }, []);
+
+  const dirtyRef = useRef(false);
+  const discardRef = useRef<() => void>(() => {});
+
+  // The DRAFT's name, not the server's: an edit in the panel retitles the app
+  // bar immediately, and a Cancel puts it back. Reading the server here while
+  // the field wrote the draft is how one game showed two names at once (#18).
+  const gameName = q.data ? configDraft.name || "Pick'em" : "Pick'em";
+
+  const settings = useGameSettingsOverlay({
+    canEdit,
+    deepLink: settingsDeepLink,
+    isDirty: () => dirtyRef.current,
+    onDiscard: () => discardRef.current(),
+  });
+
+  const {
+    dirty,
+    saveError: configSaveError,
+    saving: configSaving,
+    handleSave: handleSaveConfig,
+  } = useConfigDraft<PickemConfigDraft, typeof draftBundle>({
+    tripId,
+    gameId,
+    view: "pickem",
+    canEdit,
+    showConfig: settings.open,
+    dirtyRef,
+    discardRef,
+    // EVERY query feeding `serverConfigDraft`: the pick'em read (the game row
+    // AND its settings) and the delegates list. A baseline frozen against a
+    // half-loaded mirror would make Save diff against defaults the user never
+    // saw.
+    ready: !!q.data && !!orgQ.data,
+    serverConfigDraft,
+    configDraft,
+    anyTouched,
+    draftsEqual: pickemDraftsEqual,
+    toPayload: pickemDraftToPayload,
+    bundle: draftBundle,
+    applyRecovered: applyBundle,
+    reset: resetSlices,
+    onSaved: async () => {
+      await q.refetch();
+      utils.games.listOrganizers.invalidate({ tripId: tripId!, gameId: gameId! });
+      // The board reads name and points; #10 — the child alone is silently
+      // undone by the face's re-seed.
+      const competitionId = q.data?.game.competition_id as string | null;
+      if (competitionId) {
+        utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
+        utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
+        utils.games.listByTrip.invalidate({ tripId: tripId! });
+      }
+    },
+  });
+
+
+  const standaloneHeader = useGameSurfaceChrome(
+    q.data
+      ? {
+          title: gameName,
+          onSettings: canEdit ? settings.openConfig : undefined,
+        }
+      : null
+  );
+
 
   if (!gameId) return null;
   if (q.isLoading) {
@@ -399,10 +558,13 @@ export function PickemGameView() {
           canEdit={canEdit}
           canDelegate={canManageGame}
           canManageGame={canManageGame}
-          nameValue={gameName}
-          onNameChange={setName}
-          delegateValue={null}
-          onDelegateChange={() => {}}
+          nameValue={configDraft.name}
+          onNameChange={setNameDraft}
+          // WIRED (was `null` / a no-op). The picker is gated on
+          // `canDelegate` above; this is the draft slice behind it, so a grant
+          // rides the same atomic Save as everything else on the page.
+          delegateValue={configDraft.delegates[0] ?? null}
+          onDelegateChange={(next) => setDelegatesDraft(next ? [next] : [])}
           // Finding 4: the catalog description explains ranking unconditionally,
           // so with confidence OFF the rules starter described a game nobody was
           // playing. `explanationCopy` is the same derived source the sheet
@@ -410,14 +572,22 @@ export function PickemGameView() {
           rulesStarterText={explanationCopy(q.data.settings, q.data.slate)
             .map((para) => para.text)
             .join(PARA_BREAK)}
-          rulesValue={rules ?? ""}
-          onRulesChange={setRules}
-          // Phase 2 has no page-level draft: the only things this page can
-          // change are the slate and its two settings, and those commit through
-          // the modal's own atomic Save. Name / rules / delegates are rendered
-          // but not yet wired to `games.saveConfig` — see the note on
-          // `management` below, and the Phase 2 report.
-          saveBar={null}
+          rulesValue={configDraft.rulesForToday ?? ""}
+          onRulesChange={setRulesDraft}
+          // The page-level draft Phase 2 did not have. Name, rules,
+          // delegates, the points total and the two scoring settings all commit
+          // through ONE `games.saveConfig` here — nothing on this page
+          // self-persists any more.
+          saveBar={
+            <SettingsSaveBar
+              dirty={dirty}
+              saving={configSaving}
+              error={configSaveError}
+              onSave={handleSaveConfig}
+              onDiscard={settings.confirmDiscard}
+              onLeave={settings.leave}
+            />
+          }
           // NOT RENDERED for pick'em — `FORMAT_SURFACE.pickem.gameState` is false,
           // because pick'em's go-live is `picks_opened_at`, not `scoring_enabled`
           // (migration 146; 135's CHECK refuses the state picks-open occupies).
@@ -464,19 +634,17 @@ export function PickemGameView() {
                   editable={canEdit && scoringSettingsEditable(q.data.hasResults)}
                   frozenReason={canEdit ? scoringFrozenReason(q.data.hasResults) : null}
                   showRollUp={q.data.game.competition_id != null}
-                  saving={saveConfig.isPending}
-                  pointsTotal={(q.data.game as { points_total?: number | null }).points_total ?? null}
-                  // Points are NOT frozen with the slate (migration 152): the
-                  // total decides what the game is worth, not anything a
-                  // participant already chose.
-                  canEditPoints={canEdit}
+                  pointsTotal={configDraft.pointsTotal}
+                  // Points share the ONE freeze point now (migration 157): the
+                  // first result, not the slate's lock. 152's carve-out existed
+                  // because the two used to disagree.
+                  canEditPoints={canEdit && scoringSettingsEditable(q.data.hasResults)}
                   matches={q.data.matches}
-                  onPointsChange={(total) =>
-                    setPointsTotal.mutate({ tripId: tripId!, gameId, total })
-                  }
-                  onSave={(next) =>
-                    saveConfig.mutate({ tripId: tripId!, gameId, settings: next })
-                  }
+                  onPointsChange={setPointsTotalDraft}
+                  onChange={(next) => {
+                    setRollUpDraft(next.rollUp);
+                    setUseConfidenceDraft(next.useConfidence);
+                  }}
                 />
               }
               // Opens the slate ON TOP of settings rather than closing settings

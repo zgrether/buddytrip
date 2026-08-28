@@ -426,6 +426,16 @@ export interface SaveConfigPayload {
    *  (088) PRESERVES it. Sent only on a real change — never the phantom `[]` a save-before-
    *  `listOrganizers`-resolves would otherwise wipe with. Present `[]` = the user cleared it. */
   delegates?: string[];
+  /**
+   * Pick'em's two scoring settings (`pickem_games.roll_up` / `use_confidence`),
+   * written by `save_game_config`'s pick'em arm since migration 157.
+   *
+   * ALWAYS sent by `pickemDraftToPayload`, never conditionally: the RPC
+   * COALESCE-preserves an absent key, so omitting it on a change would silently
+   * keep the old value. Absent for every other format, which is what stops
+   * their saves touching a pick'em game's settings.
+   */
+  pickem?: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean };
   /** Match play ONLY. Omitted for non-golf (and, in later P2 phases, rack/stroke) so
    *  the RPC — which gates its matches block on `payload ? 'matches'` (085) — skips it
    *  entirely rather than running the clean-replace with an empty set. */
@@ -978,4 +988,88 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   const obj = value as Record<string, unknown>;
   return `{${Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`).join(",")}}`;
+}
+
+// ── Pick'em variant ──────────────────────────────────────────────────────────
+
+/**
+ * Pick'em's settings page, as a draft.
+ *
+ * ── The two extra fields, and where they live ──────────────────────────────
+ *
+ * `rollUp` and `useConfidence` are columns on `pickem_games`, not `games`,
+ * which is the only reason pick'em was not already on this machinery.
+ * `save_game_config` learned to write them in migration 157, so the whole page
+ * — name, rules, delegates, points total, and these two — commits through the
+ * one atomic RPC like every other format (#18).
+ *
+ * ── What the page carried before ───────────────────────────────────────────
+ *
+ * Four write models on one screen: Total Points wrote on every stepper press;
+ * the deadline and the two scoring settings each had a private draft with its
+ * own commit button; and name / rules / delegates were rendered but wired to
+ * NOTHING — typing Rules of the Day and closing the panel lost it silently,
+ * which is the defect that made this worth doing before the cosmetic half.
+ *
+ * The SLATE is deliberately not here. It is content rather than configuration,
+ * it commits through `save_pickem_config`, and it has a different freeze
+ * boundary (picks-open, where these wait for the first result).
+ */
+export interface PickemConfigDraft extends BaseConfigDraft {
+  rollUp: "team_totals" | "individual_matches";
+  useConfidence: boolean;
+}
+
+/** Server snapshot → pick'em draft baseline. `settings` comes from the
+ *  `pickem_games` row, which `pickem.get` already returns. */
+export function configToPickemDraft(
+  game: ConfigGameSnapshot,
+  delegates: string[],
+  settings: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean }
+): PickemConfigDraft {
+  return {
+    gameTypeId: game.game_type_id ?? null,
+    name: game.name ?? "",
+    rulesForToday: game.rules_for_today ?? null,
+    competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    bracketConfig: toBracketConfig(game.bracket_config),
+    // Pick'em is the ONE surface with `FORMAT_SURFACE.gameState === false`: its
+    // go-live is `pickem_games.picks_opened_at`, and `scoring_enabled` stays
+    // false for the whole life of the game (migration 135's CHECK refuses the
+    // state picks-open would otherwise occupy). Mirrored from the server so the
+    // payload echoes it back unchanged; never toggled here.
+    scoringEnabled: game.scoring_enabled ?? false,
+    pointsTotal: game.points_total ?? null,
+    pointsDistribution: game.points_distribution ?? null,
+    delegates: [...delegates].sort(),
+    rollUp: settings.rollUp,
+    useConfidence: settings.useConfidence,
+  };
+}
+
+export function pickemDraftsEqual(a: PickemConfigDraft, b: PickemConfigDraft): boolean {
+  return baseDraftsEqual(a, b) && a.rollUp === b.rollUp && a.useConfidence === b.useConfidence;
+}
+
+/**
+ * Pick'em draft → the atomic Save payload.
+ *
+ * Base fields plus the `pickem` key the RPC's arm reads. No `matches`, no
+ * `groups`, no course, no `entryMode`/`modifiers` — pick'em owns none of them,
+ * and the RPC preserves what a payload does not mention.
+ *
+ * The `pickem` key is ALWAYS sent. It is COALESCE-preserved server-side, so an
+ * absent key would silently keep the old values — the shape that made
+ * MODIFIERS-MUST-ALWAYS-SEND a rule. Sending it every time means a change to
+ * either setting cannot be lost by an omission, and re-sending unchanged values
+ * costs nothing.
+ */
+export function pickemDraftToPayload(
+  draft: PickemConfigDraft,
+  baseline?: PickemConfigDraft
+): SaveConfigPayload {
+  return {
+    ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
+    pickem: { rollUp: draft.rollUp, useConfidence: draft.useConfidence },
+  };
 }

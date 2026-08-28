@@ -54,6 +54,15 @@ const NOT_HASHED: Record<keyof typeof HASH_COLS, string[]> = {
   // advanced a match, and would fail a concurrent settings save on a game whose
   // config nobody touched. Picks propagate by broadcast (#20), not by this hash.
   bracket_matches: ["id", "game_id", "winner_entrant_id", "created_at"],
+  // The three CLOCK columns are the same category as `game_matches.status` and
+  // `bracket_matches.winner_entrant_id`: the game's STATE, not its config.
+  // `save_game_config` never writes them — `set_pickem_phase` and
+  // `set_pickem_deadline` do — so the "everything the RPC writes must be
+  // hashed" rule does not reach them. Hashing them would churn the fingerprint
+  // every time the runner locked picks, forcing a full config refetch on every
+  // open device and failing a concurrent settings save on a game whose config
+  // nobody touched. They propagate by realtime (#19) plus the 60s poll.
+  pickem_games: ["game_id", "picks_opened_at", "picks_deadline", "picks_locked_at", "created_at"],
 };
 
 const TABLES = Object.keys(HASH_COLS) as (keyof typeof HASH_COLS)[];
@@ -76,6 +85,10 @@ let gameId: string;
 /** The bracket game — a SECOND populated game, because the bracket tables hang off
  *  a non-golf format and the match-play game above can never have rows in them. */
 let bracketGameId: string;
+/** A third game, for the same reason the bracket needs a second: a match-play
+ *  game has no `pickem_games` row, and a table with no row makes this guard
+ *  vacuous for it. */
+let pickemGameId: string;
 let entrantIds: string[] = [];
 
 beforeAll(async () => {
@@ -157,6 +170,31 @@ beforeAll(async () => {
   });
   const { data: ents } = await ctx.admin.from("bracket_entrants").select("id").eq("game_id", bracketGameId);
   entrantIds = (ents ?? []).map((e) => e.id as string);
+
+  // A pick'em game with its config row (157/158). Seeded through the RPC rather
+  // than a raw insert so the row is the shape the app actually writes.
+  const pg = (await ctx
+    .caller()
+    .games.create({ tripId, gameTypeId: "gtt_pickem", name: "Populated pick'em", competitionId })) as {
+    id: string;
+  };
+  pickemGameId = pg.id;
+  await ctx.caller().games.saveConfig({
+    tripId,
+    gameId: pickemGameId,
+    baseHash: (await ctx.caller().games.configHash({ tripId, gameId: pickemGameId })).hash,
+    payload: {
+      name: "Populated pick'em",
+      rulesForToday: null,
+      scoringEnabled: false,
+      pointsTotal: 6,
+      pointsDistribution: null,
+      courseId: null,
+      backCourseId: null,
+      scorecardSchema: null,
+      pickem: { rollUp: "individual_matches", useConfidence: false },
+    },
+  });
 });
 
 afterAll(async () => {
@@ -167,7 +205,8 @@ afterAll(async () => {
   // Matches before entrants (FK), members cascade off the entrants delete.
   await ctx.admin.from("bracket_matches").delete().eq("game_id", bracketGameId);
   await ctx.admin.from("bracket_entrants").delete().eq("game_id", bracketGameId);
-  await ctx.admin.from("games").delete().in("id", [gameId, bracketGameId]);
+  // pickem_games cascades off the game row.
+  await ctx.admin.from("games").delete().in("id", [gameId, bracketGameId, pickemGameId]);
   await ctx.cleanup();
 });
 
@@ -175,11 +214,11 @@ describe("configHash coverage — every column of a hashed table is classified",
   it.each(TABLES)("%s: no live column is unclassified (hash it or exclude it)", async (table) => {
     const f = FILTER[table] ?? { col: "game_id", via: "game" as const };
     const isBracketTable = table.startsWith("bracket_");
+    const isPickemTable = table.startsWith("pickem_");
+    const forGame = isBracketTable ? bracketGameId : isPickemTable ? pickemGameId : gameId;
     const q = ctx.admin.from(table).select("*");
     const { data, error } =
-      f.via === "entrant"
-        ? await q.in(f.col, entrantIds).limit(1)
-        : await q.eq(f.col, isBracketTable ? bracketGameId : gameId).limit(1);
+      f.via === "entrant" ? await q.in(f.col, entrantIds).limit(1) : await q.eq(f.col, forGame).limit(1);
     expect(error).toBeNull();
     const row = (data ?? [])[0] as Record<string, unknown> | undefined;
     expect(row, `no ${table} row — the seed must populate it`).toBeTruthy();

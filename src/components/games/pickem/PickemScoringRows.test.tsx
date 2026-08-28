@@ -21,12 +21,11 @@ const render = (over: Partial<Parameters<typeof PickemScoringRows>[0]> = {}) =>
       editable
       frozenReason={null}
       showRollUp
-      saving={false}
+      onChange={() => {}}
       pointsTotal={8}
       canEditPoints
       matches={[]}
       onPointsChange={() => {}}
-      onSave={() => {}}
       {...over}
     />
   );
@@ -146,11 +145,33 @@ describe("the scoring settings", () => {
     );
   });
 
-  it("offers Save only once something actually changed", () => {
-    // Compared by VALUE, not a touched flag: toggling a switch and toggling it
-    // back is not a change, and offering Save for it invites a write that does
-    // nothing.
+  it("owns NO Save of its own — the page commits (#18)", () => {
+    // This used to read "offers Save only once something actually changed",
+    // against a private draft this component kept. Both are gone: it is
+    // controlled now, and the only Save on the page is the settings bar.
+    //
+    // Kept as a REGRESSION guard rather than deleted, and it is worth being
+    // honest that it is a weak one — the id it looks for no longer exists
+    // anywhere, so it can only fail if someone puts a second Save back. That is
+    // exactly the change worth catching, but nothing here would notice the
+    // component quietly re-growing state under a different name.
     expect(render()).not.toContain('data-testid="pickem-save-scoring"');
+    expect(render({ settings: { rollUp: "team_totals", useConfidence: false } })).not.toContain(
+      'data-testid="pickem-save-scoring"'
+    );
+  });
+
+  it("renders what it is GIVEN — no private state to diverge from the page", () => {
+    // The assertion that would fail against the old component: it seeded a
+    // `useState` from `settings` on first render, so a later change to the prop
+    // did not reach the screen. That is the "staged-state lie" in miniature —
+    // the page's draft says one thing and the row shows another.
+    const on = render({ settings: { rollUp: "team_totals", useConfidence: true } });
+    const off = render({ settings: { rollUp: "team_totals", useConfidence: false } });
+    expect(on).toContain('aria-checked="true"');
+    expect(off).toContain('aria-checked="false"');
+    expect(on).toContain("Everyone ranks their picks");
+    expect(off).toContain("No ranking");
   });
 
   it("frozen — controls disabled, and it RENDERS whatever reason it is handed", () => {
@@ -168,7 +189,5 @@ describe("the scoring settings", () => {
     // A disabled control with no reason attached teaches nobody why (finding 3).
     expect(html).toContain(reason);
     expect(html).toContain("Reopening the slate");
-    // ...and no Save, because nothing here can be changed.
-    expect(html).not.toContain('data-testid="pickem-save-scoring"');
   });
 });
