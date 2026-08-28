@@ -577,13 +577,30 @@ export function quickFormatPlayerCountError(format: QuickGameFormat, count: numb
  * only count rule left.
  */
 export function buildQuickMatchSides(
-  rows: { id: string; side?: "A" | "B" }[]
+  rows: { id: string; side?: "A" | "B" }[],
+  /**
+   * Reuse an existing round's SLOT ids instead of minting new ones.
+   *
+   * A match scores into `values` keyed by SIDE id (`scoringEntityIds`), so a
+   * fresh uuid per build silently orphans every score already entered —
+   * rebuilding an in-flight round to rename a player wiped it, with the old
+   * values left behind under dead keys and nothing to say so.
+   *
+   * Reusing them is not a workaround, it is what the glossary already says: a
+   * side is a SLOT and a team is the roster. Slot A stays slot A when its
+   * players change, which is exactly the edit this preserves.
+   */
+  reuse?: { a: string; b: string }
 ): { sideA: QuickMatchSide; sideB: QuickMatchSide } | null {
-  const mk = (ids: string[]): QuickMatchSide => ({ id: crypto.randomUUID(), playerIds: ids, strokes: 0 });
+  const mk = (ids: string[], id?: string): QuickMatchSide => ({
+    id: id ?? crypto.randomUUID(),
+    playerIds: ids,
+    strokes: 0,
+  });
   const a = rows.filter((r) => r.side !== "B").map((r) => r.id);
   const b = rows.filter((r) => r.side === "B").map((r) => r.id);
   if (a.length === 0 || b.length === 0) return null;
-  return { sideA: mk(a), sideB: mk(b) };
+  return { sideA: mk(a, reuse?.a), sideB: mk(b, reuse?.b) };
 }
 
 /** Everything the setup screen collects, in one object — the input to
@@ -602,6 +619,9 @@ export interface QuickGameDrafts {
   gloriousAvailable: boolean;
   /** Rack only. */
   teams: Record<string, Team>;
+  /** MATCH only, EDIT only: the slot ids of the round being edited, so its
+   *  scores stay attached. See `buildQuickMatchSides`. */
+  sideIds?: { a: string; b: string };
 }
 
 /**
@@ -634,7 +654,7 @@ export function buildQuickGameFromDrafts(d: QuickGameDrafts): QuickGameState | n
     // Rows carry their side; `buildRosterFromDrafts` preserves row ids, so the
     // named rows and the built players line up one to one.
     const named = d.players.filter((r) => r.name.trim().length > 0).slice(0, 4);
-    const sides = buildQuickMatchSides(named);
+    const sides = buildQuickMatchSides(named, d.sideIds);
     if (!sides) return null;
     // The signed relative value resolves to strokes on exactly ONE side.
     const n = Math.abs(d.relStrokes);

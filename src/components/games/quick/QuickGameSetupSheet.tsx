@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Banknote } from "lucide-react";
 import { AddEditSheet } from "@/components/AddEditSheet";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
-import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
-import { MatchSetupFields, RosterFields, SettingsNavRow } from "@/components/games/quick/setupFields";
+import { SideBetsPanel } from "@/components/games/bets/SideBetsPanel";
+import { MatchSetupFields, RosterFields } from "@/components/games/quick/setupFields";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { trpc } from "@/lib/trpc-client";
 import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
@@ -16,6 +15,7 @@ import {
   buildQuickGameFromDrafts,
   buildQuickMatchSides,
   draftRowsFrom,
+  hasAnyScore,
   quickFormatPlayerCountError,
   quickMatchGloriousAvailable,
   readQuickGameState,
@@ -51,6 +51,8 @@ export function QuickGameSetupSheet({
   onClose,
   onStarted,
   navigatesOnCommit = false,
+  purpose = "start",
+  danger,
 }: {
   format: QuickGameFormat;
   onClose: () => void;
@@ -67,6 +69,24 @@ export function QuickGameSetupSheet({
    * `router.replace` — see `consumeMarker` in `useModalBackButton`.
    */
   navigatesOnCommit?: boolean;
+  /**
+   * What this sheet IS on the surface that opened it.
+   *
+   * `"start"` — the dashboard tile and the landing page: you are beginning or
+   * picking up a round, so the button starts it.
+   * `"settings"` — the in-round gear: you are already in the round, so the
+   * button just saves and the "pick up where you left off" line would be
+   * telling you about the screen you are looking at.
+   *
+   * It is ONE prop rather than a label prop and a subtitle prop, because they
+   * are not independent choices — they are two expressions of the same fact,
+   * and splitting them is how a sheet ends up saying "Save" under "pick up
+   * where you left off".
+   */
+  purpose?: "start" | "settings";
+  /** Destructive actions for the settings context — the caller owns them
+   *  because their confirms and handlers are the round's, not the form's. */
+  danger?: React.ReactNode;
 }) {
   const utils = trpc.useUtils();
   // Read ONCE on mount: re-reading would fight the user's own edits.
@@ -95,7 +115,6 @@ export function QuickGameSetupSheet({
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [courseBusy, setCourseBusy] = useState(false);
   const [courseError, setCourseError] = useState<string | null>(null);
-  const [betsOpen, setBetsOpen] = useState(false);
 
   const named = players.filter((r) => r.name.trim().length > 0);
   const countError =
@@ -163,6 +182,12 @@ export function QuickGameSetupSheet({
       gloriousHoles,
       gloriousAvailable,
       teams,
+      // Keep the round's SLOT ids so its scores stay attached — `values` is
+      // keyed by side id for a match, so rebuilding with fresh ones wipes it.
+      sideIds:
+        existing && existing.format === "match"
+          ? { a: existing.sideA.id, b: existing.sideB.id }
+          : undefined,
     });
     if (!built) return;
     if (existing) {
@@ -184,12 +209,14 @@ export function QuickGameSetupSheet({
     <>
       <AddEditSheet
         title={QUICK_GAME_LABEL[format]}
-        subtitle={isEdit ? "In progress — pick up where you left off" : undefined}
+        subtitle={
+          purpose === "settings" ? undefined : isEdit ? "In progress — pick up where you left off" : undefined
+        }
         mode={isEdit ? "edit" : "add"}
         onClose={onClose}
         testId="quick-game-setup-sheet"
         primary={{
-          label: isEdit ? "Resume round" : "Start round",
+          label: purpose === "settings" ? "Save" : isEdit ? "Resume round" : "Start round",
           onClick: commit,
           disabled: countError != null,
           navigatesAway: navigatesOnCommit,
@@ -207,7 +234,11 @@ export function QuickGameSetupSheet({
           onRemove={(id) =>
             setPlayers((rows) => (rows.length > (format === "match" ? 2 : 1) ? rows.filter((r) => r.id !== id) : rows))
           }
-          showHandicaps={format !== "match"}
+          // A handicap is an allocation of strokes to HOLES, so it needs a
+          // stroke index to allocate against. With no course there is nothing
+          // for `strokeHoles` to read and the number changes no score — an
+          // inert control that looks live. Pick a course and it appears.
+          showHandicaps={format !== "match" && course != null}
           sided={format === "match"}
           teams={format === "rack" ? teams : undefined}
           onToggleTeam={
@@ -227,6 +258,7 @@ export function QuickGameSetupSheet({
             players={players}
             entryMode={entryMode}
             onEntryMode={setEntryMode}
+            entryModeLocked={existing != null && hasAnyScore(existing)}
             relStrokes={relStrokes}
             onRelStrokes={setRelStrokes}
             gloriousAvailable={gloriousAvailable}
@@ -237,18 +269,32 @@ export function QuickGameSetupSheet({
           />
         )}
 
-        {/* Bets are agreed before anyone hits, so they are set up here — and
-            hidden below two players, who have nobody to bet with (§10). */}
+        {/* Bets are agreed before anyone hits, in the same conversation as the
+            roster — so they are a SECTION of this modal, not a modal behind a
+            nav row. Hidden below two players, who have nobody to bet with
+            (§10). */}
         {betPlayers.length >= 2 && (
-          <div className="mt-4">
-            <SettingsNavRow
-              icon={<Banknote size={16} />}
-              label="Side Bets"
-              onClick={() => setBetsOpen(true)}
-              testId="quick-game-sheet-side-bets-btn"
-            />
-          </div>
+          <SideBetsPanel
+            players={betPlayers}
+            result={betResult}
+            recordedBetIds={bets.bets.map((b) => b.id)}
+            sidesLocked={false}
+            lockedSides={[]}
+            holeCount={holeCount}
+            currentHole={1}
+            nassauAvailable={holeCount >= 18}
+            perspectivePlayerId={bets.perspectivePlayerId ?? betPlayers[0]?.id ?? null}
+            sideName={(side) =>
+              side.playerIds
+                .map((id) => betPlayers.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player")
+                .join(" & ")
+            }
+            onAdd={(added) => setBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
+            onRemove={(betId) => setBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
+          />
         )}
+
+        {danger && <div className="mt-5">{danger}</div>}
 
         {countError && (
           <p className="mt-3" style={{ fontSize: 12.5, color: "var(--color-bt-danger)" }} data-testid="quick-game-setup-error">
@@ -259,25 +305,6 @@ export function QuickGameSetupSheet({
 
       {coursePickerOpen && <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourse} />}
 
-      {betsOpen && (
-        <SideBetSheet
-          players={betPlayers}
-          result={betResult}
-          recordedBetIds={bets.bets.map((b) => b.id)}
-          sidesLocked={false}
-          lockedSides={[]}
-          holeCount={holeCount}
-          currentHole={1}
-          nassauAvailable={holeCount >= 18}
-          perspectivePlayerId={bets.perspectivePlayerId ?? betPlayers[0]?.id ?? null}
-          sideName={(side) =>
-            side.playerIds.map((id) => betPlayers.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player").join(" & ")
-          }
-          onAdd={(added) => setBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
-          onRemove={(betId) => setBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
-          onClose={() => setBetsOpen(false)}
-        />
-      )}
     </>
   );
 }

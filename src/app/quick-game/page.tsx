@@ -2,20 +2,17 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw, Users, Table2, Zap, Banknote } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
+import { RotateCcw, Table2, Zap } from "lucide-react";
 import {
+  hasAnyScore,
   readQuickGameState,
   writeQuickGameState,
   clearQuickGameState,
   quickGameUnits,
   quickGamePips,
   quickGameStandings,
-  buildRosterFromDrafts,
-  draftRowsFrom,
   quickGameTitle,
   quickGameSubtitle,
-  hasAnyScore,
   isMatchGame,
   isRackGame,
   quickSideName,
@@ -23,9 +20,7 @@ import {
   quickMatchGlorious,
   QUICK_GAME_LABEL,
   type QuickGameState,
-  type QuickGameCourse,
   type QuickGameFormat,
-  type DraftPlayerRow,
 } from "@/lib/quickGame";
 import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
 import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
@@ -48,15 +43,11 @@ import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
 import { SideBetSettlementBar } from "@/components/games/bets/SideBetSettlementBar";
 import { LastHoleDoublePrompt } from "@/components/games/bets/LastHoleDoublePrompt";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
-import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
-import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
-import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
-import { SettingsNavRow, RosterFields } from "@/components/games/quick/setupFields";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
 
 /**
@@ -95,20 +86,6 @@ import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/Danger
  * round can't net differently in two places (CLAUDE.md #8/#18).
  */
 
-/** ONE field, not several empty ones (§4). Solo is a valid round (#955) and
- *  the form should look like it — two blanks read as "this needs two people",
- *  which is the opposite of true. Add is one tap away. */
-function blankDraftPlayers(format?: QuickGameFormat): DraftPlayerRow[] {
-  // Match opens with one row per side, because the `vs` needs two sides to sit
-  // between and a match needs an opponent. Everything else opens with ONE.
-  if (format === "match") {
-    return [
-      { id: crypto.randomUUID(), name: "", strokes: 0, side: "A" },
-      { id: crypto.randomUUID(), name: "", strokes: 0, side: "B" },
-    ];
-  }
-  return [{ id: crypto.randomUUID(), name: "", strokes: 0 }];
-}
 
 /**
  * The finish screen for formats whose result is a SENTENCE, not a ranked list —
@@ -214,9 +191,8 @@ function QuickGamePageInner() {
   ).includes(formatParam ?? "")
     ? (formatParam as QuickGameFormat)
     : "stroke";
-  const utils = trpc.useUtils();
   const [state, setState] = useState<QuickGameState | null>(null);
-  const [view, setView] = useState<"entry" | "grid" | "roster">("entry");
+  const [view, setView] = useState<"entry" | "grid">("entry");
   // currentHole lives IN the persisted state so a refresh resumes on the same
   // hole (not just the scores).
   const setCurrentHole = (h: number) =>
@@ -239,14 +215,6 @@ function QuickGamePageInner() {
    * A draft, in the same sense as the roster and the course beside it: nothing
    * is written until Start, so abandoning the setup screen leaves nothing.
    */
-
-  // Draft roster — shared by the pre-start setup screen (blank) and the
-  // post-start roster editor (pre-populated from `state` in openRosterEditor).
-  const [draftPlayers, setDraftPlayers] = useState<DraftPlayerRow[]>(() => blankDraftPlayers(format));
-  const [draftCourse, setDraftCourse] = useState<QuickGameCourse | null>(null);
-  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
-  const [courseBusy, setCourseBusy] = useState(false);
-  const [courseError, setCourseError] = useState<string | null>(null);
 
   // ── Format-specific setup draft ────────────────────────────────────────────
   // The FEW extra answers match and rack need beyond the shared roster. `format`
@@ -276,6 +244,15 @@ function QuickGamePageInner() {
   // a round from before formats existed, or before course/handicaps existed,
   // resumes rather than fails.
   useEffect(() => {
+    // Reading local storage IS the "subscribe to an external system" case the
+    // rule allows; it just does it synchronously because storage is. Same
+    // disable, same reason, as the other external-data reads in this codebase.
+    //
+    // Worth knowing: this rule did NOT fire on `main` and does now, with the
+    // effect itself untouched — it started being reported once this file shrank
+    // by ~200 lines. So the surrounding code was what kept it quiet, not the
+    // effect being fine.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- external data: local storage, keyed by format
     setState(readQuickGameState(format));
     setHydrated(true);
   }, [format]);
@@ -294,70 +271,7 @@ function QuickGamePageInner() {
     else clearQuickGameState(format);
   }, [state, hydrated, format]);
 
-  // ── Draft roster editing (shared by setup + roster editor) ────────────────
-  function setDraftName(id: string, name: string) {
-    setDraftPlayers((rows) => rows.map((r) => (r.id === id ? { ...r, name } : r)));
-  }
-  function setDraftStrokes(id: string, n: number) {
-    setDraftPlayers((rows) => rows.map((r) => (r.id === id ? { ...r, strokes: n } : r)));
-  }
-  function addDraftRow(side?: "A" | "B") {
-    setDraftPlayers((rows) =>
-      rows.length < 4 ? [...rows, { id: crypto.randomUUID(), name: "", strokes: 0, side }] : rows
-    );
-  }
-  function removeDraftRow(id: string) {
-    const floor = format === "match" ? 2 : 1;
-    setDraftPlayers((rows) => (rows.length > floor ? rows.filter((r) => r.id !== id) : rows));
-  }
-  const canSubmitRoster = buildRosterFromDrafts(draftPlayers) !== null;
-
-  // Course picker → CAPTURE (Phase 0 T0.3): fetch once, build the snapshot via
-  // the shared pure `buildCourseSnapshot` (the exact function the trip-side
-  // draft path runs), freeze it into the draft. No re-fetch after this.
-  function applyCourseToDraft(c: { id: string; name: string; teeName?: string }) {
-    setCourseBusy(true);
-    setCourseError(null);
-    void (async () => {
-      try {
-        const course = await utils.courses.getById.fetch({ courseId: c.id });
-        const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, "gtt_stroke_play", c.teeName);
-        if (!snap.ok) {
-          setCourseError(
-            snap.reason === "bad_index"
-              ? "That course's stroke index isn't a valid permutation — fix it before use."
-              : "That course can't be used for stroke play."
-          );
-          return;
-        }
-        setDraftCourse({ id: c.id, name: c.name, teeName: c.teeName, schema: snap.schema });
-      } catch {
-        setCourseError("Couldn't load that course — try again.");
-      } finally {
-        setCourseBusy(false);
-        setCoursePickerOpen(false);
-      }
-    })();
-  }
-
-
-  /**
-   * Start completely over — blank roster, no course, this SAME format
-   * (revised: storage is now per-format, one key per tile, so this can no
-   * longer "switch games" the way it used to; a stroke round and a match round
-   * live at their own keys and starting one never touches the other. Reaching
-   * a DIFFERENT format now means going back to its own tile, not an in-page
-   * action). What this still does that `clearScores` doesn't: wipe the roster
-   * and course too, not just the scores — for when you want a genuinely blank
-   * setup screen rather than the same players/course staged as a starting
-   * point.
-   *
-   * Confirmed when there is anything to lose, silent when there isn't: an
-   * unscored round is just a setup someone changed their mind about, and making
-   * them confirm that would train the confirm away. Same threshold
-   * (`hasAnyScore`) the roster-edit and reset paths use, so all three agree
-   * about what "in progress" means.
-   */
+  /** Reset game, guarded: a round with scores in it asks first. */
   function newGame() {
     if (!state) return;
     if (hasAnyScore(state)) {
@@ -372,8 +286,6 @@ function QuickGamePageInner() {
    *  "back to a blank setup" now means. */
   function resetGame() {
     setState(null);
-    setDraftPlayers(blankDraftPlayers(format));
-    setDraftCourse(null);
     setSetupOpen(true);
     setConfirmReplace(false);
     setSettingsOpen(false);
@@ -447,23 +359,12 @@ function QuickGamePageInner() {
   }
   function playAgain() {
     setState(null);
-    setDraftPlayers(blankDraftPlayers(format));
-    setDraftCourse(null);
     setView("entry");
   }
   function discard() {
     setState(null);
     router.push("/dashboard");
   }
-  /** Stage a `state`'s roster/course into the editable drafts — shared by
-   *  `openRosterEditor` (edit in place) and `clearScores` (edit via a return to
-   *  setup), so the two can't drift into different pre-fill rules. */
-  function prefillDrafts(s: QuickGameState) {
-    setDraftPlayers(draftRowsFrom(s));
-    setDraftCourse(s.course);
-    setCourseError(null);
-  }
-
   /**
    * Clear scores (§5 — renamed; it used to be called "Reset game", which is
    * now the OTHER action). #879 item 1b; revised — feedback: hole 1 was the wrong
@@ -519,51 +420,6 @@ function QuickGamePageInner() {
     setView("entry");
     setConfirmReset(false);
     setSettingsOpen(false);
-  }
-
-  /**
-   * Roster editor (§1) — REVISED: no longer gated on `hasAnyScore`. The
-   * original design refused this once a score existed and pointed at Reset
-   * Game instead ("refuse, and point at the existing affordance"). Feedback,
-   * after using it: "I don't think we need to worry about disabling players
-   * & handicaps... it should just be a label and whether a score gets netted
-   * or not... meaning they can change on the fly during the round." So this
-   * is now a plain, always-available edit — same screen, same
-   * `buildRosterFromDrafts` floor/cap rules, no refusal state to render.
-   *
-   * Editing mid-round is SAFE here in a way it isn't for most persisted
-   * state, because netting is derived at READ time, never snapshotted
-   * (`quickGamePips`, mirroring CLAUDE.md #11's "derived, never snapshotted"
-   * discipline for Glorious Finishing Holes): changing a handicap changes
-   * what the next render computes for EVERY hole, past and future, with no
-   * migration. A renamed/kept player keeps their id (from `prefillDrafts`),
-   * so their scores stay attached; a removed player's old score-values just
-   * go unread (their id drops out of `state.players`, and nothing keys off
-   * player ids that aren't in that list). `saveRoster` therefore does NOT
-   * touch `values`/`currentHole` any more — that clear was only safe under
-   * the old before-any-score invariant, and wiping scores on a plain roster
-   * tweak would contradict "on the fly during the round".
-   *
-   * The one thing this does NOT relitigate: a COURSE swap mid-round still
-   * goes through the same screen/save path, and a hole-count change (18↔9)
-   * after scores exist on the dropped holes is unaddressed — nobody has
-   * asked for it, and guarding against it wasn't part of this ask.
-   */
-  function openRosterEditor() {
-    if (!state) return;
-    prefillDrafts(state);
-    setSettingsOpen(false);
-    setView("roster");
-  }
-  function cancelRosterEdit() {
-    setView("entry");
-  }
-  function saveRoster() {
-    if (!state) return;
-    const roster = buildRosterFromDrafts(draftPlayers);
-    if (!roster) return;
-    setState((s) => (s ? { ...s, players: roster.players, strokes: roster.strokes, course: draftCourse } : s));
-    setView("entry");
   }
 
   const units = quickGameUnits(state);
@@ -768,37 +624,6 @@ function QuickGamePageInner() {
     );
   }
 
-  // ── Roster editor (§1) — reachable any time, mid-round included; scores
-  // are untouched by a save here (only Reset Game clears them). ──
-  if (view === "roster") {
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--color-bt-base)" }}>
-        <div className="flex shrink-0 items-center justify-between gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-          <button onClick={cancelRosterEdit} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>Cancel</button>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Players &amp; handicaps</span>
-          <button onClick={saveRoster} disabled={!canSubmitRoster} className="disabled:opacity-40" style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 700 }}>Save</button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
-          <RosterFields
-            draftPlayers={draftPlayers}
-            onChangeName={setDraftName}
-            onChangeStrokes={setDraftStrokes}
-            onAdd={addDraftRow}
-            onRemove={removeDraftRow}
-            draftCourse={draftCourse}
-            onOpenCoursePicker={() => setCoursePickerOpen(true)}
-            onClearCourse={() => setDraftCourse(null)}
-            courseBusy={courseBusy}
-            courseError={courseError}
-          />
-        </div>
-        {coursePickerOpen && (
-          <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourseToDraft} />
-        )}
-      </div>
-    );
-  }
-
   // ── Final ── FinalStandings stays mounted underneath; the scorecard is a
   // sibling `ScorecardSheet` overlay (the shared pattern every golf format
   // uses), not a separate route that replaces it.
@@ -916,107 +741,95 @@ function QuickGamePageInner() {
 
       {/* Settings gear (#879 item 1b) — top-right of the game page header, same
           affordance every other game surface uses (`ScoreEntryView`'s existing
-          `onConfig` slot — no new chrome). "Players & handicaps" opens the
-          roster editor at any point, scores or no — always available, no
-          refusal state (feedback: "it should just be a label" — see
-          `openRosterEditor`'s doc comment for the reversal this replaced). */}
+          `onConfig` slot — no new chrome). The roster stays editable at any
+          point, scores or no, with no refusal state (feedback: "it should just
+          be a label"): netting is derived at read time, so a mid-round handicap
+          change is just a different answer on the next render.
+
+          In-round settings IS the add/edit sheet, in its `settings` purpose —
+          the same component the dashboard tile opens, so the round can only be
+          described one way. It used to be a slide-over of nav rows leading to a
+          full-screen roster editor and a bets modal: three surfaces for one
+          edit, each with its own save semantics. Players, handicaps, course,
+          match answers and bets are all sections of this one form now, with the
+          standard Cancel / Save underneath.
+
+          Editing mid-round is safe because netting is derived at READ time and
+          never snapshotted (`quickGamePips`, mirroring CLAUDE.md #11): change a
+          handicap and the next render recomputes every hole, past and future,
+          with nothing to migrate. Scores survive because the sheet merges over
+          the saved round rather than replacing it — and, for a match, reuses
+          the SLOT ids its `values` are keyed by. */}
       {settingsOpen && (
-        <SettingsSlideOver
-          title={`${quickGameTitle(state)} settings`}
+        <QuickGameSetupSheet
+          format={format}
+          purpose="settings"
           onClose={() => setSettingsOpen(false)}
-          testId="quick-game-settings-panel"
-        >
-          <SectionLabel>Game</SectionLabel>
-          <div className="mt-2 flex flex-col gap-2">
-            <SettingsNavRow
-              icon={<Users size={16} />}
-              label="Players & handicaps"
-              blurb="Add, remove, or rename players · set handicaps."
-              onClick={openRosterEditor}
-              testId="quick-game-edit-roster-btn"
-            />
-            {/* Betting is not a setup step (§7) — it's reachable at any point,
-                from the screen you're on when someone suggests it. A round
-                nobody bet on shows nothing anywhere else; this row is the way
-                in, and the way back out is deleting the bets. */}
-            {/* §10 — hidden entirely with one player, in-round as at setup. */}
-            {state.players.length >= 2 && (
-            <SettingsNavRow
-              icon={<Banknote size={16} />}
-              label="Side Bets"
-              onClick={() => {
-                setSettingsOpen(false);
-                setBetsOpen(true);
-              }}
-              testId="quick-game-side-bets-btn"
-            />
-            )}
-          </div>
+          onStarted={() => {
+            // The sheet wrote it; pick the round back up from storage.
+            setState(readQuickGameState(format));
+            setSettingsOpen(false);
+          }}
+          danger={
+            <>
+              <SectionLabel danger>Danger zone</SectionLabel>
+              <div className="mt-2 flex flex-col gap-2">
+                <DangerRow
+                  icon={<RotateCcw size={16} />}
+                  tone="warning"
+                  label="Clear scores"
+                  blurb="Bets will start over."
+                  onClick={() => setConfirmReset(true)}
+                  testId="quick-game-reset-btn"
+                />
+                {/* The blank-slate reset: wipes players/course too, not just
+                    scores. Storage is per-format, so this only ever touches
+                    THIS tile's round. */}
+                <DangerRow
+                  icon={<Zap size={16} />}
+                  tone="danger"
+                  label="Reset game"
+                  blurb="Clears players, course, scores and bets."
+                  onClick={newGame}
+                  testId="quick-game-new-btn"
+                />
+              </div>
+            </>
+          }
+        />
+      )}
 
-          <div className="mt-5">
-            <SectionLabel danger>Danger zone</SectionLabel>
-            <div className="mt-2">
-              <DangerRow
-                icon={<RotateCcw size={16} />}
-                tone="warning"
-                label="Clear scores"
-                blurb="Bets will start over."
-                onClick={() => setConfirmReset(true)}
-                testId="quick-game-reset-btn"
-              />
-            </div>
-            {/* The blank-slate reset: wipes players/course too, not just
-                scores (Reset above keeps them staged). No longer "switches
-                games" — storage is per-format now, so a stroke round and a
-                match round each live at their own key and never compete for
-                room; this only ever touches THIS tile's round. */}
-            <div className="mt-2">
-              <DangerRow
-                icon={<Zap size={16} />}
-                tone="danger"
-                label="Reset game"
-                blurb="Clears players, course, scores and bets."
-                onClick={newGame}
-                testId="quick-game-new-btn"
-              />
-            </div>
-          </div>
+      {/* Siblings of the sheet, rendered AFTER it: both are `fixed z-50`, so in
+          one stacking context the later node paints on top. Nesting them inside
+          would put a confirm inside the scrolling form it is asking about. */}
+      {confirmReset && (
+        <DangerConfirmModal
+          tone="warning"
+          icon={<RotateCcw size={18} />}
+          title="Clear scores?"
+          body="Clears every score and starts the round again from hole 1. Your players, handicaps, and course stay exactly as they are. Any bets start over from scratch."
+          confirmLabel="Clear scores"
+          pendingLabel="Clearing…"
+          isPending={false}
+          testId="quick-game-reset-confirm"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={clearScores}
+        />
+      )}
 
-          {/* Nested INSIDE the panel, not a sibling — `SettingsSlideOver` portals
-              to `document.body` and `DangerConfirmModal` does not, so a sibling
-              render loses the stacking fight (same z-50, but the portal's DOM
-              node lands later in `body` and paints over it). `GameConfigurationView`
-              nests `GameDangerZone`'s confirm the same way; this follows it. */}
-          {confirmReset && (
-            <DangerConfirmModal
-              tone="warning"
-              icon={<RotateCcw size={18} />}
-              title="Clear scores?"
-              body="Clears every score and takes you back to setup. Your players, handicaps, and course stay filled in — review or change them, then start again. Any bets start over from scratch."
-              confirmLabel="Clear scores"
-              pendingLabel="Clearing…"
-              isPending={false}
-              testId="quick-game-reset-confirm"
-              onCancel={() => setConfirmReset(false)}
-              onConfirm={clearScores}
-            />
-          )}
-
-          {confirmReplace && (
-            <DangerConfirmModal
-              tone="danger"
-              icon={<Zap size={18} />}
-              title="Reset game?"
-              body={`This round is in progress — ${quickGameSubtitle(state)}. Resetting clears the players, course, every score and every bet.`}
-              confirmLabel="Reset game"
-              pendingLabel="Resetting…"
-              isPending={false}
-              testId="quick-game-new-confirm"
-              onCancel={() => setConfirmReplace(false)}
-              onConfirm={resetGame}
-            />
-          )}
-        </SettingsSlideOver>
+      {confirmReplace && (
+        <DangerConfirmModal
+          tone="danger"
+          icon={<Zap size={18} />}
+          title="Reset game?"
+          body={`This round is in progress — ${quickGameSubtitle(state)}. Resetting clears the players, course, every score and every bet.`}
+          confirmLabel="Reset game"
+          pendingLabel="Resetting…"
+          isPending={false}
+          testId="quick-game-new-confirm"
+          onCancel={() => setConfirmReplace(false)}
+          onConfirm={resetGame}
+        />
       )}
     </div>
   );

@@ -73,13 +73,23 @@ export function SettingsNavRow({
  * offered, which is why it sits first.
  */
 export function MatchSetupFields({
-  players, entryMode, onEntryMode,
+  players, entryMode, onEntryMode, entryModeLocked = false,
   relStrokes, onRelStrokes, gloriousAvailable, glorious, onGlorious,
   gloriousHoles, onGloriousHoles,
 }: {
   players: DraftPlayerRow[];
   entryMode: "score" | "outcome";
   onEntryMode: (m: "score" | "outcome") => void;
+  /**
+   * The round already has scores, so the mode is settled.
+   *
+   * The two modes use DIFFERENT storage (CLAUDE.md #27: `values` for scores,
+   * `outcomes` for who-won-the-hole), so switching mid-round would leave the
+   * round reading empty with its scores intact but unread. The unavailable
+   * option is DISABLED rather than removed — a control that vanishes leaves no
+   * trace of why it was ever there.
+   */
+  entryModeLocked?: boolean;
   relStrokes: number;
   onRelStrokes: (n: number) => void;
   gloriousAvailable: boolean;
@@ -111,13 +121,18 @@ export function MatchSetupFields({
         <FieldLabel>Scoring</FieldLabel>
         <Segmented
           options={[
-            { value: "score", label: "Enter scores" },
-            { value: "outcome", label: "Who won the hole" },
+            { value: "score", label: "Enter scores", disabled: entryModeLocked && entryMode !== "score" },
+            { value: "outcome", label: "Who won the hole", disabled: entryModeLocked && entryMode !== "outcome" },
           ]}
           value={entryMode}
           onChange={onEntryMode}
           testId="quick-match-entry-mode"
         />
+        {entryModeLocked && (
+          <p className="mt-1.5" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
+            Settled once the round has scores — the two modes record different things.
+          </p>
+        )}
         <p className="mt-1.5" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}>
           {entryMode === "score"
             ? doubles

@@ -137,7 +137,7 @@ describe("building the bets", () => {
       holeCount: 18,
       mkId: mkIds(),
     });
-    expect(bets.map(betLabel)).toEqual(["Front 9", "Back 9", "Overall"]);
+    expect(bets.map(betLabel)).toEqual(["Nassau Front 9", "Nassau Back 9", "Nassau Overall"]);
     expect(bets.every((b) => b.kind === "head_to_head")).toBe(true);
   });
 
