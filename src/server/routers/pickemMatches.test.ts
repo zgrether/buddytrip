@@ -36,6 +36,9 @@ describe("save_pickem_matches", () => {
   beforeEach(async () => {
     await ctx.admin.from("game_matches").delete().eq("game_id", gameId);
     await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
+    // Slate rows too: a test that seeds a RESULT and fails mid-body would
+    // otherwise leave the freeze in place for every test after it.
+    await ctx.admin.from("pickem_slate_games").delete().eq("game_id", gameId);
   });
 
   const save = (pairs: unknown, role: "owner" | "member" = "owner") =>
@@ -109,6 +112,46 @@ describe("save_pickem_matches", () => {
     const rows = await readMatches();
     expect(rows).toHaveLength(1);
     expect(rows[0].side_a).toEqual({ type: "user", id: owner });
+  });
+
+  it("a resolved SLATE GAME does NOT freeze the pairings", async () => {
+    /**
+     * The deadlock migration 162 undid.
+     *
+     * 157 pointed this guard at `_pickem_has_results` — the SETTINGS freeze —
+     * on the reasoning that both ask "has anything been scored yet". They do
+     * not: the pairing guard asks whether re-pairing would move a RECORDED
+     * OUTCOME onto someone who did not earn it, and nothing is stored per
+     * pairing in this format. So a slate game resolving froze the pairings,
+     * and a pairing that was never valid could never be completed — `open`
+     * refusing on the incompleteness the runner could no longer fix.
+     *
+     * The result used here is 'push' on purpose. It is what actually held the
+     * freeze in the field: push and cancelled score ZERO for everyone, so the
+     * board reads 0-0 and the slate looks cleared while `result IS NOT NULL`
+     * stays true. A test using 'home' would pass on a fix that special-cased
+     * the zero-scoring arms, which is the wrong repair.
+     */
+    const slateId = genId("sg");
+    await ctx.admin.from("pickem_games").upsert({ game_id: gameId });
+    const seed = await ctx.admin.from("pickem_slate_games").insert({
+      id: slateId, game_id: gameId, display_order: 0,
+      away_team: "Alabama", home_team: "Georgia", multiplier: 1, result: "push",
+    });
+    expect(seed.error).toBeNull();
+
+    // Asserted, because a refused seed would leave this passing for the wrong
+    // reason — the shape that made the 'side_a' bug above invisible.
+    const check = await ctx.admin
+      .from("pickem_slate_games").select("result").eq("id", slateId).single();
+    expect(check.data?.result).toBe("push");
+
+    await save([{ a: owner, b: member }]);
+    const { error } = await save([{ a: member, b: owner }]);
+    expect(error).toBeNull();
+
+    const rows = await readMatches();
+    expect(rows[0].side_a).toEqual({ type: "user", id: member });
   });
 
   it("refuses on status='complete' too, not only a set result", async () => {
