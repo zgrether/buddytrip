@@ -63,12 +63,27 @@ const PHASE_DETAIL: Record<PickemPhase, string> = {
   locked: "Every sheet is closed and revealed to the trip.",
 };
 
+/** Said once results exist, in place of the unlock move — so the absence of the
+ *  button is explained rather than merely noticed. */
+const LOCKED_WITH_RESULTS =
+  "Results are in, so picks stay closed. Clearing the results with Reset scores would reopen them.";
+
 export interface PickemPhaseStripProps {
   phase: PickemPhase;
   slateCount: number;
   /** ISO, or null for "no deadline — I will lock by hand". */
   deadline: string | null;
   busy: boolean;
+  /**
+   * Has the game produced any outcome yet.
+   *
+   * Gates UNLOCK, and only unlock. Reopening picks on a game whose results are
+   * partly known is not picking — the person already knows how those games
+   * went. Migration 165 refuses it server-side; this is why they are not
+   * offered it in the first place, because a control that is offered and then
+   * refused is the shape this project keeps rejecting.
+   */
+  hasResults: boolean;
   onOpenPicks: () => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -80,6 +95,7 @@ export function PickemPhaseStrip({
   slateCount,
   deadline,
   busy,
+  hasResults,
   onOpenPicks,
   onLock,
   onUnlock,
@@ -113,7 +129,10 @@ export function PickemPhaseStrip({
       consequence: "Closes every sheet immediately and reveals them to the trip.",
     });
   }
-  if (phase === "locked") {
+  // Unlock disappears once anything has been scored. The old consequence text
+  // said "Nothing is lost", which was true of the SHEETS and false of the game:
+  // reopening after a result lets someone re-pick a contest they have watched.
+  if (phase === "locked" && !hasResults) {
     moves.push({
       label: "Unlock picks",
       onClick: onUnlock,
@@ -152,7 +171,9 @@ export function PickemPhaseStrip({
           >
             {phase === "building" && slateCount === 0
               ? "Add some games to the slate before you can open picks."
-              : PHASE_DETAIL[phase]}
+              : phase === "locked" && hasResults
+                ? LOCKED_WITH_RESULTS
+                : PHASE_DETAIL[phase]}
           </span>
         </span>
       </div>

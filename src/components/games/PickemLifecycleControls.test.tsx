@@ -111,6 +111,7 @@ const strip = (over: Partial<Parameters<typeof PickemPhaseStrip>[0]> = {}) =>
       slateCount={16}
       deadline={null}
       busy={false}
+      hasResults={false}
       onOpenPicks={noop}
       onLock={noop}
       onUnlock={noop}
@@ -181,6 +182,33 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     }
     expect(strip({ phase: "picks_open" })).toContain('data-testid="pickem-strip-lock"');
     expect(strip({ phase: "locked" })).toContain('data-testid="pickem-strip-unlock"');
+  });
+
+  it("stops offering UNLOCK once results are in", () => {
+    /**
+     * The client half of migration 165. The server refuses the call; this is
+     * why the runner is never offered it, because a control that is offered
+     * and then refused is the shape this project keeps rejecting.
+     *
+     * The positive case is the control: without it, a strip that never showed
+     * unlock at all would pass the absence assertion.
+     */
+    const withResults = strip({ phase: "locked", hasResults: true });
+    expect(withResults).not.toContain('data-testid="pickem-strip-unlock"');
+    expect(strip({ phase: "locked", hasResults: false })).toContain(
+      'data-testid="pickem-strip-unlock"'
+    );
+  });
+
+  it("EXPLAINS the missing move rather than just dropping it", () => {
+    // An absent button with no sentence reads as a bug. The line names the
+     // condition and the action that would clear it, which is the same thing
+     // the server refusal says.
+    const html = strip({ phase: "locked", hasResults: true });
+    expect(html).toContain("Results are in");
+    expect(html).toContain("Reset scores");
+    // ...and the ordinary locked line is unchanged when nothing is scored.
+    expect(strip({ phase: "locked", hasResults: false })).toContain("revealed to the trip");
   });
 
   it("says what the game IS, not only what the runner can do", () => {

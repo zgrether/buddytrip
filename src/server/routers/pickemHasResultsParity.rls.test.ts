@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext } from "../../__tests__/helpers/test-setup";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
 /**
  * `_pickem_has_results` (SQL) vs `pickem.get`'s `hasResults` (TypeScript).
@@ -51,6 +51,12 @@ async function bothSay(expected: boolean, label: string) {
   expect(ts, `${label}: router`).toBe(expected);
 }
 
+beforeEach(async () => {
+  // A case that seeds a result and fails mid-body would otherwise leave it
+  // behind, and every case after it reads true — five failures for one bug.
+  if (gameId) await ctx.admin.from("pickem_slate_games").delete().eq("game_id", gameId);
+});
+
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("hasResults parity Trip");
@@ -71,6 +77,53 @@ afterAll(async () => {
 describe("_pickem_has_results — SQL and the router mirror agree", () => {
   it("a fresh game: nothing scored", async () => {
     await bothSay(false, "fresh");
+  });
+
+  it("a RESOLVED SLATE GAME makes it true — the arm the mirror was missing", async () => {
+    /**
+     * Migration 159 added this arm to the SQL and its own comment calls it
+     * "THE PRIMARY SOURCE during Run". The TypeScript mirror was never grown
+     * to match, and THIS SUITE COULD NOT SEE IT: every case here exercised one
+     * of the three arms that existed before 159, so it stayed green while the
+     * two sides disagreed on the most common state in the feature — a game
+     * having its results entered and nothing else scored.
+     *
+     * It was live. `scoringSettingsEditable(hasResults)` said the three
+     * scoring settings were editable while `save_pickem_config` refused them —
+     * the exact failure the mirror's own comment promises it prevents.
+     *
+     * A guard has to grow when the thing it guards does.
+     */
+    const slateId = genId("parity-sg");
+    const seed = await ctx.admin.from("pickem_slate_games").insert({
+      id: slateId, game_id: gameId, display_order: 0,
+      away_team: "Alabama", home_team: "Georgia", multiplier: 1, result: "home",
+    });
+    expect(seed.error).toBeNull();
+
+    await bothSay(true, "a resolved slate game");
+
+    // ...and clearing it puts BOTH back to false, so this is the slate result
+    // talking and not some residue from an earlier case.
+    await ctx.admin.from("pickem_slate_games").update({ result: null }).eq("id", slateId);
+    await bothSay(false, "slate result cleared");
+
+    await ctx.admin.from("pickem_slate_games").delete().eq("id", slateId);
+  });
+
+  it("a PUSH and a CANCELLATION count too — a zero-scoring result is a result", async () => {
+    // They score nothing for everyone, so a board reading 0-0 looks cleared.
+    // Both predicates must still say the game has produced an outcome — this is
+    // the state that held the pairing freeze in migration 162.
+    for (const result of ["push", "cancelled"] as const) {
+      const slateId = genId("parity-zero");
+      await ctx.admin.from("pickem_slate_games").insert({
+        id: slateId, game_id: gameId, display_order: 0,
+        away_team: "A", home_team: "B", multiplier: 1, result,
+      });
+      await bothSay(true, result);
+      await ctx.admin.from("pickem_slate_games").delete().eq("id", slateId);
+    }
   });
 
   it("a game_results row makes it true", async () => {
