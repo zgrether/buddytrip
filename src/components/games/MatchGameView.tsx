@@ -191,8 +191,8 @@ export function MatchGameView() {
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
-  // centralized in useGameEditAccess. isOwner stays trip-Owner-only.
-  const { canEdit, isOwner, canManageGame, loading: roleLoading } = useGameEditAccess(tripId, gameId);
+  // centralized in useGameEditAccess.
+  const { canEdit, canManageGame, loading: roleLoading } = useGameEditAccess(tripId, gameId);
   const [manualScreen, setManualScreen] = useState<Screen | null>(null);
   // The settings overlay — owns open/close/back + the leaderboard deep link
   // (?settings=1 → land here directly for an owner/delegate of a setup-mode game,
@@ -1951,7 +1951,7 @@ export function MatchGameView() {
             competitionId={gameCompId}
             game={draftGameRow}
             canEdit={canEdit}
-            isOwner={isOwner}
+            canDelegate={canManageGame}
             /* #789 — the danger zone's three procedures moved to requireTripRole
                ("Organizer") in #788; the delegation grant did NOT, which is why
                these are two flags rather than one. The `gameQ.data` term keeps the

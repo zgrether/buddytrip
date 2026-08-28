@@ -64,7 +64,7 @@ export function PickemGameView() {
   const gameId = search.get("game");
   const settingsDeepLink = search.get("settings") === "1";
 
-  const { canEdit, isOwner, canManageGame } = useGameEditAccess(tripId, gameId);
+  const { canEdit, canManageGame } = useGameEditAccess(tripId, gameId);
   const utils = trpc.useUtils();
 
   /**
@@ -397,7 +397,7 @@ export function PickemGameView() {
           competitionId={q.data.game.competition_id as string | null}
           game={q.data.game as never}
           canEdit={canEdit}
-          isOwner={isOwner}
+          canDelegate={canManageGame}
           canManageGame={canManageGame}
           nameValue={gameName}
           onNameChange={setName}

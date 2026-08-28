@@ -93,7 +93,7 @@ export function GameSettingsPage({
   competitionId,
   game,
   canEdit,
-  isOwner,
+  canDelegate,
   canManageGame,
   nameValue,
   onNameChange,
@@ -123,12 +123,18 @@ export function GameSettingsPage({
   competitionId: string | null;
   game: GameRow;
   canEdit: boolean;
-  /** Trip Owner ONLY. Gates the delegation grant inside `GameIdentityHeader` —
-   *  handing someone edit rights is changing who is trusted. Do NOT reuse this
-   *  for the danger zone; see `canManageGame`. */
-  isOwner: boolean;
+  /**
+   * Gates the delegation grant inside `GameIdentityHeader` — handing someone
+   * edit rights is changing who is trusted, so it stays above the delegate
+   * tier. Trip Owner OR Organizer, matching `games.addOrganizer`.
+   *
+   * Was `isOwner`, which made the client stricter than its own server gate.
+   * Callers pass `canManageGame` — the SAME predicate the danger zone uses,
+   * not a new one (see the note on `useGameEditAccess`).
+   */
+  canDelegate: boolean;
   /** Trip Owner or Organizer, delegates excluded. Gates the danger zone
-   *  (reset/delete), matching its server gate since #788. Split from `isOwner`
+   *  (reset/delete), matching its server gate since #788. Split from the grant
    *  in #789 — one flag can't guard two powers with different answers. */
   canManageGame: boolean;
 
@@ -217,7 +223,7 @@ export function GameSettingsPage({
             tripId={tripId}
             competitionId={competitionId}
             canEdit={canEdit}
-            isOwner={isOwner}
+            canDelegate={canDelegate}
             nameValue={nameValue}
             onNameChange={onNameChange}
             delegateValue={delegateValue}

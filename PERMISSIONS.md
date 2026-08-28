@@ -246,6 +246,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | **Reorder a team's roster** (canonical order) | ✓ | **—** | **captain of *that* team** | `teamAssignments.reorder` *(Owner or that team's captain — **not** a plain Organizer; same gate as `teams.update`; mig 094)* |
 | Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
 | **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
+| **Set what a game is worth** (`points_total`) | ✓ | ✓ | **delegate of *that* game** | `games.saveConfig` / `setPointsTotal` *(delegate tier since migration 158 — see the flag below)* |
 | **Enter a game's results** (manual placement; finish/compute — every format) | ✓ | ✓ | **delegate of *that* game** | `games.setManualResults` / `finish` *(`finish` absorbed `games.post`; see the flag below)* |
 | **RUN: open score correction** | ✓ | see flag | **delegate of *that* game** | `games.openCorrection` |
 | Enter a per-hole score (until posted) | ✓ (any unit) | ✓ (any unit) | ✓ (any unit in *their* game) | `scores.upsertEntry` / `deleteEntry` — **scoped** (see below); **blocked** once the game is posted & not in correction |
@@ -329,6 +330,46 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > RLS path on `games` (UPDATE) + `game_results` (migration 045, table/function
 > renamed `game_organizers`→`game_delegates` / `is_game_organizer`→`is_game_delegate`
 > in migration 061). Granting is a trip-staff act (`requireTripRole('Organizer')`).
+
+> **`points_total` joined the delegate tier in migration 158, and this document
+> was SILENT on it before that.** Not wrong — absent. The column appeared in no
+> row of the matrix, and that silence is what let the code look like drift when
+> it was in fact a decision: Slice D (#360) had deliberately put the total above
+> the delegate tier, pinned by `games.d_addgame.test.ts` ("a delegate can
+> distribute to the total but CANNOT change the total") and stated in that
+> file's header as "owner sets the total; a game-delegate distributes within".
+>
+> **Why it was revisited.** The rationale was that the Owner sets the total
+> because they understand which games are being played and how they should be
+> weighted. That describes who *typically* does it, not who should be
+> *permitted* to — the permission had been derived from the habit. Pick'em made
+> it concrete: a delegate builds the slate, opens picks, locks them and enters
+> results, and the total is a primary control on the settings page they own.
+> Asking the Owner to change one number is the wrong shape for a role this
+> document defines as an Owner scoped to one game. The sibling column had
+> agreed all along — `points_distribution` was always in the delegate tier, so
+> the split was the odd thing rather than the widening.
+>
+> **What did NOT move.** `delegates` keeps the staff gate: granting delegation
+> is "changes who is trusted", so a delegate still cannot sub-delegate.
+>
+> **The failure mode that came with it, now fixed.** Both columns were gated
+> *inside* `save_game_config`, a function the delegate is ADMITTED to by
+> `assert_game_edit`. So their save SUCCEEDED, every other column persisted,
+> and the gated one was dropped with no error — the page reports saved and the
+> value is gone. That is worse than a refusal and is how the points gate went
+> unnoticed for three months. 158 widens `points_total` (removing one instance)
+> and makes `delegates` REFUSE a change outright. An *unchanged* delegate set
+> still passes, because a payload builder may include the key and refusing on
+> presence would stop a delegate saving anything at all.
+>
+> **The client was stricter than this table, too.** The delegate picker was
+> gated on `useGameEditAccess.isOwner` while `games.addOrganizer` /
+> `removeOrganizer` are `requireTripRole('Organizer')` — so an Organizer could
+> not see a control the server would have accepted, and the prop's own comment
+> claimed it "matches the server gate". The prop is now `canDelegate`, fed by
+> `canManageGame` (Owner or Organizer, delegates excluded — the same predicate
+> the danger zone uses, not a new one).
 
 > **Competition RUN-actions (Slice D Run/Post §5).** Opening score correction
 > (`games.openCorrection`) is enforced server-side by `requireGameRunAction`.

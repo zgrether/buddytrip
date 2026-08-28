@@ -3,9 +3,28 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
  * Slice D add-game flow — Stage 3: sum-to-total server enforcement + the
- * delegation boundary (owner sets the total; a game-delegate distributes within
- * it but can't change it). The enforcement reuses the pure validatePlacement
+ * delegation boundary. The enforcement reuses the pure validatePlacement
  * (gameConfig.ts), so the API rejects exactly what the UI blocks.
+ *
+ * ── The boundary MOVED in migration 158, deliberately ──────────────────────
+ *
+ * This file used to read "owner sets the total; a game-delegate distributes
+ * within it but can't change it", and the test below pinned exactly that.
+ *
+ * It was revisited three months on. The rationale had been that the Owner sets
+ * the total because they understand which games are being played and how they
+ * should be weighted — which describes who TYPICALLY does it, not who should be
+ * PERMITTED to. The permission had been derived from the habit.
+ *
+ * Pick'em made it concrete: a delegate builds the slate, opens picks, locks
+ * them and enters the results, and the total is a primary control on the
+ * settings page they own. Having to ask the Owner to change one number is the
+ * wrong shape for a role PERMISSIONS.md defines as "an Owner scoped to one
+ * game". The sibling column already agreed — `points_distribution` has always
+ * been in the delegate tier, and the split was the odd thing.
+ *
+ * What did NOT move: sum-to-total enforcement below, and delegation itself — a
+ * delegate still cannot sub-delegate, because that changes who is trusted.
  */
 
 const MANUAL = "gtt_manual";
@@ -122,7 +141,7 @@ describe("Stage 3 — sum-to-total enforcement (nil-vs-entered)", () => {
 });
 
 describe("Stage 3 — the delegation boundary", () => {
-  it("a delegate can distribute to the total but CANNOT change the total", async () => {
+  it("a delegate can distribute to the total AND change it (migration 158)", async () => {
     const g = await newGame(8, "Delegated Game");
     await ctx.caller().games.addOrganizer({ tripId, gameId: g.id, userId: memberId });
     const member = ctx.callerAs("member");
@@ -141,9 +160,28 @@ describe("Stage 3 — the delegation boundary", () => {
       })
     ).rejects.toThrow(/must total 8/i);
 
-    // Changing the total — forbidden (Member-level, no Organizer role).
+    // Changing the total — ALLOWED since migration 158. This assertion was
+    // `.rejects.toThrow()`; it is inverted deliberately, and the file header
+    // says why.
+    //
+    // Asserting the VALUE rather than that the call merely resolves: the old
+    // tRPC gate refused outright here, but its twin inside `save_game_config`
+    // DROPPED the column from a save that succeeded, and a "does not throw"
+    // check would pass against that.
+    await member.games.setPointsTotal({ tripId, gameId: g.id, total: 12 });
+    expect(
+      ((await ctx.caller().games.getById({ tripId, gameId: g.id })) as {
+        points_total: number | null;
+      }).points_total
+    ).toBe(12);
+  });
+
+  it("a plain member who is NOT a delegate still cannot touch the total", async () => {
+    // The half that did not move. Widening to the delegate tier must not widen
+    // to the trip.
+    const g = await newGame(8, "Not delegated");
     await expect(
-      member.games.setPointsTotal({ tripId, gameId: g.id, total: 12 })
+      ctx.callerAs("member").games.setPointsTotal({ tripId, gameId: g.id, total: 12 })
     ).rejects.toThrow();
   });
 
