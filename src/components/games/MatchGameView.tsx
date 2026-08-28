@@ -2121,7 +2121,6 @@ export function MatchGameView() {
                   testId="row-matches"
                 >
                   <MatchSetup
-                    tripId={tripId}
                     draft={draft}
                     setDraft={editDraft}
                     nameOf={nameOf}

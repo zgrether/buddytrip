@@ -172,7 +172,10 @@ export function MatchSetup({
   onAddLive,
   addBlockedReason,
 }: {
-  tripId: string;
+  // (`tripId` used to be declared here and never destructured — a dead prop
+  // that travelled with the component for as long as it was private. Dropped
+  // on extraction, since a shared component advertising an input it ignores is
+  // a lie with a type signature.)
   draft: DraftMatch[];
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
   nameOf: Map<string, string>;
