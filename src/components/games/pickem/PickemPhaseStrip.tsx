@@ -221,6 +221,7 @@ export function PickemPhaseStrip({
           {!editingDeadline ? (
             <DeadlineBlock
               deadline={deadline}
+              phase={phase}
               now={now}
               onEdit={() => {
                 setDraft(toLocalInputValue(deadline));
@@ -389,10 +390,12 @@ export function PickemPhaseStrip({
  */
 function DeadlineBlock({
   deadline,
+  phase,
   now,
   onEdit,
 }: {
   deadline: string | null;
+  phase: PickemPhase;
   now: number;
   onEdit: () => void;
 }) {
@@ -405,19 +408,42 @@ function DeadlineBlock({
    */
   const lead = set ? new Date(deadline).getTime() - now : 0;
 
+  /**
+   * PENDING is not the same as SET, and the strip said it was.
+   *
+   * On a locked game the block read "Auto-locks Fri 11:35 PM · 4h 22m from now"
+   * — a future event on a game whose picks had already closed by hand. Nothing
+   * will auto-lock; there is nothing left to lock.
+   *
+   * ── ...and the control still has to be here ────────────────────────────────
+   *
+   * The tempting fix is to hide the block once locked. It would strand the
+   * runner: `unlock` clears `picks_locked_at` and nothing else, so a game past its
+   * deadline is NOT reopened by unlocking (migration 151, restated in 156 and
+   * 159). The deadline is the thing keeping picks closed, editing it is the
+   * only way out, and hiding it would leave a runner pressing Unlock and
+   * watching nothing happen.
+   *
+   * So the block stays and the COPY changes, which is also where the amber
+   * goes: amber means "this will happen on its own", and on a locked game it
+   * will not.
+   */
+  const pending = set && phase === "picks_open";
+  const passed = set && lead <= 0;
+
   return (
     <div
       className="flex items-center gap-2.5 px-3 py-2.5"
       style={{
         borderRadius: 11,
-        background: set ? "var(--color-bt-warning-faint)" : "var(--color-bt-card-raised)",
-        border: `1px solid ${set ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
+        background: pending ? "var(--color-bt-warning-faint)" : "var(--color-bt-card-raised)",
+        border: `1px solid ${pending ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
       }}
     >
       <Clock
         size={15}
         style={{
-          color: set ? "var(--color-bt-owner)" : "var(--color-bt-text-dim)",
+          color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text-dim)",
           flexShrink: 0,
         }}
       />
@@ -428,20 +454,32 @@ function DeadlineBlock({
           style={{
             fontSize: TYPE_SCALE.body,
             fontWeight: 700,
-            color: set ? "var(--color-bt-owner)" : "var(--color-bt-text)",
+            color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
           }}
         >
-          {set ? `Auto-locks ${formatDeadline(deadline)}` : "No deadline set"}
+          {!set
+            ? "No deadline set"
+            : pending
+              ? `Auto-locks ${formatDeadline(deadline)}`
+              : passed
+                ? `Deadline passed ${formatDeadline(deadline)}`
+                : `Deadline ${formatDeadline(deadline)}`}
         </span>
         <span
           className="mt-0.5 block"
           style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
         >
-          {set
-            ? lead > 0
-              ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
-              : "Any moment now. Nobody has to do anything."
-            : "Picks stay open until you lock them."}
+          {!set
+            ? "Picks stay open until you lock them."
+            : pending
+              ? lead > 0
+                ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
+                : "Any moment now. Nobody has to do anything."
+              : passed
+                ? /* The trap, named. Unlocking a game past its deadline does
+                     nothing at all, and the runner has no other way to tell. */
+                  "Unlocking won’t reopen picks until this moves."
+                : "Picks are already closed. Unlocking reopens them until then."}
         </span>
       </span>
       <button
@@ -453,8 +491,8 @@ function DeadlineBlock({
           fontSize: TYPE_SCALE.caption,
           fontWeight: 600,
           background: "transparent",
-          border: `1px solid ${set ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
-          color: set ? "var(--color-bt-owner)" : "var(--color-bt-text)",
+          border: `1px solid ${pending ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
+          color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
           minHeight: 36,
         }}
       >

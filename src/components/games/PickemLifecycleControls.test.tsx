@@ -255,6 +255,46 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     expect(set).toContain("Nobody has to do anything");
   });
 
+  it("stops promising an auto-lock on a game that is already locked", () => {
+    /**
+     * Live, a hand-locked game read "Auto-locks Fri, Aug 28, 11:35 PM · 4h 22m
+     * from now" with its picks already closed — a future event on a game where
+     * there is nothing left to lock.
+     *
+     * PENDING is not the same as SET, and the strip had them as one condition.
+     */
+    const html = strip({
+      phase: "locked",
+      deadline: "2026-09-05T17:00:00.000Z",
+      now: Date.parse("2026-09-03T13:00:00.000Z"),
+    });
+    expect(html).not.toContain("Auto-locks");
+    expect(html).not.toContain("from now");
+    expect(html).not.toContain("--color-bt-warning-faint");
+    expect(html).toContain("Picks are already closed");
+  });
+
+  it("names the UNLOCK TRAP when the deadline has passed", () => {
+    /**
+     * `unlock` clears `picks_locked_at` and nothing else, so a game past its
+     * deadline is not reopened by pressing it (migration 151, restated in 156
+     * and 159). Editing the deadline is the only way out.
+     *
+     * Which is why the block cannot be hidden on a locked game — the tempting
+     * simplification would leave a runner pressing Unlock and watching nothing
+     * happen, with the one control that would help removed from the screen.
+     */
+    const html = strip({
+      phase: "locked",
+      deadline: "2026-09-01T17:00:00.000Z",
+      now: Date.parse("2026-09-03T13:00:00.000Z"),
+    });
+    expect(html).toContain("Deadline passed");
+    expect(html).toContain("Unlocking won’t reopen picks until this moves.");
+    // The way out is still on screen.
+    expect(html).toContain('data-testid="pickem-strip-deadline-edit"');
+  });
+
   it("paints the deadline block amber only when something is SCHEDULED", () => {
     /**
      * Amber says "this will happen on its own". On an UNSET deadline it would

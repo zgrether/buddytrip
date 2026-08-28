@@ -42,6 +42,7 @@ import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
 import type { DraftMatchConfig } from "@/lib/configDraft";
 import { PickemTwoUp, type PickemPanel } from "@/components/games/pickem/PickemTwoUp";
+import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import {
   PickemProxyPanel,
   PickemProxyBanner,
@@ -885,10 +886,11 @@ export function PickemGameView() {
               pressure to pair before the deadline (§5), so "locked, unpaired"
               is a normal state that must read as waiting rather than broken. */}
           {individualMatches && matchPairs.length === 0 ? (
-            <Empty
-              icon="◷"
-              heading="Matches coming soon"
-              body="Picks are locked. Whoever's running it hasn't set the matchups yet — they'll appear here."
+            <PickemNoMatches
+              canEdit={canEdit}
+              // The same opener the chrome gear uses, so the card cannot send a
+              // runner somewhere the gear would not.
+              onOpenSettings={settings.openConfig}
             />
           ) : (
             <PickemBoard
