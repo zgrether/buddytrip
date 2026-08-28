@@ -9,6 +9,7 @@ import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useNow } from "@/hooks/useNow";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
@@ -19,17 +20,20 @@ import {
   PickemScoringRows,
   type PickemSettingsDraft,
 } from "@/components/games/pickem/PickemScoringRows";
-import { PickemSheet } from "@/components/games/pickem/PickemSheet";
+import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/PickemSheet";
+import { explanationCopy, PARA_BREAK } from "@/lib/pickemSheet";
 import { PickemDeadlineRow } from "@/components/games/pickem/PickemDeadlineRow";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   msUntilDeadline,
+  picksEverOpened,
   picksOpen,
   picksRevealed,
   pickemClosure,
   pickemPhase,
   scoringSettingsEditable,
+  scoringFrozenReason,
   slateEditable,
 } from "@/lib/pickemLifecycle";
 
@@ -95,8 +99,24 @@ export function PickemGameView() {
   const [rules, setRules] = useState<string | null>(null);
 
   const clock = q.data?.clock ?? { picksOpenedAt: null, picksDeadline: null, picksLockedAt: null };
-  const phase = pickemPhase(clock);
-  const canEditSlate = canEdit && slateEditable(clock);
+
+  /**
+   * ONE CLOCK for every time-dependent answer on this page.
+   *
+   * The countdown used to be computed once at render and never moved — and,
+   * worse, so did `picksOpen`, so a sheet could show 0:00 and stay editable.
+   * Every derivation below now reads the SAME ticking `now`, which is what
+   * makes crossing the deadline correct without a reload: the tick that shows
+   * 0:00 is the tick that flips the sheet read-only and produces the closed
+   * message.
+   *
+   * Ticking only matters while a deadline exists — a hand-locked or
+   * no-deadline game has nothing counting down — so the timer is gated on one
+   * rather than run on every pick'em page forever.
+   */
+  const now = useNow(1000, clock.picksDeadline != null);
+  const phase = pickemPhase(clock, now);
+  const canEditSlate = canEdit && slateEditable(clock, now);
 
   const saveConfig = trpc.pickem.saveConfig.useMutation({
     onSuccess: async () => {
@@ -159,7 +179,7 @@ export function PickemGameView() {
   /** §4: the matches surface exists ONLY under individual matches. Team totals
    *  has no matches at all, so it is ABSENT rather than rendered empty. */
   const individualMatches = q.data?.settings.rollUp === "individual_matches";
-  const revealed = picksRevealed(clock);
+  const revealed = picksRevealed(clock, now);
   const pointsTotal =
     (q.data?.game as { points_total?: number | null } | undefined)?.points_total ?? null;
   const matchPairs = useMemo(
@@ -242,7 +262,7 @@ export function PickemGameView() {
           canEdit={canEdit}
           onOpenSlate={() => setSlateOpen(true)}
           onOpenPicks={() =>
-            setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
+            setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
           }
           opening={setPhase.isPending}
         />
@@ -259,6 +279,12 @@ export function PickemGameView() {
          * as waiting rather than broken.
          */
         <>
+          {/* FIRST on the page, because this branch is what a person lands in
+              the instant their countdown reaches zero — and until this was
+              hoisted out of the sheet, that transition was silent. The sheet
+              collapses behind a button here, so a banner inside it explains the
+              change only to someone who already went looking for it. */}
+          <PickemClosedBanner closure={pickemClosure(clock, now)} />
           {matchPairs.length > 0 ? (
             <PickemMatchesPanel
               teams={q.data.teams}
@@ -302,7 +328,8 @@ export function PickemGameView() {
               saving={false}
               saveError={null}
               deadlineMs={null}
-              closure={pickemClosure(clock)}
+              closedBannerHoisted
+              closure={pickemClosure(clock, now)}
               onSave={() => {}}
             />
           )}
@@ -320,11 +347,11 @@ export function PickemGameView() {
             slate={q.data.slate}
             settings={q.data.settings}
             myPicks={q.data.myPicks}
-            editable={picksOpen(clock)}
+            editable={picksOpen(clock, now)}
             saving={savePicks.isPending}
             saveError={saveError}
-            deadlineMs={msUntilDeadline(clock)}
-            closure={pickemClosure(clock)}
+            deadlineMs={msUntilDeadline(clock, now)}
+            closure={pickemClosure(clock, now)}
             onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
           />
           {phase === "locked" && <Placeholder>The board lands in Phase 6.</Placeholder>}
@@ -356,6 +383,9 @@ export function PickemGameView() {
         // Slate only. The scoring settings moved to the settings page and save
         // through the same RPC with the other half absent, which
         // `save_pickem_config` already supports.
+        // Warn only if there is something to lose: rankings exist once picks
+        // have been opened, and only when confidence is on.
+        rankedSheetsExist={picksEverOpened(clock) && q.data.settings.useConfidence}
         onSave={(next) => saveConfig.mutate({ tripId: tripId!, gameId, slate: next.slate })}
       />
 
@@ -373,6 +403,13 @@ export function PickemGameView() {
           onNameChange={setName}
           delegateValue={null}
           onDelegateChange={() => {}}
+          // Finding 4: the catalog description explains ranking unconditionally,
+          // so with confidence OFF the rules starter described a game nobody was
+          // playing. `explanationCopy` is the same derived source the sheet
+          // itself reads, so the two cannot disagree about what the rules are.
+          rulesStarterText={explanationCopy(q.data.settings, q.data.slate)
+            .map((para) => para.text)
+            .join(PARA_BREAK)}
           rulesValue={rules ?? ""}
           onRulesChange={setRules}
           // Phase 2 has no page-level draft: the only things this page can
@@ -424,7 +461,12 @@ export function PickemGameView() {
               scoringRows={
                 <PickemScoringRows
                   settings={settingsDraft}
-                  editable={canEdit && scoringSettingsEditable(clock)}
+                  editable={canEdit && scoringSettingsEditable(clock, now)}
+                  frozenReason={
+                    canEdit
+                      ? scoringFrozenReason(clock, now)
+                      : null
+                  }
                   showRollUp={q.data.game.competition_id != null}
                   saving={saveConfig.isPending}
                   pointsTotal={(q.data.game as { points_total?: number | null }).points_total ?? null}
@@ -456,13 +498,10 @@ export function PickemGameView() {
               // slate" look like a dead button.
               onOpenSlate={() => setSlateOpen(true)}
               onOpenPicks={() =>
-                setPhase.mutate({ tripId: tripId!, gameId, action: "open", deadline: null })
+                setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
               }
               onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
               onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
-              onReopen={() =>
-                setPhase.mutate({ tripId: tripId!, gameId, action: "reopen" })
-              }
               busy={setPhase.isPending}
             />
           }
@@ -562,7 +601,6 @@ export function SlateSettingsRows({
   onOpenPicks,
   onLock,
   onUnlock,
-  onReopen,
   busy,
 }: {
   slateCount: number;
@@ -581,7 +619,6 @@ export function SlateSettingsRows({
   onOpenPicks: () => void;
   onLock: () => void;
   onUnlock: () => void;
-  onReopen: () => void;
   busy: boolean;
 }) {
   if (!canEdit) return null;
@@ -597,13 +634,11 @@ export function SlateSettingsRows({
     transitions.push({ label: "Lock picks", onClick: onLock, testId: "pickem-lock-picks", tone: "go" });
   }
   if (phase === "locked") {
-    // The narrow inverse of Lock, available whenever picks are locked —
-    // reversible without touching the slate or anyone's ranking, which is what
-    // separates it from Reopen sitting beside it.
+    // The WHOLE way back into a live game now that Reopen is gone (migration
+    // 156). It used to sit beside a destructive twin whose only advantage was
+    // making the slate editable — which this already does, because the slate is
+    // frozen only while picks are OPEN.
     transitions.push({ label: "Unlock picks", onClick: onUnlock, testId: "pickem-unlock-picks", tone: "go" });
-  }
-  if (phase !== "building") {
-    transitions.push({ label: "Reopen the slate", onClick: onReopen, testId: "pickem-reopen-slate", tone: "undo" });
   }
 
   /** What each visible transition will DO. Two-word labels are not enough for
@@ -615,10 +650,7 @@ export function SlateSettingsRows({
     "pickem-lock-picks":
       "Lock picks — closes every sheet immediately and reveals them to the trip.",
     "pickem-unlock-picks":
-      "Unlock picks — reopens every sheet for editing and hides them again. Slate and rankings are untouched.",
-    "pickem-reopen-slate": useConfidence
-      ? "Reopen the slate — back to not-open so you can change the games. Everyone keeps their winners and re-ranks them."
-      : "Reopen the slate — back to not-open so you can change the games. Everyone keeps their picks.",
+      "Unlock picks — reopens every sheet for editing and hides them again. Nothing is lost.",
   };
 
   return (

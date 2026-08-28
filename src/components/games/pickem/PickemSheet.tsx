@@ -17,7 +17,7 @@ import {
   type SheetSettings,
 } from "@/lib/pickemSheet";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
-import type { PickemClosure } from "@/lib/pickemLifecycle";
+import { formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
 
 /** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
  *  told about is spoken that way. No year: a sheet is read within days of it. */
@@ -29,6 +29,43 @@ export function formatClosedAt(ms: number): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/**
+ * §8.4's closed message, as its own component because it has TWO homes.
+ *
+ * ── Why it had to come out of the sheet ────────────────────────────────────
+ *
+ * Watching a real deadline pass caught this: at 0:00 the page switches to the
+ * reveal branch, where the sheet collapses behind a "See my picks" button. The
+ * banner lived INSIDE the sheet, so the one moment it exists to explain — the
+ * countdown hitting zero and everything changing — was the one moment it was
+ * hidden. What a person actually saw was their sheet vanish, replaced by a
+ * matches panel they had not asked for, with no sentence anywhere saying picks
+ * had closed.
+ *
+ * That is the same falsehood-by-omission §8.4 was written against, arriving
+ * through the collapse rather than through the copy. So the reveal branch shows
+ * this at the top of the page and tells the nested sheet not to repeat it
+ * (`closedBannerHoisted`), which keeps ONE statement on screen in both states.
+ */
+export function PickemClosedBanner({ closure }: { closure: PickemClosure | null }) {
+  return (
+    <Banner tone="info" testId="pickem-sheet-locked">
+      <b>
+        {closure?.reason === "deadline"
+          ? `Picks closed at ${formatClosedAt(closure.at)}.`
+          : closure?.reason === "locked"
+            ? "Picks are closed — they were ended early."
+            : "Picks are closed."}
+      </b>{" "}
+      {/* The "not even the runner" clause appears ONCE. The first draft put it
+          in both sentences, which read as "whoever's running it closed them
+          early. Nobody can change one now, including whoever's running it" —
+          visible only once rendered. */}
+      Nobody can change a sheet now, not even whoever&rsquo;s running it.
+    </Banner>
+  );
 }
 
 /**
@@ -84,6 +121,7 @@ export function PickemSheet({
   saving,
   saveError,
   deadlineMs,
+  closedBannerHoisted = false,
   closure,
   onSave,
 }: {
@@ -97,6 +135,10 @@ export function PickemSheet({
   saving: boolean;
   saveError: string | null;
   deadlineMs: number | null;
+  /** The CALLER is already showing `PickemClosedBanner` above this sheet, so
+   *  do not render a second one. Set by the reveal branch, where the sheet is
+   *  collapsed behind a button and the message has to live outside it. */
+  closedBannerHoisted?: boolean;
   /** Why and when picks closed, for §8.4's message. Null while open. */
   closure: PickemClosure | null;
   onSave: (picks: SheetPick[]) => void;
@@ -236,22 +278,7 @@ export function PickemSheet({
       {/* §8.4 — a control that stopped working with no explanation is the
           falsehood pattern. A silently read-only sheet reads as a broken app;
           naming the moment reads as a rule. */}
-      {!editable && (
-        <Banner tone="info" testId="pickem-sheet-locked">
-          <b>
-            {closure?.reason === "deadline"
-              ? `Picks closed at ${formatClosedAt(closure.at)}.`
-              : closure?.reason === "locked"
-                ? "Picks are closed — they were ended early."
-                : "Picks are closed."}
-          </b>{" "}
-          {/* The "not even the runner" clause appears ONCE. The first draft put
-              it in both sentences, which read as "whoever's running it closed
-              them early. Nobody can change one now, including whoever's running
-              it" — visible only once rendered. */}
-          Nobody can change a sheet now, not even whoever&rsquo;s running it.
-        </Banner>
-      )}
+      {!editable && !closedBannerHoisted && <PickemClosedBanner closure={closure} />}
 
       {editable && server.rankingReset && (
         <Banner tone="warn" testId="pickem-ranking-reset">
@@ -729,8 +756,10 @@ function SaveBar({
 }
 
 function Countdown({ ms, submitted }: { ms: number; submitted: boolean }) {
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
+  // `ms` re-derives from the page's ticking clock every second (`useNow` in
+  // PickemGameView), and so does the `editable` flag that gates this whole
+  // block — one source, so the timer cannot reach zero on a sheet that is still
+  // accepting picks.
   const urgent = ms < 3_600_000;
   return (
     <div
@@ -761,7 +790,7 @@ function Countdown({ ms, submitted }: { ms: number; submitted: boolean }) {
           color: urgent ? "var(--color-bt-warning)" : undefined,
         }}
       >
-        {h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`}
+        {formatCountdown(ms)}
       </span>
     </div>
   );

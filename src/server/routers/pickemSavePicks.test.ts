@@ -273,38 +273,74 @@ describe("save_pickem_picks (migration 150)", () => {
     expect(count).toBe(SLATE_SIZE);
   });
 
-  // ── reopen clears the ranking (migration 150's second half) ─────────────
+  // ── a SLATE CHANGE clears the ranking (migration 156) ───────────────────
+  //
+  // This block used to exercise `reopen`, which cleared every ranking as a
+  // side effect of making the slate editable. Migration 156 deleted that action
+  // and moved the clear to the slate save, where the cause is — so the same
+  // coverage lives on against the new trigger rather than being dropped along
+  // with the function it happened to hang off.
 
-  it("REOPEN keeps every pick and clears every ranking", async () => {
-    // Migration 148's reopen arm carried a comment saying this happened and did
-    // not do it. Invisible in Phase 2 because nothing wrote a rank yet.
+  /** Lock, write a slate, unlock. The slate is frozen only while picks are
+   *  OPEN, so locking is the whole of "let me edit this" now — and on its own
+   *  it destroys nothing. */
+  const saveSlate = async (ids: string[]) => {
+    await ctx
+      .authedClient("owner")
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock" });
+    const res = await ctx.authedClient("owner").rpc("save_pickem_config", {
+      p_game_id: gameId,
+      p_payload: {
+        slate: ids.map((id, i) => ({ id, awayTeam: `Away${i}`, homeTeam: `Home${i}` })),
+      },
+    });
+    await ctx
+      .authedClient("owner")
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock" });
+    return res;
+  };
+
+  it("REMOVING a game keeps every surviving pick and clears every ranking", async () => {
     await save(sheet({ 0: { pick: "away" }, 3: { pick: "away" } }));
 
-    const { error } = await ctx
-      .authedClient("owner")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "reopen", p_deadline: null });
+    const { error } = await saveSlate(slateIds.slice(1));
     expect(error).toBeNull();
 
-    const after = await readSheet();
-    expect(after.map((r) => r!.pick)).toEqual(["away", "home", "home", "away"]);
-    expect(after.map((r) => r!.confidence)).toEqual([null, null, null, null]);
+    const { data } = await ctx.admin
+      .from("pickem_picks")
+      .select("slate_game_id, pick, confidence")
+      .eq("game_id", gameId);
+    // The removed game's pick went with it (FK cascade); the rest survive.
+    expect(data).toHaveLength(SLATE_SIZE - 1);
+    expect((data ?? []).every((r) => r.confidence === null)).toBe(true);
   });
 
-  it("reopen clears EVERY participant's ranking, not just the caller's", async () => {
+  it("an UNCHANGED slate clears NOTHING — the whole point of moving the clear", async () => {
+    // Under `reopen` this case destroyed every ranking for a runner who opened
+    // the door and changed his mind. It is the regression that matters most
+    // here, and it is the one the old design could not express.
+    await save(sheet());
+    const before = (await readSheet()).map((r) => r!.confidence);
+    expect(before.every((c) => c !== null)).toBe(true);
+
+    const { error } = await saveSlate(slateIds);
+    expect(error).toBeNull();
+
+    expect((await readSheet()).map((r) => r!.confidence)).toEqual(before);
+  });
+
+  it("clears EVERY participant's ranking, not just the caller's", async () => {
     // The runner is a participant too, and his own sheet is the one he can see.
     // Clearing only the caller's would look correct from the only screen he has.
     await save(sheet(), "member");
     await save(sheet(), "owner");
 
-    await ctx
-      .authedClient("owner")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "reopen", p_deadline: null });
+    await saveSlate(slateIds.slice(1));
 
     const { data } = await ctx.admin
       .from("pickem_picks")
       .select("user_id, confidence")
       .eq("game_id", gameId);
-    expect(data).toHaveLength(SLATE_SIZE * 2);
     expect(new Set((data ?? []).map((r) => r.user_id)).size).toBe(2);
     expect((data ?? []).every((r) => r.confidence === null)).toBe(true);
   });
@@ -335,7 +371,7 @@ describe("save_pickem_picks (migration 150)", () => {
     // The other half. `open` clears picks_locked_at, so editing a deadline on a
     // locked game would have reopened every sheet and un-revealed the matches.
     await ctx.authedClient("owner")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock", p_deadline: null });
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock" });
     const before = await ctx.admin
       .from("pickem_games").select("picks_locked_at").eq("game_id", gameId).single();
     expect(before.data!.picks_locked_at).not.toBeNull();
@@ -377,14 +413,14 @@ describe("save_pickem_picks (migration 150)", () => {
     // every ranking. So "I locked a minute early" and "I need to change the
     // games" shared one answer, and it was the destructive one.
     await save(sheet({ 0: { pick: "away" } }));
-    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock", p_deadline: null });
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock" });
 
     const locked = await ctx.admin
       .from("pickem_games").select("picks_locked_at").eq("game_id", gameId).single();
     expect(locked.data!.picks_locked_at).not.toBeNull();
 
     const { error } = await ctx.authedClient("owner")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock" });
     expect(error).toBeNull();
 
     const after = await ctx.admin
@@ -405,10 +441,10 @@ describe("save_pickem_picks (migration 150)", () => {
     // cleared the stamp but left the policy refusing writes. The write is what
     // the runner is actually restoring.
     await save(sheet());
-    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock", p_deadline: null });
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "lock" });
     expect((await save(sheet({ 1: { pick: "away" } }))).error?.message).toContain("PICKS_CLOSED");
 
-    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock" });
     expect((await save(sheet({ 1: { pick: "away" } }))).error).toBeNull();
     expect((await readSheet())[1]!.pick).toBe("away");
   });
@@ -422,14 +458,14 @@ describe("save_pickem_picks (migration 150)", () => {
       .update({ picks_deadline: new Date(Date.now() - 60_000).toISOString() })
       .eq("game_id", gameId);
 
-    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+    await ctx.authedClient("owner").rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock" });
     expect((await save(sheet())).error?.message).toContain("PICKS_CLOSED");
   });
 
   it("unlock on a game that never OPENED does nothing", async () => {
     await ctx.admin.from("pickem_games").update({ picks_opened_at: null }).eq("game_id", gameId);
     const { error } = await ctx.authedClient("owner")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock" });
     expect(error).toBeNull();
     const after = await ctx.admin
       .from("pickem_games").select("picks_opened_at").eq("game_id", gameId).single();
@@ -438,18 +474,19 @@ describe("save_pickem_picks (migration 150)", () => {
 
   it("a plain member cannot unlock", async () => {
     const { error } = await ctx.authedClient("member")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock", p_deadline: null });
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "unlock" });
     expect(error?.message).toContain("NOT_AUTHORIZED");
   });
 
-  it("reopen on a confidence-OFF game is a harmless no-op", async () => {
-    await ctx.admin.from("pickem_games").update({ use_confidence: false }).eq("game_id", gameId);
-    await save(slateIds.map((id) => ({ slateGameId: id, pick: "away", confidence: null })));
-
+  it("REOPEN no longer exists — it is refused, not silently accepted", async () => {
+    // The guard on migration 156. `reopen` nulled every ranking as a side
+    // effect of making the slate editable, irreversibly and with no audit
+    // table anywhere in this schema. A build that restores the action fails
+    // here rather than quietly restoring the destruction with it.
     const { error } = await ctx
       .authedClient("owner")
-      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "reopen", p_deadline: null });
-    expect(error).toBeNull();
-    expect((await readSheet()).map((r) => r!.pick)).toEqual(["away", "away", "away", "away"]);
+      .rpc("set_pickem_phase", { p_game_id: gameId, p_action: "reopen" });
+    expect(error).not.toBeNull();
+    expect(error!.message).toContain("BAD_ACTION");
   });
 });

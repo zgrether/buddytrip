@@ -44,6 +44,7 @@ export interface PickemSettingsDraft {
 export function PickemScoringRows({
   settings,
   editable,
+  frozenReason,
   showRollUp,
   saving,
   pointsTotal,
@@ -55,6 +56,10 @@ export function PickemScoringRows({
   settings: PickemSettingsDraft;
   /** False once picks open — spec §4 freezes these with the slate. */
   editable: boolean;
+  /** WHY they are frozen, from `scoringFrozenReason` — null while editable.
+   *  Derived by the caller from the phase rather than written here, because the
+   *  static version of this sentence said "picks are open" on a LOCKED game. */
+  frozenReason: string | null;
   /** Roll-up only means something inside a competition. A standalone pick'em
    *  game has no sides to total, so the row is ABSENT rather than disabled. */
   showRollUp: boolean;
@@ -118,16 +123,19 @@ export function PickemScoringRows({
         </p>
       )}
 
-      {!editable && (
+      {/* Immediately above the two controls it explains, and DERIVED — the
+          static version of this sentence claimed picks were open on a game that
+          was locked. */}
+      {frozenReason && (
         <p
+          data-testid="pickem-scoring-frozen"
           style={{
             fontSize: TYPE_SCALE.caption,
             color: "var(--color-bt-text-dim)",
             lineHeight: 1.5,
           }}
         >
-          Picks are open, so scoring is frozen — everyone has already filled in a sheet
-          under these rules. Reopen the slate below to change them.
+          {frozenReason}
         </p>
       )}
 

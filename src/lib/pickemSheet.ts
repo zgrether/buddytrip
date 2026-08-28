@@ -233,6 +233,10 @@ export interface ExplanationParagraph {
  * proofread sixteen blocks, and the two that ship most are not the two anyone
  * writes first.
  */
+/** Blank line between paragraphs, for callers flattening `explanationCopy`
+ *  into a single free-text block (the Rules of the Day starter). */
+export const PARA_BREAK = "\n\n";
+
 export function explanationCopy(
   settings: SheetSettings,
   slate: SheetSlateGame[]
@@ -294,4 +298,36 @@ export function explanationCopy(
   }
 
   return out;
+}
+
+/**
+ * Does moving from one slate to another invalidate every ranking?
+ *
+ * The id SET, and nothing else. A ranking is a permutation of 1..N over the
+ * slate, so gaining or losing a game destroys it while reordering,
+ * re-spreading or re-weighting one leaves it a perfectly good ranking of the
+ * same N games.
+ *
+ * ── Why this is a named function and not an inline comparison ──────────────
+ *
+ * The identical test runs in `save_pickem_config` as
+ * `v_prior IS DISTINCT FROM v_keep` (migration 156), and that one decides
+ * whether sixteen people's rankings are actually deleted. This one only decides
+ * whether they are WARNED first. Two spellings of the same question, one of
+ * them destructive, is how a screen ends up promising something the server does
+ * not do — so the client half is written once, here, next to the reconciliation
+ * rule it has to agree with.
+ *
+ * The client can never suppress the clear by disagreeing: the server does not
+ * consult it.
+ */
+export function slateSetChanged(
+  before: { id: string }[],
+  after: { id: string }[]
+): boolean {
+  const a = new Set(before.map((g) => g.id));
+  const b = new Set(after.map((g) => g.id));
+  if (a.size !== b.size) return true;
+  for (const id of b) if (!a.has(id)) return true;
+  return false;
 }
