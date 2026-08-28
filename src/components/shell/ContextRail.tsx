@@ -6,13 +6,6 @@ import { Dice5, Lightbulb, Luggage, PanelLeftClose, PanelLeftOpen, Plus, Trophy 
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
-import {
-  readAllQuickGames,
-  quickGameSubtitle,
-  QUICK_GAME_LABEL,
-  QUICK_GAME_TILE_FORMATS,
-  type QuickGameFormat,
-} from "@/lib/quickGame";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
 import { ROLE_COLOR, badgedRole, type BadgedRole } from "@/lib/roleColor";
 import { useIsShellDesktop, useHasRailRoom } from "./breakpoints";
@@ -595,10 +588,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
             onNew={() => setCreating("known")}
           />
         ) : (
-          <GamesColumn
-            onPlay={() => router.push("/quick-game")}
-            onOpenFormat={(format) => router.push(`/quick-game?format=${format}`)}
-          />
+          <GamesColumn />
         )}
       </div>
       )}
@@ -939,98 +929,49 @@ function IdeasColumn({
   );
 }
 
-/** The Games list. History is a stub until finished games are tracked. */
-function GamesColumn({
-  onPlay,
-  onOpenFormat,
-}: {
-  onPlay: () => void;
-  onOpenFormat: (format: QuickGameFormat) => void;
-}) {
-  const inProgress = useQuickGamesInProgress();
+/**
+ * The Games list.
+ *
+ * Quick Play was reachable from here — an in-progress list and a "Play a game"
+ * button — and is not any more (#1088). Quick Play is a MOBILE surface: you
+ * are on a course, not at a laptop, and this rail is `hidden lg:flex`, so it
+ * only ever paints at the widths the dashboard tiles are now hidden at.
+ * Leaving those two controls would have meant "mobile only" quietly not
+ * holding, since the rail would still be a desktop way in.
+ *
+ * The ENTITY stays, deliberately. Games is not a synonym for quick golf —
+ * it is where finished games of every kind will collect, and the strip icon
+ * is `Dice5` (play, generically) rather than the trophy precisely because
+ * this holds standalone play rather than competitions. Removing the whole
+ * entity would have thrown away that decision to solve a narrower problem.
+ *
+ * So what is left is honest rather than empty: it says what will land here,
+ * and nothing here claims to be a way into a round.
+ */
+function GamesColumn() {
   return (
     <div className="p-2">
       <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
         <span className="flex-1 text-[16px] font-bold" style={{ color: "var(--color-bt-text)" }}>
           Games
         </span>
-        <EyebrowAction label="Play a game" onClick={onPlay} />
       </div>
-
-      {/* No `count`: this section renders even when empty, so the column says
-          "nothing in progress" rather than opening on History alone and reading
-          as though the list failed to load. `Section` hides at count 0, which is
-          right for the trips list (no Past section on a first trip) and wrong
-          here — the difference is that Games has only two sections, and hiding
-          one leaves almost nothing.
-          LISTS individually now (a stroke round and a match round can both be
-          in progress — separate storage keys, #1051) rather than the one slot
-          the rail used to have room for. Jump straight into either instead of
-          going through "Play a game", which still exists for starting fresh. */}
-      <Section label="In progress">
-        {inProgress.length > 0 ? (
-          inProgress.map((g) => (
-            <button
-              key={g.format}
-              type="button"
-              onClick={() => onOpenFormat(g.format)}
-              data-testid={`rail-game-inprogress-${g.format}`}
-              className="mb-[3px] block w-full rounded-[9px] p-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-bt-accent)]"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <div className="truncate text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                {g.title}
-              </div>
-              {g.subtitle && (
-                <div className="mt-[3px] truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {g.subtitle}
-                </div>
-              )}
-            </button>
-          ))
-        ) : (
-          <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            Nothing in progress.
-          </p>
-        )}
-      </Section>
 
       <Section label="History">
         <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Finished games will collect here.
         </p>
       </Section>
+
+      <p
+        className="px-1.5 pb-2 pt-1 text-[12.5px] leading-relaxed"
+        style={{ color: "var(--color-bt-text-dim)" }}
+        data-testid="rail-games-mobile-note"
+      >
+        Quick Play lives on your phone — start a round from the dashboard there.
+      </p>
     </div>
   );
-}
-
-/**
- * Every quick game actually in progress, read from the SAME localStorage state
- * and through the SAME `quickGameSubtitle` the dashboard's tiles use — so the
- * rail and the dashboard cannot crown a different leader or disagree about the
- * hole (#825's lesson: the subtitle runs the same two calls `ScoreEntryView`'s
- * "Leading" badge runs). A tile's title is its OWN format's label
- * (`QUICK_GAME_LABEL`), not derived from the saved round, for the same reason
- * the dashboard tiles are: a list item's name must not depend on what happens
- * to be saved under it.
- *
- * Read on mount only. Local storage has no change event within a tab, and the
- * rail is not where scores are entered — the game surface is, and it owns the
- * live version.
- */
-function useQuickGamesInProgress(): { format: QuickGameFormat; title: string; subtitle: string }[] {
-  // Lazy initializer, not an effect — same reason as `useRailWidth`: it reads on
-  // first render (SSR returns [] from `readAllQuickGames`'s own window guard),
-  // and setState-inside-an-effect is what the React Compiler lint refuses.
-  const [games] = useState(() => {
-    const saved = readAllQuickGames();
-    return QUICK_GAME_TILE_FORMATS.filter((format) => saved[format]).map((format) => ({
-      format,
-      title: QUICK_GAME_LABEL[format],
-      subtitle: quickGameSubtitle(saved[format] ?? null),
-    }));
-  });
-  return games;
 }
 
 /** A grouping header with an optional count. Renders nothing when empty. */

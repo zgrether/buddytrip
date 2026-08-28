@@ -241,7 +241,13 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
           </p>
         )}
 
-        <div className="mb-6" data-testid="quick-game-strip">
+        {/* MOBILE ONLY (#1088). Quick Play is a phone-in-your-pocket surface:
+            you are on a course, not at a laptop. Hidden from `lg` up rather
+            than removed — the route still resolves, so a round started on a
+            phone opens if its URL is pasted into a browser, and a tablet on a
+            cart still gets it. `lg` is the same threshold `TopNav` treats as
+            desktop, so "desktop" means one thing. */}
+        <div className="mb-6 lg:hidden" data-testid="quick-game-strip">
           {/* Same treatment as "My Trips" (§1) — these are two peer sections of
               one page, and a small-caps eyebrow over one of them read as a
               subheading of whatever came before it. */}

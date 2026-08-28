@@ -330,8 +330,15 @@ test.describe("PATH 1", () => {
     await page.waitForTimeout(1500);
 
     // Settle = the dashboard's own content is in the DOM. `quick-game-strip`
-    // renders unconditionally AFTER `tripsLoading`'s early-return spinner, so it
-    // marks the paint rather than the mount.
+    // renders AFTER `tripsLoading`'s early-return spinner, so it marks the paint
+    // rather than the mount.
+    //
+    // It is `lg:hidden` (#1088 — Quick Play is a mobile surface), so this
+    // selector is only VISIBLE on the mobile viewport this block already uses.
+    // That is not a coincidence to rely on quietly: move this test to the
+    // desktop profile Paths 2+3 use and the `waitFor` below hangs its full 60s
+    // with nothing saying why. Pick a different settle selector if it ever
+    // moves.
     await arm(page, '[data-testid="app-tab-home"]', '[data-testid="quick-game-strip"]');
     await page.locator('[data-testid="app-tab-home"]').click();
     await page.locator('[data-testid="quick-game-strip"]').waitFor({ state: "visible", timeout: 60_000 });
