@@ -7,7 +7,9 @@ import { PickemMismatchNote, type MismatchTeam } from "./PickemMismatchNote";
  *
  * ── The regression this pins ───────────────────────────────────────────────
  *
- * It lived inside `PickemMatchesPanel`. Moving the BUILDER to the shared
+ * It lived inside `PickemMatchesPanel` — the read-only post-lock pairing grid,
+ * since deleted, whose job the board's match cards now do. Moving the BUILDER
+ * to the shared
  * `MatchSetup` left it behind, so it rendered only on the read-only post-lock
  * display — too late to act on — and vanished from the surface where the runner
  * actually pairs. Two surfaces disagreeing about the same person, and the wrong

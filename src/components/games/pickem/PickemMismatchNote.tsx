@@ -8,7 +8,9 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  *
  * ── Why this is its own file now ───────────────────────────────────────────
  *
- * It lived inside `PickemMatchesPanel`. Moving the BUILDER to the shared
+ * It lived inside `PickemMatchesPanel` — the read-only post-lock pairing grid,
+ * since deleted, whose job the board's match cards now do. Moving the BUILDER
+ * to the shared
  * `MatchSetup` left it behind, so it kept rendering on the read-only post-lock
  * display — where it is too late to act on — and vanished from the surface
  * where the runner actually pairs.

@@ -354,3 +354,77 @@ export function tiedWithPrevious(ordered: readonly TeamStanding[]): Set<string> 
   }
   return tied;
 }
+
+/**
+ * One match's contribution to the cup, in the shape the tally needs.
+ *
+ * Team ids rather than user ids: a match is between two PEOPLE, but the points
+ * it pays go to the teams they are on, and a side belonging to nobody's team
+ * pays nobody.
+ */
+export interface MatchTallyRow {
+  aTeamId: string | null;
+  bTeamId: string | null;
+  /** From `matchStanding` — positive means side A leads. */
+  margin: number;
+  remaining: number;
+  clinched: boolean;
+}
+
+/**
+ * The running cup tally under `individual_matches`: what each team has BANKED.
+ *
+ * ── Settled, not finished ──────────────────────────────────────────────────
+ *
+ * A match counts once its winner can no longer change — `remaining === 0` OR
+ * `clinched`. Those are two ways of saying the same thing and `matchStanding`
+ * deliberately reports them separately (`clinched` is false at zero remaining,
+ * because a finished match is DECIDED rather than clinched), so the tally has
+ * to ask for both or it would drop every completed match.
+ *
+ * Counting only finished matches would leave the tally at 0 – 0 for most of a
+ * Saturday and then jump at the end, which is the opposite of what a live board
+ * is for. Counting UNFINISHED ones would be a projection, and projections do
+ * not belong in a figure labelled as points earned.
+ *
+ * ── Nothing here is stored ─────────────────────────────────────────────────
+ *
+ * `perMatch` is `liveMatchPointsPerMatch` — the same divisor the pairing surface
+ * states — so the tally cannot disagree with "7 matches · 0.86 pts each" sitting
+ * next to it. A halved match splits it, which is match play's own rule and the
+ * reason the return is fractional rather than a count of wins.
+ *
+ * ── Why it lives here rather than in the board component ───────────────────
+ *
+ * No server-side pick'em finalize exists yet: nothing writes `game_results` for
+ * this format, so this is currently the ONLY implementation of "what did this
+ * game pay". When the finalize lands it must call this, not derive its own —
+ * the split between a live figure and a persisted one is exactly how the two
+ * come to disagree (CLAUDE.md #8).
+ */
+export function matchPointsByTeam(
+  rows: readonly MatchTallyRow[],
+  perMatch: number
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const add = (teamId: string | null, amount: number) => {
+    if (teamId == null) return;
+    out.set(teamId, (out.get(teamId) ?? 0) + amount);
+  };
+
+  for (const r of rows) {
+    const settled = r.remaining === 0 || r.clinched;
+    if (!settled) continue;
+    // A side off both rosters pays nobody, and its opponent still banks the
+    // match — the points come from the game, not from the loser.
+    if (r.margin === 0) {
+      add(r.aTeamId, perMatch / 2);
+      add(r.bTeamId, perMatch / 2);
+    } else if (r.margin > 0) {
+      add(r.aTeamId, perMatch);
+    } else {
+      add(r.bTeamId, perMatch);
+    }
+  }
+  return out;
+}

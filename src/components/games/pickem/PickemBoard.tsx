@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { PickemMatchCard } from "./PickemMatchCard";
 import { placementPointsByTeam } from "@/lib/placementGroups";
+import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
+import { fmtPoints } from "@/lib/rackNStack";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
 import {
   buildBoardRows,
@@ -13,6 +15,7 @@ import {
   leaderClinched,
   orderByTotal,
   tiedWithPrevious,
+  matchPointsByTeam,
   type BoardRow,
   type ZeroKind,
 } from "@/lib/pickemBoard";
@@ -227,6 +230,7 @@ export function PickemBoard({
   teamOf,
   pointsMode = false,
   distribution,
+  pointsTotal,
 }: {
   slate: BoardSlateGame[];
   /** Every sheet the caller may see, keyed by user. RLS-gated upstream. */
@@ -254,6 +258,15 @@ export function PickemBoard({
    * payouts rather than inventing one.
    */
   distribution?: number[];
+  /**
+   * What the GAME is worth to the cup — `games.points_total`. Divided across the
+   * paired matches by the shared divisor, which is what makes the tally agree
+   * with the "7 matches · 0.86 pts each" line on the pairing surface.
+   *
+   * Null on a game nobody has priced, and the tally is then absent rather than
+   * zero: a game worth nothing yet has no standings to report.
+   */
+  pointsTotal?: number | null;
 }) {
   /**
    * POINTS OVERRIDES ROLL-UP, in ONE place.
@@ -283,6 +296,22 @@ export function PickemBoard({
     return Object.keys(sheets).filter((uid) => !paired.has(uid)).map(nameOf).sort();
   }, [matches, sheets, nameOf]);
 
+  /**
+   * The cup tally — what each team has BANKED from settled matches.
+   *
+   * Only under `individual_matches`, which is the only shape where a match pays
+   * anything. `team_totals` shares one pool between two sides and the standings
+   * below already say who is winning it.
+   */
+  const perMatch = useMemo(
+    () =>
+      liveMatchPointsPerMatch(
+        pointsTotal ?? null,
+        matches.map((m) => ({ sideAId: m.sideAId, sideBId: m.sideBId, pointValue: null }))
+      ),
+    [pointsTotal, matches]
+  );
+
   const matchRows = useMemo(() => {
     const out = new Map<string, BoardRow[]>();
     for (const m of matches) {
@@ -294,6 +323,33 @@ export function PickemBoard({
     }
     return out;
   }, [matches, slate, sheets, useConfidence]);
+
+  /**
+   * Two teams, or none. A tally between three sides is not a thing this shape
+   * has — `individual_matches` is match play — so rather than render something
+   * meaningless the tally is simply absent, which is also what happens on a
+   * game with no points on it.
+   */
+  const tally =
+    rollUp === "individual_matches" && teams.length === 2 && perMatch > 0
+      ? matchPointsByTeam(
+          matches.flatMap((m) => {
+            const rows = matchRows.get(m.id);
+            if (!rows || !m.sideAId || !m.sideBId) return [];
+            const st = matchStanding(rows);
+            return [
+              {
+                aTeamId: teamOf(m.sideAId),
+                bTeamId: teamOf(m.sideBId),
+                margin: st.margin,
+                remaining: st.remaining,
+                clinched: st.clinched,
+              },
+            ];
+          }),
+          perMatch
+        )
+      : null;
 
   if (rollUp === "individual_matches" && openMatch) {
     const m = matches.find((x) => x.id === openMatch);
@@ -313,14 +369,23 @@ export function PickemBoard({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board">
+      {/* The count that used to sit here moved to the results button above —
+          it is a fact about the RESULTS, and it was being stated twice on one
+          screen. What belongs beside MATCHES is what the matches have paid. */}
       <div className="flex items-baseline justify-between px-1" style={EYEBROW}>
         <span>{rollUp === "individual_matches" ? "Matches" : "Standings"}</span>
-        <span
-          data-testid="pickem-board-count"
-          style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}
-        >
-          {resolved} of {total} in
-        </span>
+        {tally && (
+          <span
+            data-testid="pickem-board-tally"
+            className="flex items-baseline gap-1.5"
+            style={{ textTransform: "none", letterSpacing: 0 }}
+          >
+            <span style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+              {fmtPoints(tally.get(teams[0].id) ?? 0)} – {fmtPoints(tally.get(teams[1].id) ?? 0)}
+            </span>
+            <span style={{ fontSize: TYPE_SCALE.caption, fontWeight: 400 }}>match points</span>
+          </span>
+        )}
       </div>
 
       {/* The same state on the match side: a sheet with no opponent scores
