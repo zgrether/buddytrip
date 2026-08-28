@@ -693,7 +693,9 @@ function TeamCard({
   // Optimistic — the dropped player needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
   // per-row × button; `setCaptain` powers the ★ (owner only).
-  const { assign, remove, setCaptain } = useTeamAssignmentMutations(tripId, competitionId);
+  // No `setCaptain` here: the star is read-only on this card, because the card
+  // has no Save to draft into. Changing it lives in the Edit Team modal.
+  const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
 
   const captainOf = (userId: string) =>
     assignments.find((a) => a.user_id === userId && a.team_id === team.id)?.is_captain ?? false;
@@ -831,15 +833,18 @@ function TeamCard({
               onRemove={canManageRoster ? () => remove.mutate({ tripId, competitionId, userId: id }) : undefined}
               removeLocked={removalsLocked}
               removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
-              // Owner sets captain (PR b); everyone else — Organizers included —
-              // sees the filled ★ read-only. Deliberately NOT canManageRoster:
-              // setCaptain stayed Owner-gated when membership moved (#788/#789).
-              onToggleCaptain={
-                canEdit
-                  ? () => setCaptain.mutate({ tripId, competitionId, teamId: team.id, userId: id, isCaptain: !isCaptain })
-                  : undefined
-              }
-              captainAriaLabel={isCaptain ? `Remove ${m.displayName} as captain` : `Make ${m.displayName} captain`}
+              // READ-ONLY here, for everyone including the Owner.
+              //
+              // The star is a DRAFTED field now, and this card has no Save to
+              // draft into — it is the panel's summary, not a form. Leaving the
+              // toggle here would mean one control writing immediately while the
+              // identical control in the Edit Team modal stages, which is worse
+              // than either rule on its own: the same star would mean two
+              // different things depending on where you tapped it.
+              //
+              // Changing the captain lives in the modal, next to the Save that
+              // commits it. Everyone still SEES who holds it.
+              onToggleCaptain={undefined}
             />
           );
         })}
@@ -877,7 +882,9 @@ function PlayerRow({
   removeAriaLabel: string;
   /** Owner-only: tap the ★ to mark/unmark captain. Absent for members. */
   onToggleCaptain?: () => void;
-  captainAriaLabel: string;
+  /** Only the interactive star needs one. Optional because PlayerRow renders
+   *  the star READ-ONLY everywhere now — the badge carries its own label. */
+  captainAriaLabel?: string;
 }) {
   return (
     <div
@@ -1421,25 +1428,46 @@ export function TeamSheet({
     { enabled: isEdit && showRoster && !!competitionId }
   );
 
-  // ── Roster ORDER is a drafted field (joins name / short / colour) ──────────
-  // THE RULE: editing the TEAM — name, short name, colour, display order —
-  // drafts and commits on Save. Changing WHO is on it or who leads it — add,
-  // remove, captain ★ — applies immediately.
+  // ── Drafted fields: name / short / colour / order / CAPTAIN ───────────────
+  // THE RULE: editing the TEAM — name, short name, colour, display order, and
+  // who leads it — drafts and commits on Save. Changing WHO IS ON it — add and
+  // remove — still applies immediately: membership is a roster act with its own
+  // confirmation, not a field on this form.
   //
   // Order drafts because it is a presentation field, and because writing it on
   // every drop cost a server round-trip mid-gesture (up to ~1s on mobile, the
-  // reported settle artifact). The captain ★ deliberately does NOT draft: it is
-  // a GRANT, not a field edit, and drafting it would drag `identityEditable`
-  // (derived from captain state) into a carve-out where a drafted change could
-  // revoke the editor's own rights mid-edit. Leaving it immediate means that
-  // carve-out never has to exist. See the notes at those call sites.
+  // reported settle artifact).
+  //
+  // THE CAPTAIN ★ NOW DRAFTS TOO, and the objection that kept it immediate does
+  // not survive reading the code it names. It ran: the star feeds
+  // `identityEditable`, so a staged change could revoke the editor's own rights
+  // mid-edit. But `useCanEditTeam` returns `canEdit: isOwner || amCaptain`, and
+  // `canAppointCaptain` is `isOwner` — so the only person who can stage a captain
+  // change is the Owner, whose rights come from `isOwner` and not from captain
+  // state at all. The hazard is real for a world where captains appoint
+  // captains. That is not this world, and `canAppointCaptain` is what forecloses
+  // it.
+  //
+  // `identityEditable` therefore keeps reading SERVER state, which is what a
+  // draft is supposed to do: the staged grant lands on Save, not before.
   //
   // `null` = untouched, so the roster follows the server. A non-null draft is a
   // full ordering of THIS team's user_ids.
   const [orderDraft, setOrderDraft] = useState<string[] | null>(null);
+  /**
+   * The staged captain. `undefined` = untouched (follow the server); a user id =
+   * that person; `null` = nobody.
+   *
+   * Three states rather than two, because "no captain" is a real destination —
+   * un-starring the current one is an edit, and `null` has to mean that rather
+   * than "unset".
+   */
+  const [captainDraft, setCaptainDraft] = useState<string | null | undefined>(undefined);
   // Committed by handleSave, not on drop. Keeps its existing invalidation set
   // (teamAssignments.list + competitions.leaderboard + faceBootstrap, #10/#719).
-  const { reorder } = useTeamAssignmentMutations(tripId, competitionId);
+  // `setCaptain` joins `reorder` here now that the star drafts: both are
+  // committed by this modal's Save rather than by the control that staged them.
+  const { reorder, setCaptain } = useTeamAssignmentMutations(tripId, competitionId);
 
   // The server's canonical order for this team — the draft's baseline, and what
   // the roster renders when nothing has been dragged yet.
@@ -1457,7 +1485,22 @@ export function TeamSheet({
   // back leaves Save disabled, same as retyping the original name.
   const orderDirty = orderDiffers(orderDraft, serverOrderedIds);
 
-  const canSubmit = !!trimmedName && !!trimmedShort && (identityDirty || orderDirty);
+  /** Who the server currently has, so the draft can be compared to it. */
+  const serverCaptain = useMemo(
+    () =>
+      (rosterAssignments as Assignment[])
+        .filter((a) => a.team_id === team?.id && a.is_captain)
+        .map((a) => a.user_id)[0] ?? null,
+    [rosterAssignments, team?.id]
+  );
+  /** Starring someone and un-starring them again leaves Save disabled, exactly
+   *  as retyping the original name does. */
+  const captainDirty = captainDraft !== undefined && captainDraft !== serverCaptain;
+  /** What the roster should SHOW — the draft while touched, else the server. */
+  const effectiveCaptain = captainDraft !== undefined ? captainDraft : serverCaptain;
+
+  const canSubmit =
+    !!trimmedName && !!trimmedShort && (identityDirty || orderDirty || captainDirty);
 
   // ── Confirm-on-leave ──────────────────────────────────────────────────────
   // Every exit from this modal — Cancel, the ×, and a backdrop tap — used to call
@@ -1466,15 +1509,19 @@ export function TeamSheet({
   // this with DiscardChangesPrompt; this is the same gate on the same class of draft,
   // not a new mechanism.
   //
-  // SCOPE, deliberately: identity + order only. Add / remove / captain ★ have already
-  // been written by the time you get here, so the prompt must not offer to undo them —
-  // hence the custom `message` rather than the default "your changes".
-  const unsavedWork = hasUnsavedTeamWork({
-    identity: currentIdentity,
-    baseline: leaveBaseline,
-    orderDraft,
-    serverOrder: serverOrderedIds,
-  });
+  // SCOPE: identity + order + CAPTAIN. Add / remove have already been written by
+  // the time you get here, so the prompt must not offer to undo those — hence the
+  // custom `message` rather than the default "your changes". The captain joined
+  // this list when it started drafting: a staged grant is work, and losing it to a
+  // stray backdrop tap is the failure this prompt exists to prevent.
+  const unsavedWork =
+    captainDirty ||
+    hasUnsavedTeamWork({
+      identity: currentIdentity,
+      baseline: leaveBaseline,
+      orderDraft,
+      serverOrder: serverOrderedIds,
+    });
   const [confirmLeave, setConfirmLeave] = useState(false);
   // `saving` and `requestClose` live below, next to the mutations they read —
   // `create` / `update` are declared after this point.
@@ -1619,6 +1666,42 @@ export function TeamSheet({
         const why = e instanceof Error ? e.message : "unknown error";
         return setError(
           `Saved the team’s details, but couldn’t save the roster order (${why}). Your order is still here — press Save to retry it.`
+        );
+      }
+    }
+
+    // The captain — last, and skipped entirely when unchanged.
+    //
+    // Same partial-failure shape as the order above: identity is already
+    // committed, so staying OPEN with a precise message is the only honest
+    // report. `captainDirty` remains true afterwards, so pressing Save again
+    // retries this alone.
+    if (isEdit && team && captainDirty) {
+      try {
+        if (effectiveCaptain) {
+          await setCaptain.mutateAsync({
+            tripId,
+            competitionId,
+            teamId: team.id,
+            userId: effectiveCaptain,
+            isCaptain: true,
+          });
+        } else if (serverCaptain) {
+          // Un-starred with nobody put in their place: clear the one the server
+          // holds. `setCaptain` takes the person, not the team, so removing a
+          // captain means naming who stops being one.
+          await setCaptain.mutateAsync({
+            tripId,
+            competitionId,
+            teamId: team.id,
+            userId: serverCaptain,
+            isCaptain: false,
+          });
+        }
+      } catch (e) {
+        const why = e instanceof Error ? e.message : "unknown error";
+        return setError(
+          `Saved the team, but could not set the captain (${why}). Your choice is still here — press Save to retry it.`
         );
       }
     }
@@ -1848,6 +1931,11 @@ export function TeamSheet({
               // writes order itself any more.
               orderedIds={orderDraft ?? serverOrderedIds}
               onReorder={setOrderDraft}
+              // The captain is drafted HERE, like the order: the roster renders
+              // what is staged and reports taps back up. It never writes the
+              // grant itself any more.
+              captainId={effectiveCaptain}
+              onCaptainChange={setCaptainDraft}
             />
           )}
         </div>
@@ -1959,6 +2047,8 @@ function TeamSheetRoster({
   assignments,
   orderedIds,
   onReorder,
+  captainId,
+  onCaptainChange,
 }: {
   tripId: string;
   competitionId: string;
@@ -1984,11 +2074,16 @@ function TeamSheetRoster({
   /** Report a drag result upward. Local state only — NO network call on drop;
    *  the write happens in TeamSheet's handleSave. */
   onReorder: (next: string[]) => void;
+  /** The STAGED captain — the draft while touched, else the server's. */
+  captainId: string | null;
+  /** Stage a captain. `null` un-stars without naming a replacement, which is a
+   *  real destination rather than an absence. */
+  onCaptainChange: (id: string | null) => void;
 }) {
-  // `reorder` is deliberately NOT taken here any more — order is committed by
-  // TeamSheet's Save. assign / remove / setCaptain stay immediate (the rule:
-  // membership applies now, team fields commit on Save).
-  const { assign, remove, setCaptain } = useTeamAssignmentMutations(
+  // `reorder` is deliberately NOT taken here any more — order AND the captain
+  // are committed by TeamSheet's Save. assign / remove stay immediate (the rule:
+  // membership applies now, team FIELDS commit on Save).
+  const { assign, remove } = useTeamAssignmentMutations(
     tripId,
     competitionId
   );
@@ -2118,7 +2213,11 @@ function TeamSheetRoster({
                     name={name}
                     avatarIcon={m?.user?.avatar_icon ?? null}
                     teamColor={teamColor}
-                    isCaptain={!!a.is_captain}
+                    // The DRAFT, not the row — the star must show what Save
+                    // will do, or the page tells you one thing and does another
+                    // (#18's staged-state lie, which is what this whole draft
+                    // model exists to prevent).
+                    isCaptain={captainId === a.user_id}
                     canManage={canManage}
                     canAppointCaptain={canAppointCaptain}
                     canReorder={canReorder}
@@ -2128,22 +2227,15 @@ function TeamSheetRoster({
                     // undo it. Removing someone is a MEMBERSHIP act; only team
                     // FIELDS (name / short / colour / order) wait for Save.
                     onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
-                    // IMMEDIATE, deliberately — see the #18 carve-out on
-                    // `useCanEditTeam` above. Captaincy is a GRANT, and it feeds
-                    // `identityEditable`; drafting it would let a staged change
-                    // revoke the editor's own Save button mid-edit. Cancel does
-                    // not undo it.
+                    // DRAFTED. Tapping the star of the current captain
+                    // un-stars them (`null`); tapping anyone else moves it.
+                    // Cancel discards either, and Save commits it with the rest
+                    // of the form.
                     onToggleCaptain={() =>
-                      setCaptain.mutate({
-                        tripId,
-                        competitionId,
-                        teamId: team.id,
-                        userId: a.user_id,
-                        isCaptain: !a.is_captain,
-                      })
+                      onCaptainChange(captainId === a.user_id ? null : a.user_id)
                     }
                     removeAriaLabel={`Remove ${name} from ${team.name}`}
-                    captainAriaLabel={a.is_captain ? `Remove ${name} as captain` : `Make ${name} captain`}
+                    captainAriaLabel={captainId === a.user_id ? `Remove ${name} as captain` : `Make ${name} captain`}
                   />
                 );
               })}

@@ -292,6 +292,38 @@ seam, never on a calendar.
   not, the display has to separate them — and the check has to distinguish empty from
   missing before the display can.
 
+- **MEASURE THE THING, NOT THE REGION AROUND IT.** A grep counts matches in a
+  RANGE; a decision needs the count for a COMPONENT. When the two are conflated
+  the number comes out too big, and it comes out too big in whichever direction
+  the conclusion was already heading.
+
+  Worked instance (pick'em critique r1 §2). Asked whether golf's match builder
+  could serve pick'em, the Phase 0 answer was "`MatchSetup` is 590 lines with 34
+  references to four concepts pick'em lacks — handicap ×10, doubles ×8,
+  live-add ×4, point overrides ×2", and that number carried the argument for
+  keeping a duplicate.
+
+  Every part of it was wrong. `MatchSetup` is **295 lines**: the range `awk`'d
+  out ran past its closing brace and swept in `HandicapsSection` and two
+  neighbours. So the handicap references — the largest group, and the most
+  damning-sounding — were in a component that had ALREADY been extracted, and
+  `MatchSetup` contains no handicap UI at all. Of the remaining three, one is an
+  optional prop a caller simply omits and one is a field only ever initialised to
+  null. The real cost was **one conditional**.
+
+  Same shape as an earlier "five call sites ask this question", which was three.
+
+  **The tell is that the measurement supports the conclusion you were already
+  forming.** That is exactly when to re-derive it a different way — and the
+  cheap different way here was brace-balance from the declaration, which takes
+  one script and cannot include a neighbour.
+
+  **How to apply:** bound a component by its BRACES, not by a line range you
+  eyeballed; attribute each hit to the function containing it before counting it
+  against that function; and when a number decides an architecture question,
+  produce it twice by different means. A count that would change the decision if
+  halved deserves more than one grep.
+
 ## Seed Data Rules
 
 - Mock/test data lives only in `supabase/seed.sql` — never in migration files
