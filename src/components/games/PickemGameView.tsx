@@ -32,6 +32,8 @@ import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/Picke
 import { explanationCopy, PARA_BREAK } from "@/lib/pickemSheet";
 import { PickemPhaseStrip } from "@/components/games/pickem/PickemPhaseStrip";
 import { PickemRunView } from "@/components/games/pickem/PickemRunView";
+import { PickemBoard } from "@/components/games/pickem/PickemBoard";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
@@ -64,9 +66,9 @@ import {
  *
  * ── What Phase 2 builds, and what it doesn't ────────────────────────────────
  * This is the slate phase. The sheet (Phase 3), the lock and pairing (Phase 4),
- * Run (Phase 5) and the board (Phase 6) are placeholders here — deliberately
- * named as such on screen rather than left as blank space, so the surface reads
- * as unfinished rather than broken.
+ * Every phase is built now: the slate, the sheet, the lock and pairing, Run,
+ * and the board. Nothing on this page is a placeholder any more, which is why
+ * the `Placeholder` helper that used to sit at the bottom is gone.
  */
 export function PickemGameView() {
   const { tripId } = useTripId();
@@ -75,6 +77,7 @@ export function PickemGameView() {
   const settingsDeepLink = search.get("settings") === "1";
 
   const { canEdit, canManageGame } = useGameEditAccess(tripId, gameId);
+  const me = useCurrentUser();
   const utils = trpc.useUtils();
 
   /**
@@ -390,6 +393,15 @@ export function PickemGameView() {
       : "Set the matches before entering results — points are split across them.";
   }, [q.data, nameOf]);
 
+  /** Which side a person plays for — the team-totals grouping. Derived from
+   *  `teams[].memberIds`, which the payload already carries, rather than a
+   *  second read of `team_assignments`. */
+  const teamOf = useCallback(
+    (userId: string) =>
+      (q.data?.teams ?? []).find((t) => t.memberIds.includes(userId))?.id ?? null,
+    [q.data?.teams]
+  );
+
   const settings = useGameSettingsOverlay({
     canEdit,
     deepLink: settingsDeepLink,
@@ -482,6 +494,36 @@ export function PickemGameView() {
           onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
           onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
           onDeadlineChange={(deadline) => setDeadline.mutate({ tripId: tripId!, gameId, deadline })}
+        />
+      )}
+
+      {/* THE BOARD (Phase 6) — "am I winning, and is it still live."
+          Everything on it derives from the sheets and the results; nothing is
+          stored, so a result landing anywhere recomputes every total, margin
+          and clinch on the next render.
+
+          ABOVE the phase branch, for the same reason Run is: it first went
+          inside the sheet branch, so a game on INDIVIDUAL MATCHES — which takes
+          the other branch once revealed — showed no board at all. The branch
+          exists to swap the sheet for the pairing grid; what the board reads is
+          the same either way, and it renders its own two shapes off `rollUp`.
+          Second time that branch has swallowed a surface, which is why the
+          board is out here rather than duplicated into both arms.
+
+          Rendered for everyone: the reveal happened at the lock, and what a
+          member may SEE is decided by RLS on `pickem_picks` rather than by a
+          condition here. */}
+      {phase === "locked" && (
+        <PickemBoard
+          slate={q.data.slate}
+          sheets={q.data.sheets}
+          matches={q.data.matches}
+          rollUp={q.data.settings.rollUp}
+          useConfidence={q.data.settings.useConfidence}
+          meId={me?.id ?? null}
+          nameOf={nameOf}
+          teams={q.data.teams}
+          teamOf={teamOf}
         />
       )}
 
@@ -611,7 +653,6 @@ export function PickemGameView() {
             closure={pickemClosure(clock, now)}
             onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
           />
-          {phase === "locked" && <Placeholder>The board lands in Phase 6.</Placeholder>}
           {/* The runner pairs whenever they like — §1 deletes the
               pairing-after-lock rule. Participants still see nothing until the
               lock; that is the reveal above, not a gate on this. */}
@@ -943,21 +984,6 @@ function Empty({
 
 /** Names an unbuilt phase rather than leaving blank space — an empty area reads
  *  as broken, and a person looking at this early needs to know which. */
-function Placeholder({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="mx-auto mt-4 rounded-lg px-3 py-2"
-      style={{
-        fontSize: TYPE_SCALE.caption,
-        color: "var(--color-bt-text-dim)",
-        border: "1px dashed var(--color-bt-border)",
-        maxWidth: 290,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
 
 function Primary({
   onClick,

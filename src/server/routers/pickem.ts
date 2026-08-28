@@ -18,12 +18,23 @@ import { requireTripMember, requireGameEdit } from "../middleware";
  * ── `get` is deliberately readable by any trip member ───────────────────────
  * It returns the clock, the settings and the slate. None of that is secret — a
  * member needs the deadline to render a countdown and the slate to pick against.
- * What IS secret is other people's picks. `myPicks` carries the caller's OWN
- * sheet and nobody else's: it is filtered to `ctx.user!.id` on the way out *as
- * well as* being held to it by `pickem_picks_select`, which is belt and braces
- * in the one place where a widening would be invisible from the client. After
- * the reveal the same query would return the whole field — that is Phase 6's
- * read, through a different procedure, deliberately not this one.
+ * What IS secret is other people's picks BEFORE the reveal. `myPicks` carries
+ * the caller's OWN sheet and nobody else's: filtered to `ctx.user!.id` on the
+ * way out *as well as* held to it by `pickem_picks_select`, belt and braces in
+ * the one place where a widening would be invisible from the client.
+ *
+ * `sheets` is the board's read (Phase 6) and carries the FIELD — but only once
+ * the game is revealed, because it asks with no user filter and lets
+ * `pickem_picks_select` decide. Before the lock the policy returns the caller's
+ * rows and nothing else, so the two fields agree; after it, `sheets` widens and
+ * `myPicks` does not.
+ *
+ * This note previously said the board read would live "through a different
+ * procedure, deliberately not this one". It lives here instead: the board needs
+ * the slate, the settings and the clock in the same breath, and a second
+ * procedure would have re-fetched all three to add one field. The reason given
+ * for separating them was never security — RLS is the gate at either address —
+ * so there was nothing to lose by folding it in, and a round trip to save.
  *
  * The slate comes back EMPTY for a plain member before picks open, and that is
  * the RLS policy doing its job rather than a bug — spec §3.1's first fairness
@@ -70,8 +81,16 @@ export const pickemRouter = router({
       // rows and therefore cannot be truncated by PostgREST's 1000-row cap.
       // Collecting ids out of a fetched set is how a guard gets more permissive
       // the more the trip is used (CLAUDE.md #27).
-      const [configRes, slateRes, picksRes, matchRes, teamRes, assignRes, resultCountRes] =
-        await Promise.all([
+      const [
+        configRes,
+        slateRes,
+        picksRes,
+        matchRes,
+        teamRes,
+        assignRes,
+        resultCountRes,
+        allPicksRes,
+      ] = await Promise.all([
         ctx.supabase
           .from("pickem_games")
           .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
@@ -121,6 +140,19 @@ export const pickemRouter = router({
           .from("game_results")
           .select("id", { count: "exact", head: true })
           .eq("game_id", input.gameId),
+        // EVERY sheet, for the board — and the RLS policy is the gate rather
+        // than a branch here. `pickem_picks_select` admits a row when it is the
+        // caller's OWN or the game is revealed, so before the lock this returns
+        // exactly the caller's picks and after it returns the field's.
+        //
+        // Asking without a user filter and letting the policy decide is what
+        // makes §7 hold by construction: there is no code path here that could
+        // hand a member another person's unrevealed sheet, because the database
+        // never sends it.
+        ctx.supabase
+          .from("pickem_picks")
+          .select("user_id, slate_game_id, pick, confidence")
+          .eq("game_id", input.gameId),
       ]);
 
       const cfg = configRes.data;
@@ -152,8 +184,32 @@ export const pickemRouter = router({
         ) ||
         game.status === "complete";
 
+      /**
+       * Every sheet the caller may see, keyed by person — the board's whole
+       * input besides the slate.
+       *
+       * Before the reveal this is one entry (the caller's own) because that is
+       * all RLS returns; after it, the field's. The board renders from whatever
+       * arrives rather than asking whether it is allowed to.
+       */
+      const sheets: Record<string, { slateGameId: string; pick: "away" | "home"; confidence: number | null }[]> = {};
+      for (const r of (allPicksRes.data ?? []) as {
+        user_id: string;
+        slate_game_id: string;
+        pick: string;
+        confidence: number | null;
+      }[]) {
+        (sheets[r.user_id] ??= []).push({
+          slateGameId: r.slate_game_id,
+          pick: r.pick as "away" | "home",
+          confidence: r.confidence,
+        });
+      }
+
       return {
         game,
+        /** See `sheets` above — RLS-gated, so this IS §7's guarantee. */
+        sheets,
         /** See `hasResults` above — the settings freeze, not the clock. */
         hasResults,
         /** Null until the runner first saves — a game switched to pick'em has no
