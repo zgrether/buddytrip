@@ -36,6 +36,9 @@ import { PickemBoard } from "@/components/games/pickem/PickemBoard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
+import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
+import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
+import type { DraftMatchConfig } from "@/lib/configDraft";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import {
   PickemProxyPanel,
@@ -284,13 +287,32 @@ export function PickemGameView() {
     onSettled: () => setBusyResultId(null),
   });
 
-  const saveMatches = trpc.pickem.saveMatches.useMutation({
-    onSuccess: async () => {
-      showToast("Matches saved", "info");
-      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
-    },
-    onError: (e) => showToast(e.message, "error"),
-  });
+  /**
+   * The PAIRINGS, drafted (critique r1 §2).
+   *
+   * They lived on the game page and wrote immediately through
+   * `save_pickem_matches`. Both halves were wrong: pairing is SETUP, and a
+   * control on a settings surface that writes on its own action is the thing
+   * #18 exists to prevent. Now a slice like every other, committed by the one
+   * `save_game_config` at the bottom of the page.
+   *
+   * `null` = untouched, so it follows the server.
+   */
+  const [matchesDraft, setMatchesDraft] = useState<DraftMatchConfig[] | null>(null);
+  /** Which slot is waiting for a name — the selector's own state, as match play
+   *  holds it. Not drafted: it is a cursor, not a value. */
+  const [selector, setSelector] = useState<{
+    matchIdx: number;
+    slot: "a" | "b";
+    memberIdx: number;
+  } | null>(null);
+
+  // NOTE — `pickem.saveMatches` has no client caller any more. The pairing is a
+  // slice of the settings draft and commits through the page's one
+  // `save_game_config`, so the immediate-write path this used is gone. The
+  // procedure and `save_pickem_matches` are left in place: they carry 18 tests
+  // and removing a server surface is its own decision, not a side effect of
+  // moving a control.
 
   /** §4: the matches surface exists ONLY under individual matches. Team totals
    *  has no matches at all, so it is ABSENT rather than rendered empty. */
@@ -413,9 +435,20 @@ export function PickemGameView() {
         {
           rollUp: q.data?.settings.rollUp ?? "team_totals",
           useConfidence: q.data?.settings.useConfidence ?? true,
-        }
+        },
+        // The pairings as stored, in the SAME row shape match play drafts —
+        // one person a side, so `playersPerSide` is 1 and the golf scalars sit
+        // at their neutral values.
+        (q.data?.matches ?? []).map((m, i) => ({
+          matchNumber: i + 1,
+          playersPerSide: 1 as const,
+          a: m.sideAId ? [m.sideAId] : [],
+          b: m.sideBId ? [m.sideBId] : [],
+          handicap: 0,
+          pointValue: null,
+        }))
       ),
-    [q.data?.game, q.data?.settings, serverDelegates]
+    [q.data?.game, q.data?.settings, q.data?.matches, serverDelegates]
   );
 
   const anyTouched =
@@ -424,7 +457,8 @@ export function PickemGameView() {
     delegatesDraft !== null ||
     pointsTotalDraft !== undefined ||
     rollUpDraft !== undefined ||
-    useConfidenceDraft !== undefined;
+    useConfidenceDraft !== undefined ||
+    matchesDraft !== null;
 
   const configDraft = useMemo<PickemConfigDraft>(
     () => ({
@@ -436,8 +470,61 @@ export function PickemGameView() {
       rollUp: rollUpDraft !== undefined ? rollUpDraft : serverConfigDraft.rollUp,
       useConfidence:
         useConfidenceDraft !== undefined ? useConfidenceDraft : serverConfigDraft.useConfidence,
+      matches: matchesDraft ?? serverConfigDraft.matches,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, delegatesDraft, pointsTotalDraft, rollUpDraft, useConfidenceDraft]
+    [serverConfigDraft, nameDraft, rulesDraft, delegatesDraft, pointsTotalDraft, rollUpDraft, useConfidenceDraft, matchesDraft]
+  );
+
+  /**
+   * The lookups `MatchSetup` takes. Maps, because that is the shape match play
+   * hands it — pick'em holds a `nameOf` function, so it is adapted here rather
+   * than the shared component growing a second accessor style.
+   */
+  /**
+   * Everyone who could appear in a SLOT — both rosters PLUS anyone already
+   * paired.
+   *
+   * Roster-only was wrong and the grid said so: a person paired before being
+   * dropped from their team is still in the pairing, and with no entry in this
+   * map `MatchSetup` falls back to a generic "Player". That hides exactly the
+   * state the runner needs to see — the mismatch note on the board names these
+   * people, so the builder must not anonymise them.
+   */
+  const rosterIds = useMemo(() => {
+    const ids = new Set((q.data?.teams ?? []).flatMap((t) => t.memberIds));
+    for (const m of q.data?.matches ?? []) {
+      if (m.sideAId) ids.add(m.sideAId);
+      if (m.sideBId) ids.add(m.sideBId);
+    }
+    return [...ids];
+  }, [q.data?.teams, q.data?.matches]);
+  const nameMap = useMemo(
+    () => new Map(rosterIds.map((id) => [id, nameOf(id)])),
+    [rosterIds, nameOf]
+  );
+  const colorMap = useMemo(
+    () => new Map(rosterIds.map((id, i) => [id, PLAYER_COLORS[i % PLAYER_COLORS.length]])),
+    [rosterIds]
+  );
+  const avatarIconMap = useMemo(
+    () => new Map(rosterIds.map((id) => [id, null as string | null])),
+    [rosterIds]
+  );
+  /** A player's TEAM colour, from their roster assignment — team identity is the
+   *  person, never the slot (the shared rule `teamColorOf` documents). */
+  const teamColorOf = useCallback(
+    (userId: string) => (q.data?.teams ?? []).find((t) => t.memberIds.includes(userId))?.color,
+    [q.data?.teams]
+  );
+  /** Side A is the first team, side B the second — the binding that makes the
+   *  selector's pool one roster per side, which is what stops a cross-team pair
+   *  being built on the wrong side. Exactly match play's mapping. */
+  const teamForSlot = useCallback(
+    (slot: "a" | "b") => {
+      const t = (q.data?.teams ?? [])[slot === "a" ? 0 : 1];
+      return t ? { id: t.id, name: t.name, color: t.color } : undefined;
+    },
+    [q.data?.teams]
   );
 
   /** The settings shape the scoring rows speak, read off the DRAFT — so the
@@ -575,11 +662,52 @@ export function PickemGameView() {
   });
 
 
+  /**
+   * The derived explanation, as the rules sheet's STARTER.
+   *
+   * Same text the settings page already seeds — one derivation, two places that
+   * show it before a runner has written anything of their own. It follows the
+   * settings, so confidence-off drops the ranking paragraphs and a points cup
+   * drops head-to-head; the catalog blurb this overrides could do neither.
+   */
+  const rulesStarter = useMemo(
+    () =>
+      q.data
+        ? explanationCopy(q.data.settings, q.data.slate, { pointsMode })
+            .map((p) => p.text)
+            .join(PARA_BREAK)
+        : undefined,
+    [q.data, pointsMode]
+  );
+
+  /**
+   * Chrome. `rules` is what the other four formats have published all along —
+   * it puts the rules button in the game action row and opens the shared
+   * `GameRulesSheet`, reachable at every depth.
+   *
+   * Pick'em published only title + settings, so it grew its own "How this
+   * works" collapsible on the sheet instead. That left TWO explanations of one
+   * game — a hardcoded panel nobody could correct, and an editable field in
+   * settings nobody could see — free to disagree the moment a runner wrote
+   * their own. The panel is gone; this is the surface.
+   */
   const standaloneHeader = useGameSurfaceChrome(
     q.data
       ? {
           title: gameName,
           onSettings: canEdit ? settings.openConfig : undefined,
+          rules: tripId
+            ? {
+                tripId,
+                gameId: gameId!,
+                gameTypeId: (q.data.game as { game_type_id?: string | null })
+                  .game_type_id ?? null,
+                text: (q.data.game as { rules_for_today?: string | null })
+                  .rules_for_today ?? null,
+                starterText: rulesStarter,
+                canEdit,
+              }
+            : undefined,
         }
       : null
   );
@@ -721,14 +849,19 @@ export function PickemGameView() {
           <PickemClosedBanner closure={pickemClosure(clock, now)} />
 
           {matchPairs.length > 0 ? (
+            /* READ-ONLY. This is the post-lock matchups DISPLAY — who plays
+               whom, for the people playing. Editing moved to settings (critique
+               r1 §2), so a runner landing here after the lock sees the same
+               thing everyone else does rather than an editable grid that writes
+               on its own Save. */
             <PickemMatchesPanel
               teams={q.data.teams}
               nameOf={nameOf}
               pairs={matchPairs}
               pointsTotal={pointsTotal}
-              canEdit={canEdit}
-              saving={saveMatches.isPending}
-              onSave={(pairs) => saveMatches.mutate({ tripId: tripId!, gameId, pairs })}
+              canEdit={false}
+              saving={false}
+              onSave={() => {}}
             />
           ) : (
             <Empty
@@ -760,7 +893,6 @@ export function PickemGameView() {
               settings={q.data.settings}
               picks={q.data.myPicks}
               subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
-              pointsMode={pointsMode}
               editable={false}
               saving={false}
               saveError={null}
@@ -810,7 +942,6 @@ export function PickemGameView() {
               proxyTarget ? (q.data.sheets[proxyTarget.userId] ?? []) : q.data.myPicks
             }
             subject={subject}
-            pointsMode={pointsMode}
             editable={picksOpen(clock, now)}
             saving={proxyTarget ? savePicksFor.isPending : savePicks.isPending}
             saveError={saveError}
@@ -821,7 +952,7 @@ export function PickemGameView() {
                 proxyTargetName.current = proxyTarget.name;
                 savePicksFor.mutate({
                   tripId: tripId!,
-                  gameId,
+                  gameId: gameId!,
                   targetUserId: proxyTarget.userId,
                   picks,
                 });
@@ -845,22 +976,11 @@ export function PickemGameView() {
               />
             </div>
           )}
-          {/* The runner pairs whenever they like — §1 deletes the
-              pairing-after-lock rule. Participants still see nothing until the
-              lock; that is the reveal above, not a gate on this. */}
-          {canEdit && individualMatches && (
-            <div className="mt-2">
-              <PickemMatchesPanel
-                teams={q.data.teams}
-                nameOf={nameOf}
-                pairs={matchPairs}
-                pointsTotal={pointsTotal}
-                canEdit={canEdit}
-                saving={saveMatches.isPending}
-                onSave={(pairs) => saveMatches.mutate({ tripId: tripId!, gameId, pairs })}
-              />
-            </div>
-          )}
+          {/* The builder used to sit HERE, on the game page, writing straight
+              through on its own Save. It is in settings now (critique r1 §2):
+              pairing is setup, not something you do while the game runs, and
+              every other configuration lives there. What remains on this page
+              is the post-lock matchups DISPLAY above — a different job. */}
         </>
       )}
 
@@ -967,6 +1087,26 @@ export function PickemGameView() {
                     setUseConfidenceDraft(next.useConfidence);
                   }}
                 />
+              }
+              matchesRow={
+                individualMatches && q.data.teams.length >= 2 ? (
+                  <PickemMatchBuilder
+                    draft={configDraft.matches}
+                    setDraft={(fn) =>
+                      setMatchesDraft((prev) => fn(prev ?? serverConfigDraft.matches))
+                    }
+                    teams={q.data.teams}
+                    nameMap={nameMap}
+                    colorMap={colorMap}
+                    avatarIconMap={avatarIconMap}
+                    teamColorOf={teamColorOf}
+                    teamForSlot={teamForSlot}
+                    canEdit={canEdit}
+                    pointsTotal={configDraft.pointsTotal}
+                    selector={selector}
+                    setSelector={setSelector}
+                  />
+                ) : null
               }
               // Opens the slate ON TOP of settings rather than closing settings
               // first. Closing first looked tidier and was broken: on the
@@ -1088,6 +1228,7 @@ export function SlateSettingsRows({
   useConfidence,
   canEdit,
   scoringRows,
+  matchesRow,
   onOpenSlate,
 }: {
   slateCount: number;
@@ -1098,6 +1239,10 @@ export function SlateSettingsRows({
   /** The two scoring settings, rendered by `PickemScoringRows`. Passed in
    *  rather than built here so this component stays free of tRPC. */
   scoringRows: React.ReactNode;
+  /** The pairing grid, under the roll-up that turns it on. Null unless the game
+   *  actually pairs — a settings page does not carry a section for something
+   *  the current configuration has no use for. */
+  matchesRow?: React.ReactNode;
   onOpenSlate: () => void;
 }) {
   if (!canEdit) return null;
@@ -1139,6 +1284,7 @@ export function SlateSettingsRows({
       <div className="flex flex-col gap-2">
         <ZoneHeader>How scoring works</ZoneHeader>
         {scoringRows}
+      {matchesRow}
       </div>
 
     </div>

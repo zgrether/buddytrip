@@ -89,6 +89,7 @@ export function GameChromeActions({
 
       {chrome.rules && (
         <GameRulesSheet
+          starterText={chrome.rules.starterText}
           open={rulesOpen}
           onClose={() => setRulesOpen(false)}
           tripId={chrome.rules.tripId}

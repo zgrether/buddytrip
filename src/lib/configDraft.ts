@@ -495,9 +495,16 @@ export function splitHandicap(signed: number): { strokesA: number; strokesB: num
  * Pass `baseline` (the draft as seeded from the server) to report `matchesDirty`
  * honestly; omit it and the payload conservatively claims the matches changed.
  */
-export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft): SaveConfigPayload {
-  const filled = draft.matches.filter(isDraftMatchFilled);
-  const matches: SaveMatchRow[] = filled.map((m) => {
+/**
+ * Draft rows -> the RPC's match rows. ONE mapping, because both formats send
+ * matches through the same `save_game_config` arm and a second spelling of this
+ * is where their two shapes would start to differ.
+ *
+ * Only FILLED rows travel: a half-paired row is a normal mid-edit state, not a
+ * match, and the server clean-replaces from what it is sent.
+ */
+export function matchesToSaveRows(rows: DraftMatchConfig[]): SaveMatchRow[] {
+  return rows.filter(isDraftMatchFilled).map((m) => {
     const { strokesA, strokesB } = splitHandicap(m.handicap);
     return {
       matchNumber: m.matchNumber,
@@ -509,6 +516,11 @@ export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft)
       pointValue: m.pointValue,
     };
   });
+}
+
+export function configDraftToPayload(draft: ConfigDraft, baseline?: ConfigDraft): SaveConfigPayload {
+  const filled = draft.matches.filter(isDraftMatchFilled);
+  const matches: SaveMatchRow[] = matchesToSaveRows(draft.matches);
 
   // Match play derives its per_match share from the total — establish it when it's
   // absent (first setup) as well as refresh it. Anything else (a placement payout)
@@ -1018,6 +1030,19 @@ function canonical(value: unknown): string {
 export interface PickemConfigDraft extends BaseConfigDraft {
   rollUp: "team_totals" | "individual_matches";
   useConfidence: boolean;
+  /**
+   * The PAIRINGS, drafted like everything else on the settings page.
+   *
+   * They used to write immediately through `save_pickem_matches` from a panel on
+   * the GAME page. Both halves of that were wrong: pairing is setup, not
+   * something you do while the game runs, and a control on a settings surface
+   * that writes on its own action is the one thing #18 exists to prevent.
+   *
+   * `save_game_config`'s matches arm is gated on `p_payload ? 'matches'`, not on
+   * game type, so pick'em rides the SAME atomic write match play does — one RPC
+   * per page, no migration, and Cancel discards the pairing with the rest.
+   */
+  matches: DraftMatchConfig[];
 }
 
 /** Server snapshot → pick'em draft baseline. `settings` comes from the
@@ -1025,7 +1050,9 @@ export interface PickemConfigDraft extends BaseConfigDraft {
 export function configToPickemDraft(
   game: ConfigGameSnapshot,
   delegates: string[],
-  settings: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean }
+  settings: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean },
+  /** The pairings as stored. Empty for a team-totals game, which has none. */
+  matches: DraftMatchInput[] = []
 ): PickemConfigDraft {
   return {
     gameTypeId: game.game_type_id ?? null,
@@ -1044,11 +1071,27 @@ export function configToPickemDraft(
     delegates: [...delegates].sort(),
     rollUp: settings.rollUp,
     useConfidence: settings.useConfidence,
+    matches: matches.map((m) => ({
+      matchNumber: m.matchNumber,
+      playersPerSide: m.playersPerSide,
+      a: [...m.a],
+      b: [...m.b],
+      handicap: m.handicap,
+      pointValue: m.pointValue,
+    })),
   };
 }
 
 export function pickemDraftsEqual(a: PickemConfigDraft, b: PickemConfigDraft): boolean {
-  return baseDraftsEqual(a, b) && a.rollUp === b.rollUp && a.useConfidence === b.useConfidence;
+  return (
+    baseDraftsEqual(a, b) &&
+    a.rollUp === b.rollUp &&
+    a.useConfidence === b.useConfidence &&
+    // Reuses match play's comparison rather than a second one: the rows are the
+    // same `DraftMatchConfig`, so two spellings of "did the pairing change" is
+    // how the Save bar and the server start disagreeing.
+    matchesEqual(a.matches, b.matches)
+  );
 }
 
 /**
@@ -1070,6 +1113,10 @@ export function pickemDraftToPayload(
 ): SaveConfigPayload {
   return {
     ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
+    // Only when the game HAS pairings to send. The RPC keys its structure guard
+    // on the key being present, so an unconditional `matches: []` would read as
+    // "clear every pairing" on a team-totals game that never had any.
+    ...(draft.matches.length > 0 ? { matches: matchesToSaveRows(draft.matches) } : {}),
     pickem: { rollUp: draft.rollUp, useConfidence: draft.useConfidence },
   };
 }
