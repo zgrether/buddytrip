@@ -258,34 +258,58 @@ describe("pick'em picks — the owner-of-the-row-only policy (migration 146)", (
 
   // ══ Before the lock — the hard rule ══════════════════════════════════════
 
-  describe("state 2 (picks open) — nobody reads another sheet, staff included", () => {
+  describe("state 2 (picks open) — a PARTICIPANT reads no sheet but their own", () => {
     beforeEach(async () => {
       await statePicksOpen();
     });
 
-    it("each participant sees their OWN sheet and nothing else", async () => {
-      // Asserted as an exact set per reader rather than "my rows are present",
-      // because a policy with a staff bypass ALSO returns your own rows. Only
-      // the absence of everyone else's distinguishes the two.
-      for (const role of ["owner", "planner", "member"] as const) {
-        const visible = await peopleVisibleTo(role);
-        expect(visible).toEqual(new Set([ctx.getUser(role).id]));
-      }
+    it("a PLAIN PARTICIPANT sees their own sheet and nothing else", async () => {
+      /**
+       * THE load-bearing case in this file, and the one migration 163 did not
+       * move. Proxy entry widened the read to the tiers that can WRITE a sheet
+       * — staff, and a captain over their own team. A plain participant is
+       * neither, so their refusal is untouched, and it is now the only thing
+       * this describe block guards.
+       *
+       * Asserted as an exact SET rather than "my rows are present", because a
+       * policy widened too far ALSO returns your own rows. Only the absence of
+       * everyone else's distinguishes the two.
+       *
+       * `member` alone, deliberately. The previous version looped over owner,
+       * planner and member together, so three refusals rode on one assertion —
+       * and when 163 legitimately inverted two of them, the failure named a
+       * case that was half correct. A guard that mixes an invariant with
+       * something intended to change cannot report either one cleanly.
+       */
+      expect(await peopleVisibleTo("member")).toEqual(new Set([ctx.getUser("member").id]));
     });
 
-    it("the OWNER cannot read a member's picks", async () => {
-      // The case the whole feature turns on. The Owner holds the lock button;
-      // if he can read the room he can tailor his own sheet to it before
-      // pressing it.
+    it("the OWNER reads any sheet — deliberately, as of 163", async () => {
+      /**
+       * REVERSES what this file asserted through Phase 0, and the reversal is a
+       * decision rather than a regression.
+       *
+       * Phase 0's argument: the Owner holds the lock button, so reading the
+       * room lets him tailor his own sheet before pressing it. The counter that
+       * won: he also sets the slate, the spreads, the multipliers and the
+       * results, so confidentiality FROM him was theater — and its price was
+       * that nobody could enter a sheet for the placeholders, who cannot enter
+       * their own by construction (no auth.uid(), so `pickem_picks_write` can
+       * never match them).
+       *
+       * Write-without-read was considered and does not work: a proxy who can
+       * overwrite Ty's sheet but not see it destroys twelve correct picks
+       * blindfolded. Read follows write.
+       */
       const visible = await peopleVisibleTo("owner");
-      expect(visible.has(ctx.getUser("member").id)).toBe(false);
-      expect(visible.has(ctx.getUser("planner").id)).toBe(false);
+      expect(visible.has(ctx.getUser("member").id)).toBe(true);
+      expect(visible.has(ctx.getUser("planner").id)).toBe(true);
     });
 
-    it("an ORGANIZER cannot read the owner's picks", async () => {
+    it("an ORGANIZER reads any sheet", async () => {
       const visible = await peopleVisibleTo("planner");
-      expect(visible.has(ctx.getUser("owner").id)).toBe(false);
-      expect(visible.has(ctx.getUser("member").id)).toBe(false);
+      expect(visible.has(ctx.getUser("owner").id)).toBe(true);
+      expect(visible.has(ctx.getUser("member").id)).toBe(true);
     });
 
     it("a GAME DELEGATE cannot read the owner's picks", async () => {
@@ -311,39 +335,54 @@ describe("pick'em picks — the owner-of-the-row-only policy (migration 146)", (
       expect(grantProof).toBeNull(); // ← they really are a delegate of this game
       await ctx.admin.from("pickem_slate_games").delete().eq("id", probeId);
 
-      // ...and yet they read nothing of the owner's sheet.
+      // ...and BECAUSE they are a delegate they now read the owner's sheet on
+      // THAT game, while staying blind on `gameId`, where they hold no grant.
+      // The pair is the assertion: the delegate arm is scoped to the game the
+      // grant names, not to the trip. Asserting only the first half would pass
+      // against an arm that ignored `game_id` entirely.
       const { data, error } = await ctx
         .authedClient("member")
         .from("pickem_picks")
         .select("id, user_id")
         .eq("game_id", delegateGameId);
       expect(error).toBeNull();
-      expect(data ?? []).toEqual([]);
+      expect((data ?? []).map((r) => r.user_id)).toEqual([ctx.getUser("owner").id]);
+
+      expect(await peopleVisibleTo("member")).toEqual(new Set([ctx.getUser("member").id]));
     });
 
-    it("a targeted read of one person's sheet returns nothing, not a filtered view", async () => {
-      // The unfiltered reads above could in principle be satisfied by a policy
+    it("a PARTICIPANT's targeted read returns nothing, not a filtered view", async () => {
+      // The unfiltered read above could in principle be satisfied by a policy
       // that leaks only under a WHERE clause. Ask the leaking question directly.
+      //
+      // Re-aimed from `owner` to `member` by 163: the Owner is now entitled to
+      // this row, so asking him proves nothing. The participant is the reader
+      // whose refusal still has to hold, which makes this a STRONGER case than
+      // it was rather than a weakened one.
       const { data, error } = await ctx
-        .authedClient("owner")
+        .authedClient("member")
         .from("pickem_picks")
         .select("id, pick, confidence")
         .eq("game_id", gameId)
-        .eq("user_id", ctx.getUser("member").id);
+        .eq("user_id", ctx.getUser("owner").id);
       expect(error).toBeNull();
       expect(data ?? []).toEqual([]);
     });
 
-    it("a COUNT of someone else's sheet is zero — the row count is itself information", async () => {
+    it("a PARTICIPANT's COUNT of another sheet is zero — the number is itself information", async () => {
       // `head: true` returns a count and no rows. A policy that hid the rows
-      // but not their number would still tell the Owner who had submitted and
-      // how far along they were.
+      // but not their number would still tell a participant who had submitted
+      // and how far along they were.
+      //
+      // What this does NOT contradict: `pickem_sheet_status` exposes exactly
+      // this fact deliberately — to the people who can proxy, and to nobody
+      // else. A participant can proxy for no one, so their count stays zero.
       const { count, error } = await ctx
-        .authedClient("owner")
+        .authedClient("member")
         .from("pickem_picks")
         .select("*", { count: "exact", head: true })
         .eq("game_id", gameId)
-        .neq("user_id", ctx.getUser("owner").id);
+        .neq("user_id", ctx.getUser("member").id);
       expect(error).toBeNull();
       expect(count).toBe(0);
     });
