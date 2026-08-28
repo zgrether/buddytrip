@@ -363,6 +363,74 @@ export const pickemRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * PROXY ENTRY — a sheet for someone who cannot, or did not (migration 163).
+   *
+   * Not a variant of `savePicks` with a flag: the two run different gates. This
+   * one goes through `save_pickem_picks_for`, which is SECURITY DEFINER and
+   * checks `_pickem_can_proxy_for` explicitly, because RLS cannot express "may
+   * write a row that is not mine". They share the write BODY, which is where
+   * sharing actually matters — the validation lives once.
+   *
+   * `requireTripMember` is the cheap outer gate; the real decision is the RPC's,
+   * and it is the one a direct PostgREST caller also meets.
+   */
+  savePicksFor: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        targetUserId: z.string().min(1),
+        picks: z
+          .array(
+            z.object({
+              slateGameId: z.string().min(1),
+              pick: z.enum(["away", "home"]),
+              confidence: z.number().int().min(1).nullable(),
+            })
+          )
+          .min(1)
+          .max(200),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("save_pickem_picks_for", {
+        p_game_id: input.gameId,
+        p_target_user_id: input.targetUserId,
+        p_picks: input.picks,
+      });
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
+
+  /**
+   * WHO the caller may enter for, and whether each has a sheet yet.
+   *
+   * The list is the affordance's own gate: a plain participant gets exactly one
+   * row — themselves — so the client shows no proxy control at all without ever
+   * testing a role. A role test in the client is a second copy of the policy,
+   * and the two drift; this cannot, because it IS the policy.
+   *
+   * `pickem_sheet_status` is deliberately a separate function from anything that
+   * reads a pick. "Has Ty submitted" and "what did Ty pick" have the same answer
+   * for a captain about his own team and different answers about the other team,
+   * so one function serving both is exactly where the leak would be.
+   */
+  sheetStatus: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase.rpc("pickem_sheet_status", {
+        p_game_id: input.gameId,
+      });
+      if (error) throw pickemError(error.message);
+      return ((data ?? []) as { user_id: string; submitted: boolean }[]).map((r) => ({
+        userId: r.user_id,
+        submitted: r.submitted,
+      }));
+    }),
+
   // ── the points total ────────────────────────────────────────────────────
   /**
    * Deliberately NOT part of `saveConfig`: that write is frozen once picks open

@@ -36,6 +36,12 @@ import { PickemBoard } from "@/components/games/pickem/PickemBoard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
+import {
+  PickemProxyPanel,
+  PickemProxyBanner,
+  type ProxyTarget,
+} from "@/components/games/pickem/PickemProxyPanel";
+import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
   msUntilDeadline,
@@ -196,6 +202,50 @@ export function PickemGameView() {
     onError: (e) => setSaveError(e.message),
   });
 
+  /**
+   * PROXY ENTRY (migration 163) — whose sheet is being edited. `null` is their
+   * own.
+   *
+   * Held as an ID rather than the whole target object so a refetch cannot leave
+   * a stale name in the banner while the sheet under it has moved on — and the
+   * banner is the one thing that must never be wrong.
+   */
+  const [proxyFor, setProxyFor] = useState<string | null>(null);
+  /** The subject's name as it was when Save was pressed — the toast reports a
+   *  past action, so it must not follow a later rename or refetch. */
+  const proxyTargetName = useRef<string | null>(null);
+
+  /**
+   * WHO the viewer may act for. This list IS the affordance's gate: the server
+   * returns exactly the people `_pickem_can_proxy_for` admits, so a plain
+   * participant gets one row — themselves — and the control never renders for
+   * them. Deliberately not a role check here; a role check in the client is a
+   * second copy of the policy, and two copies drift.
+   */
+  const sheetStatusQ = trpc.pickem.sheetStatus.useQuery(
+    { tripId: tripId!, gameId: gameId! },
+    { enabled: !!tripId && !!gameId }
+  );
+
+  const savePicksFor = trpc.pickem.savePicksFor.useMutation({
+    onSuccess: async () => {
+      setSaveError(null);
+      // Both: `get` carries the sheet, `sheetStatus` carries the "who is
+      // still missing" list the panel reads. Invalidating only the first leaves
+      // the list saying someone has no sheet seconds after one was entered.
+      await Promise.all([
+        utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! }),
+        utils.pickem.sheetStatus.invalidate({ tripId: tripId!, gameId: gameId! }),
+      ]);
+      setProxyFor(null);
+      // "info", not "success" — ToastTone is error|info. Naming a tone the
+      // system does not have is how a toast silently falls back to the error
+      // colour and a good outcome reads as a bad one.
+      showToast(`Saved ${proxyTargetName.current ?? "their"} sheet`, "info");
+    },
+    onError: (e) => setSaveError(e.message),
+  });
+
   const setDeadline = trpc.pickem.setDeadline.useMutation({
     onSuccess: async () => {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
@@ -266,6 +316,51 @@ export function PickemGameView() {
     (userId: string) => nameByUser.get(userId) ?? "Unknown",
     [nameByUser]
   );
+
+  /** Everyone the viewer may act for, EXCLUDING themselves — this panel is
+   *  about other people, and their own sheet is the surface right below it. */
+  const proxyTargets = useMemo<ProxyTarget[]>(() => {
+    const rows = (membersQ.data ?? []) as {
+      memberId?: string;
+      displayName?: string;
+      isGuest?: boolean;
+    }[];
+    const byId = new Map(rows.map((r) => [r.memberId ?? "", r]));
+    return (sheetStatusQ.data ?? [])
+      .filter((r) => r.userId !== me?.id)
+      .map((r) => ({
+        userId: r.userId,
+        name: byId.get(r.userId)?.displayName ?? "Unknown",
+        submitted: r.submitted,
+        isGuest: byId.get(r.userId)?.isGuest ?? false,
+      }));
+  }, [sheetStatusQ.data, membersQ.data, me?.id]);
+
+  /** Resolved from the list each render rather than stored, so a name edit or a
+   *  submitted-state change reaches the banner without a stale copy. */
+  const proxyTarget = useMemo(
+    () => proxyTargets.find((t) => t.userId === proxyFor) ?? null,
+    [proxyTargets, proxyFor]
+  );
+
+  /**
+   * Whose sheet the component is about. Never derived inside `PickemSheet` by
+   * comparing ids: the caller knows, and a component that guesses its own
+   * subject is one refactor away from guessing wrong.
+   */
+  const subject = useMemo<SheetSubject>(
+    () =>
+      proxyTarget
+        ? {
+            userId: proxyTarget.userId,
+            name: proxyTarget.name,
+            isSelf: false,
+            isGuest: proxyTarget.isGuest,
+          }
+        : { userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false },
+    [proxyTarget, me?.id]
+  );
+
 
 
   // NOT `router.back()`. A bare back is only the inverse of a PANEL open; on the
@@ -622,7 +717,8 @@ export function PickemGameView() {
               gameId={gameId}
               slate={q.data.slate}
               settings={q.data.settings}
-              myPicks={q.data.myPicks}
+              picks={q.data.myPicks}
+              subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
               editable={false}
               saving={false}
               saveError={null}
@@ -641,18 +737,71 @@ export function PickemGameView() {
               refuse one it would allow. The alternative (a separate read-only
               component) is how the two definitions of "picks open" get created,
               which is the risk this phase was flagged on. */}
+          {/* PROXY ENTRY (migration 163).
+
+              The banner is a BAND, not a subtitle, and it sits above a sheet
+              that is POPULATED — proxy mode looks exactly like a filled-in
+              sheet, because it is one. The copy underneath is swept of "your"
+              in the same breath: a banner over second-person text is a mixed
+              message, and mixed is how somebody edits what they think is their
+              own sheet. That is the only way this feature goes badly. */}
+          {proxyTarget && (
+            <PickemProxyBanner
+              name={proxyTarget.name}
+              isGuest={proxyTarget.isGuest}
+              submitted={proxyTarget.submitted}
+              onBack={() => setProxyFor(null)}
+            />
+          )}
           <PickemSheet
+            /* Remounts when the subject changes. The sheet holds a draft keyed
+               on a fingerprint of the server picks, and two people who have not
+               submitted fingerprint IDENTICALLY — so without a key the draft
+               would survive a subject switch and carry one person's picks into
+               another's sheet. Same collision the outbox scope closes, one
+               layer up; both have to hold. */
+            key={subject.userId}
             gameId={gameId}
             slate={q.data.slate}
             settings={q.data.settings}
-            myPicks={q.data.myPicks}
+            picks={
+              proxyTarget ? (q.data.sheets[proxyTarget.userId] ?? []) : q.data.myPicks
+            }
+            subject={subject}
             editable={picksOpen(clock, now)}
-            saving={savePicks.isPending}
+            saving={proxyTarget ? savePicksFor.isPending : savePicks.isPending}
             saveError={saveError}
             deadlineMs={msUntilDeadline(clock, now)}
             closure={pickemClosure(clock, now)}
-            onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
+            onSave={(picks) => {
+              if (proxyTarget) {
+                proxyTargetName.current = proxyTarget.name;
+                savePicksFor.mutate({
+                  tripId: tripId!,
+                  gameId,
+                  targetUserId: proxyTarget.userId,
+                  picks,
+                });
+              } else {
+                savePicks.mutate({ tripId: tripId!, gameId, picks });
+              }
+            }}
           />
+          {/* Under the sheet, where a captain already is ten minutes before the
+              deadline. NOT the phase strip — that carries commands, and this is
+              not one. Renders only when the server says there is somebody to
+              act for, so a plain participant never sees it. */}
+          {!proxyTarget && picksOpen(clock, now) && (
+            <div className="mt-3">
+              <PickemProxyPanel
+                targets={proxyTargets}
+                onPick={(t) => {
+                  setProxyFor(t.userId);
+                  setSaveError(null);
+                }}
+              />
+            </div>
+          )}
           {/* The runner pairs whenever they like — §1 deletes the
               pairing-after-lock rule. Participants still see nothing until the
               lock; that is the reveal above, not a gate on this. */}

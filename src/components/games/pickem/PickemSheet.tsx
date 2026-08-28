@@ -112,11 +112,29 @@ export interface PickemSheetGame {
   multiplier: number;
 }
 
+/**
+ * WHOSE sheet this is.
+ *
+ * Proxy entry (migration 163) means the sheet is no longer always about the
+ * person looking at it. `isSelf` is not derived from comparing ids here on
+ * purpose — the caller knows, and a component that guesses its own subject is
+ * one refactor away from guessing wrong.
+ */
+export interface SheetSubject {
+  userId: string;
+  /** Shown in the banner and woven through the copy. */
+  name: string;
+  isSelf: boolean;
+  /** A placeholder can never enter their own — worth saying, not implying. */
+  isGuest: boolean;
+}
+
 export function PickemSheet({
   gameId,
   slate,
   settings,
-  myPicks,
+  picks: serverPicks,
+  subject,
   editable,
   saving,
   saveError,
@@ -128,8 +146,16 @@ export function PickemSheet({
   gameId: string;
   slate: PickemSheetGame[];
   settings: SheetSettings;
-  /** The caller's stored picks, raw. Reconciled here — see `reconcileSheet`. */
-  myPicks: SheetPick[];
+  /**
+   * The SUBJECT's stored picks, raw. Reconciled here — see `reconcileSheet`.
+   *
+   * Renamed from `serverPicks`: in proxy mode that name is a lie, and a name that
+   * becomes untrue under a new mode is exactly what `tsc` should be made to
+   * find. Same instinct as the copy sweep below.
+   */
+  picks: SheetPick[];
+  /** Whose sheet this is. Defaults to the viewer at every existing call site. */
+  subject: SheetSubject;
   /** False once picks lock. The whole surface goes read-only; nothing is hidden. */
   editable: boolean;
   saving: boolean;
@@ -144,8 +170,8 @@ export function PickemSheet({
   onSave: (picks: SheetPick[]) => void;
 }) {
   const server = useMemo(
-    () => reconcileSheet(slate, myPicks, settings),
-    [slate, myPicks, settings]
+    () => reconcileSheet(slate, serverPicks, settings),
+    [slate, serverPicks, settings]
   );
 
   /**
@@ -237,6 +263,18 @@ export function PickemSheet({
     touched: working != null,
     serverFingerprint: fingerprint,
     enabled: editable,
+    /**
+     * WHOSE draft. Required here, not optional in spirit.
+     *
+     * One game can now hold several drafts — a captain part-way through a
+     * teammate's sheet and their own. Keyed on `(view, gameId)` alone those
+     * share a slot, and `serverFingerprint` cannot separate them: it is
+     * `JSON.stringify(server.picks)`, and two people who have never submitted
+     * have identical empty sheets. So the guard built to reject a mismatched
+     * draft is blind exactly here, and the teammate's draft restores into the
+     * captain's own sheet with nothing on screen able to say so.
+     */
+    scope: subject.userId,
   });
 
   const gameById = useMemo(() => new Map(slate.map((g) => [g.id, g])), [slate]);
@@ -282,12 +320,16 @@ export function PickemSheet({
 
       {editable && server.rankingReset && (
         <Banner tone="warn" testId="pickem-ranking-reset">
-          <b>The slate changed.</b> Your winners were kept, but your ranking was cleared
+          <b>The slate changed.</b>{" "}
+          {subject.isSelf ? "Your winners were" : `${subject.name}'s winners were`} kept,
+          but {subject.isSelf ? "your" : "their"} ranking was cleared
           — put them back in order and save.
         </Banner>
       )}
 
-      {editable && deadlineMs != null && <Countdown ms={deadlineMs} submitted={server.submitted} />}
+      {editable && deadlineMs != null && (
+        <Countdown ms={deadlineMs} submitted={server.submitted} subject={subject} />
+      )}
 
       <HowThisWorks open={howOpen} onToggle={() => setHowOpen((v) => !v)} paragraphs={copy} />
 
@@ -313,10 +355,12 @@ export function PickemSheet({
           picks={picks}
           editable={editable}
           confidenceOn={settings.useConfidence}
+          subject={subject}
           onPick={(id, side) => editPicks((p) => setPick(p, id, side))}
         />
       ) : (
         <RankPass
+          subject={subject}
           order={order}
           picks={picks}
           gameById={gameById}
@@ -328,7 +372,14 @@ export function PickemSheet({
       {/* Read-only sheets show the ranking inline rather than behind a step nav
           that no longer exists — the person is reading, not navigating. */}
       {!editable && settings.useConfidence && (
-        <RankPass order={order} picks={picks} gameById={gameById} editable={false} onReorder={() => {}} />
+        <RankPass
+          subject={subject}
+          order={order}
+          picks={picks}
+          gameById={gameById}
+          editable={false}
+          onReorder={() => {}}
+        />
       )}
 
       {/* Clearance for the sticky save bar.
@@ -342,6 +393,7 @@ export function PickemSheet({
 
       {editable && (
         <SaveBar
+          subject={subject}
           needsSave={needsSave}
           submitted={server.submitted}
           rankingReset={server.rankingReset}
@@ -366,19 +418,24 @@ function PickPass({
   picks,
   editable,
   confidenceOn,
+  subject,
   onPick,
 }: {
   slate: PickemSheetGame[];
   picks: SheetPick[];
   editable: boolean;
   confidenceOn: boolean;
+  /** Threaded down rather than defaulted: a section heading that says "Your
+   *  picks" over someone else's sheet is the mixed message the banner exists to
+   *  prevent, and a default here would reintroduce it silently. */
+  subject: SheetSubject;
   onPick: (slateGameId: string, side: "away" | "home") => void;
 }) {
   const byGame = new Map(picks.map((p) => [p.slateGameId, p]));
   return (
     <div className="flex flex-col gap-1.5" data-testid="pickem-pick-pass">
       <SectionHeading
-        left={editable ? "Pick a winner" : "Your picks"}
+        left={editable ? "Pick a winner" : subject.isSelf ? "Your picks" : `${subject.name}'s picks`}
         right={`${slate.length} games`}
       />
       {slate.map((g) => {
@@ -462,12 +519,14 @@ function SideButton({
 // ── pass 2 ─────────────────────────────────────────────────────────────────
 
 function RankPass({
+  subject,
   order,
   picks,
   gameById,
   editable,
   onReorder,
 }: {
+  subject: SheetSubject;
   order: string[];
   picks: SheetPick[];
   gameById: Map<string, PickemSheetGame>;
@@ -523,7 +582,15 @@ function RankPass({
   return (
     <div className="flex flex-col gap-1.5" data-testid="pickem-rank-pass">
       <SectionHeading
-        left={editable ? "Rank your picks" : "Your ranking"}
+        left={
+          editable
+            ? subject.isSelf
+              ? "Rank your picks"
+              : `Rank ${subject.name}'s picks`
+            : subject.isSelf
+              ? "Your ranking"
+              : `${subject.name}'s ranking`
+        }
         right={editable ? "Drag, or use the arrows" : undefined}
       />
       <div
@@ -632,6 +699,7 @@ function HowThisWorks({
 }
 
 function SaveBar({
+  subject,
   needsSave,
   submitted,
   rankingReset,
@@ -644,6 +712,7 @@ function SaveBar({
   onNext,
   onSave,
 }: {
+  subject: SheetSubject;
   needsSave: boolean;
   submitted: boolean;
   rankingReset: boolean;
@@ -715,7 +784,7 @@ function SaveBar({
             color: "var(--color-bt-danger)",
           }}
         >
-          {error} Your sheet is still here — try again.
+          {error} {subject.isSelf ? "Your sheet is" : "The sheet is"} still here — try again.
         </p>
       )}
       <div className="flex items-center gap-2.5">
@@ -755,7 +824,15 @@ function SaveBar({
   );
 }
 
-function Countdown({ ms, submitted }: { ms: number; submitted: boolean }) {
+function Countdown({
+  ms,
+  submitted,
+  subject,
+}: {
+  ms: number;
+  submitted: boolean;
+  subject: SheetSubject;
+}) {
   // `ms` re-derives from the page's ticking clock every second (`useNow` in
   // PickemGameView), and so does the `editable` flag that gates this whole
   // block — one source, so the timer cannot reach zero on a sheet that is still
@@ -778,7 +855,11 @@ function Countdown({ ms, submitted }: { ms: number; submitted: boolean }) {
           className="mt-0.5 block"
           style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
         >
-          {submitted ? "Your sheet is in — you can still change it" : "Change anything until then"}
+          {submitted
+            ? subject.isSelf
+              ? "Your sheet is in — you can still change it"
+              : `${subject.name}'s sheet is in — you can still change it`
+            : "Change anything until then"}
         </span>
       </span>
       <span
