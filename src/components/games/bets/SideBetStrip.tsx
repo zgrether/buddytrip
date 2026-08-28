@@ -1,135 +1,120 @@
 "use client";
 
-import { ChevronRight, TriangleAlert } from "lucide-react";
-import { formatMoney, formatSignedMoney, type ExposureState } from "@/lib/sideBets";
+import { ChevronRight } from "lucide-react";
+import { formatMoney, formatSignedMoney, type PlayerBetLine } from "@/lib/sideBets";
 
 /**
  * The live side-bet strip — the thing you glance at walking to the next tee.
  *
- * Three lines, in the order §6 puts them:
- *   1. ONE number, prominent — the round's net from the chosen player's
- *      perspective. **Always live**, never the hole being viewed: navigating
- *      back to fix the 9th must not rewind it, which is enforced by there being
- *      no hole input to `total` at all (`quickBetStrip` takes none).
- *   2. Current per-hole exposure, DIRECTLY UNDER IT and not behind a tap.
- *      This is the requirement, not a nicety: presses compound, and the way a
- *      round gets away from someone is that everyone is still calling it a five
- *      dollar bet while it is forty a hole. The number that would have
- *      prevented that is this one, so it has to be visible without asking.
- *   3. What the hole being VIEWED was worth — a different question, and one
- *      that legitimately follows navigation.
+ * ONE COLUMN PER PLAYER, evenly spaced: their name, their net for the round,
+ * and the bets they are actually in with what each is worth per hole.
  *
- * The breakdown is behind the tap, deliberately not expanded: three concurrent
- * bets is a table, and a table is not glanceable.
+ * ── What this replaced, and why ────────────────────────────────────────────
+ * Three stacked lines: one player's net, a round-wide "$35/hole across 4 bets",
+ * and what the viewed hole was worth.
  *
- * Persistence-agnostic (CLAUDE.md #7): every figure arrives as a prop, already
- * derived by `sideBets.ts`. Nothing is computed here — a number computed in a
- * component can only be tested as "a number was displayed".
+ * All three assume the round is ONE bet among everyone. The moment it is not —
+ * separate bets between separate people, which is the normal case once a press
+ * or a two-player side bet exists — the first named one player and left the
+ * rest unaccounted, while the other two aggregated across bets the reader is
+ * not in. "$35/hole" was nobody's risk: not the round's, not yours, just a sum.
+ * The one thing everyone wanted — what am I in, and for how much — was the one
+ * thing not shown.
+ *
+ * The viewed-hole line went for the same reason and is not replaced here: its
+ * pot has the identical aggregation problem, and per-hole history now lives
+ * behind the tap where a table can be a table.
+ *
+ * Presses still announce below the columns. A number that jumps with nothing
+ * saying why reads as a bug.
+ *
+ * Persistence-agnostic (CLAUDE.md #7) and computation-free: every figure
+ * arrives already derived by `playerBetLines`. A number computed in a component
+ * can only be tested as "a number was displayed".
  */
 export function SideBetStrip({
-  perspectiveName,
-  total,
-  exposure,
-  hole,
+  lines,
+  nameOf,
   presses,
   onOpen,
 }: {
-  perspectiveName: string;
-  /** The round's net for that player. Not a function of the viewed hole. */
-  total: number;
-  exposure: ExposureState;
-  /** The hole currently being viewed — its own money line. */
-  hole: {
-    label: string;
-    /** What the hole is WORTH — the pot in skins, the stake head-to-head.
-     *  Never the per-side stake: "This hole: $80", never "$10/hole" (§11). */
-    pot: number;
-    decided: boolean;
-    /** What this hole moved for the perspective player (0 if nothing). */
-    delta: number;
-  } | null;
+  /** One per player, in roster order. */
+  lines: PlayerBetLine[];
+  nameOf: (playerId: string) => string;
   /** Presses that fired at the hole being viewed, with the exposure each
-   *  created — the announcement §6 asks for. A number that jumps with nothing
-   *  saying why reads as a bug. */
+   *  created — the announcement §6 asks for. */
   presses: { level: number; exposureAfter: number }[];
   onOpen: () => void;
 }) {
-  const multiple = exposure.liveBetCount > 1;
-  const tone =
-    total > 0.004 ? "var(--color-bt-place-1-text)" : total < -0.004 ? "var(--color-bt-danger)" : "var(--color-bt-text-dim)";
-
   return (
     <button
       type="button"
       onClick={onOpen}
       data-testid="side-bet-strip"
-      className="flex w-full shrink-0 items-center gap-3 text-left"
+      className="flex w-full shrink-0 items-start gap-2 text-left"
       style={{
-        padding: "8px 16px",
+        padding: "8px 12px",
         background: "var(--color-bt-card)",
         borderBottom: "1px solid var(--color-bt-subtle-border)",
       }}
     >
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-bt-text-dim)" }}>{perspectiveName}</span>
-          <span
-            data-testid="side-bet-total"
-            style={{
-              // With several bets running, a personal net does not say against
-              // whom — exposure is the more useful headline, so the two swap
-              // weight rather than the total simply shouting louder (§14).
-              fontSize: multiple ? 16 : 22,
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              color: tone,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {formatSignedMoney(total)}
-          </span>
-        </span>
-
-        {/* Per-hole exposure — never behind a tap (§9). */}
         <span
-          data-testid="side-bet-exposure"
-          className="mt-0.5 flex items-center gap-1"
-          style={{
-            fontSize: multiple ? 19 : 13,
-            fontWeight: exposure.warn || multiple ? 700 : 500,
-            color: exposure.warn
-              ? "var(--color-bt-warning)"
-              : multiple
-                ? "var(--color-bt-text)"
-                : "var(--color-bt-text-dim)",
-            fontVariantNumeric: "tabular-nums",
-          }}
+          className="grid gap-2"
+          style={{ gridTemplateColumns: `repeat(${Math.max(lines.length, 1)}, minmax(0, 1fr))` }}
         >
-          {exposure.warn && <TriangleAlert size={13} />}
-          {formatMoney(exposure.perHole)}/hole across {exposure.liveBetCount}{" "}
-          {exposure.liveBetCount === 1 ? "bet" : "bets"}
-        </span>
+          {lines.map((l) => (
+            <span key={l.playerId} className="block min-w-0" data-testid="side-bet-player-column">
+              <span
+                className="block truncate"
+                style={{ fontSize: 12, fontWeight: 500, color: "var(--color-bt-text-dim)" }}
+              >
+                {nameOf(l.playerId)}
+              </span>
+              <span
+                className="block"
+                data-testid="side-bet-player-total"
+                style={{
+                  fontSize: 19,
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                  fontVariantNumeric: "tabular-nums",
+                  color:
+                    l.total > 0.004
+                      ? "var(--color-bt-place-1-text)"
+                      : l.total < -0.004
+                        ? "var(--color-bt-danger)"
+                        : "var(--color-bt-text-dim)",
+                }}
+              >
+                {formatSignedMoney(l.total)}
+              </span>
 
-        {hole && (
-          <span
-            data-testid="side-bet-hole-line"
-            className="mt-0.5 block"
-            style={{ fontSize: 12, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}
-          >
-            Hole {hole.label} ·{" "}
-            {hole.decided
-              ? Math.abs(hole.delta) < 0.005
-                ? `${formatMoney(hole.pot)} carried over`
-                : `${formatSignedMoney(hole.delta)} to ${perspectiveName}`
-              : `worth ${formatMoney(hole.pot)}`}
-          </span>
-        )}
+              {/* Their OWN live bets — the listing that replaced the aggregate.
+                  Nothing at all when they are in none: an empty column says
+                  "not in this" more clearly than a $0 would. */}
+              {l.bets.map((b) => (
+                <span
+                  key={b.betId}
+                  className="mt-0.5 flex items-baseline gap-1"
+                  data-testid="side-bet-player-bet"
+                  style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
+                >
+                  <span className="min-w-0 flex-1 truncate">{b.label}</span>
+                  <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                    {formatMoney(b.amount)}
+                  </span>
+                </span>
+              ))}
+            </span>
+          ))}
+        </span>
 
         {presses.map((p) => (
           <span
             key={p.level}
             data-testid="side-bet-press-note"
-            className="mt-1 inline-block"
+            className="mt-1.5 inline-block"
             style={{
               fontSize: 11,
               fontWeight: 700,
@@ -146,7 +131,7 @@ export function SideBetStrip({
           </span>
         ))}
       </span>
-      <ChevronRight size={18} className="shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+      <ChevronRight size={18} className="mt-1 shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
     </button>
   );
 }
