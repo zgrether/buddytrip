@@ -282,3 +282,123 @@ describe("save_game_config — hash invariant: every RPC-written field moves, no
     expect(await hashOf(gameId)).toBe(afterChange);
   });
 });
+
+/**
+ * The same mechanical guard, for pick'em's two settings (157/158).
+ *
+ * Its own block because the contract is per-format: the rack cases above build
+ * a rack game and speak `groups`/`participants`, and pick'em's fields live in a
+ * different table reached through a different payload key.
+ *
+ * The rule CLAUDE.md #16 states is what this enforces — **everything the RPC
+ * writes must be hashed**. `save_game_config` learned to write `roll_up` and
+ * `use_confidence` in migration 157, and `HASH_COLS.pickem_games` was added in
+ * the same change rather than four fields later, which is the ordering
+ * `bracket_config` set and the one `.from("matches")`, `game_delegates`,
+ * `point_value` and `play_groups.tee_time` each learned the hard way.
+ */
+describe("save_game_config — pick'em settings move the hash and never churn it", () => {
+  async function newPickemGame(name: string): Promise<string> {
+    const g = (await ctx.caller().games.create({
+      tripId,
+      gameTypeId: "gtt_pickem",
+      name,
+      competitionId,
+    })) as { id: string };
+    return g.id;
+  }
+
+  async function savePickem(
+    gameId: string,
+    pickem: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean },
+    over: { name?: string } = {}
+  ) {
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: await hashOf(gameId),
+      payload: {
+        name: over.name ?? "Hash guard pick'em",
+        rulesForToday: null,
+        scoringEnabled: false,
+        pointsTotal: 6,
+        pointsDistribution: null,
+        courseId: null,
+        backCourseId: null,
+        scorecardSchema: null,
+        pickem,
+      } as never,
+    });
+  }
+
+  const cases: {
+    field: string;
+    from: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean };
+    to: { rollUp: "team_totals" | "individual_matches"; useConfidence: boolean };
+  }[] = [
+    {
+      field: "pickem_games.roll_up",
+      from: { rollUp: "team_totals", useConfidence: true },
+      to: { rollUp: "individual_matches", useConfidence: true },
+    },
+    {
+      field: "pickem_games.use_confidence",
+      from: { rollUp: "team_totals", useConfidence: true },
+      to: { rollUp: "team_totals", useConfidence: false },
+    },
+  ];
+
+  it.each(cases)("$field — moves on change, no churn on re-write", async ({ from, to }) => {
+    const gameId = await newPickemGame("Hash guard");
+    await savePickem(gameId, from);
+
+    // (1) MOVES — without `pickem_games` in HASH_COLS this is where it fails:
+    // the settings change and the fingerprint does not, so another device never
+    // learns, and Save's concurrency check passes over a clobber.
+    const before = await hashOf(gameId);
+    await savePickem(gameId, to);
+    const afterChange = await hashOf(gameId);
+    expect(afterChange).not.toBe(before);
+
+    // (2) NO CHURN — re-sending the same values is byte-identical. The pick'em
+    // client sends the key on EVERY save (COALESCE-preserve makes an omission a
+    // silent no-op), so a churning field would fire a phantom "config changed"
+    // on every unrelated rename.
+    await savePickem(gameId, to);
+    expect(await hashOf(gameId)).toBe(afterChange);
+  });
+
+  it("a NON-pickem save leaves a pick'em game's settings alone", async () => {
+    // The COALESCE-preserve half. Every other format's payload omits the key,
+    // and the RPC gates its write on presence — so a rename must not reset the
+    // settings, and the hash must not move.
+    const gameId = await newPickemGame("Preserve");
+    await savePickem(gameId, { rollUp: "individual_matches", useConfidence: false });
+    const before = await hashOf(gameId);
+
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: before,
+      payload: {
+        name: "Renamed without the pickem key",
+        rulesForToday: null,
+        scoringEnabled: false,
+        pointsTotal: 6,
+        pointsDistribution: null,
+        courseId: null,
+        backCourseId: null,
+        scorecardSchema: null,
+      } as never,
+    });
+
+    const { data } = await ctx.admin
+      .from("pickem_games")
+      .select("roll_up, use_confidence")
+      .eq("game_id", gameId)
+      .single();
+    expect(data).toEqual({ roll_up: "individual_matches", use_confidence: false });
+    // The name moved, so the hash must have — this is not a "nothing happened" pass.
+    expect(await hashOf(gameId)).not.toBe(before);
+  });
+});

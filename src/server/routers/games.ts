@@ -72,6 +72,23 @@ export const HASH_COLS = {
   // is in each slot — and they're stable across a rebuild precisely because entrant
   // ids are deterministic. `winner_entrant_id` is excluded: see NOT_HASHED.
   bracket_matches: "bracket, round, slot, entrant_a_id, entrant_b_id",
+  // Pick'em's two scoring settings (157/158). Added in the SAME change that
+  // taught `save_game_config` to write them — the ordering `bracket_config`
+  // established in 112, rather than the one four earlier fields learned the
+  // hard way.
+  //
+  // The CLOCK columns are deliberately absent, and that is the same call
+  // `game_matches.result` gets: `picks_opened_at` / `picks_deadline` /
+  // `picks_locked_at` are the game's STATE, not its config. They are written by
+  // `set_pickem_phase` and `set_pickem_deadline`, never by
+  // `save_game_config` — so hashing them would fire a config refetch on every
+  // open device each time the runner locked picks, and would make Save's
+  // concurrency check refuse a rename because someone else had moved the
+  // deadline. They already propagate by realtime (#19) plus the 60s poll.
+  //
+  // One row per game (PK is game_id), so a single filtered row needs no
+  // ordering — the total-order rule (#16) is about LISTS.
+  pickem_games: "roll_up, use_confidence",
 } as const;
 
 /**
@@ -87,7 +104,8 @@ async function readGameConfigHash(
   tripId: string,
   gameId: string
 ): Promise<string | null> {
-  const [gameRes, partsRes, groupsRes, matchesRes, delegatesRes, entrantsRes, drawRes] = await Promise.all([
+  const [gameRes, partsRes, groupsRes, matchesRes, delegatesRes, entrantsRes, drawRes, pickemRes] =
+    await Promise.all([
     supabase.from("games").select(HASH_COLS.games).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
     supabase.from("game_participants").select(HASH_COLS.game_participants).eq("game_id", gameId).order("user_id", { ascending: true }),
     // `tee_time` MUST be selected (085) — the FOURTH "everything the RPC writes must be
@@ -164,12 +182,18 @@ async function readGameConfigHash(
       .order("bracket", { ascending: true })
       .order("round", { ascending: true })
       .order("slot", { ascending: true }),
+    // ── Pick'em's settings (157/158) ──────────────────────────────────────────
+    // Runs for every game, like `game_delegates` and the bracket reads: an
+    // indexed point lookup returning zero rows for the other formats, sharing
+    // the parallel batch. `maybeSingle` because a game switched to pick'em has
+    // no config row until the first save.
+    supabase.from("pickem_games").select(HASH_COLS.pickem_games).eq("game_id", gameId).maybeSingle(),
   ]);
   // Check EVERY query: a child failure must throw, never quietly hash an empty set
   // (that's what hid the bug above).
   const failed =
     gameRes.error ?? partsRes.error ?? groupsRes.error ?? matchesRes.error ?? delegatesRes.error ??
-    entrantsRes.error ?? drawRes.error;
+    entrantsRes.error ?? drawRes.error ?? pickemRes.error;
   if (failed) {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${failed.message}` });
   }
@@ -182,6 +206,10 @@ async function readGameConfigHash(
     delegates: delegatesRes.data ?? [],
     bracketEntrants: entrantsRes.data ?? [],
     bracketDraw: drawRes.data ?? [],
+    // Null for every non-pick'em game, and for a pick'em game that has never
+    // been saved — a stable absence rather than an invented default, which
+    // would make the hash lie about a game with no config row.
+    pickem: pickemRes.data ?? null,
   });
 }
 
@@ -1526,6 +1554,18 @@ export const gamesRouter = router({
           // participants. Present `[]` still clears; absent preserves. (The client omits it
           // on an unchanged/unknown delegate set so the phantom-empty is never sent.)
           delegates: z.array(z.string()).optional(),
+          // pickem — pick'em only (157/158). Optional like `matches`: every other
+          // format omits it, and the RPC gates its write on the key's presence, so
+          // an absent key preserves rather than resetting a pick'em game's
+          // settings. The pick'em client ALWAYS sends it (see
+          // `pickemDraftToPayload`) — COALESCE-preserve means an omission on a
+          // real change would be a silent no-op.
+          pickem: z
+            .object({
+              rollUp: z.enum(["team_totals", "individual_matches"]),
+              useConfidence: z.boolean(),
+            })
+            .optional(),
           // matches — match play only. Optional (085): a rack/stroke/non-golf payload
           // omits it, and the RPC gates the whole matches block on the key's presence,
           // so a missing `matches` no longer defaults into the clean-replace.

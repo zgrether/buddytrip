@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { TotalPoolRow } from "@/components/games/NonGolfSettingsRows";
 import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
@@ -46,12 +45,11 @@ export function PickemScoringRows({
   editable,
   frozenReason,
   showRollUp,
-  saving,
+  onChange,
   pointsTotal,
   canEditPoints,
   matches,
   onPointsChange,
-  onSave,
 }: {
   settings: PickemSettingsDraft;
   /** False once picks open — spec §4 freezes these with the slate. */
@@ -63,7 +61,11 @@ export function PickemScoringRows({
   /** Roll-up only means something inside a competition. A standalone pick'em
    *  game has no sides to total, so the row is ABSENT rather than disabled. */
   showRollUp: boolean;
-  saving: boolean;
+  /** The page's draft setter. This component owns NO state: it used to keep a
+   *  private draft with its own Save button, which made it a third write model
+   *  on a page that already had three. Everything now rides the page's one
+   *  atomic Save (#18). */
+  onChange: (next: PickemSettingsDraft) => void;
   /** `games.points_total`. Null or 0 means every match is worth nothing. */
   pointsTotal: number | null;
   /** Points are NOT frozen with the slate — a runner can set them after picks
@@ -73,13 +75,7 @@ export function PickemScoringRows({
    *  `liveMatchPointsPerMatch` exactly so nothing here re-derives "valid". */
   matches: { sideAId: string | null; sideBId: string | null; pointValue: number | null }[];
   onPointsChange: (total: number | null) => void;
-  onSave: (next: PickemSettingsDraft) => void;
 }) {
-  const [draft, setDraft] = useState<PickemSettingsDraft>(settings);
-  // Compared by value, not by a `touched` flag: toggling a switch and toggling
-  // it back is not a change, and offering Save for it invites a write that does
-  // nothing and an "unsaved changes" warning nobody caused.
-  const dirty = draft.rollUp !== settings.rollUp || draft.useConfidence !== settings.useConfidence;
 
   /**
    * The per-match award, from the ONE shared divisor (#1068) — never
@@ -87,7 +83,19 @@ export function PickemScoringRows({
    * is exactly spec §4's "seven matches means X/7 each".
    */
   const perMatch = liveMatchPointsPerMatch(pointsTotal, matches);
-  const validMatches = matches.filter((m) => m.sideAId != null && m.sideBId != null).length;
+  const assigned = matches.filter((m) => m.sideAId != null && m.sideBId != null);
+  const validMatches = assigned.length;
+  /**
+   * Does any match carry its OWN point value?
+   *
+   * `liveMatchPointsPerMatch` shares the remainder AFTER overrides, so with
+   * one present "each of the N matches is worth X" is false for the
+   * overridden ones. This is the same helper slot that carried the false
+   * sentence before, told from the other end — it reads true today only
+   * because pick'em never writes an override (`save_pickem_matches` does not
+   * insert `point_value`). True by accident is what the branch removes.
+   */
+  const hasOverrides = assigned.some((m) => m.pointValue != null);
   const individual = settings.rollUp === "individual_matches";
   /** Matches are set up and the total still says nothing is at stake. The
    *  runner may legitimately set the total later — so this is SURFACED, never
@@ -118,7 +126,9 @@ export function PickemScoringRows({
         >
           {validMatches === 0
             ? "Set the matches and each one's share appears here."
-            : `Each of the ${validMatches} match${validMatches === 1 ? "" : "es"} is worth ${perMatch.toFixed(2)} pts.`}
+            : hasOverrides
+              ? `${validMatches} matches. The ones without their own value are worth ${perMatch.toFixed(2)} pts each.`
+              : `Each of the ${validMatches} match${validMatches === 1 ? "" : "es"} is worth ${perMatch.toFixed(2)} pts.`}
           {worthNothing && " Set a total above, or the game decides nothing."}
         </p>
       )}
@@ -142,13 +152,13 @@ export function PickemScoringRows({
       <ToggleRow
         title="Use confidence points"
         detail={
-          draft.useConfidence
+          settings.useConfidence
             ? "Everyone ranks their picks. A correct pick scores the rank it was given."
             : "No ranking. Every correct pick is worth one point."
         }
-        on={draft.useConfidence}
+        on={settings.useConfidence}
         disabled={!editable}
-        onToggle={() => setDraft((s) => ({ ...s, useConfidence: !s.useConfidence }))}
+        onToggle={() => onChange({ ...settings, useConfidence: !settings.useConfidence })}
       />
 
       {showRollUp && (
@@ -166,35 +176,16 @@ export function PickemScoringRows({
               detail: "Each person plays one person on the other side. Points split across the matches.",
             },
           ]}
-          value={draft.rollUp}
+          value={settings.rollUp}
           disabled={!editable}
-          onChange={(v) => setDraft((s) => ({ ...s, rollUp: v as PickemSettingsDraft["rollUp"] }))}
+          onChange={(v) => onChange({ ...settings, rollUp: v as PickemSettingsDraft["rollUp"] })}
         />
       )}
 
-      {editable && dirty && (
-        <div className="flex items-center gap-3">
-          <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}>
-            Unsaved changes
-          </span>
-          <button
-            type="button"
-            onClick={() => onSave(draft)}
-            disabled={saving}
-            data-testid="pickem-save-scoring"
-            className="rounded-xl px-4 py-2 disabled:opacity-40"
-            style={{
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 700,
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-              minHeight: 40,
-            }}
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      )}
+      {/* No Save here any more. This block was a second Save button on a page
+          that now has one at the bottom — the page's atomic commit (#18). A
+          settings group with its own commit is how "I pressed Save" stops
+          having a single answer. */}
     </div>
   );
 }

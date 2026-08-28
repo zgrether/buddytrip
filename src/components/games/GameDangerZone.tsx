@@ -40,6 +40,7 @@ export function GameDangerZone({
   tripId,
   gameId,
   competitionId,
+  resetScoresBlurb,
   onChanged,
   onDeleted,
   onScoresReset,
@@ -47,6 +48,11 @@ export function GameDangerZone({
   tripId: string;
   gameId: string;
   competitionId: string | null;
+  /** The "Reset scores" wording, derived per format by `resetScoresBlurb`.
+   *  Passed in because this component is shared by five formats and the one
+   *  hardcoded sentence it used to carry named a course, handicaps and bracket
+   *  picks on games that have none. */
+  resetScoresBlurb: string;
   /** Refetch the host's game view after a reset (config/scoring changed). */
   onChanged: () => void;
   /** Game removed — leave the page (back to the board / trip). */
@@ -133,7 +139,7 @@ export function GameDangerZone({
           icon={<RotateCcw size={16} />}
           tone="warning"
           label="Reset scores"
-          blurb="Clears every score, result, and bracket pick. Pairings, course, handicaps, and points stay."
+          blurb={resetScoresBlurb}
           onClick={() => setConfirm("scoring")}
           testId="game-reset-scoring-btn"
         />

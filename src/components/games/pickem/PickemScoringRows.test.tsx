@@ -21,12 +21,11 @@ const render = (over: Partial<Parameters<typeof PickemScoringRows>[0]> = {}) =>
       editable
       frozenReason={null}
       showRollUp
-      saving={false}
+      onChange={() => {}}
       pointsTotal={8}
       canEditPoints
       matches={[]}
       onPointsChange={() => {}}
-      onSave={() => {}}
       {...over}
     />
   );
@@ -146,11 +145,33 @@ describe("the scoring settings", () => {
     );
   });
 
-  it("offers Save only once something actually changed", () => {
-    // Compared by VALUE, not a touched flag: toggling a switch and toggling it
-    // back is not a change, and offering Save for it invites a write that does
-    // nothing.
+  it("owns NO Save of its own — the page commits (#18)", () => {
+    // This used to read "offers Save only once something actually changed",
+    // against a private draft this component kept. Both are gone: it is
+    // controlled now, and the only Save on the page is the settings bar.
+    //
+    // Kept as a REGRESSION guard rather than deleted, and it is worth being
+    // honest that it is a weak one — the id it looks for no longer exists
+    // anywhere, so it can only fail if someone puts a second Save back. That is
+    // exactly the change worth catching, but nothing here would notice the
+    // component quietly re-growing state under a different name.
     expect(render()).not.toContain('data-testid="pickem-save-scoring"');
+    expect(render({ settings: { rollUp: "team_totals", useConfidence: false } })).not.toContain(
+      'data-testid="pickem-save-scoring"'
+    );
+  });
+
+  it("renders what it is GIVEN — no private state to diverge from the page", () => {
+    // The assertion that would fail against the old component: it seeded a
+    // `useState` from `settings` on first render, so a later change to the prop
+    // did not reach the screen. That is the "staged-state lie" in miniature —
+    // the page's draft says one thing and the row shows another.
+    const on = render({ settings: { rollUp: "team_totals", useConfidence: true } });
+    const off = render({ settings: { rollUp: "team_totals", useConfidence: false } });
+    expect(on).toContain('aria-checked="true"');
+    expect(off).toContain('aria-checked="false"');
+    expect(on).toContain("Everyone ranks their picks");
+    expect(off).toContain("No ranking");
   });
 
   it("frozen — controls disabled, and it RENDERS whatever reason it is handed", () => {
@@ -168,7 +189,81 @@ describe("the scoring settings", () => {
     // A disabled control with no reason attached teaches nobody why (finding 3).
     expect(html).toContain(reason);
     expect(html).toContain("Reopening the slate");
-    // ...and no Save, because nothing here can be changed.
-    expect(html).not.toContain('data-testid="pickem-save-scoring"');
+  });
+});
+
+describe("the per-match line — the helper slot that carried the false sentence", () => {
+  /**
+   * This is the slot that once read "Picks are open, so scoring is frozen" on a
+   * locked game. The empty-state half was already checked; this covers what it
+   * says when matches DO exist, which is where the arithmetic can lie.
+   */
+  const indivSettings = { rollUp: "individual_matches" as const, useConfidence: true };
+  const paired = (n: number, pointValue: number | null = null) =>
+    Array.from({ length: n }, (_, i) => ({
+      sideAId: `a${i}`,
+      sideBId: `b${i}`,
+      pointValue,
+    }));
+
+  it("states the real share, and it agrees with the shared divisor", () => {
+    // 8 points over 4 matches. Asserting the VALUE, not merely that a number
+    // appears — the divisor is `liveMatchPointsPerMatch`, and a line that
+    // computed its own would be a second answer to the same question.
+    const html = render({
+      settings: indivSettings,
+      pointsTotal: 8,
+      matches: paired(4),
+    });
+    expect(html).toContain("Each of the 4 matches is worth 2.00 pts.");
+  });
+
+  it("counts only matches with BOTH sides filled — the same rows the divisor uses", () => {
+    // A half-filled row is scaffolding, not a match. If this counted rows the
+    // sentence would disagree with the grid's own header AND with the points.
+    const html = render({
+      settings: indivSettings,
+      pointsTotal: 6,
+      matches: [...paired(3), { sideAId: "x", sideBId: null, pointValue: null }],
+    });
+    expect(html).toContain("Each of the 3 matches is worth 2.00 pts.");
+  });
+
+  it("singular reads as one match, not '1 matches'", () => {
+    const html = render({ settings: indivSettings, pointsTotal: 5, matches: paired(1) });
+    expect(html).toContain("Each of the 1 match is worth 5.00 pts.");
+    expect(html).not.toContain("1 matches");
+  });
+
+  it("does NOT claim uniformity when a match carries its own value", () => {
+    // `liveMatchPointsPerMatch` shares the remainder AFTER overrides, so "each
+    // of the N is worth X" would be false for the overridden ones. Pick'em
+    // writes no overrides today, which is exactly why this is worth pinning —
+    // the sentence is true by accident otherwise.
+    const html = render({
+      settings: indivSettings,
+      pointsTotal: 10,
+      matches: [...paired(2), { sideAId: "z", sideBId: "y", pointValue: 4 }],
+    });
+    expect(html).not.toContain("Each of the 3 matches");
+    expect(html).toContain("The ones without their own value are worth");
+  });
+
+  it("still warns when the matches are set and the total is not", () => {
+    // The surfaced-never-blocking case (spec §2): a runner may set the total
+    // later, so this says so rather than refusing.
+    const html = render({ settings: indivSettings, pointsTotal: 0, matches: paired(3) });
+    expect(html).toContain("the game decides nothing");
+  });
+
+  it("the empty state promises something that then happens", () => {
+    // "Set the matches and each one's share appears here" — and it does. The
+    // pair is the assertion: a promise checked only in its own state is a
+    // promise nobody verified.
+    const empty = render({ settings: indivSettings, pointsTotal: 8, matches: [] });
+    expect(empty).toContain("Set the matches and each one");
+    const filled = render({ settings: indivSettings, pointsTotal: 8, matches: paired(2) });
+    expect(filled).not.toContain("Set the matches and each one");
+    expect(filled).toContain("4.00 pts");
   });
 });

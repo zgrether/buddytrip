@@ -10,6 +10,7 @@ import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { SettingsColumn } from "@/components/games/SettingsColumn";
 import { SettingsSlideOver } from "@/components/games/SettingsSlideOver";
 import { FORMAT_SURFACE, type GameSurfaceId } from "@/lib/formatSurface";
+import { resetScoresBlurb } from "@/lib/gameResetCopy";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -289,6 +290,7 @@ export function GameSettingsPage({
             tripId={tripId}
             gameId={game.id}
             competitionId={competitionId}
+            resetScoresBlurb={resetScoresBlurb(game.game_type_id)}
             onChanged={onChanged}
             onDeleted={onDeleted}
             onScoresReset={onScoresReset}

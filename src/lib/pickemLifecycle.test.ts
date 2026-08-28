@@ -49,7 +49,7 @@ describe("building — nothing published", () => {
 
   it("the slate and the scoring settings are editable", () => {
     expect(slateEditable(clock(), NOW)).toBe(true);
-    expect(scoringSettingsEditable(clock(), NOW)).toBe(true);
+    expect(scoringSettingsEditable(false)).toBe(true);
   });
 });
 
@@ -69,11 +69,19 @@ describe("picks open", () => {
 
   it("FREEZES the slate and the scoring settings", () => {
     // Lock point 1 (spec §4): a seventeenth game would invalidate every ranking
-    // already submitted, and flipping `use_confidence` would change what those
-    // rankings were worth.
+    // already submitted.
     const c = clock({ picksOpenedAt: iso(-HOUR) });
     expect(slateEditable(c, NOW)).toBe(false);
-    expect(scoringSettingsEditable(c, NOW)).toBe(false);
+
+    // The SETTINGS are NOT frozen with it any more (migration 157). They used
+    // to be, on the reasoning that flipping `use_confidence` changes what those
+    // rankings were worth — true, but too early: nothing has been SCORED under
+    // the old rules, so nothing is rewritten by changing them. That earlier
+    // boundary is also what made a single atomic Save impossible, since
+    // `points_total` had been carved out of it.
+    expect(scoringSettingsEditable(false)).toBe(true);
+    // Only a recorded result closes them, whatever the clock says.
+    expect(scoringSettingsEditable(true)).toBe(false);
   });
 });
 

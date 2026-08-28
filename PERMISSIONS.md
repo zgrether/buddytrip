@@ -358,7 +358,19 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > `assert_game_edit`. So their save SUCCEEDED, every other column persisted,
 > and the gated one was dropped with no error — the page reports saved and the
 > value is gone. That is worse than a refusal and is how the points gate went
-> unnoticed for three months. 158 widens `points_total` (removing one instance)
+> unnoticed for three months.
+>
+> **And it was not an oversight — it had a guardian.**
+> `games.saveConfig.test.ts` pinned the silent ignore by name: *"a DELEGATE's
+> own save leaves the delegate list untouched"*, with the comment "even claiming
+> a different delegate, the non-Organizer branch must not apply it". So someone
+> chose the behaviour once, and a test protected it from then on. The list it
+> guards genuinely does need protecting; what nobody revisited was whether the
+> caller should be TOLD. Worth knowing before reading a silent drop elsewhere as
+> carelessness — a passing test is not evidence that the failure mode was
+> considered, only that the outcome was.
+>
+> 158 widens `points_total` (removing one instance)
 > and makes `delegates` REFUSE a change outright. An *unchanged* delegate set
 > still passes, because a payload builder may include the key and refusing on
 > presence would stop a delegate saving anything at all.
