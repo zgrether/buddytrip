@@ -79,7 +79,9 @@ export const pickemRouter = router({
           .maybeSingle(),
         ctx.supabase
           .from("pickem_slate_games")
-          .select("id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id")
+          .select(
+            "id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id, result"
+          )
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
         ctx.supabase
@@ -175,6 +177,9 @@ export const pickemRouter = router({
           kickoff: (r.kickoff as string | null) ?? null,
           note: (r.note as string | null) ?? null,
           espnEventId: (r.espn_event_id as string | null) ?? null,
+          /** How it finished — away / home / push / cancelled, or null for not
+           *  yet played (migration 159). */
+          result: (r.result as "away" | "home" | "push" | "cancelled" | null) ?? null,
           // `numeric` arrives as a string over PostgREST; the whole app treats a
           // multiplier as a number, so it is coerced ONCE, here, rather than at
           // every call site that would otherwise get `"2"` and concatenate.
@@ -373,6 +378,41 @@ export const pickemRouter = router({
    * through it would publish a building game or silently unlock a locked one.
    * This writes one column and is therefore safe in any phase.
    */
+  /**
+   * Run — record one slate game's outcome.
+   *
+   * ANY ORDER. Nothing here reads `display_order`, and nothing waits on the
+   * row above it: a Thursday nighter lands, then two on Friday, then the bulk
+   * on Saturday.
+   *
+   * Four-valued, because a result is not "who won": a push happened and nobody
+   * covered, a cancellation never happened. Same arithmetic, different facts.
+   *
+   * The completeness gate and the finalize freeze both live in the RPC — see
+   * migration 159. They are re-stated as typed errors here so the surface can
+   * say WHICH match is short rather than showing a Postgres string.
+   */
+  setResult: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        slateGameId: z.string(),
+        /** Null clears it back to unplayed — every outcome is reversible. */
+        result: z.enum(["away", "home", "push", "cancelled"]).nullable(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("set_pickem_result", {
+        p_game_id: input.gameId,
+        p_slate_game_id: input.slateGameId,
+        p_result: input.result,
+      });
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
+
   setDeadline: authedProcedure
     .input(
       z.object({
@@ -447,6 +487,38 @@ function pickemError(message: string): TRPCError {
       // Names the two ways it can be true, because the participant cannot tell
       // them apart and the difference decides whether waiting helps.
       message: "Picks are closed — the deadline passed or the runner locked them.",
+    });
+  }
+  /**
+   * §6.1 — the refusal NAMES the gap.
+   *
+   * The RPC raises "MATCHES_INCOMPLETE: Bill has no opponent", and the tail is
+   * carried through verbatim rather than replaced with a generic line.
+   * "Finalize your matches" sends someone hunting through a grid; the name is
+   * the actionable half, and throwing it away here would undo the reason the
+   * SQL bothered to look it up.
+   */
+  if (message.includes("MATCHES_INCOMPLETE")) {
+    const detail = message.split("MATCHES_INCOMPLETE:")[1]?.trim();
+    return new TRPCError({
+      code: "CONFLICT",
+      message: detail
+        ? `Can't record a result yet — ${detail}. Every match needs both sides before points can be split.`
+        : "Can't record a result yet — set the matches first.",
+    });
+  }
+  if (message.includes("GAME_FINAL")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      // Names the way back rather than only the refusal. §6.2: the reset path
+      // exists and this must not become a second one.
+      message: "This game is finalized. Reset its scores from settings to change a result.",
+    });
+  }
+  if (message.includes("SLATE_GAME_NOT_FOUND")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      message: "That game is no longer on the slate. Reload and try again.",
     });
   }
   if (message.includes("INCOMPLETE_SHEET") || message.includes("UNKNOWN_SLATE_GAME")) {

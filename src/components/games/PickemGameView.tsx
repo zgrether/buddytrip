@@ -31,6 +31,8 @@ import {
 import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/PickemSheet";
 import { explanationCopy, PARA_BREAK } from "@/lib/pickemSheet";
 import { PickemPhaseStrip } from "@/components/games/pickem/PickemPhaseStrip";
+import { PickemRunView } from "@/components/games/pickem/PickemRunView";
+import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
@@ -205,6 +207,29 @@ export function PickemGameView() {
     onError: (e) => showToast(e.message, "error"),
   });
 
+  /**
+   * Run (Phase 5) — one outcome at a time.
+   *
+   * `busyResultId` is per-ROW, not a page-level flag: results land in any
+   * order, often in a burst, and a single spinner would freeze fifteen rows for
+   * one write.
+   */
+  const [busyResultId, setBusyResultId] = useState<string | null>(null);
+  const setResult = trpc.pickem.setResult.useMutation({
+    onSuccess: async () => {
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+      // The board reads results — #10: the child alone is silently undone by
+      // the face's re-seed.
+      const cid = q.data?.game.competition_id as string | null;
+      if (cid) {
+        utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId: cid });
+        utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
+      }
+    },
+    onError: (e) => showToast(e.message, "error"),
+    onSettled: () => setBusyResultId(null),
+  });
+
   const saveMatches = trpc.pickem.saveMatches.useMutation({
     onSuccess: async () => {
       showToast("Matches saved", "info");
@@ -234,7 +259,10 @@ export function PickemGameView() {
     const rows = (membersQ.data ?? []) as { memberId?: string; displayName?: string }[];
     return new Map(rows.map((m) => [m.memberId ?? "", m.displayName ?? "Unknown"]));
   }, [membersQ.data]);
-  const nameOf = (userId: string) => nameByUser.get(userId) ?? "Unknown";
+  const nameOf = useCallback(
+    (userId: string) => nameByUser.get(userId) ?? "Unknown",
+    [nameByUser]
+  );
 
 
   // NOT `router.back()`. A bare back is only the inverse of a PANEL open; on the
@@ -337,6 +365,31 @@ export function PickemGameView() {
   // the field wrote the draft is how one game showed two names at once (#18).
   const gameName = q.data ? configDraft.name || "Pick'em" : "Pick'em";
 
+  /**
+   * §6.1 — the gate, said BEFORE the runner tries.
+   *
+   * The completeness state is knowable when Run renders, so a banner beats a
+   * rejection. The RPC still refuses (and names the same person) — this is the
+   * courteous half, not the enforcement.
+   *
+   * Only under `individual_matches`: team totals has no gate, because every
+   * sheet sums into its side whatever the pairings look like.
+   */
+  const runBlockedReason = useMemo(() => {
+    if (!q.data) return null;
+    if (q.data.settings.rollUp !== "individual_matches") return null;
+    const pairs: PickemPair[] = (q.data.matches ?? []).map((m) => ({
+      a: m.sideAId ?? null,
+      b: m.sideBId ?? null,
+    }));
+    if (matchesComplete(pairs)) return null;
+    const stranded = pairs.find((p) => (p.a == null) !== (p.b == null));
+    const who = stranded ? nameOf((stranded.a ?? stranded.b) as string) : null;
+    return who
+      ? `${who} has no opponent yet — every match needs both sides before a result can be split.`
+      : "Set the matches before entering results — points are split across them.";
+  }, [q.data, nameOf]);
+
   const settings = useGameSettingsOverlay({
     canEdit,
     deepLink: settingsDeepLink,
@@ -432,6 +485,33 @@ export function PickemGameView() {
         />
       )}
 
+      {/* RUN — every revealed game, BOTH roll-ups.
+          It first went inside the `revealed && individualMatches` branch,
+          which meant a TEAM TOTALS game showed no Run surface at all: that
+          branch exists to swap the sheet for the pairing grid, and team totals
+          has no grid, so it correctly falls through to the sheet — taking Run
+          with it. Caught by looking at a team-totals game, which is exactly the
+          kind of thing only a render shows.
+          Results have no roll-up of their own: a slate game finished or it did
+          not, and how the points are then shared out is a different question.
+
+          Rendered for everyone, not only the runner: results are visible as
+          they land — no embargo, since the whole point is watching it resolve
+          (§7). `canEdit` decides whether the BUTTONS are there, not whether
+          the outcomes are. */}
+      {revealed && (
+        <PickemRunView
+          slate={q.data.slate}
+          canEdit={canEdit}
+          busyId={busyResultId}
+          blockedReason={runBlockedReason}
+          onSetResult={(slateGameId, result) => {
+            setBusyResultId(slateGameId);
+            setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
+          }}
+        />
+      )}
+
       {phase === "building" ? (
         <PhaseBody
           slateCount={q.data.slate.length}
@@ -461,6 +541,7 @@ export function PickemGameView() {
               collapses behind a button here, so a banner inside it explains the
               change only to someone who already went looking for it. */}
           <PickemClosedBanner closure={pickemClosure(clock, now)} />
+
           {matchPairs.length > 0 ? (
             <PickemMatchesPanel
               teams={q.data.teams}
