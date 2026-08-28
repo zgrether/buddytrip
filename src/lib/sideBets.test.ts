@@ -10,6 +10,12 @@ import {
   buildManualBet,
   playerBetLines,
   betsInvolvingPlayer,
+  buildManualPress,
+  makePressBet,
+  pressBetId,
+  betRate,
+  betQualifier,
+  canManuallyPress,
   formatMoney,
   formatSignedMoney,
   betLabel,
@@ -1057,5 +1063,169 @@ describe("betsInvolvingPlayer — what a roster removal takes with it", () => {
     // second name on a 2v2 side, so their bet survives them.
     const doubles = [mk("c", [side(["p1", "p2"]), side(["p3", "p4"])])];
     expect(betsInvolvingPlayer(doubles, "p2").map((b) => b.id)).toEqual(["c"]);
+  });
+});
+
+describe("betRate / betQualifier — what the strip prints", () => {
+  const mk = (kind: "head_to_head" | "skins", amount: number): SideBet =>
+    buildManualBet({
+      kind,
+      sides: [
+        { id: "sa", playerIds: ["p1"] },
+        { id: "sb", playerIds: ["p2"] },
+      ],
+      amount,
+      startHole: 1,
+      mkId: () => "b",
+    });
+
+  it("names the UNIT, which differs by kind", () => {
+    expect(betRate(mk("head_to_head", 5))).toBe("$5/hole");
+    expect(betRate(mk("skins", 5))).toBe("$5/skin");
+  });
+
+  it("gives a plain bet no qualifier — the rate already says everything", () => {
+    expect(betQualifier(mk("head_to_head", 5))).toBeNull();
+    expect(betQualifier(mk("skins", 5))).toBeNull();
+  });
+
+  it("keeps the Nassau leg, which the rate CANNOT say", () => {
+    // The reason this exists: three legs at one stake are three identical
+    // rates, so dropping the leg would make them indistinguishable.
+    const legs = buildNassauBets({
+      sides: [
+        { id: "sa", playerIds: ["p1"] },
+        { id: "sb", playerIds: ["p2"] },
+      ],
+      amount: 5,
+      holeCount: 18,
+      startHole: 1,
+      autoPressAt: null,
+      pressOnPress: false,
+      mkId: (() => {
+        let n = 0;
+        return () => `n${++n}`;
+      })(),
+    });
+    expect(legs.map(betRate)).toEqual(["$5/hole", "$5/hole", "$5/hole"]);
+    expect(legs.map(betQualifier)).toEqual(["Front 9", "Back 9", "Overall"]);
+  });
+
+  it("keeps the press level", () => {
+    const parent = mk("head_to_head", 10);
+    const p = buildManualPress({ parent, fromHole: 4, mkId: () => "mp" });
+    expect(betRate(p)).toBe("$10/hole");
+    expect(betQualifier(p)).toBe("Press 1");
+  });
+});
+
+describe("buildManualPress — a press someone AGREED to", () => {
+  const parent = buildManualBet({
+    kind: "head_to_head",
+    sides: [
+      { id: "sa", playerIds: ["p1"] },
+      { id: "sb", playerIds: ["p2"] },
+    ],
+    amount: 10,
+    startHole: 1,
+    mkId: () => "parent",
+  });
+
+  it("starts ON the given hole, not the one after", () => {
+    // Agreed on the tee, so it covers the hole about to be played. The
+    // automatic press adds one because its trigger hole is already decided.
+    expect(buildManualPress({ parent, fromHole: 4, mkId: () => "mp" }).startHole).toBe(4);
+    expect(makePressBet(parent, 4).startHole).toBe(5);
+  });
+
+  it("does NOT take the derived press's id", () => {
+    // The decisive one. Sharing `pressBetId` would mean that turning the
+    // parent's automatic press on later produces two bets under one key.
+    const manual = buildManualPress({ parent, fromHole: 4, mkId: () => "mp" });
+    expect(manual.id).toBe("mp");
+    expect(manual.id).not.toBe(pressBetId(parent.id, 1));
+  });
+
+  it("keeps the parent's stake and sides, and runs to the end", () => {
+    const p = buildManualPress({ parent, fromHole: 4, mkId: () => "mp" });
+    expect(p.amount).toBe(10);
+    expect(p.sides).toEqual(parent.sides);
+    expect(p.endHole).toBeNull();
+  });
+
+  it("does not itself auto-press — one agreement, one bet", () => {
+    const p = buildManualPress({ parent, fromHole: 4, mkId: () => "mp" });
+    expect(p.autoPressAt).toBeNull();
+    expect(p.pressOnPress).toBe(false);
+  });
+
+  it("presses a press to level 2", () => {
+    const first = buildManualPress({ parent, fromHole: 4, mkId: () => "mp1" });
+    const second = buildManualPress({ parent: first, fromHole: 8, mkId: () => "mp2" });
+    expect(second.origin).toEqual({ kind: "press", parentId: "mp1", level: 2 });
+  });
+
+  it("is a REAL bet in the tally, priced like any other", () => {
+    // p1 wins holes 4 and 5. Parent $10 each = $20; the press covers both too.
+    const net: Record<string, Record<number, number>> = { p1: {}, p2: {} };
+    for (const h of [4, 5]) {
+      net.p1[h] = 3;
+      net.p2[h] = 4;
+    }
+    const pressed = buildManualPress({ parent, fromHole: 4, mkId: () => "mp" });
+    const r = computeSideBets({
+      holes: Array.from({ length: 18 }, (_, i) => i + 1),
+      bets: [parent, pressed],
+      scoring: { mode: "net", net },
+    });
+    expect(r.totalsByPlayer.p1).toBe(40);
+    expect(r.exposure.perHole).toBe(20);
+  });
+});
+
+describe("canManuallyPress", () => {
+  const holes = Array.from({ length: 18 }, (_, i) => i + 1);
+  const tallyFor = (bet: SideBet) =>
+    computeSideBets({ holes, bets: [bet], scoring: { mode: "net", net: {} } }).bets[0];
+  const sides = [
+    { id: "sa", playerIds: ["p1"] },
+    { id: "sb", playerIds: ["p2"] },
+  ];
+  const opts = { fromHole: 3, holeCount: 18 };
+
+  it("offers on a live head-to-head with automatic press OFF", () => {
+    const t = tallyFor(buildManualBet({ kind: "head_to_head", sides, amount: 5, startHole: 1, mkId: () => "b" }));
+    expect(canManuallyPress(t, opts)).toBe(true);
+  });
+
+  it("does NOT offer when the bet already presses itself", () => {
+    const t = tallyFor(
+      buildManualBet({ kind: "head_to_head", sides, amount: 5, startHole: 1, autoPressAt: 2, mkId: () => "b" })
+    );
+    expect(canManuallyPress(t, opts)).toBe(false);
+  });
+
+  it("does NOT offer on skins — the rules refuse them a press at all", () => {
+    const t = tallyFor(
+      buildManualBet({
+        kind: "skins",
+        sides: [...sides, { id: "sc", playerIds: ["p3"] }],
+        amount: 5,
+        startHole: 1,
+        mkId: () => "b",
+      })
+    );
+    expect(canManuallyPress(t, opts)).toBe(false);
+  });
+
+  it("does NOT offer with no hole left to cover", () => {
+    const t = tallyFor(buildManualBet({ kind: "head_to_head", sides, amount: 5, startHole: 1, mkId: () => "b" }));
+    expect(canManuallyPress(t, { fromHole: 19, holeCount: 18 })).toBe(false);
+  });
+
+  it("does NOT offer on a bet that has not started", () => {
+    const t = tallyFor(buildManualBet({ kind: "head_to_head", sides, amount: 5, startHole: 10, mkId: () => "b" }));
+    expect(t.live).toBe(false);
+    expect(canManuallyPress(t, opts)).toBe(false);
   });
 });
