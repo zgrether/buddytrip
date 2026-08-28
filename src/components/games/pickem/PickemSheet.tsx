@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReorderableList } from "@/components/ReorderableList";
+import { PickemSheetRow } from "./PickemSheetRow";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import { draftOutboxRecover } from "@/lib/draftOutbox";
@@ -14,8 +15,7 @@ import {
   type SheetPick,
   type SheetSettings,
 } from "@/lib/pickemSheet";
-import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
-import { formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
+import { draftLostToLock, formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
 
 /** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
  *  told about is spoken that way. No year: a sheet is read within days of it. */
@@ -241,10 +241,48 @@ export function PickemSheet({
       picks: fn(prev && prev.base === fingerprint ? prev.picks : server.picks),
     }));
 
-  const [step, setStep] = useState<"pick" | "rank">("pick");
+  /**
+   * A DRAFT CAUGHT BY THE LOCK — survived, or discarded VISIBLY.
+   *
+   * The complaint that got read as "the Save button is the problem" was never
+   * the button. It was the silence: a person mid-edit when the deadline lands
+   * had the sheet go read-only under them and their typing vanish with nothing
+   * on screen saying so. Autosave would have hidden the same moment differently.
+   *
+   * The picks genuinely cannot be kept — `pickem_picks_write` gates on
+   * `pickem_picks_open`, so the server refuses them the instant the clock
+   * turns. So this is the honest half: notice the transition, and SAY it.
+   *
+   * Latched, not derived. Once it has happened it stays said, because
+   * `editable` going false also clears the conditions that produced it.
+   */
+  const [lostToLock, setLostToLock] = useState(false);
+  const wasEditable = useRef(editable);
 
   const picks = working ?? server.picks;
   const dirty = working != null && !sheetsEqual(working, server.picks);
+  /**
+   * Reads the EDGE — editable going true→false — not the state, because once
+   * the sheet is read-only `dirty` stops meaning anything and the banner still
+   * has to be true about a moment that has passed.
+   *
+   * `dirty` is in the deps and the ref is written INSIDE the effect: a ref
+   * assigned during render is a rules-of-hooks violation, and eslint says so.
+   * The guard is what keeps the extra runs harmless — once `wasEditable` is
+   * false the branch cannot fire again, so a later `dirty` change cannot latch
+   * this after the fact.
+   */
+  useEffect(() => {
+    // Disabled deliberately: this is a one-shot EDGE latch, not a cascade.
+    // The guard means it can fire at most once per mount, and the alternative —
+    // deriving it — is impossible, because the fact being recorded is that a
+    // value USED to be true.
+    if (draftLostToLock({ wasEditable: wasEditable.current, editable, dirty })) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLostToLock(true);
+    }
+    wasEditable.current = editable;
+  }, [editable, dirty]);
 
   /**
    * Durability, through the EXISTING outbox (§7.4: do not build a fifth).
@@ -286,7 +324,6 @@ export function PickemSheet({
   const order = useMemo(() => rankedOrder(picks), [picks]);
 
 
-  const twoPass = settings.useConfidence && editable;
   const needsSave = editable && (!server.submitted || server.rankingReset || dirty);
 
   return (
@@ -323,6 +360,28 @@ export function PickemSheet({
           naming the moment reads as a rule. */}
       {!editable && !closedBannerHoisted && <PickemClosedBanner closure={closure} />}
 
+      {/*
+        A draft the lock caught. NOT dismissible, and it outranks everything
+        below it because it is the only thing on the page reporting a loss.
+
+        The picks cannot be recovered — `pickem_picks_write` gates on
+        `pickem_picks_open`, so the server refuses them the moment the clock
+        turns, and pretending otherwise would be worse than the silence this
+        replaces. What was wrong before was that it happened invisibly: the
+        sheet went read-only and the typing vanished with nothing said.
+
+        Named as what it is, and it says what DID survive, because "your changes
+        are gone" without that reads as though the whole sheet went.
+      */}
+      {lostToLock && (
+        <Banner tone="warn" testId="pickem-lost-to-lock">
+          <b>Picks closed while you were editing.</b>{" "}
+          {subject.isSelf ? "Your unsaved changes" : "The unsaved changes"} could not be
+          saved — the last sheet {subject.isSelf ? "you" : "they"} saved is the one that
+          counts.
+        </Banner>
+      )}
+
       {editable && server.rankingReset && (
         <Banner tone="warn" testId="pickem-ranking-reset">
           <b>The slate changed.</b>{" "}
@@ -338,54 +397,71 @@ export function PickemSheet({
 
 
 
-      {/* ABSENT when confidence is off, never a disabled tab (§11). */}
-      {twoPass && (
-        <div
-          className="flex overflow-hidden rounded-lg"
-          data-testid="pickem-step-nav"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <StepButton active={step === "pick"} onClick={() => setStep("pick")}>
-            1 · Pick winners
-          </StepButton>
-          <StepButton active={step === "rank"} onClick={() => setStep("rank")}>
-            2 · Rank them
-          </StepButton>
-        </div>
+      {/* The hint line — what the controls DO, said once at the top rather
+          than discovered. Different sentence per variant, because with
+          confidence off there is nothing to drag and no top of the list to be
+          worth anything. */}
+      {editable && (
+      <p
+        data-testid="pickem-sheet-hint"
+        className="px-1"
+        style={{ fontSize: 11, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
+      >
+        {settings.useConfidence
+          ? `Tap a team to pick it · drag to reorder — the top of the list is worth ${slate.length} · line shown is the home team's`
+          : "Tap a team to pick it · every game is worth 1 · line shown is the home team's"}
+      </p>
       )}
 
-      {step === "pick" || !twoPass ? (
-        <PickPass
-          slate={slate}
-          picks={picks}
-          editable={editable}
-          confidenceOn={settings.useConfidence}
-          subject={subject}
-          onPick={(id, side) => editPicks((p) => setPick(p, id, side))}
-        />
-      ) : (
-        <RankPass
-          subject={subject}
-          order={order}
-          picks={picks}
-          gameById={gameById}
-          editable={editable}
-          onReorder={(next) => editPicks((p) => applyOrder(p, next))}
-        />
-      )}
+      {/*
+        ONE LIST, and the row is the control.
 
-      {/* Read-only sheets show the ranking inline rather than behind a step nav
-          that no longer exists — the person is reading, not navigating. */}
-      {!editable && settings.useConfidence && (
-        <RankPass
-          subject={subject}
-          order={order}
-          picks={picks}
-          gameById={gameById}
-          editable={false}
-          onReorder={() => {}}
-        />
-      )}
+        This replaces a two-pass step nav — "1 · Pick winners" then "2 · Rank
+        them" — which split one sheet into two screens over the same sixteen
+        games. The rank chip and the tap targets now live in the same row, so
+        the order you are building is visible while you are picking.
+
+        `ReorderableList` owns the drag: pointer events with
+        `setPointerCapture` and `touch-action: none`, the seven-point recipe
+        that already exists. `enabled` is the confidence switch — false gives
+        plain rows with no grip and no sortable wrappers at all, which IS the
+        confidence-off product rather than a disabled version of this one.
+      */}
+      <ReorderableList
+        ids={order}
+        enabled={settings.useConfidence && editable}
+        controlsSide="trailing"
+        listClassName="flex flex-col gap-1.5"
+        labelOf={(id) => {
+          const g = gameById.get(id);
+          return g ? `${g.awayTeam} at ${g.homeTeam}` : "game";
+        }}
+        onReorder={(next) => editPicks((p) => applyOrder(p, next))}
+        renderRow={(id, index) => {
+          const g = gameById.get(id);
+          if (!g) return null;
+          const p = picks.find((x) => x.slateGameId === id);
+          return (
+            <PickemSheetRow
+              game={{
+                id: g.id,
+                awayTeam: g.awayTeam,
+                homeTeam: g.homeTeam,
+                spread: g.spread ?? null,
+                multiplier: g.multiplier ?? 1,
+                kickoff: g.kickoff ?? null,
+                note: g.note ?? null,
+              }}
+              pick={p?.pick ?? null}
+              // The chip shows what THIS POSITION is worth, derived from the
+              // index — never a stored confidence beside the order.
+              points={settings.useConfidence ? slate.length - index : null}
+              editable={editable}
+              onPick={(side) => editPicks((prev) => setPick(prev, id, side))}
+            />
+          );
+        }}
+      />
 
       {/* Clearance for the sticky save bar.
           `position: sticky` pins the bar inside the scroller's padding box and
@@ -406,9 +482,7 @@ export function PickemSheet({
           saving={saving}
           error={saveError}
           count={slate.length}
-          twoPass={twoPass}
-          step={step}
-          onNext={() => setStep("rank")}
+          roadCount={picks.filter((p) => p.pick === "away").length}
           onSave={() => onSave(picks)}
         />
       )}
@@ -418,239 +492,7 @@ export function PickemSheet({
 
 // ── pass 1 ─────────────────────────────────────────────────────────────────
 
-function PickPass({
-  slate,
-  picks,
-  editable,
-  confidenceOn,
-  subject,
-  onPick,
-}: {
-  slate: PickemSheetGame[];
-  picks: SheetPick[];
-  editable: boolean;
-  confidenceOn: boolean;
-  /** Threaded down rather than defaulted: a section heading that says "Your
-   *  picks" over someone else's sheet is the mixed message the banner exists to
-   *  prevent, and a default here would reintroduce it silently. */
-  subject: SheetSubject;
-  onPick: (slateGameId: string, side: "away" | "home") => void;
-}) {
-  const byGame = new Map(picks.map((p) => [p.slateGameId, p]));
-  return (
-    <div className="flex flex-col gap-1.5" data-testid="pickem-pick-pass">
-      <SectionHeading
-        left={editable ? "Pick a winner" : subject.isSelf ? "Your picks" : `${subject.name}'s picks`}
-        right={`${slate.length} games`}
-      />
-      {slate.map((g) => {
-        const chosen = byGame.get(g.id)?.pick;
-        const rank = byGame.get(g.id)?.confidence;
-        return (
-          <div
-            key={g.id}
-            className="rounded-xl px-2.5 py-2"
-            style={pickemRowSurface({ weighted: g.multiplier > 1 })}
-            data-testid="pickem-pick-row"
-          >
-            <MatchupLine
-              game={g}
-              trailing={
-                // On a read-only sheet the rank belongs on the row: there is no
-                // second pass to go and look at it in.
-                !editable && confidenceOn && rank != null ? <RankChip rank={rank} of={picks.length} /> : undefined
-              }
-            />
-            <div className="mt-2 flex gap-1.5">
-              <SideButton
-                side="away"
-                label={g.awayTeam}
-                selected={chosen === "away"}
-                editable={editable}
-                onClick={() => onPick(g.id, "away")}
-              />
-              <SideButton
-                side="home"
-                label={g.homeTeam}
-                selected={chosen === "home"}
-                editable={editable}
-                onClick={() => onPick(g.id, "home")}
-              />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function SideButton({
-  side,
-  label,
-  selected,
-  editable,
-  onClick,
-}: {
-  side: "away" | "home";
-  label: string;
-  selected: boolean;
-  editable: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!editable}
-      data-testid={`pickem-side-${side}`}
-      data-selected={selected ? "true" : "false"}
-      className="flex-1 truncate rounded-lg px-1.5 py-2.5"
-      style={{
-        fontSize: TYPE_SCALE.body,
-        fontWeight: 600,
-        // 44px of target on a phone — sixteen of these get tapped in a hurry.
-        minHeight: 44,
-        background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-raised)",
-        border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-        color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-        opacity: !editable && !selected ? 0.45 : 1,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 // ── pass 2 ─────────────────────────────────────────────────────────────────
-
-function RankPass({
-  subject,
-  order,
-  picks,
-  gameById,
-  editable,
-  onReorder,
-}: {
-  subject: SheetSubject;
-  order: string[];
-  picks: SheetPick[];
-  gameById: Map<string, PickemSheetGame>;
-  editable: boolean;
-  onReorder: (next: string[]) => void;
-}) {
-  const pickOf = new Map(picks.map((p) => [p.slateGameId, p.pick]));
-  const n = order.length;
-
-  const row = (id: string, i: number) => {
-    const g = gameById.get(id);
-    if (!g) return null;
-    const side = pickOf.get(id);
-    const chosen = side === "away" ? g.awayTeam : g.homeTeam;
-    return (
-      <div
-        className="flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2"
-        style={pickemRowSurface({ weighted: g.multiplier > 1 })}
-        data-testid="pickem-rank-row"
-      >
-        <RankChip rank={n - i} of={n} />
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-1.5">
-            <span className="truncate" style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
-              {chosen}
-            </span>
-            {g.multiplier > 1 && (
-              <span
-                className="rounded px-1"
-                style={{
-                  fontSize: TYPE_SCALE.caption,
-                  fontWeight: 700,
-                  color: "var(--color-bt-glorious)",
-                  background: "color-mix(in srgb, var(--color-bt-glorious) 22%, transparent)",
-                }}
-              >
-                {g.multiplier}×
-              </span>
-            )}
-          </span>
-          <span
-            className="block truncate"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-          >
-            {g.awayTeam} at {g.homeTeam}
-            {g.kickoff ? ` · ${g.kickoff}` : ""}
-          </span>
-        </span>
-      </div>
-    );
-  };
-
-  return (
-    <div className="flex flex-col gap-1.5" data-testid="pickem-rank-pass">
-      <SectionHeading
-        left={
-          editable
-            ? subject.isSelf
-              ? "Rank your picks"
-              : `Rank ${subject.name}'s picks`
-            : subject.isSelf
-              ? "Your ranking"
-              : `${subject.name}'s ranking`
-        }
-        right={editable ? "Drag, or use the arrows" : undefined}
-      />
-      <div
-        className="flex justify-between px-1 pb-1"
-        style={{ ...EYEBROW, color: "var(--color-bt-text-dim)" }}
-      >
-        <span>{n} · surest</span>
-        <span>coin flip · 1</span>
-      </div>
-      {/* Phase 1's primitive, which was extracted for exactly this list.
-          Arrows alongside the grip because sixteen rows on a phone is the
-          hardest drag in the app, and the arrows are what make it possible
-          one-handed and with a keyboard. */}
-      <ReorderableList
-        ids={order}
-        labelOf={(id) => {
-          const g = gameById.get(id);
-          return g ? `${g.awayTeam} at ${g.homeTeam}` : id;
-        }}
-        renderRow={row}
-        onReorder={onReorder}
-        enabled={editable}
-        arrows
-        controlsSide="trailing"
-        listClassName="flex flex-col gap-1.5"
-      />
-    </div>
-  );
-}
-
-function RankChip({ rank, of }: { rank: number; of?: number }) {
-  // The bottom third dims. The gradient IS the information — where a person put
-  // their conviction, readable down the column without reading numbers — so the
-  // cut is proportional to the slate rather than a literal 5. A fixed threshold
-  // would dim every row of a four-game slate and none of a fifty-game one.
-  const low = of != null && of > 2 && rank <= Math.max(1, Math.floor(of / 3));
-  return (
-    <span
-      data-testid="pickem-rank-chip"
-      className="flex flex-none items-center justify-center rounded-lg"
-      style={{
-        width: 32,
-        height: 32,
-        fontSize: 14,
-        fontWeight: 800,
-        fontVariantNumeric: "tabular-nums",
-        background: low ? "var(--color-bt-raised)" : "var(--color-bt-accent-faint)",
-        color: low ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
-        border: `1px solid ${low ? "var(--color-bt-border)" : "var(--color-bt-accent-border)"}`,
-      }}
-    >
-      {rank}
-    </span>
-  );
-}
 
 // ── chrome ─────────────────────────────────────────────────────────────────
 
@@ -663,9 +505,7 @@ function SaveBar({
   saving,
   error,
   count,
-  twoPass,
-  step,
-  onNext,
+  roadCount,
   onSave,
 }: {
   subject: SheetSubject;
@@ -676,43 +516,42 @@ function SaveBar({
   saving: boolean;
   error: string | null;
   count: number;
-  twoPass: boolean;
-  step: "pick" | "rank";
-  onNext: () => void;
+  /**
+   * How many ROAD teams have been taken — the one number that says whether a
+   * sheet has actually been thought about.
+   *
+   * A sheet opens on all-home by default (derived, never stored), so "16 of 16
+   * picked" is true the instant it renders and measures nothing. That is why
+   * there is no progress bar, and why this counts the picks that DEPART from
+   * the default instead.
+   */
+  roadCount: number;
   onSave: () => void;
 }) {
   /**
-   * On pass 1 the primary action is "go and rank them" — but ONLY while the
-   * ranking is one nobody has chosen. A sheet saved from pass 1 is legal and
-   * carries the DEFAULT order, so offering Save there to a first-time picker
-   * invites them to submit an order they never looked at.
+   * What the sheet SAYS about itself, not how many boxes are ticked.
    *
-   * Once they HAVE ranked, that stops being true and the nudge becomes a lie:
-   * the first version of this branched on `step` alone, so returning to a
-   * submitted sheet greeted the person with "All 16 picked · rank them next"
-   * and a Next button, as though nothing had been saved. Caught by the test
-   * below, not by looking — the state needs a saved sheet to reach.
+   * The two-pass nudge is gone with the two passes — there is one list now, so
+   * there is nowhere to advance to. What replaces it is a description of the
+   * sheet: how far it has departed from all-home, which is the only reading
+   * that distinguishes a considered sheet from an untouched one.
    *
-   * `rankingReset` puts them back in the first case, which is the whole point
-   * of clearing it (§7.2).
+   * "all chalk" is the phrase for taking every home team. It is the honest
+   * default state and reads as a position rather than an omission, because it
+   * IS one — a sheet of favourites is a legitimate sheet.
    */
-  const unranked = !submitted || rankingReset;
-  const advancing = twoPass && step === "pick" && unranked;
+  const roads =
+    roadCount === 0
+      ? "all chalk, nothing off the home teams yet"
+      : `${roadCount} road team${roadCount === 1 ? "" : "s"} taken`;
 
-  const status = advancing
-    ? `All ${count} picked · rank them next`
-    : rankingReset
-      ? "Ranking cleared — save to confirm"
-      : dirty
-        ? "Unsaved changes"
-        : submitted
-          ? "Saved · change it any time"
-          : // "and ranked" is a claim about a mechanic this game may not have.
-            // `twoPass` is `useConfidence` here — the bar only renders while
-            // editable — and with confidence off the line read "All 16 picked
-            // and ranked" on a sheet with no ranking at all. Found by looking at
-            // the off variant, which is the entire reason §10 asks for two looks.
-            `All ${count} picked${twoPass ? " and ranked" : ""}`;
+  const status = rankingReset
+    ? "Ranking cleared — save to confirm"
+    : dirty
+      ? `${roads} · unsaved changes`
+      : submitted
+        ? `Saved · ${roads}`
+        : `All ${count} picked · ${roads}`;
 
   return (
     <div
@@ -753,9 +592,9 @@ function SaveBar({
         </span>
         <button
           type="button"
-          onClick={advancing ? onNext : onSave}
-          disabled={saving || (!advancing && !needsSave)}
-          data-testid={advancing ? "pickem-next-step" : "pickem-submit"}
+          onClick={onSave}
+          disabled={saving || !needsSave}
+          data-testid="pickem-submit"
           className="flex-none rounded-xl px-4 disabled:opacity-40"
           style={{
             height: 40,
@@ -765,15 +604,13 @@ function SaveBar({
             color: "var(--color-bt-base)",
           }}
         >
-          {advancing
-            ? "Next: rank"
-            : saving
-              ? "Saving…"
-              : !needsSave
-                ? "Saved"
-                : submitted
-                  ? "Save changes"
-                  : "Submit sheet"}
+          {saving
+            ? "Saving…"
+            : !needsSave
+              ? "Saved"
+              : submitted
+                ? "Save changes"
+                : "Save picks"}
         </button>
       </div>
     </div>
@@ -830,44 +667,6 @@ function Countdown({
         {formatCountdown(ms)}
       </span>
     </div>
-  );
-}
-
-function SectionHeading({ left, right }: { left: string; right?: string }) {
-  return (
-    <div className="flex items-baseline justify-between px-1" style={EYEBROW}>
-      <span>{left}</span>
-      {right && (
-        <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>{right}</span>
-      )}
-    </div>
-  );
-}
-
-function StepButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className="flex-1 py-2"
-      style={{
-        fontSize: TYPE_SCALE.bodyDense,
-        fontWeight: active ? 600 : 500,
-        background: active ? "var(--color-bt-accent-faint)" : "transparent",
-        color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-      }}
-    >
-      {children}
-    </button>
   );
 }
 
