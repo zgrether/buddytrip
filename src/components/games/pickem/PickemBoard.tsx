@@ -235,6 +235,17 @@ export function PickemBoard({
   const [openMatch, setOpenMatch] = useState<string | null>(null);
   const { resolved, total } = resolvedCount(slate);
 
+  /** Sheets that are in no match at all — the individual-matches counterpart of
+   *  a person with no team. */
+  const unmatched = useMemo(() => {
+    const paired = new Set<string>();
+    for (const m of matches) {
+      if (m.sideAId) paired.add(m.sideAId);
+      if (m.sideBId) paired.add(m.sideBId);
+    }
+    return Object.keys(sheets).filter((uid) => !paired.has(uid)).map(nameOf).sort();
+  }, [matches, sheets, nameOf]);
+
   const matchRows = useMemo(() => {
     const out = new Map<string, BoardRow[]>();
     for (const m of matches) {
@@ -274,6 +285,10 @@ export function PickemBoard({
           {resolved} of {total} in
         </span>
       </div>
+
+      {/* The same state on the match side: a sheet with no opponent scores
+          nowhere either, and the match list would simply not mention them. */}
+      {rollUp === "individual_matches" && <UnassignedNote names={unmatched} />}
 
       {rollUp === "individual_matches"
         ? matches.map((m) => {
@@ -364,6 +379,11 @@ export function PickemBoard({
             const leadId =
               x && y ? (x.standing.total > y.standing.total ? x.team.id : y.standing.total > x.standing.total ? y.team.id : null) : null;
 
+            const unplaced = Object.keys(sheets)
+              .filter((uid) => teamOf(uid) == null)
+              .map(nameOf)
+              .sort();
+
             return (
               <>
                 <div className="mx-1 flex gap-2">
@@ -402,6 +422,7 @@ export function PickemBoard({
                     {remaining} still to play.
                   </p>
                 )}
+                <UnassignedNote names={unplaced} />
                 {standings.map((s) => (
                   <div key={s.team.id} className="flex flex-col gap-1.5">
                     <div className="mt-1 flex items-baseline justify-between px-1" style={EYEBROW}>
@@ -432,6 +453,49 @@ export function PickemBoard({
             );
           })()}
     </div>
+  );
+}
+
+/** "Bill", "Bill and Ty", "Bill, Ty and Frank" — an Oxford-less join, because
+ *  this reads as a sentence rather than a list. */
+function names(list: string[]): string {
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return `${list[0]} and ${list[1]}`;
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/**
+ * People who filled in a sheet that counts for nothing.
+ *
+ * ── Not a cosmetic gap ─────────────────────────────────────────────────────
+ *
+ * Someone with a sheet and no side — or no opponent — did the work and it
+ * scores nowhere. That is a real state and two people need it visible: the
+ * PERSON, who otherwise opens a board they are simply absent from, and the
+ * RUNNER, for whom it is usually a setup error they would want to fix.
+ *
+ * Rendering nothing is the empty-versus-unknown pattern: fifteen rows where
+ * there are seventeen people reads as "there are fifteen people", and the
+ * reader has no way to tell a short field from a dropped one.
+ */
+function UnassignedNote({ names: list }: { names: string[] }) {
+  if (list.length === 0) return null;
+  return (
+    <p
+      data-testid="pickem-board-unassigned"
+      className="mx-1 rounded-xl px-3 py-2.5"
+      style={{
+        fontSize: TYPE_SCALE.caption,
+        lineHeight: 1.5,
+        color: "var(--color-bt-text-dim)",
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <b style={{ color: "var(--color-bt-text)" }}>{names(list)}</b>{" "}
+      {list.length === 1 ? "isn't" : "aren't"} in the scoring —{" "}
+      {list.length === 1 ? "their sheet doesn't" : "their sheets don't"} count toward either side.
+    </p>
   );
 }
 
