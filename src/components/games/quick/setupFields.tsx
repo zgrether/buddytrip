@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Plus, X, ChevronRight } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { Stepper } from "@/components/games/Stepper";
 import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { MAX_STROKES } from "@/lib/handicap";
@@ -11,7 +11,7 @@ import type { DraftPlayerRow, QuickGameCourse } from "@/lib/quickGame";
 
 /**
  * The Quick Game setup FIELDS — roster (flat or the two-side match layout),
- * course row, match-only answers, and the settings nav row.
+ * course row, and the match-only answers.
  *
  * Moved out of `app/quick-game/page.tsx` so the setup can be rendered in two
  * places without being written twice: the page itself, and the add/edit sheet
@@ -19,49 +19,6 @@ import type { DraftPlayerRow, QuickGameCourse } from "@/lib/quickGame";
  * arrives as a prop and every change leaves by a callback, so neither caller
  * teaches these anything about where the draft lives.
  */
-
-/** A settings-panel navigation row in the SAME visual grammar as `DangerRow`
- *  (icon-square + label + blurb + chevron) but neutral-toned — "Players &
- *  handicaps" isn't destructive, so it doesn't borrow the warning/danger
- *  vocabulary that row reserves for the danger zone. `disabled` carries its
- *  own blurb text (the caller passes the reason in via `blurb`) rather than
- *  a separate message slot — mirrors how locked rows elsewhere in the app
- *  explain themselves inline instead of failing silently. */
-export function SettingsNavRow({
-  icon, label, blurb, onClick, disabled, testId,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  blurb?: string;
-  onClick: () => void;
-  disabled?: boolean;
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex w-full items-center gap-3 rounded-[11px] px-3 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-50 disabled:hover:bg-transparent"
-      style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-      data-testid={testId}
-    >
-      <span
-        className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[9px]"
-        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>{label}</span>
-        {blurb && (
-          <span className="mt-0.5 block text-xs leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{blurb}</span>
-        )}
-      </span>
-      <ChevronRight size={17} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-    </button>
-  );
-}
 
 /**
  * The match-only setup answers: entry mode, partnering (2v2), the RELATIVE
