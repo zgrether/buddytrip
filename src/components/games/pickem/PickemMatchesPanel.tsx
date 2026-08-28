@@ -8,6 +8,7 @@ import {
   emptyPairs,
   isValidPair,
   pairedMembers,
+  pairingMismatch,
   randomizePairs,
   validPairCount,
   type PickemPair,
@@ -166,6 +167,12 @@ export function PickemMatchesPanel({
           </button>
         </div>
       )}
+
+      <MismatchNote
+        mismatch={pairingMismatch(pairs, a.memberIds, b.memberIds)}
+        teams={[a, b]}
+        nameOf={nameOf}
+      />
 
       <div className="flex gap-2 px-1">
         <TeamHeading team={a} />
@@ -356,6 +363,77 @@ function Slot({
         </button>
       )}
     </span>
+  );
+}
+
+/** "Rob", "Rob and Ty", "Rob, Ty and Frank" — reads as a sentence, not a list. */
+function names(list: string[]): string {
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return `${list[0]} and ${list[1]}`;
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/**
+ * The grid and the rosters disagreeing, said out loud.
+ *
+ * Three separate facts, because they have three different fixes — replace the
+ * off-roster player, place the unpaired one, or accept that someone sits out.
+ * Collapsing them into one "something's wrong" line would leave the runner to
+ * work out which, and the third has no fix at all: it is a consequence of the
+ * side sizes and the only useful response is knowing it before `open` refuses.
+ */
+function MismatchNote({
+  mismatch,
+  teams,
+  nameOf,
+}: {
+  mismatch: ReturnType<typeof pairingMismatch>;
+  teams: [PickemTeam, PickemTeam];
+  nameOf: (id: string) => string;
+}) {
+  const { offRoster, unpaired, unevenBy, largerSide } = mismatch;
+  const lines: string[] = [];
+
+  if (offRoster.length > 0) {
+    const who = names(offRoster.map(nameOf).sort());
+    lines.push(
+      `${who} ${offRoster.length === 1 ? "is" : "are"} paired but no longer on either team — ` +
+        `${offRoster.length === 1 ? "swap them" : "swap them out"} for someone on the roster.`
+    );
+  }
+  if (unpaired.length > 0) {
+    const who = names(unpaired.map(nameOf).sort());
+    lines.push(
+      `${who} ${unpaired.length === 1 ? "is" : "are"} on a team but not in a match yet.`
+    );
+  }
+  if (unevenBy > 0 && largerSide != null) {
+    const big = teams[largerSide];
+    const small = teams[largerSide === 0 ? 1 : 0];
+    lines.push(
+      `${big.name} has ${big.memberIds.length} and ${small.name} has ${small.memberIds.length}, ` +
+        `so ${unevenBy === 1 ? "one player" : `${unevenBy} players`} will have no opponent.`
+    );
+  }
+
+  if (lines.length === 0) return null;
+
+  return (
+    <div
+      data-testid="pickem-pairing-mismatch"
+      className="mx-1 flex flex-col gap-1 rounded-xl px-3 py-2.5"
+      style={{
+        fontSize: TYPE_SCALE.caption,
+        lineHeight: 1.5,
+        color: "var(--color-bt-text-dim)",
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      {lines.map((l) => (
+        <span key={l}>{l}</span>
+      ))}
+    </div>
   );
 }
 

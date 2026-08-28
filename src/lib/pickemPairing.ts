@@ -149,3 +149,60 @@ export function emptyPairs(sideACount: number, sideBCount: number): PickemPair[]
 export function pairsToPayload(pairs: PickemPair[]): { a: string | null; b: string | null }[] {
   return pairs.filter((p) => p.a != null || p.b != null).map((p) => ({ a: p.a, b: p.b }));
 }
+
+/**
+ * Where the PAIRING and the ROSTERS disagree.
+ *
+ * ── Two sources of truth that nothing reconciles ───────────────────────────
+ *
+ * The grid renders `game_matches` — a SNAPSHOT of who was paired. The picker
+ * renders `team_assignments` — who is on a side RIGHT NOW. Change a roster
+ * after pairing and the two drift apart silently: a name sits in the grid that
+ * appears in neither roster column, and someone sits on a roster who appears in
+ * no row. Both are invisible, and together they read as "the builder is showing
+ * different people than the matches", which is exactly what it is doing.
+ *
+ * Nothing auto-repairs it, deliberately — replacing a dropped player is a
+ * judgement about who should take the match, not something to guess. So it is
+ * SAID instead, and the runner fixes it in one tap.
+ *
+ * ── UNEVEN is a third thing, and the one that produces a refusal ───────────
+ *
+ * Sides of 8 and 7 mean one person can never have an opponent, no matter how
+ * the pairing is arranged. `open` then refuses on the incompleteness and names
+ * that person — a refusal at the END of the flow for a condition knowable at
+ * the START, and naming someone the runner then hunts for in a picker that
+ * cannot help them. Reporting it here moves the finding to where the cause is.
+ *
+ * Pure — no React, no ids resolved to names. The caller owns naming.
+ */
+export interface PairingMismatch {
+  /** Paired, but on neither roster now. Their slot needs a live player. */
+  offRoster: string[];
+  /** On a roster, but in no slot. Available to fill one. */
+  unpaired: string[];
+  /** How many people on the larger side cannot be given an opponent. */
+  unevenBy: number;
+  /** Which side is larger — index into the caller's [a, b]. Null when even. */
+  largerSide: 0 | 1 | null;
+}
+
+export function pairingMismatch(
+  pairs: PickemPair[],
+  sideAMembers: string[],
+  sideBMembers: string[]
+): PairingMismatch {
+  const placed = pairedMembers(pairs);
+  const roster = new Set([...sideAMembers, ...sideBMembers]);
+
+  const offRoster = [...placed].filter((id) => !roster.has(id));
+  const unpaired = [...roster].filter((id) => !placed.has(id));
+
+  const diff = sideAMembers.length - sideBMembers.length;
+  return {
+    offRoster,
+    unpaired,
+    unevenBy: Math.abs(diff),
+    largerSide: diff === 0 ? null : diff > 0 ? 0 : 1,
+  };
+}

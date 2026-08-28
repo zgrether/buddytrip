@@ -124,6 +124,48 @@ describe("games.resetScoring — one game's results cleared, config + identity k
     expect(sg.status).toBe("complete");
   });
 
+  it("clears a PICK'EM game's slate results — the sixth storage shape", async () => {
+    /**
+     * `_reset_game_scoring` sweeps "everything PLAYED, in every shape it is
+     * stored in". Migration 159 added a shape — `pickem_slate_games.result` —
+     * and did not add it to the sweep, so "Reset scores" was a NO-OP on the
+     * whole format while its own copy promised "every recorded result".
+     *
+     * Same failure direction as CLAUDE.md's guest-merge rule: add a storage
+     * shape, add it to the function that sweeps every shape, in the same
+     * migration. Silent in exactly the same way, and this is the mechanical
+     * form of the reminder.
+     */
+    const id = genId("pgreset-pickem");
+    gameIds.push(id);
+    await ctx.admin.from("games").insert({
+      id, trip_id: tripId, competition_id: competitionId,
+      game_type_id: "gtt_pickem", name: "Reset Pick'em",
+      status: "active", scoring_enabled: true,
+    });
+    await ctx.admin.from("pickem_games").upsert({ game_id: id });
+    const seed = await ctx.admin.from("pickem_slate_games").insert([
+      { id: genId("sg"), game_id: id, display_order: 0, away_team: "A", home_team: "B",
+        multiplier: 1, result: "home" },
+      { id: genId("sg"), game_id: id, display_order: 1, away_team: "C", home_team: "D",
+        multiplier: 1, result: "push" },
+    ]);
+    expect(seed.error).toBeNull();
+
+    const before = await ctx.admin
+      .from("pickem_slate_games").select("result").eq("game_id", id);
+    expect((before.data ?? []).filter((r) => r.result != null)).toHaveLength(2);
+
+    const res = await ctx.caller().games.resetScoring({ tripId, gameId: id });
+    expect(res.success).toBe(true);
+
+    const after = await ctx.admin
+      .from("pickem_slate_games").select("result").eq("game_id", id);
+    // The ROWS survive — the slate is config, not scoring. Only the results go.
+    expect(after.data ?? []).toHaveLength(2);
+    expect((after.data ?? []).filter((r) => r.result != null)).toHaveLength(0);
+  });
+
   it("a co-admin (Organizer) may reset; a game delegate still may not (#786)", async () => {
     const target = await makeMatchGame("RoleBoundary");
     // Make the member a DELEGATE of this game (can edit/score) — still not reset.
