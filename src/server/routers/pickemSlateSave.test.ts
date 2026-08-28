@@ -178,19 +178,61 @@ describe("save_pickem_config / set_pickem_phase", () => {
 
   // ── the lock ─────────────────────────────────────────────────────────────
 
-  it("refuses a slate edit once picks are open, and allows it again after reopen", async () => {
+  it("refuses a SLATE edit once picks are open, and allows it again once locked", async () => {
     await save({ slate: [slateItem()] });
     await phase("open");
 
     const locked = await save({ slate: [slateItem()] });
     expect(locked.error?.message).toContain("SLATE_LOCKED");
 
-    // The settings ride the same lock, for the same reason.
-    const lockedSettings = await save({ settings: { useConfidence: false } });
-    expect(lockedSettings.error?.message).toContain("SLATE_LOCKED");
-
     await phase("lock");
+    expect((await save({ slate: [slateItem()] })).error).toBeNull();
+  });
+
+  it("but the SETTINGS are NOT frozen by picks opening — they wait for a result", async () => {
+    // The boundary migration 157 moved, and the assertion that fails against the
+    // old model. The settings used to ride the slate's lock ("for the same
+    // reason", said the test this replaces) — which was the thing that made one
+    // atomic save impossible: `points_total` was deliberately carved out of that
+    // freeze (152) while these two sat inside it, so a single Save could not
+    // honour both boundaries at once.
+    //
+    // Until something is scored, changing how scoring works rewrites nothing.
+    await save({ slate: [slateItem()] });
+    await phase("open");
+
     expect((await save({ settings: { useConfidence: false } })).error).toBeNull();
+    const { data } = await ctx.admin
+      .from("pickem_games")
+      .select("use_confidence")
+      .eq("game_id", gameId)
+      .single();
+    expect(data!.use_confidence).toBe(false);
+  });
+
+  it("the settings freeze at the first RESULT, whichever writer is used", async () => {
+    // One boundary, both doors. `set_pickem_points_total` writes the same column
+    // `save_game_config` refuses after a result, so without its own check it
+    // would be a hole straight through the freeze.
+    await save({ slate: [slateItem()] });
+    await ctx.admin.from("game_results").insert({
+      id: `gr-${gameId}`,
+      game_id: gameId,
+      entity_type: "user",
+      entity_id: ctx.getUser("owner").id,
+      raw_score: 1,
+      position: 1,
+    });
+
+    const settings = await save({ settings: { useConfidence: false } });
+    expect(settings.error?.message).toContain("PICKEM_SCORED");
+
+    const total = await ctx
+      .authedClient("owner")
+      .rpc("set_pickem_points_total", { p_game_id: gameId, p_total: 9 });
+    expect(total.error?.message).toContain("PICKEM_SCORED");
+
+    await ctx.admin.from("game_results").delete().eq("game_id", gameId);
   });
 
   it("saves the two scoring settings", async () => {
