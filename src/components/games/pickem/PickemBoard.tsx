@@ -1,0 +1,518 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
+import {
+  buildBoardRows,
+  matchStanding,
+  sideStanding,
+  sideClinched,
+  type BoardRow,
+  type ZeroKind,
+} from "@/lib/pickemBoard";
+import { resolvedCount, type ScoredPick, type ScoredSlateGame } from "@/lib/pickemScoring";
+
+/**
+ * The board — "am I winning, and is it still live."
+ *
+ * Everything derives from the picks and the results. Nothing is stored, so a
+ * result landing anywhere recomputes every total, margin and clinch on the next
+ * render.
+ *
+ * ── Two shapes, one set of rules ───────────────────────────────────────────
+ *
+ * `individual_matches` — a match list, tap for game-by-game.
+ * `team_totals`        — two side cards with participants beneath.
+ *
+ * Both clinch on the same rule: a lead bigger than everything the other side
+ * can still score.
+ */
+
+export interface BoardSlateGame extends ScoredSlateGame {
+  awayTeam: string;
+  homeTeam: string;
+  spread: string | null;
+  kickoff: string | null;
+}
+
+/**
+ * A match, in the shape the router already returns.
+ *
+ * `sideAId` / `sideBId` rather than `aUserId` — a pick'em side IS a user (a
+ * sheet belongs to a person), but the field names come from `game_matches`,
+ * which pick'em shares with golf. Renaming them here would mean the board and
+ * the divisor described the same row differently, which is how the two drift.
+ */
+export interface BoardMatch {
+  id: string;
+  sideAId: string | null;
+  sideBId: string | null;
+}
+
+/** The three kinds of zero, said as three different things. A dash for all of
+ *  them would tell the reader a cancelled game was played. */
+const ZERO_LABEL: Record<ZeroKind, string> = {
+  both: "Both right",
+  neither: "Both wrong",
+  push: "Push",
+  cancelled: "Cancelled",
+};
+
+function ResultChip({ row }: { row: BoardRow }) {
+  if (row.result == null) {
+    return (
+      <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-planning)", fontWeight: 600 }}>
+        {/* Unplayed rows carry what each side stands to gain. Same pick means
+            only the DIFFERENCE is in play, which `upsideFor` already resolved. */}
+        +{row.upsideA} / +{row.upsideB}
+      </span>
+    );
+  }
+  if (row.swing === 0) {
+    return (
+      <span
+        data-testid={`pickem-zero-${row.zeroKind}`}
+        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", fontWeight: 600 }}
+      >
+        {ZERO_LABEL[row.zeroKind as ZeroKind]}
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        fontSize: TYPE_SCALE.bodyDense,
+        fontWeight: 800,
+        fontVariantNumeric: "tabular-nums",
+        color: row.swing > 0 ? "var(--color-bt-accent)" : "var(--color-bt-owner)",
+      }}
+    >
+      {row.swing > 0 ? "+" : ""}
+      {row.swing}
+    </span>
+  );
+}
+
+/** Level 2 — one row per slate game, with the swing that shows where the match
+ *  is being won. */
+function MatchDetail({
+  slate,
+  rows,
+  aName,
+  bName,
+  onBack,
+}: {
+  slate: BoardSlateGame[];
+  rows: BoardRow[];
+  aName: string;
+  bName: string;
+  onBack: () => void;
+}) {
+  const byId = new Map(slate.map((g) => [g.id, g]));
+  const s = matchStanding(rows);
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="pickem-board-detail">
+      <button
+        type="button"
+        onClick={onBack}
+        data-testid="pickem-board-back"
+        className="self-start px-1 py-1"
+        style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, color: "var(--color-bt-accent)" }}
+      >
+        ← All matches
+      </button>
+
+      <div
+        className="mx-1 flex items-center gap-3 rounded-xl px-3 py-3"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      >
+        <span className="min-w-0 flex-1 text-center">
+          <span className="block truncate" style={{ fontSize: TYPE_SCALE.caption, fontWeight: 600 }}>
+            {aName}
+          </span>
+          <span style={{ fontSize: 26, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+            {s.aTotal}
+          </span>
+        </span>
+        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>VS</span>
+        <span className="min-w-0 flex-1 text-center">
+          <span className="block truncate" style={{ fontSize: TYPE_SCALE.caption, fontWeight: 600 }}>
+            {bName}
+          </span>
+          <span style={{ fontSize: 26, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+            {s.bTotal}
+          </span>
+        </span>
+      </div>
+
+      <div className="px-1" style={EYEBROW}>
+        Game by game
+      </div>
+
+      {rows.map((r) => {
+        const g = byId.get(r.slateGameId);
+        if (!g) return null;
+        return (
+          <div
+            key={r.slateGameId}
+            data-testid="pickem-board-row"
+            className="mx-1 flex flex-col gap-1.5 rounded-xl px-3 py-2.5"
+            style={pickemRowSurface({ weighted: r.multiplier > 1 })}
+          >
+            <MatchupLine
+              game={{
+                awayTeam: g.awayTeam,
+                homeTeam: g.homeTeam,
+                spread: g.spread,
+                kickoff: r.result == null ? (g.kickoff ?? "TBD") : null,
+                note: null,
+                multiplier: r.multiplier,
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.caption }}>
+                <Conf value={r.aConfidence} hit={r.aPoints > 0} />{" "}
+                {r.aPick === "away" ? g.awayTeam : g.homeTeam}
+              </span>
+              <ResultChip row={r} />
+              <span
+                className="min-w-0 flex-1 truncate text-right"
+                style={{ fontSize: TYPE_SCALE.caption }}
+              >
+                {r.bPick === "away" ? g.awayTeam : g.homeTeam}{" "}
+                <Conf value={r.bConfidence} hit={r.bPoints > 0} />
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Conf({ value, hit }: { value: number | null; hit: boolean }) {
+  if (value == null) return null;
+  return (
+    <span
+      className="rounded px-1.5"
+      style={{
+        fontSize: TYPE_SCALE.caption,
+        fontWeight: 700,
+        fontVariantNumeric: "tabular-nums",
+        background: hit ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+        color: hit ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
+export function PickemBoard({
+  slate,
+  sheets,
+  matches,
+  rollUp,
+  useConfidence,
+  meId,
+  nameOf,
+  teams,
+  teamOf,
+}: {
+  slate: BoardSlateGame[];
+  /** Every sheet the caller may see, keyed by user. RLS-gated upstream. */
+  sheets: Record<string, ScoredPick[]>;
+  matches: BoardMatch[];
+  rollUp: "team_totals" | "individual_matches";
+  useConfidence: boolean;
+  meId: string | null;
+  nameOf: (userId: string) => string;
+  teams: { id: string; name: string }[];
+  teamOf: (userId: string) => string | null;
+}) {
+  const [openMatch, setOpenMatch] = useState<string | null>(null);
+  const { resolved, total } = resolvedCount(slate);
+
+  /** Sheets that are in no match at all — the individual-matches counterpart of
+   *  a person with no team. */
+  const unmatched = useMemo(() => {
+    const paired = new Set<string>();
+    for (const m of matches) {
+      if (m.sideAId) paired.add(m.sideAId);
+      if (m.sideBId) paired.add(m.sideBId);
+    }
+    return Object.keys(sheets).filter((uid) => !paired.has(uid)).map(nameOf).sort();
+  }, [matches, sheets, nameOf]);
+
+  const matchRows = useMemo(() => {
+    const out = new Map<string, BoardRow[]>();
+    for (const m of matches) {
+      if (!m.sideAId || !m.sideBId) continue;
+      out.set(
+        m.id,
+        buildBoardRows(slate, sheets[m.sideAId] ?? [], sheets[m.sideBId] ?? [], useConfidence)
+      );
+    }
+    return out;
+  }, [matches, slate, sheets, useConfidence]);
+
+  if (rollUp === "individual_matches" && openMatch) {
+    const m = matches.find((x) => x.id === openMatch);
+    const rows = matchRows.get(openMatch);
+    if (m && rows && m.sideAId && m.sideBId) {
+      return (
+        <MatchDetail
+          slate={slate}
+          rows={rows}
+          aName={nameOf(m.sideAId)}
+          bName={nameOf(m.sideBId)}
+          onBack={() => setOpenMatch(null)}
+        />
+      );
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="pickem-board">
+      <div className="flex items-baseline justify-between px-1" style={EYEBROW}>
+        <span>{rollUp === "individual_matches" ? "Matches" : "Standings"}</span>
+        <span
+          data-testid="pickem-board-count"
+          style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}
+        >
+          {resolved} of {total} in
+        </span>
+      </div>
+
+      {/* The same state on the match side: a sheet with no opponent scores
+          nowhere either, and the match list would simply not mention them. */}
+      {rollUp === "individual_matches" && <UnassignedNote names={unmatched} />}
+
+      {rollUp === "individual_matches"
+        ? matches.map((m) => {
+            const rows = matchRows.get(m.id);
+            if (!rows || !m.sideAId || !m.sideBId) return null;
+            const s = matchStanding(rows);
+            const aLead = s.margin > 0;
+            const mine = meId != null && (m.sideAId === meId || m.sideBId === meId);
+            const leader = aLead ? nameOf(m.sideAId) : nameOf(m.sideBId);
+
+            // Margin reads faster than two numbers you subtract, and what is
+            // LEFT is the question mid-event.
+            const status =
+              s.remaining === 0
+                ? s.margin === 0
+                  ? "Halved"
+                  : `${leader} wins by ${Math.abs(s.margin)}`
+                : s.clinched
+                  ? `${leader} has clinched`
+                  : s.margin === 0
+                    ? "All square"
+                    : `${leader} up ${Math.abs(s.margin)}`;
+
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setOpenMatch(m.id)}
+                data-testid={mine ? "pickem-board-match-mine" : "pickem-board-match"}
+                className="mx-1 flex flex-col gap-1.5 rounded-xl px-3 py-2.5 text-left"
+                style={{
+                  background: "var(--color-bt-card)",
+                  // Your own match findable at a glance in a list of eight.
+                  border: mine
+                    ? "1px solid var(--color-bt-accent-border)"
+                    : "1px solid var(--color-bt-border)",
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
+                    {nameOf(m.sideAId)}
+                    {mine && m.sideAId === meId && <YouTag />}
+                  </span>
+                  <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+                    {s.aTotal}
+                  </span>
+                  <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>–</span>
+                  <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+                    {s.bTotal}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-right" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
+                    {nameOf(m.sideBId)}
+                    {mine && m.sideBId === meId && <YouTag />}
+                  </span>
+                </span>
+                <span className="flex items-baseline justify-between gap-2">
+                  <span
+                    style={{
+                      fontSize: TYPE_SCALE.caption,
+                      fontWeight: 600,
+                      color: s.clinched ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    {status}
+                  </span>
+                  <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
+                    {s.remaining === 0 ? "Final" : `${s.remaining} left`}
+                  </span>
+                </span>
+              </button>
+            );
+          })
+        : (() => {
+            const bySide = teams.map((t) => ({
+              team: t,
+              sheets: Object.entries(sheets)
+                .filter(([uid]) => teamOf(uid) === t.id)
+                .map(([uid, picks]) => ({ uid, picks })),
+            }));
+            const standings = bySide.map((s) => ({
+              ...s,
+              standing: sideStanding(slate, s.sheets.map((x) => x.picks), useConfidence),
+            }));
+            const remaining = total - resolved;
+            const [x, y] = standings;
+            const clinched =
+              x && y ? sideClinched(x.standing, y.standing, remaining) : false;
+            const leadId =
+              x && y ? (x.standing.total > y.standing.total ? x.team.id : y.standing.total > x.standing.total ? y.team.id : null) : null;
+
+            const unplaced = Object.keys(sheets)
+              .filter((uid) => teamOf(uid) == null)
+              .map(nameOf)
+              .sort();
+
+            return (
+              <>
+                <div className="mx-1 flex gap-2">
+                  {standings.map((s) => (
+                    <div
+                      key={s.team.id}
+                      data-testid="pickem-board-side"
+                      className="flex-1 rounded-xl px-3 py-3 text-center"
+                      style={{
+                        background: "var(--color-bt-card)",
+                        border:
+                          s.team.id === leadId
+                            ? "1px solid var(--color-bt-accent-border)"
+                            : "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      <span className="block truncate" style={EYEBROW}>
+                        {s.team.name}
+                      </span>
+                      <span
+                        className="mt-0.5 block"
+                        style={{ fontSize: 28, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {s.standing.total}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {clinched && (
+                  <p
+                    data-testid="pickem-board-side-clinch"
+                    className="px-1"
+                    style={{ fontSize: TYPE_SCALE.caption, fontWeight: 600, color: "var(--color-bt-accent)" }}
+                  >
+                    {standings.find((s) => s.team.id === leadId)?.team.name} has clinched —{" "}
+                    {remaining} still to play.
+                  </p>
+                )}
+                <UnassignedNote names={unplaced} />
+                {standings.map((s) => (
+                  <div key={s.team.id} className="flex flex-col gap-1.5">
+                    <div className="mt-1 flex items-baseline justify-between px-1" style={EYEBROW}>
+                      <span>{s.team.name}</span>
+                      <span style={{ textTransform: "none", letterSpacing: 0 }}>
+                        {s.standing.total} pts
+                      </span>
+                    </div>
+                    {s.sheets.map(({ uid, picks }) => (
+                      <div
+                        key={uid}
+                        data-testid="pickem-board-participant"
+                        className="mx-1 flex items-center gap-3 rounded-xl px-3 py-2"
+                        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+                      >
+                        <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
+                          {nameOf(uid)}
+                          {uid === meId && <YouTag />}
+                        </span>
+                        <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                          {sideStanding(slate, [picks], useConfidence).total}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </>
+            );
+          })()}
+    </div>
+  );
+}
+
+/** "Bill", "Bill and Ty", "Bill, Ty and Frank" — an Oxford-less join, because
+ *  this reads as a sentence rather than a list. */
+function names(list: string[]): string {
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return `${list[0]} and ${list[1]}`;
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+/**
+ * People who filled in a sheet that counts for nothing.
+ *
+ * ── Not a cosmetic gap ─────────────────────────────────────────────────────
+ *
+ * Someone with a sheet and no side — or no opponent — did the work and it
+ * scores nowhere. That is a real state and two people need it visible: the
+ * PERSON, who otherwise opens a board they are simply absent from, and the
+ * RUNNER, for whom it is usually a setup error they would want to fix.
+ *
+ * Rendering nothing is the empty-versus-unknown pattern: fifteen rows where
+ * there are seventeen people reads as "there are fifteen people", and the
+ * reader has no way to tell a short field from a dropped one.
+ */
+function UnassignedNote({ names: list }: { names: string[] }) {
+  if (list.length === 0) return null;
+  return (
+    <p
+      data-testid="pickem-board-unassigned"
+      className="mx-1 rounded-xl px-3 py-2.5"
+      style={{
+        fontSize: TYPE_SCALE.caption,
+        lineHeight: 1.5,
+        color: "var(--color-bt-text-dim)",
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <b style={{ color: "var(--color-bt-text)" }}>{names(list)}</b>{" "}
+      {list.length === 1 ? "isn't" : "aren't"} in the scoring —{" "}
+      {list.length === 1 ? "their sheet doesn't" : "their sheets don't"} count toward either side.
+    </p>
+  );
+}
+
+function YouTag() {
+  return (
+    <span
+      className="ml-1.5 rounded px-1.5"
+      style={{
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        color: "var(--color-bt-accent)",
+        background: "var(--color-bt-accent-faint)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }}
+    >
+      YOU
+    </span>
+  );
+}

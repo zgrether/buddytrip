@@ -136,7 +136,7 @@ export async function computeCompetitionLeaderboard(
   // participant COUNT (the stroke/rack readiness gate) + the per-game SCORE-entry
   // presence (the On-Tap↔Ready-for-Play split) + a bracket's entrant→team map.
   // All depend on the live game ids; run them together.
-  const [resultsRes, matchRowsRes, participantRowsRes, scoreEntryRowsRes, outcomeRowsRes, entrantRowsRes] = await Promise.all([
+  const [resultsRes, matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
@@ -155,19 +155,22 @@ export async function computeCompetitionLeaderboard(
     gameIds.length
       ? supabase.from("game_participants").select("game_id, play_group_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null }[] }),
-    // Any score entered yet? The §A "started" signal (R1): an `active` game with
-    // ≥1 score entry is genuinely underway (On Tap); an `active` game with none is
-    // enabled/pairings-up but not started (Ready for Play). Manual games score on
-    // post (→complete) so they never carry entries — correctly staying out of On
-    // Tap until they finish.
+    // Has it begun producing results? The §A "started" signal (R1): an `active`
+    // game that has is genuinely underway (On Tap); an `active` game that has
+    // not is enabled/pairings-up but not started (Ready for Play).
+    //
+    // ONE read of `game_started` (migration 161), replacing the two that used
+    // to be merged here — score entries and outcome-mode hole outcomes — plus
+    // the third that pick'em would have needed. The comment on the outcome
+    // query named the shape ("it needs its OWN started source or it reads
+    // Ready-for-Play forever") and pick'em made it a pattern, so the branch per
+    // format lives in the view and a new format adds an arm there rather than a
+    // fourth query here.
+    //
+    // Manual games score on post (→complete) and never produce rows, so they
+    // correctly stay out of On Tap until they finish.
     gameIds.length
-      ? supabase.from("score_entries").select("game_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string }[] }),
-    // Refactor B3: the outcome-mode counterpart — an outcome game never has
-    // score_entries rows, so it needs its OWN "started" source or it reads
-    // Ready-for-Play forever, however many holes are decided.
-    gameIds.length
-      ? supabase.from("match_hole_outcomes").select("game_id").in("game_id", gameIds)
+      ? supabase.from("game_started").select("game_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[] }),
     // The bracket roll-up's ONE extra input: which cup team each entrant plays
     // for. `bracket_entrants.team_id` is what makes a 2v2 pairing unable to span
@@ -225,16 +228,11 @@ export async function computeCompetitionLeaderboard(
       error: entrantReadError.message,
     });
   }
-  // Games with at least one score entry OR ≥1 decided hole outcome — drives
-  // `started` on each game below. The two sources are mutually exclusive per
-  // game (a game is one entry_mode), so merging them is always safe.
-  const startedByGame = new Set<string>();
-  for (const r of (scoreEntryRowsRes.data ?? []) as { game_id: string }[]) {
-    startedByGame.add(r.game_id);
-  }
-  for (const r of (outcomeRowsRes.data ?? []) as { game_id: string }[]) {
-    startedByGame.add(r.game_id);
-  }
+  // Games that have begun producing results — the view already unions every
+  // format's source, so there is nothing to merge here any more.
+  const startedByGame = new Set<string>(
+    ((startedRowsRes.data ?? []) as { game_id: string }[]).map((r) => r.game_id)
+  );
   // Participant rows per game — "field picked" (stroke). For rack we track the
   // GROUPED count separately: rack readiness needs players assigned to a playing
   // group (the manual builder), so a bare roster with no groups isn't Ready — the
@@ -499,6 +497,22 @@ export async function computeCompetitionLeaderboard(
   // (Path A), read-only, and rides this payload's existing 30s poll (no new
   // fetch on the client, converges across devices for free). Stroke/non-golf and
   // not-yet-started games have no projection → their rows keep the plain layout.
+  // ── The pill is gated on STARTED, and that is the pick'em decision ──────
+  //
+  // Pick'em was asked to join the format allowlist. It should not, and the
+  // allowlist is not even the operative gate: `projectGame` returns null for
+  // anything that is not match play or rack, so joining the list alone would
+  // change nothing without a pick'em projection function written.
+  //
+  // What such a function WOULD compute for a locked game with zero results is
+  // the argument against it: every sheet scores 0, so the pill would read 0 to
+  // each side. Next to golf games mid-round that says "pick'em is worth
+  // nothing" rather than "pick'em has not started" — and the two are
+  // indistinguishable on screen, which is the kind of dishonesty that matters.
+  //
+  // `started` already draws that line, so it draws this one too: no pill until
+  // the first result, then a real one. Migration 161's predicate doing a second
+  // job it was already suited for.
   const liveProjectionInputs: LiveProjectionInput[] = allGames
     .filter((g) => {
       const t = g.game_type_id as string | null;

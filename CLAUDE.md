@@ -207,6 +207,28 @@ seam, never on a calendar.
   whose name claims a path it does not take is worse than no test, because it stops
   anyone looking again.
 
+- **A MUTATION THAT DOESN'T FAIL THE TEST YOU EXPECT IS A CLAIM ABOUT THE MUTATION
+  FIRST.** The rule above says break the thing and check the test screams. This is its
+  inverse, and it is the one that misleads: when the test stays green, the obvious
+  reading is "weak test" — and the other reading, that you broke the wrong thing, looks
+  identical from where you are standing.
+
+  Worked instance (pick'em Phase 6). To check "a 2× game doubles the swing" was real, the
+  multiplier was zeroed in `upsideFor` — and the swing test passed. It read as a
+  decorative assertion. It was not: the multiplier has TWO paths, and the swing comes
+  through `pickPoints` while `upsideFor` only feeds the unplayed `+a / +b`. Mutating
+  `pickPoints` fails it immediately, along with two others.
+
+  Same family as "absence of matches is absence of search", one level up: the instrument
+  was pointed somewhere the behaviour does not live, and reported confidently about a
+  place it never touched.
+
+  **How to apply:** before concluding a test is weak, prove the mutation reached the code
+  under test — the cheapest version is checking that SOMETHING failed. A mutation that
+  breaks nothing anywhere is dead code or a missed anchor, never a vindication. And when
+  one value has two paths to the screen, mutate each: the test that covers the other one
+  is not redundant, which is exactly what the green run appeared to be saying.
+
 ## Seed Data Rules
 
 - Mock/test data lives only in `supabase/seed.sql` — never in migration files
