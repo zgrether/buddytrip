@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { PickemMatchCard } from "./PickemMatchCard";
 import { placementPointsByTeam } from "@/lib/placementGroups";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
 import {
@@ -330,71 +331,22 @@ export function PickemBoard({
         ? matches.map((m) => {
             const rows = matchRows.get(m.id);
             if (!rows || !m.sideAId || !m.sideBId) return null;
-            const s = matchStanding(rows);
-            const aLead = s.margin > 0;
-            const mine = meId != null && (m.sideAId === meId || m.sideBId === meId);
-            const leader = aLead ? nameOf(m.sideAId) : nameOf(m.sideBId);
-
-            // Margin reads faster than two numbers you subtract, and what is
-            // LEFT is the question mid-event.
-            const status =
-              s.remaining === 0
-                ? s.margin === 0
-                  ? "Halved"
-                  : `${leader} wins by ${Math.abs(s.margin)}`
-                : s.clinched
-                  ? `${leader} has clinched`
-                  : s.margin === 0
-                    ? "All square"
-                    : `${leader} up ${Math.abs(s.margin)}`;
-
             return (
-              <button
+              <PickemMatchCard
                 key={m.id}
-                type="button"
-                onClick={() => setOpenMatch(m.id)}
-                data-testid={mine ? "pickem-board-match-mine" : "pickem-board-match"}
-                className="mx-1 flex flex-col gap-1.5 rounded-xl px-3 py-2.5 text-left"
-                style={{
-                  background: "var(--color-bt-card)",
-                  // Your own match findable at a glance in a list of eight.
-                  border: mine
-                    ? "1px solid var(--color-bt-accent-border)"
-                    : "1px solid var(--color-bt-border)",
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-                    {nameOf(m.sideAId)}
-                    {mine && m.sideAId === meId && <YouTag />}
-                  </span>
-                  <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-                    {s.aTotal}
-                  </span>
-                  <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>–</span>
-                  <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-                    {s.bTotal}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-right" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-                    {nameOf(m.sideBId)}
-                    {mine && m.sideBId === meId && <YouTag />}
-                  </span>
-                </span>
-                <span className="flex items-baseline justify-between gap-2">
-                  <span
-                    style={{
-                      fontSize: TYPE_SCALE.caption,
-                      fontWeight: 600,
-                      color: s.clinched ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    {status}
-                  </span>
-                  <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
-                    {s.remaining === 0 ? "Final" : `${s.remaining} left`}
-                  </span>
-                </span>
-              </button>
+                aName={nameOf(m.sideAId)}
+                bName={nameOf(m.sideBId)}
+                standing={matchStanding(rows)}
+                // Separates "level" from "nothing played" — two states that both
+                // show 0-0 and mean opposite things about what is left.
+                resolvedCount={resolved}
+                mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
+                youSide={
+                  meId == null ? null : m.sideAId === meId ? "a" : m.sideBId === meId ? "b" : null
+                }
+                selected={openMatch === m.id}
+                onOpen={() => setOpenMatch(m.id)}
+              />
             );
           })
         : (() => {
