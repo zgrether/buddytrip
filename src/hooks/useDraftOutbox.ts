@@ -40,8 +40,17 @@ export function useDraftOutbox<T>(opts: {
   serverFingerprint: string;
   /** Setup-mode only — never mirror/commit against a live/scoring game. */
   enabled: boolean;
+  /**
+   * WHOSE draft this is, where one game can hold more than one — pick'em proxy
+   * entry, today. Omit it and the key is exactly what it was.
+   *
+   * Not optional in spirit for that view: the `base` fingerprint cannot separate
+   * two people who have both never submitted, because their empty sheets
+   * stringify identically. See the note on `storeKey`.
+   */
+  scope?: string;
 }) {
-  const { view, gameId, draft, touched, serverFingerprint, enabled } = opts;
+  const { view, gameId, draft, touched, serverFingerprint, enabled, scope } = opts;
 
   // Latest-refs so the teardown listeners (stable, empty-ish deps) read current
   // values synchronously without re-subscribing on every edit.
@@ -53,6 +62,8 @@ export function useDraftOutbox<T>(opts: {
   enabledRef.current = enabled;
   const gameIdRef = useRef(gameId);
   gameIdRef.current = gameId;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const fingerprintRef = useRef(serverFingerprint);
   fingerprintRef.current = serverFingerprint;
 
@@ -67,17 +78,19 @@ export function useDraftOutbox<T>(opts: {
   // sends as `baseHash`.
   useEffect(() => {
     if (!enabled || !gameId || !touched) return;
-    draftOutboxPut(view, gameId, draft, serverFingerprint, Date.now());
+    draftOutboxPut(view, gameId, draft, serverFingerprint, Date.now(), scope);
     // draft is captured via draftStr in deps; ref not needed here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftStr, touched, serverFingerprint, enabled, gameId, view]);
+  }, [draftStr, touched, serverFingerprint, enabled, gameId, view, scope]);
 
   // Synchronous commit on hard teardown — the ONE gap the in-app flush net can't
   // reach (React cleanup doesn't run on refresh/tab-close/OS-kill).
   useEffect(() => {
     const commit = () => {
       if (!enabledRef.current || !gameIdRef.current || !touchedRef.current) return;
-      draftOutboxPut(view, gameIdRef.current, draftRef.current, fingerprintRef.current, Date.now());
+      draftOutboxPut(
+        view, gameIdRef.current, draftRef.current, fingerprintRef.current, Date.now(), scopeRef.current
+      );
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") commit();
@@ -93,13 +106,13 @@ export function useDraftOutbox<T>(opts: {
   /** Restore the stored draft iff the server is unchanged since it diverged. */
   const recover = useCallback((): T | null => {
     if (!gameId) return null;
-    return draftOutboxRecover(view, gameId, serverFingerprint) as T | null;
-  }, [view, gameId, serverFingerprint]);
+    return draftOutboxRecover(view, gameId, serverFingerprint, scope) as T | null;
+  }, [view, gameId, serverFingerprint, scope]);
 
   /** Drop the entry after a durable persist / discard. */
   const clear = useCallback(() => {
-    if (gameId) draftOutboxClear(view, gameId);
-  }, [view, gameId]);
+    if (gameId) draftOutboxClear(view, gameId, scope);
+  }, [view, gameId, scope]);
 
   return { recover, clear };
 }

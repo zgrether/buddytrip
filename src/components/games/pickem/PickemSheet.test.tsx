@@ -47,7 +47,8 @@ const render = (over: Partial<Props> = {}) =>
       gameId="game-1"
       slate={SLATE}
       settings={{ useConfidence: true, rollUp: "individual_matches" }}
-      myPicks={[]}
+      picks={[]}
+      subject={{ userId: "me", name: "Me", isSelf: true, isGuest: false }}
       editable
       saving={false}
       saveError={null}
@@ -134,7 +135,7 @@ describe("the sheet, confidence ON", () => {
   });
 
   it("shows no submission count anywhere — that is the runner's number (§7.3)", () => {
-    const html = render({ myPicks: defaultSheet(SLATE) });
+    const html = render({ picks: defaultSheet(SLATE) });
     expect(html).not.toMatch(/\d+\s*(of|\/)\s*\d+\s*submitted/i);
     expect(html).not.toMatch(/submitted/i);
   });
@@ -208,7 +209,7 @@ describe("the explanation follows the settings", () => {
   });
 
   it("...and collapsed once a sheet is in", () => {
-    const html = render({ myPicks: defaultSheet(SLATE) });
+    const html = render({ picks: defaultSheet(SLATE) });
     expect(html).not.toContain('data-testid="pickem-how-body"');
     // The toggle is still there — collapsed, not removed.
     expect(html).toContain('data-testid="pickem-how-toggle"');
@@ -217,7 +218,7 @@ describe("the explanation follows the settings", () => {
 
 describe("submitted, reset and locked", () => {
   it("SUBMITTING DOES NOT LOCK — the pick controls stay live", () => {
-    const html = render({ myPicks: defaultSheet(SLATE) });
+    const html = render({ picks: defaultSheet(SLATE) });
     // The attribute on the button's OWN tag, not the `disabled:` Tailwind class.
     expect(tagWith(html, 'data-testid="pickem-side-away"')).not.toContain("disabled");
     expect(html).toContain("Saved · change it any time");
@@ -230,7 +231,7 @@ describe("submitted, reset and locked", () => {
       pick: "away",
       confidence: null,
     }));
-    const html = render({ myPicks: cleared });
+    const html = render({ picks: cleared });
     expect(html).toContain('data-testid="pickem-ranking-reset"');
     expect(html).toContain("your ranking was cleared");
     // ...and the WINNERS survived, which is the half that must not be lost.
@@ -240,7 +241,7 @@ describe("submitted, reset and locked", () => {
   });
 
   it("a locked sheet is read-only, and says who can change it (nobody)", () => {
-    const html = render({ editable: false, myPicks: defaultSheet(SLATE) });
+    const html = render({ editable: false, picks: defaultSheet(SLATE) });
     expect(html).toContain('data-testid="pickem-sheet-locked"');
     // Substring stops before the apostrophe: the copy now reads "whoever's
     // running it" with a curly quote, which renders as an HTML entity.
@@ -265,7 +266,7 @@ describe("submitted, reset and locked", () => {
     const closedAt = new Date(2026, 10, 8, 11, 0).getTime();
     const html = render({
       editable: false,
-      myPicks: defaultSheet(SLATE),
+      picks: defaultSheet(SLATE),
       closure: { at: closedAt, reason: "deadline" as const },
     });
     expect(html).toContain("Picks closed at");
@@ -280,7 +281,7 @@ describe("submitted, reset and locked", () => {
     // chance to change something.
     const html = render({
       editable: false,
-      myPicks: defaultSheet(SLATE),
+      picks: defaultSheet(SLATE),
       closure: { at: Date.now(), reason: "locked" as const },
     });
     expect(html).toContain("ended early");
@@ -293,7 +294,7 @@ describe("submitted, reset and locked", () => {
   });
 
   it("a locked sheet shows no countdown", () => {
-    const html = render({ editable: false, myPicks: defaultSheet(SLATE) });
+    const html = render({ editable: false, picks: defaultSheet(SLATE) });
     expect(html).not.toContain('data-testid="pickem-countdown"');
   });
 });

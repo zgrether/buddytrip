@@ -732,3 +732,62 @@ all three game hulls AND the delegation grant, so the two need splitting before
 either moves. An Organizer is permitted by the server but not yet shown the
 button. Tracked separately; nothing is broken by the gap, but the change is not
 user-visible until it closes.
+
+
+---
+
+## Pick'em sheets — proxy entry (migration 163)
+
+**Read follows write.** Whoever may enter a sheet for someone may read it. The
+two are the same predicate — `_pickem_can_proxy_for` — used by both
+`save_pickem_picks_for` and the proxy arm of `pickem_picks_select`, so they
+cannot drift apart.
+
+| Actor | Own sheet | Own team | Other team | Anyone |
+|---|---|---|---|---|
+| Participant | ✅ | — | — | — |
+| **Team captain** | ✅ | ✅ | ❌ | — |
+| Owner / Organizer / game delegate | ✅ | ✅ | ✅ | ✅ |
+
+**Why this exists at all, and why it is not a "visibility" feature.**
+`pickem_picks_write` requires `user_id = auth.uid()`, and a placeholder has no
+`auth.uid()`. **A guest's sheet can only ever be written by someone else** — so
+without proxy entry every placeholder scores home-team defaults. 15 guests
+already hold picks; 97 sit on teams.
+
+**The one hard boundary: a captain never reads the other team's sheets before
+the reveal.** Same-team is not a threat — you are not competing with teammates,
+and under confidence scoring diversifying does not help a sum. Cross-team is,
+and it is the only refusal in this feature carrying real weight.
+
+**Staff read any sheet, and that is a deliberate reversal.** Phase 0 refused it
+on the grounds that the Owner holds the lock button. The counter: he also sets
+the slate, the spreads, the multipliers and the results, so confidentiality from
+him was theater — and its price was that nobody could enter for the placeholders.
+The lever if it ever matters is that an Owner can remove a delegate or organizer.
+
+**A plain participant's refusal is untouched**, and is now the load-bearing
+guard: `pickemPicksPolicy.rls.test.ts` still turns exactly **6 red** when
+`_pickem_can_proxy_for` is replaced with `SELECT true`.
+
+**The captain tier is dormant.** Zero captains are set anywhere in the database;
+`is_captain` is settable via an owner-only ★ in `TeamsPanel`. Captaincy is not
+required to run a trip — this elevates something that already exists rather than
+creating a dependency.
+
+**Three gates, and this feature adds a fourth kind.** Beyond the tRPC guard, the
+RLS policy and the hardcoded role check inside a plpgsql body, `pickem_picks`
+now has a **definer helper referenced BY a policy**. Grep for
+`_pickem_can_proxy_for` and you find both the write gate and the read arm; change
+it and you move both. That is the intent — but it means the policy text alone no
+longer tells you who can read a sheet.
+
+**`entered_by` is not a permission, it is a receipt.** Every save stamps
+`auth.uid()`; proxy is `entered_by <> user_id`. It is never a parameter, so it
+cannot be forged even though the write core is executable by `authenticated`.
+
+**Measured cost.** The proxy arm makes the board's 272-row read **7.8 ms → 47.2
+ms** as `authenticated` (EXPLAIN ANALYZE, local stack). Acceptable at BBMI's
+scale — 16 people × 16 games is that read. If it ever matters, the fix is to
+hoist the arm into a set-returning `_pickem_proxy_targets(game_id)` evaluated
+once per statement rather than once per row.
