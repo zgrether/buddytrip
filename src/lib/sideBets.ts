@@ -287,6 +287,108 @@ export function makePressBet(parent: SideBet, triggerHole: number): SideBet {
 }
 
 /**
+ * A press someone AGREED to, rather than one a rule fired.
+ *
+ * The two are not the same object and must not share a code path. An automatic
+ * press is DERIVED — `computeSideBets` re-mints it on every read from the
+ * parent's `autoPressAt`, which is why it has no delete button and why its id
+ * comes from `pressBetId` (recompute has to land on the same id). A manual
+ * press has no rule to re-derive it from, so it is RECORDED like any other bet:
+ * its own `mkId()` id, in `bets.bets`, deletable.
+ *
+ * That difference is also why the id must NOT be `pressBetId`: turn the
+ * parent's automatic press on afterwards and the derived press would claim
+ * exactly that id, and two bets would answer to one key.
+ *
+ * `fromHole` is the first hole it covers, not the trigger hole — a manual press
+ * is agreed on the tee, so it starts on the hole you are about to play rather
+ * than the one after. (`makePressBet` takes a trigger and adds one, because the
+ * rule fires on a hole that is already decided.)
+ */
+export function buildManualPress(args: {
+  mkId: () => string;
+  parent: SideBet;
+  fromHole: number;
+}): SideBet {
+  const level = args.parent.origin.kind === "press" ? args.parent.origin.level + 1 : 1;
+  return {
+    id: args.mkId(),
+    // Always head-to-head: `rulesForKind` refuses skins a press at all, and a
+    // press of a press is still two sides.
+    kind: "head_to_head",
+    sides: args.parent.sides,
+    // Presses stay the same size as what they press. The escalation is one
+    // more stake per press, not a doubling.
+    amount: args.parent.amount,
+    startHole: Math.max(1, Math.round(args.fromHole)),
+    endHole: null,
+    // A manual press does not itself auto-press — you agreed to ONE bet, and
+    // the next one is another conversation.
+    ...rulesForKind("head_to_head"),
+    origin: { kind: "press", parentId: args.parent.id, level },
+  };
+}
+
+/**
+ * May this bet be pressed BY HAND right now?
+ *
+ * Four conditions, each for its own reason:
+ *  - `live` — you cannot press a bet that has not started or is already over.
+ *  - head-to-head — `rulesForKind` refuses skins a press at all, so offering
+ *    one would be a button that cannot do anything.
+ *  - no `autoPressAt` — the bet already presses itself on a rule, and a manual
+ *    press beside it would stack a second one nobody agreed to. This is the
+ *    "only when automatic is off" condition, in one place rather than as a
+ *    condition remembered at the button.
+ *  - a hole left to cover — a press starting past the last hole is not a press.
+ *
+ * A DERIVED press is pressable when its own `pressOnPress` is off, which is
+ * correct: pressing a press by agreement is a real thing, and the manual child
+ * simply records it.
+ */
+export function canManuallyPress(
+  tally: BetTally,
+  opts: { fromHole: number; holeCount: number }
+): boolean {
+  if (!tally.live) return false;
+  if (tally.bet.kind !== "head_to_head") return false;
+  if (tally.bet.autoPressAt != null) return false;
+  return opts.fromHole <= opts.holeCount;
+}
+
+/**
+ * What one unit of this bet costs, as the strip says it: `$5/hole`, or
+ * `$5/skin` where a skin is the unit.
+ *
+ * The strip used to print the bet's KIND ("Head to Head") beside a bare `$5`,
+ * which named the wrong thing twice: everything in that list is a bet, and the
+ * figure did not say what it bought. The rate is the number you act on.
+ */
+export function betRate(bet: SideBet): string {
+  return `${formatMoney(bet.amount)}/${bet.kind === "skins" ? "skin" : "hole"}`;
+}
+
+/**
+ * The part of a bet's name the RATE does not already carry — the Nassau leg,
+ * the press level — or null when the rate says everything.
+ *
+ * Three `$5/hole` rows for a Nassau would be indistinguishable, so the leg has
+ * to survive; "Head to Head" adds nothing next to `$5/hole` and does not.
+ */
+export function betQualifier(bet: SideBet): string | null {
+  switch (bet.origin.kind) {
+    case "nassau":
+      return bet.origin.leg === "front" ? "Front 9" : bet.origin.leg === "back" ? "Back 9" : "Overall";
+    case "press":
+      return `Press ${bet.origin.level}`;
+    case "double":
+      return "Last hole";
+    default:
+      return null;
+  }
+}
+
+/**
  * The rules a bet of this KIND is allowed to carry (§12/§13).
  *
  * One place, so "skins has no presses" and "head-to-head has no carryover" are
@@ -368,7 +470,7 @@ export interface PlayerBetLine {
    *  people, "$35/hole across 4 bets" is nobody's risk. */
   perHole: number;
   /** Their live bets, in the order `result.bets` already sorted them. */
-  bets: { betId: string; label: string; amount: number }[];
+  bets: { betId: string; rate: string; qualifier: string | null; amount: number }[];
 }
 
 /**
@@ -393,7 +495,15 @@ export function playerBetLines(result: SideBetsResult, playerIds: string[]): Pla
       playerId,
       total: playerTotal(result, playerId),
       perHole: mine.reduce((sum, t) => sum + t.bet.amount, 0),
-      bets: mine.map((t) => ({ betId: t.bet.id, label: betLabel(t.bet), amount: t.bet.amount })),
+      // `rate` is the primary text on the strip and `qualifier` the aside —
+      // see `betRate`. `amount` stays for anything that needs the number
+      // rather than the phrase.
+      bets: mine.map((t) => ({
+        betId: t.bet.id,
+        rate: betRate(t.bet),
+        qualifier: betQualifier(t.bet),
+        amount: t.bet.amount,
+      })),
     };
   });
 }

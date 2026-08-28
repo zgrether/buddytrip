@@ -5,6 +5,7 @@ import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { Stepper } from "@/components/games/Stepper";
 import {
   betLabel,
+  canManuallyPress,
   betTotalForPlayer,
   formatMoney,
   formatSignedMoney,
@@ -56,6 +57,8 @@ export function BetList({
   perspectivePlayerId,
   sideName,
   onRemove,
+  onPress,
+  pressFromHole,
 }: {
   result: SideBetsResult;
   /** Ids of the bets that were WRITTEN DOWN. A derived press has no row to
@@ -66,6 +69,13 @@ export function BetList({
   perspectivePlayerId: string | null;
   sideName: (side: BetSide) => string;
   onRemove: (betId: string) => void;
+  /**
+   * Press this bet by hand. Omitted where pressing makes no sense — the setup
+   * sheet, where no hole has been played and there is nothing to be down by.
+   */
+  onPress?: (bet: SideBet) => void;
+  /** The first hole a press would cover. Required when `onPress` is given. */
+  pressFromHole?: number;
 }) {
   const recorded = new Set(recordedBetIds);
   if (result.bets.length === 0) return null;
@@ -125,6 +135,24 @@ export function BetList({
             >
               {formatSignedMoney(mine)}
             </span>
+            {onPress && canManuallyPress(t, { fromHole: pressFromHole ?? holeCount + 1, holeCount }) && (
+              <button
+                type="button"
+                onClick={() => onPress(t.bet)}
+                aria-label={`Press ${betLabel(t.bet)}`}
+                data-testid="side-bet-press"
+                className="shrink-0 rounded-lg px-2.5 py-1"
+                style={{
+                  background: "var(--color-bt-warning-faint)",
+                  border: "1px solid var(--color-bt-warning-border)",
+                  color: "var(--color-bt-warning)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                Press
+              </button>
+            )}
             {recorded.has(t.bet.id) && (
               <button
                 type="button"

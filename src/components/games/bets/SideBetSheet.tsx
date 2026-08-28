@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { FieldLabel } from "@/components/games/FieldChrome";
-import { formatMoney, type BetSide, type SideBet, type SideBetsResult } from "@/lib/sideBets";
+import { buildManualPress, formatMoney, type BetSide, type SideBet, type SideBetsResult } from "@/lib/sideBets";
 import { BetForm, BetList, freshBetDraft } from "@/components/games/bets/betControls";
 import type { BetDraft } from "@/lib/betDraft";
 import type { Participant } from "@/components/games/types";
@@ -62,6 +62,23 @@ export function SideBetSheet({
 
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player";
 
+  /**
+   * A press starts on the hole you are about to play — the first one not yet
+   * decided — because that is when it gets agreed, on the tee. An automatic
+   * press differs (`makePressBet` adds one to its trigger) because its rule
+   * fires on a hole that is already in the books.
+   */
+  const pressFromHole = result.playedThrough + 1;
+  const press = (parent: SideBet) => {
+    onAdd([
+      buildManualPress({
+        parent,
+        fromHole: pressFromHole,
+        mkId: () => `press-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+      }),
+    ]);
+  };
+
   const commit = (bets: SideBet[]) => {
     onAdd(bets);
     setCreating(false);
@@ -92,6 +109,8 @@ export function SideBetSheet({
             perspectivePlayerId={perspectivePlayerId}
             sideName={sideName}
             onRemove={onRemove}
+            onPress={press}
+            pressFromHole={pressFromHole}
           />
         </div>
       )}

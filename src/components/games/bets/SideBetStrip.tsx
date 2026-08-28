@@ -93,6 +93,12 @@ export function SideBetStrip({
               {/* Their OWN live bets — the listing that replaced the aggregate.
                   Nothing at all when they are in none: an empty column says
                   "not in this" more clearly than a $0 would. */}
+              {/* The RATE is the line — `$5/hole`, `$5/skin`. It used to read
+                  "Head to Head" beside a bare `$5`, which named the wrong thing
+                  twice: every row here is a bet, and the figure did not say
+                  what it bought. The qualifier survives only where the rate
+                  does not already say it (a Nassau leg, a press level), since
+                  three identical `$5/hole` rows would be unreadable. */}
               {l.bets.map((b) => (
                 <span
                   key={b.betId}
@@ -100,10 +106,8 @@ export function SideBetStrip({
                   data-testid="side-bet-player-bet"
                   style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
                 >
-                  <span className="min-w-0 flex-1 truncate">{b.label}</span>
-                  <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-                    {formatMoney(b.amount)}
-                  </span>
+                  <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{b.rate}</span>
+                  {b.qualifier && <span className="min-w-0 flex-1 truncate">{b.qualifier}</span>}
                 </span>
               ))}
             </span>
