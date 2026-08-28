@@ -25,11 +25,10 @@ import {
 import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
 import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
 import type { HoleOutcomeResult } from "@/lib/matchPlay";
-import { buildDoubleBet, type SideBet } from "@/lib/sideBets";
+import { buildDoubleBet, playerBetLines, type SideBet } from "@/lib/sideBets";
 import {
   quickSideBets,
   quickHasBets,
-  quickBetStrip,
   quickBetPerspective,
   quickBetSidesLocked,
   quickBetDefaultSides,
@@ -438,7 +437,6 @@ function QuickGamePageInner() {
   // different, including about presses that should or should not have fired.
   const betResult = state ? quickSideBets(state) : null;
   const betsOn = quickHasBets(state);
-  const betStrip = state && betResult ? quickBetStrip(state, betResult) : null;
   const betHoles = state ? quickBetHoles(state) : [];
   // The hole line follows the hole being VIEWED — a different question from the
   // banner's total, which is always live (§6). Both come off the same result.
@@ -447,24 +445,16 @@ function QuickGamePageInner() {
   const doubleOffers = state && betResult ? quickDoubleOffers(state, betResult) : [];
   const doubleOffer = doubleOffers[0] ?? null;
 
+  // One column per player. `state.players` is the roster even for a match, whose
+  // bets are keyed to SIDES — `playerBetLines` resolves through each side's
+  // `playerIds`, so a 2v2 gives four columns rather than two.
+  const betLines = betResult ? playerBetLines(betResult, state?.players.map((p) => p.id) ?? []) : [];
+
   const betStripNode =
-    betsOn && betStrip && betResult ? (
+    betsOn && betResult ? (
       <SideBetStrip
-        perspectiveName={betStrip.perspectiveName}
-        total={betStrip.total}
-        exposure={betStrip.exposure}
-        hole={
-          viewedHoleLine && viewedHoleLine.perBet.length > 0
-            ? {
-                label: String(viewedHoleLine.hole),
-                pot: viewedHoleLine.pot,
-                decided: viewedHoleLine.decided,
-                delta: betStrip.perspectivePlayerId
-                  ? (viewedHoleLine.delta[betStrip.perspectivePlayerId] ?? 0)
-                  : 0,
-              }
-            : null
-        }
+        lines={betLines}
+        nameOf={betPlayerName}
         presses={viewedHoleLine?.presses.map((pr) => ({ level: pr.level, exposureAfter: pr.exposureAfter })) ?? []}
         onOpen={() => setBetsOpen(true)}
       />

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { AddEditSheet } from "@/components/AddEditSheet";
+import { DangerConfirmModal } from "@/components/DangerZone";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { SideBetsPanel } from "@/components/games/bets/SideBetsPanel";
 import { MatchSetupFields, RosterFields } from "@/components/games/quick/setupFields";
@@ -9,7 +11,13 @@ import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnaps
 import { trpc } from "@/lib/trpc-client";
 import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
 import { PLAYER_COLORS, unitsFromSchema } from "@/lib/strokePlayConfig";
-import { computeSideBets, EMPTY_SIDE_BETS, type SideBetsState } from "@/lib/sideBets";
+import {
+  betLabel,
+  betsInvolvingPlayer,
+  computeSideBets,
+  EMPTY_SIDE_BETS,
+  type SideBetsState,
+} from "@/lib/sideBets";
 import type { Team } from "@/lib/rackNStack";
 import {
   buildQuickGameFromDrafts,
@@ -40,11 +48,9 @@ import {
  * fields start as and what the primary button does. A caller cannot get it
  * wrong, because a caller does not answer it.
  *
- * Owns the whole draft. The page keeps its own drafts for the in-round roster
- * editor, which is a different job on a round that already exists; the shared
- * halves are the FIELDS (`setupFields`) and the BUILD
- * (`buildQuickGameFromDrafts`), so the two paths cannot construct a round
- * differently.
+ * Owns the whole draft, and is now the ONLY roster editor — the in-round gear
+ * opens this same component in its `settings` purpose rather than a screen of
+ * its own, so a round cannot be described two ways.
  */
 export function QuickGameSetupSheet({
   format,
@@ -112,6 +118,11 @@ export function QuickGameSetupSheet({
     existing && existing.format === "rack" ? existing.teams : {}
   );
 
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    id: string;
+    betIds: string[];
+    labels: string[];
+  } | null>(null);
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [courseBusy, setCourseBusy] = useState(false);
   const [courseError, setCourseError] = useState<string | null>(null);
@@ -138,6 +149,37 @@ export function QuickGameSetupSheet({
     bets: bets.bets,
     scoring: { mode: "net", net: {} },
   });
+
+  /**
+   * Removing a player takes their bets with them — so if they are in any, ask
+   * first.
+   *
+   * A bet whose side no longer exists is not a smaller bet, it is an
+   * unreadable one, and money is the wrong thing to change silently. When they
+   * are in none there is nothing to warn about and the row just goes: a confirm
+   * that always fires is one nobody reads.
+   *
+   * Recorded bets only. A derived press has no independent existence — it stops
+   * being derived the moment its parent is gone.
+   */
+  function requestRemovePlayer(id: string) {
+    if (players.length <= (format === "match" ? 2 : 1)) return;
+    const affected = betsInvolvingPlayer(bets.bets, id);
+    if (affected.length > 0) {
+      setPendingRemoval({ id, betIds: affected.map((b) => b.id), labels: affected.map(betLabel) });
+      return;
+    }
+    removePlayer(id, []);
+  }
+
+  function removePlayer(id: string, betIds: string[]) {
+    setPlayers((rows) => rows.filter((r) => r.id !== id));
+    if (betIds.length > 0) {
+      const doomed = new Set(betIds);
+      setBets((b) => ({ ...b, bets: b.bets.filter((x) => !doomed.has(x.id)) }));
+    }
+    setPendingRemoval(null);
+  }
 
   function applyCourse(c: { id: string; name: string; teeName?: string }) {
     setCourseBusy(true);
@@ -231,9 +273,7 @@ export function QuickGameSetupSheet({
               rows.length < 4 ? [...rows, { id: crypto.randomUUID(), name: "", strokes: 0, side }] : rows
             )
           }
-          onRemove={(id) =>
-            setPlayers((rows) => (rows.length > (format === "match" ? 2 : 1) ? rows.filter((r) => r.id !== id) : rows))
-          }
+          onRemove={requestRemovePlayer}
           // A handicap is an allocation of strokes to HOLES, so it needs a
           // stroke index to allocate against. With no course there is nothing
           // for `strokeHoles` to read and the number changes no score — an
@@ -304,6 +344,25 @@ export function QuickGameSetupSheet({
       </AddEditSheet>
 
       {coursePickerOpen && <CoursePicker onClose={() => setCoursePickerOpen(false)} onApply={applyCourse} />}
+
+      {pendingRemoval && (
+        <DangerConfirmModal
+          tone="warning"
+          icon={<TriangleAlert size={18} />}
+          title="Remove player and their bets?"
+          body={`${
+            players.find((r) => r.id === pendingRemoval.id)?.name.trim() || "This player"
+          } is in ${pendingRemoval.labels.length === 1 ? "a bet" : `${pendingRemoval.labels.length} bets`}: ${pendingRemoval.labels.join(
+            ", "
+          )}. Removing them removes ${pendingRemoval.labels.length === 1 ? "it" : "those"} too — a bet with a missing side cannot be settled.`}
+          confirmLabel="Remove"
+          pendingLabel="Removing…"
+          isPending={false}
+          testId="quick-game-remove-player-confirm"
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => removePlayer(pendingRemoval.id, pendingRemoval.betIds)}
+        />
+      )}
 
     </>
   );

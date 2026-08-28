@@ -2,8 +2,6 @@ import {
   computeSideBets,
   lastHoleDoubleOffers,
   nassauAvailable,
-  nextHoleValue,
-  playerTotal,
   type BetScoring,
   type BetSide,
   type DoubleOffer,
@@ -166,29 +164,3 @@ export function quickDoubleOffers(state: QuickGameState, result: SideBetsResult)
   return lastHoleDoubleOffers(result, quickBetHoles(state), state.bets.declinedDoubles);
 }
 
-/** Everything the live strip shows, in one derived object.
- *
- *  `total` is the round's total for the perspective player and is NOT a
- *  function of the hole being viewed — there is no hole argument here, which is
- *  the mechanism behind "the banner reads the same on every hole" (§6/§9)
- *  rather than a rule someone has to remember at the call site. */
-export function quickBetStrip(state: QuickGameState, result: SideBetsResult): {
-  perspectivePlayerId: string | null;
-  perspectiveName: string;
-  total: number;
-  exposure: SideBetsResult["exposure"];
-  /** What the next hole is worth, carryovers included. */
-  nextHole: number;
-  nextHoleNumber: number;
-} {
-  const pid = quickBetPerspective(state);
-  const name = state.players.find((p) => p.id === pid)?.name.split(/\s+/)[0] ?? "You";
-  return {
-    perspectivePlayerId: pid,
-    perspectiveName: name,
-    total: playerTotal(result, pid),
-    exposure: result.exposure,
-    nextHole: nextHoleValue(result),
-    nextHoleNumber: result.playedThrough + 1,
-  };
-}

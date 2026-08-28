@@ -6,8 +6,10 @@ import {
   lastHoleDoubleOffers,
   nassauAvailable,
   pressRules,
-  nextHoleValue,
   playerTotal,
+  buildManualBet,
+  playerBetLines,
+  betsInvolvingPlayer,
   formatMoney,
   formatSignedMoney,
   betLabel,
@@ -384,7 +386,6 @@ describe("the per-hole line", () => {
     expect(mid.holeLines[2].atStake).toBe(30);
     // And what the 3rd is WORTH: the pot, which is what the tracker shows.
     expect(mid.holeLines[2].pot).toBe(60);
-    expect(nextHoleValue(mid)).toBe(60);
   });
 });
 
@@ -958,5 +959,103 @@ describe("head-to-head is unchanged by all of this (regression guard)", () => {
     });
     expect(fixed.presses).toEqual([]);
     expect(fixed.exposure.perHole).toBe(10);
+  });
+});
+
+/**
+ * The strip's columns. These exist because the old strip aggregated: one
+ * player's net plus a round-wide "$/hole across N bets". With separate bets
+ * between separate people that second figure is nobody's risk, so the
+ * assertions below are about ISOLATION — what a player is NOT in must not
+ * reach their column.
+ */
+describe("playerBetLines — one column per player", () => {
+  const side = (id: string) => ({ id: `s-${id}`, playerIds: [id] });
+  const bet = (id: string, a: string, b: string, amount: number): SideBet =>
+    buildManualBet({
+      kind: "head_to_head",
+      sides: [side(a), side(b)],
+      amount,
+      startHole: 1,
+      autoPressAt: null,
+      pressOnPress: false,
+      mkId: () => id,
+    });
+
+  /** p1 v p2 for $10; p3 v p4 for $25. Nobody is in both. */
+  const twoSeparateBets = () =>
+    computeSideBets({
+      holes: Array.from({ length: 18 }, (_, i) => i + 1),
+      bets: [bet("ten", "p1", "p2", 10), bet("twentyfive", "p3", "p4", 25)],
+      scoring: { mode: "net", net: {} },
+    });
+
+  it("gives each player only the bets they are actually in", () => {
+    const lines = playerBetLines(twoSeparateBets(), ["p1", "p2", "p3", "p4"]);
+    expect(lines.map((l) => l.bets.map((b) => b.betId))).toEqual([
+      ["ten"],
+      ["ten"],
+      ["twentyfive"],
+      ["twentyfive"],
+    ]);
+  });
+
+  it("puts each player's OWN stake in perHole, never the round's", () => {
+    const lines = playerBetLines(twoSeparateBets(), ["p1", "p3"]);
+    // The round is $35/hole. Neither player is exposed to $35 — that figure
+    // was the whole problem with the line this replaced.
+    expect(twoSeparateBets().exposure.perHole).toBe(35);
+    expect(lines[0].perHole).toBe(10);
+    expect(lines[1].perHole).toBe(25);
+  });
+
+  it("gives a player in nothing an empty column, not a zero-dollar bet", () => {
+    const [line] = playerBetLines(twoSeparateBets(), ["p9"]);
+    expect(line.bets).toEqual([]);
+    expect(line.perHole).toBe(0);
+    expect(line.total).toBe(0);
+  });
+
+  it("counts a player in BOTH bets once per bet", () => {
+    const r = computeSideBets({
+      holes: Array.from({ length: 18 }, (_, i) => i + 1),
+      bets: [bet("a", "p1", "p2", 10), bet("b", "p1", "p3", 25)],
+      scoring: { mode: "net", net: {} },
+    });
+    const [p1] = playerBetLines(r, ["p1"]);
+    expect(p1.bets.map((b) => b.betId)).toEqual(["a", "b"]);
+    expect(p1.perHole).toBe(35);
+  });
+});
+
+describe("betsInvolvingPlayer — what a roster removal takes with it", () => {
+  const side = (ids: string[]) => ({ id: `s-${ids.join("")}`, playerIds: ids });
+  const mk = (id: string, sides: { id: string; playerIds: string[] }[]): SideBet =>
+    buildManualBet({
+      kind: "head_to_head",
+      sides,
+      amount: 10,
+      startHole: 1,
+      autoPressAt: null,
+      pressOnPress: false,
+      mkId: () => id,
+    });
+
+  const bets = [mk("a", [side(["p1"]), side(["p2"])]), mk("b", [side(["p3"]), side(["p4"])])];
+
+  it("finds the bets a player is a side of", () => {
+    expect(betsInvolvingPlayer(bets, "p1").map((b) => b.id)).toEqual(["a"]);
+    expect(betsInvolvingPlayer(bets, "p4").map((b) => b.id)).toEqual(["b"]);
+  });
+
+  it("returns nothing for a player in none — the case that must NOT prompt", () => {
+    expect(betsInvolvingPlayer(bets, "p9")).toEqual([]);
+  });
+
+  it("finds a player who is a PARTNER on a side, not just a solo side", () => {
+    // The failure mode: matching only `sides[i].playerIds[0]` and missing the
+    // second name on a 2v2 side, so their bet survives them.
+    const doubles = [mk("c", [side(["p1", "p2"]), side(["p3", "p4"])])];
+    expect(betsInvolvingPlayer(doubles, "p2").map((b) => b.id)).toEqual(["c"]);
   });
 });

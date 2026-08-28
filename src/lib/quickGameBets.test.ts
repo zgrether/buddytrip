@@ -10,9 +10,8 @@ import {
   quickBetSideName,
   quickBetPerspective,
   quickNassauAvailable,
-  quickBetStrip,
 } from "./quickGameBets";
-import { EMPTY_SIDE_BETS, buildManualBet, type SideBet } from "./sideBets";
+import { playerBetLines, EMPTY_SIDE_BETS, buildManualBet, type SideBet } from "./sideBets";
 import { QUICK_GAME_STATE_VERSION, type QuickMatchState, type QuickStrokeState } from "./quickGame";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "./courseSnapshot";
 
@@ -110,7 +109,7 @@ describe("no bets", () => {
     const r = quickSideBets(s);
     expect(r.bets).toEqual([]);
     expect(r.exposure.perHole).toBe(0);
-    expect(quickBetStrip(s, r).total).toBe(0);
+    expect(playerBetLines(r, ["p1", "p2"]).every((l) => l.total === 0 && l.bets.length === 0)).toBe(true);
   });
 });
 
@@ -253,12 +252,13 @@ describe("the banner's perspective", () => {
       strokeGame({ values: { p1: { "1": 4, "2": 4 }, p2: { "1": 5, "2": 5 } }, currentHole: 1 }),
       [tenner()]
     );
-    const strip = quickBetStrip(s, quickSideBets(s));
-    expect(strip.perspectiveName).toBe("Zach");
-    expect(strip.total).toBe(20);
-    // Moving the viewed hole cannot change it — `quickBetStrip` takes no hole.
+    const lineFor = (g: typeof s, id: string) =>
+      playerBetLines(quickSideBets(g), [id])[0];
+    expect(lineFor(s, "p1").total).toBe(20);
+    // Moving the viewed hole cannot change it — `playerBetLines` takes no hole,
+    // which is what makes navigating back to fix the 9th safe.
     const viewed = { ...s, currentHole: 14 };
-    expect(quickBetStrip(viewed, quickSideBets(viewed)).total).toBe(20);
+    expect(lineFor(viewed, "p1").total).toBe(20);
   });
 });
 

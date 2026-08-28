@@ -357,6 +357,59 @@ export function betLabel(bet: SideBet): string {
   }
 }
 
+/** One player's column on the live strip. */
+export interface PlayerBetLine {
+  playerId: string;
+  /** The round's net for this player. Not a function of the hole being viewed. */
+  total: number;
+  /** What THIS player has riding on the next hole — the sum of the stakes of
+   *  the bets they are actually in, which is the number they can act on. The
+   *  round's aggregate exposure is not: with separate bets between separate
+   *  people, "$35/hole across 4 bets" is nobody's risk. */
+  perHole: number;
+  /** Their live bets, in the order `result.bets` already sorted them. */
+  bets: { betId: string; label: string; amount: number }[];
+}
+
+/**
+ * The strip's per-player columns.
+ *
+ * Replaces a single perspective player's total plus a round-wide exposure
+ * figure. Both were misleading the moment the round holds more than one bet
+ * between different people: the total named one player and the exposure named
+ * nobody, so the one number everybody wanted — what am I in, and for how much —
+ * was the one number not shown.
+ *
+ * Pure, and here rather than in the component, so the strip stays a renderer of
+ * already-derived figures (CLAUDE.md #8). A number computed inside a component
+ * can only ever be tested as "a number was displayed".
+ */
+export function playerBetLines(result: SideBetsResult, playerIds: string[]): PlayerBetLine[] {
+  return playerIds.map((playerId) => {
+    const mine = result.bets.filter(
+      (t) => t.live && t.bet.sides.some((side) => side.playerIds.includes(playerId))
+    );
+    return {
+      playerId,
+      total: playerTotal(result, playerId),
+      perHole: mine.reduce((sum, t) => sum + t.bet.amount, 0),
+      bets: mine.map((t) => ({ betId: t.bet.id, label: betLabel(t.bet), amount: t.bet.amount })),
+    };
+  });
+}
+
+/**
+ * The RECORDED bets this player is a side of.
+ *
+ * Removing a player from the roster has to take their bets with them — a bet
+ * with a side that no longer exists is not a smaller bet, it is an unreadable
+ * one. Recorded only: a derived press has no independent existence and simply
+ * stops being derived once its parent goes.
+ */
+export function betsInvolvingPlayer(bets: SideBet[], playerId: string): SideBet[] {
+  return bets.filter((b) => b.sides.some((side) => side.playerIds.includes(playerId)));
+}
+
 // ── Hole resolution ─────────────────────────────────────────────────────────
 
 /** Which of a bet's sides won a hole — or that it was halved, or that it isn't
@@ -863,13 +916,6 @@ export function betTotalForPlayer(tally: BetTally, playerId: string | null): num
   return round2(sum);
 }
 
-/** What the NEXT hole is worth across every live bet, carryovers included —
- *  the "the 7th is worth $40" fact (§6). Distinct from `exposure.perHole`,
- *  which is the standing rate. */
-export function nextHoleValue(result: SideBetsResult): number {
-  const line = result.holeLines.find((l) => l.hole === result.playedThrough + 1);
-  return line?.pot ?? 0;
-}
 
 // ── The recorded half ───────────────────────────────────────────────────────
 
