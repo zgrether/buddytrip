@@ -19,6 +19,7 @@ import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useNow } from "@/hooks/useNow";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
+import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
 import { TYPE_SCALE } from "@/lib/typeScale";
@@ -336,6 +337,11 @@ export function PickemGameView() {
    * hoisted above it with a comment, which is why adding a third condition here
    * cannot swallow a surface a third time.
    */
+  /**
+   * SERVER truth — what the game currently IS. Drives the game-page surfaces:
+   * the matches list, the board's branch, the results gate. Those describe a
+   * saved game, so a staged roll-up must not change them.
+   */
   const individualMatches =
     !pointsMode && q.data?.settings.rollUp === "individual_matches";
   const revealed = picksRevealed(clock, now);
@@ -526,6 +532,25 @@ export function PickemGameView() {
     },
     [q.data?.teams]
   );
+
+  /**
+   * DRAFT truth — what Save WILL make it. Drives the settings page only.
+   *
+   * The builder's gate read `individualMatches` (the server) while the roll-up
+   * toggle beside it wrote the draft, so choosing "Individual matches" staged
+   * the setting and the grid did not appear until you saved — the page offering
+   * a choice and then not honouring it.
+   *
+   * That is #18's staged-state lie, the seventh in this project, and the rule it
+   * produced names this exact trap: every server→draft repoint requires a sweep
+   * of everything downstream of it. The roll-up was repointed in the toggle and
+   * this reader was not swept.
+   *
+   * Two values on purpose, not one. A single "is it individual matches" would
+   * have to be either the server's or the draft's, and the game page and the
+   * settings page genuinely need different answers.
+   */
+  const individualMatchesStaged = !pointsMode && configDraft.rollUp === "individual_matches";
 
   /** The settings shape the scoring rows speak, read off the DRAFT — so the
    *  toggle reflects what will be saved, not what the server currently holds.
@@ -999,6 +1024,28 @@ export function PickemGameView() {
         onSave={(next) => saveConfig.mutate({ tripId: tripId!, gameId, slate: next.slate })}
       />
 
+      {/* Confirm-on-leave — the standard on every settings surface.
+          `useGameSettingsOverlay` was already wired here with `isDirty` and
+          `onDiscard`, so the guard RAN and raised `confirmingClose` — but
+          nothing rendered the prompt, so closing with unsaved changes just
+          closed. The hook tracked the intent and no one drew it.
+          Same shape as the four game-settings surfaces (`MatchGameView` is the
+          reference): Save commits and then leaves, Keep editing cancels,
+          Discard drops the draft. */}
+      {settings.confirmingClose && (
+        <DiscardChangesPrompt
+          onDiscard={settings.confirmDiscard}
+          onKeepEditing={settings.cancelClose}
+          onSave={() => {
+            settings.cancelClose();
+            void handleSaveConfig().then((ok) => {
+              if (ok) settings.leave();
+            });
+          }}
+          saving={configSaving}
+        />
+      )}
+
       {settings.open && (
         <GameSettingsPage
           surface="pickem"
@@ -1089,7 +1136,7 @@ export function PickemGameView() {
                 />
               }
               matchesRow={
-                individualMatches && q.data.teams.length >= 2 ? (
+                individualMatchesStaged && q.data.teams.length >= 2 ? (
                   <PickemMatchBuilder
                     draft={configDraft.matches}
                     setDraft={(fn) =>
