@@ -19,6 +19,7 @@ const render = (over: Partial<Parameters<typeof PickemScoringRows>[0]> = {}) =>
     <PickemScoringRows
       settings={ON}
       editable
+      frozenReason={null}
       showRollUp
       saving={false}
       pointsTotal={8}
@@ -106,10 +107,16 @@ describe("total points — the setting that decides whether any of this matters"
     // Migration 152's reason: the total changes what the game is worth, not
     // anything a participant already decided. Freezing it would make a
     // mid-trip 0-point game fixable only by reopen, which clears every ranking.
-    const html = indiv({ editable: false, canEditPoints: true, pointsTotal: 8, matches: paired(8) });
+    const html = indiv({
+      editable: false,
+      frozenReason: "Picks are open, so scoring is frozen — REASON.",
+      canEditPoints: true,
+      pointsTotal: 8,
+      matches: paired(8),
+    });
     expect(html).toContain('data-testid="row-total-points"');
     // ...while the confidence toggle beside it IS frozen.
-    expect(html).toContain("Picks are open, so scoring is frozen");
+    expect(html).toContain('data-testid="pickem-scoring-frozen"');
   });
 });
 
@@ -146,12 +153,20 @@ describe("the scoring settings", () => {
     expect(render()).not.toContain('data-testid="pickem-save-scoring"');
   });
 
-  it("frozen once picks open — controls disabled, and the reason given", () => {
-    const html = render({ editable: false });
+  it("frozen — controls disabled, and it RENDERS whatever reason it is handed", () => {
+    // The sentence itself moved OUT of this component. It was a static string
+    // here, and static was the bug: the controls are frozen in two phases and it
+    // claimed picks were open in both, which is false on a locked game. The
+    // phase-correct wording is `scoringFrozenReason`, tested over every phase in
+    // `pickemCountdown.test.ts`. What this file still owns is that the reason
+    // reaches the screen — so it asserts the caller's text is rendered verbatim,
+    // which a component that dropped the prop or kept its own copy would fail.
+    const reason = "Picks are locked, so scoring is frozen — SENTINEL. Reopen the slate below.";
+    const html = render({ editable: false, frozenReason: reason });
     const toggle = html.slice(html.indexOf('data-testid="pickem-confidence-toggle"') - 400);
     expect(toggle).toContain("disabled");
-    // A disabled control with no reason attached teaches nobody why.
-    expect(html).toContain("Picks are open, so scoring is frozen");
+    // A disabled control with no reason attached teaches nobody why (finding 3).
+    expect(html).toContain(reason);
     expect(html).toContain("Reopen the slate");
     // ...and no Save, because nothing here can be changed.
     expect(html).not.toContain('data-testid="pickem-save-scoring"');

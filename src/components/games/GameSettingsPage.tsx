@@ -105,6 +105,7 @@ export function GameSettingsPage({
   management,
   settingsRows,
   rulesValue,
+  rulesStarterText,
   onRulesChange,
   modifiersRow,
   onChanged,
@@ -164,6 +165,21 @@ export function GameSettingsPage({
   settingsRows?: ReactNode;
 
   rulesValue: string | null;
+  /**
+   * Overrides the starter text under Rules of the Day.
+   *
+   * `formatExplanation` returns the CATALOG description, which is written for
+   * the add-game picker — where no game exists yet, so format-level prose is the
+   * only thing that can be said and is correct. On a settings page the game DOES
+   * exist, and for a format whose rules depend on its own settings that generic
+   * text can describe a game the runner is not looking at: pickems catalog copy
+   * explains ranking, which is wrong whenever confidence is off.
+   *
+   * So a format may supply copy derived from the actual game. Absent, the
+   * catalog description stands — correct for every format whose rules do not
+   * vary with its settings.
+   */
+  rulesStarterText?: string;
   onRulesChange: (next: string) => void;
 
   /** The Game Modifiers row, AFTER Rules of the Day. Omitted by non-golf. */
@@ -251,7 +267,7 @@ export function GameSettingsPage({
             canEdit={canEdit}
             value={rulesValue ?? ""}
             onChange={onRulesChange}
-            starterText={formatExplanation(game.game_type_id) ?? undefined}
+            starterText={rulesStarterText ?? formatExplanation(game.game_type_id) ?? undefined}
           />
         )}
 

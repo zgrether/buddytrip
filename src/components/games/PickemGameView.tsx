@@ -9,6 +9,7 @@ import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
+import { useNow } from "@/hooks/useNow";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
@@ -19,7 +20,8 @@ import {
   PickemScoringRows,
   type PickemSettingsDraft,
 } from "@/components/games/pickem/PickemScoringRows";
-import { PickemSheet } from "@/components/games/pickem/PickemSheet";
+import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/PickemSheet";
+import { explanationCopy, PARA_BREAK } from "@/lib/pickemSheet";
 import { PickemDeadlineRow } from "@/components/games/pickem/PickemDeadlineRow";
 import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
@@ -30,6 +32,7 @@ import {
   pickemClosure,
   pickemPhase,
   scoringSettingsEditable,
+  scoringFrozenReason,
   slateEditable,
 } from "@/lib/pickemLifecycle";
 
@@ -95,8 +98,24 @@ export function PickemGameView() {
   const [rules, setRules] = useState<string | null>(null);
 
   const clock = q.data?.clock ?? { picksOpenedAt: null, picksDeadline: null, picksLockedAt: null };
-  const phase = pickemPhase(clock);
-  const canEditSlate = canEdit && slateEditable(clock);
+
+  /**
+   * ONE CLOCK for every time-dependent answer on this page.
+   *
+   * The countdown used to be computed once at render and never moved — and,
+   * worse, so did `picksOpen`, so a sheet could show 0:00 and stay editable.
+   * Every derivation below now reads the SAME ticking `now`, which is what
+   * makes crossing the deadline correct without a reload: the tick that shows
+   * 0:00 is the tick that flips the sheet read-only and produces the closed
+   * message.
+   *
+   * Ticking only matters while a deadline exists — a hand-locked or
+   * no-deadline game has nothing counting down — so the timer is gated on one
+   * rather than run on every pick'em page forever.
+   */
+  const now = useNow(1000, clock.picksDeadline != null);
+  const phase = pickemPhase(clock, now);
+  const canEditSlate = canEdit && slateEditable(clock, now);
 
   const saveConfig = trpc.pickem.saveConfig.useMutation({
     onSuccess: async () => {
@@ -159,7 +178,7 @@ export function PickemGameView() {
   /** §4: the matches surface exists ONLY under individual matches. Team totals
    *  has no matches at all, so it is ABSENT rather than rendered empty. */
   const individualMatches = q.data?.settings.rollUp === "individual_matches";
-  const revealed = picksRevealed(clock);
+  const revealed = picksRevealed(clock, now);
   const pointsTotal =
     (q.data?.game as { points_total?: number | null } | undefined)?.points_total ?? null;
   const matchPairs = useMemo(
@@ -259,6 +278,12 @@ export function PickemGameView() {
          * as waiting rather than broken.
          */
         <>
+          {/* FIRST on the page, because this branch is what a person lands in
+              the instant their countdown reaches zero — and until this was
+              hoisted out of the sheet, that transition was silent. The sheet
+              collapses behind a button here, so a banner inside it explains the
+              change only to someone who already went looking for it. */}
+          <PickemClosedBanner closure={pickemClosure(clock, now)} />
           {matchPairs.length > 0 ? (
             <PickemMatchesPanel
               teams={q.data.teams}
@@ -302,7 +327,8 @@ export function PickemGameView() {
               saving={false}
               saveError={null}
               deadlineMs={null}
-              closure={pickemClosure(clock)}
+              closedBannerHoisted
+              closure={pickemClosure(clock, now)}
               onSave={() => {}}
             />
           )}
@@ -320,11 +346,11 @@ export function PickemGameView() {
             slate={q.data.slate}
             settings={q.data.settings}
             myPicks={q.data.myPicks}
-            editable={picksOpen(clock)}
+            editable={picksOpen(clock, now)}
             saving={savePicks.isPending}
             saveError={saveError}
-            deadlineMs={msUntilDeadline(clock)}
-            closure={pickemClosure(clock)}
+            deadlineMs={msUntilDeadline(clock, now)}
+            closure={pickemClosure(clock, now)}
             onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
           />
           {phase === "locked" && <Placeholder>The board lands in Phase 6.</Placeholder>}
@@ -373,6 +399,13 @@ export function PickemGameView() {
           onNameChange={setName}
           delegateValue={null}
           onDelegateChange={() => {}}
+          // Finding 4: the catalog description explains ranking unconditionally,
+          // so with confidence OFF the rules starter described a game nobody was
+          // playing. `explanationCopy` is the same derived source the sheet
+          // itself reads, so the two cannot disagree about what the rules are.
+          rulesStarterText={explanationCopy(q.data.settings, q.data.slate)
+            .map((para) => para.text)
+            .join(PARA_BREAK)}
           rulesValue={rules ?? ""}
           onRulesChange={setRules}
           // Phase 2 has no page-level draft: the only things this page can
@@ -424,7 +457,8 @@ export function PickemGameView() {
               scoringRows={
                 <PickemScoringRows
                   settings={settingsDraft}
-                  editable={canEdit && scoringSettingsEditable(clock)}
+                  editable={canEdit && scoringSettingsEditable(clock, now)}
+                  frozenReason={canEdit ? scoringFrozenReason(clock, now) : null}
                   showRollUp={q.data.game.competition_id != null}
                   saving={saveConfig.isPending}
                   pointsTotal={(q.data.game as { points_total?: number | null }).points_total ?? null}

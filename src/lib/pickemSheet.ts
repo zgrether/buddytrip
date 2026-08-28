@@ -233,6 +233,10 @@ export interface ExplanationParagraph {
  * proofread sixteen blocks, and the two that ship most are not the two anyone
  * writes first.
  */
+/** Blank line between paragraphs, for callers flattening `explanationCopy`
+ *  into a single free-text block (the Rules of the Day starter). */
+export const PARA_BREAK = "\n\n";
+
 export function explanationCopy(
   settings: SheetSettings,
   slate: SheetSlateGame[]

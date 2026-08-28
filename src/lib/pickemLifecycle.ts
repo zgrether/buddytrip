@@ -201,3 +201,67 @@ export function msUntilDeadline(clock: PickemClock, now: number = Date.now()): n
   if (deadline == null) return null;
   return Math.max(0, deadline - now);
 }
+
+/**
+ * The countdown string. Pure so the boundary cases are testable without a DOM.
+ *
+ * ── Why the format CHANGES under an hour ───────────────────────────────────
+ *
+ * The first version rendered whole minutes at every distance, so the last
+ * fifty-nine seconds displayed a motionless "0m". That is the reported bug in
+ * miniature — the clock is ticking, the screen is not — and it lands in exactly
+ * the minute the countdown exists for.
+ *
+ * So: `3h 05m` while there is an hour or more (seconds there are noise), and
+ * `12:34` counting seconds below that. The switch happens once, at a point
+ * nobody is watching.
+ */
+export function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * Why the scoring settings are frozen — or null while they are editable.
+ *
+ * ── The bug this replaces ──────────────────────────────────────────────────
+ *
+ * The settings page rendered one static sentence whenever the controls were
+ * disabled: "Picks are open, so scoring is frozen." But the controls are frozen
+ * in TWO phases — `picks_open` and `locked` — and on a locked game that sentence
+ * is simply false. The look caught it on screen next to a lock control and a
+ * closed sheet: three statements about one game, one of them contradicting the
+ * other two.
+ *
+ * Third time in this feature that copy has described a state the game was not
+ * in, and all three had the same cause — a sentence written for the state the
+ * author had in mind, rendered on a condition that covers more states than that
+ * one. So this is DERIVED from the phase and returns the reason for the phase
+ * the game is actually in.
+ *
+ * ── Why a reason at all, rather than hiding the controls ───────────────────
+ *
+ * Hiding them was the alternative the look offered. Saying why is better here
+ * for two reasons: the freeze is REVERSIBLE (reopening the slate restores both
+ * controls, so a mute disabled row hides an action that is actually available),
+ * and a settings page that changes its shape between phases makes the runner
+ * hunt for a row that was there yesterday. A disabled control with a reason and
+ * a named way out is the honest version.
+ */
+export function scoringFrozenReason(
+  clock: PickemClock,
+  now: number = Date.now()
+): string | null {
+  switch (pickemPhase(clock, now)) {
+    case "building":
+      return null;
+    case "picks_open":
+      return "Picks are open, so scoring is frozen — people are filling in sheets under these rules. Reopen the slate below to change them.";
+    case "locked":
+      return "Picks are locked, so scoring is frozen — every sheet was filled in under these rules. Reopen the slate below to change them, which clears the picks.";
+  }
+}
