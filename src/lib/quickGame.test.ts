@@ -10,6 +10,9 @@ import {
   quickMatchGloriousAvailable,
   quickRackResult,
   buildQuickMatchSides,
+  buildQuickGameFromDrafts,
+  draftRowsFrom,
+  isMatchGame,
   quickFormatPlayerCountError,
   scoredParticipantIds,
   hasAnyScore,
@@ -455,6 +458,83 @@ describe("buildQuickMatchSides — the rows carry their own side (§6)", () => {
     expect(buildQuickMatchSides([row("p1", "B"), row("p2", "B")])).toBeNull();
     expect(buildQuickMatchSides([])).toBeNull();
   });
+
+/**
+ * The bug: a match scores into `values` keyed by SIDE id
+ * (`scoringEntityIds`), and every rebuild minted fresh uuids. So opening
+ * settings on an in-flight match and pressing Save — even changing nothing —
+ * left every score behind under a dead key. Nothing errored; the round just
+ * came back empty.
+ *
+ * Asserted on the SCORES rather than on the ids, because "the ids match" is
+ * the mechanism and "the scores are still readable" is the thing that broke.
+ */
+describe("editing an in-flight match keeps its scores", () => {
+  const drafts = (rows: DraftPlayerRow[], sideIds?: { a: string; b: string }) => ({
+    format: "match" as const,
+    players: rows,
+    course: null,
+    bets: EMPTY_SIDE_BETS,
+    entryMode: "score" as const,
+    relStrokes: 0,
+    glorious: false,
+    gloriousHoles: 3,
+    gloriousAvailable: false,
+    teams: {},
+    sideIds,
+  });
+  const start = () =>
+    buildQuickGameFromDrafts(
+      drafts([
+        { id: "p1", name: "Zach", strokes: 0, side: "A" },
+        { id: "p2", name: "Rick", strokes: 0, side: "B" },
+      ])
+    )!;
+
+  it("reads the same scores back after a no-op save", () => {
+    const base = start();
+    if (!isMatchGame(base)) throw new Error("expected a match");
+    const values = { [base.sideA.id]: { "1": 4 }, [base.sideB.id]: { "1": 5 } };
+
+    const saved = buildQuickGameFromDrafts(
+      drafts(draftRowsFrom({ ...base, values }), { a: base.sideA.id, b: base.sideB.id })
+    )!;
+    if (!isMatchGame(saved)) throw new Error("expected a match");
+
+    expect(values[saved.sideA.id]).toEqual({ "1": 4 });
+    expect(values[saved.sideB.id]).toEqual({ "1": 5 });
+  });
+
+  it("keeps the slot when its ROSTER changes — a side is a slot, not a team", () => {
+    const base = start();
+    if (!isMatchGame(base)) throw new Error("expected a match");
+    const values = { [base.sideA.id]: { "1": 4 } };
+
+    // Rename A's player and add a partner: same slot, different roster.
+    const saved = buildQuickGameFromDrafts(
+      drafts(
+        [
+          { id: "p1", name: "Zachary", strokes: 0, side: "A" },
+          { id: "p3", name: "Dave", strokes: 0, side: "A" },
+          { id: "p2", name: "Rick", strokes: 0, side: "B" },
+        ],
+        { a: base.sideA.id, b: base.sideB.id }
+      )
+    )!;
+    if (!isMatchGame(saved)) throw new Error("expected a match");
+
+    expect(saved.sideA.playerIds).toEqual(["p1", "p3"]);
+    expect(values[saved.sideA.id]).toEqual({ "1": 4 });
+  });
+
+  it("mints fresh ids when NO round is being edited", () => {
+    const a = start();
+    const b = start();
+    if (!isMatchGame(a) || !isMatchGame(b)) throw new Error("expected matches");
+    // Two separate rounds must not share a slot id.
+    expect(a.sideA.id).not.toBe(b.sideA.id);
+  });
+});
 
   it("an unmarked row defaults to side A, so a partly-filled form still builds", () => {
     const sides = buildQuickMatchSides([row("p1"), row("p2", "B")])!;

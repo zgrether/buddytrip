@@ -595,7 +595,7 @@ describe("Nassau", () => {
     // Only the front nine stops early; the other two run to the end of the
     // round and carry no end hole, exactly like a bet made by hand.
     expect(bets.map((b) => [b.startHole, b.endHole])).toEqual([[1, 9], [10, null], [1, null]]);
-    expect(bets.map(betLabel)).toEqual(["Front 9", "Back 9", "Overall"]);
+    expect(bets.map(betLabel)).toEqual(["Nassau Front 9", "Nassau Back 9", "Nassau Overall"]);
   });
 
   it("its legs behave as ordinary bets afterwards, and the totals sum", () => {
@@ -630,7 +630,7 @@ describe("Nassau", () => {
     });
     // The front nine is over — that leg is dropped, not created empty.
     expect(bets.map((b) => [b.startHole, b.endHole])).toEqual([[12, null], [12, null]]);
-    expect(bets.map(betLabel)).toEqual(["Back 9", "Overall"]);
+    expect(bets.map(betLabel)).toEqual(["Nassau Back 9", "Nassau Overall"]);
   });
 
   it("is not offered on a nine-hole round", () => {

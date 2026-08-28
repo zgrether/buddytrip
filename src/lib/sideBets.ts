@@ -338,14 +338,22 @@ export function pressRules(autoPressAt: number | null, pressOnPress: boolean): {
  *  line can't name the same bet three ways. */
 export function betLabel(bet: SideBet): string {
   switch (bet.origin.kind) {
+    // Named for the KIND of bet, not just the leg: three rows reading "Front
+    // 9 / Back 9 / Overall" describe segments of a round and never say what
+    // they are, which is the one thing a list of bets has to tell you.
     case "nassau":
-      return bet.origin.leg === "front" ? "Front 9" : bet.origin.leg === "back" ? "Back 9" : "Overall";
+      return bet.origin.leg === "front"
+        ? "Nassau Front 9"
+        : bet.origin.leg === "back"
+          ? "Nassau Back 9"
+          : "Nassau Overall";
     case "press":
       return `Press ${bet.origin.level}`;
     case "double":
       return "Last hole";
     default:
-      return bet.kind === "skins" ? "Skins" : "Bet";
+      // "Bet" was the same non-answer: every row here is a bet.
+      return bet.kind === "skins" ? "Skins" : "Head to Head";
   }
 }
 
